@@ -71,6 +71,14 @@ namespace term {
     }
   }
 
+  void FileActions::renameMany(const std::vector<std::pair<std::filesystem::path, std::string>>& items, Done done) {
+    if (auto* c = m_impl->client()) {
+      c->renameMany(items, started(std::move(done)));
+    } else if (done) {
+      done("no session bus");
+    }
+  }
+
   void FileActions::showInFiles(const Paths& paths) {
     if (m_impl->bus == nullptr || paths.empty()) {
       return;

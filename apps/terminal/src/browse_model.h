@@ -5,6 +5,8 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -60,13 +62,16 @@ namespace term::browse {
       std::filesystem::path path;
       std::string name;
     };
+    struct RenameMany {
+      std::vector<std::pair<std::filesystem::path, std::string>> items;
+    };
     struct Close {};
     struct Hint {
       std::string text;
     };
   } // namespace effect
   using Effect = std::variant<effect::List, effect::Filter, effect::ShowHidden, effect::Cd, effect::Insert, effect::Open,
-                              effect::ShowInFiles, effect::Copy, effect::Move, effect::Trash, effect::Rename,
+                              effect::ShowInFiles, effect::Copy, effect::Move, effect::Trash, effect::Rename, effect::RenameMany,
                               effect::Close, effect::Hint>;
 
   struct NoInput {};
@@ -80,7 +85,14 @@ namespace term::browse {
   struct ConfirmTrash {
     std::vector<std::filesystem::path> paths;
   };
-  using Input = std::variant<NoInput, FilterInput, RenameInput, ConfirmTrash>;
+  struct JumpInput { // z: a fuzzy query over the folders the terminal visited
+    std::string text;
+    std::size_t pick = 0; // index into jumpMatches()
+  };
+  struct BulkRename { // R: the owner edits these names one per line, then calls bulkRenamed() or cancelBulk()
+    std::vector<std::string> names;
+  };
+  using Input = std::variant<NoInput, FilterInput, RenameInput, ConfirmTrash, JumpInput, BulkRename>;
 
   struct Yank {
     std::vector<std::filesystem::path> paths;
@@ -97,6 +109,13 @@ namespace term::browse {
     [[nodiscard]] std::vector<Effect> key(const Key& key, bool promptIdle);
     // The shown rows of dir, sorted and filtered. Rows for another folder (a late listing) are dropped.
     void listed(const std::filesystem::path& dir, std::vector<Row> rows);
+    // Jump targets, most recent first.
+    void setFolders(std::vector<std::filesystem::path> folders) { m_folders = std::move(folders); }
+    // The jump list for the current query, best first (at most 50); empty outside JumpInput.
+    [[nodiscard]] std::vector<std::filesystem::path> jumpMatches() const;
+    // The edited names of BulkRename, one per line, in the same order.
+    [[nodiscard]] std::vector<Effect> bulkRenamed(std::string_view text);
+    void cancelBulk();
 
     [[nodiscard]] const std::filesystem::path& dir() const noexcept { return m_dir; }
     [[nodiscard]] const std::vector<Row>& rows() const noexcept { return m_rows; }
@@ -125,6 +144,7 @@ namespace term::browse {
     std::string m_filter;
     bool m_hidden = false;
     std::optional<Yank> m_yank;
+    std::vector<std::filesystem::path> m_folders;
   };
 
 } // namespace term::browse

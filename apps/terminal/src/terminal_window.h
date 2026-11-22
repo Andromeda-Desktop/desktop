@@ -160,6 +160,11 @@ namespace term {
     void applyZoom(int steps);
     // The app's file operations for browse mode; null: copy, move, trash, rename and Show in Files are off.
     void setFileActions(FileActions* actions) { m_fileActions = actions; }
+    // The app's visited folders (most recent first) for browse mode's jump list; visit records a shell's new folder.
+    void setFolderHistory(std::function<std::vector<std::string>()> load, std::function<void(const std::string&)> visit) {
+      m_loadFolders = std::move(load);
+      m_visitFolder = std::move(visit);
+    }
     void setPaletteRecent(std::function<std::vector<std::string>()> load, std::function<void(std::vector<std::string>)> save) {
       m_loadRecent = std::move(load);
       m_saveRecent = std::move(save);
@@ -214,6 +219,8 @@ namespace term {
     };
     std::variant<BrowseClosed, BrowseOpen> m_browse;
     FileActions* m_fileActions = nullptr;
+    std::function<std::vector<std::string>()> m_loadFolders;
+    std::function<void(const std::string&)> m_visitFolder;
     void openBrowse();
     void closeBrowse(bool rootGone = false);
     void runBrowse(const browse::Effect& effect);

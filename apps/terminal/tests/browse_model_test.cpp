@@ -58,7 +58,7 @@ const Key kKeys[] = {
     {0xff08, 0, 0}, {0xff50, 0, 0}, {0xff57, 0, 0}, {0xff55, 0, 0}, {0xff56, 0, 0}, {'j', 'j', 0},  {'k', 'k', 0},
     {'h', 'h', 0},  {'l', 'l', 0},  {' ', ' ', 0},  {'/', '/', 0},  {'.', '.', 0},  {'o', 'o', 0},  {'i', 'i', 0},
     {'y', 'y', 0},  {'x', 'x', 0},  {'p', 'p', 0},  {'d', 'd', 0},  {'r', 'r', 0},  {'q', 'q', 0},  {'t', 't', 0},
-    {'e', 'e', 0},  {0xe9, 0xe9, 0}, {'c', 'c', 2},
+    {'e', 'e', 0},  {0xe9, 0xe9, 0}, {'c', 'c', 2},  {'z', 'z', 0},  {'R', 'R', 1},  {'m', 'm', 0},
 };
 
 bool validName(const std::string& name) {
@@ -70,6 +70,8 @@ void run(unsigned s) {
   std::mt19937 rng(s);
   Owner owner;
   Model model("/home/me");
+  const std::vector<fs::path> folders{"/home/me/src", "/etc", "/home", "/gone"};
+  model.setFolders(folders);
   const auto apply = [&](std::vector<Effect> effects, bool idle) {
     for (std::size_t i = 0; i < effects.size(); ++i) {
       CHECK(!owner.closed);
@@ -89,6 +91,12 @@ void run(unsigned s) {
       } else if (const auto* r = std::get_if<effect::Rename>(&e)) {
         CHECK(validName(r->name));
         CHECK(r->path.parent_path() == model.dir());
+      } else if (const auto* many = std::get_if<effect::RenameMany>(&e)) {
+        CHECK(!many->items.empty());
+        for (const auto& [path, name] : many->items) {
+          CHECK(validName(name));
+          CHECK(path.parent_path() == model.dir());
+        }
       } else if (std::holds_alternative<effect::Close>(e)) {
         owner.closed = true;
       }
@@ -107,6 +115,30 @@ void run(unsigned s) {
       if (dir != model.dir()) {
         CHECK(model.rows().size() == old.size()); // a late listing for another folder changes nothing
       }
+    } else if (std::holds_alternative<BulkRename>(model.input()) && rng() % 2 == 0) {
+      // The editor submits: names unchanged, one renamed, one line lost, an empty line or a slash.
+      const auto names = std::get<BulkRename>(model.input()).names;
+      std::string text;
+      const auto how = static_cast<unsigned>(rng() % 5);
+      for (std::size_t i = 0; i < names.size(); ++i) {
+        if (how == 2 && i == 0) {
+          continue;
+        }
+        std::string name = names[i];
+        if (i == 0 && how == 1) {
+          name = "renamed-" + name;
+        } else if (i == 0 && how == 3) {
+          name.clear();
+        } else if (i == 0 && how == 4) {
+          name += "/x";
+        }
+        text += name + "\n";
+      }
+      if (rng() % 3 == 0) {
+        model.cancelBulk();
+      } else {
+        apply(model.bulkRenamed(text), true);
+      }
     } else {
       const Key key = kKeys[rng() % std::size(kKeys)];
       const bool idle = rng() % 4 != 0;
@@ -124,6 +156,9 @@ void run(unsigned s) {
     CHECK(model.filter() == owner.filter);
     CHECK(model.showHidden() == owner.hidden);
     if (model.dir() != before) {
+      // A folder change comes from h, l or a jump to a visited folder.
+      CHECK(model.dir() == before.parent_path() || model.dir().parent_path() == before ||
+            std::ranges::contains(folders, model.dir()));
       CHECK(model.marks().empty());
       CHECK(model.filter().empty());
       CHECK(!model.loaded());
@@ -160,6 +195,16 @@ void examples() {
   CHECK(out.size() == 1 && std::holds_alternative<effect::Hint>(out[0]));
   out = model.key({'q', 'q', 0}, true);
   CHECK(out.size() == 2 && std::get<effect::Cd>(out[0]).dir == "/home");
+
+  // A jump ranks a folder whose own name matches above letters spread over a path.
+  model.setFolders({"/data/old/src", "/srv/docs"});
+  (void)model.key({'z', 'z', 0}, true);
+  (void)model.key({'d', 'd', 0}, true);
+  (void)model.key({'o', 'o', 0}, true);
+  const auto jump = model.jumpMatches();
+  CHECK(jump.size() == 2 && jump.front() == "/srv/docs");
+  (void)model.key({0xff0d, 0, 0}, true);
+  CHECK(model.dir() == "/srv/docs");
 }
 
 } // namespace

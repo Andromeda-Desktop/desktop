@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 class SessionBus;
@@ -27,6 +28,7 @@ namespace term {
     void move(const Paths& paths, const std::filesystem::path& dest, Done done);
     void trash(const Paths& paths, Done done);
     void rename(const std::filesystem::path& path, const std::string& name, Done done);
+    void renameMany(const std::vector<std::pair<std::filesystem::path, std::string>>& items, Done done);
     void showInFiles(const Paths& paths);
 
     struct Impl;

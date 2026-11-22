@@ -128,6 +128,18 @@ namespace term {
     m_windows[&window]->setZoomStore(state().get("/terminal/zoom", 0),
                                      [this](int steps) { state().set("/terminal/zoom", steps); });
     m_windows[&window]->setFileActions(m_fileActions.get());
+    m_windows[&window]->setFolderHistory(
+        [this] { return state().get("/terminal/folders", std::vector<std::string>{}); },
+        [this](const std::string& folder) {
+          auto folders = state().get("/terminal/folders", std::vector<std::string>{});
+          if (!folders.empty() && folders.front() == folder) {
+            return;
+          }
+          std::erase(folders, folder);
+          folders.insert(folders.begin(), folder);
+          folders.resize(std::min<std::size_t>(folders.size(), 300));
+          state().set("/terminal/folders", std::move(folders));
+        });
     m_windows[&window]->setPaletteRecent(
         [this] { return state().get("/terminal/palette_recent", std::vector<std::string>{}); },
         [this](std::vector<std::string> recent) { state().set("/terminal/palette_recent", std::move(recent)); });

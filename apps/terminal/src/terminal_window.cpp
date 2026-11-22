@@ -396,8 +396,7 @@ namespace term {
           return true;
         }
         const std::shared_ptr<BrowseView> keep = browse->ui;
-        keep->key(event);
-        return true;
+        return keep->key(event);
       }
       ContentView* view = shownView();
       // A click on a button leaves focus nowhere: keys go back to the shown session.
@@ -551,6 +550,9 @@ namespace term {
               }
               const std::string shown = shownPath(path);
               apply(session_event::Cwd{id, shown});
+              if (m_visitFolder && !m_remoteSessions.contains(id) && !path.empty()) {
+                m_visitFolder(path);
+              }
             },
         .hostChanged =
             [this, id](const std::optional<Remote>& remote, bool moved) {
@@ -2170,10 +2172,6 @@ namespace term {
     if (m_contentSlot == nullptr || view == nullptr) {
       return;
     }
-    if (view->remote()) {
-      kLog.info("browse mode is off: the shell runs on another host");
-      return;
-    }
     std::filesystem::path dir = view->cwd();
     if (dir.empty() || !dir.is_absolute()) {
       const char* home = std::getenv("HOME");
@@ -2217,7 +2215,19 @@ namespace term {
                   });
                   m_window.invalidate();
                 },
+            .focus = [this](InputArea* target) { m_window.input().setFocus(target); },
         });
+    if (m_loadFolders) {
+      std::vector<std::filesystem::path> folders;
+      for (const std::string& folder : m_loadFolders()) {
+        folders.emplace_back(folder);
+      }
+      open.ui->setFolders(std::move(folders));
+    }
+    if (view->remote()) {
+      open.ui->refuse("The shell runs on another host. Browse mode shows only this machine's folders, so it is off "
+                      "here. Press any key.");
+    }
     m_browse = std::move(open);
     m_window.updateInPlace([&](Renderer& renderer) {
       auto& now = std::get<BrowseOpen>(m_browse);
@@ -2316,6 +2326,8 @@ namespace term {
       m_fileActions != nullptr ? m_fileActions->trash(trash->paths, done) : noActions();
     } else if (const auto* rename = std::get_if<browse::effect::Rename>(&effect)) {
       m_fileActions != nullptr ? m_fileActions->rename(rename->path, rename->name, done) : noActions();
+    } else if (const auto* many = std::get_if<browse::effect::RenameMany>(&effect)) {
+      m_fileActions != nullptr ? m_fileActions->renameMany(many->items, done) : noActions();
     } else if (std::holds_alternative<browse::effect::Close>(effect)) {
       closeBrowse();
     }

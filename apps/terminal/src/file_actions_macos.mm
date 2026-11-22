@@ -76,6 +76,20 @@ namespace term {
     }
   }
 
+  void FileActions::renameMany(const std::vector<std::pair<std::filesystem::path, std::string>>& items, Done done) {
+    std::string first;
+    for (const auto& [path, name] : items) {
+      rename(path, name, [&first](const std::string& error) {
+        if (first.empty()) {
+          first = error;
+        }
+      });
+    }
+    if (done) {
+      done(first);
+    }
+  }
+
   void FileActions::showInFiles(const Paths& paths) {
     [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:urls(paths)];
   }

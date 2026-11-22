@@ -1,5 +1,7 @@
 #include "browse_model.h"
 
+#include "palette_model.h"
+
 #include <algorithm>
 
 namespace term::browse {
@@ -22,6 +24,7 @@ namespace term::browse {
     constexpr std::uint32_t kPageDown = 0xff56;
     constexpr std::uint32_t kEnd = 0xff57;
     constexpr std::ptrdiff_t kPage = 10;
+    constexpr float kNameBonus = 1000.0F;
 
     bool enter(const Key& key) { return key.sym == kReturn || key.sym == kKpEnter; }
 
@@ -72,6 +75,11 @@ namespace term::browse {
         return true;
       }
       return false;
+    }
+
+    bool validName(std::string_view name) {
+      return !name.empty() && name != "." && name != ".." && name.find('/') == std::string_view::npos &&
+             name.find('\0') == std::string_view::npos;
     }
 
     std::string count(std::size_t n, const char* what) {
@@ -168,7 +176,7 @@ namespace term::browse {
       if (enter(key)) {
         RenameInput done = std::move(*rename);
         m_input = NoInput{};
-        if (done.text.empty() || done.text == "." || done.text == ".." || done.text.find('/') != std::string::npos) {
+        if (!validName(done.text)) {
           return {effect::Hint{"A name cannot be empty, . or .., or hold a /"}};
         }
         if (done.text == done.original) {
@@ -178,6 +186,35 @@ namespace term::browse {
       }
       edit(rename->text, key);
       return {};
+    }
+    if (auto* jump = std::get_if<JumpInput>(&m_input)) {
+      if (key.sym == kEscape) {
+        m_input = NoInput{};
+        return {};
+      }
+      if (enter(key)) {
+        const auto matches = jumpMatches();
+        const std::size_t pick = jump->pick;
+        m_input = NoInput{};
+        if (pick < matches.size()) {
+          return go(matches[pick], {});
+        }
+        return {};
+      }
+      if (key.sym == kDown || key.sym == kUp) {
+        const std::size_t n = jumpMatches().size();
+        if (n > 0) {
+          jump->pick = key.sym == kDown ? std::min(jump->pick + 1, n - 1) : (jump->pick > 0 ? jump->pick - 1 : 0);
+        }
+        return {};
+      }
+      if (edit(jump->text, key)) {
+        jump->pick = 0;
+      }
+      return {};
+    }
+    if (std::holds_alternative<BulkRename>(m_input)) {
+      return {}; // the owner's editor has the keys
     }
     if (auto* trash = std::get_if<ConfirmTrash>(&m_input)) {
       std::vector<std::filesystem::path> paths = std::move(trash->paths);
@@ -277,12 +314,110 @@ namespace term::browse {
       if (auto paths = chosen(); !paths.empty()) {
         m_input = ConfirmTrash{std::move(paths)};
       }
+    } else if (c == U'z') {
+      m_input = JumpInput{};
+    } else if (c == U'R') {
+      std::vector<std::string> names;
+      for (const Row& row : m_rows) {
+        if (m_marks.empty() || m_marks.contains(row.name)) {
+          names.push_back(row.name);
+        }
+      }
+      if (!names.empty()) {
+        m_input = BulkRename{std::move(names)};
+      }
     } else if (c == U'r') {
       if (const Row* row = current()) {
         m_input = RenameInput{row->name, row->name};
       }
     }
     return {};
+  }
+
+  std::vector<std::filesystem::path> Model::jumpMatches() const {
+    const auto* jump = std::get_if<JumpInput>(&m_input);
+    if (jump == nullptr) {
+      return {};
+    }
+    struct Scored {
+      float score;
+      std::size_t order;
+    };
+    std::vector<Scored> scored;
+    for (std::size_t i = 0; i < m_folders.size(); ++i) {
+      if (m_folders[i] == m_dir) {
+        continue;
+      }
+      if (jump->text.empty()) {
+        scored.push_back({0.0F, i});
+      } else if (const auto name = palette::fuzzy(jump->text, m_folders[i].filename().string())) {
+        scored.push_back({kNameBonus + name->score, i}); // the folder's own name beats letters spread over the path
+      } else if (const auto path = palette::fuzzy(jump->text, m_folders[i].string())) {
+        scored.push_back({path->score, i});
+      }
+    }
+    // Best score first; a tie goes to the more recent folder.
+    std::ranges::stable_sort(scored, [](const Scored& a, const Scored& b) { return a.score > b.score; });
+    std::vector<std::filesystem::path> out;
+    for (const Scored& s : scored) {
+      if (out.size() == 50) {
+        break;
+      }
+      out.push_back(m_folders[s.order]);
+    }
+    return out;
+  }
+
+  std::vector<Effect> Model::bulkRenamed(std::string_view text) {
+    const auto* bulk = std::get_if<BulkRename>(&m_input);
+    if (bulk == nullptr) {
+      return {};
+    }
+    std::vector<std::string> lines;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+      const std::size_t end = std::min(text.find('\n', start), text.size());
+      lines.emplace_back(text.substr(start, end - start));
+      start = end + 1;
+    }
+    if (!lines.empty() && lines.back().empty() && lines.size() == bulk->names.size() + 1) {
+      lines.pop_back(); // a final newline
+    }
+    const std::vector<std::string> names = bulk->names;
+    if (lines.size() != names.size()) {
+      return {effect::Hint{std::to_string(lines.size()) + " lines for " + std::to_string(names.size()) +
+                           " names: keep one line per name"}};
+    }
+    std::set<std::string> taken;
+    for (const Row& row : m_rows) {
+      if (std::ranges::find(names, row.name) == names.end()) {
+        taken.insert(row.name);
+      }
+    }
+    effect::RenameMany many;
+    for (std::size_t i = 0; i < names.size(); ++i) {
+      if (!validName(lines[i])) {
+        return {effect::Hint{"Line " + std::to_string(i + 1) + ": a name cannot be empty, . or .., or hold a /"}};
+      }
+      if (!taken.insert(lines[i]).second) {
+        return {effect::Hint{"Line " + std::to_string(i + 1) + ": two items cannot both be named " + lines[i]}};
+      }
+      if (lines[i] != names[i]) {
+        many.items.emplace_back(m_dir / names[i], lines[i]);
+      }
+    }
+    m_input = NoInput{};
+    m_marks.clear();
+    if (many.items.empty()) {
+      return {};
+    }
+    return {std::move(many)};
+  }
+
+  void Model::cancelBulk() {
+    if (std::holds_alternative<BulkRename>(m_input)) {
+      m_input = NoInput{};
+    }
   }
 
 } // namespace term::browse
