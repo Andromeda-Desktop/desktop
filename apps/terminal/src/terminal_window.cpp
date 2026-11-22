@@ -26,6 +26,7 @@
 #include "ui/controls/spinner.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/input.h"
+#include "core/text_clipboard.h"
 #include "ui/controls/label.h"
 #include "ui/contrast.h"
 #include "ui/palette.h"
@@ -955,6 +956,13 @@ namespace term {
     }
   }
 
+  void TerminalWindow::applyZoom(int steps) {
+    if (steps != m_zoom) {
+      m_zoom = steps;
+      applyViewSettings();
+    }
+  }
+
   bool TerminalWindow::sessionKey(const KeyboardEvent& event) {
     const auto action = event.pressed ? m_settings.settings().keys.match(event.sym, event.unshifted, event.modifiers)
                                       : std::nullopt;
@@ -972,11 +980,16 @@ namespace term {
         apply(session_event::Show{order[index]});
       }
     };
-    // Zoom changes this window's text size only; the setting stays the size of new windows.
+    // Zoom changes every window's text size; the setting stays the base size.
     const auto zoom = [this](int steps) {
       const int base = m_settings.settings().fontSize;
-      m_zoom = std::clamp(steps, SettingsLimits::kFontSizeMin - base, SettingsLimits::kFontSizeMax - base);
-      applyViewSettings();
+      steps = std::clamp(steps, SettingsLimits::kFontSizeMin - base, SettingsLimits::kFontSizeMax - base);
+      for (TerminalWindow* window : m_windows ? m_windows() : std::vector<TerminalWindow*>{this}) {
+        window->applyZoom(steps);
+      }
+      if (m_saveZoom) {
+        m_saveZoom(steps);
+      }
     };
     switch (action) {
       case Action::NextRecent:
@@ -1046,6 +1059,10 @@ namespace term {
       case Action::MovePaneDown: return movePane(0.0F, 1.0F);
       case Action::SplitRight: splitNew(andromeda::tiling::EdgeRight); return true;
       case Action::SplitDown: splitNew(andromeda::tiling::EdgeBottom); return true;
+      case Action::ResizeSplitLeft: return m_split.nudgeDivider(-1.0F, 0.0F);
+      case Action::ResizeSplitRight: return m_split.nudgeDivider(1.0F, 0.0F);
+      case Action::ResizeSplitUp: return m_split.nudgeDivider(0.0F, -1.0F);
+      case Action::ResizeSplitDown: return m_split.nudgeDivider(0.0F, 1.0F);
       default: return false; // the grid's own actions (TerminalView::key)
     }
   }
@@ -1124,11 +1141,37 @@ namespace term {
       return ContextMenuControlEntry{.id = static_cast<std::int32_t>(action), .label = label, .shortcut = keys.label(action),
                                      .enabled = enabled};
     };
-    std::vector<ContextMenuControlEntry> entries{entry(Action::Copy, "Copy", view->hasSelection()), entry(Action::Paste, "Paste"),
-                                                 {.separator = true}, entry(Action::SplitRight, "Split right"),
-                                                 entry(Action::SplitDown, "Split down"), {.separator = true},
-                                                 entry(Action::Find, "Find"), entry(Action::Preferences, "Preferences…")};
-    m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id](std::int32_t item) {
+    // Link items take ids past the actions.
+    constexpr std::int32_t kOpenLink = 1000;
+    constexpr std::int32_t kCopyLink = 1001;
+    std::optional<std::string> link = view->linkUnder(sceneX, sceneY);
+    std::vector<ContextMenuControlEntry> entries;
+    if (link) {
+      entries.push_back({.id = kOpenLink, .label = "Open Link"});
+      entries.push_back({.id = kCopyLink, .label = "Copy Link"});
+      entries.push_back({.separator = true});
+    }
+    for (ContextMenuControlEntry& item :
+         std::vector<ContextMenuControlEntry>{entry(Action::Copy, "Copy", view->hasSelection()), entry(Action::Paste, "Paste"),
+                                              entry(Action::SelectAll, "Select All"), {.separator = true},
+                                              entry(Action::SplitRight, "Split right"), entry(Action::SplitDown, "Split down"),
+                                              {.separator = true}, entry(Action::Find, "Find"),
+                                              entry(Action::ClearScrollback, "Clear Scrollback"),
+                                              entry(Action::ResetTerminal, "Reset"), {.separator = true},
+                                              entry(Action::Preferences, "Preferences…")}) {
+      entries.push_back(std::move(item));
+    }
+    m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id, link = std::move(link)](std::int32_t item) {
+      if (item == kOpenLink) {
+        openUri(*link);
+        return;
+      }
+      if (item == kCopyLink) {
+        if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
+          clipboard->setClipboardText(*link);
+        }
+        return;
+      }
       const auto action = static_cast<Action>(item);
       if (TerminalView* target = terminalOf(id); target != nullptr && target->runAction(action)) {
         return;
@@ -1776,7 +1819,8 @@ namespace term {
         caps.emplace_back(std::string_view(part));
       }
       const bool focus = action == Action::FocusLeft || action == Action::FocusRight || action == Action::FocusUp ||
-                         action == Action::FocusDown;
+                         action == Action::FocusDown || action == Action::ResizeSplitLeft || action == Action::ResizeSplitRight
+                         || action == Action::ResizeSplitUp || action == Action::ResizeSplitDown;
       std::string off;
       if (focus && !m_split.split()) {
         off = "Not in a split";

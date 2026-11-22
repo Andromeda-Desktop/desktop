@@ -463,6 +463,27 @@ void SplitView::dragDivider(std::size_t index, float sceneX, float sceneY) {
   relayout(false);
 }
 
+bool SplitView::nudgeDivider(float dx, float dy) {
+  constexpr double kStep = 0.05; // of the split's span
+  const bool horizontal = dx != 0.0F;
+  for (const andromeda::tiling::DwindleTree& tree : m_trees.trees()) {
+    TileNode* node = tree.find(m_ringPane);
+    for (TileNode* split = node != nullptr ? node->parent : nullptr; split != nullptr; split = split->parent) {
+      if ((split->type == TileNode::HSplit) != horizontal) {
+        continue;
+      }
+      const double span = horizontal ? split->area.width : split->area.height;
+      const double to = (split->ratio + ((horizontal ? dx : dy) > 0.0F ? kStep : -kStep)) * span;
+      const auto [minW, minH] = m_callbacks.minimum();
+      split->ratio = ui::dividerRatio(*split, horizontal, static_cast<float>(to),
+                                      Tokens::componentWindowCardGap * m_window.uiScale(), minW, minH);
+      relayout(true);
+      return true;
+    }
+  }
+  return false;
+}
+
 void SplitView::applyCellRects(const std::vector<PaneRect>& rects) {
   const float caption = Tokens::componentWindowCaption * m_window.uiScale();
   for (std::size_t i = 0; i < m_cards.size() && i < rects.size(); ++i) {

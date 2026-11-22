@@ -48,7 +48,7 @@ namespace term {
     bool notifyLong = true;
     int notifySeconds = 10;
     bool notifyUnfocusedOnly = true;
-    // [keybindings]: action = "ctrl+shift+t", a list of chords, or "none"; Preferences never writes it.
+    // [keybindings]: action = "ctrl+shift+t", a list of chords, or "none"; only changed actions are written.
     Keybindings keys;
 
     bool operator==(const Settings&) const = default;

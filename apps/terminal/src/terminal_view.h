@@ -176,6 +176,8 @@ namespace term {
     // Runs a grid action ([keybindings]: copy, paste, scroll, prompt jumps); false for the window's actions.
     bool runAction(Action action);
     [[nodiscard]] bool hasSelection();
+    // The link (OSC 8 or a detected URL or path) under a scene point.
+    [[nodiscard]] std::optional<std::string> linkUnder(float sceneX, float sceneY);
     // The window gained or lost activation. Focus = the grid has keyboard focus in an active window: a solid
     // cursor and focus reports (mode 1004); otherwise a hollow cursor.
     void setWindowActive(bool active) override;
@@ -272,6 +274,9 @@ namespace term {
     bool reportMouse(GhosttyMouseAction action, GhosttyMouseButton button, float localX, float localY,
                      std::uint32_t mods);
     void selectAround(GhosttyPointCoordinate cell, int count);
+    void selectAll();
+    void clearScrollback();
+    void resetTerminal();
     void clearSelection();
     void scrollToBottom();
     [[nodiscard]] std::uint32_t modifiers() const;

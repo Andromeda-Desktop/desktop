@@ -149,6 +149,12 @@ namespace term {
     }
     // The holder's workspace table changed.
     void workspacesChanged();
+    // The app's text zoom (steps added to the size setting), shared by all windows; save keeps it for the next start.
+    void setZoomStore(int steps, std::function<void(int)> save) {
+      m_saveZoom = std::move(save);
+      applyZoom(steps);
+    }
+    void applyZoom(int steps);
     void setPaletteRecent(std::function<std::vector<std::string>()> load, std::function<void(std::vector<std::string>)> save) {
       m_loadRecent = std::move(load);
       m_saveRecent = std::move(save);
@@ -219,7 +225,8 @@ namespace term {
     AgentHosts m_agents;
     ThumbnailService& m_thumbnails;
     SettingsStore& m_settings;
-    int m_zoom = 0; // text size steps (px at ui_scale 1) added to the setting in this window
+    int m_zoom = 0; // text size steps (px at ui_scale 1) added to the setting, the same in every window
+    std::function<void(int)> m_saveZoom;
     Signal<>::ScopedConnection m_settingsChanged;
     std::function<void()> m_close;
     // A session opened, closed, was shown, renamed, joined or left a split, or changed folder or kind.

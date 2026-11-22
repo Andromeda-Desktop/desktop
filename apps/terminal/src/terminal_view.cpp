@@ -1088,6 +1088,9 @@ namespace term {
       case Action::CopyLastOutput: copyLastOutput(); return true;
       case Action::Copy: copySelection(); return true;
       case Action::Paste: paste(); return true;
+      case Action::SelectAll: selectAll(); return true;
+      case Action::ClearScrollback: clearScrollback(); return true;
+      case Action::ResetTerminal: resetTerminal(); return true;
       default: return false;
     }
   }
@@ -2408,6 +2411,48 @@ namespace term {
     if (set) {
       scheduleRedraw(Redraw::All);
     }
+  }
+
+  std::optional<std::string> TerminalView::linkUnder(float sceneX, float sceneY) {
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(m_area, x, y);
+    auto link = linkAt(cellAt(sceneX - x, sceneY - y));
+    return link ? std::optional(std::move(link->uri)) : std::nullopt;
+  }
+
+  void TerminalView::selectAll() {
+    const bool set = m_session.withTerminal([](GhosttyTerminal t) {
+      GhosttySelection selection{};
+      return t != nullptr && ghostty_terminal_select_all(t, &selection) == GHOSTTY_SUCCESS
+             && ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SELECTION, &selection) == GHOSTTY_SUCCESS;
+    });
+    if (set) {
+      scheduleRedraw(Redraw::All);
+    }
+  }
+
+  // A zero limit erases the retained history; the setting's limit applies again right after.
+  void TerminalView::clearScrollback() {
+    m_session.withTerminal([](GhosttyTerminal t) {
+      if (t != nullptr) {
+        constexpr std::size_t kNone = 0;
+        ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &kNone);
+      }
+    });
+    applyTerminalSettings();
+    scheduleRedraw(Redraw::All);
+  }
+
+  // A full reset (RIS) also drops the palette, cursor and scrollback limit: the settings apply again after it.
+  void TerminalView::resetTerminal() {
+    m_session.withTerminal([](GhosttyTerminal t) {
+      if (t != nullptr) {
+        ghostty_terminal_reset(t);
+      }
+    });
+    applyTerminalSettings();
+    scheduleRedraw(Redraw::All);
   }
 
   void TerminalView::clearSelection() {

@@ -135,6 +135,17 @@ int main() {
     CHECK(std::holds_alternative<Settings>(rewritten) && std::get<Settings>(rewritten) == changed);
   }
 
+  // Invariant: a shortcut changed in Preferences reads back the same from a file that had no [keybindings].
+  {
+    Settings rebound;
+    rebound.keys.bind(Action::Find, {*parseChord("ctrl+alt+f")});
+    rebound.keys.bind(Action::Copy, {});
+    rebound.keys.bind(Action::Paste, {*parseChord("ctrl+shift+v"), *parseChord("shift+insert")});
+    rebound.keys.bind(Action::FontBigger, {*parseChord("ctrl+plus")});
+    const auto back = parseSettings(writeSettings(rebound, ""));
+    CHECK(std::holds_alternative<Settings>(back) && std::get<Settings>(back).keys == rebound.keys);
+  }
+
   if (failures != 0) {
     std::fprintf(stderr, "%d failures\n", failures);
     return 1;

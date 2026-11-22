@@ -118,6 +118,8 @@ namespace term {
         },
         [this, &window] { addWorkspace(window); });
     workspacesChanged(); // the other windows' bars gain this one
+    m_windows[&window]->setZoomStore(state().get("/terminal/zoom", 0),
+                                     [this](int steps) { state().set("/terminal/zoom", steps); });
     m_windows[&window]->setPaletteRecent(
         [this] { return state().get("/terminal/palette_recent", std::vector<std::string>{}); },
         [this](std::vector<std::string> recent) { state().set("/terminal/palette_recent", std::move(recent)); });
@@ -275,6 +277,10 @@ namespace term {
 
   void TerminalApp::action(const std::string& name, const std::vector<std::string>& parameter,
                            const std::string& activationToken) {
+    if (name == "new-window") {
+      openWindow(activationToken);
+      return;
+    }
     if (name != "exec" || parameter.size() < 2) {
       DeskApp::action(name, parameter, activationToken);
       return;

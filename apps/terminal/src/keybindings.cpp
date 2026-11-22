@@ -66,6 +66,13 @@ namespace term {
         {Action::ToggleSidebar, "toggle_sidebar", "Show or hide the sidebar", "ctrl+shift+b"},
         {Action::PreviousWorkspace, "previous_workspace", "Previous window", "ctrl+alt+page_up"},
         {Action::NextWorkspace, "next_workspace", "Next window", "ctrl+alt+page_down"},
+        {Action::SelectAll, "select_all", "Select all", ""},
+        {Action::ClearScrollback, "clear_scrollback", "Clear scrollback", "ctrl+shift+l"},
+        {Action::ResetTerminal, "reset_terminal", "Reset terminal", ""},
+        {Action::ResizeSplitLeft, "resize_split_left", "Move the split divider left", "alt+shift+left"},
+        {Action::ResizeSplitRight, "resize_split_right", "Move the split divider right", "alt+shift+right"},
+        {Action::ResizeSplitUp, "resize_split_up", "Move the split divider up", "alt+shift+up"},
+        {Action::ResizeSplitDown, "resize_split_down", "Move the split divider down", "alt+shift+down"},
     }};
     static_assert(
         [] {
@@ -167,17 +174,40 @@ namespace term {
     m_chords[static_cast<std::size_t>(action)] = std::move(chords);
   }
 
-  std::optional<Action> Keybindings::match(std::uint32_t sym, std::uint32_t unshifted, std::uint32_t modifiers) const {
+  Chord chordOf(std::uint32_t sym, std::uint32_t unshifted, std::uint32_t modifiers) {
     // A printable key matches by its unshifted character, so Ctrl+Shift+= is "ctrl+shift+equal", not "plus".
-    const Chord pressed{.sym = unshifted >= 0x20 && unshifted != 0x7f ? normalSym(xkb_utf32_to_keysym(unshifted))
-                                                                      : normalSym(sym),
-                        .modifiers = modifiers & (kCtrl | kShift | kAlt | kSuper)};
+    return {.sym = unshifted >= 0x20 && unshifted != 0x7f ? normalSym(xkb_utf32_to_keysym(unshifted)) : normalSym(sym),
+            .modifiers = modifiers & (kCtrl | kShift | kAlt | kSuper)};
+  }
+
+  std::string chordSpec(Chord chord) {
+    std::string out;
+    for (const auto& [bit, name] : {std::pair{kCtrl, "ctrl+"}, std::pair{kAlt, "alt+"}, std::pair{kShift, "shift+"}}) {
+      if ((chord.modifiers & bit) != 0) {
+        out += name;
+      }
+    }
+    if (const std::uint32_t cp = xkb_keysym_to_utf32(chord.sym); cp > 0x20 && cp < 0x7f) {
+      return out + static_cast<char>(cp);
+    }
+    std::array<char, 64> name{};
+    if (xkb_keysym_get_name(chord.sym, name.data(), name.size()) > 0) {
+      out += lower(name.data());
+    }
+    return out;
+  }
+
+  std::optional<Action> Keybindings::actionOf(Chord chord) const {
     for (std::size_t i = 0; i < m_chords.size(); ++i) {
-      if (std::ranges::contains(m_chords[i], pressed)) {
+      if (std::ranges::contains(m_chords[i], chord)) {
         return static_cast<Action>(i);
       }
     }
     return std::nullopt;
+  }
+
+  std::optional<Action> Keybindings::match(std::uint32_t sym, std::uint32_t unshifted, std::uint32_t modifiers) const {
+    return actionOf(chordOf(sym, unshifted, modifiers));
   }
 
   std::string Keybindings::label(Action action, std::string_view separator) const {

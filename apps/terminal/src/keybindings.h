@@ -58,6 +58,13 @@ namespace term {
     ToggleSidebar,
     PreviousWorkspace,
     NextWorkspace,
+    SelectAll,
+    ClearScrollback,
+    ResetTerminal,
+    ResizeSplitLeft,
+    ResizeSplitRight,
+    ResizeSplitUp,
+    ResizeSplitDown,
     Count,
   };
   inline constexpr std::size_t kActionCount = static_cast<std::size_t>(Action::Count);
@@ -82,6 +89,10 @@ namespace term {
   [[nodiscard]] std::optional<Chord> parseChord(std::string_view spec);
   // "Ctrl+Shift+T", "Shift+PgUp"; `separator` joins the parts.
   [[nodiscard]] std::string chordLabel(Chord chord, std::string_view separator = "+");
+  // The [keybindings] spelling parseChord reads back: "ctrl+shift+t", "shift+page_up".
+  [[nodiscard]] std::string chordSpec(Chord chord);
+  // The chord of a key press: `unshifted` is the layout's codepoint for the key without modifiers (0: none).
+  [[nodiscard]] Chord chordOf(std::uint32_t sym, std::uint32_t unshifted, std::uint32_t modifiers);
 
   struct Keybindings {
     Keybindings(); // the defaults
@@ -92,6 +103,7 @@ namespace term {
     // The first chord's label; empty when unbound.
     [[nodiscard]] std::string label(Action action, std::string_view separator = "+") const;
     [[nodiscard]] const std::vector<Chord>& chords(Action action) const { return m_chords[static_cast<std::size_t>(action)]; }
+    [[nodiscard]] std::optional<Action> actionOf(Chord chord) const;
     bool operator==(const Keybindings&) const = default;
 
   private:

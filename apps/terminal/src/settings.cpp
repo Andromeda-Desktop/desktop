@@ -358,6 +358,28 @@ namespace term {
     notifications.insert_or_assign("long_command", s.notifyLong);
     notifications.insert_or_assign("long_command_seconds", s.notifySeconds);
     notifications.insert_or_assign("unfocused_only", s.notifyUnfocusedOnly);
+    // Only shortcuts that differ from the defaults: a later default change still reaches the user.
+    const Keybindings defaults;
+    auto& keys = tableIn(root, "keybindings");
+    for (const ActionInfo& info : actionTable()) {
+      const std::vector<Chord>& chords = s.keys.chords(info.action);
+      if (chords == defaults.chords(info.action)) {
+        keys.erase(info.name);
+      } else if (chords.empty()) {
+        keys.insert_or_assign(info.name, "none");
+      } else if (chords.size() == 1) {
+        keys.insert_or_assign(info.name, chordSpec(chords.front()));
+      } else {
+        toml::array list;
+        for (const Chord& chord : chords) {
+          list.push_back(chordSpec(chord));
+        }
+        keys.insert_or_assign(info.name, std::move(list));
+      }
+    }
+    if (keys.empty()) {
+      root.erase("keybindings");
+    }
     std::ostringstream out;
     out << "# Andromeda Terminal preferences. Preferences (Ctrl+,) edits this file; hand edits apply at once.\n"
         << root << '\n';

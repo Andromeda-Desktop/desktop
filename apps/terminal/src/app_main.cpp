@@ -3,6 +3,7 @@
 #include "terminal_control.h"
 #include "theme_cli.h"
 
+#include <cstdio>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -42,6 +43,22 @@ namespace {
 } // namespace
 
 int desk_app_main(int argc, char* argv[]) {
+  if (argc >= 2 && (std::string_view(argv[1]) == "--help" || std::string_view(argv[1]) == "-h")) {
+    std::fputs(R"(usage: andromeda-terminal [options] [DIR]
+       andromeda-terminal -e CMD [ARGS...]
+       andromeda-terminal ctl <command>     control sessions of the running terminal
+       andromeda-terminal theme <command>   make, check and apply themes (theme help)
+
+Opens a window in the running terminal, or starts one.
+  DIR                        start the new session in this folder
+  -e CMD [ARGS...]           run CMD in a new session
+  --working-directory DIR    the folder for -e or the new session
+  -h, --help                 show this help
+Settings: ~/.config/andromeda/terminal.toml (Preferences: Ctrl+,)
+)",
+               stdout);
+    return 0;
+  }
   if (const auto exit = term::runThemeCli(argc, argv)) {
     return *exit;
   }

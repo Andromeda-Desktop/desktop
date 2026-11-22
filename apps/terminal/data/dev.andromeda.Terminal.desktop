@@ -12,3 +12,8 @@ StartupNotify=true
 X-ExecArg=-e
 X-TerminalArgExec=-e
 X-TerminalArgDir=--working-directory=
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=andromeda-terminal --action=new-window
