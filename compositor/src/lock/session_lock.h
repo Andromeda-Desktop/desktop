@@ -105,7 +105,7 @@ namespace andromeda {
     static void onNewSurface(wl_listener* listener, void* data);
     static void onUnlock(wl_listener* listener, void* data);
     static void onDestroy(wl_listener* listener, void* data);
-    static int onSurfaceDeadline(void* data);
+    static int onDeadline(void* data);
 
     void handleNewSurface(void* data);
     void handleUnlock();
@@ -114,6 +114,7 @@ namespace andromeda {
     void beginPresenting(bool deadlineExpired);
     void syncOutputPresentations();
     void maybeSendLocked();
+    void sendLocked(bool deadlineExpired);
     void focusMappedSurface();
     [[nodiscard]] bool outputActive(const Output& output) const;
     [[nodiscard]] bool surfacesReady() const;
@@ -122,7 +123,7 @@ namespace andromeda {
     Server* m_server = nullptr;
     wlr_session_lock_v1* m_lock = nullptr;
     wlr_scene_tree* m_sceneTree = nullptr;
-    wl_event_source* m_surfaceDeadline = nullptr;
+    wl_event_source* m_deadline = nullptr; // the surface deadline, then the present deadline
     Phase m_phase = Phase::WaitingForSurfaces;
     bool m_unlocked = false;
 

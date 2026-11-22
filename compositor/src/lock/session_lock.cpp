@@ -15,6 +15,8 @@ namespace andromeda {
   namespace {
     constexpr Logger kLog("lock");
     constexpr int kSurfaceDeadlineMs = 3000;
+    // An output whose commits keep failing never presents; past this the lock stops waiting for it.
+    constexpr int kPresentDeadlineMs = 3000;
   } // namespace
 
   LockSurface::LockSurface(Server& server, wlr_session_lock_surface_v1* lockSurface, wlr_scene_tree* parent)
@@ -219,9 +221,9 @@ namespace andromeda {
   }
 
   SessionLock::~SessionLock() {
-    if (m_surfaceDeadline != nullptr) {
-      wl_event_source_remove(m_surfaceDeadline);
-      m_surfaceDeadline = nullptr;
+    if (m_deadline != nullptr) {
+      wl_event_source_remove(m_deadline);
+      m_deadline = nullptr;
     }
     if (m_newSurface.link.next != nullptr) {
       wl_list_remove(&m_newSurface.link);
@@ -243,14 +245,12 @@ namespace andromeda {
   bool SessionLock::locked() const { return !m_unlocked && m_phase == Phase::Locked; }
 
   void SessionLock::start() {
+    m_deadline = wl_event_loop_add_timer(wl_display_get_event_loop(m_server->display()), onDeadline, this);
     if (surfacesReady()) {
       beginPresenting(false);
       return;
     }
-
-    m_surfaceDeadline =
-        wl_event_loop_add_timer(wl_display_get_event_loop(m_server->display()), onSurfaceDeadline, this);
-    if (m_surfaceDeadline == nullptr || wl_event_source_timer_update(m_surfaceDeadline, kSurfaceDeadlineMs) < 0) {
+    if (m_deadline == nullptr || wl_event_source_timer_update(m_deadline, kSurfaceDeadlineMs) < 0) {
       kLog.error("failed to arm session lock surface deadline; using secure blank immediately");
       beginPresenting(true);
     }
@@ -370,9 +370,18 @@ namespace andromeda {
     self->handleDestroy();
   }
 
-  int SessionLock::onSurfaceDeadline(void* data) {
+  int SessionLock::onDeadline(void* data) {
     auto* self = static_cast<SessionLock*>(data);
-    self->beginPresenting(true);
+    switch (self->m_phase) {
+    case Phase::WaitingForSurfaces:
+      self->beginPresenting(true);
+      break;
+    case Phase::Presenting:
+      self->sendLocked(true);
+      break;
+    case Phase::Locked:
+      break;
+    }
     return 0;
   }
 
@@ -423,8 +432,8 @@ namespace andromeda {
     if (m_phase != Phase::WaitingForSurfaces || m_lock == nullptr) {
       return;
     }
-    if (m_surfaceDeadline != nullptr) {
-      wl_event_source_timer_update(m_surfaceDeadline, 0);
+    if (m_deadline == nullptr || wl_event_source_timer_update(m_deadline, kPresentDeadlineMs) < 0) {
+      kLog.error("failed to arm session lock present deadline");
     }
     if (deadlineExpired) {
       kLog.warn("lock surfaces were not ready after {} ms; using the secure blank", kSurfaceDeadlineMs);
@@ -468,7 +477,26 @@ namespace andromeda {
         })) {
       return;
     }
+    sendLocked(false);
+  }
 
+  void SessionLock::sendLocked(bool deadlineExpired) {
+    if (m_phase != Phase::Presenting || m_lock == nullptr) {
+      return;
+    }
+    if (deadlineExpired) {
+      // Withholding locked hides nothing (a failing output keeps scanning out its last frame) and would leave the
+      // lock client unable to take a password.
+      for (const OutputPresentation& presentation : m_outputPresentations) {
+        if (!presentation.presented) {
+          kLog.warn("{} presented no lock frame after {} ms; locking without it", presentation.output->name,
+                    kPresentDeadlineMs);
+        }
+      }
+    }
+    if (m_deadline != nullptr) {
+      wl_event_source_timer_update(m_deadline, 0);
+    }
     wlr_session_lock_v1_send_locked(m_lock);
     m_phase = Phase::Locked;
     kLog.info("session is locked");
