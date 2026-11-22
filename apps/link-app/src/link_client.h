@@ -81,6 +81,13 @@ namespace linkapp {
     }
     // Lists `path` on the phone presence() shows ("/" for its roots).
     void openFolder(const std::string& path);
+    // Deletes a file or folder on the phone, then lists the open folder again.
+    void deleteFile(const std::string& phonePath);
+    // Copies regular files into the open phone folder; ignored while a copy runs.
+    void copyIntoFolder(const std::vector<std::filesystem::path>& paths);
+    void cancelCopy();
+    void dismissFileOp();
+    [[nodiscard]] const FileOp& fileOp() const { return m_fileOp; }
     // Copies the file `name` of the open folder into the downloads folder with ReadFile, 1 MiB at a time.
     void saveFile(const std::string& name);
     // The first PhotosPage of the phone presence() shows; ignored while a first page loads.
@@ -156,6 +163,11 @@ namespace linkapp {
     std::unique_ptr<sdbus::IProxy> m_busWatch;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::function<void()> m_changed;
+    struct Upload;
+    std::shared_ptr<Upload> m_upload; // the running copy; Cancel drops it, so its late replies find it gone
+    FileOp m_fileOp;
+    void writeChunk(const std::shared_ptr<Upload>& upload);
+    void finishUpload(const std::shared_ptr<Upload>& upload, std::optional<std::string> error);
     // One MirrorInput call (Link1.xml MirrorInput) while the mirror shows.
     void mirrorInput(const std::string& action, std::map<std::string, sdbus::Variant> args);
     std::function<void(const std::string&)> m_paired;

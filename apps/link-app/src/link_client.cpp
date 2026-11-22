@@ -725,6 +725,153 @@ namespace linkapp {
         });
   }
 
+  namespace {
+    // A failed DeleteFile or WriteFile as one line for the Files page (reasons: Link1.xml ListFiles).
+    std::string fileError(const sdbus::Error& error, const std::string& name, bool exists) {
+      const std::string why = error.getName().ends_with(".Refused") ? error.getMessage() : std::string();
+      if (why == "not-allowed") return "Turn on Files for this desktop in Link on the phone.";
+      if (why == "denied" && exists) return std::format("“{}” is already in this folder on the phone.", name);
+      if (why == "denied") return std::format("The phone does not allow changes to “{}”.", name);
+      if (why == "not-found") return std::format("“{}” is no longer on the phone.", name);
+      if (why == "busy") return "The phone is busy. Try again in a moment.";
+      if (why == "io") return "The phone could not write. Its storage may be full.";
+      return "The phone did not answer.";
+    }
+  } // namespace
+
+  void LinkClient::deleteFile(const std::string& phonePath) {
+    const std::string device = presence().phone.id;
+    if (device.empty()) return;
+    const std::string name = phonePath.substr(phonePath.find_last_of('/') + 1);
+    m_proxy->callMethodAsync("DeleteFile").onInterface(kInterface).withArguments(device, phonePath)
+        .uponReplyInvoke([this, name, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error) {
+          if (alive.expired()) return;
+          if (error) {
+            kLog.warn("DeleteFile: {}", error->getMessage());
+            if (m_fileOp.kind != FileOp::Kind::Copying) m_fileOp = {.kind = FileOp::Kind::Failed, .error = fileError(*error, name, false)};
+          }
+          openFolder(m_files.path());
+        });
+  }
+
+  struct LinkClient::Upload {
+    std::string device;
+    std::string folder; // the phone folder the copy started in
+    std::vector<std::pair<std::filesystem::path, std::string>> files; // local path, phone path
+    std::size_t index = 0;
+    std::unique_ptr<std::FILE, int (*)(std::FILE*)> file{nullptr, &std::fclose};
+    std::uint64_t offset = 0; // in the current file
+  };
+
+  void LinkClient::copyIntoFolder(const std::vector<std::filesystem::path>& paths) {
+    const std::string device = presence().phone.id;
+    if (device.empty() || m_fileOp.kind == FileOp::Kind::Copying) return;
+    auto upload = std::make_shared<Upload>();
+    upload->device = device;
+    upload->folder = m_files.path();
+    std::uint64_t total = 0;
+    for (const auto& path : paths) {
+      std::error_code error;
+      if (!std::filesystem::is_regular_file(path, error)) continue;
+      total += std::filesystem::file_size(path, error);
+      upload->files.emplace_back(path, m_files.childPath(path.filename().string()));
+    }
+    if (upload->files.empty()) return;
+    m_upload = upload;
+    m_fileOp = {.kind = FileOp::Kind::Copying, .count = upload->files.size(), .total = total};
+    writeChunk(upload);
+  }
+
+  void LinkClient::writeChunk(const std::shared_ptr<Upload>& upload) {
+    constexpr std::size_t kChunk = 48 * 1024; // Link1 WriteFile's largest write
+    const auto& [local, phonePath] = upload->files[upload->index];
+    if (!upload->file) {
+      upload->file.reset(std::fopen(local.c_str(), "rb"));
+      upload->offset = 0;
+      m_fileOp.index = upload->index;
+      m_fileOp.name = local.filename().string();
+      changed();
+      if (!upload->file) {
+        finishUpload(upload, std::format("“{}” could not be read on this computer.", m_fileOp.name));
+        return;
+      }
+    }
+    std::vector<std::uint8_t> data(kChunk);
+    data.resize(std::fread(data.data(), 1, kChunk, upload->file.get()));
+    const bool last = data.size() < kChunk;
+    if (data.empty() && upload->offset > 0) {
+      upload->file.reset();
+      if (++upload->index == upload->files.size()) {
+        finishUpload(upload, std::nullopt);
+      } else {
+        writeChunk(upload);
+      }
+      return;
+    }
+    const std::uint64_t size = data.size();
+    m_proxy->callMethodAsync("WriteFile")
+        .onInterface(kInterface)
+        .withArguments(upload->device, phonePath, upload->offset, data)
+        .uponReplyInvoke([this, upload, size, last, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
+                                                                                           std::uint64_t) {
+          if (alive.expired()) return;
+          if (upload != m_upload) {
+            // Cancelled while its first chunk was on the way: the phone now holds part of the file.
+            if (!error && upload->offset == 0 && !last) {
+              m_proxy->callMethodAsync("DeleteFile").onInterface(kInterface)
+                  .withArguments(upload->device, upload->files[upload->index].second)
+                  .uponReplyInvoke([](std::optional<sdbus::Error>) {});
+            }
+            return;
+          }
+          if (error) {
+            kLog.warn("WriteFile: {}", error->getMessage());
+            finishUpload(upload, fileError(*error, m_fileOp.name, upload->offset == 0));
+            return;
+          }
+          upload->offset += size;
+          m_fileOp.sent += size;
+          changed();
+          if (last) {
+            upload->file.reset();
+            if (++upload->index == upload->files.size()) {
+              finishUpload(upload, std::nullopt);
+              return;
+            }
+          }
+          writeChunk(upload);
+        });
+  }
+
+  void LinkClient::finishUpload(const std::shared_ptr<Upload>& upload, std::optional<std::string> error) {
+    // A file the phone holds only part of is deleted, unless the phone refused to create it at all.
+    if (error && upload->index < upload->files.size() && upload->offset > 0) {
+      m_proxy->callMethodAsync("DeleteFile").onInterface(kInterface)
+          .withArguments(upload->device, upload->files[upload->index].second)
+          .uponReplyInvoke([](std::optional<sdbus::Error> failed) {
+            if (failed) kLog.warn("DeleteFile partial: {}", failed->getMessage());
+          });
+    }
+    m_upload.reset();
+    m_fileOp = error ? FileOp{.kind = FileOp::Kind::Failed, .error = std::move(*error)} : FileOp{};
+    if (m_files.path() == upload->folder) openFolder(upload->folder);
+    changed();
+  }
+
+  void LinkClient::cancelCopy() {
+    if (!m_upload) return;
+    const std::shared_ptr<Upload> upload = m_upload;
+    finishUpload(upload, std::string());
+    m_fileOp = {};
+    changed();
+  }
+
+  void LinkClient::dismissFileOp() {
+    if (m_fileOp.kind != FileOp::Kind::Failed) return;
+    m_fileOp = {};
+    changed();
+  }
+
   struct LinkClient::Download {
     std::string device;
     std::string phonePath;

@@ -20,6 +20,7 @@
 #include <linux/input-event-codes.h>
 #include <ctime>
 #include <filesystem>
+#include <sstream>
 #include <format>
 #include <glib.h>
 #include <poll.h>
@@ -610,7 +611,109 @@ namespace linkapp {
 
   LinkApp::LinkApp() : DeskApp({.id = kAppId, .name = "Link"}) {}
 
-  LinkApp::~LinkApp() = default;
+  LinkApp::~LinkApp() {
+    if (m_dropSurface == nullptr) return;
+    if (DragAndDrop* dnd = loop().wayland().dragAndDrop()) dnd->clearTarget(m_dropSurface);
+  }
+
+  LinkApp::DropCue LinkApp::dropCueHere() const {
+    if (!m_client) return DropCue::None;
+    const Presence::Kind kind = m_client->presence().kind;
+    if (kind != Presence::Kind::Connected && kind != Presence::Kind::Locked) return DropCue::None;
+    if (pairShown()) return DropCue::None;
+    const bool folder = m_page == Page::Files && m_client->files().load() == Files::Load::Ready &&
+                        m_client->fileOp().kind != FileOp::Kind::Copying;
+    return folder ? DropCue::CopyIn : DropCue::Send;
+  }
+
+  // Files dropped on the window: on an open phone folder they are copied into it, anywhere else sent to the phone.
+  void LinkApp::registerDropTarget() {
+    wl_surface* surface = m_window->wlSurface();
+    DragAndDrop* dnd = loop().wayland().dragAndDrop();
+    if (surface == nullptr || dnd == nullptr || surface == m_dropSurface) return;
+    m_dropSurface = surface;
+    dnd->setAcceptedTypes({"text/uri-list"});
+    const auto cue = [this](DropCue next) {
+      if (next == m_dropCue) return;
+      m_dropCue = next;
+      m_window->requestRebuild();
+    };
+    dnd->setTarget(surface, {.enter = [](const std::vector<std::string>& mimes) {
+                               return std::ranges::contains(mimes, std::string("text/uri-list"));
+                             },
+                             .motion = [this, cue](float, float) -> std::uint32_t {
+                               cue(dropCueHere());
+                               return m_dropCue == DropCue::None ? DragAndDrop::None : DragAndDrop::Copy;
+                             },
+                             .leave = [cue] { cue(DropCue::None); },
+                             .drop = [this, cue](float, float, std::uint32_t, const std::string& mime, std::string data) {
+                               cue(DropCue::None);
+                               if (mime == "text/uri-list") dropped(data);
+                             }});
+  }
+
+  void LinkApp::dropped(const std::string& uris) {
+    std::vector<std::filesystem::path> paths;
+    std::istringstream lines(uris);
+    for (std::string line; std::getline(lines, line);) {
+      if (!line.empty() && line.back() == '\r') line.pop_back();
+      if (line.empty() || line.front() == '#') continue;
+      if (char* path = g_filename_from_uri(line.c_str(), nullptr, nullptr)) {
+        paths.emplace_back(path);
+        g_free(path);
+      }
+    }
+    if (paths.empty()) return;
+    switch (dropCueHere()) {
+    case DropCue::None: break;
+    case DropCue::Send: m_client->sendFiles(m_client->presence().phone.id, paths); break;
+    case DropCue::CopyIn: m_client->copyIntoFolder(paths); break;
+    }
+  }
+
+  void LinkApp::fileMenu(std::size_t index, float sceneX, float sceneY) {
+    const Files& files = m_client->files();
+    if (index >= files.entries().size()) return;
+    const FileEntry entry = files.entries()[index];
+    const FileSave* save = entry.folder ? nullptr : files.save(files.childPath(entry.name));
+    const bool saved = save != nullptr && save->state == FileSave::State::Done;
+    enum : std::int32_t { kOpen, kDelete };
+    std::vector<ContextMenuControlEntry> entries{
+        {.id = kOpen, .label = entry.folder ? "Open" : saved ? "Show in Folder" : "Save to Downloads"},
+        {.separator = true},
+        {.id = kDelete, .label = "Delete…"}};
+    m_window->openContextMenu(std::move(entries), sceneX, sceneY, [this, index, entry](std::int32_t id) {
+      if (id == kOpen) m_files->onActivate(index);
+      if (id == kDelete) confirmDelete(entry);
+    });
+  }
+
+  void LinkApp::confirmDelete(const FileEntry& entry) {
+    const std::string phone = m_client->presence().phone.name;
+    const std::string path = m_client->files().childPath(entry.name);
+    const std::string body = entry.folder
+                                 ? std::format("The folder and everything in it are deleted from {}. This cannot be undone.", phone)
+                                 : std::format("It is deleted from {}. This cannot be undone.", phone);
+    m_window->presentSheet(
+        [this, name = entry.name, body, path](float s) -> std::unique_ptr<Node> {
+          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP24 * s,
+                                 .width = Tokens::componentDialogAlertWidth * s});
+          box->addChild(text(std::format("Delete “{}”?", name), Tokens::typeTitle3, ColorRole::Label1, s, 2));
+          box->addChild(text(body, Tokens::typeParagraph, ColorRole::Label2, s, 4));
+          auto buttons = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
+          buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F);
+          buttons->addChild(ui::button({.text = std::string("Delete"), .variant = ButtonVariant::Destructive,
+                                        .onClick = [this, path] {
+                                          m_window->dismissSheet();
+                                          m_client->deleteFile(path);
+                                        }}));
+          buttons->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal,
+                                        .onClick = [this] { m_window->dismissSheet(); }}));
+          box->addChild(std::move(buttons));
+          return box;
+        },
+        [this] { m_window->dismissSheet(); });
+  }
 
   AppWindow& LinkApp::createWindow() {
     AppWindow& window = addWindow({.appId = info().id, .title = "Waiting", .width = 1200, .height = 780, .minWidth = 760,
@@ -631,7 +734,8 @@ namespace linkapp {
       m_conversation = std::make_unique<ConversationAdapter>(*m_client, m_scale);
       m_calls = std::make_unique<CallAdapter>(*m_client, m_scale);
       m_photos = std::make_unique<PhotoAdapter>(*m_client, m_scale);
-      m_files = std::make_unique<FileAdapter>(*m_client, m_scale);
+      m_files = std::make_unique<FileAdapter>(*m_client, m_scale,
+                                              [this](std::size_t index, float x, float y) { fileMenu(index, x, y); });
       m_client->setOnMirrorFrame([this](MirrorDecoder::Frame frame) { showMirrorFrame(std::move(frame)); });
       m_client->setOnThumbnail([this] {
         if (m_photoGrid != nullptr) m_photoGrid->notifyDataChanged();
@@ -657,7 +761,31 @@ namespace linkapp {
       updateCaption();
     }
     window.setSidebarBuilder([this](Renderer&, float width, float) { return sidebar(width); });
-    window.setContentBuilder([this](Renderer& renderer, float width, float height) { return content(renderer, width, height); });
+    window.setContentBuilder([this](Renderer& renderer, float width, float height) {
+      registerDropTarget();
+      auto page = content(renderer, width, height);
+      if (m_dropCue == DropCue::None) return page;
+      // The drop cue covers the content while files are dragged over the window.
+      const float s = m_scale;
+      auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
+      root->addChild(std::move(page));
+      auto cue = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP8 * s,
+                             .fill = colorSpecFromRole(ColorRole::Accent, 0.14F),
+                             .radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s),
+                             .border = colorSpecFromRole(ColorRole::Accent), .borderWidth = 2.0F * s});
+      cue->setParticipatesInLayout(false);
+      cue->setPosition(0.0F, 0.0F);
+      cue->setSize(width, height);
+      const bool copy = m_dropCue == DropCue::CopyIn;
+      const std::vector<std::string> crumbs = m_client->files().crumbs();
+      cue->addChild(ui::glyph({.glyph = std::string(copy ? "folder-down" : "arrow-up"), .glyphSize = Tokens::sizeSymbol * 2.0F * s,
+                               .color = colorSpecFromRole(ColorRole::AccentText)}));
+      cue->addChild(text(copy ? std::format("Drop to copy into {}", crumbs.empty() ? std::string("Phone") : crumbs.back())
+                              : std::format("Drop to send to {}", m_client->presence().phone.name),
+                         Tokens::typeTitle3, ColorRole::Label1, s));
+      root->addChild(std::move(cue));
+      return std::unique_ptr<Node>(std::move(root));
+    });
     // The header's one Ghost action: "Clear all" on Waiting, "Clear finished" on Activity.
     const auto clear = [this](bool finished) {
       return ui::button({.text = std::string(finished ? "Clear finished" : "Clear all"), .variant = ButtonVariant::Ghost,
@@ -1506,6 +1634,27 @@ namespace linkapp {
       body = std::move(page);
     }
     body->setFlexGrow(1.0F);
+    if (const FileOp& op = m_client->fileOp(); op.kind != FileOp::Kind::Idle) {
+      auto column = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
+      column->addChild(std::move(body));
+      column->addChild(ui::separator({.color = colorSpecFromRole(ColorRole::Separator), .thickness = s}));
+      auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingV = Tokens::spaceP8 * s,
+                          .paddingH = Tokens::spaceP24 * s, .minHeight = Tokens::sizeControlL * s});
+      const bool copying = op.kind == FileOp::Kind::Copying;
+      std::string line = op.error;
+      if (copying) {
+        line = std::format("Copying “{}”", op.name);
+        if (op.count > 1) line += std::format(" · {} of {}", op.index + 1, op.count);
+        if (op.total > 0) line += std::format(" · {} %", op.sent * 100 / op.total);
+      }
+      auto words = text(line, Tokens::typeFootnote, copying ? ColorRole::Label2 : ColorRole::DangerText, s, 2);
+      words->setFlexGrow(1.0F);
+      bar->addChild(std::move(words));
+      bar->addChild(ui::button({.text = std::string(copying ? "Cancel" : "Dismiss"), .variant = ButtonVariant::Ghost,
+                                .onClick = [this, copying] { copying ? m_client->cancelCopy() : m_client->dismissFileOp(); }}));
+      column->addChild(std::move(bar));
+      body = std::move(column);
+    }
     auto cards = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
     cards->addChild(card(std::move(caption), std::move(body), width, true));
     return cards;

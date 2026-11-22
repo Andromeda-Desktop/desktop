@@ -490,6 +490,20 @@ namespace linkapp {
     std::map<std::string, FileSave> m_saves; // phone path -> its save
   };
 
+  // Desktop files copied into the open phone folder with WriteFile, one after another. Idle -> Copying -> Idle (all
+  // copied; the folder lists again) | Failed; Copying -> Idle on Cancel (the partial file is deleted). A failed
+  // DeleteFile also shows as Failed; Dismiss: Failed -> Idle.
+  struct FileOp {
+    enum class Kind : std::uint8_t { Idle, Copying, Failed };
+    Kind kind = Kind::Idle;
+    std::string name;       // Copying: the file on its way
+    std::size_t index = 0;  // Copying: its place, from 0
+    std::size_t count = 0;  // Copying: files in this copy
+    std::uint64_t sent = 0; // Copying: bytes of all files
+    std::uint64_t total = 0;
+    std::string error; // Failed
+  };
+
   // The Mirror page. Start: Idle | Ended | Failed -> Asking (OpenMirror sent; the phone's user allows capture within
   // 60 s) -> Showing -> Ended (the phone stopped) | Failed; Stop: Asking | Showing -> Idle. Each Start opens a new
   // session; an event of an older session is rejected, so a late reply never revives a stopped mirror.

@@ -182,6 +182,12 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
             radius = int(os.environ["CORNERS"])
             GLib.timeout_add(300, lambda: emit("ScreenShape", "(saqa(qqqq))", params[0], [radius] * 4, []) and False)
         return
+    if method == "WriteFile":
+        invocation.return_value(GLib.Variant("(t)", (len(params[3]),)))
+        return
+    if method == "DeleteFile":
+        invocation.return_value(None)
+        return
     if method == "ListFiles":
         folders = {"/": [
                        ("DCIM", True, 0, ago(0, 17, 0) // 1000), ("Documents", True, 0, ago(4, 10, 0) // 1000),

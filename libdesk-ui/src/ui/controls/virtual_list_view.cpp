@@ -247,9 +247,17 @@ void VirtualListView::doLayout(Renderer& renderer) {
         setHoveredIndex(std::nullopt);
       }
     });
+    if (m_adapter->hasItemMenu()) {
+      slot->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
+    }
     slot->setOnPress([this, slotPtr](const InputArea::PointerData& data) {
       if (!data.pressed && data.button == BTN_LEFT) {
         activateSlot(*slotPtr);
+      } else if (!data.pressed && data.button == BTN_RIGHT && m_adapter != nullptr && slotPtr->boundIndex().has_value()) {
+        float x = 0.0F;
+        float y = 0.0F;
+        Node::absolutePosition(slotPtr, x, y);
+        m_adapter->onItemMenu(*slotPtr->boundIndex(), x + data.localX, y + data.localY);
       }
     });
     m_pool.push_back(static_cast<Slot*>(m_canvas->addChild(std::move(slot))));

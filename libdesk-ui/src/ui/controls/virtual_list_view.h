@@ -37,6 +37,10 @@ public:
   [[nodiscard]] virtual std::unique_ptr<Node> createItem() = 0;
   virtual void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) = 0;
   virtual void onActivate(std::size_t /*index*/) {}
+  // True: items take the right button, and a right click calls onItemMenu with the click in the root node's space
+  // (Node::absolutePosition), as AppWindow::openContextMenu takes it.
+  [[nodiscard]] virtual bool hasItemMenu() const { return false; }
+  virtual void onItemMenu(std::size_t /*index*/, float /*sceneX*/, float /*sceneY*/) {}
 };
 
 class VirtualListView : public Flex {

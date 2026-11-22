@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+struct wl_surface;
 namespace linkapp {
 
   enum class Page : std::uint8_t { Waiting, Messages, Calls, Photos, Files, Activity, Mirror, Settings };
@@ -141,7 +142,9 @@ namespace linkapp {
   // Files: one phone folder, folders first; a click opens a folder, saves a file, or shows a saved one.
   class FileAdapter final : public VirtualListAdapter {
   public:
-    FileAdapter(LinkClient& client, const float& scale) : m_client(client), m_scale(scale) {}
+    using Menu = std::function<void(std::size_t index, float sceneX, float sceneY)>;
+    FileAdapter(LinkClient& client, const float& scale, Menu menu)
+        : m_client(client), m_scale(scale), m_menu(std::move(menu)) {}
     [[nodiscard]] std::size_t itemCount() const override { return m_client.files().entries().size(); }
     [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
     [[nodiscard]] bool itemInteractive(std::size_t /*index*/) const override { return true; }
@@ -149,10 +152,13 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> createItem() override;
     void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) override;
     void onActivate(std::size_t index) override;
+    [[nodiscard]] bool hasItemMenu() const override { return true; }
+    void onItemMenu(std::size_t index, float sceneX, float sceneY) override { m_menu(index, sceneX, sceneY); }
 
   private:
     LinkClient& m_client;
     const float& m_scale;
+    Menu m_menu;
   };
 
   // Activity: transfers since the app started, newest first, with actions per state.
@@ -222,6 +228,15 @@ namespace linkapp {
     void mirrorKeyInput(const InputArea::KeyData& data);
     void releaseMirrorKeys();
     void confirmLock();
+    void fileMenu(std::size_t index, float sceneX, float sceneY);
+    void confirmDelete(const FileEntry& entry);
+    void registerDropTarget();
+    void dropped(const std::string& uris);
+    // Where a drop over the window goes: None while nothing is dragged over it.
+    enum class DropCue : std::uint8_t { None, Send, CopyIn };
+    [[nodiscard]] DropCue dropCueHere() const;
+    DropCue m_dropCue = DropCue::None;
+    wl_surface* m_dropSurface = nullptr;
     // The pair view covers the page while this app pairs another phone (Pair Another Phone…).
     [[nodiscard]] bool pairShown() const;
     // Esc: cancels that pairing, else closes the Forget question.
