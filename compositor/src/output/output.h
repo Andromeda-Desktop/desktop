@@ -570,6 +570,7 @@ namespace andromeda {
     Listener m_present;
     Listener m_backgroundUpdate;
     Listener m_backgroundPopupUpdate;
+    Listener m_bottomUpdate;
     Listener m_destroy;
   };
 

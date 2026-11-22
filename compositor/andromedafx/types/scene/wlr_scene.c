@@ -6229,6 +6229,8 @@ struct render_list_constructor_data {
   bool persistent_effects;
   // The scene's largest expand margin; 0 when no slot draws past its node.
   int effect_expand;
+  // Set once the walk (top first) has passed the optimized blur node; it redraws what lies under it, hidden or not.
+  bool below_cache;
 };
 
 static bool scene_buffer_matches_background(struct wlr_scene_buffer* scene_buffer, const float background[static 4]) {
@@ -6319,12 +6321,13 @@ static bool construct_render_list_iterator(
         &intersection, &node->visible, data->box.x, data->box.y, data->box.width, data->box.height
     );
   }
-  if (pixman_region32_empty(&intersection)) {
+  if (pixman_region32_empty(&intersection) && !data->below_cache) {
     pixman_region32_fini(&intersection);
     return false;
   }
 
   pixman_region32_fini(&intersection);
+  data->below_cache = data->below_cache || node->type == WLR_SCENE_NODE_OPTIMIZED_BLUR;
 
   struct render_list_entry* entry = wl_array_add(data->render_list, sizeof(*entry));
   if (!entry) {

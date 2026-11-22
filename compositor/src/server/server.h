@@ -258,6 +258,8 @@ namespace andromeda {
     // Between layer-shell background and bottom: overview wallpaper blur renders
     // before bottom-layer surfaces so they remain sharp.
     [[nodiscard]] wlr_scene_tree* overviewBlurTree() const { return m_overviewBlurTree; }
+    // Holds each output's wallpaper blur cache, above the background and bottom layers it caches.
+    [[nodiscard]] wlr_scene_tree* blurCacheTree() const { return m_blurCacheTree; }
     // Between windows and the drag/insert-hint tree: overview cards render here
     // while the real window trees are disabled.
     [[nodiscard]] wlr_scene_tree* overviewTree() const { return m_overviewTree; }
@@ -948,6 +950,7 @@ namespace andromeda {
     wlr_scene_tree* m_xdgTree = nullptr;
     wlr_scene_tree* m_scratchpadTree = nullptr;
     wlr_scene_tree* m_overviewBlurTree = nullptr;
+    wlr_scene_tree* m_blurCacheTree = nullptr;
     wlr_scene_tree* m_overviewTree = nullptr;
     wlr_scene_tree* m_dragTree = nullptr;
     wlr_scene_tree* m_dragIconTree = nullptr;

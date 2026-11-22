@@ -139,10 +139,10 @@ EOF
   reload
   expect_blur "global blur re-enabled"
 
-  # The optimized cache contains the magenta wallpaper, excluding the green bottom-layer square.
+  # The optimized cache holds the background and bottom layers, so it blurs the green bottom-layer square too.
   sed -i 's/^blur_optimized = false$/blur_optimized = true/' "$ANDROMEDA_CONFIG"
   reload
-  expect_sharp "window optimized blur override"
+  expect_blur "window optimized blur override"
   if [[ $scale == 1 ]]; then
     # A drag must temporarily use the live scene, then return to the window's optimized setting on release.
     for background in translucent opaque; do
@@ -153,7 +153,11 @@ EOF
       pointer_hold 1280 720 move 400 114 press 272 move 420 114 -- release 272
       expect_blur "dragging an optimized window with $background background"
       pointer_release
-      expect_sharp "optimized blur restored after drag"
+      if [[ $background == opaque ]]; then
+        expect_sharp "optimized blur restored after drag"
+      else
+        expect_blur "optimized blur restored after drag"
+      fi
       pointer_hold 1280 720 move 420 114 press 272 move 400 114 -- release 272
       pointer_release
       title_bar_wait_box ssd-blur 480x300+100+128

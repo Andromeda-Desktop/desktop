@@ -292,6 +292,15 @@ namespace andromeda {
       kLog.error("output '{}': failed to watch background popup updates", m_output->name);
       std::abort();
     }
+    // The shared tree also sees the overview hide the bottom layer; marks outside this output's cache are clipped.
+    if (!m_bottomUpdate.connectVia(this, onBackgroundUpdate, [this](wl_listener* listener) {
+          return wlr_scene_node_add_update_listener(
+              &m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)->node, listener
+          );
+        })) {
+      kLog.error("output '{}': failed to watch bottom layer updates", m_output->name);
+      std::abort();
+    }
     m_viewRoot = wlr_scene_tree_create(m_server->xdgTree());
     m_fullscreenRoot = wlr_scene_tree_create(m_server->fullscreenTree());
     m_pinnedRoot = wlr_scene_tree_create(m_server->pinnedTree());
@@ -1934,6 +1943,7 @@ namespace andromeda {
     if (m_lastFrame != nullptr) {
       wlr_buffer_unlock(m_lastFrame);
     }
+    m_bottomUpdate.disconnect();
     m_backgroundPopupUpdate.disconnect();
     m_backgroundUpdate.disconnect();
     if (m_frameRetryTimer != nullptr) {
@@ -2138,9 +2148,7 @@ namespace andromeda {
     }
 
     if (m_optimizedBlur == nullptr) {
-      m_optimizedBlur = wlr_scene_optimized_blur_create(
-          m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND), fullArea.width, fullArea.height
-      );
+      m_optimizedBlur = wlr_scene_optimized_blur_create(m_server->blurCacheTree(), fullArea.width, fullArea.height);
       if (m_optimizedBlur == nullptr) {
         return;
       }

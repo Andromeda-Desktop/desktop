@@ -829,7 +829,7 @@ namespace andromeda {
     if (out == nullptr || m_scene == nullptr) {
       return;
     }
-    // Leaving or entering the watched background tree sends no update to its listener.
+    // Leaving or entering a watched tree (background, bottom) sends no update to its listener.
     out->markBlurBackgroundDirty();
     wlr_scene_node_reparent(&m_popupTree->node, out->layerPopupTree(layer));
     wlr_scene_node_reparent(&m_scene->tree->node, out->layerTree(layer));
