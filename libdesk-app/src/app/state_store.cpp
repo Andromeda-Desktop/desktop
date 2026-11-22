@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -12,6 +13,7 @@
 namespace {
   constexpr Logger kLog("app-state");
   constexpr auto kSaveDelay = std::chrono::milliseconds(500);
+  constexpr auto kMaxRetryDelay = std::chrono::milliseconds(60'000);
 
   bool writeAll(int fd, const std::string& text) {
     std::size_t done = 0;
@@ -75,7 +77,15 @@ void StateStore::set(std::string_view pointer, nlohmann::json value) {
   }
   m_data[ptr] = std::move(value);
   m_dirty = true;
-  m_saveTimer.start(kSaveDelay, [this] { flush(); });
+  saveAfter(kSaveDelay);
+}
+
+void StateStore::saveAfter(std::chrono::milliseconds delay) {
+  m_saveTimer.start(delay, [this, delay] {
+    if (!flush()) {
+      saveAfter(std::min(delay * 2, kMaxRetryDelay));
+    }
+  });
 }
 
 bool StateStore::flush() {

@@ -8,7 +8,7 @@
 #include <string_view>
 
 // Per-app state that survives a crash: one JSON object in $XDG_STATE_HOME/andromeda/<app-id>/state.json.
-// A change is written 500 ms after the last change, or at once by flush(); writes are atomic (tmp, fsync, rename).
+// A change is written 500 ms after the last change, or at once by flush(); a failed timed save retries with doubling delay up to 60 s; writes are atomic (tmp, fsync, rename).
 class StateStore {
 public:
   explicit StateStore(std::filesystem::path file);
@@ -41,6 +41,8 @@ public:
   [[nodiscard]] const std::filesystem::path& path() const noexcept { return m_file; }
 
 private:
+  void saveAfter(std::chrono::milliseconds delay);
+
   std::filesystem::path m_file;
   nlohmann::json m_data = nlohmann::json::object();
   Timer m_saveTimer;

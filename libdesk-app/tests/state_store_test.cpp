@@ -1,5 +1,8 @@
 #include "app/state_store.h"
 
+#include "core/timer_manager.h"
+
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -69,6 +72,26 @@ int main() {
     store.load();
     expect(store.data().empty(), "a corrupt file loads as empty state");
     expect(std::filesystem::exists(file.string() + ".bad"), "a corrupt file is kept as .bad");
+  }
+
+  {
+    // A timed save that fails is retried, so the change reaches disk without a later set().
+    const std::filesystem::path blocked = dir / "blocked";
+    std::ofstream(blocked) << "";
+    StateStore store(blocked / "state.json");
+    store.set("/retry", 1);
+    const auto pump = [](std::chrono::milliseconds span, auto done) {
+      const auto end = std::chrono::steady_clock::now() + span;
+      while (!done() && std::chrono::steady_clock::now() < end) {
+        TimerManager::instance().tick();
+        ::usleep(10'000);
+      }
+    };
+    pump(std::chrono::milliseconds(700), [] { return false; });
+    expect(store.dirty(), "a save into a blocked directory fails and stays dirty");
+    std::filesystem::remove(blocked);
+    pump(std::chrono::seconds(5), [&] { return !store.dirty(); });
+    expect(!store.dirty() && std::filesystem::exists(blocked / "state.json"), "a failed timed save is retried");
   }
 
   std::filesystem::remove_all(dir);
