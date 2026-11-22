@@ -62,6 +62,23 @@ FileOpsClient::FileOpsClient(SessionBus& bus) : m_bus(bus) {
           syncJobs(it->second.get<std::vector<sdbus::ObjectPath>>());
         }
       });
+  m_busWatch = sdbus::createProxy(m_bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"},
+                                  sdbus::ObjectPath{"/org/freedesktop/DBus"});
+  m_busWatch->uponSignal("NameOwnerChanged")
+      .onInterface("org.freedesktop.DBus")
+      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (name != kName) {
+          return;
+        }
+        syncJobs({});
+        if (!newOwner.empty()) {
+          readJobs();
+        }
+      });
+  readJobs();
+}
+
+void FileOpsClient::readJobs() {
   // The daemon is D-Bus activated: this read starts it when it is not running.
   std::weak_ptr<bool> alive = m_alive;
   m_manager->getPropertyAsync("Jobs").onInterface(kInterface).uponReplyInvoke(
@@ -339,21 +356,33 @@ void FileOpsClient::resolveConflict(const std::string& jobPath, Resolution resol
 
 void FileOpsClient::syncJobs(const std::vector<sdbus::ObjectPath>& paths) {
   const std::set<std::string> live(paths.begin(), paths.end());
+  std::vector<std::pair<Job, bool>> gone; // job as failed, whether it had ended
   for (auto it = m_jobs.begin(); it != m_jobs.end();) {
     if (live.contains(it->first)) {
       ++it;
       continue;
     }
-    const std::string gone = it->first;
-    m_jobProxies.erase(gone);
-    m_settling.erase(gone);
+    Job dropped = std::move(it->second);
+    const bool ended = dropped.finished();
+    dropped.state = "failed";
+    dropped.error = "the file operation service dropped the job";
+    m_jobProxies.erase(it->first);
+    m_settling.erase(it->first);
     it = m_jobs.erase(it);
+    gone.emplace_back(std::move(dropped), ended);
+  }
+  // The callbacks can start jobs: they run after the walk over m_jobs.
+  for (const auto& [job, ended] : gone) {
     // A job that leaves before it settles (daemon restart) never reports a result: its waiter gets a failure.
-    if (auto waiter = m_finishWaiters.extract(gone)) {
-      waiter.mapped()(Job{.path = gone, .state = "failed", .error = "the file operation service dropped the job"});
+    if (auto waiter = m_finishWaiters.extract(job.path)) {
+      waiter.mapped()(job);
+    }
+    // A job that leaves before it ended would show as running for good: it ends as failed.
+    if (!ended && m_onJobChanged) {
+      m_onJobChanged(job);
     }
     if (m_onJobRemoved) {
-      m_onJobRemoved(gone);
+      m_onJobRemoved(job.path);
     }
   }
   for (const std::string& path : live) {

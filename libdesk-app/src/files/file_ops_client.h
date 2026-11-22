@@ -129,6 +129,7 @@ private:
   // A job whose Result the caller wants once it ends ("" and the error, or "cancelled", when it does not finish).
   void startWithResult(const char* method, std::function<void(sdbus::AsyncMethodInvoker&)> args, Started started,
                        std::function<void(const std::string& result, const std::string& error)> finished);
+  void readJobs();
   void syncJobs(const std::vector<sdbus::ObjectPath>& paths);
   void track(const std::string& path);
   void apply(Job& job, const std::map<std::string, sdbus::Variant>& props, bool notifyChange);
@@ -137,6 +138,7 @@ private:
 
   SessionBus& m_bus;
   std::unique_ptr<sdbus::IProxy> m_manager;
+  std::unique_ptr<sdbus::IProxy> m_busWatch; // FileOps1 owner changes: a restarted daemon knows none of our jobs
   std::set<std::string> m_settling; // finished jobs whose GetAll is in flight
   std::map<std::string, std::unique_ptr<sdbus::IProxy>> m_jobProxies;
   std::map<std::string, Job> m_jobs;
