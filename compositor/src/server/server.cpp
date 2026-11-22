@@ -744,6 +744,10 @@ namespace andromeda {
       kLog.info("the greeter took the display; ending the session");
       self->startSessionShutdown();
     }
+    if (self->m_session->active) {
+      // A frame that failed while the session was inactive armed no retry (armFrameRetry): draw again now.
+      self->markDirty(Dirty::None);
+    }
     if (self->m_globalShortcutService != nullptr) {
       if (self->m_session->active) {
         self->m_globalShortcutService->scheduleRefresh();
