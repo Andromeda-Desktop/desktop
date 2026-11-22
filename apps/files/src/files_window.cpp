@@ -3432,7 +3432,7 @@ std::string FilesWindow::formatTarget() const {
 
 void FilesWindow::askFormat() {
   const std::string device = formatTarget();
-  if (device.empty()) {
+  if (device.empty() || m_formatBusy) {
     return;
   }
   const std::vector<std::string> types = Drives::formats();
@@ -3477,14 +3477,20 @@ void FilesWindow::askFormat() {
                                      .color = colorSpecFromRole(ColorRole::DangerText), .maxLines = 3}));
         }
         auto footer = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
-        footer->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default,
+        // The sheet stays until the erase ends, so its completion closes this sheet and no other.
+        footer->addChild(ui::button({.text = std::string("Cancel"), .enabled = !m_formatBusy,
+                                     .variant = ButtonVariant::Default,
                                      .onClick = [this] { DeferredCall::callLater([this] { m_window.dismissSheet(); }); }}));
         footer->addChild(ui::button({.text = std::string(m_formatBusy ? "Erasing…" : "Erase"), .enabled = !m_formatBusy,
                                      .variant = ButtonVariant::Destructive, .onClick = [this] { eraseDrive(); }}));
         sheet->addChild(std::move(footer));
         return sheet;
       },
-      [this] { m_window.dismissSheet(); });
+      [this] {
+        if (!m_formatBusy) {
+          m_window.dismissSheet();
+        }
+      });
 }
 
 void FilesWindow::eraseDrive() {
