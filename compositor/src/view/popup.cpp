@@ -201,8 +201,12 @@ namespace andromeda {
   }
 
   glass::Material Popup::glassMaterial() const {
-    return LayerSurface::fromSurface(m_popup->parent) != nullptr ? configPopoverGlass()
-                                                                 : configGlass(glass::Kind::Menu);
+    glass::Material material = LayerSurface::fromSurface(m_popup->parent) != nullptr ? configPopoverGlass()
+                                                                                       : configGlass(glass::Kind::Menu);
+    // Without a dsk shape the card edge is unknown: a rim or lens would trace the square buffer box.
+    material.rim = 0.0F;
+    material.lens = 0.0F;
+    return material;
   }
 
   void Popup::handleCommit() {
