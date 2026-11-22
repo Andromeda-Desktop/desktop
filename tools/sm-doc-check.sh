@@ -5,7 +5,7 @@ set -euo pipefail
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 doc=${1:-$root/docs/state-machines.md}
 fail=0 n=0
-while IFS=$'\t' read -r path a b sym; do
+while IFS='|' read -r path a b sym; do
   n=$((n + 1))
   f=$root/$path
   [[ -f $f ]] || f=$root/link/$path
@@ -18,6 +18,6 @@ while IFS=$'\t' read -r path a b sym; do
     sed -n "${lo},${hi}p" "$f" | grep -qF -- "$sym" || { echo "symbol '$sym' not near $path:$a"; fail=1; }
   fi
 done < <(grep -oP '`?\b[\w./-]+\.(?:cpp|h|hpp|c|rs|kt|py|sh|toml|xml|service):\d+(?:-\d+)?`?(?: \(`?[\w:~<>.]+`?\))?' "$doc" \
-  | sed -E 's/`//g; s/^([^:]+):([0-9]+)(-([0-9]+))?( \(([^)]*)\))?$/\1\t\2\t\4\t\6/')
+  | sed -E 's/`//g; s/^([^:]+):([0-9]+)(-([0-9]+))?( \(([^)]*)\))?$/\1|\2|\4|\6/')
 echo "$n refs checked"
 exit $fail
