@@ -348,6 +348,10 @@ void FileOpsClient::syncJobs(const std::vector<sdbus::ObjectPath>& paths) {
     m_jobProxies.erase(gone);
     m_settling.erase(gone);
     it = m_jobs.erase(it);
+    // A job that leaves before it settles (daemon restart) never reports a result: its waiter gets a failure.
+    if (auto waiter = m_finishWaiters.extract(gone)) {
+      waiter.mapped()(Job{.path = gone, .state = "failed", .error = "the file operation service dropped the job"});
+    }
     if (m_onJobRemoved) {
       m_onJobRemoved(gone);
     }
