@@ -7,7 +7,8 @@
 // LAYER_CONTROL enables stdin commands: frames LABEL COUNT, color LABEL AARRGGBB, child-color LABEL AARRGGBB,
 // child-move LABEL X Y, margins LABEL TOP RIGHT BOTTOM LEFT, popup LABEL X, and dsk-launch-from LABEL X Y W H. Each
 // prints done after its frame callbacks arrive.
-// LAYER_NAMESPACE sets the layer surface namespace.
+// LAYER_NAMESPACE sets the layer surface namespace. `token-on-click` behaves like the shell dock: each left press
+// requests an xdg-activation token with that press serial and no surface, and prints `token NAME`.
 
 #include <wayland-client.h>
 
@@ -17,6 +18,7 @@
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #undef namespace
 
+#include "xdg-activation-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
@@ -102,6 +104,8 @@ namespace {
     wl_keyboard* keyboard = nullptr;
     wl_pointer* pointer = nullptr;
     xdg_wm_base* wmBase = nullptr;
+    xdg_activation_v1* activation = nullptr;
+    bool tokenOnClick = false;
     ext_background_effect_manager_v1* blurManager = nullptr;
     ext_background_effect_surface_v1* blurEffect = nullptr;
     dsk_surface_manager_v1* dskManager = nullptr;
@@ -739,6 +743,19 @@ namespace {
       std::println("pointer-press {} {}", state.pointerX, state.pointerY);
       std::fflush(stdout);
     }
+    if (state.tokenOnClick && button == kLeftButton && buttonState == WL_POINTER_BUTTON_STATE_PRESSED) {
+      static constexpr xdg_activation_token_v1_listener kTokenListener = {
+          .done = [](void*, xdg_activation_token_v1* token, const char* name) {
+            std::println("token {}", name);
+            std::fflush(stdout);
+            xdg_activation_token_v1_destroy(token);
+          },
+      };
+      xdg_activation_token_v1* token = xdg_activation_v1_get_activation_token(state.activation);
+      xdg_activation_token_v1_add_listener(token, &kTokenListener, nullptr);
+      xdg_activation_token_v1_set_serial(token, serial, state.seat);
+      xdg_activation_token_v1_commit(token);
+    }
     if (state.popupOnClick
         && button == kLeftButton
         && buttonState == WL_POINTER_BUTTON_STATE_PRESSED
@@ -814,7 +831,7 @@ namespace {
       wl_keyboard_release(state.keyboard);
       state.keyboard = nullptr;
     }
-    if ((state.popupOnClick || state.popupOnRelease || state.logPointer)
+    if ((state.popupOnClick || state.popupOnRelease || state.logPointer || state.tokenOnClick)
         && (capabilities & WL_SEAT_CAPABILITY_POINTER) != 0
         && state.pointer == nullptr) {
       state.pointer = wl_seat_get_pointer(seat);
@@ -841,6 +858,8 @@ namespace {
     } else if (std::strcmp(interface, wl_seat_interface.name) == 0) {
       state.seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, std::min(version, 5U)));
       wl_seat_add_listener(state.seat, &kSeatListener, &state);
+    } else if (std::strcmp(interface, xdg_activation_v1_interface.name) == 0) {
+      state.activation = static_cast<xdg_activation_v1*>(wl_registry_bind(registry, name, &xdg_activation_v1_interface, 1));
     } else if (std::strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
       state.layerShell = static_cast<zwlr_layer_shell_v1*>(
           wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, std::min(version, 4U))
@@ -921,6 +940,8 @@ int main(int argc, char** argv) {
       state.popupOnClick = true;
     } else if (option == "popup-on-release") {
       state.popupOnRelease = true;
+    } else if (option == "token-on-click") {
+      state.tokenOnClick = true;
     } else {
       std::println(stderr, "layer-client: unknown option '{}'", option);
       return EXIT_FAILURE;
@@ -951,6 +972,7 @@ int main(int argc, char** argv) {
       || state.shm == nullptr
       || state.layerShell == nullptr
       || ((state.popupOnClick || state.popupOnRelease) && (state.wmBase == nullptr || state.seat == nullptr))
+      || (state.tokenOnClick && (state.activation == nullptr || state.seat == nullptr))
       || selected == state.outputs.end()) {
     std::println(stderr, "layer-client: missing protocol or output '{}'", outputName);
     return EXIT_FAILURE;

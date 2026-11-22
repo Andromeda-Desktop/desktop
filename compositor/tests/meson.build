@@ -257,6 +257,8 @@ layer_client = executable(
     background_effect_client_c,
     dsk_surface_client_h,
     dsk_surface_client_c,
+    xdg_activation_client_h,
+    xdg_activation_client_c,
   ],
   dependencies: [wayland_client_dep],
 )

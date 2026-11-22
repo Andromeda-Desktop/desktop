@@ -598,8 +598,11 @@ namespace andromeda {
     watch->server = this;
     watch->createdAt = std::chrono::steady_clock::now();
     watch->compositorIssued = compositorIssued;
-    watch->inputBacked = !compositorIssued && token->seat != nullptr && token->surface != nullptr;
-    watch->pointerBacked = watch->inputBacked && token->seat->pointer_state.grab_serial == token->serial;
+    // wlroots has checked that the seat serial went to this client. Without a surface (shell dock and taskbar
+    // launches), only the seat's latest click counts: an old serial must not steal focus.
+    const bool latestClick = token->seat != nullptr && token->seat->pointer_state.grab_serial == token->serial;
+    watch->inputBacked = !compositorIssued && token->seat != nullptr && (token->surface != nullptr || latestClick);
+    watch->pointerBacked = watch->inputBacked && latestClick;
     if (const char* tokenName = wlr_xdg_activation_token_v1_get_name(token)) {
       watch->tokenName = tokenName;
     }
@@ -612,7 +615,7 @@ namespace andromeda {
           watch->launchScratchpad = m_scratchpadManager->activeOn(output);
         }
       }
-    } else if (watch->inputBacked) {
+    } else if (watch->inputBacked && token->surface != nullptr) {
       if (View* source = viewForSurface(*this, token->surface); source != nullptr) {
         if (m_scratchpadManager != nullptr) {
           watch->launchScratchpad = m_scratchpadManager->nameFor(source);
