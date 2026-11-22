@@ -248,8 +248,9 @@ namespace andromeda {
       std::optional<wlr_box> clip;
       // Opacity factor of the search filter: 1 for a match, kFilterMissOpacity for a miss.
       AnimatedValue filter{1.0};
-      // Spaces and Task View: the window was on screen when the open or close began, so it grows from (returns to) its
-      // real rect; otherwise it appears in its slot. A card made later appears.
+      // Spaces and Task View: the window was on the shown desktop when the open or close began, so it grows from (returns
+      // to) its real rect, an off-screen one from the nearest screen edge; otherwise it appears in its slot. A card made
+      // later appears.
       bool grows = false;
       // A ThumbCopy draws the window a second time, in the shown workspace's thumb (Spaces, Task View); it leaves the
       // view's effects and the client's frame pacing to the window's own card.
@@ -603,7 +604,7 @@ namespace andromeda {
     void updateAppear(double startMsec = 0.0);
     // Whether `card` grows from its real rect instead of appearing in its slot.
     [[nodiscard]] static bool growsFromDesk(const OutputState& state, const Card& card);
-    // Sets Card::grows for every card from what is on screen now: at an open, and at a close for the row it returns to.
+    // Sets Card::grows for every card from the desktop shown now: at an open, and at a close for the row it returns to.
     void classifyEntrance();
     // The open finished: zoom and appear at rest at 1.
     [[nodiscard]] bool openSettled() const;

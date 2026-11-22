@@ -602,7 +602,7 @@ namespace andromeda {
       const Workspace* workspace = group != nullptr ? group->workspaceAt(card.workspace) : nullptr;
       const ov::Rect placed =
           workspace != nullptr ? toLocal(reflowRect(workspace, toLayout(card.rect), reflowed)) : card.rect;
-      // A thumb stays in its slot and grows on the appear scale's spring, as off-screen windows do, while it fades:
+      // A thumb stays in its slot and grows on the appear scale's spring, as other desktops' windows do, while it fades:
       // riding the zoom made it slide in from the frame.
       ov::Rect rect = card.kind == ov::CardKind::Thumb ? placed : travelRect(ov::cardDeskRect(in, card, row), placed);
       if (card.kind == ov::CardKind::Thumb) {
@@ -633,7 +633,7 @@ namespace andromeda {
     }
 
     const auto& workspaceFill = config().colors.overview.workspaceBackground;
-    // Thumbs appear in their slots with the windows that are not on screen; the shown workspace grows with the zoom.
+    // Thumbs appear in their slots with the windows of other desktops; the shown workspace grows with the zoom.
     const std::array<float, 4> backgroundColor = tint(workspaceFill, m_progress);
     const std::array<float, 4> thumbColor = tint(workspaceFill, thumbAlpha);
     // Lays out one mirrored background: its fill, then its desktop mirrors scaled by `z` into `full`.
@@ -820,7 +820,7 @@ namespace andromeda {
       ov::Rect rect;
       double opacity = 1.0;
       if (growsFromDesk(state, card)) {
-        const ov::Rect desk = ov::deskRect(in, localRect(world, outputBox), place->workspace, row);
+        const ov::Rect desk = ov::deskRect(in, ov::edgeRect(localRect(world, outputBox), in.width, in.height), place->workspace, row);
         opacity = ov::windowOpacity(*place, card.view->minimized(), p);
         if (config().appearance.reduceMotion) {
           // Reduced motion (rulebook 7.8): out at the window over the first half, in at the slot over the second.
@@ -1525,10 +1525,7 @@ namespace andromeda {
     for (const auto& state : m_outputs) {
       const long row = std::lround(state->rowScroll.target());
       for (const auto& card : state->cards) {
-        wlr_box onScreen{};
-        card->grows = !card->view->minimized()
-            && static_cast<long>(card->workspaceIndex) == row
-            && wlr_box_intersection(&onScreen, &card->view->presentedBox(), &state->outputBox);
+        card->grows = !card->view->minimized() && static_cast<long>(card->workspaceIndex) == row;
       }
     }
   }

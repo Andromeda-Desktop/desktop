@@ -331,6 +331,10 @@ namespace andromeda::ov {
                             : Rect{desk.x, desk.y + offset, desk.w, desk.h};
   }
 
+  Rect edgeRect(const Rect& desk, double width, double height) {
+    return {std::clamp(desk.x, -desk.w, width), std::clamp(desk.y, -desk.h, height), desk.w, desk.h};
+  }
+
   Rect cardDeskRect(const Input& input, const Card& card, double row) {
     // A thumb does not travel: it fades in its slot.
     if (card.kind == CardKind::Thumb) {

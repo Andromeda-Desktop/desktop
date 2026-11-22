@@ -115,6 +115,8 @@ namespace andromeda::ov {
 
   // Where a window of workspace `workspace` sits on the desktop while the workspaces are scrolled to `row`: its own
   // rect, one output away per workspace along the workspace axis. Open progress 0 starts here.
+  // Moves an off-screen window rect to just outside the nearest screen edge, so it enters without streaking.
+  [[nodiscard]] Rect edgeRect(const Rect& desk, double width, double height);
   [[nodiscard]] Rect deskRect(const Input& input, const Rect& desk, size_t workspace, double row);
   // Where a workspace card starts at open progress 0: a thumb in its own slot (it fades in there), frames and tiles
   // grow from the full output one workspace step away.
