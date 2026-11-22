@@ -160,44 +160,6 @@ namespace {
     return true;
   }
 
-  // The hook runs through the async process manager on the main loop; the action runs after it
-  // finishes, on a worker thread because it may block on D-Bus or a command.
-  void runPowerAction(
-      const std::weak_ptr<void>& guard, SessionActionHooks::AsyncHook hook, std::function<bool()> action,
-      std::string_view actionName, std::function<void()> failed
-  ) {
-    auto runAction = [guard, action = std::move(action), actionName = std::string(actionName),
-                      failed = std::move(failed)] {
-      std::thread([guard, action, actionName, failed] {
-        nameThisThread("dsk-action");
-        if (!action()) {
-          kLog.warn("{} failed after hooks completed", actionName);
-          if (failed) {
-            DeferredCall::callLater([guard, failed] {
-              if (!guard.expired()) {
-                failed();
-              }
-            });
-          }
-        }
-      }).detach();
-    };
-    if (!hook) {
-      runAction();
-      return;
-    }
-    hook([guard, runAction = std::move(runAction), actionName = std::string(actionName)](bool ok) {
-      if (guard.expired()) {
-        return;
-      }
-      // A failing hook (e.g. killing an app that isn't running) must not block the action.
-      if (!ok) {
-        kLog.warn("{}: a configured hook failed, continuing", actionName);
-      }
-      runAction();
-    });
-  }
-
   void runShellCommand(
       const std::weak_ptr<void>& guard, SessionActionHooks::AsyncHook hook, std::string command,
       std::string_view actionName, std::function<void()> failed
@@ -247,7 +209,6 @@ SessionActionRunner::SessionActionRunner(CompositorPlatform& platform, LockScree
 void SessionActionRunner::setHooks(SessionActionHooks hooks) { m_hooks = std::move(hooks); }
 
 void SessionActionRunner::setPowerConfig(const ShellSessionConfig::ShellSessionPowerConfig& power) {
-  std::scoped_lock lock(m_powerMutex);
   m_suspendCommandOverride = power.suspend;
   m_rebootCommandOverride = power.reboot;
   m_shutdownCommandOverride = power.shutdown;
@@ -267,11 +228,11 @@ void SessionActionRunner::invoke(const SessionPanelActionConfig& cfg, std::funct
   }
 
   if (cfg.action == "logout") {
-    runPowerAction(m_aliveGuard, m_hooks.onLogout, [platform = &m_platform] { return platform->requestSessionExit(); }, "logout", failed);
+    runQueued(m_hooks.onLogout, {[platform = &m_platform] { return platform->requestSessionExit(); }}, "logout", failed);
     return;
   }
   if (cfg.action == "suspend") {
-    runPowerAction(m_aliveGuard, {}, [this] { return requestSuspendDetached(); }, "suspend", failed);
+    runQueued({}, powerCall("suspend"), "suspend", failed);
     return;
   }
   if (cfg.action == "lock_and_suspend") {
@@ -289,7 +250,7 @@ void SessionActionRunner::invoke(const SessionPanelActionConfig& cfg, std::funct
     return;
   }
   if (cfg.action == "reboot") {
-    runPowerAction(m_aliveGuard, m_hooks.onReboot, [this] { return requestRebootDetached(); }, "reboot", failed);
+    runQueued(m_hooks.onReboot, powerCall("reboot"), "reboot", failed);
     return;
   }
   if (cfg.action == "reboot_uefi") {
@@ -301,19 +262,19 @@ void SessionActionRunner::invoke(const SessionPanelActionConfig& cfg, std::funct
       }
       return;
     }
-    runPowerAction(m_aliveGuard, m_hooks.onReboot, [this] { return requestRebootUefiDetached(); }, "reboot_uefi", failed);
+    runQueued(m_hooks.onReboot, powerCall("reboot_uefi"), "reboot_uefi", failed);
     return;
   }
   if (cfg.action == "shutdown") {
-    runPowerAction(m_aliveGuard, m_hooks.onShutdown, [this] { return requestShutdownDetached(); }, "shutdown", failed);
+    runQueued(m_hooks.onShutdown, powerCall("shutdown"), "shutdown", failed);
     return;
   }
   if (cfg.action == "hibernate") {
-    runPowerAction(m_aliveGuard, {}, [this]() { return requestHibernateDetached(); }, "hibernate", failed);
+    runQueued({}, powerCall("hibernate"), "hibernate", failed);
     return;
   }
   if (cfg.action == "suspend_then_hibernate") {
-    runPowerAction(m_aliveGuard, {}, [this]() { return requestSuspendThenHibernateDetached(); }, "suspend_then_hibernate", failed);
+    runQueued({}, powerCall("suspend_then_hibernate"), "suspend_then_hibernate", failed);
     return;
   }
   if (cfg.action == "lock") {
@@ -339,35 +300,105 @@ SessionActionHooks::AsyncHook SessionActionRunner::hookFor(std::string_view acti
 
 bool SessionActionRunner::lock() const { return requestLock(m_lockScreen); }
 
-bool SessionActionRunner::requestSuspendDetached() const { return suspendDetached(true); }
+SessionActionRunner::PowerCall SessionActionRunner::powerCall(std::string_view action) const {
+  const auto resolved = [name = std::string(action)](std::optional<std::string> override, const char* power,
+                                                     bool checkAvailable = false) {
+    return [name, override = std::move(override), power, checkAvailable] {
+      logActionContext(name);
+      return runPowerActionResolved(name, override, power, PowerLaunchMode::Detached, checkAvailable);
+    };
+  };
+  if (action == "suspend") {
+    return {resolved(m_suspendCommandOverride, "suspend"), true};
+  }
+  if (action == "reboot") {
+    return {resolved(m_rebootCommandOverride, "reboot")};
+  }
+  if (action == "reboot_uefi") {
+    return {[] {
+      logActionContext("reboot_uefi");
+      return setRebootToFirmwareSetup() && callPower("reboot_uefi", "reboot");
+    }};
+  }
+  if (action == "shutdown") {
+    return {resolved(m_shutdownCommandOverride, "power-off")};
+  }
+  if (action == "hibernate") {
+    return {resolved(m_hibernateCommandOverride, "hibernate", true)};
+  }
+  if (action == "suspend_then_hibernate") {
+    return {resolved(m_suspendThenHibernateCommandOverride, "suspend-then-hibernate", true), true};
+  }
+  return {[] { return false; }};
+}
 
-// A plain suspend tells the lock to skip its lock before sleep. A suspend behind a lock must not: if the lock ends
-// before PrepareForSleep, the skip would let the session sleep unlocked; without it a held lock is already ready.
-bool SessionActionRunner::suspendDetached(bool plain) const {
-  logActionContext("suspend");
-  if (plain && m_hooks.onBeforePlainSuspend) {
+bool SessionActionRunner::runNow(const PowerCall& power) const {
+  if (power.plainSuspend && m_hooks.onBeforePlainSuspend) {
     m_hooks.onBeforePlainSuspend();
   }
-  std::scoped_lock lock(m_powerMutex);
-  const bool started =
-      runPowerActionResolved("suspend", m_suspendCommandOverride, "suspend", PowerLaunchMode::Detached);
-  if (plain && !started && m_hooks.onPlainSuspendAborted) {
+  const bool started = power.call();
+  if (power.plainSuspend && !started && m_hooks.onPlainSuspendAborted) {
     m_hooks.onPlainSuspendAborted();
   }
   return started;
 }
 
-bool SessionActionRunner::requestRebootDetached() const {
-  logActionContext("reboot");
-  std::scoped_lock lock(m_powerMutex);
-  return runPowerActionResolved("reboot", m_rebootCommandOverride, "reboot", PowerLaunchMode::Detached);
+void SessionActionRunner::runQueued(
+    SessionActionHooks::AsyncHook hook, PowerCall power, std::string_view action, std::function<void()> failed
+) const {
+  if (m_powerRun == PowerRun::Running) {
+    kLog.info("{}: another power action runs, ignored", action);
+    return;
+  }
+  m_powerRun = PowerRun::Running;
+  const std::weak_ptr<void> guard = m_aliveGuard;
+  auto start = [this, guard, power = std::move(power), action = std::string(action), failed = std::move(failed)] {
+    if (power.plainSuspend && m_hooks.onBeforePlainSuspend) {
+      m_hooks.onBeforePlainSuspend();
+    }
+    // The call may block on D-Bus or a command; its result returns to the main loop.
+    std::thread([this, guard, call = power.call, plainSuspend = power.plainSuspend, action, failed] {
+      nameThisThread("dsk-action");
+      const bool ok = call();
+      DeferredCall::callLater([this, guard, ok, plainSuspend, action, failed] {
+        if (guard.expired()) {
+          return;
+        }
+        m_powerRun = PowerRun::Idle;
+        if (ok) {
+          return;
+        }
+        kLog.warn("{} failed after hooks completed", action);
+        if (plainSuspend && m_hooks.onPlainSuspendAborted) {
+          m_hooks.onPlainSuspendAborted();
+        }
+        if (failed) {
+          failed();
+        }
+      });
+    }).detach();
+  };
+  if (!hook) {
+    start();
+    return;
+  }
+  hook([guard, start = std::move(start), action = std::string(action)](bool ok) {
+    if (guard.expired()) {
+      return;
+    }
+    // A failing hook (e.g. killing an app that isn't running) must not block the action.
+    if (!ok) {
+      kLog.warn("{}: a configured hook failed, continuing", action);
+    }
+    start();
+  });
 }
 
-bool SessionActionRunner::requestRebootUefiDetached() const {
-  logActionContext("reboot_uefi");
-  std::scoped_lock lock(m_powerMutex);
-  return setRebootToFirmwareSetup() && callPower("reboot_uefi", "reboot");
-}
+bool SessionActionRunner::requestSuspendDetached() const { return runNow(powerCall("suspend")); }
+
+bool SessionActionRunner::requestRebootDetached() const { return runNow(powerCall("reboot")); }
+
+bool SessionActionRunner::requestRebootUefiDetached() const { return runNow(powerCall("reboot_uefi")); }
 
 bool SessionActionRunner::requestPowerSkippingInhibitors(std::string_view action) const {
   const char* power = action == "suspend" ? "suspend"
@@ -378,68 +409,24 @@ bool SessionActionRunner::requestPowerSkippingInhibitors(std::string_view action
     return false;
   }
   logActionContext(action);
-  std::scoped_lock lock(m_powerMutex);
   return callPower(action, power, true);
 }
 
-bool SessionActionRunner::requestShutdownDetached() const {
-  logActionContext("shutdown");
-  std::scoped_lock lock(m_powerMutex);
-  return runPowerActionResolved("shutdown", m_shutdownCommandOverride, "power-off", PowerLaunchMode::Detached);
-}
+bool SessionActionRunner::requestShutdownDetached() const { return runNow(powerCall("shutdown")); }
 
-bool SessionActionRunner::requestHibernateDetached() const {
-  logActionContext("hibernate");
-  std::scoped_lock lock(m_powerMutex);
-  return runPowerActionResolved(
-      "hibernate", m_hibernateCommandOverride, "hibernate", PowerLaunchMode::Detached, true
-  );
-}
+bool SessionActionRunner::requestHibernateDetached() const { return runNow(powerCall("hibernate")); }
 
 bool SessionActionRunner::requestSuspendThenHibernateDetached() const {
-  logActionContext("suspend_then_hibernate");
-  if (m_hooks.onBeforePlainSuspend) {
-    m_hooks.onBeforePlainSuspend();
-  }
-  std::scoped_lock lock(m_powerMutex);
-  const bool started = runPowerActionResolved(
-      "suspend_then_hibernate", m_suspendThenHibernateCommandOverride, "suspend-then-hibernate",
-      PowerLaunchMode::Detached, true
-  );
-  if (!started && m_hooks.onPlainSuspendAborted) {
-    m_hooks.onPlainSuspendAborted();
-  }
-  return started;
+  return runNow(powerCall("suspend_then_hibernate"));
 }
 
 bool SessionActionRunner::lockThenSuspendDetached() const {
-  m_lockScreen.runAfterSessionLocked([this] { (void)suspendDetached(false); });
+  // Behind a lock the skip stays off: if the lock ended before PrepareForSleep, the session would sleep unlocked.
+  m_lockScreen.runAfterSessionLocked([this] {
+    PowerCall power = powerCall("suspend");
+    power.plainSuspend = false;
+    (void)runNow(power);
+  });
   m_lockScreen.prepareForSleep();
   return true;
-}
-
-bool SessionActionRunner::suspendBlocking() const {
-  logActionContext("suspend");
-  if (m_hooks.onBeforePlainSuspend) {
-    m_hooks.onBeforePlainSuspend();
-  }
-  std::scoped_lock lock(m_powerMutex);
-  const bool started =
-      runPowerActionResolved("suspend", m_suspendCommandOverride, "suspend", PowerLaunchMode::Blocking);
-  if (!started && m_hooks.onPlainSuspendAborted) {
-    m_hooks.onPlainSuspendAborted();
-  }
-  return started;
-}
-
-bool SessionActionRunner::rebootBlocking() const {
-  logActionContext("reboot");
-  std::scoped_lock lock(m_powerMutex);
-  return runPowerActionResolved("reboot", m_rebootCommandOverride, "reboot", PowerLaunchMode::Blocking);
-}
-
-bool SessionActionRunner::shutdownBlocking() const {
-  logActionContext("shutdown");
-  std::scoped_lock lock(m_powerMutex);
-  return runPowerActionResolved("shutdown", m_shutdownCommandOverride, "power-off", PowerLaunchMode::Blocking);
 }

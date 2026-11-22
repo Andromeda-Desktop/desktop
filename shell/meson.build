@@ -1281,6 +1281,7 @@ if build_tests
     'lock_fail_delay',
     'lock_lifecycle',
     'lock_before_sleep',
+    'session_action_runner',
     'lock_client_state',
     'lock_notice_groups',
     'power_inhibitors',

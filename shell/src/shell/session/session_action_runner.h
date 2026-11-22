@@ -2,9 +2,9 @@
 
 #include "config/config_types.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <string_view>
 
 class CompositorPlatform;
@@ -41,23 +41,32 @@ public:
   [[nodiscard]] bool lockThenSuspendDetached() const;
 
 private:
-  [[nodiscard]] bool suspendDetached(bool plain) const;
+  struct PowerCall {
+    // Runs on any thread: it holds copies and never touches the runner.
+    std::function<bool()> call;
+    // A plain suspend arms the lock-before-sleep skip on the main loop first.
+    bool plainSuspend = false;
+  };
+  enum class PowerRun : std::uint8_t { Idle, Running };
+
+  [[nodiscard]] PowerCall powerCall(std::string_view action) const;
+  [[nodiscard]] bool runNow(const PowerCall& power) const;
+  // Hooks first, then the call on a worker thread; refused while another one runs.
+  void runQueued(
+      SessionActionHooks::AsyncHook hook, PowerCall power, std::string_view action, std::function<void()> failed
+  ) const;
   [[nodiscard]] SessionActionHooks::AsyncHook hookFor(std::string_view action) const;
-  [[nodiscard]] bool suspendBlocking() const;
-  [[nodiscard]] bool rebootBlocking() const;
-  [[nodiscard]] bool shutdownBlocking() const;
 
   CompositorPlatform& m_platform;
   LockScreen& m_lockScreen;
   SessionActionHooks m_hooks;
   std::shared_ptr<void> m_aliveGuard = std::make_shared<int>(0);
+  // Main loop only.
+  mutable PowerRun m_powerRun = PowerRun::Idle;
 
-  // Session power command resolution is used from UI threads and worker threads
-  // (panel/IPC/lock-and-suspend), so keep it internally synchronized.
-  mutable std::mutex m_powerMutex;
-  mutable std::optional<std::string> m_suspendCommandOverride;
-  mutable std::optional<std::string> m_rebootCommandOverride;
-  mutable std::optional<std::string> m_shutdownCommandOverride;
-  mutable std::optional<std::string> m_hibernateCommandOverride;
-  mutable std::optional<std::string> m_suspendThenHibernateCommandOverride;
+  std::optional<std::string> m_suspendCommandOverride;
+  std::optional<std::string> m_rebootCommandOverride;
+  std::optional<std::string> m_shutdownCommandOverride;
+  std::optional<std::string> m_hibernateCommandOverride;
+  std::optional<std::string> m_suspendThenHibernateCommandOverride;
 };
