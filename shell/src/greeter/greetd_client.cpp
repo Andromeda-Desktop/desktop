@@ -123,6 +123,7 @@ bool GreetdClient::connect(const std::string& socketPath) {
   }
 
   kLog.info("connected to greetd at {}", socketPath);
+  m_link = Link::Open;
   return true;
 }
 
@@ -130,6 +131,9 @@ void GreetdClient::disconnect() {
   if (m_socketFd >= 0) {
     ::close(m_socketFd);
     m_socketFd = -1;
+  }
+  if (m_link == Link::Open) {
+    m_link = Link::Lost;
   }
   m_readBuffer.clear();
   completeRequest();
@@ -226,6 +230,7 @@ bool GreetdClient::sendRequest(const std::string& request, const GreetdRequestTy
   if (!written) {
     // A partial stream frame cannot be recovered. Close it so callers fail
     // closed instead of issuing another request on a corrupted connection.
+    kLog.error("failed to send a request to greetd: {}", strerror(errno));
     disconnect();
     m_lastError = {GreetdErrorType::Error, "failed to send request"};
     return false;

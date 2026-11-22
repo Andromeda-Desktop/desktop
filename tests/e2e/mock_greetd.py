@@ -8,6 +8,8 @@ pam_gaze (sequential) then pam_unix:
   plain    a secret "Password:" prompt at once (nothing enrolled)
   race     pam_gaze simultaneous for a marker host: GAZE_MSG_LOOK_OR_PASSWORD, then the prompt at once
   nopass   success at once (an account with no password)
+  deaf     a secret "Password:" prompt, then greetd stops reading (shutdown SHUT_RD, socket kept open): the
+           greeter's next write fails with EPIPE and no hangup reaches its poll loop
   broken   create_session fails with greetd's own error (its session worker is gone: "unable to send msg: os error")
 The password "right" succeeds, and in race so does GAZE_CONFIRMED (the host saw gazed's match); anything else is an
 auth_error. start_session and cancel_session always succeed.
@@ -74,6 +76,11 @@ def run(conn):
                 queue = []
                 send(conn, {"type": "error", "error_type": "error", "description": "unable to send msg: os error"})
                 continue
+            if name == "deaf":
+                send(conn, SECRET)
+                conn.shutdown(socket.SHUT_RD)
+                time.sleep(3600)
+                return
             queue = steps(name)
         elif kind == "cancel_session":
             queue = []

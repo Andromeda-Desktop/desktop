@@ -590,9 +590,8 @@ namespace {
         if (const auto late = m_greetd.timedOutRequest()) {
           kLog.error("greetd did not answer {} in time", greetdRequestTypeName(late->request));
           m_greetd.disconnect();
-          m_greetdLost = true;
         }
-        if (m_greetdLost) {
+        if (m_greetd.lost()) {
           return 1;
         }
         if (m_failedSessions > kMaxFailedSessions) {
@@ -1098,7 +1097,6 @@ namespace {
       if (const auto& error = m_greetd.lastError(); error.has_value()) {
         kLog.error("greetd connection lost: {}", error->description);
         m_greetd.disconnect();
-        m_greetdLost = true;
       }
     }
 
@@ -1228,7 +1226,6 @@ namespace {
       }
     }
     bool m_trimmed = false;
-    bool m_greetdLost = false;
     WaylandConnection m_wayland;
     GlSharedContext m_gl;
     RenderContext m_render;

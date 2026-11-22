@@ -81,6 +81,8 @@ public:
   bool connect(const std::string& socketPath);
   void disconnect();
   [[nodiscard]] bool isConnected() const noexcept;
+  // A connection that was open has closed (peer gone, failed write, bad frame, timeout): login cannot go on.
+  [[nodiscard]] bool lost() const noexcept { return m_link == Link::Lost; }
 
   // A timeout of zero disables the watchdog. The timeout is applied to each
   // request independently and is rearmed after every successful write.
@@ -113,6 +115,8 @@ private:
   std::optional<GreetdResponse> extractFrame();
   void completeRequest() noexcept;
 
+  enum class Link : std::uint8_t { Unconnected, Open, Lost };
+  Link m_link = Link::Unconnected;
   int m_socketFd = -1;
   std::string m_readBuffer;
   std::optional<GreetdError> m_lastError;
