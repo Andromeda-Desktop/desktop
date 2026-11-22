@@ -113,16 +113,25 @@ acquire() {
 }
 [[ ${PUBLISH:-true} != true ]] || acquire
 
+index_file() { if [[ $kind == arch ]]; then echo andromeda.db.tar.gz; else echo Packages; fi; }
+# Unmet dependencies of an index, one per line; none for a missing index.
+unmet() { [[ ! -f $1 ]] || "$(dirname "$0")/repo-check.py" "$kind" "$1" 2> /dev/null || true; }
+
 for attempt in 1 2 3; do
-  rm -rf "$out"
-  mkdir -p "$out"
+  rm -rf "$out" "$out.base"
+  mkdir -p "$out" "$out.base"
+  gh release download "$release" -R "$repo" -D "$out.base" -p "$(index_file)" 2> /dev/null || true
   "merge_$kind"
-  # The merged index must install as a whole: a run that would leave an app without its libdesk fails here.
-  if [[ $kind == arch ]]; then
-    "$(dirname "$0")/repo-check.py" arch "$out/andromeda.db.tar.gz"
-  else
-    "$(dirname "$0")/repo-check.py" apt "$out/Packages"
+  # The upload must not leave an app without its libdesk: it fails on an unmet dependency the index did not have.
+  # One it had already (an older release's drift) does not block a release that leaves it as it was or fixes it.
+  added=$(comm -13 <(unmet "$out.base/$(index_file)" | sort) <(unmet "$out/$(index_file)" | sort))
+  if [[ -n $added ]]; then
+    echo "::error::repo-publish: the merged index gets unmet dependencies:" >&2
+    echo "$added" >&2
+    exit 1
   fi
+  kept=$(unmet "$out/$(index_file)")
+  [[ -z $kept ]] || echo "::warning::repo-publish: the index still has unmet dependencies: $kept" >&2
   if [[ ${PUBLISH:-true} != true ]]; then
     echo "repo-publish: dry run, merged index in $out"
     exit 0
