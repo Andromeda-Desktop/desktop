@@ -378,7 +378,10 @@ namespace xdpu {
         result.returnResults(response, results);
         deferRequestDestroy();
         process.reset();
-        capture.reset(); // destroys frame → session → buffer → mapping → fd
+        // finish can run inside a capture callback or while a caller holds the state; free it on the next turn.
+        if (capture) {
+          portal.loop.addTimer(0, [doomed = std::move(capture)]() mutable { doomed.reset(); });
+        }
         // Prevent the shared_ptr erase from destroying `this` while we're in it.
         auto prevent = shared_from_this();
         portal.inflight.erase(prevent);
