@@ -296,7 +296,9 @@ namespace andromeda {
     }
   }
 
-  void Server::onNewXdgPopup(wl_listener* /*listener*/, void* data) {
+  void Server::onNewXdgPopup(wl_listener* listener, void* data) {
+    Server* self;
+    self = wl_container_of(listener, self, m_newXdgPopup);
     auto* popup = static_cast<wlr_xdg_popup*>(data);
     // Layer-shell popups (and any popup without a parent yet) are handled
     // elsewhere; parent can be null when xdg_shell emits new_popup.
@@ -304,7 +306,7 @@ namespace andromeda {
       return;
     }
     View* owner = View::fromSurface(popup->parent);
-    new Popup(popup, nullptr, owner != nullptr ? owner->captureTree() : nullptr);
+    new Popup(popup, nullptr, owner != nullptr ? owner->captureTree() : nullptr, self);
   }
 
   void Server::onNewXdgDecoration(wl_listener* listener, void* data) {
