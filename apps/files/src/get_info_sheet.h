@@ -74,7 +74,8 @@ private:
     std::int64_t openedNs = 0;
   };
   struct Sum {
-    enum class State : std::uint8_t { Idle, Running, Done, Failed };
+    // Cancelling: the user cancelled; the job is cancelled as soon as its path is known.
+    enum class State : std::uint8_t { Idle, Running, Cancelling, Done, Failed };
     State state = State::Idle;
     std::string job;
     std::string hex;

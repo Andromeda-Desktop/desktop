@@ -138,7 +138,7 @@ GetInfoSheet::~GetInfoSheet() {
   m_count->stop = true;
   if (m_ops != nullptr) {
     for (const Sum* sum : {&m_sha, &m_md5}) {
-      if (sum->state == Sum::State::Running && !sum->job.empty()) {
+      if ((sum->state == Sum::State::Running || sum->state == Sum::State::Cancelling) && !sum->job.empty()) {
         m_ops->cancel(sum->job);
       }
     }
@@ -673,10 +673,15 @@ std::unique_ptr<Node> GetInfoSheet::buildChecksums(float s) {
     case Sum::State::Running:
       r->addChild(value(std::string("Computing…"), s));
       r->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default, .onClick = [this, &sum] {
-                                if (m_ops != nullptr && !sum.job.empty()) {
+                                sum.state = Sum::State::Cancelling;
+                                if (!sum.job.empty()) {
                                   m_ops->cancel(sum.job);
                                 }
+                                later(m_rebuild);
                               }}));
+      break;
+    case Sum::State::Cancelling:
+      r->addChild(value(std::string("Cancelling…"), s));
       break;
     case Sum::State::Done:
       r->addChild(value(sum.hex, s));
@@ -738,9 +743,17 @@ void GetInfoSheet::runChecksum(Sum& sum, const char* algorithm) {
   const std::weak_ptr<bool> alive = m_alive;
   m_ops->checksum(
       m_items.front().path, algorithm,
-      [this, alive, &sum](const std::string& job, const std::string&) {
-        if (!alive.expired()) {
-          sum.job = job;
+      [ops = m_ops, alive, &sum](const std::string& job, const std::string&) {
+        if (job.empty()) {
+          return;
+        }
+        if (alive.expired()) {
+          ops->cancel(job); // the sheet closed before the job had a path
+          return;
+        }
+        sum.job = job;
+        if (sum.state == Sum::State::Cancelling) {
+          ops->cancel(job);
         }
       },
       [this, alive, &sum](const std::string& hex, const std::string& error) {
