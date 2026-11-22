@@ -99,6 +99,7 @@ private:
   std::string m_activePath;
   std::unique_ptr<sdbus::IProxy> m_apDeviceWatch;
   Timer m_deviceTimeout;
+  Timer m_queryRetry;
   // The activated connection; its StateChanged signal ends the Activating state.
   std::unique_ptr<sdbus::IProxy> m_activeWatch;
   // NM's reason from the last StateChanged to Deactivated of the watched connection.

@@ -160,6 +160,12 @@ public:
   // Issues the token of a new query. Only the latest token issued after the last request or reply counts.
   std::uint64_t beginQuery() noexcept { return ++m_lastQuery; }
 
+  // A start that waits for NetworkManager leaves Starting only through a query answer, and the signal that sent this
+  // failed query may not come again: the owner asks again.
+  [[nodiscard]] bool retryFailedQuery(std::uint64_t token) const noexcept {
+    return token == m_lastQuery && token > m_fence && (m_phase == Phase::Starting || m_phase == Phase::ApStarting);
+  }
+
   // The work the last accepted event or observation started; returns it once.
   [[nodiscard]] std::optional<HotspotWork> takeWork() noexcept { return std::exchange(m_work, std::nullopt); }
 

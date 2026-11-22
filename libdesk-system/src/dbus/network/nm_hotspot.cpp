@@ -33,6 +33,7 @@ namespace {
   constexpr auto kAccessPointInterface = "org.freedesktop.NetworkManager.AccessPoint";
   constexpr std::uint32_t kDeviceStateDisconnected = 30;
   constexpr auto kDeviceWait = std::chrono::seconds(10);
+  constexpr auto kQueryRetry = std::chrono::seconds(1);
   const sdbus::ServiceName kSystem1BusName{"org.andromeda.System1"};
   const sdbus::ObjectPath kSystem1NetworkPath{"/org/andromeda/System1/Network"};
   constexpr auto kSystem1NetworkInterface = "org.andromeda.System1.Network";
@@ -609,6 +610,9 @@ void NmHotspot::startQuery() {
     }
     if (error.has_value()) {
       kLog.debug("hotspot state unavailable: {}", *error);
+      if (m_machine.retryFailedQuery(token)) {
+        m_queryRetry.start(kQueryRetry, [this] { startQuery(); });
+      }
       return;
     }
     const auto finish = [this, token, path](HotspotObservation seen, const std::string& interface,

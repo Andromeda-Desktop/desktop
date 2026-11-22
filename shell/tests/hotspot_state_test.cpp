@@ -411,10 +411,36 @@ namespace {
     );
   }
 
+  // NM reports the connection Activated, but the query that signal started fails: the start must not wait forever.
+  void failedQueryWhileStartingIsAskedAgain() {
+    for (const bool beside : {false, true}) {
+      HotspotMachine machine;
+      machine.apply(HotspotEvent::PlanKnown);
+      if (beside) {
+        TEST_CHECK(machine.apply(HotspotEvent::RequestOnBesideClient));
+        TEST_CHECK(machine.apply(HotspotEvent::InterfaceCreated));
+        TEST_CHECK(machine.apply(HotspotEvent::DeviceReady));
+      } else {
+        TEST_CHECK(machine.apply(HotspotEvent::RequestOn));
+      }
+      const std::uint64_t early = machine.beginQuery();
+      TEST_CHECK(!machine.retryFailedQuery(early)); // the Activate call is in flight
+      TEST_CHECK(machine.apply(HotspotEvent::ActivateOk));
+      const std::uint64_t failed = machine.beginQuery();
+      TEST_CHECK(machine.retryFailedQuery(failed));
+      const std::uint64_t retry = machine.beginQuery();
+      TEST_CHECK(!machine.retryFailedQuery(failed)); // a newer query is out
+      TEST_CHECK(machine.observe(retry, beside ? HotspotObservation::OnBesideClient : HotspotObservation::On));
+      TEST_CHECK(machine.state() == HotspotState::On);
+      TEST_CHECK(!machine.retryFailedQuery(machine.beginQuery()));
+    }
+  }
+
 } // namespace
 
 int main() {
   roamFollowsClient();
+  failedQueryWhileStartingIsAskedAgain();
   const auto channelIs = [](std::uint32_t mhz, std::string_view band, std::uint32_t channel) {
     const auto got = hotspotChannelOf(mhz);
     return got.has_value() && got->band == band && got->channel == channel;
