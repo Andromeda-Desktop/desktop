@@ -36,6 +36,12 @@ executable('andromeda-link-app',
   install: true,
 )
 
+_av_deps = [dependency('libavcodec'), dependency('libavutil'), dependency('libavfilter'), dependency('libswscale')]
+test('mirror_decoder', executable('mirror_decoder_test', 'tests/mirror_decoder_test.cpp', 'src/mirror_decoder.cpp',
+  dependencies: [_desk_app_dep] + _av_deps, include_directories: include_directories('src'),
+  cpp_args: _warnings + ['-fsanitize=address', '-fno-omit-frame-pointer'], link_args: ['-fsanitize=address']),
+  env: ['ASAN_OPTIONS=detect_leaks=0'])
+
 install_data('data/dev.andromeda.Link.desktop', install_dir: get_option('datadir') / 'applications')
 foreach size : ['16', '24', '32', '48', '64', '128', '256', '512']
   install_data('data/icons/hicolor' / size + 'x' + size / 'apps/dev.andromeda.Link.png',

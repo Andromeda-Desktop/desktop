@@ -10,6 +10,7 @@
 #include <optional>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <utility>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -149,7 +150,8 @@ namespace linkapp {
   void MirrorDecoder::run() {
     const auto end = [this](std::string why) {
       DeferredCall::callLater([this, why = std::move(why), alive = std::weak_ptr<bool>(m_alive)]() mutable {
-        if (!alive.expired()) m_ended(std::move(why));
+        // ended may destroy this decoder: call a moved-out copy so its closure outlives the call.
+        if (!alive.expired()) std::exchange(m_ended, {})(std::move(why));
       });
     };
     const AVCodec* codec = avcodec_find_decoder(AV_CODEC_ID_H264);
