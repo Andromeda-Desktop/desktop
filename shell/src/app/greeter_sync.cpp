@@ -73,9 +73,14 @@ void GreeterSync::sync(bool quiet) {
   );
   if (launch == greeter::GreeterSyncLaunch::Busy) {
     // A change (or a finished wallpaper bake) during a running sync syncs again after it, or the greeter keeps the
-    // older look until an unrelated sync.
+    // older look until an unrelated sync. The helper's deadline bounds the retries.
     if (quiet) {
       scheduleAuto();
+    } else {
+      notify::info(
+          "Noctalia", i18n::tr("notifications.internal.greeter-sync"),
+          i18n::tr("notifications.internal.greeter-sync-pending")
+      );
     }
     return;
   }

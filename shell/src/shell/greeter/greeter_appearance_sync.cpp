@@ -1064,6 +1064,14 @@ namespace {
     return command + StringUtils::shellQuote(staging);
   }
 
+  // A helper still waiting on an authorization prompt holds the one sync lease; after this it is stopped, so a later
+  // sync can run. Long enough to type a password at a TTY prompt.
+  process::RunOptions helperOptions() {
+    process::RunOptions options;
+    options.timeout = std::chrono::minutes(5);
+    return options;
+  }
+
   [[nodiscard]] bool launchPrivilegedApplyHelper(
       const ShellGreeterSyncConfig& greeterSync, std::string_view helper, const std::filesystem::path& staging,
       const std::filesystem::path& stateDirectory, const GreeterSyncMode mode, process::RunCallbacks callbacks
@@ -1076,7 +1084,7 @@ namespace {
       if (command.empty()) {
         return false;
       }
-      return process::runAsync(command, std::move(callbacks));
+      return process::runAsync(command, std::move(callbacks), helperOptions());
     }
 
     if (mode == GreeterSyncMode::Constrained) {
@@ -1087,7 +1095,7 @@ namespace {
           std::vector<std::string>{
               std::string(kPkexecName), std::string(helper), std::string(kSyncArgument), staging.string()
           },
-          std::move(callbacks)
+          std::move(callbacks), helperOptions()
       );
     }
 
@@ -1110,7 +1118,7 @@ namespace {
     }
     arguments.emplace_back(helper);
     arguments.push_back(staging.string());
-    return process::runAsync(arguments, std::move(callbacks));
+    return process::runAsync(arguments, std::move(callbacks), helperOptions());
   }
 
 } // namespace
