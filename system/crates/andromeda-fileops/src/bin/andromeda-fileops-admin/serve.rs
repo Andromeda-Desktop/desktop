@@ -138,13 +138,16 @@ fn copy_at(from: &OwnedFd, name: &OsStr, to: &OwnedFd, to_name: &OsStr, shown: &
         FileType::Directory => {
             let src = enter(from, name, &st, shown)?;
             mkdirat(to, to_name, Mode::RWXU).map_err(&err)?;
-            let dst = openat(to, to_name, DIR_FLAGS, Mode::empty()).map_err(&err)?;
-            let mut count = 1;
-            for child in names(&src, shown)? {
-                count += copy_at(&src, &child, &dst, &child, &shown.join(&child))?;
-            }
-            fchmod(&dst, mode).map_err(&err)?;
-            Ok(count)
+            let copied = (|| {
+                let dst = openat(to, to_name, DIR_FLAGS, Mode::empty()).map_err(&err)?;
+                let mut count = 1;
+                for child in names(&src, shown)? {
+                    count += copy_at(&src, &child, &dst, &child, &shown.join(&child))?;
+                }
+                fchmod(&dst, mode).map_err(&err)?;
+                Ok(count)
+            })();
+            copied.map_err(|e| undo(to, to_name, shown, e))
         }
         FileType::RegularFile => {
             let src =
@@ -156,9 +159,10 @@ fn copy_at(from: &OwnedFd, name: &OsStr, to: &OwnedFd, to_name: &OsStr, shown: &
             let flags = OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC;
             let dst = openat(to, to_name, flags, Mode::RUSR | Mode::WUSR).map_err(&err)?;
             let (mut src, mut dst) = (File::from(src), File::from(dst));
-            io::copy(&mut src, &mut dst).map_err(|e| format!("{}: {e}", shown.display()))?;
-            fchmod(&dst, mode).map_err(&err)?;
-            Ok(1)
+            let copied = io::copy(&mut src, &mut dst)
+                .map_err(|e| format!("{}: {e}", shown.display()))
+                .and_then(|_| fchmod(&dst, mode).map_err(&err));
+            copied.map(|()| 1).map_err(|e| undo(to, to_name, shown, e))
         }
         FileType::Symlink => {
             let target = readlinkat(from, name, Vec::new()).map_err(&err)?;
@@ -166,6 +170,14 @@ fn copy_at(from: &OwnedFd, name: &OsStr, to: &OwnedFd, to_name: &OsStr, shown: &
             Ok(1)
         }
         _ => Err(format!("{}: a device, pipe or socket is not copied", shown.display())),
+    }
+}
+
+/// Removes what a failed `copy_at` made at `to_name`, so the copy can run again.
+fn undo(to: &OwnedFd, to_name: &OsStr, shown: &Path, failure: String) -> String {
+    match delete_at(to, to_name, shown) {
+        Ok(_) => failure,
+        Err(e) => format!("{failure}; the partial copy stays: {e}"),
     }
 }
 
@@ -366,6 +378,27 @@ mod tests {
         assert!(root.path().join("real/f").exists());
         let out = ask(&format!(r#"{{"id":2,"op":"list","path":"{r}/via"}}"#));
         assert_eq!(out["ok"], false, "{out}");
+    }
+
+    #[test]
+    fn a_failed_copy_leaves_nothing_so_a_retry_can_succeed() {
+        let root = tempfile::tempdir().expect("tmp");
+        let to = open_dir(root.path()).expect("dest");
+        let proc_dir = open_dir(&Path::new("/proc").join(std::process::id().to_string())).expect("proc");
+        let shown = Path::new("/proc/self/mem");
+        assert!(copy_at(&proc_dir, OsStr::new("mem"), &to, OsStr::new("f"), shown).is_err(), "mem at 0 reads EIO");
+        assert!(!root.path().join("f").exists(), "a failed file copy is removed");
+
+        fs::create_dir(root.path().join("d")).expect("mkdir");
+        fs::write(root.path().join("d/a"), "a").expect("write");
+        fs::write(root.path().join("d/b"), "b").expect("write");
+        fs::set_permissions(root.path().join("d/b"), fs::Permissions::from_mode(0)).expect("chmod");
+        if fs::File::open(root.path().join("d/b")).is_ok() {
+            return;
+        }
+        let from = open_dir(root.path()).expect("from");
+        assert!(copy_at(&from, OsStr::new("d"), &to, OsStr::new("e"), Path::new("d")).is_err(), "b is unreadable");
+        assert!(!root.path().join("e").exists(), "a failed folder copy is removed with what it copied");
     }
 
     #[test]
