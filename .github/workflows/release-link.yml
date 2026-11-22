@@ -1,0 +1,80 @@
+# Adds Link's newest release (Andromeda-Desktop/link, tag v*) to the pacman repository and both apt repositories of
+# this repo's releases. Link releases in its own repo, which holds no token for this one, so this runs hourly and does
+# nothing while the pacman index already lists that version. tools/repo-publish.sh keeps every other package.
+name: release-link
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      tag: { description: "Link tag (v0.2.15); empty takes Link's latest release", required: false }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-link
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      due: ${{ steps.tag.outputs.due }}
+    steps:
+      - id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT: ${{ inputs.tag }}
+        run: |
+          tag=${INPUT:-$(gh release view -R Andromeda-Desktop/link --json tagName -q .tagName)}
+          gh release download repo -R "$GITHUB_REPOSITORY" -p andromeda.db.tar.gz -D db
+          if tar -tzf db/andromeda.db.tar.gz | grep -qx "andromeda-link-${tag#v}-[0-9]*/"; then due=false; else due=true; fi
+          # A dispatch by hand republishes, so a failed apt half can be redone.
+          [[ -z $INPUT ]] || due=true
+          echo "Link $tag: due=$due"
+          { echo "tag=$tag"; echo "due=$due"; } >> "$GITHUB_OUTPUT"
+
+  arch:
+    needs: [check]
+    if: needs.check.outputs.due == 'true'
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Tools
+        run: pacman -Syu --noconfirm --needed git github-cli
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: tools
+      - name: Repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          gh release download "$TAG" -R Andromeda-Desktop/link -p 'andromeda-link-[0-9]*-x86_64.pkg.tar.zst' -D pkg
+          tools/repo-publish.sh arch repo pkg
+
+  apt:
+    needs: [check]
+    if: needs.check.outputs.due == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [repo, debian]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: tools
+      - name: Repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
+          gh release download "$TAG" -R Andromeda-Desktop/link -p 'andromeda-link_*_amd64.deb' -D debs
+          tools/repo-publish.sh apt ${{ matrix.target }} debs
