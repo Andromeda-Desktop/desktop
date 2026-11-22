@@ -40,6 +40,7 @@ struct zwp_keyboard_shortcuts_inhibit_manager_v1;
 struct zwp_keyboard_shortcuts_inhibitor_v1;
 struct ext_background_effect_manager_v1;
 struct dsk_surface_manager_v1;
+struct dsk_app_menu_manager_v1;
 struct zxdg_exporter_v2;
 struct zxdg_importer_v2;
 struct xdg_activation_v1;
@@ -203,6 +204,7 @@ public:
   [[nodiscard]] ext_background_effect_manager_v1* backgroundEffectManager() const noexcept;
   // Our compositor only (dsk_surface_v1: compositor-run shape, elevation, motion, gestures); nullptr elsewhere.
   [[nodiscard]] dsk_surface_manager_v1* dskSurfaceManager() const noexcept { return m_dskSurfaceManager; }
+  [[nodiscard]] dsk_app_menu_manager_v1* dskAppMenuManager() const noexcept { return m_dskAppMenuManager; }
   // xdg-foreign v2; nullptr when the compositor has none.
   [[nodiscard]] zxdg_exporter_v2* foreignExporter() const noexcept { return m_foreignExporter; }
   [[nodiscard]] zxdg_importer_v2* foreignImporter() const noexcept { return m_foreignImporter; }
@@ -393,6 +395,7 @@ private:
   zwp_keyboard_shortcuts_inhibit_manager_v1* m_shortcutsInhibitManager = nullptr;
   ext_background_effect_manager_v1* m_backgroundEffectManager = nullptr;
   dsk_surface_manager_v1* m_dskSurfaceManager = nullptr;
+  dsk_app_menu_manager_v1* m_dskAppMenuManager = nullptr;
   zxdg_exporter_v2* m_foreignExporter = nullptr;
   zxdg_importer_v2* m_foreignImporter = nullptr;
   wp_fractional_scale_manager_v1* m_fractionalScaleManager = nullptr;

@@ -1,5 +1,7 @@
 #include "app/app_window.h"
 
+#include <array>
+
 #include "render/render_context.h"
 #include "render/text/glyph_registry.h"
 #include "render/render_target.h"
@@ -243,6 +245,17 @@ Color stacked(const Color& top, const Color& bottom) {
                (top.b * top.a + bottom.b * under) / a, a};
 }
 
+  // Menu order of the command groups: File, Edit, View, Go, the app's own groups as registered, then Window.
+  std::vector<std::string> menuGroups(const std::vector<const AppCommand*>& commands) {
+    std::vector<std::string> groups{"File", "Edit", "View", "Go"};
+    for (const AppCommand* c : commands) {
+      if (c->group != "Window" && std::ranges::find(groups, c->group) == groups.end()) {
+        groups.push_back(c->group);
+      }
+    }
+    groups.emplace_back("Window");
+    return groups;
+  }
 } // namespace
 
 AppWindow::AppWindow(AppLoop& loop, CommandTable& commands, StateStore& state, Config config)
@@ -274,6 +287,67 @@ bool AppWindow::ownsSurface(const Surface* surface) const noexcept {
           (m_popover != nullptr && m_popover->isOpen() && m_popover->surface() == surface));
 }
 
+void AppWindow::syncMenuBar() {
+  if (m_surface == nullptr) {
+    return;
+  }
+  std::vector<const AppCommand*> commands;
+  for (const AppCommand& c : m_commands.commands()) {
+    if (c.run && !c.label.empty()) {
+      commands.push_back(&c);
+    }
+  }
+  // Command rows use ids 1..n (index + 1), group rows the ids after them. An app's own group (a dialog's Picker or
+  // Conflict commands) shows only while one of its commands is enabled.
+  std::vector<MenuBarItem> items;
+  const std::vector<std::string> groups = menuGroups(commands);
+  for (std::size_t g = 0; g < groups.size(); ++g) {
+    const auto groupId = static_cast<std::uint32_t>(commands.size() + g + 1);
+    const std::size_t groupStart = items.size();
+    bool anyEnabled = false;
+    for (std::size_t i = 0; i < commands.size(); ++i) {
+      const AppCommand& c = *commands[i];
+      if (c.group != groups[g]) {
+        continue;
+      }
+      if (items.size() == groupStart) {
+        items.push_back({.id = groupId, .label = groups[g]});
+      }
+      const bool enabled = !c.enabled || c.enabled();
+      anyEnabled = anyEnabled || enabled;
+      items.push_back({.id = static_cast<std::uint32_t>(i + 1),
+                       .parent = groupId,
+                       .label = c.label,
+                       .shortcut = c.shortcut ? keyChordDisplayLabel(*c.shortcut) : std::string(),
+                       .enabled = enabled});
+    }
+    constexpr std::array kStandard{"File", "Edit", "View", "Go", "Window"};
+    if (!anyEnabled && std::ranges::find(kStandard, groups[g]) == kStandard.end()) {
+      items.resize(groupStart);
+    }
+  }
+  if (items == m_menuBar) {
+    return;
+  }
+  m_menuBar = items;
+  std::vector<std::string> ids;
+  ids.reserve(commands.size());
+  for (const AppCommand* c : commands) {
+    ids.push_back(c->id);
+  }
+  m_surface->setMenuBar(items, [this, ids = std::move(ids), alive = std::weak_ptr<bool>(m_alive)](std::uint32_t id) {
+    if (id == 0 || id > ids.size()) {
+      return;
+    }
+    DeferredCall::callLater([this, command = ids[id - 1], alive] {
+      if (!alive.expired()) {
+        m_commands.run(command);
+        syncMenuBar();
+      }
+    });
+  });
+}
+
 void AppWindow::openMoreMenu() {
   if (m_surface == nullptr || m_moreButton == nullptr) {
     return;
@@ -288,14 +362,8 @@ void AppWindow::openMoreMenu() {
       commands.push_back(&c);
     }
   }
-  std::vector<std::string> groups{"File", "Edit", "View", "Go"};
-  for (const AppCommand* c : commands) {
-    if (std::ranges::find(groups, c->group) == groups.end()) {
-      groups.push_back(c->group);
-    }
-  }
   std::vector<ContextMenuControlEntry> entries;
-  for (const std::string& group : groups) {
+  for (const std::string& group : menuGroups(commands)) {
     bool first = true;
     for (std::size_t i = 0; i < commands.size(); ++i) {
       const AppCommand& c = *commands[i];
@@ -523,6 +591,7 @@ bool AppWindow::open() {
       m_activated = st.activated;
       if (m_activated) {
         noteSceneActivity();
+        syncMenuBar();
       }
       if (m_onActive) {
         m_onActive(st.activated);
@@ -556,6 +625,7 @@ bool AppWindow::open() {
     return false;
   }
   m_surface->setParentWindow(m_config.parentWindow);
+  syncMenuBar();
   m_input.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
     m_loop.display().setCursorShape(serial, std::to_underlying(shape));
   });

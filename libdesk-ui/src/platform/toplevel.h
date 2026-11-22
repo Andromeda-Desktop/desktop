@@ -7,6 +7,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 struct ToplevelSurfaceConfig {
   std::uint32_t width = 720;
@@ -31,6 +32,16 @@ struct ToplevelState {
   bool tiled = false; // any tiled edge
   bool suspended = false; // not visible: minimized, on another workspace or fully covered
   bool operator==(const ToplevelState&) const = default;
+};
+
+// One row of a window's menubar; parent 0 puts it in the bar.
+struct MenuBarItem {
+  std::uint32_t id = 0;
+  std::uint32_t parent = 0;
+  std::string label;
+  std::string shortcut; // display text, "Ctrl+Q"
+  bool enabled = true;
+  bool operator==(const MenuBarItem&) const = default;
 };
 
 // Window edges for an interactive resize: a bit set (same values as xdg_toplevel resize_edge).
@@ -77,6 +88,9 @@ public:
   virtual bool setCaptureSecure(bool secure) = 0;
   // Inhibited: the window system passes its own shortcuts to this window while it has keyboard focus.
   virtual void setShortcutsInhibited(bool inhibited) = 0;
+  // Shows the menubar in the desktop's global menu bar, when it has one; activated gets the picked item's id. Empty
+  // items remove it.
+  virtual void setMenuBar(const std::vector<MenuBarItem>& items, std::function<void(std::uint32_t id)> activated) = 0;
 
   [[nodiscard]] virtual const ToplevelState& state() const noexcept = 0;
   // The window inside the surface: the surface is the window plus margin() on every side.

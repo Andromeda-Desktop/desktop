@@ -227,6 +227,7 @@ public:
   void exportHandle(std::function<void(const std::string& handle)> ready) override;
   bool setCaptureSecure(bool secure) override;
   void setShortcutsInhibited(bool /*inhibited*/) override {}
+  void setMenuBar(const std::vector<MenuBarItem>& /*items*/, std::function<void(std::uint32_t)> /*activated*/) override {}
   [[nodiscard]] const ToplevelState& state() const noexcept override { return m_state; }
   [[nodiscard]] std::uint32_t margin() const noexcept override { return 0; }
   [[nodiscard]] std::uint32_t windowWidth() const noexcept override { return width(); }

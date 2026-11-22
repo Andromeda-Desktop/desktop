@@ -9,6 +9,7 @@
 #include <string>
 
 class DskSurfaceClient;
+struct dsk_app_menu_v1;
 struct wl_array;
 struct wl_output;
 struct xdg_toplevel;
@@ -40,6 +41,7 @@ public:
   void exportHandle(std::function<void(const std::string& handle)> ready) override;
   bool setCaptureSecure(bool secure) override;
   void setShortcutsInhibited(bool inhibited) override;
+  void setMenuBar(const std::vector<MenuBarItem>& items, std::function<void(std::uint32_t id)> activated) override;
   void setStateCallback(std::function<void(const ToplevelState&)> callback) override {
     m_stateCallback = std::move(callback);
   }
@@ -60,6 +62,7 @@ public:
   static void handleToplevelWmCapabilities(void* data, xdg_toplevel* toplevel, wl_array* capabilities);
   static void handleExportedHandle(void* data, zxdg_exported_v2* exported, const char* handle);
   static void handleImportedDestroyed(void* data, zxdg_imported_v2* imported);
+  static void handleMenuActivated(void* data, dsk_app_menu_v1* menu, std::uint32_t id);
 
 private:
   void destroyRoleObjects();
@@ -73,6 +76,8 @@ private:
   zxdg_imported_v2* m_imported = nullptr;
   std::unique_ptr<DskSurfaceClient> m_dsk; // made on the first setCaptureSecure
   zwp_keyboard_shortcuts_inhibitor_v1* m_shortcutsInhibitor = nullptr;
+  dsk_app_menu_v1* m_menuBar = nullptr; // made on the first non-empty setMenuBar
+  std::function<void(std::uint32_t)> m_menuActivated;
   std::function<void()> m_closedCallback;
   std::function<void(const ToplevelState&)> m_stateCallback;
   ToplevelState m_state;

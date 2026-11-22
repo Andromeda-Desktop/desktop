@@ -4,6 +4,7 @@
 #include "core/process/process_fds.h"
 #include "cursor-shape-v1-client-protocol.h"
 #include "pointer-gestures-unstable-v1-client-protocol.h"
+#include "dsk-app-menu-v1-client-protocol.h"
 #include "dsk-surface-v1-client-protocol.h"
 #include "ext-background-effect-v1-client-protocol.h"
 #include "ext-idle-notify-v1-client-protocol.h"
@@ -1695,6 +1696,12 @@ void WaylandConnection::bindGlobal(
     return;
   }
 
+  if (interfaceName == dsk_app_menu_manager_v1_interface.name) {
+    m_dskAppMenuManager = static_cast<dsk_app_menu_manager_v1*>(
+        wl_registry_bind(registry, name, &dsk_app_menu_manager_v1_interface, std::min(version, 1U))
+    );
+    return;
+  }
   if (interfaceName == dsk_surface_manager_v1_interface.name) {
     m_dskSurfaceManager =
         static_cast<dsk_surface_manager_v1*>(wl_registry_bind(registry, name, &dsk_surface_manager_v1_interface, std::min(version, 19U)));
@@ -1868,6 +1875,10 @@ void WaylandConnection::cleanup() {
   if (m_idleInhibitManager != nullptr) {
     zwp_idle_inhibit_manager_v1_destroy(m_idleInhibitManager);
     m_idleInhibitManager = nullptr;
+  }
+  if (m_dskAppMenuManager != nullptr) {
+    dsk_app_menu_manager_v1_destroy(m_dskAppMenuManager);
+    m_dskAppMenuManager = nullptr;
   }
   if (m_dskSurfaceManager != nullptr) {
     dsk_surface_manager_v1_destroy(m_dskSurfaceManager);

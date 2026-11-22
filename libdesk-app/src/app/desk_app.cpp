@@ -521,10 +521,19 @@ void DeskApp::routePointer(const PointerEvent& event) {
   if (window != nullptr) {
     window->onPointerEvent(event);
   }
+  // A click can change what the commands allow; the handler may have closed the window, so look it up again.
+  if (event.type == PointerEvent::Type::Button && !event.pressed) {
+    if (AppWindow* after = windowFor(event.surface != nullptr ? event.surface : m_pointerSurface)) {
+      after->syncMenuBar();
+    }
+  }
 }
 
 void DeskApp::routeKey(const KeyboardEvent& event) {
   if (AppWindow* window = windowFor(m_loop.display().keyboardSurface())) {
     window->onKeyboardEvent(event);
+  }
+  if (AppWindow* after = windowFor(m_loop.display().keyboardSurface())) {
+    after->syncMenuBar();
   }
 }

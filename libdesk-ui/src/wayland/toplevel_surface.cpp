@@ -1,6 +1,7 @@
 #include "wayland/toplevel_surface.h"
 
 #include "core/log.h"
+#include "dsk-app-menu-v1-client-protocol.h"
 #include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
 #include "wayland/dsk_surface_client.h"
 #include "wayland/wayland_connection.h"
@@ -362,6 +363,11 @@ void ToplevelSurface::destroyRoleObjects() {
   m_exportReady = {};
   m_dsk.reset();
   setShortcutsInhibited(false);
+  if (m_menuBar != nullptr) {
+    dsk_app_menu_v1_destroy(m_menuBar);
+    m_menuBar = nullptr;
+  }
+  m_menuActivated = {};
   if (m_decoration != nullptr) {
     zxdg_toplevel_decoration_v1_destroy(m_decoration);
     m_decoration = nullptr;
@@ -440,6 +446,31 @@ bool ToplevelSurface::setCaptureSecure(bool secure) {
     m_dsk = std::make_unique<DskSurfaceClient>(manager, m_surface);
   }
   return m_dsk->setSecure(secure);
+}
+
+void ToplevelSurface::setMenuBar(const std::vector<MenuBarItem>& items, std::function<void(std::uint32_t id)> activated) {
+  dsk_app_menu_manager_v1* manager = m_connection.dskAppMenuManager();
+  if (manager == nullptr || m_toplevel == nullptr || (m_menuBar == nullptr && items.empty())) {
+    return;
+  }
+  if (m_menuBar == nullptr) {
+    static constexpr dsk_app_menu_v1_listener kListener = {.activated = &ToplevelSurface::handleMenuActivated};
+    m_menuBar = dsk_app_menu_manager_v1_get_menu(manager, m_toplevel);
+    dsk_app_menu_v1_add_listener(m_menuBar, &kListener, this);
+  }
+  m_menuActivated = std::move(activated);
+  for (const MenuBarItem& item : items) {
+    dsk_app_menu_v1_item(m_menuBar, item.id, item.parent, item.enabled ? 0 : DSK_APP_MENU_V1_FLAGS_DISABLED,
+                         item.label.c_str(), item.shortcut.c_str());
+  }
+  dsk_app_menu_v1_commit(m_menuBar);
+}
+
+void ToplevelSurface::handleMenuActivated(void* data, dsk_app_menu_v1* /*menu*/, std::uint32_t id) {
+  auto* self = static_cast<ToplevelSurface*>(data);
+  if (self->m_menuActivated) {
+    self->m_menuActivated(id);
+  }
 }
 
 void ToplevelSurface::setShortcutsInhibited(bool inhibited) {
