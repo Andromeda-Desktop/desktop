@@ -1,4 +1,5 @@
 // The control transport on Linux: org.andromeda.Terminal1 on the session bus, a typed face over controlCall().
+#include "core/log.h"
 #include "terminal_app.h"
 #include "terminal_control.h"
 
@@ -10,6 +11,8 @@
 namespace term {
 
   namespace {
+    constexpr Logger kLog("terminal-control");
+
 
     using Entry = std::map<std::string, sdbus::Variant>;
 
@@ -73,7 +76,15 @@ namespace term {
     class DbusServer final : public control::Server {
     public:
       explicit DbusServer(std::unique_ptr<sdbus::IObject> object) : m_object(std::move(object)) {}
-      void emitSignal(const char* name) override { m_object->emitSignal(name).onInterface(control::kInterface); }
+      void emitSignal(const char* name) override {
+        // A window closing after the bus died (the app then quits) still emits: the send fails, nobody listens.
+        try {
+          auto signal = m_object->createSignal(sdbus::InterfaceName{control::kInterface}, sdbus::SignalName{name});
+          m_object->emitSignal(signal);
+        } catch (const sdbus::Error& error) {
+          kLog.warn("{}: {}", name, error.getMessage());
+        }
+      }
 
     private:
       std::unique_ptr<sdbus::IObject> m_object;
