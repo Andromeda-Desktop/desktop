@@ -116,7 +116,7 @@ namespace process::zygote {
           ? recv(conn, buffer.data(), buffer.size(), 0)
           : -1;
       auto request = size > 0 ? decode(std::span(buffer.data(), static_cast<std::size_t>(size))) : std::nullopt;
-      if (!request || !accept(*request)) {
+      if (!request || !accept(*request) || std::chrono::steady_clock::now() > request->deadline) {
         const std::int32_t refused = -1;
         send(conn, &refused, sizeof(refused), MSG_NOSIGNAL);
         close(conn);

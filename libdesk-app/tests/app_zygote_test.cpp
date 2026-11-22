@@ -70,7 +70,12 @@ int main() {
     const auto exe = std::filesystem::read_symlink("/proc/self/exe");
     runChild(process::zygote::serve(
         "test.zygote", [&] { CairoTextRenderer::preloadFonts({dir / "fonts"}); },
-        [&](const process::zygote::Request& request) { return request.argv.front() == exe.string(); }
+        [&](const process::zygote::Request& request) {
+          if (request.activationToken == "slow") {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1500)); // a launch queued behind a slow one
+          }
+          return request.argv.front() == exe.string();
+        }
     ));
   }
 
@@ -95,6 +100,17 @@ int main() {
 
   expect(!process::zygote::launch("test.zygote", {.argv = {"env", "A=1", self.string()}}).has_value(),
          "zygote forked a child for another program");
+
+  // A launch the client gave up on must not start a child: the client then starts the app itself.
+  const auto late = dir / "result-late";
+  expect(!process::zygote::launch("test.zygote", {.argv = {self.string(), late.string()}, .activationToken = "slow"}).has_value(),
+         "a launch slower than the client's wait was reported as started");
+  const auto after = dir / "result-after";
+  std::optional<pid_t> next;
+  expect(waitFor([&] { return (next = process::zygote::launch("test.zygote", {.argv = {self.string(), after.string()}})).has_value(); }),
+         "zygote never answered after a late launch");
+  expect(waitFor([&] { return !readFile(after).empty(); }), "the launch after a late one wrote no result");
+  expect(!std::filesystem::exists(late), "the zygote started a child for a launch the client gave up on");
 
   close(silent);
   kill(server, SIGTERM);

@@ -2,6 +2,7 @@
 
 #include <sys/types.h>
 
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -18,6 +19,8 @@ namespace process::zygote {
     std::vector<std::string> argv;
     std::string workingDir;
     std::string activationToken;
+    // Set by launch(); the zygote refuses the request after it, so a client that stopped waiting never gets a child.
+    std::chrono::steady_clock::time_point deadline;
   };
 
   // Empty when XDG_RUNTIME_DIR is unset.

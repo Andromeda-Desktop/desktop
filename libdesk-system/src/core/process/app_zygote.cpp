@@ -5,6 +5,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -12,7 +13,9 @@
 namespace process::zygote {
 
   namespace {
-    constexpr std::string_view kMagic = "andromeda-zygote-1";
+    constexpr std::string_view kMagic = "andromeda-zygote-2";
+    // Less than the client's 1 s wait, so a child forked before the deadline is reported before the client gives up.
+    constexpr auto kServeWindow = std::chrono::milliseconds(500);
   } // namespace
 
   std::filesystem::path socketPath(std::string_view appId) {
@@ -25,7 +28,9 @@ namespace process::zygote {
 
   std::string encode(const Request& request) {
     std::string out;
-    for (const std::string_view field : {kMagic, std::string_view(request.workingDir), std::string_view(request.activationToken)}) {
+    const std::string deadline = std::to_string(request.deadline.time_since_epoch().count());
+    for (const std::string_view field :
+         {kMagic, std::string_view(deadline), std::string_view(request.workingDir), std::string_view(request.activationToken)}) {
       out.append(field).push_back('\0');
     }
     for (const auto& arg : request.argv) {
@@ -45,13 +50,16 @@ namespace process::zygote {
       fields.emplace_back(rest.substr(0, end));
       rest.remove_prefix(end + 1);
     }
-    if (fields.size() < 4 || fields[0] != kMagic) {
+    std::chrono::steady_clock::rep deadline = 0;
+    if (fields.size() < 5 || fields[0] != kMagic
+        || std::from_chars(fields[1].data(), fields[1].data() + fields[1].size(), deadline).ec != std::errc{}) {
       return std::nullopt;
     }
     Request request;
-    request.workingDir = std::move(fields[1]);
-    request.activationToken = std::move(fields[2]);
-    request.argv.assign(std::make_move_iterator(fields.begin() + 3), std::make_move_iterator(fields.end()));
+    request.deadline = std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(deadline));
+    request.workingDir = std::move(fields[2]);
+    request.activationToken = std::move(fields[3]);
+    request.argv.assign(std::make_move_iterator(fields.begin() + 4), std::make_move_iterator(fields.end()));
     return request;
   }
 
@@ -71,7 +79,9 @@ namespace process::zygote {
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
     std::optional<pid_t> pid;
-    const std::string message = encode(request);
+    Request timed = request;
+    timed.deadline = std::chrono::steady_clock::now() + kServeWindow;
+    const std::string message = encode(timed);
     if (connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == 0
         && send(fd, message.data(), message.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(message.size())) {
       std::int32_t reply = -1;
