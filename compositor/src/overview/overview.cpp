@@ -346,8 +346,15 @@ namespace andromeda {
       const wlr_box blurBox{0, 0, contentW, contentH};
       card.blur.setAlpha(1.0F);
       card.blur.setMaterial(configWindowGlass());
+      // Only the overview background lies under a card, so its glass samples the cached blur whatever the window's
+      // rule says; a thumb copy is too small to show blur and draws none.
+      SurfaceBlurOptions blurOptions = view->blurOptions();
+      blurOptions.optimized = true;
+      if (card.role == CardRole::ThumbCopy) {
+        blurOptions.enabled = false;
+      }
       card.blur.update(
-          card.tree, surface, blurBox, geometry, contentCorners, nullptr, view->blurOptions(), entry->buffer->opacity,
+          card.tree, surface, blurBox, geometry, contentCorners, nullptr, blurOptions, entry->buffer->opacity,
           entry->buffer
       );
       blurUpdated = true;
