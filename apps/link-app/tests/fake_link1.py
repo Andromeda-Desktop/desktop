@@ -161,6 +161,16 @@ photos = [photo(i)
           for i in range(int(os.environ.get("PHOTOS", "18")))]
 
 
+_full = {}
+
+
+def full_photo(index):
+    """The viewer's full-size file: a 900 px PNG, made once per photo."""
+    if index not in _full:
+        _full[index] = png(index, 900)
+    return _full[index]
+
+
 def png(index, size=64):
     """A diagonal gradient PNG: one of the mockup's five photo tones."""
     a, b = PALETTE[index % len(PALETTE)]
@@ -233,6 +243,15 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
     if method == "TextImage":  # MMS_IMAGE: a picture file to serve; else a gradient
         path = os.environ.get("MMS_IMAGE")
         invocation.return_value(GLib.Variant("(ay)", (open(path, "rb").read() if path else png(params[1], 240),)))
+        return
+    if method == "ReadFile" and any(p[0] == params[1] for p in photos):
+        index = next(i for i, p in enumerate(photos) if p[0] == params[1])
+        data = full_photo(index)
+        invocation.return_value(GLib.Variant("(ay)", (data[params[2]:params[2] + params[3]],)))
+        return
+    if method == "TakePhoto":
+        GLib.timeout_add(int(os.environ.get("TAKE_DELAY", "1500")),
+                         lambda: invocation.return_value(GLib.Variant("(s)", (photos[0][0],))) and False)
         return
     if method == "Thumbnail":
         index = next(i for i, p in enumerate(photos) if p[0] == params[1])

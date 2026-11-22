@@ -927,6 +927,9 @@ namespace linkapp {
     std::unique_ptr<std::FILE, Close> file;
     std::uint64_t got = 0;
     std::chrono::steady_clock::time_point shown;
+    std::function<void(std::uint64_t got)> progress;
+    std::function<void(bool ok)> finished; // after the file is closed (kept) or removed
+    std::function<bool()> stale;           // true: stop reading and drop the file
   };
 
   void LinkClient::saveFile(const std::string& name) {
@@ -956,6 +959,10 @@ namespace linkapp {
       changed();
       return;
     }
+    download->progress = [this, phonePath](std::uint64_t got) { (void)m_files.saveProgress(phonePath, got); };
+    download->finished = [this, d = download.get()](bool ok) {
+      (void)(ok ? m_files.saveDone(d->phonePath, d->local) : m_files.saveFailed(d->phonePath));
+    };
     changed();
     readChunk(download);
   }
@@ -968,28 +975,29 @@ namespace linkapp {
         .uponReplyInvoke([this, download, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
                                                                                  std::vector<std::uint8_t> data) {
           if (alive.expired()) return;
+          if (download->stale && download->stale()) {
+            download->file.reset();
+            std::remove(download->local.c_str());
+            return;
+          }
           const bool wrote = !error && std::fwrite(data.data(), 1, data.size(), download->file.get()) == data.size();
           if (!wrote) {
             if (error) kLog.warn("ReadFile: {}", error->getMessage());
             download->file.reset();
             std::remove(download->local.c_str());
-            (void)m_files.saveFailed(download->phonePath);
+            download->finished(false);
             changed();
             return;
           }
           download->got += data.size();
           if (data.size() < kChunk) {
             const bool closed = std::fclose(download->file.release()) == 0;
-            if (closed) {
-              (void)m_files.saveDone(download->phonePath, download->local);
-            } else {
-              std::remove(download->local.c_str());
-              (void)m_files.saveFailed(download->phonePath);
-            }
+            if (!closed) std::remove(download->local.c_str());
+            download->finished(closed);
             changed();
             return;
           }
-          (void)m_files.saveProgress(download->phonePath, download->got);
+          if (download->progress) download->progress(download->got);
           // Progress repaints at most 4 times a second (rulebook §16).
           const auto now = std::chrono::steady_clock::now();
           if (now - download->shown >= std::chrono::milliseconds(250)) {
@@ -1232,6 +1240,76 @@ namespace linkapp {
         .uponReplyInvoke([](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("SendSystemCommand set-media-volume: {}", error->getMessage());
         });
+  }
+
+  void LinkClient::openPhoto(const std::string& phonePath) {
+    if (m_photoFile && m_photoFile->phonePath == phonePath && m_photoFile->kind != PhotoFile::Kind::Failed) return;
+    closePhoto();
+    const std::filesystem::path dir = std::filesystem::path(g_get_user_cache_dir()) / "andromeda" / "link-app" / "view";
+    std::error_code ec;
+    if (m_photoSerial == 1) std::filesystem::remove_all(dir, ec); // files a crash left behind
+    std::filesystem::create_directories(dir, ec);
+    auto download = std::make_shared<Download>();
+    download->device = m_photosDevice;
+    download->phonePath = phonePath;
+    download->local = (dir / std::format("{}{}", m_photoSerial, std::filesystem::path(phonePath).extension().string())).string();
+    download->file.reset(std::fopen(download->local.c_str(), "wb"));
+    m_photoFile = PhotoFile{.phonePath = phonePath};
+    if (!download->file) {
+      kLog.warn("view {}: cannot create {}", phonePath, download->local);
+      m_photoFile->kind = PhotoFile::Kind::Failed;
+      changed();
+      return;
+    }
+    const std::uint64_t serial = m_photoSerial;
+    download->stale = [this, serial] { return serial != m_photoSerial; };
+    download->finished = [this, d = download.get()](bool ok) {
+      m_photoFile->kind = ok ? PhotoFile::Kind::Ready : PhotoFile::Kind::Failed;
+      if (ok) m_photoFile->local = d->local;
+      m_photoFile->size = d->got;
+    };
+    changed();
+    readChunk(download);
+  }
+
+  void LinkClient::closePhoto() {
+    if (m_photoFile && !m_photoFile->local.empty()) std::remove(m_photoFile->local.c_str());
+    m_photoFile.reset();
+    ++m_photoSerial;
+  }
+
+  void LinkClient::savePhoto(const std::string& phonePath, std::function<void(const std::string&)> done) {
+    m_proxy->callMethodAsync("SavePhoto")
+        .onInterface(kInterface)
+        .withArguments(m_photosDevice, phonePath)
+        .uponReplyInvoke([done = std::move(done)](std::optional<sdbus::Error> error, std::string saved) {
+          if (error) kLog.warn("SavePhoto: {}", error->getMessage());
+          done(error ? std::string() : saved);
+        });
+  }
+
+  void LinkClient::takePhoto() {
+    const std::string device = presence().phone.id;
+    if (device.empty() || m_takingPhoto) return;
+    const std::uint64_t serial = ++m_takeSerial;
+    m_takingPhoto = serial;
+    changed();
+    m_proxy->callMethodAsync("TakePhoto")
+        .onInterface(kInterface)
+        .withTimeout(std::chrono::minutes(6))
+        .withArguments(device)
+        .uponReplyInvoke([this, serial, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error, std::string) {
+          if (alive.expired() || m_takingPhoto != serial) return;
+          if (error) kLog.warn("TakePhoto: {}", error->getMessage());
+          m_takingPhoto.reset();
+          if (!error) loadPhotos();
+          changed();
+        });
+  }
+
+  void LinkClient::cancelTakePhoto() {
+    m_takingPhoto.reset();
+    changed();
   }
 
   void LinkClient::clearAll() {

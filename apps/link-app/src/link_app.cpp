@@ -23,6 +23,7 @@
 #include <filesystem>
 #include <sstream>
 #include <format>
+#include <fstream>
 #include <gio/gio.h>
 #include <glib.h>
 #include <poll.h>
@@ -664,8 +665,13 @@ namespace linkapp {
   LinkApp::LinkApp() : DeskApp({.id = kAppId, .name = "Link"}) {}
 
   LinkApp::~LinkApp() {
-    if (m_dropSurface == nullptr) return;
-    if (DragAndDrop* dnd = loop().wayland().dragAndDrop()) dnd->clearTarget(m_dropSurface);
+    if (m_dropSurface != nullptr) {
+      if (DragAndDrop* dnd = loop().wayland().dragAndDrop()) dnd->clearTarget(m_dropSurface);
+    }
+    // The viewer's image holds a texture of m_viewCache: the windows go before it.
+    destroyWindows();
+    loop().removeSource(&m_viewCache);
+    if (m_client) m_client->closePhoto();
   }
 
   LinkApp::DropCue LinkApp::dropCueHere() const {
@@ -800,7 +806,12 @@ namespace linkapp {
       m_threads = std::make_unique<ThreadAdapter>(*m_client, m_scale, m_thread, m_search, [this](std::uint64_t id) { openThread(id); });
       m_conversation = std::make_unique<ConversationAdapter>(*m_client, m_scale);
       m_calls = std::make_unique<CallAdapter>(*m_client, m_scale, m_search);
-      m_photos = std::make_unique<PhotoAdapter>(*m_client, m_scale, m_search);
+      m_photos = std::make_unique<PhotoAdapter>(*m_client, m_scale, m_search, [this](std::size_t item) {
+        viewPhoto(m_client->photos().items()[item].path);
+      });
+      m_viewCache.initialize(&loop().gl());
+      m_viewCache.setMakeCurrentCallback([this] { (void)loop().renderContext().backend().makeCurrentNoSurface(); });
+      loop().addSource(&m_viewCache);
       m_files = std::make_unique<FileAdapter>(*m_client, m_scale, m_search,
                                               [this](std::size_t index, float x, float y) { fileMenu(index, x, y); });
       m_client->setOnMirrorFrame([this](MirrorDecoder::Frame frame) { showMirrorFrame(std::move(frame)); });
@@ -815,6 +826,14 @@ namespace linkapp {
                                .shortcut = KeyChord{.sym = XKB_KEY_f, .modifiers = KeyMod::Ctrl},
                                .enabled = [this] { return m_searchInput != nullptr; },
                                .run = [this] { m_window->input().setFocus(m_searchInput->inputArea()); }});
+      DeskApp::commands().add({.id = "photo.previous", .label = "Previous Photo", .group = "View",
+                               .shortcut = KeyChord{.sym = XKB_KEY_Left, .modifiers = 0},
+                               .enabled = [this] { return m_viewing && m_page == Page::Photos && photoStep(-1); },
+                               .run = [this] { viewPhoto(photoStep(-1)); }});
+      DeskApp::commands().add({.id = "photo.next", .label = "Next Photo", .group = "View",
+                               .shortcut = KeyChord{.sym = XKB_KEY_Right, .modifiers = 0},
+                               .enabled = [this] { return m_viewing && m_page == Page::Photos && photoStep(1); },
+                               .run = [this] { viewPhoto(photoStep(1)); }});
       DeskApp::commands().add({.id = "view.close", .label = "Close", .group = "View",
                       .shortcut = KeyChord{.sym = XKB_KEY_Escape, .modifiers = 0},
                       .enabled = [this] { return dismissable(); }, .run = [this] { dismiss(); }});
@@ -826,6 +845,10 @@ namespace linkapp {
         syncHotspotSheet();
         updateCaption();
         refreshSearch();
+        if (m_viewing && std::ranges::find(m_client->photos().items(), *m_viewing, &Photo::path) == m_client->photos().items().end()) {
+          m_viewing.reset();
+          m_client->closePhoto();
+        }
         syncPlayer();
         m_window->requestRebuild();
       });
@@ -1005,9 +1028,13 @@ namespace linkapp {
            m_client->presence().kind != Presence::Kind::NotPaired;
   }
 
-  bool LinkApp::dismissable() const { return pairShown() || m_confirmForget || m_search; }
+  bool LinkApp::dismissable() const { return pairShown() || m_confirmForget || m_viewing || m_search; }
 
   void LinkApp::dismiss() {
+    if (m_viewing) {
+      viewPhoto(std::nullopt);
+      return;
+    }
     if (pairShown()) {
       m_client->cancelPairing();
     } else if (m_confirmForget) {
@@ -2204,6 +2231,145 @@ namespace linkapp {
     return cards;
   }
 
+  std::optional<std::string> LinkApp::photoStep(int delta) const {
+    if (!m_viewing) return std::nullopt;
+    const auto& items = m_client->photos().items();
+    const auto it = std::ranges::find(items, *m_viewing, &Photo::path);
+    if (it == items.end()) return std::nullopt;
+    const auto item = static_cast<std::size_t>(it - items.begin());
+    if (m_search) {
+      const auto& order = m_search->photos;
+      const auto pos = static_cast<std::ptrdiff_t>(std::ranges::find(order, item) - order.begin()) + delta;
+      if (pos < 0 || pos >= static_cast<std::ptrdiff_t>(order.size())) return std::nullopt;
+      return items[order[static_cast<std::size_t>(pos)]].path;
+    }
+    const auto pos = static_cast<std::ptrdiff_t>(item) + delta;
+    if (pos < 0 || pos >= static_cast<std::ptrdiff_t>(items.size())) return std::nullopt;
+    return items[static_cast<std::size_t>(pos)].path;
+  }
+
+  void LinkApp::viewPhoto(std::optional<std::string> path) {
+    m_viewing = std::move(path);
+    m_viewImage = {};
+    const auto& items = m_client->photos().items();
+    const auto it = m_viewing ? std::ranges::find(items, *m_viewing, &Photo::path) : items.end();
+    const Presence::Kind kind = m_client->presence().kind;
+    const bool live = kind == Presence::Kind::Connected || kind == Presence::Kind::Locked;
+    // A video shows its poster: the viewer reads only photos in full, and only from a connected phone.
+    if (it != items.end() && !it->videoS && live) {
+      m_client->openPhoto(*m_viewing);
+    } else {
+      m_client->closePhoto();
+    }
+    if (m_viewing && m_photoGrid != nullptr && it != items.end()) {
+      // Back in the grid, the shown photo is in view.
+      std::size_t row = static_cast<std::size_t>(it - items.begin());
+      if (m_search) row = static_cast<std::size_t>(std::ranges::find(m_search->photos, row) - m_search->photos.begin());
+      m_photoGrid->scrollToIndex(row);
+    }
+    if (m_window != nullptr) m_window->requestRebuild();
+  }
+
+  void LinkApp::copyPhoto() {
+    const std::optional<PhotoFile>& file = m_client->photoFile();
+    if (!file || file->kind != PhotoFile::Kind::Ready) return;
+    std::ifstream in(file->local, std::ios::binary);
+    auto bytes = std::make_shared<std::string>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    std::string ext = std::filesystem::path(file->phonePath).extension().string();
+    std::ranges::transform(ext, ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    const std::string mime = ext == ".png" ? "image/png" : ext == ".webp" ? "image/webp" : ext == ".heic" ? "image/heic"
+                           : ext == ".gif" ? "image/gif" : "image/jpeg";
+    if (DragAndDrop* dnd = loop().wayland().dragAndDrop()) {
+      dnd->setSelection(loop().wayland().lastInputSerial(),
+                        {.mimeTypes = {mime}, .data = [bytes](const std::string&) -> std::string { return *bytes; }});
+    }
+  }
+
+  // PhotoLightbox (design-link-parity handoff.yaml): the dark stage (the Mirror's), the photo contain-fit with P24
+  // around it, the toolbar capsule: Previous, Next | name over "time · size · W × H" | Copy, Save.
+  std::unique_ptr<Node> LinkApp::viewer(Renderer& renderer, float width, float height) {
+    const float s = m_scale;
+    const auto& items = m_client->photos().items();
+    const auto it = std::ranges::find(items, *m_viewing, &Photo::path);
+    auto stage = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP16 * s,
+                             .fill = colorSpecFromRole(ColorRole::View), .flexGrow = 1.0F});
+    stage->setPaletteTone(PaletteTone::Dark);
+    if (it == items.end()) return stage;
+    const Photo& photo = *it;
+    const std::optional<PhotoFile>& file = m_client->photoFile();
+    const bool failed = file && file->phonePath == photo.path && file->kind == PhotoFile::Kind::Failed;
+    const bool ready = file && file->phonePath == photo.path && file->kind == PhotoFile::Kind::Ready;
+    const float barH = Tokens::sizeControlXl * s;
+    const float pad = Tokens::spaceP24 * s;
+    const float boxW = std::max(1.0F, width - 2.0F * pad);
+    const float boxH = std::max(1.0F, height - Tokens::componentWindowCaption * s - barH - 3.0F * pad);
+    if (failed) {
+      stage->addChild(emptyState("photo-off", "This photo could not be loaded", "The phone did not send it.", s,
+                                 ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Secondary,
+                                             .onClick = [this, path = photo.path] { m_client->closePhoto(); viewPhoto(path); }})));
+    } else {
+      Image* image = nullptr;
+      stage->addChild(ui::image({.out = &image, .fit = ImageFit::Contain, .width = boxW, .height = boxH}));
+      // The grid's thumbnail scaled up until the full image decodes.
+      const std::vector<std::uint8_t>* png = m_client->thumbnail(photo.path);
+      if (png != nullptr) (void)image->setSourceBytes(renderer, png->data(), png->size());
+      if (ready) {
+        const int side = static_cast<int>(std::max(boxW, boxH));
+        if (!image->setSourceFileAsync(renderer, m_viewCache, file->local, side) && png == nullptr) image->clear(renderer);
+        if (image->sourceWidth() > 0) m_viewImage = {image->sourceWidth(), image->sourceHeight()};
+        image->setAsyncReadyCallback([this, image] {
+          const std::pair<int, int> size{image->sourceWidth(), image->sourceHeight()};
+          if (size == m_viewImage || m_window == nullptr) return;
+          m_viewImage = size;
+          m_window->requestRebuild();
+        });
+      }
+    }
+
+    auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .fill = colorSpecFromRole(ColorRole::Popover),
+                        .radius = barH / 2.0F, .height = barH});
+    bar->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s);
+    const auto key = [&](const char* glyph, const char* tip, bool enabled, std::function<void()> click) {
+      bar->addChild(ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s, .enabled = enabled,
+                                .variant = ButtonVariant::Ghost, .tooltip = std::string(tip), .onClick = std::move(click)}));
+    };
+    const auto previous = photoStep(-1);
+    const auto next = photoStep(1);
+    key("chevron-left", "Previous", previous.has_value(), [this, previous] { viewPhoto(previous); });
+    key("chevron-right", "Next", next.has_value(), [this, next] { viewPhoto(next); });
+    bar->addChild(ui::separator({.orientation = SeparatorOrientation::VerticalRule, .height = Tokens::sizeControlS * s}));
+    auto names = ui::column({.align = FlexAlign::Start, .paddingH = Tokens::spaceP8 * s, .maxWidth = std::max(0.0F, width / 2.0F)});
+    names->addChild(text(photo.name, Tokens::typeBody, ColorRole::Label1, s));
+    std::string info = std::format("{} {}", dayLabel(photo.atS * 1000, nowMs()), when(photo.atS * 1000));
+    if (photo.videoS) info += std::format(" · {}:{:02}", *photo.videoS / 60, *photo.videoS % 60);
+    if (ready) info += " · " + byteSize(file->size);
+    if (ready && m_viewImage.first > 0) info += std::format(" · {} × {}", groupedCount(static_cast<std::uint64_t>(m_viewImage.first)),
+                                                            groupedCount(static_cast<std::uint64_t>(m_viewImage.second)));
+    names->addChild(text(info, Tokens::typeFootnote, ColorRole::Label2, s));
+    bar->addChild(std::move(names));
+    bar->addChild(ui::separator({.orientation = SeparatorOrientation::VerticalRule, .height = Tokens::sizeControlS * s}));
+    if (!photo.videoS) key("copy", "Copy", ready, [this] { copyPhoto(); });
+    const auto saved = m_viewSaved.find(photo.path);
+    if (saved != m_viewSaved.end()) {
+      bar->addChild(ui::button({.text = std::string("Show in Folder"), .glyph = std::string("folder"), .variant = ButtonVariant::Tonal,
+                                .onClick = [this, local = saved->second] { m_client->showInFolder({local}); }}));
+    } else {
+      const Presence::Kind kind = m_client->presence().kind;
+      const bool live = kind == Presence::Kind::Connected || kind == Presence::Kind::Locked;
+      bar->addChild(ui::button({.text = std::string("Save"), .glyph = std::string("download"), .enabled = live,
+                                .variant = ButtonVariant::Tonal,
+                                .onClick = [this, path = photo.path] {
+                                  m_client->savePhoto(path, [this, path](const std::string& local) {
+                                    if (local.empty()) return;
+                                    m_viewSaved[path] = local;
+                                    if (m_window != nullptr) m_window->requestRebuild();
+                                  });
+                                }}));
+    }
+    stage->addChild(std::move(bar));
+    return stage;
+  }
+
   // Calls (handoff.yaml): dial row (capsule "Name or number" + Primary Call), then the log grouped Today / Earlier.
   std::unique_ptr<Node> PhotoAdapter::createTile() {
     auto tile = std::make_unique<Node>();
@@ -2219,7 +2385,29 @@ namespace linkapp {
     return tile;
   }
 
-  void PhotoAdapter::bindTile(Node& tile, std::size_t index, bool /*selected*/, bool /*hovered*/) {
+  namespace {
+    // The corner check of a tile (rulebook §9.7: 20 px at inset 8), with an inset-8 margin around it as its hit area.
+    bool inCheck(float x, float y, float width, float height, float s) {
+      const float reach = (20.0F + 2.0F * Tokens::spaceP8) * s;
+      return x >= width - reach && y >= height - reach;
+    }
+  } // namespace
+
+  void PhotoAdapter::onActivate(std::size_t index) {
+    if (m_client.photos().selectedCount() > 0) {
+      m_client.togglePhoto(at(index));
+    } else {
+      m_open(at(index));
+    }
+  }
+
+  bool PhotoAdapter::onPointerPress(std::size_t index, float x, float y, float width, float height) {
+    if (!inCheck(x, y, width, height, m_scale)) return false;
+    m_client.togglePhoto(at(index));
+    return true;
+  }
+
+  void PhotoAdapter::bindTile(Node& tile, std::size_t index, bool /*selected*/, bool hovered) {
     const float s = m_scale;
     const auto& kids = tile.children();
     auto* image = static_cast<Image*>(kids[0].get());
@@ -2240,7 +2428,10 @@ namespace linkapp {
     ring->setSize(w, h);
     ring->setRadius(radius);
     const float d = 20.0F * s;
-    badge->setVisible(picked);
+    // A hovered tile shows its empty check: a press there selects without opening the viewer.
+    badge->setVisible(picked || hovered);
+    badge->setFill(picked ? colorSpecFromRole(ColorRole::Accent) : colorSpecFromRole(ColorRole::Shadow, 0.3F));
+    badge->setBorder(picked ? clearColorSpec() : colorSpecFromRole(ColorRole::OnAccent), 1.5F * s);
     badge->setPosition(w - Tokens::spaceP8 * s - d, h - Tokens::spaceP8 * s - d);
     badge->setSize(d, d);
     badge->setRadius(d / 2.0F);
@@ -2292,7 +2483,33 @@ namespace linkapp {
     caption.push_back(text("Photos", Tokens::typeHeadline, ColorRole::Label1, s));
     if (photos.total() > 0) caption.push_back(text(groupedCount(photos.total()), Tokens::typeFootnote, ColorRole::Label2, s));
     caption.push_back(ui::row({.flexGrow = 1.0F}));
-    caption.push_back(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = "All"}, {.label = "Photos"}, {.label = "Videos"}},
+    if (m_viewing) {
+      // The lightbox caption: Back, the photo's place in the grid order.
+      caption.clear();
+      caption.push_back(ui::button({.glyph = std::string("chevron-left"), .glyphSize = Tokens::sizeSymbol * s,
+                                    .variant = ButtonVariant::Ghost, .tooltip = std::string("Back to Photos"),
+                                    .onClick = [this] { viewPhoto(std::nullopt); }}));
+      const std::vector<std::size_t>* order = m_search ? &m_search->photos : nullptr;
+      const auto& items = photos.items();
+      const auto at = std::ranges::find(items, *m_viewing, &Photo::path);
+      const auto index = static_cast<std::size_t>(at - items.begin());
+      const std::size_t shown = order ? static_cast<std::size_t>(std::ranges::find(*order, index) - order->begin()) : index;
+      auto place = text(std::format("{} of {}", groupedCount(shown + 1), groupedCount(order ? order->size() : photos.total())),
+                        Tokens::typeFootnote, ColorRole::Label2, s);
+      caption.push_back(std::move(place));
+      caption.push_back(ui::row({.flexGrow = 1.0F}));
+    } else {
+      const bool taking = m_client->takingPhoto();
+      const bool live = m_client->presence().kind == Presence::Kind::Connected;
+      caption.push_back(ui::button({.text = std::string(taking ? "Waiting for the phone…" : "Take Photo"),
+                                    .glyph = std::string("camera"), .enabled = live && !taking,
+                                    .variant = ButtonVariant::Tonal, .onClick = [this] { m_client->takePhoto(); }}));
+      if (taking) {
+        caption.push_back(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Ghost,
+                                      .onClick = [this] { m_client->cancelTakePhoto(); }}));
+      }
+    }
+    if (!m_viewing) caption.push_back(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = "All"}, {.label = "Photos"}, {.label = "Videos"}},
                                      .selectedIndex = static_cast<std::size_t>(photos.media()), .scale = s, .compact = true,
                                      .onChange = [this](std::size_t i) {
                                        m_client->setPhotoMedia(static_cast<Photos::Media>(i));
@@ -2331,6 +2548,7 @@ namespace linkapp {
       }
       break;
     }
+    if (m_viewing) return cards(viewer(renderer, width, height));
     m_photos->setRenderer(&renderer);
     auto days = m_search ? std::vector<std::pair<std::size_t, std::string>>{{0, std::format("{} of {} loaded", m_search->photos.size(), photos.items().size())}}
                          : photos.days(nowMs());

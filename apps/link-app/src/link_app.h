@@ -3,6 +3,7 @@
 #include "app/desk_app.h"
 #include "app/file_chooser.h"
 #include "core/timer_manager.h"
+#include "render/core/async_texture_cache.h"
 #include "render/core/texture_manager.h"
 #include "link_client.h"
 #include "ui/controls/scroll_view.h"
@@ -123,12 +124,12 @@ namespace linkapp {
     const std::optional<SearchHits>& m_search; // set while the sidebar search has a query
   };
 
-  // Photos: the phone's photos and videos page by page under day headers; a click toggles the selection, a tile near
-  // the end asks for the next page.
+  // Photos: the phone's photos and videos page by page under day headers; a tile near the end asks for the next page.
   class PhotoAdapter final : public VirtualGridAdapter {
   public:
-    PhotoAdapter(LinkClient& client, const float& scale, const std::optional<SearchHits>& search)
-        : m_client(client), m_scale(scale), m_search(search) {}
+    PhotoAdapter(LinkClient& client, const float& scale, const std::optional<SearchHits>& search,
+                 std::function<void(std::size_t item)> open)
+        : m_client(client), m_scale(scale), m_search(search), m_open(std::move(open)) {}
     // The renderer of the window; thumbnails decode on bind.
     void setRenderer(Renderer* renderer) { m_renderer = renderer; }
     [[nodiscard]] std::size_t itemCount() const override {
@@ -136,7 +137,10 @@ namespace linkapp {
     }
     [[nodiscard]] std::unique_ptr<Node> createTile() override;
     void bindTile(Node& tile, std::size_t index, bool selected, bool hovered) override;
-    void onActivate(std::size_t index) override { m_client.togglePhoto(at(index)); }
+    // A click opens the viewer; with a selection it toggles, as a press on the corner check always does.
+    void onActivate(std::size_t index) override;
+    bool onPointerPress(std::size_t index, float x, float y, float width, float height) override;
+    PointerReleaseResult onPointerRelease(std::optional<std::size_t> /*index*/) override { return {.rebind = true}; }
     [[nodiscard]] std::string itemTooltip(std::size_t index) const override;
     [[nodiscard]] std::unique_ptr<Node> createSectionHeader() override;
     void bindSectionHeader(Node& header, std::size_t section, float width, float height) override;
@@ -148,6 +152,7 @@ namespace linkapp {
     LinkClient& m_client;
     const float& m_scale;
     const std::optional<SearchHits>& m_search; // set while the sidebar search has a query
+    std::function<void(std::size_t item)> m_open;
     Renderer* m_renderer = nullptr;
     std::vector<std::pair<std::size_t, std::string>> m_days;
     std::map<const Node*, std::string> m_shown; // tile -> path of the thumbnail it shows
@@ -234,6 +239,12 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> calls();
     [[nodiscard]] std::unique_ptr<Node> activity();
     [[nodiscard]] std::unique_ptr<Node> photos(Renderer& renderer, float width, float height);
+    // PhotoLightbox (design-link-parity handoff.yaml) over the Photos card: the photo on the dark stage, the toolbar.
+    [[nodiscard]] std::unique_ptr<Node> viewer(Renderer& renderer, float width, float height);
+    void viewPhoto(std::optional<std::string> path);
+    // The photo `delta` steps from the shown one in the grid's order (search hits while searching); none at the ends.
+    [[nodiscard]] std::optional<std::string> photoStep(int delta) const;
+    void copyPhoto();
     [[nodiscard]] std::unique_ptr<Node> files(float width, float height);
     [[nodiscard]] std::unique_ptr<Node> mirror(float width, float height);
     // Shows a decoded frame: a dmabuf frame is imported without a copy, an RGBA frame is uploaded into the one
@@ -346,6 +357,10 @@ namespace linkapp {
       Label* level = nullptr;
     };
     PlayerView m_playerView;          // of the player popover's last build; used only while it is open
+    std::optional<std::string> m_viewing; // phone path of the photo the viewer shows
+    std::map<std::string, std::string> m_viewSaved; // phone path to its saved copy, from the viewer's Save
+    std::pair<int, int> m_viewImage;  // the shown photo's decoded size, 0 until it decodes
+    AsyncTextureCache m_viewCache;    // the viewer's full-size decode, off the UI thread
     Timer m_playerTick;               // 1 s, only while the popover shows a playing player
     int m_unmutedVolume = 50;         // the media volume Unmute gives back
     std::unique_ptr<desk::FileChooser> m_chooser;

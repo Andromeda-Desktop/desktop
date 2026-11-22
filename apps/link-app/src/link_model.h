@@ -386,6 +386,15 @@ namespace linkapp {
     std::vector<Thread> m_threads;
   };
 
+  // The full file of the photo the viewer shows, read by ReadFile into the cache: Loading -> Ready | Failed.
+  struct PhotoFile {
+    enum class Kind : std::uint8_t { Loading, Ready, Failed };
+    Kind kind = Kind::Loading;
+    std::string phonePath;
+    std::string local;      // the cache file once Ready
+    std::uint64_t size = 0; // bytes once Ready
+  };
+
   // One photo or video of a Link1 PhotosPage.
   struct Photo {
     std::string path; // for Thumbnail and SavePhoto

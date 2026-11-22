@@ -143,6 +143,16 @@ namespace linkapp {
     void ring(const std::string& deviceId);
     void dial(const std::string& deviceId, const std::string& number);
     void setDnd(const std::string& deviceId, bool on);
+    // Reads the full photo into the cache for the viewer; a new path drops the last file and any read in flight.
+    void openPhoto(const std::string& phonePath);
+    void closePhoto();
+    [[nodiscard]] const std::optional<PhotoFile>& photoFile() const { return m_photoFile; }
+    // SavePhoto into the downloads folder; done gets the saved path, empty on failure.
+    void savePhoto(const std::string& phonePath, std::function<void(const std::string&)> done);
+    // TakePhoto on the shown phone; the Photos page reloads with the new photo. Cancel only stops waiting here.
+    void takePhoto();
+    void cancelTakePhoto();
+    [[nodiscard]] bool takingPhoto() const { return m_takingPhoto.has_value(); }
     // PhonePlayerCommand: play-pause, next, previous, seek (value ms).
     void playerCommand(const std::string& deviceId, const std::string& command, std::uint64_t value = 0);
     void setMediaVolume(const std::string& deviceId, int percent);
@@ -181,6 +191,10 @@ namespace linkapp {
     bool m_pairing = false; // Link1 Pairing: a window is open, ours or another client's
     Pair m_pair;
     std::vector<Phone> m_phones;
+    std::optional<PhotoFile> m_photoFile;
+    std::uint64_t m_photoSerial = 0;   // the viewer's read; a newer open makes older reads stale
+    std::uint64_t m_takeSerial = 0;
+    std::optional<std::uint64_t> m_takingPhoto; // the TakePhoto this app waits for
     std::string m_selected;
     Feed m_feed;
     Messages m_messages;
