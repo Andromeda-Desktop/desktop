@@ -686,7 +686,8 @@ namespace {
     for (int step = 0; step < 3000; ++step) {
       // Events of the current session, or of an older one (a late reply).
       const std::uint64_t session = rng() % 3 ? mirror.session : mirror.session - std::min<std::uint64_t>(mirror.session, 1 + rng() % 2);
-      const MirrorEvent event{.kind = static_cast<E>(rng() % 5), .session = session, .width = 1080, .height = 2400, .error = "denied"};
+      const std::uint32_t width = rng() % 4 ? 1080 : 0;
+      const MirrorEvent event{.kind = static_cast<E>(rng() % 5), .session = session, .width = width, .height = 2400, .error = "denied"};
       const Mirror before = mirror;
       const bool moved = mirrorStep(mirror, event);
       if (moved) {
@@ -696,6 +697,9 @@ namespace {
         expect(mirror.session == before.session + (event.kind == E::Start ? 1 : 0), "Start alone opens a session", seed, step);
       } else {
         expect(mirror.kind == before.kind && mirror.session == before.session, "a rejected event changes nothing", seed, step);
+      }
+      if (event.kind == E::Opened && session == before.session && before.kind == K::Asking) {
+        expect(mirror.kind != K::Asking, "an open reply always leaves Asking", seed, step);
       }
       expect((mirror.kind == K::Showing) == (mirror.width > 0), "a size exactly while Showing", seed, step);
       expect(mirror.kind == K::Failed || mirror.error.empty(), "an error only while Failed", seed, step);

@@ -1034,6 +1034,10 @@ namespace linkapp {
           if (!mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Opened, .session = session, .width = width, .height = height})) {
             return; // stopped or restarted meanwhile: fd closes here
           }
+          if (m_mirror.kind == Mirror::Kind::Failed) {
+            changed(); // no screen size: fd closes here
+            return;
+          }
           m_decoder = std::make_unique<MirrorDecoder>(
               fd.release(),
               [this](MirrorDecoder::Frame frame) {
