@@ -2088,6 +2088,10 @@ void AppWindow::detachSheet() {
 }
 
 void AppWindow::presentSheet(std::function<std::unique_ptr<Node>(float)> builder, std::function<void()> onCancel) {
+  // A sheet that another replaces is cancelled, so its owner never waits for an answer that cannot come.
+  if (auto replaced = std::exchange(m_sheetCancel, {}); replaced && m_sheetBuilder) {
+    replaced();
+  }
   const bool replacing = static_cast<bool>(m_sheetBuilder);
   m_sheetBuilder = std::move(builder);
   m_sheetCancel = std::move(onCancel);

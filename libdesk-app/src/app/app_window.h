@@ -162,7 +162,8 @@ public:
   // True = handled. A terminal uses it: its Ctrl and Alt chords belong to the program it runs.
   void setFirstKeyHandler(std::function<bool(const KeyboardEvent&)> handler) { m_firstKeyHandler = std::move(handler); }
   // A window-modal sheet (rulebook 9.10): a scrim over the window and the card centred on it. The builder runs on
-  // each scene build; Escape calls onCancel. Window keys and commands wait while it shows.
+  // each scene build; Escape, or a new sheet that replaces it, calls onCancel. Window keys and commands wait while it
+  // shows.
   void presentSheet(std::function<std::unique_ptr<Node>(float scale)> builder, std::function<void()> onCancel);
   void dismissSheet();
   // Collapses or restores the sidebar on spring.page (the Files Gallery is full-bleed); the header stays in place.
