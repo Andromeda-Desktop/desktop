@@ -98,7 +98,7 @@ docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v 
     case $ANDROMEDA_APP in files|terminal) debs="$debs $(ls /o/andromeda-libdesk_*.deb)" ;; esac
   else
     debs=$(ls /o/*.deb /o/extra/*.deb 2> /dev/null | grep -v "/andromeda_\|/andromeda-dbgsym_")
-    [ -z "$ANDROMEDA_CORE" ] || debs=$(echo "$debs" | grep -v "/andromeda-\(files\|player\|viewer\|terminal\|libdesk\)_")
+    [ -z "$ANDROMEDA_CORE" ] || debs=$(echo "$debs" | grep -v "/andromeda-\(files\|player\|viewer\|terminal\|link-app\|libdesk\)_")
   fi
   apt-get install -y -qq $debs 2>&1 | tee /o/install.log || exit 12
 ' || status=$?
