@@ -121,9 +121,6 @@ CLIPS = {1: "Meet at gate B12 at 18:40, boarding closes 18:55\nSeat 14C", 2: "hu
 
 def emit_activity():
     home = os.path.expanduser("~")
-    emit("ClipboardOffered", "(stast)", "p1", 1, ["text/plain;charset=utf-8", "text/plain"], len(CLIPS[1].encode()))
-    emit("ClipboardOffered", "(stast)", "p1", 2, ["text/plain", "x-kde-passwordManagerHint"], len(CLIPS[2]))
-    emit("ClipboardOffered", "(stast)", "p1", 3, ["image/png"], 48_000)
     emit("TransferOffered", "(ssa(st))", "t3", "p1", [("IMG_20261120_181203.jpg", 3_400_000)])
     emit("TransferProgress", "(stt)", "t3", 3_400_000, 3_400_000)
     saved = os.environ.get("RECEIVED_DIR", home + "/Pictures")  # a test points it at a real file
@@ -135,6 +132,14 @@ def emit_activity():
     emit("TransferProgress", "(stt)", "t4", 10_000_000, 160_000_000)
     GLib.timeout_add(500, lambda: emit("TransferProgress", "(stt)", "t4", 11_050_000, 160_000_000) or False)
     emit("TransferOffered", "(ssa(st))", "t1", "p1", [("Quarterly report Q3 final (2).pdf", 2_400_000)])
+    GLib.timeout_add(300, emit_clips)  # after the transfers: the text clip is the newest row
+
+
+def emit_clips():
+    emit("ClipboardOffered", "(stast)", "p1", 1, ["text/plain;charset=utf-8", "text/plain"], len(CLIPS[1].encode()))
+    emit("ClipboardOffered", "(stast)", "p1", 2, ["text/plain", "x-kde-passwordManagerHint"], len(CLIPS[2]))
+    emit("ClipboardOffered", "(stast)", "p1", 3, ["image/png"], 48_000)
+    return False
 
 
 PALETTE = [((255, 40, 90), (150, 60, 200)), ((10, 25, 60), (60, 150, 210)), ((250, 250, 248), (225, 220, 210)),
