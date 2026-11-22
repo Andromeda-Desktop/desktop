@@ -4187,6 +4187,7 @@ bool FilesWindow::canRedo() const noexcept { return adminHere() == nullptr && !m
 void FilesWindow::showConflict(const FileOpsClient::Job& job) {
   const auto& [source, target] = *job.conflict;
   kLog.debug("conflict sheet {}", job.folderClash.has_value() ? "merge" : "file");
+  const bool shown = m_conflict != nullptr; // the next question of the same job: no Skip for the shown sheet
   m_conflict = std::make_shared<ConflictSheet>(
       ConflictSheet::Info{.verb = job.kind == "move" ? "Moving" : "Copying", .source = source, .target = target,
                           .totalFiles = job.totalFiles, .conflictIndex = job.conflictIndex,
@@ -4220,12 +4221,17 @@ void FilesWindow::showConflict(const FileOpsClient::Job& job) {
       },
       [this] { m_window.requestRebuild(); });
   kLog.debug("job conflict sheet {}", target.filename().string());
-  m_window.presentSheet([sheet = m_conflict](float scale) { return sheet->build(scale); },
-                        [sheet = std::weak_ptr<ConflictSheet>(m_conflict)] {
-                          if (const auto live = sheet.lock()) {
-                            live->choose(ConflictSheet::Choice::Skip);
-                          }
-                        });
+  auto build = [sheet = m_conflict](float scale) { return sheet->build(scale); };
+  auto skip = [sheet = std::weak_ptr<ConflictSheet>(m_conflict)] {
+    if (const auto live = sheet.lock()) {
+      live->choose(ConflictSheet::Choice::Skip);
+    }
+  };
+  if (shown) {
+    m_window.replaceSheet(std::move(build), std::move(skip));
+  } else {
+    m_window.presentSheet(std::move(build), std::move(skip));
+  }
 }
 
 void FilesWindow::closeConflict() {

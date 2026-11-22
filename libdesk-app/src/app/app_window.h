@@ -166,6 +166,11 @@ public:
   // each scene build; Escape, or a new sheet that replaces it, calls onCancel. Window keys and commands wait while it
   // shows.
   void presentSheet(std::function<std::unique_ptr<Node>(float scale)> builder, std::function<void()> onCancel);
+  // The owner's next sheet in place of its own shown one: that one's onCancel does not run, as its question goes on.
+  void replaceSheet(std::function<std::unique_ptr<Node>(float scale)> builder, std::function<void()> onCancel) {
+    m_sheetCancel = {};
+    presentSheet(std::move(builder), std::move(onCancel));
+  }
   void dismissSheet();
   // Collapses or restores the sidebar on spring.page (the Files Gallery is full-bleed); the header stays in place.
   void setSidebarVisible(bool visible);
