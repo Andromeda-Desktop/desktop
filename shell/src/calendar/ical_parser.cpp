@@ -19,6 +19,16 @@
 #include <unordered_map>
 #include <vector>
 
+// libical 4 renamed the duration call and bumped the soname; Debian and Ubuntu ship libical 3.
+#if ICAL_CHECK_VERSION(4, 0, 0)
+#define LIBICAL_DURATION_SECONDS icaldurationtype_as_utc_seconds
+#define LIBICAL_SONAME "libical.so.4.0"
+#else
+#define LIBICAL_DURATION_SECONDS icaldurationtype_as_int
+#define LIBICAL_SONAME "libical.so.3"
+#endif
+// Expands the name before X stringifies it.
+#define LIBICAL_X_(X, name) X(name)
 // clang-format off
 #define LIBICAL_FUNCTIONS(X) \
   X(icalcomponent_count_errors) X(icalcomponent_free) X(icalcomponent_get_description) \
@@ -26,7 +36,7 @@
   X(icalcomponent_get_first_property) X(icalcomponent_get_location) X(icalcomponent_get_next_component) \
   X(icalcomponent_get_next_property) X(icalcomponent_get_recurrenceid) X(icalcomponent_get_status) \
   X(icalcomponent_get_summary) X(icalcomponent_get_uid) X(icalcomponent_isa) X(icalcomponent_new_from_string) \
-  X(icaldurationtype_as_utc_seconds) X(icalparameter_get_related) X(icalproperty_get_action) \
+  LIBICAL_X_(X, LIBICAL_DURATION_SECONDS) X(icalparameter_get_related) X(icalproperty_get_action) \
   X(icalproperty_get_color) X(icalproperty_get_first_parameter) X(icalproperty_get_rdate) \
   X(icalproperty_get_rrule) X(icalproperty_get_trigger) X(icalproperty_get_url) X(icalproperty_get_x) \
   X(icalproperty_get_x_name) X(icalproperty_recurrence_is_excluded) X(icalrecur_iterator_free) \
@@ -36,7 +46,7 @@
   X(icaltime_is_utc) X(icaltime_is_valid_time) X(icaltime_null_date) X(icaltime_null_time) X(icaltime_span_new) \
   X(icaltimezone_get_utc_timezone) X(icaltriggertype_is_bad_trigger)
 // clang-format on
-LAZY_LIBRARY(LibicalApi, libical, "libical.so.4.0", LIBICAL_FUNCTIONS)
+LAZY_LIBRARY(LibicalApi, libical, LIBICAL_SONAME, LIBICAL_FUNCTIONS)
 
 namespace calendar {
 
@@ -66,11 +76,7 @@ namespace calendar {
     // Days and weeks count as fixed 24h spans. libical 4's icaldurationtype_as_seconds() returns 0
     // for any duration with days or weeks.
     int durationSeconds(const icaldurationtype& duration) {
-#if ICAL_CHECK_VERSION(4, 0, 0)
-      return libical().icaldurationtype_as_utc_seconds(duration);
-#else
-      return icaldurationtype_as_int(duration);
-#endif
+      return libical().LIBICAL_DURATION_SECONDS(duration);
     }
 
     std::chrono::system_clock::time_point toSystem(std::chrono::sys_time<std::chrono::seconds> t) {
