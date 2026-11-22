@@ -15,7 +15,9 @@ namespace {
 
 } // namespace
 
-LockFailDelay::LockFailDelay(std::filesystem::path stateFile) : m_path(std::move(stateFile)) {
+LockFailDelay::LockFailDelay(std::filesystem::path stateFile) : m_path(std::move(stateFile)) { load(); }
+
+void LockFailDelay::load() {
   if (m_path.empty()) {
     return;
   }
@@ -25,6 +27,9 @@ LockFailDelay::LockFailDelay(std::filesystem::path stateFile) : m_path(std::move
   if (in >> failures >> untilMs && failures > 0) {
     m_failures = failures;
     m_untilMs = untilMs;
+  } else {
+    m_failures = 0;
+    m_untilMs = 0;
   }
 }
 
@@ -42,15 +47,13 @@ std::filesystem::path LockFailDelay::defaultPath() {
 }
 
 void LockFailDelay::recordRejected(std::int64_t nowMs) {
+  load();
   ++m_failures;
   m_untilMs = nowMs + delayMsFor(m_failures);
   save();
 }
 
 void LockFailDelay::reset() {
-  if (m_failures == 0) {
-    return;
-  }
   m_failures = 0;
   m_untilMs = 0;
   if (!m_path.empty()) {
@@ -60,6 +63,7 @@ void LockFailDelay::reset() {
 }
 
 std::int64_t LockFailDelay::remainingMs(std::int64_t nowMs) {
+  load();
   // A wall clock set back would stretch the wait: restart the current step from now instead.
   const std::int64_t step = delayMsFor(m_failures);
   if (m_untilMs - nowMs > step) {

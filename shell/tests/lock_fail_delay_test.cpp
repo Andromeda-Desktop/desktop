@@ -38,6 +38,23 @@ int main() {
   }
 
   TEST_CHECK(LockFailDelay(path).failures() == 0);
+
+  {
+    // The shell and the lock process share the file: a copy loaded before the other's rejects must not lower the count,
+    // and a success in either clears it for both.
+    LockFailDelay shell(path);
+    LockFailDelay lock(path);
+    for (int i = 0; i < 6; ++i) {
+      lock.recordRejected(0);
+    }
+    shell.recordRejected(0);
+    TEST_CHECK(LockFailDelay(path).failures() == 7);
+    TEST_CHECK(lock.remainingMs(0) == LockFailDelay::delayMsFor(7));
+    shell.reset();
+    TEST_CHECK(LockFailDelay(path).failures() == 0);
+    TEST_CHECK(lock.remainingMs(0) == 0);
+  }
+
   std::filesystem::remove_all(path.parent_path());
   return 0;
 }
