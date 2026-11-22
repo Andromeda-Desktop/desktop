@@ -492,6 +492,11 @@ void CalendarService::onConfigReload() {
     return;
   }
   m_activeConfig = next;
+  if (m_refreshState == RefreshState::Running) {
+    m_refreshState = RefreshState::Superseded;
+    m_syncPhases.clear();
+    ++m_syncStatusRevision;
+  }
   loadLastSynced();
   updateVdirWatches();
   std::unordered_set<std::string> activeAccountIds;
@@ -535,7 +540,7 @@ int CalendarService::pollTimeoutMs() const {
   if (m_connect.state == ConnectState::Pending && !m_connect.inFlight) {
     consider(m_connect.nextPollAt);
   }
-  if (m_credentialsInitialized && m_activeConfig.enabled && !m_refreshing) {
+  if (m_credentialsInitialized && m_activeConfig.enabled && m_refreshState == RefreshState::Idle) {
     consider(m_nextRefreshAt);
   }
   return timeout;
@@ -560,7 +565,7 @@ void CalendarService::tick() {
     }
   }
 
-  if (m_credentialsInitialized && m_activeConfig.enabled && !m_refreshing && now >= m_nextRefreshAt) {
+  if (m_credentialsInitialized && m_activeConfig.enabled && m_refreshState == RefreshState::Idle && now >= m_nextRefreshAt) {
     startRefresh();
   }
 }
@@ -609,7 +614,7 @@ void CalendarService::startRefresh() {
     scheduleNextRefresh();
     return;
   }
-  m_refreshing = true;
+  m_refreshState = RefreshState::Running;
   m_pendingAccounts = m_activeConfig.accounts.size();
   // CalDAV finds its calendars and Google authorizes before downloading; the others download at once.
   for (const CalendarConfig::Account& account : m_activeConfig.accounts) {
@@ -637,6 +642,16 @@ void CalendarService::startRefresh() {
 void CalendarService::accountDone(
     const std::string& accountId, calendar::SyncFailure failure, std::vector<CalendarEvent> events
 ) {
+  if (m_refreshState == RefreshState::Superseded) {
+    if (m_pendingAccounts > 0) {
+      --m_pendingAccounts;
+    }
+    if (m_pendingAccounts == 0) {
+      m_refreshState = RefreshState::Idle;
+      notifyChanged();
+    }
+    return;
+  }
   if (failure == calendar::SyncFailure::None) {
     kLog.debug("calendar account {} refreshed: {} event(s)", accountId, events.size());
     m_eventsByAccount[accountId] = std::move(events);
@@ -655,7 +670,7 @@ void CalendarService::accountDone(
     --m_pendingAccounts;
   }
   if (m_pendingAccounts == 0) {
-    m_refreshing = false;
+    m_refreshState = RefreshState::Idle;
     rebuildSnapshot();
     saveCache();
     scheduleNextRefresh();

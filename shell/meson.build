@@ -1191,6 +1191,7 @@ if build_tests
     'calendar_cache_permissions',
     'calendar_credential_store',
     'calendar_discovery_state',
+    'calendar_stale_refresh',
     'calendar_reminder_monitor',
     'calendar_reminders',
     'calendar_view_passed_event',

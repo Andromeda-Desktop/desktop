@@ -205,7 +205,9 @@ private:
   CalendarSnapshot m_snapshot;
   std::map<std::string, std::vector<CalendarEvent>> m_eventsByAccount;
   std::chrono::steady_clock::time_point m_nextRefreshAt;
-  bool m_refreshing = false;
+  // Superseded: the config changed during the refresh; its replies drain without writing.
+  enum class RefreshState : std::uint8_t { Idle, Running, Superseded };
+  RefreshState m_refreshState = RefreshState::Idle;
   bool m_credentialsInitialized = false;
   bool m_initialized = false;
   bool m_cacheWritable = false;
