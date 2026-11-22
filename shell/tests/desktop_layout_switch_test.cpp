@@ -123,6 +123,24 @@ int main() {
     }
   }
 
+  // A Windows bar saved before the row gained task_view is still the Windows layout, and picks from it stay pure.
+  for (const std::string_view preset : presets) {
+    std::filesystem::remove_all(root / "state");
+    ConfigService config;
+    expect(config.setOverrides(own), "own bar writes");
+    pick(config, "windows");
+    expect(
+        config.setOverrides({{{"bar", "default", "center"}, std::vector<std::string>{"start", "windows_taskbar"}}}),
+        "old windows row"
+    );
+    pick(config, preset);
+    const std::string got = barState(config.config());
+    expect(
+        got == expected[std::string(preset)],
+        std::format("old windows > {}\n  got  {}\n  want {}", preset, got, expected[std::string(preset)])
+    );
+  }
+
   std::filesystem::remove_all(root);
   if (g_failures == 0) {
     std::println("desktop_layout_switch: ok");

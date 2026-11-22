@@ -12,6 +12,7 @@
 #include <cctype>
 #include <iterator>
 #include <optional>
+#include <ranges>
 #include <span>
 
 namespace desktop_layout {
@@ -128,8 +129,11 @@ namespace desktop_layout {
       return group;
     }
 
+    // task_view is optional: Windows bars saved before the row gained it still match.
     bool isRow(const BarConfig& bar, const BarRow& row) {
-      return std::ranges::equal(bar.startWidgets, row.start) && std::ranges::equal(bar.centerWidgets, row.center)
+      auto withoutTaskView = row.center | std::views::filter([](std::string_view w) { return w != "task_view"; });
+      return std::ranges::equal(bar.startWidgets, row.start)
+          && (std::ranges::equal(bar.centerWidgets, row.center) || std::ranges::equal(bar.centerWidgets, withoutTaskView))
           && std::ranges::equal(bar.endWidgets, row.end);
     }
 
