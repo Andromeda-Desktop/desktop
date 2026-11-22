@@ -56,8 +56,8 @@ namespace linkapp {
   class ThreadAdapter final : public VirtualListAdapter {
   public:
     ThreadAdapter(LinkClient& client, const float& scale, const std::optional<std::uint64_t>& selected,
-                  std::function<void(std::uint64_t)> open)
-        : m_client(client), m_scale(scale), m_selected(selected), m_open(std::move(open)) {}
+                  const std::optional<SearchHits>& search, std::function<void(std::uint64_t)> open)
+        : m_client(client), m_scale(scale), m_selected(selected), m_search(search), m_open(std::move(open)) {}
     [[nodiscard]] std::size_t itemCount() const override;
     [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
     [[nodiscard]] std::uint64_t itemRevision(std::size_t index) const override;
@@ -68,9 +68,12 @@ namespace linkapp {
     void onActivate(std::size_t index) override;
 
   private:
+    // A shown row to its model index: the search hit, or the row itself while not searching.
+    [[nodiscard]] std::size_t at(std::size_t row) const { return m_search ? m_search->threads[row] : row; }
     LinkClient& m_client;
     const float& m_scale;
     const std::optional<std::uint64_t>& m_selected;
+    const std::optional<SearchHits>& m_search; // set while the sidebar search has a query
     std::function<void(std::uint64_t)> m_open;
   };
 
@@ -100,8 +103,9 @@ namespace linkapp {
   // Calls: the phone's call log, newest first, grouped Today / Earlier.
   class CallAdapter final : public VirtualListAdapter {
   public:
-    CallAdapter(LinkClient& client, const float& scale) : m_client(client), m_scale(scale) {}
-    [[nodiscard]] std::size_t itemCount() const override { return m_client.calls().size(); }
+    CallAdapter(LinkClient& client, const float& scale, const std::optional<SearchHits>& search)
+        : m_client(client), m_scale(scale), m_search(search) {}
+    [[nodiscard]] std::size_t itemCount() const override { return m_search ? m_search->calls.size() : m_client.calls().size(); }
     [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
     [[nodiscard]] bool itemInteractive(std::size_t /*index*/) const override { return true; }
     [[nodiscard]] float measureItem(Renderer& renderer, std::size_t index, float width) override;
@@ -109,31 +113,40 @@ namespace linkapp {
     void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) override;
 
   private:
+    // A shown row to its model index: the search hit, or the row itself while not searching.
+    [[nodiscard]] std::size_t at(std::size_t row) const { return m_search ? m_search->calls[row] : row; }
     [[nodiscard]] std::unique_ptr<Node> build(std::size_t index) const;
 
     LinkClient& m_client;
     const float& m_scale;
+    const std::optional<SearchHits>& m_search; // set while the sidebar search has a query
   };
 
   // Photos: the phone's photos and videos page by page under day headers; a click toggles the selection, a tile near
   // the end asks for the next page.
   class PhotoAdapter final : public VirtualGridAdapter {
   public:
-    PhotoAdapter(LinkClient& client, const float& scale) : m_client(client), m_scale(scale) {}
+    PhotoAdapter(LinkClient& client, const float& scale, const std::optional<SearchHits>& search)
+        : m_client(client), m_scale(scale), m_search(search) {}
     // The renderer of the window; thumbnails decode on bind.
     void setRenderer(Renderer* renderer) { m_renderer = renderer; }
-    [[nodiscard]] std::size_t itemCount() const override { return m_client.photos().items().size(); }
+    [[nodiscard]] std::size_t itemCount() const override {
+      return m_search ? m_search->photos.size() : m_client.photos().items().size();
+    }
     [[nodiscard]] std::unique_ptr<Node> createTile() override;
     void bindTile(Node& tile, std::size_t index, bool selected, bool hovered) override;
-    void onActivate(std::size_t index) override { m_client.togglePhoto(index); }
+    void onActivate(std::size_t index) override { m_client.togglePhoto(at(index)); }
     [[nodiscard]] std::string itemTooltip(std::size_t index) const override;
     [[nodiscard]] std::unique_ptr<Node> createSectionHeader() override;
     void bindSectionHeader(Node& header, std::size_t section, float width, float height) override;
     void setDays(std::vector<std::pair<std::size_t, std::string>> days) { m_days = std::move(days); }
 
   private:
+    // A shown row to its model index: the search hit, or the row itself while not searching.
+    [[nodiscard]] std::size_t at(std::size_t row) const { return m_search ? m_search->photos[row] : row; }
     LinkClient& m_client;
     const float& m_scale;
+    const std::optional<SearchHits>& m_search; // set while the sidebar search has a query
     Renderer* m_renderer = nullptr;
     std::vector<std::pair<std::size_t, std::string>> m_days;
     std::map<const Node*, std::string> m_shown; // tile -> path of the thumbnail it shows
@@ -143,9 +156,11 @@ namespace linkapp {
   class FileAdapter final : public VirtualListAdapter {
   public:
     using Menu = std::function<void(std::size_t index, float sceneX, float sceneY)>;
-    FileAdapter(LinkClient& client, const float& scale, Menu menu)
-        : m_client(client), m_scale(scale), m_menu(std::move(menu)) {}
-    [[nodiscard]] std::size_t itemCount() const override { return m_client.files().entries().size(); }
+    FileAdapter(LinkClient& client, const float& scale, const std::optional<SearchHits>& search, Menu menu)
+        : m_client(client), m_scale(scale), m_search(search), m_menu(std::move(menu)) {}
+    [[nodiscard]] std::size_t itemCount() const override {
+      return m_search ? m_search->files.size() : m_client.files().entries().size();
+    }
     [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
     [[nodiscard]] bool itemInteractive(std::size_t /*index*/) const override { return true; }
     [[nodiscard]] float measureItem(Renderer& renderer, std::size_t index, float width) override;
@@ -153,11 +168,16 @@ namespace linkapp {
     void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) override;
     void onActivate(std::size_t index) override;
     [[nodiscard]] bool hasItemMenu() const override { return true; }
-    void onItemMenu(std::size_t index, float sceneX, float sceneY) override { m_menu(index, sceneX, sceneY); }
+    void onItemMenu(std::size_t index, float sceneX, float sceneY) override { m_menu(at(index), sceneX, sceneY); }
+    // Opens a folder, saves a file, or shows a saved one; entry indexes files().entries().
+    void open(std::size_t entry);
 
   private:
+    // A shown row to its model index: the search hit, or the row itself while not searching.
+    [[nodiscard]] std::size_t at(std::size_t row) const { return m_search ? m_search->files[row] : row; }
     LinkClient& m_client;
     const float& m_scale;
+    const std::optional<SearchHits>& m_search; // set while the sidebar search has a query
     Menu m_menu;
   };
 
@@ -234,6 +254,8 @@ namespace linkapp {
     void releaseMirrorKeys();
     void confirmLock();
     void fileMenu(std::size_t index, float sceneX, float sceneY);
+    void setQuery(std::string query);
+    void refreshSearch();
     void confirmDelete(const FileEntry& entry);
     void registerDropTarget();
     void dropped(const std::string& uris);
@@ -260,6 +282,9 @@ namespace linkapp {
     ScrollViewState m_threadScroll;
     ScrollViewState m_conversationScroll;
     std::optional<std::uint64_t> m_thread; // the selected thread
+    std::string m_query;                   // the sidebar search field
+    Input* m_searchInput = nullptr;
+    std::optional<SearchHits> m_search;    // the query's hits; set exactly while m_query is not empty
     struct Compose {
       std::string to;   // name or number as typed
       std::string body;

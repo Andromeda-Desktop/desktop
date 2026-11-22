@@ -968,4 +968,28 @@ namespace linkapp {
     return true;
   }
 
+  SearchHits searchHits(std::string_view query, const std::vector<Thread>& threads, const std::vector<CallEntry>& calls,
+                        const std::vector<FileEntry>& files, const std::vector<Photo>& photos) {
+    const auto fold = [](unsigned char c) { return static_cast<char>(c < 0x80 ? std::tolower(c) : c); };
+    std::string q;
+    for (const char c : query) q += fold(static_cast<unsigned char>(c));
+    const auto has = [&](std::string_view text) {
+      return !std::ranges::search(text, q, {}, [&](char c) { return fold(static_cast<unsigned char>(c)); }).empty();
+    };
+    SearchHits hits;
+    for (std::size_t i = 0; i < threads.size(); ++i) {
+      if (has(threads[i].name) || has(threads[i].last)) hits.threads.push_back(i);
+    }
+    for (std::size_t i = 0; i < calls.size(); ++i) {
+      if (has(calls[i].name) || has(calls[i].number)) hits.calls.push_back(i);
+    }
+    for (std::size_t i = 0; i < files.size(); ++i) {
+      if (has(files[i].name)) hits.files.push_back(i);
+    }
+    for (std::size_t i = 0; i < photos.size(); ++i) {
+      if (has(photos[i].name)) hits.photos.push_back(i);
+    }
+    return hits;
+  }
+
 } // namespace linkapp

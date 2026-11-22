@@ -293,12 +293,14 @@ namespace linkapp {
     return block;
   }
 
-  std::size_t ThreadAdapter::itemCount() const { return m_client.messages().threads().size(); }
+  std::size_t ThreadAdapter::itemCount() const {
+    return m_search ? m_search->threads.size() : m_client.messages().threads().size();
+  }
 
-  std::uint64_t ThreadAdapter::itemKey(std::size_t index) const { return m_client.messages().threads()[index].id; }
+  std::uint64_t ThreadAdapter::itemKey(std::size_t index) const { return m_client.messages().threads()[at(index)].id; }
 
   std::uint64_t ThreadAdapter::itemRevision(std::size_t index) const {
-    const Thread& t = m_client.messages().threads()[index];
+    const Thread& t = m_client.messages().threads()[at(index)];
     return std::hash<std::string>{}(std::format("{}|{}|{}|{}|{}|{}", t.name, t.last, t.atMs, t.unread, m_selected == t.id,
                                                 static_cast<int>(m_client.presence().kind)));
   }
@@ -312,7 +314,7 @@ namespace linkapp {
   // Thread row (handoff.yaml): avatar | name + time; last line + unread badge; selected = the selection tint.
   void ThreadAdapter::bindItem(Renderer& /*renderer*/, Node& item, std::size_t index, float /*width*/, bool hovered) {
     const float s = m_scale;
-    const Thread& t = m_client.messages().threads()[index];
+    const Thread& t = m_client.messages().threads()[at(index)];
     const bool selected = m_selected == t.id;
     const bool locked = m_client.presence().kind == Presence::Kind::Locked;
     auto& holder = static_cast<Flex&>(item);
@@ -351,7 +353,7 @@ namespace linkapp {
     holder.addChild(std::move(row));
   }
 
-  void ThreadAdapter::onActivate(std::size_t index) { m_open(m_client.messages().threads()[index].id); }
+  void ThreadAdapter::onActivate(std::size_t index) { m_open(m_client.messages().threads()[at(index)].id); }
 
   std::uint64_t ConversationAdapter::itemRevision(std::size_t index) const {
     const ConversationRow& row = m_rows[index];
@@ -429,7 +431,7 @@ namespace linkapp {
   }
 
   std::uint64_t CallAdapter::itemKey(std::size_t index) const {
-    const CallEntry& c = m_client.calls()[index];
+    const CallEntry& c = m_client.calls()[at(index)];
     return std::hash<std::string>{}(std::format("{}|{}", c.number, c.atMs));
   }
 
@@ -450,9 +452,9 @@ namespace linkapp {
     using K = CallEntry::Kind;
     const float s = m_scale;
     const auto& calls = m_client.calls();
-    const CallEntry& c = calls[index];
+    const CallEntry& c = calls[at(index)];
     const std::int64_t now = nowMs();
-    const auto today = [&](std::size_t i) { return dayLabel(calls[i].atMs, now) == "Today"; };
+    const auto today = [&](std::size_t row) { return dayLabel(calls[at(row)].atMs, now) == "Today"; };
     const float indent = Tokens::sizeControlM * s + Tokens::spaceP12 * s;
     auto block = ui::column({.align = FlexAlign::Stretch});
     if (index == 0 || today(index - 1) != today(index)) {
@@ -748,7 +750,7 @@ namespace linkapp {
         {.separator = true},
         {.id = kDelete, .label = "Delete…"}};
     m_window->openContextMenu(std::move(entries), sceneX, sceneY, [this, index, entry](std::int32_t id) {
-      if (id == kOpen) m_files->onActivate(index);
+      if (id == kOpen) m_files->open(index);
       if (id == kDelete) confirmDelete(entry);
     });
   }
@@ -795,11 +797,11 @@ namespace linkapp {
                                                                     },
                                                                 .openPhotos = [this] { show(Page::Photos); },
                                                                 .dragPhoto = [this](const std::string& path, std::uint32_t serial) { dragPhoto(path, serial); }});
-      m_threads = std::make_unique<ThreadAdapter>(*m_client, m_scale, m_thread, [this](std::uint64_t id) { openThread(id); });
+      m_threads = std::make_unique<ThreadAdapter>(*m_client, m_scale, m_thread, m_search, [this](std::uint64_t id) { openThread(id); });
       m_conversation = std::make_unique<ConversationAdapter>(*m_client, m_scale);
-      m_calls = std::make_unique<CallAdapter>(*m_client, m_scale);
-      m_photos = std::make_unique<PhotoAdapter>(*m_client, m_scale);
-      m_files = std::make_unique<FileAdapter>(*m_client, m_scale,
+      m_calls = std::make_unique<CallAdapter>(*m_client, m_scale, m_search);
+      m_photos = std::make_unique<PhotoAdapter>(*m_client, m_scale, m_search);
+      m_files = std::make_unique<FileAdapter>(*m_client, m_scale, m_search,
                                               [this](std::size_t index, float x, float y) { fileMenu(index, x, y); });
       m_client->setOnMirrorFrame([this](MirrorDecoder::Frame frame) { showMirrorFrame(std::move(frame)); });
       m_client->setOnThumbnail([this] {
@@ -809,6 +811,10 @@ namespace linkapp {
       });
       m_transfers = std::make_unique<TransferAdapter>(*m_client, m_scale, [this](const std::string& path) { openLocalFile(path); });
       m_client->setOnPaired([this](const std::string& id) { choosePhone(id); });
+      DeskApp::commands().add({.id = "edit.find", .label = "Find", .group = "Edit",
+                               .shortcut = KeyChord{.sym = XKB_KEY_f, .modifiers = KeyMod::Ctrl},
+                               .enabled = [this] { return m_searchInput != nullptr; },
+                               .run = [this] { m_window->input().setFocus(m_searchInput->inputArea()); }});
       DeskApp::commands().add({.id = "view.close", .label = "Close", .group = "View",
                       .shortcut = KeyChord{.sym = XKB_KEY_Escape, .modifiers = 0},
                       .enabled = [this] { return dismissable(); }, .run = [this] { dismiss(); }});
@@ -819,6 +825,7 @@ namespace linkapp {
         sync();
         syncHotspotSheet();
         updateCaption();
+        refreshSearch();
         m_window->requestRebuild();
       });
       // The snapshot feed is there before Link1 answers.
@@ -997,15 +1004,33 @@ namespace linkapp {
            m_client->presence().kind != Presence::Kind::NotPaired;
   }
 
-  bool LinkApp::dismissable() const { return pairShown() || m_confirmForget; }
+  bool LinkApp::dismissable() const { return pairShown() || m_confirmForget || m_search; }
 
   void LinkApp::dismiss() {
     if (pairShown()) {
       m_client->cancelPairing();
-    } else {
+    } else if (m_confirmForget) {
       m_confirmForget = false;
+    } else {
+      setQuery({});
+      return;
     }
     m_window->requestRebuild();
+  }
+
+  void LinkApp::setQuery(std::string query) {
+    m_query = std::move(query);
+    refreshSearch();
+    if (m_window != nullptr) m_window->requestRebuild();
+  }
+
+  void LinkApp::refreshSearch() {
+    if (m_query.empty() || !m_client) {
+      m_search.reset();
+      return;
+    }
+    m_search = searchHits(m_query, m_client->messages().threads(), m_client->calls(), m_client->files().entries(),
+                          m_client->photos().items());
   }
 
   void LinkApp::show(Page page) {
@@ -1101,7 +1126,16 @@ namespace linkapp {
     const float s = m_scale = m_window->uiScale();
     auto side = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::componentSidebarPadding * s,
                             .flexGrow = 1.0F});
-    side->addChild(ui::searchCapsule({.placeholder = "Search", .height = Tokens::sizeControlL, .scale = s}));
+    side->addChild(ui::searchCapsule({.out = &m_searchInput, .placeholder = "Search", .height = Tokens::sizeControlL, .scale = s,
+                                      .value = m_query, .clearButton = true,
+                                      .onChange = [this](const std::string& query) { setQuery(query); },
+                                      .onKeyEvent = [this](std::uint32_t sym, std::uint32_t) {
+                                        if (sym != XKB_KEY_Escape || m_query.empty()) return false;
+                                        setQuery({});
+                                        return true;
+                                      }}));
+    // A rebuild hands the keyboard focus to the new field by this key.
+    m_searchInput->inputArea()->setTabFocusKey("link-search");
     auto list = std::make_unique<SelectionList>(s);
     list->setGap(Tokens::spaceP4 * s);
     Node* selected = nullptr;
@@ -1160,7 +1194,20 @@ namespace linkapp {
       }
       case Page::Settings: break;
       }
-      const bool hot = !line.second.empty() || (info.page == Page::Waiting && !items.empty());
+      bool hot = !line.second.empty() || (info.page == Page::Waiting && !items.empty());
+      if (m_search) {
+        const auto count = [&]() -> std::optional<std::size_t> {
+          switch (info.page) {
+          case Page::Messages: return m_search->threads.size();
+          case Page::Calls: return m_search->calls.size();
+          case Page::Photos: return m_search->photos.size();
+          case Page::Files: return m_search->files.size();
+          default: return std::nullopt;
+          }
+        }();
+        line.second = count ? std::to_string(*count) : std::string();
+        hot = count.value_or(0) > 0;
+      }
       row->setData({.symbol = info.glyph, .name = info.name, .status = line.first, .time = line.second, .unseen = hot,
                     .selected = info.page == m_page && !pairShown()});
       row->setOnClick([this, page = info.page] { show(page); });
@@ -1462,6 +1509,12 @@ namespace linkapp {
       list = emptyState("message", "No texts", "Texts on your phone show here.", s);
     } else {
       auto padded = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s, .flexGrow = 1.0F});
+      if (m_search) {
+        auto scope = ui::row({.paddingV = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP12 * s});
+        scope->addChild(text(std::format("Names and the newest text of {} threads", messages.threads().size()), Tokens::typeFootnote,
+                             ColorRole::Label2, s));
+        padded->addChild(std::move(scope));
+      }
       padded->addChild(ui::virtualListView({.state = &m_threadScroll, .contentScale = s, .adapter = m_threads.get(),
                                             .flexGrow = 1.0F}));
       list = std::move(padded);
@@ -1565,7 +1618,7 @@ namespace linkapp {
   }
 
   std::uint64_t FileAdapter::itemKey(std::size_t index) const {
-    return std::hash<std::string>{}(m_client.files().entries()[index].name);
+    return std::hash<std::string>{}(m_client.files().entries()[at(index)].name);
   }
 
   float FileAdapter::measureItem(Renderer& /*renderer*/, std::size_t /*index*/, float /*width*/) {
@@ -1578,7 +1631,7 @@ namespace linkapp {
   void FileAdapter::bindItem(Renderer& /*renderer*/, Node& item, std::size_t index, float /*width*/, bool hovered) {
     const float s = m_scale;
     const Files& files = m_client.files();
-    const FileEntry& entry = files.entries()[index];
+    const FileEntry& entry = files.entries()[at(index)];
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s,
                         .fill = hovered ? colorSpecFromRole(ColorRole::Fill1) : clearColorSpec(),
                         .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = Tokens::sizeControlL * s});
@@ -1618,10 +1671,12 @@ namespace linkapp {
     holder.addChild(std::move(row));
   }
 
-  void FileAdapter::onActivate(std::size_t index) {
+  void FileAdapter::onActivate(std::size_t index) { open(at(index)); }
+
+  void FileAdapter::open(std::size_t entryIndex) {
     const Files& files = m_client.files();
-    if (index >= files.entries().size()) return;
-    const FileEntry& entry = files.entries()[index];
+    if (entryIndex >= files.entries().size()) return;
+    const FileEntry& entry = files.entries()[entryIndex];
     if (entry.folder) {
       m_client.openFolder(files.childPath(entry.name));
       return;
@@ -2005,7 +2060,7 @@ namespace linkapp {
     auto* length = static_cast<Label*>(kids[4].get());
     const float w = tile.width();
     const float h = tile.height();
-    const bool picked = m_client.photos().selected(index);
+    const bool picked = m_client.photos().selected(at(index));
     const float radius = Style::scaledRadius(Tokens::radiusR12, s);
     const float inset = picked ? 4.0F * s : 0.0F; // the ring and its gap stay inside the cell
     image->setPosition(inset, inset);
@@ -2023,14 +2078,14 @@ namespace linkapp {
     check->setVisible(picked);
     check->setGlyphSize(Tokens::sizeSymbol * s * 0.75F);
     check->setPosition(badge->x() + (d - check->width()) / 2.0F, badge->y() + (d - check->height()) / 2.0F);
-    const Photo& photo = m_client.photos().items()[index];
+    const Photo& photo = m_client.photos().items()[at(index)];
     length->setVisible(photo.videoS.has_value());
     if (photo.videoS) {
       length->setText(std::format("{}:{:02}", *photo.videoS / 60, *photo.videoS % 60));
       length->setShadow(colorSpecFromRole(ColorRole::Shadow), 0.0F, s);
       length->setPosition(Tokens::spaceP8 * s + inset, h - Tokens::spaceP8 * s - inset - Tokens::typeCaption.line * s);
     }
-    if (index + Photos::kCount / 2 >= itemCount()) m_client.loadMorePhotos();
+    if (!m_search && index + Photos::kCount / 2 >= itemCount()) m_client.loadMorePhotos(); // a search covers loaded pages
     const std::string& path = photo.path;
     std::string& shown = m_shown[&tile];
     if (shown == path || m_renderer == nullptr) return;
@@ -2044,7 +2099,7 @@ namespace linkapp {
   }
 
   std::string PhotoAdapter::itemTooltip(std::size_t index) const {
-    return m_client.photos().items()[index].name;
+    return m_client.photos().items()[at(index)].name;
   }
 
   std::unique_ptr<Node> PhotoAdapter::createSectionHeader() {
@@ -2108,7 +2163,8 @@ namespace linkapp {
       break;
     }
     m_photos->setRenderer(&renderer);
-    auto days = photos.days(nowMs());
+    auto days = m_search ? std::vector<std::pair<std::size_t, std::string>>{{0, std::format("{} of {} loaded", m_search->photos.size(), photos.items().size())}}
+                         : photos.days(nowMs());
     std::vector<std::size_t> starts;
     starts.reserve(days.size());
     for (const auto& day : days) starts.push_back(day.first);

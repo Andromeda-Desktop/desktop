@@ -549,6 +549,41 @@ namespace {
     }
   }
 
+  // Random names and queries (mixed case, UTF-8): a hit holds the query, a miss does not, hits keep model order.
+  void runSearch(unsigned seed) {
+    std::mt19937 rng(seed);
+    const std::array<std::string, 6> parts{"ma", "MA", "Ya", "ö", "Ö", " "};
+    std::uniform_int_distribution<int> part(0, 5), len(0, 4), qlen(1, 2), count(0, 12);
+    const auto word = [&](int n) { std::string w; for (int i = 0; i < n; ++i) w += parts[static_cast<std::size_t>(part(rng))]; return w; };
+    const auto lower = [](std::string w) { for (char& c : w) if (static_cast<unsigned char>(c) < 0x80) c = static_cast<char>(std::tolower(c)); return w; };
+    for (int step = 1; step <= 50; ++step) {
+      std::vector<Thread> threads(static_cast<std::size_t>(count(rng)));
+      for (Thread& t : threads) { t.name = word(len(rng)); t.last = word(len(rng)); }
+      std::vector<CallEntry> calls(static_cast<std::size_t>(count(rng)));
+      for (CallEntry& c : calls) { c.name = word(len(rng)); c.number = word(len(rng)); }
+      std::vector<FileEntry> files(static_cast<std::size_t>(count(rng)));
+      for (FileEntry& f : files) f.name = word(len(rng));
+      std::vector<Photo> photos(static_cast<std::size_t>(count(rng)));
+      for (Photo& ph : photos) ph.name = word(len(rng));
+      const std::string q = word(qlen(rng));
+      const SearchHits hits = searchHits(q, threads, calls, files, photos);
+      const auto check = [&](const std::vector<std::size_t>& got, std::size_t n, auto holds) {
+        std::size_t k = 0;
+        for (std::size_t i = 0; i < n; ++i) {
+          const bool hit = k < got.size() && got[k] == i;
+          expect(hit == holds(i), "a row shows exactly when it holds the query", seed, step);
+          k += hit ? 1 : 0;
+        }
+        expect(k == got.size(), "hits in model order, each once", seed, step);
+      };
+      const auto in = [&](const std::string& text) { return lower(text).find(lower(q)) != std::string::npos; };
+      check(hits.threads, threads.size(), [&](std::size_t i) { return in(threads[i].name) || in(threads[i].last); });
+      check(hits.calls, calls.size(), [&](std::size_t i) { return in(calls[i].name) || in(calls[i].number); });
+      check(hits.files, files.size(), [&](std::size_t i) { return in(files[i].name); });
+      check(hits.photos, photos.size(), [&](std::size_t i) { return in(photos[i].name); });
+    }
+  }
+
   // Random navigation with replies in any order, and save events, against the Files rules.
   void runFiles(unsigned seed) {
     using L = Files::Load;
@@ -754,6 +789,7 @@ int main() {
   lastSeen();
   for (unsigned seed = 1; seed <= 20; ++seed) runPhotos(seed);
   for (unsigned seed = 1; seed <= 20; ++seed) runFiles(seed);
+  for (unsigned seed = 1; seed <= 20; ++seed) runSearch(seed);
   for (unsigned seed = 1; seed <= 20; ++seed) runMirror(seed);
   setenv("TZ", "UTC", 1);
   tzset();

@@ -599,4 +599,15 @@ namespace linkapp {
     bool m_queued = false;
   };
 
+  // Search, filter in place: per page, the indexes of loaded items whose name (a call's number, a thread's newest
+  // text) holds the query, ASCII case-folded, in model order.
+  struct SearchHits {
+    std::vector<std::size_t> threads;
+    std::vector<std::size_t> calls;
+    std::vector<std::size_t> files;
+    std::vector<std::size_t> photos;
+  };
+  SearchHits searchHits(std::string_view query, const std::vector<Thread>& threads, const std::vector<CallEntry>& calls,
+                        const std::vector<FileEntry>& files, const std::vector<Photo>& photos);
+
 } // namespace linkapp
