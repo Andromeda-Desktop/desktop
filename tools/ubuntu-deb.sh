@@ -79,8 +79,9 @@ status=0
 # package's staging dir before the install step.
 # Host network: on the default bridge, DNS inside the container failed mid-build in three runs.
 docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v "$CCACHE:/ccache" -v "$CARGO_CACHE:/cargo" -e CCACHE_DIR=/ccache -e CARGO_HOME=/cargo -e CARGO_NET_RETRY=10 -e ANDROMEDA_APP="${ANDROMEDA_APP:-}" -e ANDROMEDA_CORE="${ANDROMEDA_CORE:-}" -e ANDROMEDA_ONLY="${ANDROMEDA_ONLY:-}" -e ONLY_DEBS="$ONLY_DEBS" -e ANDROMEDA_VERSION="${DEB_VERSION:-}" -e LINK_REPO="$LINK_REPO" -w /o/src "$IMAGE" bash -c '
-  # A kept build stamp would make dh skip the build step, and cargo with it.
-  rm -f debian/debhelper-build-stamp
+  # A kept build stamp would make dh skip the build step, and cargo with it. A kept debian/files lists the
+  # artifacts of the last build, and dpkg-genchanges fails when their version differs.
+  rm -f debian/debhelper-build-stamp debian/files
   set -o pipefail
   # Fetch every crate before the build, with retries: a DNS drop mid-build failed two runs.
   for lock in $(find . -name Cargo.lock -not -path "*/target/*" -not -path "./debian/*"); do
