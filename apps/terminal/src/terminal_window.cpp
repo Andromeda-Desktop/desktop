@@ -1314,10 +1314,13 @@ namespace term {
           buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Tokens::typeBody.size * s,
                                         .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
           buttons->addChild(ui::button({.text = std::string("Close"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Destructive, .onClick = [this, ids, close] {
-                                          m_window.dismissSheet();
-                                          close(ids);
-                                        }}));
+                                        .variant = ButtonVariant::Destructive,
+                                        .onClick =
+                                            [this, ids, close] {
+                                              m_window.dismissSheet();
+                                              close(ids);
+                                            },
+                                        .configure = [this](Button& b) { m_window.input().setFocus(b.inputArea()); }}));
           box->addChild(std::move(buttons));
           return box;
         },
