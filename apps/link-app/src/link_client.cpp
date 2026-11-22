@@ -813,6 +813,7 @@ namespace linkapp {
     if (device.empty() || !mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Start})) return;
     m_mirrorDevice = device;
     m_mirrorCorner = 0;
+    m_mirrorScreenOff = false;
     const std::uint64_t session = m_mirror.session;
     changed();
     // The phone's user has 60 s to allow capture; the default D-Bus timeout is shorter.
@@ -852,6 +853,7 @@ namespace linkapp {
   }
 
   void LinkClient::stopMirror() {
+    if (mirrorScreenOff()) setMirrorScreenOff(false);
     if (!mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Stop})) return;
     m_decoder.reset();
     changed();
@@ -865,6 +867,34 @@ namespace linkapp {
         .uponReplyInvoke([action](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("MirrorInput {}: {}", action, error->getMessage());
         });
+  }
+
+  void LinkClient::mirrorInput(const std::string& action, std::map<std::string, sdbus::Variant> args) {
+    if (m_mirror.kind != Mirror::Kind::Showing) return;
+    m_proxy->callMethodAsync("MirrorInput")
+        .onInterface(kInterface)
+        .withArguments(m_mirrorDevice, action, args)
+        .uponReplyInvoke([action](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("MirrorInput {}: {}", action, error->getMessage());
+        });
+  }
+
+  void LinkClient::mirrorText(const std::string& text) { mirrorInput("text", {{"text", sdbus::Variant(text)}}); }
+
+  void LinkClient::mirrorKeyEvent(std::int32_t code, std::int32_t meta, bool down) {
+    mirrorInput(down ? "key-down" : "key-up", {{"code", sdbus::Variant(code)}, {"meta", sdbus::Variant(meta)}});
+  }
+
+  void LinkClient::mirrorWheel(std::int32_t x, std::int32_t y, std::int32_t dx, std::int32_t dy) {
+    mirrorInput("wheel", {{"x", sdbus::Variant(x)}, {"y", sdbus::Variant(y)}, {"x2", sdbus::Variant(dx)},
+                          {"y2", sdbus::Variant(dy)}});
+  }
+
+  void LinkClient::setMirrorScreenOff(bool off) {
+    if (m_mirror.kind != Mirror::Kind::Showing) return;
+    m_mirrorScreenOff = off;
+    mirrorInput(off ? "screen-off" : "screen-on", {});
+    changed();
   }
 
   void LinkClient::mirrorKey(std::int32_t code) {

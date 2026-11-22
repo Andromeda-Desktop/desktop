@@ -385,6 +385,25 @@ namespace {
     }
   }
 
+  // Every key the mirror sends down finds its release by keysym alone (no stuck key on the phone), and a chord with
+  // Ctrl, Alt or Super never types text.
+  void runMirrorKeys() {
+    int step = 0;
+    for (std::uint32_t sym = 0x20; sym <= 0xFFFF; ++sym, ++step) {
+      for (unsigned m = 0; m < 16; ++m) {
+        const KeyMods mods{.shift = (m & 1) != 0, .ctrl = (m & 2) != 0, .alt = (m & 4) != 0, .super = (m & 8) != 0};
+        const std::uint32_t utf32 = sym < 0x7F ? sym : 0;
+        const MirrorKey key = mirrorKeyFor(sym, utf32, mods);
+        if (key.kind == MirrorKey::Kind::Code) expect(androidKeyCode(sym) == key.code, "a release finds its key", 0, step);
+        if (mods.ctrl || mods.alt || mods.super) expect(key.kind != MirrorKey::Kind::Text, "a chord types no text", 0, step);
+        if (key.kind == MirrorKey::Kind::Text) expect(!key.text.empty(), "text keys carry text", 0, step);
+      }
+    }
+    expect(mirrorKeyFor(0x41, 0x41, {.shift = true}).text == "A", "Shift+a types A", 0, 0);
+    expect(mirrorKeyFor(0x61, 0x61, {.ctrl = true}).code == androidKeyCode(0x41), "Ctrl+a and a Shift release match", 0, 0);
+    expect(mirrorKeyFor(0, 0xE9, {}).text == "\xC3\xA9", "e-acute is UTF-8", 0, 0);
+  }
+
   void runPair(unsigned seed) {
     using K = Pair::Kind;
     using E = PairEvent::Kind;
@@ -710,6 +729,7 @@ namespace {
 } // namespace
 
 int main() {
+  runMirrorKeys();
   for (unsigned seed = 1; seed <= 20; ++seed) runPair(seed);
   lastSeen();
   for (unsigned seed = 1; seed <= 20; ++seed) runPhotos(seed);

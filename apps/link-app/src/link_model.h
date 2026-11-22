@@ -56,6 +56,25 @@ namespace linkapp {
 
   [[nodiscard]] bool pairStep(Pair& pair, const PairEvent& event);
 
+  // A desktop key on the mirrored screen: printable text without Ctrl, Alt or Super goes as text (any layout, dead
+  // keys composed); any other mapped key as an Android KeyEvent code with its meta state; None for an unmapped key.
+  struct MirrorKey {
+    enum class Kind : std::uint8_t { None, Text, Code };
+    Kind kind = Kind::None;
+    std::string text;
+    std::int32_t code = 0;
+    std::int32_t meta = 0;
+  };
+  struct KeyMods {
+    bool shift = false;
+    bool ctrl = false;
+    bool alt = false;
+    bool super = false;
+  };
+  [[nodiscard]] MirrorKey mirrorKeyFor(std::uint32_t keysym, std::uint32_t utf32, KeyMods mods);
+  // The Android code of an XKB keysym regardless of modifiers, 0 when unmapped; a release looks its key up here.
+  [[nodiscard]] std::int32_t androidKeyCode(std::uint32_t keysym);
+
   enum class Transfer : std::uint8_t { Offered, Running, Done, Failed };
 
   // Offered -> Running -> Done | Failed; Offered -> Done (a small file may finish before any progress) | Failed;

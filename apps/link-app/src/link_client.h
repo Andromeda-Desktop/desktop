@@ -17,6 +17,7 @@ class SessionBus;
 
 namespace sdbus {
   class IProxy;
+  class Variant;
 }
 
 namespace linkapp {
@@ -60,6 +61,13 @@ namespace linkapp {
     void mirrorAction(const std::string& action);
     // A key press and release (Android key code).
     void mirrorKey(std::int32_t code);
+    void mirrorText(const std::string& text);
+    void mirrorKeyEvent(std::int32_t code, std::int32_t meta, bool down);
+    // x, y in 1/10000 of the video; dx, dy the wheel's turn in 1/100 of a step, positive right and down.
+    void mirrorWheel(std::int32_t x, std::int32_t y, std::int32_t dx, std::int32_t dy);
+    // The phone's own panel off while mirroring goes on; stopMirror turns it back on.
+    void setMirrorScreenOff(bool off);
+    [[nodiscard]] bool mirrorScreenOff() const { return m_mirrorScreenOff && m_mirror.kind == Mirror::Kind::Showing; }
     // The mirrored screen's largest corner radius in 1/10000 of the video width; 0 until the phone says.
     [[nodiscard]] std::uint16_t mirrorCorner() const { return m_mirrorCorner; }
     // touch-down, touch-move or touch-up at x, y in 1/10000 of the video.
@@ -148,6 +156,8 @@ namespace linkapp {
     std::unique_ptr<sdbus::IProxy> m_busWatch;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::function<void()> m_changed;
+    // One MirrorInput call (Link1.xml MirrorInput) while the mirror shows.
+    void mirrorInput(const std::string& action, std::map<std::string, sdbus::Variant> args);
     std::function<void(const std::string&)> m_paired;
     std::uint64_t m_pairSerial = 0; // StartPairing calls; a reply applies only to the latest
     std::uint64_t m_sent = 0;    // serial of the newest refresh asked
@@ -164,6 +174,7 @@ namespace linkapp {
     Files m_files;
     Mirror m_mirror;
     std::uint16_t m_mirrorCorner = 0;
+    bool m_mirrorScreenOff = false; // this session sent screen-off last
     std::string m_mirrorDevice;
     std::unique_ptr<MirrorDecoder> m_decoder;
     std::function<void(MirrorDecoder::Frame)> m_mirrorFrame;

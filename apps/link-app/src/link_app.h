@@ -219,6 +219,9 @@ namespace linkapp {
     void dragPhoto(const std::string& path, std::uint32_t serial);
     // Shows this phone; the open page reloads its data from it.
     void choosePhone(const std::string& deviceId);
+    void mirrorKeyInput(const InputArea::KeyData& data);
+    void releaseMirrorKeys();
+    void confirmLock();
     // The pair view covers the page while this app pairs another phone (Pair Another Phone…).
     [[nodiscard]] bool pairShown() const;
     // Esc: cancels that pairing, else closes the Forget question.
@@ -294,6 +297,8 @@ namespace linkapp {
     Image* m_mirrorImage = nullptr;   // of the last build, null off the Mirror page
     Label* m_mirrorStat = nullptr;
     bool m_touching = false;          // a primary press on the video is down
+    InputArea* m_mirrorArea = nullptr; // the video of the last build, null off a showing mirror
+    std::map<std::int32_t, std::int32_t> m_mirrorHeld; // Android key code to meta of keys down on the phone
   };
 
 } // namespace linkapp

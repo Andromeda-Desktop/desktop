@@ -4,6 +4,7 @@
 #include "wayland/drag_and_drop.h"
 #include "wayland/wayland_connection.h"
 #include "core/text_clipboard.h"
+#include "core/input/key_modifiers.h"
 #include "ui/controls/input.h"
 #include "ui/controls/image.h"
 #include "ui/builders.h"
@@ -36,6 +37,7 @@ namespace linkapp {
       const char* glyph;
     };
 
+    constexpr std::int32_t kAndroidPower = 26; // KeyEvent.KEYCODE_POWER
     constexpr std::int32_t kPairEntry = 1'000'000; // the phone menu's Pair entry; phone entries are their index
     constexpr std::array kPages{
         PageInfo{Page::Waiting, "Waiting", "bell"},        PageInfo{Page::Messages, "Messages", "message"},
@@ -1161,6 +1163,7 @@ namespace linkapp {
     m_conversationList = nullptr;
     m_mirrorImage = nullptr;
     m_mirrorStat = nullptr;
+    m_mirrorArea = nullptr;
     m_renderer = &renderer;
     const float s = m_scale = m_window->uiScale();
     if (m_client == nullptr) return emptyState("plug-connected-x", "No session bus", "Link needs a D-Bus session.", s);
@@ -1511,7 +1514,70 @@ namespace linkapp {
   std::string LinkApp::mirrorStat() const {
     const Mirror& mirror = m_client->mirror();
     const std::string transport = m_client->presence().phone.transport == "bluetooth" ? "Bluetooth" : "Wi-Fi";
-    return std::format("{} × {} · {} fps · {}", mirror.width, mirror.height, m_client->mirrorFps(), transport);
+    const char* keys = m_mirrorArea != nullptr && m_mirrorArea->focused() ? "Typing goes to the phone · Esc is Back"
+                                                                          : "Click the screen to type";
+    return std::format("{} × {} · {} fps · {} · {}", mirror.width, mirror.height, m_client->mirrorFps(), transport, keys);
+  }
+
+  void LinkApp::mirrorKeyInput(const InputArea::KeyData& data) {
+    if (data.preedit) return;
+    if (!data.pressed) {
+      const auto held = m_mirrorHeld.find(androidKeyCode(data.sym));
+      if (held == m_mirrorHeld.end()) return;
+      m_client->mirrorKeyEvent(held->first, held->second, false);
+      m_mirrorHeld.erase(held);
+      return;
+    }
+    const KeyMods mods{.shift = (data.modifiers & KeyMod::Shift) != 0, .ctrl = (data.modifiers & KeyMod::Ctrl) != 0,
+                       .alt = (data.modifiers & KeyMod::Alt) != 0, .super = (data.modifiers & KeyMod::Super) != 0};
+    if (data.sym == XKB_KEY_F11) {
+      m_window->toggleFullscreen();
+      return;
+    }
+    // Ctrl+V types this computer's clipboard on the phone.
+    if (mods.ctrl && !mods.alt && !mods.super && (data.sym == XKB_KEY_v || data.sym == XKB_KEY_V)) {
+      if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
+        clipboard->requestClipboardText([this](std::optional<std::string> text) {
+          if (text.has_value() && !text->empty()) m_client->mirrorText(*text);
+        });
+      }
+      return;
+    }
+    const MirrorKey key = mirrorKeyFor(data.sym, data.utf32, mods);
+    if (key.kind == MirrorKey::Kind::Text) {
+      m_client->mirrorText(key.text);
+    } else if (key.kind == MirrorKey::Kind::Code) {
+      m_mirrorHeld[key.code] = key.meta;
+      m_client->mirrorKeyEvent(key.code, key.meta, true);
+    }
+  }
+
+  void LinkApp::releaseMirrorKeys() {
+    for (const auto& [code, meta] : m_mirrorHeld) m_client->mirrorKeyEvent(code, meta, false);
+    m_mirrorHeld.clear();
+  }
+
+  void LinkApp::confirmLock() {
+    const std::string phone = m_client->presence().phone.name;
+    m_window->presentSheet(
+        [this, phone](float s) -> std::unique_ptr<Node> {
+          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP24 * s,
+                                 .width = Tokens::componentDialogAlertWidth * s});
+          box->addChild(text(std::format("Lock {}?", phone), Tokens::typeTitle3, ColorRole::Label1, s, 2));
+          box->addChild(text("The phone locks and its screen turns off.",
+                             Tokens::typeParagraph, ColorRole::Label2, s, 4));
+          auto buttons = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
+          buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F);
+          buttons->addChild(ui::button({.text = std::string("Lock"), .variant = ButtonVariant::Primary, .onClick = [this] {
+                                          m_window->dismissSheet();
+                                          m_client->mirrorKey(kAndroidPower);
+                                        }}));
+          buttons->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal,
+                                        .onClick = [this] { m_window->dismissSheet(); }}));
+          box->addChild(std::move(buttons));
+          return box;
+        },
+        [this] { m_window->dismissSheet(); });
   }
 
   void LinkApp::retireMirrorFrame(bool all) {
@@ -1611,6 +1677,23 @@ namespace linkapp {
       m_client->setMirrorTarget(static_cast<int>(std::lround(videoW)), static_cast<int>(std::lround(videoH)));
       Image* image = nullptr;
       auto area = ui::inputArea({.width = videoW, .height = videoH});
+      // Keys reach the phone only while the video holds focus; a click gives it focus, Tab stays inside.
+      InputArea* keys = area.get();
+      m_mirrorArea = keys;
+      area->setFocusable(true);
+      area->setTabFocusKey("link-mirror");
+      area->setCapturesAllKeys(true);
+      area->setCapturesTab(true);
+      area->setRetainsFocusOnPointerRelease(true);
+      area->setOnKeyDown([this](const InputArea::KeyData& data) { mirrorKeyInput(data); });
+      area->setOnKeyUp([this](const InputArea::KeyData& data) { mirrorKeyInput(data); });
+      area->setOnFocusGain([this] {
+        if (m_mirrorStat != nullptr) m_mirrorStat->setText(mirrorStat());
+      });
+      area->setOnFocusLoss([this] {
+        releaseMirrorKeys();
+        if (m_mirrorStat != nullptr) m_mirrorStat->setText(mirrorStat());
+      });
       const float corner = m_client->mirrorCorner() > 0 ? videoW * static_cast<float>(m_client->mirrorCorner()) / 10000.0F
                                                         : Style::scaledRadius(Tokens::componentLinkMirrorRadius, s);
       area->addChild(ui::image({.out = &image, .fit = ImageFit::Contain, .radius = corner,
@@ -1622,7 +1705,8 @@ namespace linkapp {
         return std::pair{static_cast<std::int32_t>(std::clamp(x / videoW, 0.0F, 1.0F) * 10000.0F),
                          static_cast<std::int32_t>(std::clamp(y / videoH, 0.0F, 1.0F) * 10000.0F)};
       };
-      area->setOnPress([this, at](const InputArea::PointerData& data) {
+      area->setOnPress([this, at, keys](const InputArea::PointerData& data) {
+        if (data.pressed && !keys->focused()) m_window->input().setFocus(keys);
         if (data.button != BTN_LEFT || data.pressed == m_touching) return;
         m_touching = data.pressed;
         const auto [x, y] = at(data.localX, data.localY);
@@ -1633,6 +1717,20 @@ namespace linkapp {
         const auto [x, y] = at(data.localX, data.localY);
         m_client->mirrorTouch("touch-move", x, y);
       });
+      area->setOnAxisHandler([this, at](const InputArea::PointerData& data) {
+        // A detent is 120 in value120; a touchpad gives about 10 per detent-sized move.
+        const double turn = data.axisValue120 != 0 ? data.axisValue120 * 100.0 / 120.0 : data.axisValue * 10.0;
+        const auto step = static_cast<std::int32_t>(std::clamp(std::lround(turn), -10000L, 10000L));
+        if (step == 0) return true;
+        const auto [x, y] = at(data.localX, data.localY);
+        constexpr std::uint32_t kVertical = 0; // WL_POINTER_AXIS_VERTICAL_SCROLL
+        if (data.axis == kVertical) {
+          m_client->mirrorWheel(x, y, 0, step);
+        } else {
+          m_client->mirrorWheel(x, y, step, 0);
+        }
+        return true;
+      });
       stage->addChild(std::move(area));
 
       // FloatingCapsuleBar (handoff.yaml), dark glass: Back, Home, Recents | Volume, Lock.
@@ -1640,8 +1738,9 @@ namespace linkapp {
                           .radius = Tokens::sizeControlXl * s / 2.0F, .height = Tokens::sizeControlXl * s});
       bar->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s);
       const auto key = [&](const char* glyph, const char* tip, std::function<void()> press,
-                           std::function<void()> secondary = nullptr) {
-        bar->addChild(ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s, .variant = ButtonVariant::Ghost,
+                           std::function<void()> secondary = nullptr, bool on = false) {
+        bar->addChild(ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s,
+                                  .variant = on ? ButtonVariant::Primary : ButtonVariant::Ghost,
                                   .tooltip = std::string(tip),
                                   .onClick = std::move(press), .onRightClick = std::move(secondary)}));
       };
@@ -1651,10 +1750,12 @@ namespace linkapp {
       bar->addChild(ui::box({.fill = colorSpecFromRole(ColorRole::Separator), .width = s, .height = Tokens::spaceP12 * s}));
       constexpr std::int32_t kVolumeUp = 24; // Android KeyEvent codes
       constexpr std::int32_t kVolumeDown = 25;
-      constexpr std::int32_t kPower = 26;
       key("volume", "Volume up (right-click: down)", [this] { m_client->mirrorKey(kVolumeUp); },
           [this] { m_client->mirrorKey(kVolumeDown); });
-      key("lock", "Lock", [this] { m_client->mirrorKey(kPower); });
+      key("lock", "Lock", [this] { confirmLock(); });
+      const bool dark = m_client->mirrorScreenOff();
+      key("device-mobile-off", dark ? "Turn the phone's screen on" : "Turn the phone's screen off (mirroring goes on)",
+          [this, dark] { m_client->setMirrorScreenOff(!dark); }, nullptr, dark);
       key("photo", "Screenshot", [this] { m_client->mirrorAction("screenshot"); });
       stage->addChild(std::move(bar));
       break;

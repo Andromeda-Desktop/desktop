@@ -9,6 +9,7 @@
 #include <functional>
 #include <nlohmann/json.hpp>
 #include <tuple>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace linkapp {
 
@@ -98,6 +99,75 @@ namespace linkapp {
       return true;
     }
     return false;
+  }
+
+  std::int32_t androidKeyCode(std::uint32_t keysym) {
+    // Android KeyEvent codes.
+    if (keysym >= XKB_KEY_a && keysym <= XKB_KEY_z) return static_cast<std::int32_t>(keysym - XKB_KEY_a) + 29;
+    if (keysym >= XKB_KEY_A && keysym <= XKB_KEY_Z) return static_cast<std::int32_t>(keysym - XKB_KEY_A) + 29;
+    if (keysym >= XKB_KEY_0 && keysym <= XKB_KEY_9) return static_cast<std::int32_t>(keysym - XKB_KEY_0) + 7;
+    if (keysym >= XKB_KEY_F1 && keysym <= XKB_KEY_F12) return static_cast<std::int32_t>(keysym - XKB_KEY_F1) + 131;
+    switch (keysym) {
+    case XKB_KEY_Escape: return 4; // Back: Android apps leave a screen on Back, not Escape
+    case XKB_KEY_Up: return 19;
+    case XKB_KEY_Down: return 20;
+    case XKB_KEY_Left: return 21;
+    case XKB_KEY_Right: return 22;
+    case XKB_KEY_comma: return 55;
+    case XKB_KEY_period: return 56;
+    case XKB_KEY_Tab:
+    case XKB_KEY_ISO_Left_Tab: return 61;
+    case XKB_KEY_space: return 62;
+    case XKB_KEY_Return:
+    case XKB_KEY_KP_Enter: return 66;
+    case XKB_KEY_BackSpace: return 67;
+    case XKB_KEY_grave: return 68;
+    case XKB_KEY_minus: return 69;
+    case XKB_KEY_equal: return 70;
+    case XKB_KEY_bracketleft: return 71;
+    case XKB_KEY_bracketright: return 72;
+    case XKB_KEY_backslash: return 73;
+    case XKB_KEY_semicolon: return 74;
+    case XKB_KEY_apostrophe: return 75;
+    case XKB_KEY_slash: return 76;
+    case XKB_KEY_Menu: return 82;
+    case XKB_KEY_Prior: return 92;
+    case XKB_KEY_Next: return 93;
+    case XKB_KEY_Delete: return 112;
+    case XKB_KEY_Home: return 122;
+    case XKB_KEY_End: return 123;
+    case XKB_KEY_Insert: return 124;
+    default: return 0;
+    }
+  }
+
+  MirrorKey mirrorKeyFor(std::uint32_t keysym, std::uint32_t utf32, KeyMods mods) {
+    const bool chord = mods.ctrl || mods.alt || mods.super;
+    if (!chord && utf32 >= 0x20 && utf32 != 0x7F && utf32 <= 0x10FFFF && (utf32 < 0xD800 || utf32 > 0xDFFF)) {
+      std::string text;
+      if (utf32 < 0x80) {
+        text += static_cast<char>(utf32);
+      } else if (utf32 < 0x800) {
+        text += static_cast<char>(0xC0 | (utf32 >> 6));
+        text += static_cast<char>(0x80 | (utf32 & 0x3F));
+      } else if (utf32 < 0x10000) {
+        text += static_cast<char>(0xE0 | (utf32 >> 12));
+        text += static_cast<char>(0x80 | ((utf32 >> 6) & 0x3F));
+        text += static_cast<char>(0x80 | (utf32 & 0x3F));
+      } else {
+        text += static_cast<char>(0xF0 | (utf32 >> 18));
+        text += static_cast<char>(0x80 | ((utf32 >> 12) & 0x3F));
+        text += static_cast<char>(0x80 | ((utf32 >> 6) & 0x3F));
+        text += static_cast<char>(0x80 | (utf32 & 0x3F));
+      }
+      return {.kind = MirrorKey::Kind::Text, .text = std::move(text)};
+    }
+    const std::int32_t code = androidKeyCode(keysym);
+    if (code == 0) return {};
+    // Android meta: SHIFT_ON|SHIFT_LEFT_ON, ALT_ON|ALT_LEFT_ON, CTRL_ON|CTRL_LEFT_ON, META_ON|META_LEFT_ON.
+    const std::int32_t meta = (mods.shift ? 0x41 : 0) | (mods.alt ? 0x12 : 0) | (mods.ctrl ? 0x3000 : 0) |
+                              (mods.super ? 0x30000 : 0);
+    return {.kind = MirrorKey::Kind::Code, .code = code, .meta = meta};
   }
 
   bool transferMayMove(Transfer from, Transfer to) {
