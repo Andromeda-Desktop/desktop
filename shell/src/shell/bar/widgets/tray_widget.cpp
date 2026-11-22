@@ -809,8 +809,12 @@ void TrayWidget::rebuild(Renderer& renderer) {
         // Items without Activate (libayatana-appindicator) answer UnknownMethod and only offer a menu, so open it.
         // Close the drawer only after the reply, because the menu anchors to the surface under the pointer.
         if (m_tray->itemUsesDBusMenu(itemId)) {
-          auto onReply = [tray = m_tray, itemId, scale = m_contentScale,
+          auto onReply = [alive = std::weak_ptr<int>(m_alive), tray = m_tray, itemId, scale = m_contentScale,
                           itemActivated = m_itemActivated](bool unknownMethod) {
+            // The drawer that was clicked closed (a reopened drawer is a new widget): the reply has no target.
+            if (alive.expired()) {
+              return;
+            }
             if (unknownMethod) {
               tray->requestMenuToggle(itemId, scale);
             } else if (itemActivated) {

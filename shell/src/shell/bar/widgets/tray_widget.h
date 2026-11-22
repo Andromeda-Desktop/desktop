@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -100,6 +101,7 @@ private:
   bool m_rebuildPending = true;
   bool m_drawerMode = false;
   std::function<void()> m_itemActivated;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   std::string m_barPosition;
   bool m_panelGridMode = false;
   std::size_t m_panelGridColumns = 3;
