@@ -40,9 +40,11 @@ namespace {
       CHECK(oldest.has_value() && run.restore == *oldest);
       const PowerState requested = logical;
       const andromeda::ConfiguredFinish finished = commit.finish(run, outcome, logical);
-      CHECK_EQ(finished.result == CommitResult::Pending, outcome == CommitOutcome::Busy);
-      CHECK_EQ(finished.result == CommitResult::Failed, outcome == CommitOutcome::Failed);
-      CHECK_EQ(finished.restore.has_value(), outcome == CommitOutcome::Failed);
+      const bool exhausted = outcome == CommitOutcome::Busy && run.busyTries + 1 >= andromeda::kConfiguredBusyLimit;
+      const bool failed = outcome == CommitOutcome::Failed || exhausted;
+      CHECK_EQ(finished.result == CommitResult::Pending, outcome == CommitOutcome::Busy && !exhausted);
+      CHECK_EQ(finished.result == CommitResult::Failed, failed);
+      CHECK_EQ(finished.restore.has_value(), failed);
       if (finished.result == CommitResult::Applied) {
         live = logical;
         deferredFailed = false;
@@ -126,7 +128,7 @@ ANDROMEDA_TEST(synchronousFailureRestoresTheLastAppliedState) {
 ANDROMEDA_TEST(busyCommitRetriesUntilItCommits) {
   OutputModel output;
   std::optional<ConfiguredRun> run = output.request(output.logical, true, std::nullopt);
-  for (int attempt = 0; attempt < 100 && run.has_value(); ++attempt) {
+  for (int attempt = 0; attempt + 1 < andromeda::kConfiguredBusyLimit && run.has_value(); ++attempt) {
     output.run(*run, CommitOutcome::Busy);
     CHECK(std::holds_alternative<ConfiguredCommit::Queued>(output.commit.state()));
     CHECK(output.commit.beginFrame());
@@ -139,6 +141,23 @@ ANDROMEDA_TEST(busyCommitRetriesUntilItCommits) {
     output.run(*run, CommitOutcome::Ok);
   }
   CHECK(std::holds_alternative<ConfiguredCommit::Idle>(output.commit.state()));
+}
+
+ANDROMEDA_TEST(persistentBusyFailsAndRestores) {
+  OutputModel output;
+  std::optional<ConfiguredRun> run = output.request({.desktopEnabled = true, .dpmsOff = true}, false, std::nullopt);
+  for (int attempt = 0; attempt < 1000 && run.has_value(); ++attempt) {
+    output.run(*run, CommitOutcome::Busy);
+    if (!output.commit.pending()) {
+      break;
+    }
+    CHECK(output.commit.beginFrame());
+    run = output.commit.takeDue();
+    (void)output.commit.endFrame();
+  }
+  CHECK(!output.commit.pending());
+  CHECK(std::holds_alternative<ConfiguredCommit::Idle>(output.commit.state()));
+  CHECK(!output.logical.dpmsOff);
 }
 
 ANDROMEDA_TEST(modeWaitsOnlyInsideTheFrame) {

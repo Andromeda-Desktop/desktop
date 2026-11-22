@@ -26,10 +26,14 @@ namespace andromeda {
   };
 
   // `deferred`: the run waited for a frame event, so its requester already acted on Pending.
+  // EBUSY clears within about a millisecond; a run still busy after this many tries (about 1 s of frames) fails.
+  constexpr int kConfiguredBusyLimit = 60;
+
   struct ConfiguredRun {
     bool stageGeometry = false;
     PowerState restore{};
     bool deferred = false;
+    int busyTries = 0;
     bool operator==(const ConfiguredRun&) const = default;
   };
 
@@ -79,7 +83,9 @@ namespace andromeda {
     request(bool stageGeometry, PowerState restore, std::optional<ConfiguredWait> wait) {
       ConfiguredRun run{.stageGeometry = stageGeometry, .restore = restore};
       if (const std::optional<ConfiguredRun> waiting = queued()) {
-        run = {.stageGeometry = stageGeometry || waiting->stageGeometry, .restore = waiting->restore};
+        run = {.stageGeometry = stageGeometry || waiting->stageGeometry,
+               .restore = waiting->restore,
+               .busyTries = waiting->busyTries};
       }
       if (wait.has_value()) {
         setQueued(run, *wait);
@@ -89,8 +95,12 @@ namespace andromeda {
       return run;
     }
 
-    // Reports the outcome of a run that request() or takeDue() returned. EBUSY is transient: it queues the run again.
+    // Reports the outcome of a run that request() or takeDue() returned. EBUSY is transient: it queues the run again,
+    // up to kConfiguredBusyLimit tries.
     [[nodiscard]] ConfiguredFinish finish(const ConfiguredRun& run, CommitOutcome outcome, PowerState requested) {
+      if (outcome == CommitOutcome::Busy && run.busyTries + 1 >= kConfiguredBusyLimit) {
+        outcome = CommitOutcome::Failed;
+      }
       switch (outcome) {
       case CommitOutcome::Ok:
         return {.result = CommitResult::Applied};
@@ -104,7 +114,8 @@ namespace andromeda {
       }
       const std::optional<ConfiguredRun> waiting = queued();
       setQueued(ConfiguredRun{.stageGeometry = run.stageGeometry || (waiting.has_value() && waiting->stageGeometry),
-                              .restore = run.restore});
+                              .restore = run.restore,
+                              .busyTries = run.busyTries + 1});
       return {.result = CommitResult::Pending};
     }
 
