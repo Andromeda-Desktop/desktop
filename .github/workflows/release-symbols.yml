@@ -1,7 +1,8 @@
 # Native symbols for crash reports, beside a release and never in its way: on the same tag it rebuilds the same
 # packages with debug info (ANDROMEDA_SYMBOLS=1; C -g does not change the generated code, and the release builds
 # Rust with debug info too), waits for the release's own packages, uploads andromeda-symbols-<tag>-x86_64.tar to that
-# release only when every binary's .text matches, and fails alone otherwise. Map a crash offset with: addr2line -f -C -e <unpacked debug file> 0x<offset>.
+# release only when every binary has the same instructions at the same addresses, and fails alone otherwise. Map a
+# crash offset with: addr2line -f -C -e <unpacked debug file> 0x<offset>.
 name: release-symbols
 on:
   push:
@@ -57,8 +58,12 @@ jobs:
           compgen -G 'released/*.pkg.tar.zst' > /dev/null || { echo "::error::$TAG has no released packages"; exit 1; }
       - name: Match
         run: |
-          # Symbols fit a released binary only when the code is the same: compare each binary's .text.
-          text() { objcopy -O binary --only-section=.text "$1" /dev/stdout 2> /dev/null | sha256sum | cut -d' ' -f1; }
+          # Symbols fit a released binary only when the same instructions sit at the same addresses. Reference operands
+          # do not count: LTO with -g can call another of several byte-identical copies of a function.
+          code() {
+            objdump -d --no-show-raw-insn "$1" | awk -F'\t' '/^ *[0-9a-f]+:\t/ {
+              ins = $2; if (ins ~ /%rip|^(call|jmp|j[a-z]+) /) sub(/ .*/, "", ins); print $1 ins }' | sha256sum | cut -d' ' -f1
+          }
           mismatch=0 compared=0
           for ours in pkg/*.pkg.tar.zst; do
             name=$(basename "$ours"); [[ $name == *-debug-* ]] && continue
@@ -67,7 +72,7 @@ jobs:
             while IFS= read -r -d '' f; do
               [[ $(head -c4 "a/$f" | od -An -c | tr -d ' ') == 177ELF ]] || continue
               compared=$((compared + 1))
-              [[ -f b/$f && $(text "a/$f") == $(text "b/$f") ]] && continue
+              [[ -f b/$f && $(code "a/$f") == $(code "b/$f") ]] && continue
               echo "::error::$f differs from the release"; mismatch=1
               mkdir -p differ && cp "a/$f" "differ/$(basename "$f").symbols" && cp "b/$f" "differ/$(basename "$f").release"
             done < <(cd a && find usr -type f -print0)
