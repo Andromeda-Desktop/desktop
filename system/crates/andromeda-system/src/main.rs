@@ -26,6 +26,7 @@ mod polkit;
 mod power;
 mod procs;
 mod rules;
+mod sensors;
 mod session;
 mod startup;
 mod state;
@@ -64,6 +65,7 @@ async fn main() -> Result<()> {
         .serve_at(thermal::PATH, thermal::Thermal::default())
         .serve_at(display::PATH, display::Display::default())
         .serve_at(diagnostics::PATH, diagnostics::Diagnostics::default())
+        .serve_at(sensors::PATH, sensors::Sensors::default())
         .serve_at(knobs::PATH, knobs::Knobs { policy: policy.clone() })
         .serve_at(explain::PATH, explain::Explain { policy: policy.clone() })
         .name(NAME)

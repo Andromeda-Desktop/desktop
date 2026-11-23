@@ -222,6 +222,12 @@
     <property name="Profile" type="s" access="read" />
     <property name="ProfileChoices" type="as" access="read" />
   </interface>
+  <interface name="org.andromeda.System1.Sensors">
+    <method name="ReadLight">
+      <arg type="d" direction="out" />
+      <arg type="u" direction="out" />
+    </method>
+  </interface>
   <interface name="org.andromeda.System1.Storage">
     <property name="FailingDrives" type="a(ss)" access="read" />
     <property name="FsErrors" type="a(st)" access="read" />
