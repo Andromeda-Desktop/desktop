@@ -290,6 +290,8 @@ private:
   std::string m_tagShown; // the tag whose listing shows, re-listed when the index walks again
   std::shared_ptr<class TagManagerSheet> m_tagManager;
   std::unique_ptr<class TerminalPane> m_terminal; // kept while hidden, as Dolphin keeps its session
+  // An exited pane whose nodes are still in the scene: their input callbacks reach it until the next build replaces them.
+  std::unique_ptr<class TerminalPane> m_terminalRetired;
   // Tag renames and deletes on files run one at a time, each after a fresh walk, so a second edit sees the first.
   struct TagFileOp {
     std::string tag;

@@ -1065,6 +1065,14 @@ std::unique_ptr<Node> FilesWindow::buildContent(Renderer& renderer, float width,
   } else {
     m_terminalClip = nullptr;
   }
+  if (m_terminalRetired != nullptr) {
+    // After this build is in the scene: the old scene's focus loss still calls into the retired pane.
+    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+      if (!alive.expired()) {
+        m_terminalRetired.reset();
+      }
+    });
+  }
   if (m_picker.has_value()) {
     content->addChild(ui::separator({}));
     content->addChild(buildPickerFooter(s));
@@ -2458,7 +2466,7 @@ void FilesWindow::toggleTerminal() {
                  .exited =
                      [this] {
                        m_terminalOpen = false;
-                       m_terminal.reset();
+                       m_terminalRetired = std::move(m_terminal);
                        m_window.requestRebuild();
                      },
                  .focus = [this](InputArea* area) { m_window.input().setFocus(area); },
