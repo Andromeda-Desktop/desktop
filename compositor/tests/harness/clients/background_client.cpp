@@ -5,7 +5,8 @@
 // and sends SIGCONT, as a browser forks its zygote before it moves into its own scope. WM_BASE_VERSION binds xdg_wm_base
 // at most that version (5 makes a client that cannot be suspended). While the file named by STOP_FILE exists, it
 // requests no further callback and prints "stopped". It binds dsk_surface_v1 and prints "presence <value>" for each
-// dsk_surface_v1.presence event.
+// dsk_surface_v1.presence event. With CHILDREN=1 it also maps a subsurface and an xdg popup, each with its own
+// dsk_surface_v1, and prints "sub-presence <value>" and "popup-presence <value>" for their presence events.
 // Usage: background-client [title].
 
 #include "content-type-v1-client-protocol.h"
@@ -31,6 +32,7 @@ namespace {
     wl_compositor* compositor = nullptr;
     wl_shm* shm = nullptr;
     xdg_wm_base* wmBase = nullptr;
+    wl_subcompositor* subcompositor = nullptr;
     wp_content_type_manager_v1* contentTypeManager = nullptr;
     dsk_surface_manager_v1* dskManager = nullptr;
     wl_surface* surface = nullptr;
@@ -39,7 +41,10 @@ namespace {
     wl_buffer* buffer = nullptr;
     bool mapped = false;
     bool suspended = false;
+    wl_surface* popupSurface = nullptr;
   };
+
+  void addDskListener(State& state, wl_surface* surface, const char* label);
 
   void requestFrame(State& state);
 
@@ -72,6 +77,35 @@ namespace {
   }
   constexpr xdg_wm_base_listener kWmBaseListener = {.ping = wmBasePing};
 
+  void popupConfigure(void* data, xdg_surface* surface, uint32_t serial) {
+    auto& state = *static_cast<State*>(data);
+    xdg_surface_ack_configure(surface, serial);
+    wl_surface_attach(state.popupSurface, state.buffer, 0, 0);
+    wl_surface_commit(state.popupSurface);
+  }
+  constexpr xdg_surface_listener kPopupSurfaceListener = {.configure = popupConfigure};
+
+  void mapChildren(State& state) {
+    wl_surface* child = wl_compositor_create_surface(state.compositor);
+    wl_subsurface* subsurface = wl_subcompositor_get_subsurface(state.subcompositor, child, state.surface);
+    wl_subsurface_set_position(subsurface, kSize / 2, kSize / 2);
+    addDskListener(state, child, "sub-presence");
+    wl_surface_attach(child, state.buffer, 0, 0);
+    wl_surface_commit(child);
+
+    state.popupSurface = wl_compositor_create_surface(state.compositor);
+    xdg_surface* popupXdg = xdg_wm_base_get_xdg_surface(state.wmBase, state.popupSurface);
+    xdg_surface_add_listener(popupXdg, &kPopupSurfaceListener, &state);
+    xdg_positioner* positioner = xdg_wm_base_create_positioner(state.wmBase);
+    xdg_positioner_set_size(positioner, kSize, kSize);
+    xdg_positioner_set_anchor_rect(positioner, 0, 0, kSize, kSize);
+    xdg_surface_get_popup(popupXdg, state.xdgSurface, positioner);
+    xdg_positioner_destroy(positioner);
+    addDskListener(state, state.popupSurface, "popup-presence");
+    wl_surface_commit(state.popupSurface);
+    wl_surface_commit(state.surface);
+  }
+
   void xdgConfigure(void* data, xdg_surface* surface, uint32_t serial) {
     auto& state = *static_cast<State*>(data);
     xdg_surface_ack_configure(surface, serial);
@@ -82,6 +116,9 @@ namespace {
     requestFrame(state);
     std::println("mapped");
     std::fflush(stdout);
+    if (const char* children = std::getenv("CHILDREN"); children != nullptr && std::strcmp(children, "1") == 0) {
+      mapChildren(state);
+    }
   }
   constexpr xdg_surface_listener kXdgListener = {.configure = xdgConfigure};
 
@@ -113,6 +150,8 @@ namespace {
       state.compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, name, &wl_compositor_interface, 4));
     } else if (std::strcmp(interface, wl_shm_interface.name) == 0) {
       state.shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
+    } else if (std::strcmp(interface, wl_subcompositor_interface.name) == 0) {
+      state.subcompositor = static_cast<wl_subcompositor*>(wl_registry_bind(registry, name, &wl_subcompositor_interface, 1));
     } else if (std::strcmp(interface, xdg_wm_base_interface.name) == 0) {
       state.wmBase = static_cast<xdg_wm_base*>(
           wl_registry_bind(registry, name, &xdg_wm_base_interface, std::min(version, wmBaseVersion()))
@@ -134,11 +173,19 @@ namespace {
       .clip_mapped = [](void*, dsk_surface_v1*, wl_fixed_t, wl_fixed_t, wl_fixed_t, wl_fixed_t) {},
       .backdrop = [](void*, dsk_surface_v1*, uint32_t) {},
       .density = [](void*, dsk_surface_v1*, wl_fixed_t) {},
-      .presence = [](void*, dsk_surface_v1*, uint32_t presence) {
-        std::println("presence {}", presence);
+      .presence = [](void* label, dsk_surface_v1*, uint32_t presence) {
+        std::println("{} {}", static_cast<const char*>(label), presence);
         std::fflush(stdout);
       },
   };
+  void addDskListener(State& state, wl_surface* surface, const char* label) {
+    if (state.dskManager != nullptr) {
+      dsk_surface_v1_add_listener(
+          dsk_surface_manager_v1_get_surface(state.dskManager, surface), &kDskListener, const_cast<char*>(label)
+      );
+    }
+  }
+
   constexpr wl_registry_listener kRegistryListener = {.global = registryGlobal, .global_remove = registryRemove};
 
   bool createBuffer(State& state) {
@@ -201,9 +248,7 @@ int main(int argc, char** argv) {
         WP_CONTENT_TYPE_V1_TYPE_GAME
     );
   }
-  if (state.dskManager != nullptr) {
-    dsk_surface_v1_add_listener(dsk_surface_manager_v1_get_surface(state.dskManager, state.surface), &kDskListener, nullptr);
-  }
+  addDskListener(state, state.surface, "presence");
   state.xdgSurface = xdg_wm_base_get_xdg_surface(state.wmBase, state.surface);
   xdg_surface_add_listener(state.xdgSurface, &kXdgListener, &state);
   state.toplevel = xdg_surface_get_toplevel(state.xdgSurface);

@@ -427,7 +427,7 @@ namespace andromeda {
     }
     if (m_dskSurfaces != nullptr) {
       for (const auto& layer : m_layerSurfaces) {
-        m_dskSurfaces->sendPresence(layer->layerSurface()->surface, layerPresence(*layer));
+        m_dskSurfaces->sendPresenceTree(layer->layerSurface()->surface, layerPresence(*layer));
       }
     }
     armBackgroundRenderTimer();
@@ -506,6 +506,17 @@ namespace andromeda {
     Presence Server::layerPresence(const LayerSurface& layer) const {
     const Output* output = layer.output();
     return layerPresenceOf(output != nullptr && output->dpmsOff(), sessionLocked());
+  }
+
+  std::optional<Presence> Server::surfacePresence(wlr_surface* surface) const {
+    if (const LayerSurface* layer = LayerSurface::fromSurface(surface)) {
+      return layerPresence(*layer);
+    }
+    const View* view = View::fromSurface(surface);
+    if (view == nullptr || !view->mapped()) {
+      return std::nullopt;
+    }
+    return view->presenceFacts().presence;
   }
 
     bool Server::viewDrawnOffscreen(const View& view) const {

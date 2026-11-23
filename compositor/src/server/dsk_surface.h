@@ -100,8 +100,10 @@ namespace andromeda {
     // Also advances the trackers of `surface` and writes their bound values.
     bool tick(wlr_surface* surface, uint32_t nowMs) const;
     void sendDensity(wlr_surface* surface, float density) const;
-    // dsk_surface_v1.presence (v20) of a mapped toplevel's root surface; sends only a changed value.
+    // dsk_surface_v1.presence (v20) of one surface; sends only a changed value.
     void sendPresence(wlr_surface* surface, Presence presence) const;
+    // sendPresence to root and every mapped subsurface and popup below it (xdg or layer-shell root).
+    void sendPresenceTree(wlr_surface* root, Presence presence) const;
     // Presence of the mapped toplevel whose root is `surface`, nullopt otherwise: a dsk_surface_v1 made after the map
     // gets the current value at once.
     void setPresenceLookup(std::function<std::optional<Presence>(wlr_surface*)> lookup) {

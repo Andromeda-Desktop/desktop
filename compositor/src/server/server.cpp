@@ -919,17 +919,7 @@ namespace andromeda {
     }
     m_backgroundEffects = std::make_unique<BackgroundEffectManager>(m_display);
     m_dskSurfaces = std::make_unique<DskSurfaceManager>(m_display);
-    m_dskSurfaces->setPresenceLookup([this](wlr_surface* surface) -> std::optional<Presence> {
-      if (const LayerSurface* layer = LayerSurface::fromSurface(surface);
-          layer != nullptr && layer->layerSurface()->surface == surface) {
-        return layerPresence(*layer);
-      }
-      const View* view = View::fromSurface(surface);
-      if (view == nullptr || !view->mapped() || view->rootSurface() != surface) {
-        return std::nullopt;
-      }
-      return view->presenceFacts().presence;
-    });
+    m_dskSurfaces->setPresenceLookup([this](wlr_surface* surface) { return surfacePresence(surface); });
     m_dskSurfaces->setOriginLookup([](wlr_surface* surface) -> std::optional<std::pair<int, int>> {
       // A surface that maps with this commit is not mapped yet, but its layer node is already placed.
       const LayerSurface* layer = surface != nullptr ? LayerSurface::fromSurface(surface) : nullptr;

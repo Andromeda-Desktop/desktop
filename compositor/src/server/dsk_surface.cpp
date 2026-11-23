@@ -121,6 +121,24 @@ namespace andromeda {
     dsk_surface_v1_send_presence(state->resource, static_cast<uint32_t>(presence));
   }
 
+  void DskSurfaceManager::sendPresenceTree(wlr_surface* root, Presence presence) const {
+    struct Send {
+      const DskSurfaceManager* manager;
+      Presence presence;
+    } send{.manager = this, .presence = presence};
+    const auto each = [](wlr_surface* surface, int /*sx*/, int /*sy*/, void* data) {
+      const auto* send = static_cast<const Send*>(data);
+      send->manager->sendPresence(surface, send->presence);
+    };
+    if (wlr_xdg_surface* xdg = wlr_xdg_surface_try_from_wlr_surface(root)) {
+      wlr_xdg_surface_for_each_surface(xdg, each, &send);
+    } else if (wlr_layer_surface_v1* layer = wlr_layer_surface_v1_try_from_wlr_surface(root)) {
+      wlr_layer_surface_v1_for_each_surface(layer, each, &send);
+    } else {
+      wlr_surface_for_each_surface(root, each, &send);
+    }
+  }
+
   DskSurfaceManager::State* DskSurfaceManager::state(wlr_surface* surface) const {
     wlr_addon* addon = wlr_addon_find(&surface->addons, this, &kAddonInterface);
     if (addon == nullptr) {

@@ -539,6 +539,8 @@ namespace andromeda {
     // Suspends every view out of sight (View::hidden) and resumes the rest; after a lock or output power change.
     void syncSuspendedViews();
     [[nodiscard]] Presence layerPresence(const LayerSurface& layer) const;
+    // Presence of the mapped view or layer surface that owns surface (root, subsurface or popup); nullopt for none.
+    [[nodiscard]] std::optional<Presence> surfacePresence(wlr_surface* surface) const;
     // Arms the 10 Hz frame-callback tick while a hidden view needs callbacks (see kBackgroundFrameIntervalMs).
     void armBackgroundFrameTimer();
     // Match every output's configured `mirror` to a connected source, starting or stopping mirrors as needed.

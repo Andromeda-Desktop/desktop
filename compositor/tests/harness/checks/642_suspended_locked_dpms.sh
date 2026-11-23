@@ -3,6 +3,7 @@
 # output is powered off, and resumes with its frames after each; a game keeps its slow tick behind the lock. Its
 # dsk_surface_v1.presence goes shown (0) -> off (3) -> shown for each, one event per change. A layer surface (a bar)
 # follows the same presence sequence: it is not a view, but it shows only while its output is on and the session open.
+# The window's subsurface and popup follow the window's presence through their own dsk_surface_v1 objects.
 set -euo pipefail
 source "$ANDROMEDA_HARNESS_LIB"
 
@@ -16,7 +17,7 @@ readonly LAYER_CLIENT="${ANDROMEDA_LAYER_CLIENT:-./build-debug/tests/layer-clien
 readonly LAYER_LOG="$ANDROMEDA_RUNTIME_DIR/layer.log"
 readonly LAYER_FIFO="$ANDROMEDA_RUNTIME_DIR/layer-control"
 
-"$CLIENT" visible-normal > "$NORMAL_LOG" 2>&1 &
+CHILDREN=1 "$CLIENT" visible-normal > "$NORMAL_LOG" 2>&1 &
 CONTENT_TYPE=game "$CLIENT" visible-game > "$GAME_LOG" 2>&1 &
 mkfifo "$LAYER_FIFO"
 exec {layer_fd}<> "$LAYER_FIFO"
@@ -90,6 +91,14 @@ if [[ $presence != "0 3 0 3 0 " ]]; then
   echo "dsk presence went '$presence', not '0 3 0 3 0 ' (shown, off at lock, shown, off at dpms, shown)"
   exit 1
 fi
+
+for child in sub popup; do
+  child_presence=$(grep "^$child-presence " "$NORMAL_LOG" | cut -d' ' -f2 | tr '\n' ' ')
+  if [[ $child_presence != "0 3 0 3 0 " ]]; then
+    echo "$child presence went '$child_presence', not '0 3 0 3 0 '"
+    exit 1
+  fi
+done
 
 await_lines "$LAYER_LOG" "dsk-presence 0" 3
 layer_presence=$(grep '^dsk-presence ' "$LAYER_LOG" | cut -d' ' -f2 | tr '\n' ' ')

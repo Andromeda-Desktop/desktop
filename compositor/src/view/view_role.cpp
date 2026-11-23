@@ -165,7 +165,7 @@ namespace andromeda {
       m_server->scheduleQos();
     }
     if (wlr_surface* root = rootSurface(); root != nullptr && m_server->dskSurfaces() != nullptr) {
-      m_server->dskSurfaces()->sendPresence(root, facts.presence);
+      m_server->dskSurfaces()->sendPresenceTree(root, facts.presence);
     }
     setSuspendedState(!facts.drawsFrames);
   }

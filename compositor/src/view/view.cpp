@@ -1144,6 +1144,7 @@ namespace andromeda {
     };
     wlr_surface* walk = surface;
     while (walk != nullptr) {
+      walk = wlr_surface_get_root_surface(walk);
       if (wlr_xdg_toplevel* toplevel = wlr_xdg_toplevel_try_from_wlr_surface(walk)) {
         return viewFromContentTree(toplevel->base->data);
       }

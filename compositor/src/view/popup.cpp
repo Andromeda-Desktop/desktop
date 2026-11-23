@@ -288,6 +288,11 @@ namespace andromeda {
   }
 
   void Popup::handleMap() {
+    // A popup misses every presence change of its owner while unmapped.
+    if (const std::optional<Presence> presence = m_server->surfacePresence(m_popup->base->surface);
+        presence && m_server->dskSurfaces() != nullptr) {
+      m_server->dskSurfaces()->sendPresenceTree(m_popup->base->surface, *presence);
+    }
     // Only a grabbing popup owns the keyboard. A toplevel's popup reaches it through its already focused window.
     if (m_popup->seat == nullptr) {
       return;
