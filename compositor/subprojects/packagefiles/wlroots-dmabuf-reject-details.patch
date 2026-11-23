@@ -1,0 +1,25 @@
+--- a/types/wlr_linux_dmabuf_v1.c
++++ b/types/wlr_linux_dmabuf_v1.c
+@@ -336,9 +336,21 @@
+ 		// planes > 0 might be subsampled according to fourcc format
+ 		if (i == 0 && attribs.offset[i] +
+ 				attribs.stride[i] * height > size) {
++			wlr_log(WLR_ERROR, "dmabuf rejected: %dx%d format 0x%08" PRIx32 " modifier 0x%016" PRIx64
++				" planes %d, plane 0 fd %d offset %" PRIu32 " stride %" PRIu32 " needs %" PRIu64 " bytes, fd size %jd",
++				width, height, format, attribs.modifier, attribs.n_planes, attribs.fd[0], attribs.offset[0],
++				attribs.stride[0], (uint64_t)attribs.offset[0] + (uint64_t)attribs.stride[0] * height,
++				(intmax_t)size);
++			for (int p = 1; p < attribs.n_planes; p++) {
++				wlr_log(WLR_ERROR, "dmabuf rejected: plane %d fd %d offset %" PRIu32 " stride %" PRIu32 " fd size %jd",
++					p, attribs.fd[p], attribs.offset[p], attribs.stride[p],
++					(intmax_t)lseek(attribs.fd[p], 0, SEEK_END));
++			}
+ 			wl_resource_post_error(params_resource,
+ 				ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_OUT_OF_BOUNDS,
+-				"invalid buffer stride or height for plane %d", i);
++				"invalid buffer stride or height for plane %d (%dx%d stride %" PRIu32 " offset %" PRIu32
++				" needs %" PRIu64 " bytes, fd size %jd)", i, width, height, attribs.stride[i], attribs.offset[i],
++				(uint64_t)attribs.offset[i] + (uint64_t)attribs.stride[i] * height, (intmax_t)size);
+ 			goto err_out;
+ 		}
+ 	}
