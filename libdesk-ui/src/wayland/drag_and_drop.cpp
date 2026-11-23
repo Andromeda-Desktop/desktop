@@ -20,7 +20,6 @@ namespace {
   // set_actions and finish are wl_data_device_manager v3.
   bool v3(void* proxy) { return wl_proxy_get_version(static_cast<wl_proxy*>(proxy)) >= 3; }
 
-  using pipe_io::readPipe;
   using pipe_io::writeAll;
 
   DragAndDrop* self(void* data) { return static_cast<DragAndDrop*>(data); }
@@ -238,14 +237,16 @@ void DragAndDrop::readSelection(const std::vector<std::string>& accepted,
   wl_data_offer_receive(m_selectionOffer, mime->c_str(), fds[1]);
   ::close(fds[1]);
   wl_display_flush(m_connection.display());
-  std::thread([fd = fds[0], mime = *mime, done = std::move(done), alive = std::weak_ptr<bool>(m_alive), maxBytes]() mutable {
-    std::string bytes = readPipe(fd, maxBytes);
-    DeferredCall::callLater([mime, done = std::move(done), alive, bytes = std::move(bytes)]() mutable {
-      if (!alive.expired()) {
-        done(mime, std::move(bytes));
+  pipe_io::readPipeAsync(
+      fds[0], maxBytes, std::weak_ptr<bool>(m_alive),
+      [mime = *mime, done = std::move(done)](pipe_io::ReadResult read) {
+        if (read.ok()) {
+          done(mime, std::move(read.bytes));
+        } else {
+          done({}, {});
+        }
       }
-    });
-  }).detach();
+  );
 }
 
 void DragAndDrop::onEnter(std::uint32_t serial, wl_surface* surface, float x, float y, wl_data_offer* offer) {
@@ -334,12 +335,7 @@ void DragAndDrop::onDrop() {
   wl_surface* surface = std::exchange(m_over, nullptr);
   const std::string mime = m_mime;
   // The source writes into the pipe from its own event loop: read off the main thread, deliver on it.
-  std::thread([this, fds0 = fds[0], offer, x, y, action, surface, mime, alive = std::weak_ptr<bool>(m_alive)] {
-    std::string bytes = readPipe(fds0);
-    DeferredCall::callLater([this, offer, x, y, action, surface, mime, alive, bytes = std::move(bytes)]() mutable {
-      if (alive.expired()) {
-        return;
-      }
+  pipe_io::readPipeAsync(fds[0], static_cast<std::size_t>(-1), std::weak_ptr<bool>(m_alive), [this, offer, x, y, action, surface, mime](pipe_io::ReadResult read) {
       if (v3(offer)) {
         if (action == Ask) {
           // finish under Ask is a protocol error; Copy keeps the source's files (the target links or asks).
@@ -348,9 +344,8 @@ void DragAndDrop::onDrop() {
         wl_data_offer_finish(offer);
       }
       releaseOffer(offer);
-      if (auto t = m_targets.find(surface); t != m_targets.end() && t->second.drop) {
-        t->second.drop(x, y, action, mime, std::move(bytes));
+      if (auto t = m_targets.find(surface); read.ok() && t != m_targets.end() && t->second.drop) {
+        t->second.drop(x, y, action, mime, std::move(read.bytes));
       }
-    });
-  }).detach();
+  });
 }

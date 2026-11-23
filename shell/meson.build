@@ -1337,6 +1337,7 @@ if build_tests
     'palette_tone',
     'panel_lifecycle',
     'path_browse',
+    'pipe_io',
     'pipewire_error',
     'andromeda_audio_provider',
     'andromeda_workspace_slide',

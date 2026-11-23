@@ -106,19 +106,16 @@ void PrimarySelection::onSelection(zwp_primary_selection_offer_v1* offer) {
   zwp_primary_selection_offer_v1_receive(offer, *mime, fds[1]);
   ::close(fds[1]);
   wl_display_flush(m_connection.display());
-  std::thread([this, fd = fds[0], generation, alive = std::weak_ptr<bool>(m_alive)] {
-    std::string bytes = pipe_io::readPipe(fd, kMaxTextBytes);
-    DeferredCall::callLater([this, generation, alive, bytes = std::move(bytes)]() mutable {
-      if (alive.expired() || generation != m_generation) {
-        return; // gone, or a newer selection is being read
-      }
-      if (!bytes.empty()) {
-        m_text = std::move(bytes);
-      }
-      m_reading = false;
-      finishRead();
-    });
-  }).detach();
+  pipe_io::readPipeAsync(fds[0], kMaxTextBytes, std::weak_ptr<bool>(m_alive), [this, generation](pipe_io::ReadResult read) {
+    if (generation != m_generation) {
+      return; // a newer selection is being read
+    }
+    if (read.ok()) {
+      m_text = std::move(read.bytes);
+    }
+    m_reading = false;
+    finishRead();
+  });
 }
 
 void PrimarySelection::whenText(std::function<void(std::optional<std::string>)> done) {
