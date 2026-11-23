@@ -31,7 +31,7 @@ executable('andromeda-link-app',
   'src/mirror_decoder.cpp',
   link_with: _model,
   dependencies: [_desk_app_dep, dependency('libqrencode'), dependency('libavcodec'), dependency('libavutil'), dependency('libavfilter'),
-                 dependency('libswscale')],
+                 dependency('libswscale'), dependency('tomlplusplus').partial_dependency(includes: true)],
   cpp_args: _warnings,
   install: true,
 )

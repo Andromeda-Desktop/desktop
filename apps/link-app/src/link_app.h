@@ -347,6 +347,7 @@ namespace linkapp {
     std::string m_hotspotSheet;   // device id + ssid of the ask the sheet shows; empty while none shows
     std::string m_dial; // the "Name or number" field
     AppWindow* m_window = nullptr;
+    AppWindow::Material m_material = AppWindow::Material::Glass; // the Appearance setting, saved in link.toml
     Node* m_phoneCard = nullptr;      // of the last sidebar build
     struct PlayerView {
       Slider* seek = nullptr;

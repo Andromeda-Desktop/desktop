@@ -15,6 +15,7 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -29,11 +30,60 @@
 #include <poll.h>
 #include <unistd.h>
 #include <qrencode.h>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+// Parse errors come back as values.
+#define TOML_HEADER_ONLY 1
+#define TOML_EXCEPTIONS 0
+#include <toml++/toml.hpp>
+#pragma GCC diagnostic pop
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace linkapp {
 
   namespace {
+
+    // Window materials in the order the Appearance picker lists them, with the link.toml value of each.
+    struct MaterialChoice {
+      AppWindow::Material material;
+      const char* key;
+      const char* name;
+    };
+    constexpr std::array kMaterials{
+        MaterialChoice{AppWindow::Material::Solid, "solid", "Solid"},
+        MaterialChoice{AppWindow::Material::Glass, "glass", "Glass"},
+        MaterialChoice{AppWindow::Material::GlassSidebar, "glass_sidebar", "Glass sidebar"},
+        MaterialChoice{AppWindow::Material::GlassContent, "glass_content", "Glass content"},
+    };
+
+    std::filesystem::path settingsPath() {
+      return std::filesystem::path(g_get_user_config_dir()) / "andromeda" / "link.toml";
+    }
+
+    // Glass when the file, the key or its value is missing or unknown.
+    AppWindow::Material loadMaterial() {
+      const toml::parse_result parsed = toml::parse_file(settingsPath().string());
+      if (!parsed) return AppWindow::Material::Glass;
+      const std::string key = parsed.table()["appearance"]["window"].value_or(std::string());
+      for (const MaterialChoice& choice : kMaterials) {
+        if (key == choice.key) return choice.material;
+      }
+      return AppWindow::Material::Glass;
+    }
+
+    void saveMaterial(AppWindow::Material material) {
+      const auto choice = std::ranges::find(kMaterials, material, &MaterialChoice::material);
+      std::error_code error;
+      std::filesystem::create_directories(settingsPath().parent_path(), error);
+      const std::filesystem::path temp = settingsPath().string() + ".new";
+      {
+        std::ofstream out(temp, std::ios::trunc);
+        out << "[appearance]\nwindow = \"" << choice->key << "\"\n";
+        if (!out) return;
+      }
+      std::filesystem::rename(temp, settingsPath(), error);
+    }
 
     struct PageInfo {
       Page page;
@@ -791,7 +841,7 @@ namespace linkapp {
   AppWindow& LinkApp::createWindow() {
     AppWindow& window = addWindow({.appId = info().id, .title = "Waiting", .width = 1200, .height = 780, .minWidth = 760,
                                    .sidebarWidth = Tokens::componentSidebarWidth,
-                                   .material = AppWindow::Material::Glass, .contentCard = true});
+                                   .material = m_material = loadMaterial(), .contentCard = true});
     m_window = &window;
     if (m_client == nullptr && bus() != nullptr) {
       m_client = std::make_unique<LinkClient>(*bus());
@@ -1619,6 +1669,7 @@ namespace linkapp {
     if (presence.kind != Presence::Kind::NoDaemon && pairShown()) return pair(renderer, s);
     switch (presence.kind) {
     case Presence::Kind::NoDaemon:
+      if (m_page == Page::Settings) return settings(presence);
       return emptyState("plug-connected-x", "Link is not running", "Start the Link service to reach your phone.", s);
     case Presence::Kind::NotPaired:
       return pair(renderer, s);
@@ -3035,6 +3086,42 @@ namespace linkapp {
 
     auto page = ui::column({.align = FlexAlign::Stretch, .fillWidth = true});
     page->setPadding(0.0F, 0.0F, Tokens::spaceP24 * s, 0.0F);
+    // The app's own settings: they need no Link service.
+    const auto appearance = [&] {
+      page->addChild(header("Appearance"));
+      auto card = group();
+      std::vector<std::string> names;
+      std::size_t selected = 0;
+      for (const MaterialChoice& choice : kMaterials) {
+        if (choice.material == m_material) selected = names.size();
+        names.emplace_back(choice.name);
+      }
+      row(*card, "app-window", "Window", "Glass shows the wallpaper behind the sidebar, the content, or both",
+          ui::select({.options = std::move(names), .selectedIndex = selected, .fontSize = Style::fontSizeBody * s,
+                      .controlHeight = Style::controlHeight * s,
+                      .onSelectionChanged = [this](std::size_t i, std::string_view) {
+                        if (i >= kMaterials.size() || kMaterials[i].material == m_material) return;
+                        m_material = kMaterials[i].material;
+                        m_window->setMaterial(m_material);
+                        saveMaterial(m_material);
+                      }}));
+      page->addChild(std::move(card));
+    };
+    const auto finish = [&] {
+      auto scroll = ui::scrollView({.state = &m_settingsScroll, .contentScale = s, .viewportPaddingH = Tokens::spaceP24 * s,
+                                    .maxContentWidth = Tokens::componentLinkSettingsWidth * s,
+                                    .contentAlign = ScrollView::ContentAlign::Start, .flexGrow = 1.0F});
+      scroll->content()->addChild(std::move(page));
+      return scroll;
+    };
+    if (presence.kind == Presence::Kind::NoDaemon) {
+      page->addChild(header("Phone"));
+      auto card = group();
+      row(*card, "plug-connected-x", "Link is not running", "Start the Link service to reach your phone", nullptr);
+      page->addChild(std::move(card));
+      appearance();
+      return finish();
+    }
     page->addChild(header(presence.phone.name));
     const auto grant = [&](Flex& card, const char* glyph, const char* title, const char* hint, bool held,
                            const char* feature) {
@@ -3092,6 +3179,7 @@ namespace linkapp {
           m_window->requestRebuild();
         });
     page->addChild(std::move(deskCard));
+    appearance();
 
     auto forget = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     forget->setPadding(Tokens::spaceP24 * s, 0.0F, 0.0F, 0.0F);
@@ -3120,11 +3208,7 @@ namespace linkapp {
       button->setCustomPalette(palette);
     }
     page->addChild(std::move(forget));
-    auto scroll = ui::scrollView({.state = &m_settingsScroll, .contentScale = s, .viewportPaddingH = Tokens::spaceP24 * s,
-                                  .maxContentWidth = Tokens::componentLinkSettingsWidth * s,
-                                  .contentAlign = ScrollView::ContentAlign::Start, .flexGrow = 1.0F});
-    scroll->content()->addChild(std::move(page));
-    return scroll;
+    return finish();
   }
 
 } // namespace linkapp
