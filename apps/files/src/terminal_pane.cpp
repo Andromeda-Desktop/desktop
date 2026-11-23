@@ -203,7 +203,8 @@ std::unique_ptr<Node> TerminalPane::build(Renderer& renderer, float scale, float
   const float cardHeight = (m_height - 2.0F * kMargin - headerHeight()) * s;
 
   auto header = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .height = Tokens::sizeControlS * s});
-  auto grip = ui::inputArea({.cursorShape = CursorShape::NsResize, .height = Tokens::sizeControlS * s, .flexGrow = 1.0F});
+  // The resize zone is the pane's top edge (the margin under the view's status bar), not the header strip.
+  auto grip = ui::inputArea({.cursorShape = CursorShape::NsResize, .height = kMargin * s});
   grip->setOnPress([this](const InputArea::PointerData& data) {
     if (data.button != BTN_LEFT) {
       return;
@@ -224,7 +225,7 @@ std::unique_ptr<Node> TerminalPane::build(Renderer& renderer, float scale, float
       resizeTo(m_drag->startHeight + (m_drag->startSceneY - data.sceneY) / m_scale);
     }
   });
-  header->addChild(std::move(grip));
+  header->addChild(ui::box({.flexGrow = 1.0F}));
   const auto headerButton = [s](std::string glyph, std::string tooltip, std::function<void()> action) {
     return ui::button({
         .glyph = std::move(glyph),
@@ -272,10 +273,12 @@ std::unique_ptr<Node> TerminalPane::build(Renderer& renderer, float scale, float
     cards->addChild(std::move(card));
   }
   m_built = true;
-  auto outer = ui::column({.out = &m_outer, .align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s,
-                           .padding = kMargin * s, .height = m_height * s});
+  auto outer = ui::column({.out = &m_outer, .align = FlexAlign::Stretch, .paddingH = kMargin * s, .height = m_height * s});
+  outer->addChild(std::move(grip));
   outer->addChild(std::move(header));
+  outer->addChild(ui::box({.height = Tokens::spaceP4 * s}));
   outer->addChild(std::move(cards));
+  outer->addChild(ui::box({.height = kMargin * s}));
   if (m_focusWanted) {
     m_focusWanted = false;
     // After this build is in the scene: the dispatcher tracks only attached areas.
