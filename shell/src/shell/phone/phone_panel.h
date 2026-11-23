@@ -13,7 +13,8 @@ class Label;
 class LinkService;
 
 // The bar phone item's popover: the phone's name, battery, and connection or last-seen time; Ring, Send clipboard, Do
-// not disturb, and Ringer mode; and Open Link.
+// not disturb, and Ringer mode; Wi-Fi, Bluetooth and the torch on phones that take them; a failed command's reason
+// with Try Again; and Open Link.
 class PhonePanel : public Panel {
 public:
   explicit PhonePanel(LinkService* link) : m_link(link) {}
@@ -29,7 +30,8 @@ public:
   [[nodiscard]] PanelPlacement panelPlacement() const noexcept override { return PanelPlacement::Attached; }
 
 private:
-  enum Action : std::uint8_t { Ring, Clipboard, Dnd, Ringer, ActionCount };
+  enum Action : std::uint8_t { Ring, Clipboard, Dnd, Ringer, Wifi, Bluetooth, Torch, ActionCount };
+  static constexpr std::uint8_t kFirstToggle = Wifi;
 
   void doLayout(Renderer& renderer, float width, float height) override;
   void doUpdate(Renderer& renderer) override;
@@ -41,5 +43,9 @@ private:
   Label* m_name = nullptr;
   Label* m_state = nullptr;
   std::array<Button*, ActionCount> m_actions{};
+  Flex* m_toggles = nullptr;
+  Flex* m_error = nullptr;
+  Label* m_errorText = nullptr;
+  Button* m_retry = nullptr;
   Button* m_open = nullptr;
 };

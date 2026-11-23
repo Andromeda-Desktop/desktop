@@ -43,6 +43,26 @@ struct LinkControls {
   std::int32_t dnd = -1;
 };
 
+// A phone's Wi-Fi, Bluetooth and torch, from phones that take set-wifi, set-bluetooth and set-torch: 1 on, 0 off, -1
+// where the phone does not say.
+struct LinkToggles {
+  std::int32_t wifi = -1;
+  std::int32_t bluetooth = -1;
+  std::int32_t torch = -1;
+};
+
+// The last system command this shell sent a phone, until it succeeds; a phone with none has no entry.
+struct LinkCommandState {
+  enum class Phase : std::uint8_t { Pending, Failed };
+  Phase phase = Phase::Pending;
+  std::string command;
+  std::uint32_t value = 0;
+  // The daemon's or the phone's reason, while Failed.
+  std::string error;
+  // Matches a reply to the command it answers.
+  std::uint64_t serial = 0;
+};
+
 // A text message on a phone; `date` in Unix milliseconds, `sent` for one the phone sent.
 struct LinkText {
   std::uint64_t id = 0;
@@ -158,7 +178,8 @@ public:
       std::function<void(std::optional<std::string>)> done
   );
   void ping(const std::string& deviceId);
-  // command is set-media-volume, set-ringer (0 silent, 1 vibrate, 2 normal), or set-dnd (1 or 0).
+  // command is set-media-volume, set-ringer (0 silent, 1 vibrate, 2 normal), set-dnd, set-wifi, set-bluetooth or
+  // set-torch (1 or 0). commandState() follows it; a success also sets the cached control or toggle.
   void sendSystemCommand(const std::string& deviceId, const std::string& command, std::uint32_t value);
   /// Opens the Link app, andromeda-link.
   static void openApp();
@@ -173,6 +194,11 @@ public:
   [[nodiscard]] const std::vector<LinkNearby>& nearby() const noexcept { return m_nearby; }
   [[nodiscard]] const LinkDeviceInfo* info(const std::string& deviceId) const;
   [[nodiscard]] const LinkControls* controls(const std::string& deviceId) const;
+  // Null for a phone without the toggle commands.
+  [[nodiscard]] const LinkToggles* toggles(const std::string& deviceId) const;
+  [[nodiscard]] const LinkCommandState* commandState(const std::string& deviceId) const;
+  // Drops a Failed command's message.
+  void dismissCommandError(const std::string& deviceId);
   // Devices whose file offers are accepted without asking.
   [[nodiscard]] const std::vector<std::string>& autoAccept() const noexcept { return m_autoAccept; }
   // The window this shell opened, while the daemon keeps it open.
@@ -280,6 +306,10 @@ private:
   void forgetPhotos(const std::string& deviceId);
   std::map<std::string, LinkDeviceInfo> m_info;
   std::map<std::string, LinkControls> m_controls;
+  std::map<std::string, LinkToggles> m_toggles;
+  std::map<std::string, LinkCommandState> m_commandStates;
+  std::uint64_t m_commandSerial = 0;
+  void commandAnswered(const std::string& deviceId, std::uint64_t serial, std::optional<std::string> error);
   std::map<std::string, std::vector<LinkText>> m_texts;
   // Per phone, a number's last 9 digits to the contact's name.
   std::map<std::string, std::unordered_map<std::string, std::string>> m_contactNames;

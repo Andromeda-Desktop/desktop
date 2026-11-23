@@ -143,6 +143,19 @@ namespace linkapp {
     void ring(const std::string& deviceId);
     void dial(const std::string& deviceId, const std::string& number);
     void setDnd(const std::string& deviceId, bool on);
+    // The window's last system command until it succeeds.
+    struct SystemCommand {
+      enum class Phase : std::uint8_t { Pending, Failed };
+      Phase phase = Phase::Pending;
+      std::string device;
+      std::string command;
+      std::uint32_t value = 0;
+      std::string error; // the daemon's or the phone's reason, while Failed
+      std::uint64_t serial = 0;
+    };
+    // set-dnd, set-wifi, set-bluetooth or set-torch; a success also sets the phone's cached value.
+    void sendSystemCommand(const std::string& deviceId, const std::string& command, std::uint32_t value);
+    [[nodiscard]] const std::optional<SystemCommand>& systemCommand() const { return m_command; }
     // Reads the full photo into the cache for the viewer; a new path drops the last file and any read in flight.
     void openPhoto(const std::string& phonePath);
     void closePhoto();
@@ -192,6 +205,8 @@ namespace linkapp {
     bool m_pairing = false; // Link1 Pairing: a window is open, ours or another client's
     Pair m_pair;
     std::vector<Phone> m_phones;
+    std::optional<SystemCommand> m_command;
+    std::uint64_t m_commandSerial = 0;
     std::optional<PhotoFile> m_photoFile;
     std::uint64_t m_photoSerial = 0;   // the viewer's read; a newer open makes older reads stale
     std::uint64_t m_takeSerial = 0;

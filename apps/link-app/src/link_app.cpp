@@ -1309,8 +1309,15 @@ namespace linkapp {
     list->addChild(std::move(settings));
     if (selected != nullptr) list->setSelected(selected, false);
     // Pair (flow.html#page=pair): only search and the PhoneCard until a phone is paired.
-    if (!m_client || m_client->presence().kind != Presence::Kind::NotPaired) side->addChild(std::move(list));
-    side->addChild(ui::spacer());
+    if (!m_client || m_client->presence().kind != Presence::Kind::NotPaired) {
+      // The list scrolls on a short window, so the PhoneCard below always shows whole.
+      auto scroll = ui::scrollView({.state = &m_sideScroll, .contentScale = s, .scrollbarAutoHide = true,
+                                    .contentAlign = ScrollView::ContentAlign::Start, .flexGrow = 1.0F});
+      scroll->content()->addChild(std::move(list));
+      side->addChild(std::move(scroll));
+    } else {
+      side->addChild(ui::spacer());
+    }
 
     // PhoneCard (handoff.yaml): phone symbol, name 600, dot + transport + battery.
     const Presence presence = m_client ? m_client->presence() : Presence{};
@@ -1406,9 +1413,67 @@ namespace linkapp {
           });
         }
       }));
-      keys->addChild(round("circle-minus", "Do not disturb", dnd, [this, id, dnd] { m_client->setDnd(id, !dnd); }));
+      const Phone& phone = presence.phone;
+      const auto& command = m_client->systemCommand();
+      const bool mine = command && command->device == id;
+      const bool hasToggles = phone.wifi >= 0 || phone.bluetooth >= 0 || phone.torch >= 0;
+      // With the toggles, two rows of four: actions, then the phone's own settings.
+      auto settings = hasToggles ? ui::row({.align = FlexAlign::Center, .justify = FlexJustify::SpaceBetween,
+                                            .paddingV = Tokens::spaceP4 * s})
+                                 : nullptr;
+      const bool dndPending = mine && command->phase == LinkClient::SystemCommand::Phase::Pending && command->command == "set-dnd";
+      auto dndKey = round("circle-minus", "Do not disturb", dndPending ? command->value == 1 : dnd,
+                          [this, id, dnd] { m_client->setDnd(id, !dnd); });
+      if (dndPending) dndKey->setEnabled(false);
+      (hasToggles ? settings : keys)->addChild(std::move(dndKey));
       keys->addChild(round("arrow-up", "Send files", false, [this, id] { chooseAndSend(id); }));
       card->addChild(std::move(keys));
+      if (hasToggles) {
+        // Turning off the radio Link runs on would end the connection: the key stays on and says why, and linkd's
+        // refusal shows inline when pressed.
+        struct Toggle {
+          const char* command;
+          int state;
+          const char *on, *off, *tip, *locked;
+          bool carries;
+        };
+        const std::array<Toggle, 3> toggles{{
+            {"set-wifi", phone.wifi, "wifi", "wifi-off", "Wi-Fi", "Link reaches the phone over Wi-Fi",
+             phone.transport == "wifi" || phone.transport == "nearby"},
+            {"set-bluetooth", phone.bluetooth, "bluetooth", "bluetooth-off", "Bluetooth",
+             "Link reaches the phone over Bluetooth", phone.transport == "bluetooth"},
+            {"set-torch", phone.torch, "bulb", "bulb-off", "Torch", "", false},
+        }};
+        for (const Toggle& toggle : toggles) {
+          const bool pending =
+              mine && command->phase == LinkClient::SystemCommand::Phase::Pending && command->command == toggle.command;
+          // A pending command shows the state it asks for, and takes no second press.
+          const bool on = pending ? command->value == 1 : toggle.state == 1;
+          const bool locked = on && toggle.carries;
+          auto button = round(on ? toggle.on : toggle.off, locked ? toggle.locked : toggle.tip, on,
+                              [this, id, command = std::string(toggle.command), on] {
+                                m_client->sendSystemCommand(id, command, on ? 0 : 1);
+                              });
+          button->setEnabled(live && toggle.state >= 0 && !pending);
+          settings->addChild(std::move(button));
+        }
+        card->addChild(std::move(settings));
+      }
+      if (mine && command->phase == LinkClient::SystemCommand::Phase::Failed) {
+        // Rulebook 9.13: an error shows where it happened, with the action that fixes it.
+        auto error = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+        error->addChild(ui::glyph({.glyph = "alert-circle", .glyphSize = Tokens::sizeSymbol * s,
+                                   .color = colorSpecFromRole(ColorRole::DangerText)}));
+        auto reason = text(command->error, Tokens::typeFootnote, ColorRole::Label1, s, 2);
+        reason->setFlexGrow(1.0F);
+        error->addChild(std::move(reason));
+        error->addChild(ui::button({.text = "Try Again", .fontSize = Tokens::typeFootnote.size * s,
+                                    .variant = ButtonVariant::Ghost,
+                                    .onClick = [this, id, cmd = command->command, value = command->value] {
+                                      m_client->sendSystemCommand(id, cmd, value);
+                                    }}));
+        card->addChild(std::move(error));
+      }
     }
     m_phoneCard = card.get();
     side->addChild(std::move(card));

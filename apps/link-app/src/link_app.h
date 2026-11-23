@@ -296,6 +296,7 @@ namespace linkapp {
     std::unique_ptr<LinkClient> m_client;
     std::unique_ptr<FeedAdapter> m_feed;
     ScrollViewState m_feedScroll;
+    ScrollViewState m_sideScroll;
     std::unique_ptr<ThreadAdapter> m_threads;
     std::unique_ptr<ConversationAdapter> m_conversation;
     ScrollViewState m_threadScroll;

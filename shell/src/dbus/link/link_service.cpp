@@ -368,6 +368,8 @@ void LinkService::detach() {
   clearPhoneState();
   m_info.clear();
   m_controls.clear();
+  m_toggles.clear();
+  m_commandStates.clear();
   m_texts.clear();
   m_contactNames.clear();
   m_nearby.clear();

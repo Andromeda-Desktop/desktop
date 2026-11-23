@@ -250,6 +250,8 @@ namespace linkapp {
               property<std::map<std::string, sdbus::Struct<std::uint32_t, bool, std::string, std::int32_t>>>(props, "DeviceStatus");
           const auto controls =
               property<std::map<std::string, sdbus::Struct<std::int32_t, std::string, std::int32_t, std::int32_t>>>(props, "DeviceControls");
+          const auto toggles =
+              property<std::map<std::string, sdbus::Struct<std::int32_t, std::int32_t, std::int32_t>>>(props, "DeviceToggles");
           const auto paused = property<std::vector<std::string>>(props, "Paused");
           using Player = sdbus::Struct<std::string, std::string, std::string, std::string, std::string, bool, std::uint64_t,
                                        std::uint64_t, std::int32_t, std::int64_t, std::vector<std::string>>;
@@ -269,6 +271,11 @@ namespace linkapp {
               phone.mediaVolume = it->second.get<0>();
               phone.dnd = it->second.get<2>();
               phone.locked = it->second.get<3>();
+            }
+            if (const auto it = toggles.find(phone.id); it != toggles.end()) {
+              phone.wifi = it->second.get<0>();
+              phone.bluetooth = it->second.get<1>();
+              phone.torch = it->second.get<2>();
             }
             if (const auto it = players.find(phone.id); it != players.end()) {
               const Player& p = it->second;
@@ -1258,11 +1265,37 @@ namespace linkapp {
         });
   }
 
-  void LinkClient::setDnd(const std::string& deviceId, bool on) {
-    m_proxy->callMethodAsync("SendSystemCommand").onInterface(kInterface)
-        .withArguments(deviceId, std::string("set-dnd"), static_cast<std::uint32_t>(on ? 1 : 0))
-        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
-          if (error) kLog.warn("SendSystemCommand set-dnd: {}", error->getMessage());
+  void LinkClient::setDnd(const std::string& deviceId, bool on) { sendSystemCommand(deviceId, "set-dnd", on ? 1 : 0); }
+
+  void LinkClient::sendSystemCommand(const std::string& deviceId, const std::string& command, std::uint32_t value) {
+    const std::uint64_t serial = ++m_commandSerial;
+    m_command = SystemCommand{.device = deviceId, .command = command, .value = value, .serial = serial};
+    changed();
+    m_proxy->callMethodAsync("SendSystemCommand").onInterface(kInterface).withArguments(deviceId, command, value)
+        .uponReplyInvoke([this, serial, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error) {
+          // A newer command replaced this one.
+          if (alive.expired() || !m_command || m_command->serial != serial ||
+              m_command->phase != SystemCommand::Phase::Pending) {
+            return;
+          }
+          if (error) {
+            kLog.warn("SendSystemCommand {}: {}", m_command->command, error->getMessage());
+            m_command->phase = SystemCommand::Phase::Failed;
+            m_command->error = error->getMessage();
+            changed();
+            return;
+          }
+          // The phone ran it; its next status confirms it, and this keeps the key from flicking back until then.
+          const auto value = static_cast<int>(m_command->value);
+          for (Phone& phone : m_phones) {
+            if (phone.id != m_command->device) continue;
+            if (m_command->command == "set-dnd") phone.dnd = value;
+            if (m_command->command == "set-wifi") phone.wifi = value;
+            if (m_command->command == "set-bluetooth") phone.bluetooth = value;
+            if (m_command->command == "set-torch") phone.torch = value;
+          }
+          m_command.reset();
+          changed();
         });
   }
 

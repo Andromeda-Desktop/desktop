@@ -345,7 +345,13 @@
         "open-link": "Open Link",
         "clipboard": "Clipboard",
         "dnd-short": "DND",
-        "ringer": "Ringer mode"
+        "ringer": "Ringer mode",
+        "wifi": "Wi-Fi",
+        "bluetooth": "Bluetooth",
+        "torch": "Torch",
+        "wifi-carries-link": "Link reaches the phone over Wi-Fi",
+        "bluetooth-carries-link": "Link reaches the phone over Bluetooth",
+        "try-again": "Try Again"
       },
       "brightness": {
         "brightness": "Brightness",

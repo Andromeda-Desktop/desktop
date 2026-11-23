@@ -41,6 +41,9 @@ namespace linkapp {
     int locked = -1;           // 1, 0, or -1 when the phone does not say
     int dnd = -1;              // same values as locked
     int mediaVolume = -1;      // percent, -1 when the phone does not say
+    int wifi = -1;             // Wi-Fi, Bluetooth, torch: as locked; all -1 on a phone without their commands
+    int bluetooth = -1;
+    int torch = -1;
     std::optional<PhonePlayer> player;
     bool paused = false;
   };
