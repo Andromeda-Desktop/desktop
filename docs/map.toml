@@ -862,6 +862,23 @@ test = "system/tests"
 build = "system"
 
 [[feature]]
+name = "sensors: ambient light and presence (system)"
+keywords = ["sensor", "ambient light", "als", "lux", "presence", "proximity", "wifi sensing", "true tone"]
+module = "system"
+entry = ["system/crates/andromeda-system/src/sensors.rs"]
+test = "system/crates/andromeda-system/src/sensors.rs"
+build = "system"
+notes = "Presence needs the iwlmld wifi_presence kernel patch (~/src/xefix-kernel/patches); ReadLight reads iio directly."
+
+[[feature]]
+name = "presence: dim or lock on leave, wake on approach"
+keywords = ["presence", "lock on leave", "on leave", "wake on approach", "walk away", "away dim"]
+module = "shell"
+entry = ["shell/src/idle/presence_watch.cpp", "libdesk-system/src/dbus/sensor/presence_service.cpp", "shell/src/app/application_services.cpp"]
+test = "presence_watch"
+build = "shell"
+
+[[feature]]
 name = "network: NetworkManager control"
 keywords = ["networkmanager", "network manager", "nm", "network control", "networking"]
 module = "system"
