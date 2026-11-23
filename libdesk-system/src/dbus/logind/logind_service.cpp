@@ -22,8 +22,8 @@ namespace {
   constexpr auto kLogindSessionInterface = "org.freedesktop.login1.Session";
 
   // Inhibit locks stay alive until every duplicate of the fd is closed. Our detached
-  // process launcher double-forks without closing fds, so without CLOEXEC `systemctl
-  // suspend` inherits the sleep-delay inhibit and logind waits the full InhibitDelayMaxSec.
+  // process launcher double-forks without closing fds, so without CLOEXEC a launched app
+  // inherits the idle inhibit and keeps it after the shell releases it.
   [[nodiscard]] bool setCloexec(int fd) {
     if (fd < 0) {
       return false;
@@ -38,37 +38,9 @@ namespace {
 
 LogindService::LogindService(SystemBus& bus) : m_bus(bus) {
   m_managerProxy = sdbus::createProxy(m_bus.connection(), kLogindBusName, kLogindObjectPath);
-  m_managerProxy->uponSignal("PrepareForSleep").onInterface(kLogindManagerInterface).call([this](bool sleeping) {
-    if (m_prepareForSleepCallback) {
-      m_prepareForSleepCallback(sleeping);
-    }
-  });
-  m_busDaemon = sdbus::createProxy(
-      m_bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
-  );
-  m_busDaemon->uponSignal("NameOwnerChanged")
-      .onInterface("org.freedesktop.DBus")
-      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
-        if (name == kLogindBusName && !newOwner.empty()) {
-          onLogindStarted();
-        }
-      });
 }
 
-// A new logind knows no inhibitor of the old one, and an Inhibit that failed while logind was away can succeed now.
-void LogindService::onLogindStarted() {
-  if (!m_sleepDelayWanted) {
-    return;
-  }
-  kLog.info("logind started; taking the sleep delay inhibit again");
-  releaseSleepDelayInhibit();
-  acquireSleepDelayInhibit();
-}
-
-LogindService::~LogindService() {
-  releaseSleepDelayInhibit();
-  releaseIdleInhibit();
-}
+LogindService::~LogindService() { releaseIdleInhibit(); }
 
 void LogindService::ensureSessionLockMonitor() {
   if (m_sessionProxy != nullptr || m_sessionResolving) {
@@ -151,25 +123,12 @@ void LogindService::setSessionLockIntegrationEnabled(bool enabled) {
   }
   m_sessionLockIntegrationEnabled = enabled;
   if (!enabled) {
-    releaseSleepDelayInhibit();
     m_sessionProxy.reset();
     m_pendingLockedHint.reset();
     kLog.info("logind session lock monitor disabled");
     return;
   }
   ensureSessionLockMonitor();
-}
-
-void LogindService::setLockBeforeSuspendEnabled(bool enabled) {
-  if (!m_sessionLockIntegrationEnabled || !enabled) {
-    releaseSleepDelayInhibit();
-    return;
-  }
-  acquireSleepDelayInhibit();
-}
-
-void LogindService::setPrepareForSleepCallback(PrepareForSleepCallback callback) {
-  m_prepareForSleepCallback = std::move(callback);
 }
 
 void LogindService::setLockCallback(SessionLockCallback callback) { m_lockCallback = std::move(callback); }
@@ -265,81 +224,6 @@ void LogindService::releaseIdleInhibit() {
     return;
   case IdleInhibit::None:
   case IdleInhibit::PendingCancelled:
-    return;
-  }
-}
-
-// The lock is async: a suspend that starts while Pending runs without the delay. logind ignores lid
-// events for HoldoffTimeoutSec (30 s) after resume, so only a scripted suspend can land in that window.
-void LogindService::acquireSleepDelayInhibit() {
-  m_sleepDelayWanted = true;
-  switch (m_sleepDelay) {
-  case SleepDelay::Held:
-  case SleepDelay::Pending:
-    return;
-  case SleepDelay::PendingCancelled:
-    m_sleepDelay = SleepDelay::Pending;
-    return;
-  case SleepDelay::None:
-    break;
-  }
-  if (m_managerProxy == nullptr) {
-    return;
-  }
-  m_sleepDelay = SleepDelay::Pending;
-
-  const std::weak_ptr<int> aliveToken = m_aliveToken;
-  m_managerProxy->callMethodAsync("Inhibit")
-      .onInterface(kLogindManagerInterface)
-      .withArguments(
-          std::string("sleep"), std::string("noctalia"), std::string("Lock before sleep"), std::string("delay")
-      )
-      .uponReplyInvoke([this, aliveToken](std::optional<sdbus::Error> e, sdbus::UnixFd fd) {
-        if (aliveToken.expired()) {
-          return;
-        }
-        const bool cancelled = m_sleepDelay == SleepDelay::PendingCancelled;
-        m_sleepDelay = SleepDelay::None;
-        if (e.has_value()) {
-          kLog.warn("failed to acquire logind sleep delay inhibit: {}", e->what());
-          return;
-        }
-        const int rawFd = fd.release();
-        if (cancelled) {
-          if (rawFd >= 0) {
-            ::close(rawFd);
-          }
-          return;
-        }
-        if (rawFd < 0) {
-          kLog.warn("logind sleep delay inhibit returned invalid fd");
-          return;
-        }
-        if (!setCloexec(rawFd)) {
-          kLog.warn("failed to set CLOEXEC on logind sleep delay inhibit fd");
-          ::close(rawFd);
-          return;
-        }
-        m_sleepDelayInhibitFd = rawFd;
-        m_sleepDelay = SleepDelay::Held;
-        kLog.info("logind sleep delay inhibit acquired");
-      });
-}
-
-void LogindService::releaseSleepDelayInhibit() {
-  m_sleepDelayWanted = false;
-  switch (m_sleepDelay) {
-  case SleepDelay::Pending:
-    m_sleepDelay = SleepDelay::PendingCancelled;
-    return;
-  case SleepDelay::Held:
-    ::close(m_sleepDelayInhibitFd);
-    m_sleepDelayInhibitFd = -1;
-    m_sleepDelay = SleepDelay::None;
-    kLog.info("logind sleep delay inhibit released");
-    return;
-  case SleepDelay::None:
-  case SleepDelay::PendingCancelled:
     return;
   }
 }

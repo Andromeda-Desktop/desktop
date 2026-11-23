@@ -62,6 +62,8 @@ public:
   void setRecoveredCallback(std::function<void()> callback);
   void setRestartedCallback(std::function<void()> callback);
   bool sendAppActivity(std::uint32_t pid, std::uint32_t flags);
+  // dsk_shell_v1 version 6: the compositor's sleep hold may end without a lock.
+  bool sendSleepReady();
   bool insertText(const std::string& text);
   bool sendKey(std::uint32_t keysym, bool pressed);
   void onShellTextInputState(const TextInputState& state);

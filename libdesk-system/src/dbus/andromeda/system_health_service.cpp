@@ -1,6 +1,7 @@
 #include "dbus/andromeda/system_health_service.h"
 
 #include "core/log.h"
+#include "dbus/andromeda/session_activity_watch.h"
 #include "dbus/session_bus.h"
 
 #include <algorithm>
@@ -19,7 +20,6 @@ namespace {
   constexpr auto kKnobsInterface = "org.andromeda.System1.Knobs";
   constexpr auto kExplainInterface = "org.andromeda.System1.Explain";
   constexpr auto kRulesInterface = "org.andromeda.System1.Rules";
-  const sdbus::ServiceName kCompositorName{"org.andromeda.Compositor1"};
   const sdbus::ObjectPath kAppsPath{"/org/andromeda/Compositor1/Apps"};
   constexpr auto kAppsInterface = "org.andromeda.Compositor1.Apps";
 
@@ -60,7 +60,7 @@ SystemHealthService::SystemHealthService(SessionBus& bus) : m_bus(bus) {
   m_explain = sdbus::createProxy(m_bus.connection(), kName, kExplainPath);
   m_rulesProxy = sdbus::createProxy(m_bus.connection(), kName, kRulesPath);
   m_knobs = sdbus::createProxy(m_bus.connection(), kName, kKnobsPath);
-  m_apps = sdbus::createProxy(m_bus.connection(), kCompositorName, kAppsPath);
+  m_apps = sdbus::createProxy(m_bus.connection(), sdbus::ServiceName{compositorBusName()}, kAppsPath);
   m_explain->uponSignal("Entry").onInterface(kExplainInterface).call([this](const VariantMap& /*entry*/) {
     loadEntries();
   });

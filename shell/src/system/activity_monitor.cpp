@@ -1,5 +1,6 @@
 #include "system/activity_monitor.h"
 
+#include "dbus/andromeda/session_activity_watch.h"
 #include "dbus/session_bus.h"
 #include "system/cgroup_stats.h"
 
@@ -28,14 +29,6 @@ namespace {
     return "other";
   }
 
-} // namespace
-
-namespace {
-  // ANDROMEDA_COMPOSITOR_BUS_NAME: a nested or headless compositor next to the session's one owns another name.
-  std::string compositorBusName() {
-    const char* name = std::getenv("ANDROMEDA_COMPOSITOR_BUS_NAME");
-    return name != nullptr && name[0] != '\0' ? name : "org.andromeda.Compositor1";
-  }
 } // namespace
 
 ActivityMonitor::ActivityMonitor(SessionBus& bus, WindowPids windowPids, std::string cgroupRoot, ChangeCallback onChange)

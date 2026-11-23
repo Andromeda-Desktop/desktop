@@ -249,7 +249,7 @@ void Vaults::lock(const Vault& vault, Done done) {
 }
 
 int Vaults::guard(const fs::path& mount) {
-  // logind waits for a delay inhibitor to close before sleep, so the vault locks while the system is still up.
+  // logind waits for this delay inhibitor to close before sleep, so the vault locks while the system is still up.
   GError* error = nullptr;
   GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
   if (bus == nullptr) {
@@ -278,14 +278,23 @@ int Vaults::guard(const fs::path& mount) {
     g_clear_object(&fds);
   };
   takeInhibitor(state);
-  const guint sub = g_dbus_connection_signal_subscribe(
-      bus, "org.freedesktop.login1", "org.freedesktop.login1.Manager", "PrepareForSleep", "/org/freedesktop/login1",
-      nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
+  GDBusConnection* session = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+  if (session == nullptr) {
+    kLog.warn("vault guard: no session bus: {}", error->message);
+    g_clear_error(&error);
+  }
+  // The compositor reports the sleep while every delay inhibitor still holds it.
+  const guint sub = session == nullptr ? 0 : g_dbus_connection_signal_subscribe(
+      session, "org.andromeda.Compositor1", "org.freedesktop.DBus.Properties", "PropertiesChanged",
+      "/org/andromeda/Compositor1/Apps", "org.andromeda.Compositor1.Apps", G_DBUS_SIGNAL_FLAGS_NONE,
       [](GDBusConnection*, const gchar*, const gchar*, const gchar*, const gchar*, GVariant* params, gpointer data) {
         auto& st = *static_cast<State*>(data);
-        gboolean start = FALSE;
-        g_variant_get(params, "(b)", &start);
-        if (!start) {
+        GVariant* changed = g_variant_get_child_value(params, 1);
+        const gchar* activity = nullptr;
+        const bool sleeping = g_variant_lookup(changed, "Activity", "&s", &activity) != FALSE &&
+                              (g_strcmp0(activity, "sleeping") == 0 || g_strcmp0(activity, "sleeping-locked") == 0);
+        g_variant_unref(changed);
+        if (!sleeping) {
           return;
         }
         // A busy vault: a lazy unmount alone keeps open files readable, so the decrypting process goes first and
@@ -317,7 +326,10 @@ int Vaults::guard(const fs::path& mount) {
   if (mounted(mount)) {
     g_main_loop_run(state.loop);
   }
-  g_dbus_connection_signal_unsubscribe(bus, sub);
+  if (session != nullptr) {
+    g_dbus_connection_signal_unsubscribe(session, sub);
+    g_object_unref(session);
+  }
   g_object_unref(monitor);
   if (state.inhibit >= 0) {
     ::close(state.inhibit);

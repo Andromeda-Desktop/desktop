@@ -34,6 +34,8 @@ public:
 
   void start();
   void stop();
+  // The session goes to sleep (true) or resumes (false).
+  void onSleep(bool sleeping);
 
 private:
   void run(fingerprint_auth::Commands commands);
@@ -49,7 +51,6 @@ private:
   void emitStatus(const std::string& message, bool isError);
 
   SystemBus& m_bus;
-  std::unique_ptr<sdbus::IProxy> m_loginManager;
   std::unique_ptr<sdbus::IProxy> m_busDaemon;
   std::unique_ptr<sdbus::IProxy> m_device;
   std::unique_ptr<sdbus::IProxy> m_manager; // alive while GetDefaultDevice is pending

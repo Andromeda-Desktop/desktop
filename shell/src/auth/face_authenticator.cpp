@@ -28,9 +28,6 @@ namespace {
   const sdbus::ObjectPath kDbusPath{"/org/freedesktop/DBus"};
   constexpr auto kDbusInterface = "org.freedesktop.DBus";
 
-  const sdbus::ServiceName kLoginBusName{"org.freedesktop.login1"};
-  const sdbus::ObjectPath kLoginPath{"/org/freedesktop/login1"};
-  constexpr auto kLoginManagerInterface = "org.freedesktop.login1.Manager";
 
   constexpr auto kRetryDelay = std::chrono::milliseconds(500);
 
@@ -88,16 +85,6 @@ FaceAuthenticator::FaceAuthenticator(SystemBus& bus, std::string user) : m_bus(b
   } catch (const sdbus::Error& e) {
     kLog.debug("could not watch gazed ownership: {}", e.what());
     m_dbus.reset();
-  }
-
-  try {
-    m_loginManager = sdbus::createProxy(m_bus.connection(), kLoginBusName, kLoginPath);
-    m_loginManager->uponSignal("PrepareForSleep").onInterface(kLoginManagerInterface).call([this](bool sleeping) {
-      run(sleeping ? m_machine.sleep(m_onRequest) : m_machine.wake());
-    });
-  } catch (const sdbus::Error& e) {
-    kLog.debug("could not monitor PrepareForSleep: {}", e.what());
-    m_loginManager.reset();
   }
 }
 
@@ -326,3 +313,5 @@ void FaceAuthenticator::emitStatus(const std::string& message, bool isError) {
     m_onStatus(message, isError);
   }
 }
+
+void FaceAuthenticator::onSleep(bool sleeping) { run(sleeping ? m_machine.sleep(m_onRequest) : m_machine.wake()); }

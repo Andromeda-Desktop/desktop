@@ -67,6 +67,8 @@ public:
 
   // Hibernates once to prove that this machine resumes; hibernate choices unlock only after "ok".
   void startTrial();
+  // The system resumed: a pending hibernate trial passed.
+  void onResumed();
   // CanHibernate, a passed trial, and no change since to the kernel, command line or disk swap.
   [[nodiscard]] bool hibernateVerified() const;
   // Sets UPower's critical action to Hibernate when hibernateVerified(), else Power Off; asks polkit only on a change.

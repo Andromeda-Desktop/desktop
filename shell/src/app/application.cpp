@@ -18,6 +18,7 @@
 #include "core/process/process.h"
 #include "core/input/cursor_shape.h"
 #include "dbus/accounts/accounts_service.h"
+#include "dbus/andromeda/session_activity_watch.h"
 #include "dbus/andromeda/shell_service.h"
 #include "dbus/andromeda/system_health_service.h"
 #include "dbus/andromeda/software_update_service.h"

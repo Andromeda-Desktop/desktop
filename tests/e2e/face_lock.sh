@@ -11,7 +11,7 @@ set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/face-lock}
 source "$(dirname "$0")/lib.sh"
 rm -rf "$OUT"
-boot_headless 1
+SLEEP_ON_TEST_BUS=1 boot_headless 1
 
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_gaze.py"
 with_noctalia '

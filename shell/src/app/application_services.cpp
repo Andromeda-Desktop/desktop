@@ -15,6 +15,7 @@
 #include "core/input/keybind_matcher.h"
 #include "core/log.h"
 #include "core/process/process.h"
+#include "dbus/andromeda/session_activity_watch.h"
 #include "dbus/accounts/accounts_service.h"
 #include "dbus/andromeda/shell_service.h"
 #include "dbus/andromeda/software_update_service.h"
@@ -1490,20 +1491,70 @@ void Application::initAuxServicesAndHooks() {
 
 LockBeforeSleep::Hooks Application::lockBeforeSleepHooks() {
   return {
-      .enabled = [this] { return m_configService.shouldLockBeforeSuspend() && m_logindService != nullptr; },
+      .enabled = [this] { return m_configService.shouldLockBeforeSuspend(); },
       .lockReadyForSleep = [this] { return m_lockScreen.isReadyForSleep(); },
       .lockHeldOrQueued = [this] { return m_lockScreen.isLockHeldOrQueued(); },
       .lockTearingDown = [this] { return m_lockScreen.isTearingDown(); },
       .lock = [this] { return m_lockScreen.lockForSleep(); },
       .prepareLockForSleep = [this] { m_lockScreen.prepareForSleep(); },
-      .acquireDelay = [this] { m_logindService->acquireSleepDelayInhibit(); },
-      .releaseDelay =
-          [this] {
-            if (m_logindService != nullptr) {
-              m_logindService->releaseSleepDelayInhibit();
-            }
-          },
+      .sleepReady = [this] { m_wayland.sendSleepReady(); },
   };
+}
+
+void Application::onSessionSleep(bool sleeping) {
+  // Idle grace overlay must not survive suspend; hide on both edges as a fallback when
+  // fade-complete cleanup races with process freeze.
+  m_idleGraceOverlay.hide();
+  if (sleeping) {
+    // Sleep-related locks must never offer passwordless unlock: revoke
+    // before handling the transition so locks already pending or engaged
+    // lose the window, and idempotently again after the lock armed below.
+    m_lockScreen.resetGracePeriod();
+    // Screen time must not accumulate across suspend even when lock-before-suspend is off.
+    m_screenTimeService.setSuspendPaused(true);
+    // The compositor holds the sleep until the lock is on screen or the hooks send sleep_ready.
+    m_lockBeforeSleep.onPrepareForSleep(true);
+    m_lockScreen.onSessionSleep(true);
+    return;
+  }
+  m_screenTimeService.setSuspendPaused(false);
+  m_lockBeforeSleep.onPrepareForSleep(false);
+  m_lockScreen.onSessionSleep(false);
+  if (m_powerConfigService != nullptr) {
+    m_powerConfigService->onResumed();
+  }
+  kLog.info("system resumed; rechecking night light and auto theme schedules");
+  // Drivers may discard glyph textures while suspended without reporting a
+  // full graphics reset. Re-rasterize them before the resumed surfaces paint.
+  m_renderContext.invalidateGlyphTexturesNextFrame();
+  // The lock surface's Wayland frame callback can go stale across suspend
+  // (the compositor stops presenting the locked surface, so the callback
+  // registered before the stall never fires). That leaves kickFrameLoop()
+  // blocked forever and the password field never repaints. Drop the stale
+  // callback and force an immediate repaint of the lock surfaces.
+  if (m_lockScreen.isActive()) {
+    m_lockScreen.forceRepaintAfterResume();
+    m_lockScreen.onSystemResumed();
+  }
+  m_weatherService.requestRefresh();
+  m_gammaService.reevaluateSchedule();
+  // Auto theme mode schedules with steady_clock timers, which do not advance while
+  // suspended. Re-resolve so a day/night boundary crossed during sleep is applied.
+  m_themeService.onAutoSchemeChanged();
+  // BlueZ property-change signals can be missed across the suspend window, leaving our
+  // cached adapter state stale. Re-sync now and again shortly after, since BlueZ may take a
+  // moment to restore the adapter on resume.
+  if (bluetooth() != nullptr) {
+    bluetooth()->refresh();
+    m_bluetoothResumeTimer.start(std::chrono::seconds(2), [this] {
+      if (bluetooth() != nullptr) {
+        bluetooth()->refresh();
+      }
+    });
+  }
+  requestAllSurfacesRedraw();
+  // The time poll deadline is monotonic and stalls across suspend; refresh clocks now.
+  DeferredCall::callLater([this] { m_timeService.forceTick(); });
 }
 
 void Application::initSystemBusServices() {
@@ -1549,64 +1600,14 @@ void Application::initSystemBusServices() {
           m_powerOverlay.onGuardChanged();
           syncLiveActivity();
         });
-        m_logindService->setPrepareForSleepCallback([this](bool sleeping) {
-          // Idle grace overlay must not survive suspend; hide on both edges as a fallback when
-          // fade-complete cleanup races with process freeze.
-          m_idleGraceOverlay.hide();
-          if (sleeping) {
-            // Sleep-related locks must never offer passwordless unlock: revoke
-            // before handling the transition so locks already pending or engaged
-            // lose the window, and idempotently again after the lock armed below.
-            m_lockScreen.resetGracePeriod();
-            // Screen time must not accumulate across suspend even when lock-before-suspend is off.
-            m_screenTimeService.setSuspendPaused(true);
-            // The readiness hook releases the delay inhibit after the revealed lock frames are acknowledged.
-            m_lockBeforeSleep.onPrepareForSleep(true);
-            return;
-          }
-          m_screenTimeService.setSuspendPaused(false);
-          m_lockBeforeSleep.onPrepareForSleep(false);
-          kLog.info("system resumed; rechecking night light and auto theme schedules");
-          // Drivers may discard glyph textures while suspended without reporting a
-          // full graphics reset. Re-rasterize them before the resumed surfaces paint.
-          m_renderContext.invalidateGlyphTexturesNextFrame();
-          // The lock surface's Wayland frame callback can go stale across suspend
-          // (the compositor stops presenting the locked surface, so the callback
-          // registered before the stall never fires). That leaves kickFrameLoop()
-          // blocked forever and the password field never repaints. Drop the stale
-          // callback and force an immediate repaint of the lock surfaces.
-          if (m_lockScreen.isActive()) {
-            m_lockScreen.forceRepaintAfterResume();
-            m_lockScreen.onSystemResumed();
-          }
-          m_weatherService.requestRefresh();
-          m_gammaService.reevaluateSchedule();
-          // Auto theme mode schedules with steady_clock timers, which do not advance while
-          // suspended. Re-resolve so a day/night boundary crossed during sleep is applied.
-          m_themeService.onAutoSchemeChanged();
-          // BlueZ property-change signals can be missed across the suspend window, leaving our
-          // cached adapter state stale. Re-sync now and again shortly after, since BlueZ may take a
-          // moment to restore the adapter on resume.
-          if (bluetooth() != nullptr) {
-            bluetooth()->refresh();
-            m_bluetoothResumeTimer.start(std::chrono::seconds(2), [this] {
-              if (bluetooth() != nullptr) {
-                bluetooth()->refresh();
-              }
-            });
-          }
-          requestAllSurfacesRedraw();
-          // The time poll deadline is monotonic and stalls across suspend; refresh clocks now.
-          DeferredCall::callLater([this] { m_timeService.forceTick(); });
-        });
-        kLog.info("logind sleep monitor active");
+        kLog.info("logind service active");
         m_idleInhibitor.setLogindService(m_logindService.get());
       } catch (const std::exception& e) {
-        kLog.warn("logind sleep monitor disabled: {}", e.what());
+        kLog.warn("logind service disabled: {}", e.what());
         m_logindService.reset();
       }
     } else {
-      kLog.info("logind not available on system bus; sleep monitor disabled");
+      kLog.info("logind not available on system bus");
     }
 
     try {
@@ -2376,6 +2377,13 @@ void Application::initSessionBusServices() {
   auto shouldRefreshControlCenter = [this] { return m_panelManager.isOpenPanel("control-center"); };
 
   if (m_bus != nullptr) {
+    try {
+      m_sessionActivity = std::make_unique<SessionActivityWatch>(*m_bus);
+      m_sessionActivity->addSleepListener([this](bool sleeping) { onSessionSleep(sleeping); });
+    } catch (const std::exception& e) {
+      kLog.warn("session activity watch disabled: {}", e.what());
+      m_sessionActivity.reset();
+    }
     try {
       m_debugService = std::make_unique<DebugService>(*m_bus, m_notificationManager);
       kLog.info("debug service active on dev.noctalia.Debug");

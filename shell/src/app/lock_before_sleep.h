@@ -5,8 +5,8 @@
 #include <functional>
 #include <utility>
 
-// Lock-before-sleep for the shell and the lock app: the logind delay inhibit holds a suspend until the
-// lock frames are on screen. The caller owns the lock and the inhibit; this class owns the phase.
+// Lock-before-sleep for the shell and the lock app. The compositor holds each sleep until its session lock is on
+// screen or the shell sends sleep_ready (a sleep without a lock). The caller owns the lock; this class owns the phase.
 class LockBeforeSleep {
 public:
   enum class Phase : std::uint8_t { Awake, AwakeSkipNextLock, LockingForSleep, ReadyForSleep };
@@ -21,8 +21,9 @@ public:
     // False when the lock refuses to start.
     std::function<bool()> lock;
     std::function<void()> prepareLockForSleep;
-    std::function<void()> acquireDelay;
-    std::function<void()> releaseDelay;
+    // dsk_shell_v1.sleep_ready: the user chose a sleep without a lock. Every other sleep waits for the compositor to
+    // present the session lock, or to lock behind a blank when the lock does not come in time.
+    std::function<void()> sleepReady;
     std::function<std::chrono::steady_clock::time_point()> now = [] { return std::chrono::steady_clock::now(); };
   };
 
@@ -48,13 +49,15 @@ public:
   void onPrepareForSleep(bool sleeping) {
     if (!sleeping) {
       m_phase = Phase::Awake;
-      if (m_hooks.enabled()) {
-        m_hooks.acquireDelay();
-      }
       return;
     }
     const bool skip = m_phase == Phase::AwakeSkipNextLock && m_hooks.now() < m_skipUntil;
-    if (skip || !m_hooks.enabled() || m_hooks.lockReadyForSleep()) {
+    if (skip || !m_hooks.enabled()) {
+      ready();
+      m_hooks.sleepReady();
+      return;
+    }
+    if (m_hooks.lockReadyForSleep()) {
       ready();
       return;
     }
@@ -65,20 +68,20 @@ public:
       return;
     }
     m_hooks.prepareLockForSleep();
-    // A deferred lock (no outputs yet) never reaches SessionLocked; it must not hold the suspend.
+    // A deferred lock (no outputs yet) never reaches SessionLocked: the compositor locks behind its blank.
     if (m_phase == Phase::LockingForSleep && !m_hooks.lockHeldOrQueued()) {
       ready();
     }
   }
 
-  // The lock frames are on screen, or their deadline passed: the suspend may go on.
+  // The lock frames are on screen, or their deadline passed: the compositor acks once the lock is presented.
   void onLockSettled() {
     if (m_phase == Phase::LockingForSleep) {
       ready();
     }
   }
 
-  // The lock ended (unlocked or aborted). A relock queued behind it keeps the suspend held until it settles.
+  // The lock ended (unlocked or aborted). A relock queued behind it keeps the phase until it settles.
   void onLockEnded() {
     if (m_phase == Phase::LockingForSleep && !m_hooks.lockHeldOrQueued()) {
       ready();
@@ -86,10 +89,7 @@ public:
   }
 
 private:
-  void ready() {
-    m_phase = Phase::ReadyForSleep;
-    m_hooks.releaseDelay();
-  }
+  void ready() { m_phase = Phase::ReadyForSleep; }
 
   Hooks m_hooks;
   Phase m_phase = Phase::Awake;

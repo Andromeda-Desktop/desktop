@@ -159,11 +159,6 @@ PowerConfigService::PowerConfigService(SystemBus& bus) {
     }
   }
   if (m_manager != nullptr) {
-    m_manager->uponSignal("PrepareForSleep").onInterface(kLoginInterface).call([this](bool sleeping) {
-      if (!sleeping && m_state.trial == "pending") {
-        finishTrial();
-      }
-    });
     // A shutdown scheduled anywhere (Settings, `shutdown +10`) shows in the island; System1 relays logind's change.
     m_manager->uponSignal("ManagerPropertiesChanged")
         .onInterface(kLoginInterface)
@@ -224,8 +219,14 @@ void PowerConfigService::startTrial() {
   });
 }
 
+void PowerConfigService::onResumed() {
+  if (m_state.trial == "pending") {
+    finishTrial();
+  }
+}
+
 // Passed only when the restored kernel logged that message after the trial began. A lid suspend or an aborted
-// hibernate also ends in PrepareForSleep(false), but without that message. The helper reads the kernel log as root
+// hibernate also ends in a resume, but without that message. The helper reads the kernel log as root
 // and retries while journald catches up; exit 1 = no restore, any other failure (a cancelled prompt) stays pending.
 void PowerConfigService::finishTrial() {
   set("trial-check", std::to_string(m_trialSince), [this](bool ok) {

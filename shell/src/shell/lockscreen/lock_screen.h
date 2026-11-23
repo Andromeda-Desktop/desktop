@@ -100,6 +100,8 @@ public:
   /// After suspend/resume, revoke the passwordless grace period as a safety net;
   /// the boottime expiry check alone would also have expired it by then.
   void onSystemResumed();
+  // The session goes to sleep (true) or resumes (false): the face and finger readers pause.
+  void onSessionSleep(bool sleeping);
   void onPointerEvent(const PointerEvent& event);
   void onKeyboardEvent(const KeyboardEvent& event);
   [[nodiscard]] bool isActive() const noexcept;

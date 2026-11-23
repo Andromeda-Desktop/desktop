@@ -4,7 +4,7 @@
 #   - a file saved in the vault shows its name or content in the cipher folder,
 #   - Lock does not unmount the vault, or a wrong password unlocks it,
 #   - Unlock with the right password does not bring the file back,
-#   - the guard does not take a sleep inhibitor, or does not lock the vault when logind announces sleep.
+#   - the guard does not take a sleep inhibitor, or does not lock the vault when the compositor reports sleep.
 # Needs gocryptfs and FUSE (/dev/fuse).
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/files-vault}
@@ -39,7 +39,7 @@ env_app=(env DESK_FILES_TEST=1 DBUS_SESSION_BUS_ADDRESS="$BUS" DBUS_SYSTEM_BUS_A
   XDG_DATA_HOME="$HOME_DIR/.local/share" XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_STATE_HOME="$HOME_DIR/.local/state")
 
 mkfifo "$RUNTIME/logind.in"
-DBUS_SYSTEM_BUS_ADDRESS=$SYSBUS python3 -I "$ROOT/tests/e2e/fake_logind.py" < "$RUNTIME/logind.in" > "$OUT/logind.log" 2>&1 &
+DBUS_SYSTEM_BUS_ADDRESS=$SYSBUS DBUS_SESSION_BUS_ADDRESS=$BUS FAKE_COMPOSITOR_RELAY=1 python3 -I "$ROOT/tests/e2e/fake_logind.py" < "$RUNTIME/logind.in" > "$OUT/logind.log" 2>&1 &
 exec 7> "$RUNTIME/logind.in"
 run "${env_app[@]}" ANDROMEDA_LOG_LEVEL=debug "$FILES" "$HOME_DIR" > "$OUT/files.log" 2>&1 &
 

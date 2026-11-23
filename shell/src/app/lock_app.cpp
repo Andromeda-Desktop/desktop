@@ -16,6 +16,7 @@
 #include "core/log.h"
 #include "core/timer_manager.h"
 #include "dbus/andromeda/lock_notice_client.h"
+#include "dbus/andromeda/session_activity_watch.h"
 #include "dbus/andromeda/lock_service.h"
 #include "dbus/link/link_lock_client.h"
 #include "dbus/logind/logind_service.h"
@@ -94,7 +95,6 @@ namespace {
         m_renderContext.setTextScale(m_config.config().accessibility.textScale);
         if (m_logind != nullptr) {
           m_logind->setSessionLockIntegrationEnabled(m_config.isLockScreenEnabled());
-          m_logind->setLockBeforeSuspendEnabled(m_config.shouldLockBeforeSuspend());
         }
         m_lock.onConfigChanged();
         if (m_config.lastChange().plugins && m_widgetsShown) {
@@ -222,6 +222,12 @@ namespace {
         } catch (const std::exception& e) {
           kLog.warn("lock notices: {}", e.what());
         }
+        try {
+          m_sessionActivity = std::make_unique<SessionActivityWatch>(*m_sessionBus);
+          m_sessionActivity->addSleepListener([this](bool sleeping) { onSessionSleep(sleeping); });
+        } catch (const std::exception& e) {
+          kLog.warn("session activity: {}", e.what());
+        }
       }
     }
 
@@ -330,19 +336,18 @@ namespace {
         return;
       }
       m_logind->setSessionLockIntegrationEnabled(m_config.isLockScreenEnabled());
-      m_logind->setLockBeforeSuspendEnabled(m_config.shouldLockBeforeSuspend());
       m_logind->setLockCallback([this] { (void)lock("logind"); });
       m_logind->setUnlockCallback([this] {
         if (m_lock.isActive()) {
           m_lock.unlock();
         }
       });
-      m_logind->setPrepareForSleepCallback([this](bool sleeping) { onPrepareForSleep(sleeping); });
     }
 
-    void onPrepareForSleep(bool sleeping) {
+    void onSessionSleep(bool sleeping) {
       if (!sleeping) {
         m_lockBeforeSleep.onPrepareForSleep(false);
+        m_lock.onSessionSleep(false);
         m_renderContext.invalidateGlyphTexturesNextFrame();
         if (m_lock.isActive()) {
           m_lock.forceRepaintAfterResume();
@@ -354,6 +359,7 @@ namespace {
       // A sleep-bound lock never offers the passwordless grace.
       m_lock.resetGracePeriod();
       m_lockBeforeSleep.onPrepareForSleep(true);
+      m_lock.onSessionSleep(true);
     }
 
     // The session hooks run before LockScreen destroys its surfaces, so the release waits for the next loop turn.
@@ -527,6 +533,7 @@ namespace {
     std::unique_ptr<PowerProfilesService> m_powerProfiles;
     std::unique_ptr<SessionBus> m_sessionBus;
     std::unique_ptr<SessionBusPollSource> m_sessionBusPoll;
+    std::unique_ptr<SessionActivityWatch> m_sessionActivity;
     std::unique_ptr<MprisService> m_mpris;
     std::unique_ptr<LinkLockClient> m_link;
     std::unique_ptr<LockNoticeClient> m_notices;
@@ -557,13 +564,7 @@ namespace {
         .lockTearingDown = [this] { return m_lock.isTearingDown(); },
         .lock = [this] { return m_lock.lockForSleep(); },
         .prepareLockForSleep = [this] { m_lock.prepareForSleep(); },
-        .acquireDelay = [this] { m_logind->acquireSleepDelayInhibit(); },
-        .releaseDelay =
-            [this] {
-              if (m_logind != nullptr) {
-                m_logind->releaseSleepDelayInhibit();
-              }
-            },
+        .sleepReady = [this] { m_wayland.sendSleepReady(); },
     }};
   };
 

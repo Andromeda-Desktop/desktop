@@ -7,6 +7,7 @@ RUNTIME=$(mktemp -d /tmp/dsk.XXXX)
 trap 'kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null; rm -rf "$RUNTIME"' EXIT
 
 # boot_headless OUTPUTS: start Andromeda with that many headless outputs; its log goes to $OUT/andromeda.log.
+# SLEEP_ON_TEST_BUS=1: the compositor follows logind sleep on the private bus (the shell's system bus) and holds it.
 boot_headless() {
   mkdir -p "$OUT" "$RUNTIME/home/.config/andromeda/shell"
   # No first-run wizard: it takes the keyboard from the window under test. No greeter sync: it runs pkexec and
@@ -38,7 +39,7 @@ CONF
   local backend=headless
   [[ -n ${NESTED_PARENT:-} ]] && backend=wayland
   env -u WAYLAND_DISPLAY -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$BUS_ADDRESS" XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
-    ${NESTED_PARENT:+WAYLAND_DISPLAY=$NESTED_PARENT} WLR_BACKENDS=$backend WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS="$1" \
+    ${NESTED_PARENT:+WAYLAND_DISPLAY=$NESTED_PARENT} ${SLEEP_ON_TEST_BUS:+DBUS_SYSTEM_BUS_ADDRESS=$BUS_ADDRESS ANDROMEDA_TEST_SLEEP_HOLD=1} WLR_BACKENDS=$backend WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS="$1" \
     "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" > "$OUT/andromeda.log" 2>&1 &
   # The IPC socket comes after the Wayland socket (server.cpp creates Ipc later); `msg` needs it.
   for _ in $(seq 100); do [[ -S $RUNTIME/wayland-0 && -S $RUNTIME/andromeda-wayland-0.sock ]] && break; sleep 0.05; done

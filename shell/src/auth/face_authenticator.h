@@ -42,6 +42,8 @@ public:
   void start();
   void resume();
   void stop();
+  // The session goes to sleep (true) or resumes (false).
+  void onSleep(bool sleeping);
   // A key press or pointer button: retries a verify that ended without judging a face.
   void onUserActivity();
   // On request (lockscreen.face_on_request): the camera runs only after request(), one scan per request, and a
@@ -67,7 +69,6 @@ private:
   std::string m_user;
   std::unique_ptr<sdbus::IProxy> m_gaze;
   std::unique_ptr<sdbus::IProxy> m_dbus;
-  std::unique_ptr<sdbus::IProxy> m_loginManager;
 
   AuthenticatedCallback m_onAuthenticated;
   StatusCallback m_onStatus;

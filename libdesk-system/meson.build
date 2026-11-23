@@ -53,6 +53,7 @@ endforeach
 configure_file(output: 'lazy-sonames.txt', command: ['printf', '%s\\n'] + _lazy_sonames, capture: true)
 
 _sources = files(
+  'src/dbus/andromeda/session_activity_watch.cpp',
   'src/dbus/andromeda/system_health_service.cpp',
   'src/dbus/andromeda/software_update_service.cpp',
   'src/dbus/mpris/mpris_service.cpp',

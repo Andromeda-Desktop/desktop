@@ -29,7 +29,7 @@ namespace {
   constexpr std::uint32_t kExtSessionLockManagerVersion = 1;
   constexpr std::uint32_t kVirtualKeyboardManagerVersion = 1;
   constexpr std::uint32_t kGammaControlManagerVersion = 1;
-  constexpr std::uint32_t kDesktopShellVersion = 5;
+  constexpr std::uint32_t kDesktopShellVersion = 6;
   constexpr std::uint32_t kScreencopyManagerVersion = 3;
   constexpr std::uint32_t kImageCopyCaptureManagerVersion = 1;
   constexpr std::uint32_t kOutputImageCaptureSourceManagerVersion = 1;
@@ -279,6 +279,14 @@ bool ShellWaylandConnection::sendAppActivity(std::uint32_t pid, std::uint32_t fl
     return false;
   }
   dsk_shell_v1_app_activity(m_desktopShell, pid, flags);
+  return true;
+}
+
+bool ShellWaylandConnection::sendSleepReady() {
+  if (m_desktopShell == nullptr || dsk_shell_v1_get_version(m_desktopShell) < DSK_SHELL_V1_SLEEP_READY_SINCE_VERSION) {
+    return false;
+  }
+  dsk_shell_v1_sleep_ready(m_desktopShell);
   return true;
 }
 

@@ -16,7 +16,7 @@ namespace {
     Lock lock = Lock::Unlocked;
     // A lock request during Unlocking queues a relock; LockScreen runs it after the unlock hooks.
     bool relockQueued = false;
-    bool delayHeld = false;
+    int sleepReadySent = 0;
     bool enabled = true;
     bool refuseLock = false;
     bool noOutputs = false;
@@ -40,8 +40,7 @@ namespace {
               return true;
             },
         .prepareLockForSleep = [] {},
-        .acquireDelay = [this] { delayHeld = true; },
-        .releaseDelay = [this] { delayHeld = false; },
+        .sleepReady = [this] { ++sleepReadySent; },
         .now = [this] { return clock; },
     }};
 
@@ -70,7 +69,7 @@ namespace {
     w.finishUnlock();
     w.machine.onPrepareForSleep(true);
     TEST_CHECK(w.lock == Lock::Locking);
-    TEST_CHECK(w.machine.phase() == Phase::LockingForSleep && w.delayHeld);
+    TEST_CHECK(w.machine.phase() == Phase::LockingForSleep && w.sleepReadySent == 0);
   }
 
   // A suspend override launches, then fails: no sleep follows. A lid sleep a minute later must still lock.
@@ -81,7 +80,7 @@ namespace {
     w.clock += std::chrono::minutes(1);
     w.machine.onPrepareForSleep(true);
     TEST_CHECK(w.lock == Lock::Locking);
-    TEST_CHECK(w.machine.phase() == Phase::LockingForSleep && w.delayHeld);
+    TEST_CHECK(w.machine.phase() == Phase::LockingForSleep && w.sleepReadySent == 0);
   }
 
 } // namespace
@@ -95,6 +94,7 @@ int main() {
     for (int step = 0; step < 40; ++step) {
       const int event = static_cast<int>(rng() % 12);
       const Phase before = w.machine.phase();
+      const int sentBefore = w.sleepReadySent;
       bool lockExpected = false;
       switch (event) {
       case 0: {
@@ -103,14 +103,13 @@ int main() {
         lockExpected = !skip && w.enabled && !w.refuseLock && !w.noOutputs;
         w.machine.onPrepareForSleep(true);
         TEST_CHECK(w.machine.phase() != Phase::Awake && w.machine.phase() != Phase::AwakeSkipNextLock);
+        // Only the user's choice skips the lock: a refused or late lock leaves the sleep to the compositor's blank.
+        TEST_CHECK(w.sleepReadySent - sentBefore == (skip || !w.enabled ? 1 : 0));
         break;
       }
       case 1:
         w.machine.onPrepareForSleep(false);
         TEST_CHECK(w.machine.phase() == Phase::Awake);
-        if (w.enabled) {
-          TEST_CHECK(w.delayHeld);
-        }
         break;
       case 2:
         if (w.lock == Lock::Locking) {
@@ -163,16 +162,16 @@ int main() {
       if (lockExpected) {
         TEST_CHECK(w.lock == Lock::Unlocking ? w.relockQueued : w.lock != Lock::Unlocked);
       }
-      // Only a lock still drawing its frames, or an unlock that a relock or its end settles, may hold the suspend.
+      // Only a lock still drawing its frames, or an unlock that a relock or its end settles, keeps LockingForSleep.
       if (w.machine.phase() == Phase::LockingForSleep) {
         TEST_CHECK(w.lock == Lock::Locking || w.lock == Lock::Unlocking);
       }
-      // The delay goes only when the lock is ready or none is on its way.
+      // The phase ends only when the lock is ready or none is on its way.
       if (event != 0 && before == Phase::LockingForSleep && w.machine.phase() == Phase::ReadyForSleep) {
         TEST_CHECK(w.lock == Lock::Ready || (w.lock != Lock::Locking && !w.relockQueued));
       }
-      if (w.machine.phase() == Phase::ReadyForSleep) {
-        TEST_CHECK(!w.delayHeld);
+      if (event != 0) {
+        TEST_CHECK(w.sleepReadySent == sentBefore);
       }
     }
   }

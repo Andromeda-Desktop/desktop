@@ -809,6 +809,15 @@ void LockScreen::resetGracePeriod() {
   m_graceAllowed = false;
 }
 
+void LockScreen::onSessionSleep(bool sleeping) {
+  if (m_fingerprint != nullptr) {
+    m_fingerprint->onSleep(sleeping);
+  }
+  if (m_face != nullptr) {
+    m_face->onSleep(sleeping);
+  }
+}
+
 void LockScreen::onSystemResumed() {
   if (m_graceAllowed) {
     kLog.info("system resumed; revoking passwordless grace period");

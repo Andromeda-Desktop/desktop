@@ -235,7 +235,7 @@ namespace face_auth {
     std::uint32_t m_claimsInFlight = 0;
     // The first attempt after gazed last left the bus.
     std::uint64_t m_daemonAttempt = 0;
-    // Mirrors logind PrepareForSleep, so a lock that starts during sleep waits for wake.
+    // Mirrors the session sleep, so a lock that starts during sleep waits for wake.
     bool m_asleep = false;
   };
 

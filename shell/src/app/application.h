@@ -123,6 +123,7 @@ class BluetoothService;
 class BrightnessService;
 class KeyboardBacklightService;
 class DebugService;
+class SessionActivityWatch;
 class AndromedaShellService;
 class SystemHealthService;
 class SoftwareUpdateService;
@@ -287,6 +288,7 @@ private:
   void recoverGraphicsAfterReset();
   void requestAllSurfacesRedraw();
   [[nodiscard]] LockBeforeSleep::Hooks lockBeforeSleepHooks();
+  void onSessionSleep(bool sleeping);
   void onUpowerStateChangedForHooks();
   // Battery and network for the lock screen's status island.
   void refreshLockStatus();
@@ -329,7 +331,6 @@ private:
   std::map<std::uint32_t, std::uint32_t> m_sentActivity;
   // Pids that hold a logind sleep block inhibitor, from org.andromeda.System1.Login ListInhibitors.
   std::vector<std::uint32_t> m_sleepInhibitorPids;
-  std::unique_ptr<sdbus::IProxy> m_system1Login;
   WorkspaceAlertService m_workspaceAlertService;
   CompositorPlatform m_compositorPlatform{m_wayland};
   // dsk_output_manager_v1 "fullscreen" per output; null on other compositors.
@@ -360,10 +361,13 @@ private:
   CalendarService m_calendarService;
   CalendarReminderMonitor m_calendarReminderMonitor{m_configService, m_notificationManager};
   std::unique_ptr<SessionBus> m_bus;
+  std::unique_ptr<SessionActivityWatch> m_sessionActivity;
   // Set when the early session bus connection fails. Reported once i18n has been
   // initialized in initStyleThemeAndWayland().
   std::optional<std::string> m_earlySessionBusError;
   std::unique_ptr<SystemBus> m_systemBus;
+  // Declared after m_systemBus, so it is destroyed before its bus.
+  std::unique_ptr<sdbus::IProxy> m_system1Login;
   std::unique_ptr<LogindService> m_logindService;
   std::unique_ptr<PowerConfigService> m_powerConfigService;
   LockBeforeSleep m_lockBeforeSleep{lockBeforeSleepHooks()};

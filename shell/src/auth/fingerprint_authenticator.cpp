@@ -23,9 +23,6 @@ namespace {
   constexpr auto kDeviceInterface = "net.reactivated.Fprint.Device";
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
 
-  const sdbus::ServiceName kLoginBusName{"org.freedesktop.login1"};
-  const sdbus::ObjectPath kLoginPath{"/org/freedesktop/login1"};
-  constexpr auto kLoginManagerInterface = "org.freedesktop.login1.Manager";
 
   constexpr auto kRetryDelay = std::chrono::milliseconds(250);
 
@@ -66,15 +63,6 @@ namespace {
 using fingerprint_auth::Phase;
 
 FingerprintAuthenticator::FingerprintAuthenticator(SystemBus& bus) : m_bus(bus) {
-  try {
-    m_loginManager = sdbus::createProxy(m_bus.connection(), kLoginBusName, kLoginPath);
-    m_loginManager->uponSignal("PrepareForSleep").onInterface(kLoginManagerInterface).call([this](bool sleeping) {
-      run(sleeping ? m_machine.sleep() : m_machine.wake());
-    });
-  } catch (const sdbus::Error& e) {
-    kLog.debug("could not monitor PrepareForSleep: {}", e.what());
-    m_loginManager.reset();
-  }
   try {
     m_busDaemon = sdbus::createProxy(
         m_bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
@@ -369,3 +357,5 @@ void FingerprintAuthenticator::emitStatus(const std::string& message, bool isErr
     m_onStatus(message, isError);
   }
 }
+
+void FingerprintAuthenticator::onSleep(bool sleeping) { run(sleeping ? m_machine.sleep() : m_machine.wake()); }

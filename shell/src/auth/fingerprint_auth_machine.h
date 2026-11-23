@@ -257,7 +257,7 @@ namespace fingerprint_auth {
     bool m_reclaimed = false;
     // The running VerifyStart re-arms after a miss and counts toward kMaxRetries.
     bool m_countRetry = false;
-    // Mirrors logind PrepareForSleep, so an attempt that starts during sleep waits for wake.
+    // Mirrors the session sleep, so an attempt that starts during sleep waits for wake.
     bool m_asleep = false;
   };
 
