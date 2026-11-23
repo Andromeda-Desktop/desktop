@@ -382,6 +382,36 @@ namespace andromeda::qos {
         inputs.trayItem = inputs.trayItem || activity.trayItem;
       }
     }
+    // A split app is one app: an exemption in any of its scopes holds for all, or a hidden browser keeps playing from
+    // its audio service while the renderers that feed it freeze in the launch scope.
+    const auto share = [](Gathered& a, Gathered& b) {
+      bool changed = false;
+      const auto both = [&changed](bool& x, bool& y) {
+        if (x != y) {
+          x = y = true;
+          changed = true;
+        }
+      };
+      both(a.inputs.audio, b.inputs.audio);
+      both(a.inputs.call, b.inputs.call);
+      both(a.inputs.idleInhibitor, b.inputs.idleInhibitor);
+      both(a.inputs.screenCast, b.inputs.screenCast);
+      both(a.inputs.userWork, b.inputs.userWork);
+      both(a.inputs.trayItem, b.inputs.trayItem);
+      both(a.neverThrottle, b.neverThrottle);
+      return changed;
+    };
+    // A launch scope can hold the leftovers of several apps: repeat until every chain has the same exemptions.
+    for (bool changed = true; changed;) {
+      changed = false;
+      for (auto& [unit, app] : gathered) {
+        for (const std::string& leader : app.follows) {
+          if (const auto found = gathered.find(leader); found != gathered.end() && found->first != unit) {
+            changed = share(app, found->second) || changed;
+          }
+        }
+      }
+    }
     // Only the pids this snapshot names stay cached, so a reused pid is read again.
     m_pids = std::move(seen);
     m_children = std::move(children);

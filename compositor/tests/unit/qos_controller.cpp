@@ -30,6 +30,8 @@ namespace {
   constexpr const char* kTerminal = "app-andromeda-dev.andromeda.Terminal-50.scope";
   constexpr const char* kShellScope = "app-andromeda-dev.andromeda.Terminal-3531s4.scope";
   constexpr const char* kEditor = "app-org.example.Editor-1.scope";
+  constexpr const char* kBrowser = "app-org.example.Browser-600.scope";
+  constexpr const char* kLaunch = "app-andromeda-launch.sh-22.scope";
 
   class FakeUnits : public SystemdUnits {
   public:
@@ -55,7 +57,8 @@ namespace {
 
   // A /proc and /sys tree: the terminal window (pid 100) runs a shell (pid 200) in a ptyd shell scope; that shell
   // started a windowed app (pid 400) and a build (pid 201). The editor (pid 300) has its own scope; a shell started
-  // from it (pid 500) runs there too.
+  // from it (pid 500) runs there too. The browser (pid 600) moved into its own scope after it forked its renderer host
+// (pid 601), which stays in the launch scope; its audio service (pid 602) was forked after the move.
   struct Fixture {
     Fixture() {
       root = std::filesystem::temp_directory_path() / std::format("qos-controller-{}", getpid());
@@ -74,6 +77,9 @@ namespace {
       process(400, kShellScope);
       process(300, kEditor);
       process(500, kEditor);
+      process(600, kBrowser, "601 602 ");
+      process(601, kLaunch);
+      process(602, kBrowser);
       write(root / "power/BAT0/type", "Battery\n");
       write(root / "power/BAT0/status", "Discharging\n");
       setenv("ANDROMEDA_QOS_TEST_POWER_SUPPLY", (root / "power").c_str(), 1);
@@ -167,6 +173,26 @@ ANDROMEDA_TEST(aShellInsideAnAppUnitTakesThatUnitOutOfQos) {
   controller.focus(300);
   fixture.run(10);
   CHECK(!registry().apps.contains(kEditor));
+}
+
+ANDROMEDA_TEST(aHiddenSplitAppThatPlaysAudioFreezesInNoScope) {
+  Fixture fixture;
+  FakeUnits units;
+  Snapshot snapshot;
+  snapshot.windows = {window(600, true)};
+  snapshot.activity = {{.pid = 602, .audio = true}};
+  registry().freezeHidden = true;
+  Controller controller(fixture.loop, units, false, [&snapshot] { return snapshot; }, fixture.root.string());
+  controller.schedule();
+  fixture.run(150);
+  CHECK(!registry().apps.at(kBrowser).frozen);
+  CHECK(!registry().apps.at(kLaunch).frozen);
+  snapshot.activity.clear();
+  controller.schedule();
+  fixture.run(150);
+  CHECK(registry().apps.at(kBrowser).frozen);
+  CHECK(registry().apps.at(kLaunch).frozen);
+  registry().freezeHidden = false;
 }
 
 int main() { return RUN_TESTS(); }
