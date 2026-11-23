@@ -139,7 +139,8 @@ namespace andromeda {
   // be told they are suspended (X11 windows and xdg clients older than version 6). wlroots' scene helper only walks
   // enabled scene nodes, so such a view otherwise never receives another frame_done and a client that gates its
   // game/network loop on the frame callback stalls. A suspended view gets none: clients such as Firefox detect
-  // occlusion only from a long callback gap, and a slow tick reads as a slow display that drops video frames.
+  // occlusion only from a long callback gap, and a slow tick reads as a slow display that drops video frames. The tick
+  // runs only while such a view has a callback pending; its next commit with a callback arms it again.
   inline constexpr int kBackgroundFrameIntervalMs = 100;
   // Longest windows_resize.wait_for_redraw holds a reflow for its clients before it switches without them.
   inline constexpr double kRedrawWaitMs = 150.0;
@@ -441,9 +442,8 @@ namespace andromeda {
     void scheduleQos();
     // The user starts to reach hidden apps: frozen apps thaw until every hold ends (docs/qos.md §3).
     void holdQosThawIntent(bool held);
-    // True while `view`'s client must keep drawing although its frame is hidden: an overview card or a toplevel capture
-    // draws its content off the shared scene, or a `background_render` rule asks for it.
-    [[nodiscard]] bool viewRenderedOffscreen(const View& view) const;
+    // True while an overview card or a toplevel capture draws `view`'s content off the shared scene.
+    [[nodiscard]] bool viewDrawnOffscreen(const View& view) const;
     // True while a live image-copy session reads `view`'s toplevel capture source.
     [[nodiscard]] bool viewCaptured(const View& view) const;
     // True while a client waits to read `output`'s next committed buffer: an image-copy session on the output, or a
@@ -1153,6 +1153,7 @@ namespace andromeda {
     void promptLayerShellAccess();
     void resolveLayerShellAccess(bool allow);
     wl_event_source* m_backgroundFrameTimer = nullptr;
+    bool m_backgroundFrameArmed = false;
     struct LaunchBusy {
       std::string token;
       std::string appId; // empty for compositor spawns: no busy cursor, no feedback, only the launch-time log

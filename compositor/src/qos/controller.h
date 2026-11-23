@@ -29,7 +29,7 @@ namespace andromeda::qos {
   struct Snapshot {
     struct Window {
       pid_t pid = 0;
-      bool hidden = false; // as View::syncSuspendedState decides it
+      bool hidden = false; // !PresenceFacts::drawsFrames
       bool screenCast = false;
       Rule rule = Rule::Normal;
       // May get its own scope: a native Wayland client that is not the shell. An X11 pid is the client's own claim.

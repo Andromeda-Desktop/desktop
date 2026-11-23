@@ -373,6 +373,16 @@ namespace andromeda {
     }
   }
 
+    namespace {
+    // A shown view gets its callbacks from the outputs that draw it, including the outgoing workspace mid-slide, and a
+    // background_render view from its own faster tick. A suspended one gets them only to commit a configure it still
+    // owes, such as a resize while hidden. A view with no callback pending needs none.
+    bool needsBackgroundFrame(const View& view) {
+      return view.mapped() && view.presenceFacts().presence != Presence::Shown && !view.backgroundRender()
+          && (!view.suspended() || view.configureOutstanding()) && view.framePending();
+    }
+  } // namespace
+
   // Sends frame callbacks to toplevels off the rendered scene that could not be suspended (see
   // kBackgroundFrameIntervalMs).
   int Server::onBackgroundFrameTimer(void* data) {
@@ -380,14 +390,9 @@ namespace andromeda {
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);
 
+        self->m_backgroundFrameArmed = false;
     for (const auto& view : self->m_registry.all()) {
-      // A presented view gets its callbacks from the outputs that draw it, including the outgoing workspace mid-slide,
-      // and a background_render view from its own faster tick. A suspended one gets them only to commit a configure it
-      // still owes, such as a resize while hidden.
-      if (!view->mapped()
-          || view->seen()
-          || view->backgroundRender()
-          || (view->suspended() && !view->configureOutstanding())) {
+      if (!needsBackgroundFrame(*view)) {
         continue;
       }
       view->forEachSurface(
@@ -406,17 +411,19 @@ namespace andromeda {
     if (m_backgroundFrameTimer == nullptr) {
       return;
     }
-    // Off while no mapped window is hidden, so an idle desktop gets no 10 Hz wakeup.
-    const bool hidden = std::ranges::any_of(m_registry.all(), [](const auto& view) {
-      return view->mapped() && !view->seen() && !view->backgroundRender()
-          && (!view->suspended() || view->configureOutstanding());
-    });
-    wl_event_source_timer_update(m_backgroundFrameTimer, hidden ? kBackgroundFrameIntervalMs : 0);
+        // Armed only while a hidden window waits for a callback, so an idle desktop gets no wakeup. A pending tick keeps its
+    // deadline: a client that commits often must not push back the callbacks of the others.
+    const bool wanted = std::ranges::any_of(m_registry.all(), [](const auto& view) { return needsBackgroundFrame(*view); });
+    if (wanted == m_backgroundFrameArmed) {
+      return;
+    }
+    m_backgroundFrameArmed = wanted;
+    wl_event_source_timer_update(m_backgroundFrameTimer, wanted ? kBackgroundFrameIntervalMs : 0);
   }
 
   void Server::syncSuspendedViews() {
     for (const auto& view : m_registry.all()) {
-      view->syncSuspendedState();
+            view->syncPresence();
     }
     armBackgroundRenderTimer();
   }
@@ -433,7 +440,7 @@ namespace andromeda {
     }
 
     bool needsBackgroundRender(const View& view) {
-      return view.mapped() && view.backgroundRender() && !view.seen();
+      return view.mapped() && view.backgroundRender() && view.presenceFacts().presence != Presence::Shown;
     }
   } // namespace
 
@@ -486,16 +493,13 @@ namespace andromeda {
     auto* server = static_cast<Server*>(data);
     server->m_suspensionSyncIdle = nullptr;
     for (const auto& view : server->m_registry.all()) {
-      view->syncSuspendedState();
+            view->syncPresence();
     }
     server->armBackgroundRenderTimer();
   }
 
-  bool Server::viewRenderedOffscreen(const View& view) const {
-    if (view.backgroundRender() || (m_overview != nullptr && m_overview->presentsLive(&view))) {
-      return true;
-    }
-    return viewCaptured(view);
+    bool Server::viewDrawnOffscreen(const View& view) const {
+    return (m_overview != nullptr && m_overview->presentsLive(&view)) || viewCaptured(view);
   }
 
   bool Server::outputCaptureListening(const wlr_output* output) const {

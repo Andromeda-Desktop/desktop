@@ -12,6 +12,7 @@
 #include "view/drag_physics.h"
 #include "view/effects.h"
 #include "view/floating.h"
+#include "view/presence.h"
 #include "view/presentation.h"
 #include "view/snap.h"
 #include "view/view_visibility.h"
@@ -109,13 +110,15 @@ namespace andromeda {
     [[nodiscard]] ConfigureState configureState() const { return m_configureState; }
     // True while the shared scene draws the window: its frame and every ancestor are enabled.
     [[nodiscard]] bool presented() const;
-    // Presented, and not behind the lock screen or on a powered-off output.
-    [[nodiscard]] bool seen() const;
-    // Suspends a mapped window that is neither presented nor drawn off the scene, and resumes it otherwise. Callers
+    // True when every output the window overlaps is powered off, or, overlapping none, its current output is.
+    [[nodiscard]] bool outputsOff() const;
+    // True while a surface of the window waits for a wl_surface.frame callback.
+    [[nodiscard]] bool framePending() const;
+    // Recomputes the presence facts and suspends or resumes the window from them; QoS hears of a change. Callers
     // schedule it through Server::scheduleSuspensionSync.
-    void syncSuspendedState();
-    // The hidden state syncSuspendedState last found, for X11 windows too; it tells QoS when it changes.
-    [[nodiscard]] bool hiddenFromUser() const { return mapped() && m_hiddenFromUser; }
+    void syncPresence();
+    // The facts syncPresence last found, for X11 windows too. Every visibility export reads these.
+    [[nodiscard]] PresenceFacts presenceFacts() const { return mapped() ? m_presence : PresenceFacts{}; }
     [[nodiscard]] qos::Rule qosRule() const { return m_qosRule; }
     void setFullscreenState(bool fullscreen);
     void setMaximizedState(bool maximized);
@@ -1200,7 +1203,7 @@ namespace andromeda {
     bool m_initialContentTypeRulesSettled = false;
     float m_ruleOpacity = 1.0F;
     bool m_backgroundRender = false;
-    bool m_hiddenFromUser = false;
+    PresenceFacts m_presence;
     qos::Rule m_qosRule = qos::Rule::Normal;
     bool m_allowShortcutsInhibit = true;
     float m_dragOpacity = 1.0F;

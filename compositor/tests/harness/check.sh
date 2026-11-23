@@ -597,6 +597,7 @@ start_instance() {
     bash -c 'echo $$ > "$1"; shift; [[ -z ${HARNESS_SYSTEMD_SERVICE:-} ]] || export SYSTEMD_EXEC_PID=$$; exec "$@"' _ "$pgid_file" \
     "$BINARY" -c "$config" > "$log" 2>&1 &
   SERVER_PID=$!
+  export ANDROMEDA_SERVER_PID=$SERVER_PID
   INSTANCE_PGID=$(child_pgid "$pgid_file" "$SERVER_PID")
 
   # Boot lands in tens of milliseconds, and this runs once per check, so poll

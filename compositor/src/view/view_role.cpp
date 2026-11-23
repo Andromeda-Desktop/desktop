@@ -112,22 +112,58 @@ namespace andromeda {
     return wlr_scene_node_coords(&m_sceneTree->node, &x, &y);
   }
 
-  bool View::seen() const {
+  bool View::outputsOff() const {
+    const ClientSize size = currentSize();
+    const wlr_box box{.x = layoutX(), .y = layoutY(), .width = size.width, .height = size.height};
+    bool onAny = false;
+    for (const auto& output : m_server->outputs()) {
+      const wlr_box outputBox = output->layoutBox();
+      wlr_box overlap{};
+      if (!wlr_box_intersection(&overlap, &box, &outputBox)) {
+        continue;
+      }
+      if (!output->dpmsOff()) {
+        return false;
+      }
+      onAny = true;
+    }
+    if (onAny) {
+      return true;
+    }
     const Output* output = currentOutput();
-    return presented() && !m_server->sessionLocked() && (output == nullptr || !output->dpmsOff());
+    return output != nullptr && output->dpmsOff();
   }
 
-  void View::syncSuspendedState() {
+  bool View::framePending() const {
+    bool pending = false;
+    forEachSurface(
+        [](wlr_surface* surface, int /*sx*/, int /*sy*/, void* data) {
+          if (!wl_list_empty(&surface->current.frame_callback_list)) {
+            *static_cast<bool*>(data) = true;
+          }
+        },
+        &pending
+    );
+    return pending;
+  }
+
+  void View::syncPresence() {
     // A tiled opener waits hidden only until the arrange that places it, so it is about to show, not hidden.
     if (m_lifecycle != Lifecycle::Mapped) {
       return;
     }
-    const bool hidden = !seen() && !m_server->viewRenderedOffscreen(*this);
-    if (hidden != m_hiddenFromUser) {
-      m_hiddenFromUser = hidden;
+    const PresenceFacts facts = presenceOf(
+        {.presented = presented(),
+         .sessionLocked = m_server->sessionLocked(),
+         .outputsOff = outputsOff(),
+         .drawnOffscreen = m_server->viewDrawnOffscreen(*this),
+         .backgroundRender = backgroundRender()}
+    );
+    if (facts != m_presence) {
+      m_presence = facts;
       m_server->scheduleQos();
     }
-    setSuspendedState(hidden);
+    setSuspendedState(!facts.drawsFrames);
   }
 
   void View::setFullscreenState(bool fullscreen) {

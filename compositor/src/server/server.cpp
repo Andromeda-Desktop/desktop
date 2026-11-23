@@ -1997,7 +1997,7 @@ namespace andromeda {
           if (view->mapped()) {
             snapshot.windows.push_back(
                 {.pid = view->pid(),
-                 .hidden = view->hiddenFromUser(),
+                 .hidden = !view->presenceFacts().drawsFrames,
                  .screenCast = viewCaptured(*view),
                  .rule = view->qosRule(),
                  .adoptable = !view->xwayland() && view->rootSurface() != nullptr

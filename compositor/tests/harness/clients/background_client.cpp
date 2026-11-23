@@ -2,7 +2,9 @@
 // "frame <ms>" (the callback's time) for each callback plus "suspended" / "resumed" when the xdg_toplevel suspended
 // state changes. With CONTENT_TYPE=game it declares the game content type before its first commit. With FORK_CHILD=1 it
 // first forks an idle child, prints "child <pid>" and stops itself (SIGSTOP) until the test moves it to another scope
-// and sends SIGCONT, as a browser forks its zygote before it moves into its own scope.
+// and sends SIGCONT, as a browser forks its zygote before it moves into its own scope. WM_BASE_VERSION binds xdg_wm_base
+// at most that version (5 makes a client that cannot be suspended). While the file named by STOP_FILE exists, it
+// requests no further callback and prints "stopped".
 // Usage: background-client [title].
 
 #include "content-type-v1-client-protocol.h"
@@ -41,7 +43,12 @@ namespace {
   void frameDone(void* data, wl_callback* callback, uint32_t timeMs) {
     wl_callback_destroy(callback);
     auto& state = *static_cast<State*>(data);
-    std::println("frame {}", timeMs);
+        std::println("frame {}", timeMs);
+    if (const char* stop = std::getenv("STOP_FILE"); stop != nullptr && access(stop, F_OK) == 0) {
+      std::println("stopped");
+      std::fflush(stdout);
+      return;
+    }
     std::fflush(stdout);
     requestFrame(state);
   }
@@ -54,7 +61,12 @@ namespace {
     wl_surface_commit(state.surface);
   }
 
-  void wmBasePing(void*, xdg_wm_base* base, uint32_t serial) { xdg_wm_base_pong(base, serial); }
+    void wmBasePing(void*, xdg_wm_base* base, uint32_t serial) { xdg_wm_base_pong(base, serial); }
+
+  uint32_t wmBaseVersion() {
+    const char* value = std::getenv("WM_BASE_VERSION");
+    return value != nullptr ? static_cast<uint32_t>(std::strtoul(value, nullptr, 10)) : 6U;
+  }
   constexpr xdg_wm_base_listener kWmBaseListener = {.ping = wmBasePing};
 
   void xdgConfigure(void* data, xdg_surface* surface, uint32_t serial) {
@@ -100,7 +112,7 @@ namespace {
       state.shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
     } else if (std::strcmp(interface, xdg_wm_base_interface.name) == 0) {
       state.wmBase = static_cast<xdg_wm_base*>(
-          wl_registry_bind(registry, name, &xdg_wm_base_interface, std::min(version, 6U))
+          wl_registry_bind(registry, name, &xdg_wm_base_interface, std::min(version, wmBaseVersion()))
       );
       xdg_wm_base_add_listener(state.wmBase, &kWmBaseListener, &state);
     } else if (std::strcmp(interface, wp_content_type_manager_v1_interface.name) == 0) {

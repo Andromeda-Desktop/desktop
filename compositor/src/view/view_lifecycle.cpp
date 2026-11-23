@@ -183,7 +183,10 @@ namespace andromeda {
       // The blank follows the window's size; map, unmap and the secure handler change what it hides.
       self->sizeCaptureBlank();
     }
-    self->transitionConfigure(ConfigureEvent::Commit);
+        self->transitionConfigure(ConfigureEvent::Commit);
+    if (self->m_presence.presence != Presence::Shown) {
+      self->m_server->armBackgroundFrameTimer();
+    }
     if (Ipc* ipc = self->m_server->ipc()) {
       ipc->notifyViewCommitted();
     }
@@ -736,7 +739,7 @@ namespace andromeda {
       wl_event_source_remove(m_acceptClientMaximizeIdle);
       m_acceptClientMaximizeIdle = nullptr;
     }
-    m_hiddenFromUser = false;
+    m_presence = {};
     m_server->updateIdleInhibit();
     if (m_workspace != nullptr && m_workspace->group() != nullptr) {
       Output* output = m_workspace->group()->output();

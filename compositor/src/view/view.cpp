@@ -693,7 +693,7 @@ namespace andromeda {
       setForeignActivated(false);
       setBorderFocused(false);
     }
-    syncSuspendedState();
+    syncPresence();
     if (Output* output = currentOutput()) {
       output->updateHdr();
     }
