@@ -2757,6 +2757,128 @@ static bool test_blur_fade_source(struct fixture* fixture) {
   return ok;
 }
 
+static uint32_t blur_model_next(uint32_t* state) {
+  *state ^= *state << 13;
+  *state ^= *state >> 17;
+  *state ^= *state << 5;
+  return *state;
+}
+
+static bool blur_model_render(struct fixture* fixture, struct wlr_scene_output* output, uint8_t* pixels) {
+  struct wlr_output_state state;
+  struct wlr_buffer* rendered = fixture_render_scene(fixture, output, &state);
+  bool ok = check(rendered != NULL, "scene renders")
+      && check(read_buffer(fixture, rendered, DRM_FORMAT_ARGB8888, TEST_WIDTH * 4, pixels), "pixel readback");
+  if (rendered != NULL) {
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+  return ok;
+}
+
+// Model: random changes under a registered blur source tree, with no hand marks. After every change the cache the
+// scene kept current draws the same pixels as a cache re-rendered whole.
+static bool blur_source_model_seed(struct fixture* fixture, uint32_t seed) {
+  enum { MAX_RECTS = 8, STEPS = 48, OPS = 12 };
+  const uint32_t start = seed;
+  static const float paint_a[4] = {0.9f, 0.2f, 0.1f, 1}, paint_b[4] = {0.1f, 0.3f, 0.8f, 1};
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
+  wlr_scene_set_blur_data(scene, 2, 2, 0, 1, 1, 1);
+  struct wlr_scene_tree* source = wlr_scene_tree_create(&scene->tree);
+  struct wlr_scene_tree* inner = wlr_scene_tree_create(source);
+  struct wlr_scene_tree* hidden = wlr_scene_tree_create(&scene->tree);
+  wlr_scene_node_set_enabled(&hidden->node, false);
+  struct wlr_scene_optimized_blur* cache = wlr_scene_optimized_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT);
+  struct wlr_scene_blur* blur = wlr_scene_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT);
+  wlr_scene_blur_set_should_only_blur_bottom_layer(blur, true);
+  struct wlr_buffer* buffers[2] = {painted_buffer(fixture, paint_a), painted_buffer(fixture, paint_b)};
+  bool ok = check(buffers[0] != NULL && buffers[1] != NULL, "buffers paint");
+  struct wlr_scene_buffer* image = ok ? wlr_scene_buffer_create(source, buffers[0]) : NULL;
+  if (image != NULL) {
+    wlr_scene_buffer_set_dest_size(image, 6, 6);
+  }
+  wlr_scene_optimized_blur_add_source(cache, &source->node);
+  struct wlr_scene_rect* rects[MAX_RECTS];
+  int count = 0, shown = 0;
+  uint8_t kept[TEST_WIDTH * TEST_HEIGHT * 4], whole[TEST_WIDTH * TEST_HEIGHT * 4];
+  ok = ok && blur_model_render(fixture, output, kept);
+  for (int step = 0; ok && step < STEPS; step++) {
+    uint32_t op = blur_model_next(&seed) % OPS;
+    struct wlr_scene_rect* rect = count > 0 ? rects[blur_model_next(&seed) % count] : NULL;
+    int x = (int)(blur_model_next(&seed) % 18) - 2, y = (int)(blur_model_next(&seed) % 18) - 2;
+    float colour[4] = {(blur_model_next(&seed) % 5) / 4.0f, (blur_model_next(&seed) % 5) / 4.0f,
+                       (blur_model_next(&seed) % 5) / 4.0f, 1};
+    struct wlr_scene_tree* parents[3] = {source, inner, hidden};
+    if (op == 0 || rect == NULL) {
+      if (count < MAX_RECTS) {
+        rect = wlr_scene_rect_create(parents[blur_model_next(&seed) % 2], 1 + x % 8 + 2, 1 + y % 8 + 2, colour);
+        wlr_scene_node_set_position(&rect->node, x, y);
+        rects[count++] = rect;
+      }
+    } else if (op == 1) {
+      for (int i = 0; i < count; i++) {
+        if (rects[i] == rect) {
+          rects[i] = rects[--count];
+        }
+      }
+      wlr_scene_node_destroy(&rect->node);
+    } else if (op == 2) {
+      wlr_scene_node_set_position(&rect->node, x, y);
+    } else if (op == 3) {
+      wlr_scene_node_set_enabled(&rect->node, !rect->node.enabled);
+    } else if (op == 4) {
+      wlr_scene_node_reparent(&rect->node, parents[blur_model_next(&seed) % 3]);
+    } else if (op == 5) {
+      wlr_scene_rect_set_size(rect, 1 + (x + 2) % 9, 1 + (y + 2) % 9);
+    } else if (op == 6) {
+      wlr_scene_rect_set_color(rect, colour);
+    } else if (op == 7) {
+      if (x % 2 == 0) {
+        wlr_scene_node_raise_to_top(&rect->node);
+      } else {
+        wlr_scene_node_lower_to_bottom(&rect->node);
+      }
+    } else if (op == 8) {
+      x % 3 == 0 ? wlr_scene_node_set_enabled(&inner->node, !inner->node.enabled)
+                 : wlr_scene_node_set_position(&inner->node, x / 2, y / 2);
+    } else if (op == 9) {
+      wlr_scene_set_background_color(scene, colour);
+    } else if (op == 10) {
+      shown ^= 1;
+      wlr_scene_buffer_set_buffer(image, buffers[shown]);
+      wlr_scene_node_set_position(&image->node, x, y);
+    } else {
+      wlr_scene_output_set_sdr_white_level(output, 80.0f + (float)(x + 2) * 20.0f);
+    }
+    ok = blur_model_render(fixture, output, kept);
+    wlr_scene_optimized_blur_mark_dirty(cache);
+    ok = ok && blur_model_render(fixture, output, whole);
+    for (int i = 0; ok && i < TEST_WIDTH * TEST_HEIGHT * 4; i++) {
+      if (abs(kept[i] - whole[i]) > 1) {
+        fprintf(stderr, "  seed %u step %d op %u: pixel (%d, %d) channel %d kept %u, whole %u\n", start, step, op,
+                i / 4 % TEST_WIDTH, i / 4 / TEST_WIDTH, i % 4, kept[i], whole[i]);
+        ok = false;
+      }
+    }
+  }
+  wlr_scene_node_destroy(&scene->tree.node);
+  for (int i = 0; i < 2; i++) {
+    if (buffers[i] != NULL) {
+      wlr_buffer_drop(buffers[i]);
+    }
+  }
+  return ok;
+}
+
+static bool test_blur_source_model(struct fixture* fixture) {
+  bool ok = true;
+  for (uint32_t seed = 1; seed <= 16; seed++) {
+    ok &= blur_source_model_seed(fixture, seed * 2654435761u);
+  }
+  return ok;
+}
+
 // A rounded, tinted, translucent buffer over a backdrop: the plain interior and effects corners give every pixel the
 // whole effects draw gives.
 static bool corner_split_case(struct fixture* fixture, bool whole, uint8_t out[TEST_WIDTH * TEST_HEIGHT][4]) {
@@ -3402,6 +3524,8 @@ int main(int argc, char* argv[]) {
     ok = test_buffer_tint(&fixture);
   } else if (strcmp(argv[1], "blur-tint-fold") == 0) {
     ok = test_blur_tint_fold(&fixture);
+  } else if (strcmp(argv[1], "blur-source-model") == 0) {
+    ok = test_blur_source_model(&fixture);
   } else if (strcmp(argv[1], "blur-fade-source") == 0) {
     ok = test_blur_fade_source(&fixture);
   } else if (strcmp(argv[1], "corner-split") == 0) {

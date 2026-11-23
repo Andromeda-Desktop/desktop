@@ -265,6 +265,7 @@ namespace andromeda {
     [[nodiscard]] wlr_scene_tree* overviewBlurTree() const { return m_overviewBlurTree; }
     // Holds each output's wallpaper blur cache, above the background and bottom layers it caches.
     [[nodiscard]] wlr_scene_tree* blurCacheTree() const { return m_blurCacheTree; }
+    [[nodiscard]] wlr_scene_rect* backdrop() const { return m_backdrop; }
     // Between windows and the drag/insert-hint tree: overview cards render here
     // while the real window trees are disabled.
     [[nodiscard]] wlr_scene_tree* overviewTree() const { return m_overviewTree; }
@@ -1061,7 +1062,6 @@ namespace andromeda {
       int m_canvasY = 0;
       bool m_visible = true;
       // A snapshot under the output's background layer is part of the shared blur input until its final frame.
-      bool m_blurBackground = false;
       // popin/zoom end scale; 1.0 = no shrink.
       double m_shrinkTo = 1.0;
       // Minimize: the dock icon box in layout coordinates the snapshot moves and scales into.

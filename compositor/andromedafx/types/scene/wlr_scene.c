@@ -173,15 +173,154 @@ bool wlr_scene_node_add_update_listener(struct wlr_scene_node* node, struct wl_l
   return true;
 }
 
+static void blur_sources_note(struct wlr_scene* scene, struct wlr_scene_node* changed);
+
 static void scene_node_note_update(struct wlr_scene_node* node) {
   struct wlr_scene_node* changed = node;
-  scene_node_get_root(node)->update_serial++;
+  struct wlr_scene* scene = scene_node_get_root(node);
+  scene->update_serial++;
   for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
     struct scene_node_update_observer* observer = scene_node_update_observer_get(node);
     if (observer != NULL) {
       wl_signal_emit_mutable(&observer->update, changed);
     }
   }
+  blur_sources_note(scene, changed);
+}
+
+// One tree an optimized blur samples.
+struct optimized_blur_source {
+  struct wl_list link; // wlr_scene.blur_sources
+  struct wlr_scene_optimized_blur* blur;
+  struct wlr_scene_node* node;
+  struct wl_listener source_destroy;
+  struct wl_listener blur_destroy;
+};
+
+// The layout box a leaf under a source tree was drawn in at its last update, so a move or hide re-renders it.
+struct blur_source_leaf {
+  struct wlr_addon addon;
+  struct wlr_scene_node* node;
+  struct wlr_box box;
+};
+
+static bool node_is_under(struct wlr_scene_node* node, struct wlr_scene_node* source) {
+  for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
+    if (node == source) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool blur_sources_contain(struct wlr_scene* scene, struct wlr_scene_node* node) {
+  struct optimized_blur_source* source;
+  wl_list_for_each(source, &scene->blur_sources, link) {
+    if (node_is_under(node, source->node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static void blur_sources_mark(struct wlr_scene* scene, struct wlr_scene_node* leaf, const struct wlr_box* box) {
+  struct optimized_blur_source* source;
+  wl_list_for_each(source, &scene->blur_sources, link) {
+    if (node_is_under(leaf, source->node)) {
+      wlr_scene_optimized_blur_mark_dirty_box(source->blur, box);
+    }
+  }
+}
+
+static void blur_source_leaf_destroy(struct wlr_addon* addon) {
+  struct blur_source_leaf* leaf = wl_container_of(addon, leaf, addon);
+  // A destroyed leaf leaves its last box; a source tree that is itself going away has already unregistered.
+  blur_sources_mark(scene_node_get_root(leaf->node), leaf->node, &leaf->box);
+  wlr_addon_finish(&leaf->addon);
+  free(leaf);
+}
+
+static const struct wlr_addon_interface blur_source_leaf_impl = {
+    .name = "wlr_scene_blur_source_leaf",
+    .destroy = blur_source_leaf_destroy,
+};
+
+static void blur_sources_note_leaves(struct wlr_scene* scene, struct wlr_scene_node* node) {
+  if (node->type == WLR_SCENE_NODE_TREE) {
+    struct wlr_scene_node* child;
+    wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) { blur_sources_note_leaves(scene, child); }
+    return;
+  }
+  struct wlr_addon* addon = wlr_addon_find(&node->addons, scene, &blur_source_leaf_impl);
+  struct blur_source_leaf* leaf = addon != NULL ? wl_container_of(addon, leaf, addon) : NULL;
+  if (leaf != NULL) {
+    blur_sources_mark(scene, node, &leaf->box);
+  }
+  int x, y;
+  struct wlr_box box;
+  if (!wlr_scene_node_coords(node, &x, &y) || !wlr_scene_node_effect_bounds(node, &box)) {
+    if (leaf != NULL) {
+      wlr_addon_finish(&leaf->addon);
+      free(leaf);
+    }
+    return;
+  }
+  box.x += x;
+  box.y += y;
+  if (leaf == NULL) {
+    leaf = calloc(1, sizeof(*leaf));
+    if (leaf == NULL) {
+      wlr_log(WLR_ERROR, "failed to allocate a blur source leaf");
+      blur_sources_mark(scene, node, &box);
+      return;
+    }
+    leaf->node = node;
+    wlr_addon_init(&leaf->addon, &node->addons, scene, &blur_source_leaf_impl);
+  }
+  leaf->box = box;
+  blur_sources_mark(scene, node, &box);
+}
+
+static void blur_sources_note(struct wlr_scene* scene, struct wlr_scene_node* changed) {
+  if (wl_list_empty(&scene->blur_sources) || !blur_sources_contain(scene, changed)) {
+    return;
+  }
+  blur_sources_note_leaves(scene, changed);
+}
+
+static void optimized_blur_source_destroy(struct optimized_blur_source* source) {
+  wl_list_remove(&source->link);
+  wl_list_remove(&source->source_destroy.link);
+  wl_list_remove(&source->blur_destroy.link);
+  free(source);
+}
+
+static void optimized_blur_source_handle_source_destroy(struct wl_listener* listener, void* data) {
+  struct optimized_blur_source* source = wl_container_of(listener, source, source_destroy);
+  optimized_blur_source_destroy(source);
+}
+
+static void optimized_blur_source_handle_blur_destroy(struct wl_listener* listener, void* data) {
+  struct optimized_blur_source* source = wl_container_of(listener, source, blur_destroy);
+  optimized_blur_source_destroy(source);
+}
+
+void wlr_scene_optimized_blur_add_source(struct wlr_scene_optimized_blur* blur_node, struct wlr_scene_node* node) {
+  struct optimized_blur_source* source = calloc(1, sizeof(*source));
+  if (source == NULL) {
+    wlr_log(WLR_ERROR, "failed to allocate an optimized blur source");
+    return;
+  }
+  source->blur = blur_node;
+  source->node = node;
+  source->source_destroy.notify = optimized_blur_source_handle_source_destroy;
+  wl_signal_add(&node->events.destroy, &source->source_destroy);
+  source->blur_destroy.notify = optimized_blur_source_handle_blur_destroy;
+  wl_signal_add(&blur_node->node.events.destroy, &source->blur_destroy);
+  wl_list_insert(&scene_node_get_root(node)->blur_sources, &source->link);
+  // Leaves drawn before the registration get their box now; the cache re-renders whole at its next frame.
+  blur_sources_note_leaves(scene_node_get_root(node), node);
+  wlr_scene_optimized_blur_mark_dirty(blur_node);
 }
 
 struct highlight_region {
@@ -573,6 +712,7 @@ struct wlr_scene* wlr_scene_create(void) {
   scene_tree_init(&scene->tree, NULL);
 
   wl_list_init(&scene->outputs);
+  wl_list_init(&scene->blur_sources);
   wl_signal_init(&scene->events.buffer_visibility);
   wl_list_init(&scene->linux_dmabuf_v1_destroy.link);
   wl_list_init(&scene->gamma_control_manager_v1_destroy.link);
@@ -2905,6 +3045,8 @@ void wlr_scene_set_background_color(struct wlr_scene* scene, const float color[s
   // render list, so every output's whole surface is stale.
   struct wlr_scene_output* scene_output;
   wl_list_for_each(scene_output, &scene->outputs, link) { scene_output_damage_whole(scene_output); }
+  // The cache renders over the clear colour.
+  mark_all_optimized_blur_nodes_dirty(&scene->tree.node);
 }
 
 void wlr_scene_set_blur_data(
@@ -3606,6 +3748,10 @@ void wlr_scene_node_set_enabled(struct wlr_scene_node* node, bool enabled) {
   node->enabled = enabled;
 
   scene_node_update(node, &visible);
+  // A disabled cache took no marks, so it is stale when it shows again.
+  if (enabled && node->type == WLR_SCENE_NODE_OPTIMIZED_BLUR) {
+    wlr_scene_optimized_blur_mark_dirty(wlr_scene_optimized_blur_from_node(node));
+  }
 }
 
 void wlr_scene_node_set_position(struct wlr_scene_node* node, int x, int y) {
@@ -3616,6 +3762,9 @@ void wlr_scene_node_set_position(struct wlr_scene_node* node, int x, int y) {
   node->x = x;
   node->y = y;
   scene_node_update(node, NULL);
+  if (node->type == WLR_SCENE_NODE_OPTIMIZED_BLUR) {
+    wlr_scene_optimized_blur_mark_dirty(wlr_scene_optimized_blur_from_node(node));
+  }
 }
 
 void wlr_scene_node_place_above(struct wlr_scene_node* node, struct wlr_scene_node* sibling) {
@@ -4378,6 +4527,10 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     break;
   case WLR_SCENE_NODE_OPTIMIZED_BLUR:;
     struct wlr_scene_optimized_blur* scene_blur = wlr_scene_optimized_blur_from_node(node);
+    // A cache rendered for another format, SDR curve or size holds nothing this frame can reuse.
+    if (fx_pass->has_blur && fx_render_pass_optimized_blur_stale(fx_pass)) {
+      scene_blur->dirty = true;
+    }
     // A valid cache whose content or blur parameters changed (wallpaper, backdrop, scheme) needs a new blur only
     // where blur nodes sample it; a whole-output re-blur costs about 10 ms on a low-end GPU. The rest waits in pending.
     if (scene_blur->dirty && fx_pass->has_blur && fx_render_pass_optimized_blur_reusable(fx_pass)) {
@@ -6232,6 +6385,8 @@ void wlr_scene_output_set_sdr_white_level(struct wlr_scene_output* scene_output,
   scene_output->sdr_white_level = nits;
   scene_output->color_transform_dirty = true;
   scene_output_damage_whole(scene_output);
+  // The cache holds SDR content at the old white level.
+  mark_all_optimized_blur_nodes_dirty(&scene_output->scene->tree.node);
 }
 
 static void scene_output_dirty_optimized_blur(struct wlr_scene_output* output, struct wlr_scene_node* node) {

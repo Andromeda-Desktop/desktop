@@ -97,19 +97,4 @@ limit=$(((BAR_W / SCALE_DIV + 2 * REACH) * (BAR_H / SCALE_DIV + 2 * REACH)))
   exit 1
 }
 
-# Closed background layers must not leave tracked nodes behind.
-sed -i '/^\[animation.layers\]$/,/^\[/s/^enabled = false$/enabled = true/' "$ANDROMEDA_CONFIG"
-"$ANDROMEDA" msg config-reload > /dev/null
-nodes_before=$(blur_stat nodes)
-for i in 1 2 3 4 5; do
-  "$ANDROMEDA_LAYER_CLIENT" HEADLESS-1 0 > "$ANDROMEDA_RUNTIME_DIR/blur-rect-wallpaper-$i.log" 2>&1 &
-  wallpaper_pid=$!
-  await_lines "$ANDROMEDA_RUNTIME_DIR/blur-rect-wallpaper-$i.log" ready 1
-  kill "$wallpaper_pid"
-  wait "$wallpaper_pid" || true
-  "$ANDROMEDA" settle > /dev/null
-done
-nodes_after=$(blur_stat nodes)
-((nodes_after == nodes_before)) || { echo "closing 5 background layers left $((nodes_after - nodes_before)) tracked nodes"; exit 1; }
-
-echo "optimized blur re-rendered $delta cache pixels (grown child box $expected) for a child change under the bar, none outside its reach, and tracked no node past layer close"
+echo "optimized blur re-rendered $delta cache pixels (grown child box $expected) for a child change under the bar and none outside its reach"

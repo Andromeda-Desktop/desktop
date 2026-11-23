@@ -185,6 +185,7 @@ struct wlr_scene {
     struct blur_data blur_data;
     // Bumped on every node update; keys the optimized blur's consumer cache.
     uint64_t update_serial;
+    struct wl_list blur_sources; // optimized_blur_source.link
     // Layout area where an optimized blur finished re-rendering. Visibility there was computed with nothing culled
     // below the blur (it had to capture those nodes); the next frame recomputes it so they are culled again.
     pixman_region32_t blur_visibility_stale;
@@ -1159,6 +1160,13 @@ void wlr_scene_optimized_blur_mark_dirty(struct wlr_scene_optimized_blur* blur_n
  * samples it.
  */
 void wlr_scene_optimized_blur_mark_dirty_box(struct wlr_scene_optimized_blur* blur_node, const struct wlr_box* box);
+
+/**
+ * The cache draws source and the nodes under it: from now on the scene marks the cache itself where such a node is
+ * created, moved, resized, shown, hidden, reparented or destroyed (its previous and its new box). The registration
+ * ends when source or the blur node is destroyed.
+ */
+void wlr_scene_optimized_blur_add_source(struct wlr_scene_optimized_blur* blur_node, struct wlr_scene_node* source);
 
 /**
  * Add a node displaying a buffer to the scene-graph.

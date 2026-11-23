@@ -276,29 +276,6 @@ namespace andromeda {
       m_layerTrees[layer] = wlr_scene_tree_create(m_server->shellLayerTree(layer));
       m_layerPopupTrees[layer] = wlr_scene_tree_create(m_server->shellLayerTree(layer));
     }
-    if (!m_backgroundUpdate.connectVia(this, onBackgroundUpdate, [this](wl_listener* listener) {
-          return wlr_scene_node_add_update_listener(&layerTree(ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND)->node, listener);
-        })) {
-      kLog.error("output '{}': failed to watch background scene updates", m_output->name);
-      std::abort();
-    }
-    if (!m_backgroundPopupUpdate.connectVia(this, onBackgroundPopupUpdate, [this](wl_listener* listener) {
-          return wlr_scene_node_add_update_listener(
-              &layerPopupTree(ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND)->node, listener
-          );
-        })) {
-      kLog.error("output '{}': failed to watch background popup updates", m_output->name);
-      std::abort();
-    }
-    // The shared tree also sees the overview hide the bottom layer; marks outside this output's cache are clipped.
-    if (!m_bottomUpdate.connectVia(this, onBackgroundUpdate, [this](wl_listener* listener) {
-          return wlr_scene_node_add_update_listener(
-              &m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)->node, listener
-          );
-        })) {
-      kLog.error("output '{}': failed to watch bottom layer updates", m_output->name);
-      std::abort();
-    }
     m_viewRoot = wlr_scene_tree_create(m_server->xdgTree());
     m_fullscreenRoot = wlr_scene_tree_create(m_server->fullscreenTree());
     m_pinnedRoot = wlr_scene_tree_create(m_server->pinnedTree());
@@ -552,7 +529,6 @@ namespace andromeda {
     m_runtimeSdrWhite = nits;
     kLog.info("output '{}': live SDR white {} cd/m2", m_output->name, nits);
     updateSceneSdrWhite();
-    markBlurBackgroundDirty();
     m_server->updateColorPreferences();
     wlr_output_schedule_frame(m_output);
   }
@@ -1133,7 +1109,6 @@ namespace andromeda {
       // A failed candidate may have prepared the scene for the requested
       // transfer function. Keep the renderer aligned with the live output.
       updateSceneSdrWhite();
-      markBlurBackgroundDirty();
       m_server->updateColorPreferences();
       if (commitBusy) {
         return CommitOutcome::Busy;
@@ -1219,8 +1194,6 @@ namespace andromeda {
     const bool targetHdr = state.image_description != nullptr;
     wlr_scene_output_set_sdr_white_level(m_sceneOutput, targetHdr ? sdrWhite() : 0.0F);
     wlr_damage_ring_add_whole(&m_sceneOutput->damage_ring);
-    // The cache may need a new size, format or SDR curve; re-render it in this frame.
-    markBlurBackgroundDirty();
 
     if (m_heldFrame != nullptr) {
       if (heldFrameFits(&state)) {
@@ -1967,9 +1940,6 @@ namespace andromeda {
     if (m_lastFrame != nullptr) {
       wlr_buffer_unlock(m_lastFrame);
     }
-    m_bottomUpdate.disconnect();
-    m_backgroundPopupUpdate.disconnect();
-    m_backgroundUpdate.disconnect();
     if (m_frameRetryTimer != nullptr) {
       wl_event_source_remove(m_frameRetryTimer);
       m_frameRetryTimer = nullptr;
@@ -2186,63 +2156,19 @@ namespace andromeda {
       if (m_optimizedBlur == nullptr) {
         return;
       }
+      // Everything the cache draws (the scene clips marks outside this output's cache).
+      wlr_scene_optimized_blur_add_source(m_optimizedBlur, &m_server->backdrop()->node);
+      wlr_scene_optimized_blur_add_source(
+          m_optimizedBlur, &m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND)->node
+      );
+      wlr_scene_optimized_blur_add_source(
+          m_optimizedBlur, &m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)->node
+      );
     }
 
-    const bool changed = m_optimizedBlur->node.x != m_sceneOutput->x
-        || m_optimizedBlur->node.y != m_sceneOutput->y
-        || m_optimizedBlur->width != fullArea.width
-        || m_optimizedBlur->height != fullArea.height;
     wlr_scene_node_set_enabled(&m_optimizedBlur->node, true);
     wlr_scene_node_set_position(&m_optimizedBlur->node, m_sceneOutput->x, m_sceneOutput->y);
     wlr_scene_optimized_blur_set_size(m_optimizedBlur, fullArea.width, fullArea.height);
-    if (changed) {
-      wlr_scene_optimized_blur_mark_dirty(m_optimizedBlur);
-    }
-  }
-
-  void Output::markBlurBackgroundDirty() {
-    if (m_optimizedBlur != nullptr && !m_optimizedBlur->dirty) {
-      wlr_scene_optimized_blur_mark_dirty(m_optimizedBlur);
-    }
-  }
-
-  void Output::markBlurBackgroundDirty(const wlr_box& box) {
-    if (m_optimizedBlur != nullptr && !wlr_box_empty(&box)) {
-      wlr_scene_optimized_blur_mark_dirty_box(m_optimizedBlur, &box);
-    }
-  }
-
-  void Output::markBlurBackgroundDirty(wlr_scene_node* node) {
-    if (node->type == WLR_SCENE_NODE_TREE) {
-      // A moved or hidden tree leaves each leaf's previous box; the leaves remember it.
-      wlr_scene_node* child = nullptr;
-      wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) {
-        markBlurBackgroundDirty(child);
-      }
-      return;
-    }
-    wlr_box box{};
-    int x = 0;
-    int y = 0;
-    const bool drawn = wlr_scene_node_coords(node, &x, &y) && wlr_scene_node_effect_bounds(node, &box);
-    auto previous = m_blurNodeBoxes.find(node);
-    if (!drawn) {
-      if (previous != m_blurNodeBoxes.end()) {
-        markBlurBackgroundDirty(previous->second);
-        m_blurNodeBoxes.erase(previous);
-      }
-      return;
-    }
-    box.x += x;
-    box.y += y;
-    if (previous == m_blurNodeBoxes.end()) {
-      // The node's earlier box is unknown (it moved in from another tree).
-      markBlurBackgroundDirty();
-    } else {
-      markBlurBackgroundDirty(previous->second);
-    }
-    markBlurBackgroundDirty(box);
-    m_blurNodeBoxes[node] = box;
   }
 
   void Output::onGammaChanged(wlr_gamma_control_v1* control) {
@@ -2264,10 +2190,6 @@ namespace andromeda {
     if (const std::optional<std::string> stall = self->m_stallProbe.frameEnd(250.0)) {
       kLog.warn("output '{}': {}", self->m_output->name, *stall);
     }
-  }
-
-  void Output::onBackgroundUpdate(Output* self, void* data) {
-    self->markBlurBackgroundDirty(static_cast<wlr_scene_node*>(data));
   }
 
   void Output::backgroundMapped() {
@@ -2323,10 +2245,6 @@ namespace andromeda {
     } else {
       advanceHeldFrame(HeldFrameEvent::CrossSettled);
     }
-  }
-
-  void Output::onBackgroundPopupUpdate(Output* self, void* data) {
-    self->markBlurBackgroundDirty(static_cast<wlr_scene_node*>(data));
   }
 
   void Output::onRequestState(Output* self, void* data) {

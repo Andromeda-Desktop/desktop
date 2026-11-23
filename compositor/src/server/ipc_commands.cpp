@@ -1860,12 +1860,10 @@ namespace andromeda {
 
   nlohmann::json IpcCommands::blurCachePixels(Server& server, std::string_view /*arg*/) {
     nlohmann::json pixels = nlohmann::json::object();
-    nlohmann::json nodes = nlohmann::json::object();
     for (const auto& output : server.outputs()) {
       pixels[output->wlr()->name] = fx_output_optimized_blur_pixels_for_test(output->wlr());
-      nodes[output->wlr()->name] = output->blurNodeCount();
     }
-    return nlohmann::json{{"ok", {{"pixels", std::move(pixels)}, {"nodes", std::move(nodes)}}}};
+    return nlohmann::json{{"ok", {{"pixels", std::move(pixels)}}}};
   }
 
   nlohmann::json IpcCommands::cursorState(Server& server, std::string_view /*arg*/) {

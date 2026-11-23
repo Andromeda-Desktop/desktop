@@ -373,9 +373,6 @@ namespace andromeda {
       return;
     }
     m_appliedBackdrop = applied;
-    for (const auto& output : m_outputs) {
-      output->markBlurBackgroundDirty();
-    }
   }
 
   void Server::raiseLockTree() { wlr_scene_node_raise_to_top(&m_lockTree->node); }

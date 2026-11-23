@@ -2709,8 +2709,6 @@ namespace andromeda {
         m_shadow(shadow) {
     m_topExtension = topExtension;
     m_event = event;
-    m_blurBackground =
-        output != nullptr && tree->node.parent == output->layerTree(ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
     const fx_effect_requirements requirements = wlr_scene_node_effect_requirements(&tree->node);
     m_retainedPersistent = requirements.persistent;
     m_retainedInPlace = requirements.in_place;
@@ -2819,9 +2817,6 @@ namespace andromeda {
     }
     if (m_shadow.tree != nullptr) {
       wlr_scene_node_destroy(&m_shadow.tree->node);
-    }
-    if (m_blurBackground && m_output != nullptr && m_tree != nullptr) {
-      m_output->markBlurBackgroundDirty(&m_tree->node);
     }
     if (m_tree != nullptr) {
       wlr_scene_node_destroy(&m_tree->node);
@@ -3048,9 +3043,6 @@ namespace andromeda {
     }
 
     applyPresentation();
-    if (m_blurBackground && m_output != nullptr && m_tree != nullptr) {
-      m_output->markBlurBackgroundDirty(&m_tree->node);
-    }
     return m_alpha.animating() || m_slide.animating();
   }
 
