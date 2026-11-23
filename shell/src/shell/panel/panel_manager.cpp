@@ -3040,7 +3040,7 @@ void PanelManager::fadeSceneRoot(float to, std::function<void()> onDone) {
 }
 
 desk::motion::SpringConfig PanelManager::effectsSpring() {
-  return {.damping = Tokens::springFade.damping, .stiffness = Tokens::springFade.stiffness};
+  return Style::spring(Tokens::springFade);
 }
 
 // translate that keeps the sheet's anchor corner fixed while the surface scales about its center

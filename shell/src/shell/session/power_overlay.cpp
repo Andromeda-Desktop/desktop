@@ -579,7 +579,7 @@ void PowerOverlay::startHold() {
         // The screen fades out, then the machine powers off.
         m_animations.animateSpring(
             1.0F, 0.0F,
-            desk::motion::SpringConfig{.damping = Tokens::springFade.damping, .stiffness = Tokens::springFade.stiffness},
+            Style::spring(Tokens::springFade),
             [this](float v) {
               if (m_root != nullptr) {
                 m_root->setOpacity(v);

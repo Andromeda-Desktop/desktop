@@ -35,14 +35,6 @@ hand-spring compositor/src/scene/ssd_frame.cpp 1
 hand-spring compositor/src/server/tracker_motion.cpp 1
 hand-spring compositor/src/view/snap_assist.cpp 4
 hand-spring compositor/src/view/snap_flyout.cpp 5
-hand-spring shell/src/shell/control_center/sheet/quick_page.cpp 1
-hand-spring shell/src/shell/desktop/desktop_icons.cpp 1
-hand-spring shell/src/shell/dock/dock_instance.cpp 1
-hand-spring shell/src/shell/dock/dock_instance.h 2
-hand-spring shell/src/shell/dock/dock_items.cpp 4
-hand-spring shell/src/shell/live_activity/live_activity_island.cpp 4
-hand-spring shell/src/shell/panel/panel_manager.cpp 1
-hand-spring shell/src/shell/session/power_overlay.cpp 1
 heap-trim compositor/src/main.cpp 1
 heap-trim indexer/src/content_worker.cpp 1
 heap-trim indexer/src/main.cpp 1

@@ -84,7 +84,7 @@ namespace {
   // The compositor clip uses the same preset (syncDsk), so the fill and the clip stay together.
   desk::motion::SpringConfig revealSpring(bool grow) {
     const Tokens::Spring& token = grow ? Tokens::springMorph : Tokens::springCollapse;
-    return {.damping = token.damping, .stiffness = token.stiffness};
+    return Style::spring(token);
   }
   // The spring the compositor really runs for the clip: protocol version < 3 maps the island curves to older ones.
   desk::motion::SpringConfig clipSpring(const DskSurfaceClient& dsk, bool grow) {
@@ -96,7 +96,7 @@ namespace {
     case DskSurfaceClient::Curve::SpringIslandCollapse: token = &Tokens::springCollapse; break;
     default: break;
     }
-    return {.damping = token->damping, .stiffness = token->stiffness};
+    return Style::spring(*token);
   }
   // Shadow level (dsk_surface_v1 elevation property): 1 is the float plane (elevation.e2), 2 the over plane (e3). The
   // rest pill floats like the bar islands.
@@ -2146,7 +2146,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
       auto* instPtr = &inst;
       inst.osdAnimId = inst.animations.animateSpatial(
           inst.osdProgress, osdTarget,
-          {.damping = Tokens::springSnap.damping, .stiffness = Tokens::springSnap.stiffness},
+          Style::spring(Tokens::springSnap),
           [instPtr](float v) {
             instPtr->osdProgress = v;
             instPtr->osdBar->setProgress(std::clamp(v, 0.0F, 1.0F));
@@ -2775,7 +2775,7 @@ void LiveActivityIsland::startBannerSpring(Instance& inst, bool dismiss) {
   inst.dragDismiss = dismiss;
   // A timer steps the spring: a card swiped off the output gets no frame callbacks, so the frame clock would stall.
   inst.dragSpring = desk::motion::Spring(
-      inst.dragOffset, target, {.damping = token.damping, .stiffness = token.stiffness}, velocity
+      inst.dragOffset, target, Style::spring(token), velocity
   );
   inst.dragLastAt = std::chrono::steady_clock::now();
   inst.dragTimer.startRepeating(std::chrono::milliseconds(8), [this, instPtr] {
@@ -2787,7 +2787,7 @@ void LiveActivityIsland::startBannerSpring(Instance& inst, bool dismiss) {
       const Tokens::Spring& back = Tokens::springMorph;
       instPtr->dragDismiss = false;
       instPtr->dragSpring = desk::motion::Spring(
-          instPtr->dragSpring.value(), 0.0, {.damping = back.damping, .stiffness = back.stiffness},
+          instPtr->dragSpring.value(), 0.0, Style::spring(back),
           instPtr->dragSpring.velocity()
       );
     }

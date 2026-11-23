@@ -455,7 +455,7 @@ namespace shell::dock {
         instance.slideRoot->setOpacity(0.0F);
         instance.hideOpacity = instance.visibility.aside() ? 0.0F : 1.0F;
         instance.animations.animateSpatial(
-            0.0F, 1.0F, {.damping = Tokens::springFade.damping, .stiffness = Tokens::springFade.stiffness},
+            0.0F, 1.0F, Style::spring(Tokens::springFade),
             [slide = instance.slideRoot](float v) { slide->setOpacity(v); }, {}, instance.slideRoot
         );
       }

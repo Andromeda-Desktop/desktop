@@ -1080,7 +1080,7 @@ void DesktopIcons::glide(InputArea& area, const std::string& name, float x, floa
     return;
   }
   area.setPosition(fromX, fromY);
-  const desk::motion::SpringConfig move{.damping = Tokens::springMove.damping, .stiffness = Tokens::springMove.stiffness};
+  const desk::motion::SpringConfig move = Style::spring(Tokens::springMove);
   InputArea* node = &area;
   m_animations.animateSpatial(fromX, x, move, [this, node, name](float v) {
     node->setPosition(v, node->y());

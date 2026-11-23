@@ -368,7 +368,7 @@ namespace {
     }
     const Tokens::Spring& token = targetScale < visualScale ? Tokens::springPress : Tokens::springRelease;
     animId = instance.animations.animateSpatial(
-        visualScale, targetScale, {.damping = token.damping, .stiffness = token.stiffness},
+        visualScale, targetScale, Style::spring(token),
         [node = iconNode, visualScalePtr = &visualScale](float value) {
           *visualScalePtr = value;
           node->setScale(value);
@@ -873,7 +873,7 @@ namespace shell::dock {
             }
             pressed.pressAnimId = instPtr->animations.animateSpatial(
                 pressed.pressScale, d.pressed ? 0.97F : 1.0F,
-                {.damping = token.damping, .stiffness = token.stiffness},
+                Style::spring(token),
                 [item = &pressed](float v) {
                   item->pressScale = v;
                   item->area->setTransformOrigin(item->area->width() * 0.5F, item->area->height() * 0.5F);
@@ -1075,7 +1075,7 @@ namespace shell::dock {
             }
             item.opacityAnimId = instance.animations.animateSpatial(
                 item.visualOpacity, iconOpacity,
-                {.damping = Tokens::springFade.damping, .stiffness = Tokens::springFade.stiffness},
+                Style::spring(Tokens::springFade),
                 [node = iconNode, itemPtr = &item](float value) {
                   itemPtr->visualOpacity = value;
                   node->setOpacity(value);
@@ -1105,7 +1105,7 @@ namespace shell::dock {
           // The dot grows from its center on the effects spring.
           item.runningAnimId = instance.animations.animateSpatial(
               item.runningScale, runningNow ? 1.0F : 0.0F,
-              {.damping = Tokens::springFade.damping, .stiffness = Tokens::springFade.stiffness},
+              Style::spring(Tokens::springFade),
               [&instance, itemPtr = &item, vert = shell::dock::isVerticalEdge(cfg.position)](float v) {
                 itemPtr->runningScale = v;
                 Node* bar = itemPtr->runningIndicator;

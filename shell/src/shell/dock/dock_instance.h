@@ -11,6 +11,7 @@
 #include "shell/dock/dock_model.h"
 #include "shell/dock/dock_state.h"
 #include "ui/signal.h"
+#include "ui/style.h"
 #include "wayland/surface.h"
 
 #include <cstdint>
@@ -39,10 +40,10 @@ namespace shell::dock {
 
   // Auto-hide slide: no overshoot on the way out, the page spring on the way in.
   inline desk::motion::SpringConfig dockShowSpring() {
-    return {.damping = Tokens::springPage.damping, .stiffness = Tokens::springPage.stiffness};
+    return Style::spring(Tokens::springPage);
   }
   inline desk::motion::SpringConfig dockHideSpring() {
-    return {.damping = Tokens::springClose.damping, .stiffness = Tokens::springClose.stiffness};
+    return Style::spring(Tokens::springClose);
   }
 
   static_assert(std::is_same_v<DockVisibility::AnimId, AnimationManager::Id>);

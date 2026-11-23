@@ -179,7 +179,7 @@ namespace {
   };
 
   desk::motion::SpringConfig springOf(const Tokens::Spring& token) {
-    return {.damping = token.damping, .stiffness = token.stiffness};
+    return Style::spring(token);
   }
 
   // The row owns the animations (Node cancels them when the row dies); the state lives as long as a setter holds it.
