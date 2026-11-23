@@ -1131,6 +1131,7 @@ namespace andromeda {
     const bool sessionCompositor = !m_nested && (backends == nullptr || std::string_view(backends).contains("drm"));
     m_screenActivity =
         std::make_unique<ScreenActivityRecorder>(wl_display_get_event_loop(m_display), sessionCompositor);
+    m_screenActivity->setEventListener([this](SessionEvent event) { applyActivity(event); });
     m_idleInhibitManager = wlr_idle_inhibit_v1_create(m_display);
     m_newIdleInhibitor.notify = onNewIdleInhibitor;
     wl_signal_add(&m_idleInhibitManager->events.new_inhibitor, &m_newIdleInhibitor);
@@ -1751,7 +1752,7 @@ namespace andromeda {
   // (a failed start, SIGTERM, a lost DRM backend) keeps the lock file, so the next start is locked too.
   void Server::enterRestartLock() {
     kLog.warn("the session was locked when the compositor stopped; it stays locked until a lock client unlocks");
-    setLockState(LockState::RestartLocked);
+    applyActivity(SessionEvent::RestartLock);
     // No layout exists yet; until updateLockBlank sizes the blank to it, cover any position an output can take.
     constexpr int kCover = 1 << 25;
     wlr_scene_rect_set_size(m_lockBlank, kCover, kCover);

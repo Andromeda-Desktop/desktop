@@ -13,6 +13,7 @@ unit_tests = [
   ['slide-mode', ['unit/slide_mode.cpp'], []],
   ['view-visibility', ['unit/view_visibility.cpp'], []],
   ['presence', ['unit/presence.cpp'], []],
+  ['session-activity', ['unit/session_activity.cpp'], []],
   ['configure-state', ['unit/configure_state.cpp'], []],
   ['placement-state', ['unit/placement_state.cpp'], []],
   ['xdg-session-state', ['unit/xdg_session_state.cpp'], []],

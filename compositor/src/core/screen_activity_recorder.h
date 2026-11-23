@@ -2,6 +2,7 @@
 
 #include "core/main_loop_worker.h"
 #include "core/package_energy.h"
+#include "core/session_activity.h"
 #include "protocols/app_energy_log.h"
 #include "protocols/screen_activity_log.h"
 
@@ -27,18 +28,20 @@ namespace andromeda {
     ScreenActivityRecorder& operator=(const ScreenActivityRecorder&) = delete;
 
     void setScreenOn(bool on);
-    // Every input event; costs one clock read unless the user was idle.
+    // Every input event; costs one clock read unless the session is Idle.
     void inputActivity();
     // An active idle inhibitor counts as user activity: it ends idle and holds it off; the countdown restarts when it ends.
     void setInhibited(bool inhibited);
-    // The user left the input alone past ScreenActivityLog::kIdleAfter with no idle inhibitor, or every screen is off.
-    bool idle() const { return m_user == UserState::Idle || !m_screenOn; }
+    // Takes the activity the session owner (Server::applyActivity) decided; the countdown runs only while Active.
+    void setActivity(SessionActivity activity);
+    // Asks the owner for Input when the user returns from Idle, and for IdleTimeout past ScreenActivityLog::kIdleAfter.
+    void setEventListener(std::function<void(SessionEvent)> listener) { m_events = std::move(listener); }
+    // The user is not at an unlocked desktop, or every screen is off.
+    bool idle() const { return m_activity != SessionActivity::Active || !m_screenOn; }
     // Runs when idle() changes.
     void setIdleListener(std::function<void(bool)> listener) { m_idleListener = std::move(listener); }
 
   private:
-    enum class UserState { Active, Idle, Inhibited };
-
     static int onIdleCheck(void* data);
     void write(bool force);
     void writeLog(std::int64_t now);
@@ -49,6 +52,7 @@ namespace andromeda {
     // Books a suspend that ended before `now`: CLOCK_BOOTTIME runs on in suspend, CLOCK_MONOTONIC does not.
     void checkSleep(std::int64_t now);
     void reportIdle();
+    void armCountdown();
 
     ScreenActivityLog m_log;
     AppEnergyLog m_energy;
@@ -58,10 +62,12 @@ namespace andromeda {
     std::int64_t m_writtenAt = 0;
     bool m_persist = false;
     std::int64_t m_sleptSeconds = 0; // BOOTTIME - MONOTONIC at the last check
-    UserState m_user = UserState::Active;
+    SessionActivity m_activity = SessionActivity::Active;
+    bool m_inhibited = false;
     bool m_screenOn = true;
     bool m_reportedIdle = false;
     std::function<void(bool)> m_idleListener;
+    std::function<void(SessionEvent)> m_events;
     bool m_timerArmed = false;
     bool m_gpuScanBusy = false;
     bool m_closing = false; // the destructor books the GPU synchronously: no loop runs after it

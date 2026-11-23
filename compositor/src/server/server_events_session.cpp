@@ -4,6 +4,7 @@
 #include "config/resolve.h"
 #include "config/store.h"
 #include "core/log.h"
+#include "core/screen_activity_recorder.h"
 #include "desktop-unstable-v1-protocol.h"
 #include "input/cursor.h"
 #include "input/eis.h"
@@ -169,8 +170,8 @@ namespace andromeda {
       }
     }
 
-    if (m_lockState != LockState::Locked) {
-      setLockState(LockState::Locked);
+    if (m_activity != SessionActivity::Locked && m_activity != SessionActivity::Sleeping) {
+      applyActivity(SessionEvent::Lock);
     }
 
     updateLockBlank();
@@ -178,21 +179,23 @@ namespace andromeda {
     raiseLockTree();
   }
 
-  // The one place the lock mode changes. Every lock entry runs the same steps, so the restart lock cannot skip any.
-  void Server::setLockState(LockState next) {
-    const LockState from = m_lockState;
-    const bool valid = (from == LockState::Unlocked && next != LockState::Unlocked)
-        || (from == LockState::RestartLocked && next == LockState::Locked)
-        || (from == LockState::Locked && next == LockState::Unlocked);
-    if (!valid) {
-      kLog.error("invalid lock transition {} -> {}", static_cast<int>(from), static_cast<int>(next));
-      return;
+  // Every lock entry runs the same steps, so the restart lock cannot skip any.
+  bool Server::applyActivity(SessionEvent event) {
+    const SessionActivity from = m_activity;
+    const std::optional<SessionActivity> to = nextActivity(from, event);
+    if (!to) {
+      kLog.error("invalid session transition {} on {}", static_cast<int>(event), static_cast<int>(from));
+      return false;
+    }
+    const SessionActivity next = *to;
+    if (next == from) {
+      return true;
     }
     if (m_restartLockEscape != nullptr) {
       wl_event_source_remove(m_restartLockEscape);
       m_restartLockEscape = nullptr;
     }
-    if (from == LockState::Unlocked) {
+    if (!locked(from) && locked(next)) {
       m_lockFocusOutput.clear();
       if (View* focused = View::fromSurface(m_seat->wlr()->keyboard_state.focused_surface)) {
         if (Workspace* workspace = focused->workspace(); workspace != nullptr && workspace->group() != nullptr) {
@@ -214,7 +217,7 @@ namespace andromeda {
       if (m_desktopShell != nullptr) {
         m_desktopShell->releaseKeys();
       }
-      m_lockState = next;
+      m_activity = next;
       dismissSnapChrome();
       m_effects.setSuspended(true);
       m_effects.applyOutputEffects();
@@ -231,13 +234,16 @@ namespace andromeda {
       updateIdleInhibit();
       syncSuspendedViews();
     } else {
-      m_lockState = next;
-      if (next == LockState::Unlocked) {
+      m_activity = next;
+      if (locked(from) && !locked(next)) {
         leaveLock();
         promptLayerShellAccess();
       }
     }
-    if (next == LockState::RestartLocked) {
+    if (m_screenActivity != nullptr) {
+      m_screenActivity->setActivity(next);
+    }
+    if (next == SessionActivity::RestartLocked) {
       m_restartLockEscape = wl_event_loop_add_timer(
           wl_display_get_event_loop(m_display),
           [](void* data) {
@@ -255,16 +261,17 @@ namespace andromeda {
       wl_event_source_timer_update(m_restartLockEscape, escape != nullptr ? std::atoi(escape) : 10000);
     }
     // Lock ends held global shortcuts; unlock shows an approval that waited.
-    if (m_globalShortcutService != nullptr) {
+    if (m_globalShortcutService != nullptr && locked(from) != locked(next)) {
       if (sessionLocked()) {
         m_globalShortcutService->suspend();
       } else {
         m_globalShortcutService->scheduleRefresh();
       }
     }
+    return true;
   }
 
-  void Server::unlockSession() { setLockState(LockState::Unlocked); }
+  void Server::unlockSession() { applyActivity(SessionEvent::Unlock); }
 
   void Server::leaveLock() {
     if (m_lockFileManaged) {

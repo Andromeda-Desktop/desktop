@@ -4,6 +4,7 @@
 #include "core/animation.h"
 #include "core/application_scope.h"
 #include "core/dirty.h"
+#include "core/session_activity.h"
 #include "layer/layer_shell_permissions.h"
 #include "input/keyboard_layout.h"
 #include "input/lid_state.h"
@@ -371,7 +372,8 @@ namespace andromeda {
     [[nodiscard]] uint64_t uptimeMs() const;
     [[nodiscard]] SessionLock* sessionLock() const { return m_sessionLock.get(); }
     ConnectorHdrState& connectorHdrState() { return m_connectorHdrState; }
-    [[nodiscard]] bool sessionLocked() const { return m_lockState != LockState::Unlocked; }
+    [[nodiscard]] bool sessionLocked() const { return locked(m_activity); }
+    [[nodiscard]] SessionActivity activity() const { return m_activity; }
     [[nodiscard]] const std::string& activeSubmap() const {
       static const std::string empty;
       return m_activeSubmaps.empty() ? empty : m_activeSubmaps.back();
@@ -980,10 +982,9 @@ namespace andromeda {
       bool operator==(const AppliedBackdrop&) const = default;
     };
     std::optional<AppliedBackdrop> m_appliedBackdrop;
-    // RestartLocked: the previous compositor stopped locked and no lock client has taken over; it owns the escape timer.
-    enum class LockState : uint8_t { Unlocked, RestartLocked, Locked };
-    LockState m_lockState = LockState::Unlocked;
-    void setLockState(LockState next);
+    SessionActivity m_activity = SessionActivity::Active;
+    // The one place the session activity changes; returns false for a transition nextActivity rejects.
+    bool applyActivity(SessionEvent event);
     void leaveLock();
     // Name of the output that held keyboard focus when the session locked, so
     // unlocking restores focus there instead of wherever the cursor rests.

@@ -140,44 +140,61 @@ namespace andromeda {
       checkSleep(now);
     }
     m_lastInput = now;
-    if (m_user == UserState::Idle) {
-      m_user = UserState::Active;
-      m_log.setUserIdle(false, now);
-      writeLog(now);
-      write(false);
-      reportIdle();
+    if (m_activity == SessionActivity::Idle && m_events) {
+      m_events(SessionEvent::Input);
     }
-    if (!m_timerArmed && m_timer != nullptr) {
+    armCountdown();
+  }
+
+  void ScreenActivityRecorder::armCountdown() {
+    if (!m_timerArmed && m_timer != nullptr && m_activity == SessionActivity::Active && !m_inhibited) {
       wl_event_source_timer_update(m_timer, kIdleCheckMs);
       m_timerArmed = true;
     }
   }
 
   void ScreenActivityRecorder::setInhibited(bool inhibited) {
-    if (inhibited == (m_user == UserState::Inhibited)) {
+    if (inhibited == m_inhibited) {
       return;
     }
+    m_inhibited = inhibited;
     inputActivity();
-    m_user = inhibited ? UserState::Inhibited : UserState::Active;
+  }
+
+  void ScreenActivityRecorder::setActivity(SessionActivity activity) {
+    if (activity == m_activity) {
+      return;
+    }
+    const std::int64_t now = unixNow();
+    const bool wasActive = m_activity == SessionActivity::Active;
+    m_activity = activity;
+    if (activity == SessionActivity::Active) {
+      m_lastInput = now;
+      m_log.setUserIdle(false, now);
+      armCountdown();
+    } else if (wasActive) {
+      // An idle pause began at the last input, so idle time starts there; a lock starts it now.
+      m_log.setUserIdle(true, activity == SessionActivity::Idle ? m_lastInput : now);
+    }
+    writeLog(now);
+    write(false);
+    reportIdle();
   }
 
   int ScreenActivityRecorder::onIdleCheck(void* data) {
     auto* self = static_cast<ScreenActivityRecorder*>(data);
     const std::int64_t now = unixNow();
     self->checkSleep(now);
-    if (self->m_user == UserState::Inhibited) {
+    if (self->m_inhibited || self->m_activity != SessionActivity::Active) {
       self->m_timerArmed = false;
       return 0;
     }
     const std::int64_t quiet = now - self->m_lastInput;
     if (quiet >= ScreenActivityLog::kIdleAfter) {
-      // The pause began at the last input, so idle time starts there.
-      self->m_user = UserState::Idle;
-      self->m_log.setUserIdle(true, self->m_lastInput);
       self->m_timerArmed = false;
-      self->writeLog(now);
-      self->write(false);
-      self->reportIdle();
+      if (self->m_events) {
+        self->m_events(SessionEvent::IdleTimeout);
+      }
     } else {
       wl_event_source_timer_update(self->m_timer, static_cast<int>((ScreenActivityLog::kIdleAfter - quiet) * 1000));
     }
