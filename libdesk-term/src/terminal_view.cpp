@@ -2230,7 +2230,9 @@ namespace term {
     if (!tracking) {
       return false;
     }
-    auto px = [](float v) { return static_cast<std::uint32_t>(std::max(0L, std::lround(v))); };
+    // Device px: the encoder takes whole pixels, and only device px hold a whole cell (a logical cell is 21.33 at 1.5).
+    const float s = m_deviceScale;
+    auto px = [s](float v) { return static_cast<std::uint32_t>(std::max(0L, std::lround(v * s))); };
     const std::uint32_t left = px((kInset + padding()) * m_uiScale);
     const std::uint32_t top = px((kTopInset + padding()) * m_uiScale);
     const std::uint32_t cellW = std::max(1U, px(m_grid->cellWidth()));
@@ -2242,8 +2244,9 @@ namespace term {
     size.cell_height = cellH;
     size.padding_left = left;
     size.padding_top = top;
-    size.padding_right = px(m_width - static_cast<float>(left + cellW * static_cast<std::uint32_t>(m_grid->columns())));
-    size.padding_bottom = px(m_height - static_cast<float>(top + cellH * static_cast<std::uint32_t>(viewRows())));
+    auto rest = [](std::uint32_t total, std::uint32_t used) { return total > used ? total - used : 0U; };
+    size.padding_right = rest(size.screen_width, left + cellW * static_cast<std::uint32_t>(m_grid->columns()));
+    size.padding_bottom = rest(size.screen_height, top + cellH * static_cast<std::uint32_t>(viewRows()));
     ghostty_mouse_encoder_set(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
     const bool anyPressed = m_buttonsReported != 0;
     ghostty_mouse_encoder_set(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &anyPressed);
@@ -2257,7 +2260,9 @@ namespace term {
     // The encoder takes the cell from the pixel: move a pointer over a reordered (right-to-left) cell to its logical column.
     const GhosttyPointCoordinate cell = cellAt(localX, localY);
     localX += static_cast<float>(cell.x - m_grid->visualColumn(static_cast<int>(cell.y), cell.x)) * m_grid->cellWidth();
-    ghostty_mouse_event_set_position(m_mouseEvent, {.x = localX, .y = localY});
+    // As in cellAt: a part-scrolled row sits above the top inset.
+    const float within = m_scrollPx - static_cast<float>(m_viewRow) * m_grid->cellHeight();
+    ghostty_mouse_event_set_position(m_mouseEvent, {.x = localX * s, .y = (localY + within) * s});
     std::uint8_t buf[64];
     std::size_t written = 0;
     if (ghostty_mouse_encoder_encode(m_mouseEncoder, m_mouseEvent, buf, sizeof(buf), &written) == GHOSTTY_SUCCESS
