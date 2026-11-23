@@ -64,6 +64,7 @@ namespace andromeda {
     static void handleInsertText(wl_client* client, wl_resource* resource, const char* text);
     static void handleKey(wl_client* client, wl_resource* resource, uint32_t keysym, uint32_t state);
     static void handleGetGlobalShortcutsSession(wl_client* client, wl_resource* resource, uint32_t id, const char* appId);
+    static void handleSleepReady(wl_client* client, wl_resource* resource);
     static void handleResourceDestroyed(wl_resource* resource);
 
     void sendLockKeys(wl_resource* resource) const;

@@ -179,6 +179,16 @@ if libsystemd_dep.found() and dbus_run_session.found()
     dbus_run_session,
     args: ['--', find_program('python3'), files('cli_update_bus.py'), andromeda],
   )
+  sleep_watch_child = executable(
+    'sleep-watch-child',
+    'unit/sleep_watch_child.cpp',
+    dependencies: [andromeda_core_dep],
+  )
+  test(
+    'sleep-watch',
+    dbus_run_session,
+    args: ['--', find_program('python3'), files('sleep_watch_bus.py'), sleep_watch_child],
+  )
 endif
 
 # Harness helper, not a unit test: drives virtual pointer and modifier input against a running compositor. The headless backend has no input devices, so protocol

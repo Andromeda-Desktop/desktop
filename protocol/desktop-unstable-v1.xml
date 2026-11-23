@@ -251,7 +251,7 @@
     </event>
   </interface>
 
-  <interface name="dsk_shell_v1" version="5">
+  <interface name="dsk_shell_v1" version="6">
     <description summary="compositor-to-shell events">
       Bound by the desktop shell. Keybinds that drive the shell arrive as
       action events on the connection the shell already holds, so no process
@@ -325,6 +325,16 @@
       </description>
       <arg name="id" type="new_id" interface="dsk_global_shortcuts_session_v1"/>
       <arg name="app_id" type="string"/>
+    </request>
+
+    <request name="sleep_ready" since="6">
+      <description summary="the session may sleep now">
+        After the compositor's session activity becomes sleeping, the shell
+        sends this when the session may sleep without a lock: lock before
+        sleep is off, or skipped once. The compositor then ends its sleep
+        hold. A locked session needs no request: the compositor ends the hold
+        when the lock is in place. Ignored while no sleep waits.
+      </description>
     </request>
 
     <event name="action">

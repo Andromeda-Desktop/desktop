@@ -607,6 +607,10 @@ namespace andromeda {
     void activateSessionLock(SessionLock* lock);
     // Lock file, Locked state and the secure blank over every output.
     void lockBehindBlank();
+    // The shell lets a waiting sleep go ahead unlocked (dsk_shell_v1.sleep_ready).
+    void sleepReady();
+    // A waiting sleep goes ahead once the session is locked and the lock is on screen.
+    void readyForSleepIfLocked();
     void unlockSession();
     void raiseLockTree();
     void updateLockBlank();

@@ -500,6 +500,7 @@ namespace andromeda {
     wlr_session_lock_v1_send_locked(m_lock);
     m_phase = Phase::Locked;
     kLog.info("session is locked");
+    m_server->readyForSleepIfLocked();
   }
 
   void SessionLock::focusMappedSurface() {

@@ -20,7 +20,7 @@ namespace andromeda {
   namespace {
 
     constexpr Logger kLog("desktop-shell");
-    constexpr uint32_t kVersion = 5;
+    constexpr uint32_t kVersion = 6;
     constexpr size_t kMaxAppActivity = 256;
 
     DesktopShell* shellFrom(wl_resource* resource) {
@@ -310,7 +310,14 @@ namespace andromeda {
       .insert_text = DesktopShell::handleInsertText,
       .key = DesktopShell::handleKey,
       .get_global_shortcuts_session = DesktopShell::handleGetGlobalShortcutsSession,
+      .sleep_ready = DesktopShell::handleSleepReady,
   };
+
+  void DesktopShell::handleSleepReady(wl_client* /*client*/, wl_resource* resource) {
+    if (DesktopShell* self = shellFrom(resource); self != nullptr) {
+      self->m_server.sleepReady();
+    }
+  }
 
   void DesktopShell::handleGetGlobalShortcutsSession(wl_client* client, wl_resource* resource, uint32_t id, const char* appId) {
     DesktopShell* self = shellFrom(resource);

@@ -160,6 +160,21 @@ namespace andromeda {
     }
   }
 
+  void Server::sleepReady() {
+    if (m_sleepWatch != nullptr) {
+      m_sleepWatch->ready();
+    }
+  }
+
+  // The lock client's frames are presented (or their deadline passed); with no lock client, the blank lock has
+  // just been raised: the hold is nearly spent or a restart locked the session, so it does not wait for a frame.
+  void Server::readyForSleepIfLocked() {
+    if (m_sleepWatch != nullptr && m_activity == SessionActivity::SleepingLocked
+        && (m_sessionLock == nullptr || m_sessionLock->locked())) {
+      m_sleepWatch->ready();
+    }
+  }
+
   void Server::lockBehindBlank() {
     if (m_lockFileManaged) {
       const std::string path = lockFilePath();
@@ -247,6 +262,7 @@ namespace andromeda {
     if (m_appsBus != nullptr) {
       m_appsBus->setActivity(activityName(next));
     }
+    readyForSleepIfLocked();
     if (next == SessionActivity::RestartLocked) {
       m_restartLockEscape = wl_event_loop_add_timer(
           wl_display_get_event_loop(m_display),

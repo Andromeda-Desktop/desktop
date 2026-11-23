@@ -1139,9 +1139,15 @@ namespace andromeda {
     m_screenActivity =
         std::make_unique<ScreenActivityRecorder>(wl_display_get_event_loop(m_display), sessionCompositor);
     m_screenActivity->setEventListener([this](SessionEvent event) { applyActivity(event); });
-    if (sessionCompositor) {
+    bool holdsSleep = sessionCompositor;
+#ifdef ANDROMEDA_TEST_IPC
+    // Harness checks hold sleep on a private system bus (protocol/sleep_hold_bus).
+    holdsSleep = holdsSleep || std::getenv("ANDROMEDA_TEST_SLEEP_HOLD") != nullptr;
+#endif
+    if (holdsSleep) {
       m_sleepWatch = std::make_unique<SleepWatch>(
-          wl_display_get_event_loop(m_display), [this](bool sleeping) { onPrepareForSleep(sleeping); }
+          wl_display_get_event_loop(m_display), [this](bool sleeping) { onPrepareForSleep(sleeping); },
+          [this] { lockBehindBlank(); }
       );
     }
     m_idleInhibitManager = wlr_idle_inhibit_v1_create(m_display);
