@@ -23,7 +23,6 @@ namespace andromeda {
     }
     const float clear[4]{};
     m_shadow = wlr_scene_shadow_create(m_tree, 1, 1, 0, 1.0F, clear);
-    m_blur = wlr_scene_blur_create(m_tree, 1, 1);
     m_tint = wlr_scene_rect_create(m_tree, 1, 1, clear);
     m_hairline = wlr_scene_rect_create(m_tree, 1, 1, clear);
   }
@@ -45,10 +44,10 @@ namespace andromeda {
 
   int GlassPanel::pollBackdrop() {
     fx_backdrop_luminance luminance{};
-    if (m_blur == nullptr || m_useScrim) {
+    if (m_useScrim) {
       return 0;
     }
-    if (wlr_scene_blur_poll_backdrop(m_blur, &luminance)) {
+    if (m_blur.pollBackdrop(&luminance)) {
       const bool light = config().appearance.scheme == ColorScheme::Light;
       const float target = glass::adaptDensity(light, light ? luminance.darkest : luminance.brightest);
       // Jitter inside the deadband is ignored, as on shell glass, so the panel does not pulse over video.
@@ -64,11 +63,11 @@ namespace andromeda {
                                               : std::max(m_density - kStep, m_densityTarget);
       place(m_box, m_radius, m_opacity);
     }
-    return wlr_scene_blur_backdrop_pending(m_blur) || m_density != m_densityTarget ? kBackdropRecheckMs : 0;
+    return m_blur.backdropPending() || m_density != m_densityTarget ? kBackdropRecheckMs : 0;
   }
 
   void GlassPanel::place(const wlr_box& box, int radius, float opacity) {
-    if (m_tree == nullptr || m_shadow == nullptr || m_blur == nullptr || m_tint == nullptr || m_hairline == nullptr) {
+    if (m_tree == nullptr || m_shadow == nullptr || m_tint == nullptr || m_hairline == nullptr) {
       return;
     }
     m_box = box;
@@ -103,19 +102,15 @@ namespace andromeda {
         clipped_region{.area = {sigma, sigma - offsetY, box.width, box.height}, .corners = corners}
     );
 
-    wlr_scene_node_set_position(&m_blur->node, box.x, box.y);
-    wlr_scene_blur_set_size(m_blur, box.width, box.height);
-    wlr_scene_blur_set_corner_radius(m_blur, radius);
-    wlr_scene_blur_set_should_only_blur_bottom_layer(m_blur, m_bottomOnly);
-    wlr_scene_blur_set_liquid(m_blur, m_useScrim ? 0.0F : material.level);
-    wlr_scene_blur_set_rim(m_blur, m_useScrim ? 0.0F : material.rim);
-    wlr_scene_blur_set_strength(m_blur, material.blurStrength);
-    wlr_scene_blur_set_alpha(m_blur, opacity);
-    wlr_scene_blur_set_backdrop_sampling(m_blur, !m_useScrim);
+    m_blur.setLiquid(m_useScrim ? 0.0F : material.level);
+    m_blur.setRim(m_useScrim ? 0.0F : material.rim);
+    m_blur.setClarity(material.clarity);
+    m_blur.setAlpha(opacity);
+    m_blur.setBackdropSampling(!m_useScrim);
     // Glass draws its tint inside the blur, raised by the backdrop density; a scrim is a flat rect over a plain blur.
     const auto tint = rgba(shape ? scheme.tintRegular : scheme.tintThick, 1.0F);
-    const float rgb[3]{tint[0], tint[1], tint[2]};
-    wlr_scene_blur_set_tint_mix(m_blur, rgb, m_useScrim ? 0.0F : glass::denser(material.tint, m_density, material.dense));
+    m_blur.setTintMix({tint[0], tint[1], tint[2]}, m_useScrim ? 0.0F : glass::denser(material.tint, m_density, material.dense));
+    m_blur.update(m_tree, nullptr, box, box, corners, nullptr, {.enabled = true, .optimized = m_bottomOnly, .always = true});
 
     wlr_scene_node_set_enabled(&m_tint->node, m_useScrim);
     wlr_scene_node_set_position(&m_tint->node, box.x, box.y);

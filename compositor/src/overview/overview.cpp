@@ -492,23 +492,17 @@ namespace andromeda {
     // every card, ring, and workspace background, so none needs to trim its own geometry. The dragged card is
     // reparented out to the unclipped overview root, which is what lets it span outputs.
     wlr_scene_tree_set_clip(state.tree, &outputBox);
-    if (state.backgroundBlur != nullptr) {
-      wlr_scene_blur* blur = state.backgroundBlur;
-      wlr_scene_node_set_enabled(&blur->node, m_progress > 0.001);
-      wlr_scene_node_set_position(&blur->node, outputBox.x, outputBox.y);
-      if (blur->width != outputBox.width || blur->height != outputBox.height) {
-        wlr_scene_blur_set_size(blur, outputBox.width, outputBox.height);
-      }
-      // Blur alpha and strength are normalized to [0, 1]; clamp an overshooting progress.
-      const auto level = static_cast<float>(std::clamp(m_progress, 0.0, 1.0));
-      if (blur->alpha != level) {
-        wlr_scene_blur_set_alpha(blur, level);
-      }
-      // Full strength samples the cached wallpaper blur (one re-render per change, not one per frame); a strength
-      // below 1 re-blurs the whole output live on every frame of the open. The open fades the blur in by alpha.
-      if (blur->strength != 1.0F) {
-        wlr_scene_blur_set_strength(blur, 1.0F);
-      }
+    if (state.backgroundBlur.has_value() && m_progress > 0.001) {
+      // Blur alpha is normalized to [0, 1]; clamp an overshooting progress. Full strength (clarity 0) samples the
+      // cached wallpaper blur (one re-render per change, not one per frame); a strength below 1 re-blurs the whole
+      // output live on every frame of the open. The open fades the blur in by alpha.
+      state.backgroundBlur->setAlpha(static_cast<float>(std::clamp(m_progress, 0.0, 1.0)));
+      state.backgroundBlur->update(
+          m_server->overviewBlurTree(), nullptr, outputBox, outputBox, corner_radii_none(), nullptr,
+          {.enabled = true, .optimized = config().appearance.blur.optimized, .always = true}
+      );
+    } else if (state.backgroundBlur.has_value()) {
+      state.backgroundBlur->hide();
     }
 
     wlr_scene_node_set_position(&state.backgroundTint->node, outputBox.x, outputBox.y);
@@ -516,19 +510,18 @@ namespace andromeda {
     const std::array<float, 4> backgroundTint = tint(config().colors.overview.backgroundTint, m_progress);
     // The background blur draws the tint in its own pass, the same result as the rect over it without a second
     // full-output blend. While it fades in from its sharp source, that holds as long as no bottom layer shows above it.
-    const bool tintable =
-        state.backgroundBlur != nullptr && state.backgroundBlur->node.enabled && backgroundTint[3] > 0.001F;
+    const bool tintable = state.backgroundBlur.has_value() && state.backgroundBlur->active() && backgroundTint[3] > 0.001F;
     const bool fadeTint = tintable
-        && state.backgroundBlur->should_only_blur_bottom_layer
+        && config().appearance.blur.optimized
         && (!m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)->node.enabled
             || countBuffers(state.output->layerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)) == 0);
-    const bool blurTint = tintable && (state.backgroundBlur->alpha >= 1.0F || fadeTint);
-    if (state.backgroundBlur != nullptr) {
+    const bool blurTint = tintable && (m_progress >= 1.0 || fadeTint);
+    if (state.backgroundBlur.has_value()) {
       const float amount = blurTint ? backgroundTint[3] : 0.0F;
       const std::array<float, 3> straight =
           blurTint ? std::array<float, 3>{backgroundTint[0] / amount, backgroundTint[1] / amount, backgroundTint[2] / amount}
                    : std::array<float, 3>{};
-      wlr_scene_blur_set_tint_mix(state.backgroundBlur, straight.data(), amount);
+      state.backgroundBlur->setTintMix(straight, amount);
     }
     // A fully transparent tint leaves the wallpaper untouched.
     wlr_scene_node_set_enabled(&state.backgroundTint->node, backgroundTint[3] > 0.001F && !blurTint);
@@ -1344,12 +1337,8 @@ namespace andromeda {
     wlr_scene_node_set_enabled(&m_server->overviewBlurTree()->node, true);
     kLog.debug("overview opened on {} output(s)", m_outputs.size());
     for (const auto& state : m_outputs) {
-      if (const wlr_scene_blur* blur = state->backgroundBlur) {
-        kLog.debug(
-            "overview background blur {}x{} at {},{} enabled {} strength {} alpha {} cache {}", blur->width,
-            blur->height, blur->node.x, blur->node.y, blur->node.enabled, blur->strength, blur->alpha,
-            blur->should_only_blur_bottom_layer
-        );
+      if (state->backgroundBlur.has_value()) {
+        kLog.debug("overview background blur on {} enabled {}", state->output->wlr()->name, state->backgroundBlur->active());
       }
     }
     return true;
@@ -1830,9 +1819,9 @@ namespace andromeda {
         destroyCard(card.get());
       }
       state->cards.clear();
-      if (state->backgroundBlur != nullptr) {
-        wlr_scene_node_destroy(&state->backgroundBlur->node);
-        state->backgroundBlur = nullptr;
+      if (state->backgroundBlur.has_value()) {
+        state->backgroundBlur->destroy();
+        state->backgroundBlur.reset();
       }
       if (state->tree != nullptr) {
         wlr_scene_node_destroy(&state->tree->node);

@@ -15,7 +15,6 @@
 struct wlr_scene_node;
 struct wlr_scene_rect;
 struct wlr_scene_buffer;
-struct wlr_scene_blur;
 
 namespace andromeda {
   class Server;
@@ -84,9 +83,8 @@ namespace andromeda {
     wlr_scene_tree* m_gripTree = nullptr;
     wlr_scene_rect* m_background = nullptr;
     wlr_scene_rect* m_separator = nullptr;
-    wlr_scene_blur* m_blur = nullptr;
+    SurfaceBlur m_blur;
     SurfaceBlurOptions m_blurOptions;
-    bool m_blurLive = false;
     wlr_scene_buffer* m_label = nullptr;
     wlr_scene_rect* m_close = nullptr;
     wlr_scene_rect* m_maximize = nullptr;

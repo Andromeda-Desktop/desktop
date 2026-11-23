@@ -1,6 +1,7 @@
 #pragma once
 
 #include "protocols/glass_material.h"
+#include "scene/surface_blur.h"
 
 #include <array>
 
@@ -8,7 +9,6 @@ extern "C" {
 #include <wlr/util/box.h>
 }
 
-struct wlr_scene_blur;
 struct wlr_scene_rect;
 struct wlr_scene_shadow;
 struct wlr_scene_tree;
@@ -37,7 +37,7 @@ namespace andromeda {
   private:
     wlr_scene_tree* m_tree = nullptr;
     wlr_scene_shadow* m_shadow = nullptr;
-    wlr_scene_blur* m_blur = nullptr;
+    SurfaceBlur m_blur;
     wlr_scene_rect* m_tint = nullptr;
     wlr_scene_rect* m_hairline = nullptr;
     glass::Kind m_kind;

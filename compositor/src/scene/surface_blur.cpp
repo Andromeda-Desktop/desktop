@@ -164,6 +164,7 @@ namespace andromeda {
     wlr_scene_blur_set_lens(m_node, m_lens);
     wlr_scene_blur_set_tint_mix(m_node, m_tintRgb.data(), m_tintAmount);
     wlr_scene_blur_set_backdrop_sampling(m_node, m_backdropSampling);
+    wlr_scene_blur_set_fade_from_source(m_node, m_fadeFromSource);
     wlr_scene_blur_set_strength(m_node, glass::blurStrength(m_clarity) * m_fade);
     wlr_scene_blur_set_full_strength(m_node, glass::blurStrength(m_clarity));
     // The rim follows the client's blur region (the drawn shape), not the node box: a panel surface is larger than
@@ -235,6 +236,13 @@ namespace andromeda {
     m_backdropSampling = enabled;
     if (m_node != nullptr) {
       wlr_scene_blur_set_backdrop_sampling(m_node, enabled);
+    }
+  }
+
+  void SurfaceBlur::setFadeFromSource(bool enabled) {
+    m_fadeFromSource = enabled;
+    if (m_node != nullptr) {
+      wlr_scene_blur_set_fade_from_source(m_node, enabled);
     }
   }
 
@@ -321,6 +329,29 @@ namespace andromeda {
     if (m_node != nullptr) {
       wlr_scene_node_set_enabled(&m_node->node, false);
     }
+  }
+
+  void SurfaceBlur::destroy() {
+    if (m_node != nullptr) {
+      wlr_scene_node_destroy(&m_node->node);
+      m_node = nullptr;
+    }
+  }
+
+  void SurfaceBlur::copyInto(wlr_scene_tree* parent) const {
+    if (!active()) {
+      return;
+    }
+    wlr_scene_blur* copy = wlr_scene_blur_create(parent, m_node->width, m_node->height);
+    if (copy == nullptr) {
+      return;
+    }
+    wlr_scene_node_lower_to_bottom(&copy->node);
+    wlr_scene_blur_set_corner_radii(copy, m_node->corners);
+    wlr_scene_blur_set_alpha(copy, m_node->alpha);
+    wlr_scene_blur_set_should_only_blur_bottom_layer(copy, m_node->should_only_blur_bottom_layer);
+    wlr_scene_blur_set_adaptive(copy, m_node->adaptive);
+    wlr_scene_node_set_position(&copy->node, m_node->node.x, m_node->node.y);
   }
 
   bool SurfaceBlur::active() const { return m_node != nullptr && m_node->node.enabled; }

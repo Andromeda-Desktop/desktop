@@ -335,7 +335,8 @@ namespace andromeda {
       std::vector<uintptr_t> nextStructure;
       std::vector<DesktopEntry> resolvedDesktop;
       wlr_scene_tree* tree = nullptr;
-      wlr_scene_blur* backgroundBlur = nullptr;
+      // Engaged while the overview background blur is configured.
+      std::optional<SurfaceBlur> backgroundBlur;
       wlr_scene_rect* backgroundTint = nullptr;
       // Card shadows the real scene draws below every tile, above the workspace backgrounds and below every card.
       wlr_scene_tree* tileShadows = nullptr;

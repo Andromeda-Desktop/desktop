@@ -157,8 +157,7 @@ namespace andromeda {
 
   SsdFrame::~SsdFrame() {
     std::erase(g_hoverFading, this);
-    if (m_blur != nullptr)
-      wlr_scene_node_destroy(&m_blur->node);
+    m_blur.destroy();
     wlr_scene_node_destroy(&m_gripTree->node);
     wlr_scene_node_destroy(&m_tree->node);
   }
@@ -257,46 +256,36 @@ namespace andromeda {
     updateBlur();
   }
   void SsdFrame::setBlurLive(bool live) {
-    m_blurLive = live;
+    m_blur.setLive(live);
     updateBlur();
   }
 
   void SsdFrame::updateBlur() {
-    const auto& cfg = config().appearance.blur;
     const Palette tones = palette();
     const float backgroundAlpha = (m_focused ? tones.background : tones.backgroundUnfocused)[3];
     // The title bar has its own transparency, independent of the client's opaque region or alpha mask.
     const bool enabled = m_tree->node.enabled
-        && cfg.enabled
         && m_blurOptions.enabled.value_or(false)
         && backgroundAlpha * m_alpha < 1.0F
         && backgroundAlpha >= m_blurOptions.ignoreAlpha;
     if (!enabled) {
-      if (m_blur != nullptr)
-        wlr_scene_node_set_enabled(&m_blur->node, false);
+      m_blur.hide();
       return;
     }
-    if (m_blur == nullptr) {
-      // Blur the backdrop below the window, excluding the window's own client content near the title bar seam.
-      m_blur = wlr_scene_blur_create(m_tree->node.parent, m_background->width, m_background->height);
-      if (m_blur == nullptr)
-        return;
-      wlr_scene_node_lower_to_bottom(&m_blur->node);
-    }
-    wlr_scene_node_set_enabled(&m_blur->node, true);
-    wlr_scene_node_set_position(
-        &m_blur->node, m_tree->node.x + m_background->node.x, m_tree->node.y + m_background->node.y
-    );
-    wlr_scene_blur_set_size(m_blur, m_background->width, m_background->height);
-    wlr_scene_blur_set_corner_radii(m_blur, m_background->corners);
-    wlr_scene_blur_set_should_only_blur_bottom_layer(
-        m_blur, m_blurOptions.optimized.value_or(cfg.optimized) && !m_blurLive
-    );
-    wlr_scene_blur_set_alpha(m_blur, m_blurAlpha);
+    m_blur.setAlpha(m_blurAlpha);
     const glass::Material material = configWindowGlass();
-    wlr_scene_blur_set_liquid(m_blur, material.level);
-    wlr_scene_blur_set_rim(m_blur, material.rim);
-    wlr_scene_blur_set_strength(m_blur, material.blurStrength);
+    m_blur.setLiquid(material.level);
+    m_blur.setRim(material.rim);
+    m_blur.setClarity(material.clarity);
+    // Blur the backdrop below the window, excluding the window's own client content near the title bar seam.
+    const wlr_box box{
+        m_tree->node.x + m_background->node.x, m_tree->node.y + m_background->node.y, m_background->width,
+        m_background->height
+    };
+    m_blur.update(
+        m_tree->node.parent, nullptr, box, box, m_background->corners, nullptr,
+        {.enabled = true, .optimized = m_blurOptions.optimized, .always = true}
+    );
   }
 
   int SsdFrame::zoomed(int value) const { return static_cast<int>(std::lround(value * m_geometry.zoom)); }
@@ -544,16 +533,7 @@ namespace andromeda {
     if (!m_tree->node.enabled)
       return;
     auto* tree = parent;
-    if (m_blur != nullptr && m_blur->node.enabled) {
-      auto* copy = wlr_scene_blur_create(tree, m_blur->width, m_blur->height);
-      if (copy != nullptr) {
-        wlr_scene_node_lower_to_bottom(&copy->node);
-        wlr_scene_blur_set_corner_radii(copy, m_blur->corners);
-        wlr_scene_blur_set_alpha(copy, m_blur->alpha);
-        wlr_scene_blur_set_should_only_blur_bottom_layer(copy, m_blur->should_only_blur_bottom_layer);
-        wlr_scene_node_set_position(&copy->node, m_blur->node.x, m_blur->node.y);
-      }
-    }
+    m_blur.copyInto(tree);
     for (const auto* source : {m_background, m_separator, m_close, m_maximize, m_minimize}) {
       if (!source->node.enabled)
         continue;

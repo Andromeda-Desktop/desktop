@@ -2,10 +2,6 @@
 app-executable apps/link-app/meson.build 1
 app-executable apps/player/meson.build 1
 app-executable apps/viewer/meson.build 1
-blur-create compositor/src/overview/overview_cards.cpp 1
-blur-create compositor/src/scene/glass_panel.cpp 1
-blur-create compositor/src/scene/ssd_frame.cpp 2
-blur-create compositor/src/workspace/scratchpad.cpp 1
 exit-poll apps/terminal/src/agent_host.cpp 1
 exit-poll compositor/src/core/process.cpp 1
 exit-poll libdesk-term/src/pty_session.cpp 1

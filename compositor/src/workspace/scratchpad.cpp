@@ -73,8 +73,8 @@ namespace andromeda {
     for (auto& [output, rect] : m_dimRects) {
       wlr_scene_node_destroy(&rect->node);
     }
-    for (auto& [output, blur] : m_blurNodes) {
-      wlr_scene_node_destroy(&blur->node);
+    for (auto& [output, blur] : m_blurs) {
+      blur.destroy();
     }
   }
 
@@ -86,8 +86,8 @@ namespace andromeda {
         if (const auto rect = m_dimRects.find(output); rect != m_dimRects.end()) {
           bindAnimationEffect(&rect->second->node, AnimationEvent::Scratchpad, fade);
         }
-        if (const auto blur = m_blurNodes.find(output); blur != m_blurNodes.end()) {
-          bindAnimationEffect(&blur->second->node, AnimationEvent::Scratchpad, fade);
+        if (const auto blur = m_blurs.find(output); blur != m_blurs.end() && blur->second.sceneNode() != nullptr) {
+          bindAnimationEffect(blur->second.sceneNode(), AnimationEvent::Scratchpad, fade);
         }
         movedBackdrop = true;
       }
@@ -689,26 +689,13 @@ namespace andromeda {
     return rect;
   }
 
-  wlr_scene_blur* ScratchpadManager::blurNodeFor(Output* output) {
-    if (const auto it = m_blurNodes.find(output); it != m_blurNodes.end()) {
-      return it->second;
-    }
-    wlr_scene_blur* blur = wlr_scene_blur_create(m_root, 1, 1);
-    if (blur != nullptr) {
-      wlr_scene_node_lower_to_bottom(&blur->node);
-      wlr_scene_node_set_enabled(&blur->node, false);
-      m_blurNodes.emplace(output, blur);
-    }
-    return blur;
-  }
-
   void ScratchpadManager::updateDimAndBlur(Output* output) {
     if (output == nullptr) {
       return;
     }
     const bool visible = visibleOn(output);
     const double dim = config().animation.scratchpad.dim;
-    const bool blurEnabled = config().animation.scratchpad.blur && config().appearance.blur.enabled;
+    const bool blurEnabled = config().animation.scratchpad.blur;
     const auto fade = m_backdropFades.find(output);
     const float currentAlpha = fade != m_backdropFades.end() ? static_cast<float>(fade->second.current()) : 0.0F;
 
@@ -732,18 +719,17 @@ namespace andromeda {
       }
     }
 
-    if (wlr_scene_blur* blur = blurNodeFor(output)) {
-      if ((!visible && currentAlpha <= 0.001F) || !blurEnabled || currentAlpha <= 0.001F) {
-        wlr_scene_node_set_enabled(&blur->node, false);
-      } else {
-        wlr_scene_node_set_position(&blur->node, box.x, box.y);
-        wlr_scene_blur_set_size(blur, box.width, box.height);
-        wlr_scene_blur_set_corner_radius(blur, 0);
-        wlr_scene_blur_set_alpha(blur, std::clamp(currentAlpha, 0.0F, 1.0F));
-        // A full-screen backdrop follows the slider's blur strength only: no rim or lens on the screen edge.
-        wlr_scene_blur_set_strength(blur, configGlass(glass::Kind::Sheet).blurStrength);
-        wlr_scene_node_set_enabled(&blur->node, true);
-      }
+    SurfaceBlur& blur = m_blurs[output];
+    if ((!visible && currentAlpha <= 0.001F) || !blurEnabled || currentAlpha <= 0.001F) {
+      blur.hide();
+    } else {
+      blur.setAlpha(std::clamp(currentAlpha, 0.0F, 1.0F));
+      // A full-screen backdrop follows the slider's blur strength only: no rim or lens on the screen edge.
+      blur.setClarity(configGlass(glass::Kind::Sheet).clarity);
+      // It blurs the windows behind the scratchpad, so never the wallpaper cache alone.
+      blur.update(
+          m_root, nullptr, box, box, corner_radii_none(), nullptr, {.enabled = true, .optimized = false, .always = true}
+      );
     }
   }
 
@@ -763,9 +749,9 @@ namespace andromeda {
       wlr_scene_node_destroy(&it->second->node);
       m_dimRects.erase(it);
     }
-    if (const auto it = m_blurNodes.find(output); it != m_blurNodes.end()) {
-      wlr_scene_node_destroy(&it->second->node);
-      m_blurNodes.erase(it);
+    if (const auto it = m_blurs.find(output); it != m_blurs.end()) {
+      it->second.destroy();
+      m_blurs.erase(it);
     }
   }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/animation.h"
+#include "scene/surface_blur.h"
 
 #include <array>
 #include <chrono>
@@ -165,7 +166,6 @@ namespace andromeda {
     // Retarget the backdrop dim/blur fade for `output` and refresh its scene nodes.
     void retargetBackdrop(Output* output, bool visible, bool animateTransition = true);
     wlr_scene_rect* dimRectFor(Output* output);
-    wlr_scene_blur* blurNodeFor(Output* output);
     void updateDimAndBlur(Output* output);
 
     Server* m_server = nullptr;
@@ -175,7 +175,7 @@ namespace andromeda {
     // Views mid fade-out on hide, still enabled until tickAnimations disables the node once the fade completes.
     std::vector<View*> m_hidingViews;
     std::unordered_map<Output*, wlr_scene_rect*> m_dimRects;
-    std::unordered_map<Output*, wlr_scene_blur*> m_blurNodes;
+    std::unordered_map<Output*, SurfaceBlur> m_blurs;
     std::unordered_map<Output*, AnimatedValue> m_backdropFades;
     View* m_focusedView = nullptr;
   };
