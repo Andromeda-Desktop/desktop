@@ -364,6 +364,16 @@ void Surface::setFrameTickCallback(FrameTickCallback callback) { m_frameTickCall
 
 void Surface::setScaleChangedCallback(ScaleChangedCallback callback) { m_scaleChangedCallback = std::move(callback); }
 
+void Surface::setPresence(SurfacePresence presence) {
+  if (presence == m_presence) {
+    return;
+  }
+  m_presence = presence;
+  if (m_presenceChangedCallback) {
+    m_presenceChangedCallback(presence);
+  }
+}
+
 void Surface::setSceneRoot(Node* root) {
   if (m_sceneRoot == root) {
     return;

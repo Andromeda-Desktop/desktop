@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # A window on the active workspace is suspended and gets no frame callbacks while the session is locked and while its
-# output is powered off, and resumes with its frames after each; a game keeps its slow tick behind the lock.
+# output is powered off, and resumes with its frames after each; a game keeps its slow tick behind the lock. Its
+# dsk_surface_v1.presence goes shown (0) -> off (3) -> shown for each, one event per change.
 set -euo pipefail
 source "$ANDROMEDA_HARNESS_LIB"
 
@@ -74,4 +75,10 @@ fi
 "$ANDROMEDA" msg dpms-on > /dev/null
 expect_resumed_with_frames 2 "powering the output on"
 
-echo "suspended behind the lock ($locked_frames frames/s, game kept $game_frames) and with the output off ($off_frames frames/s); resumed after each"
+presence=$(grep '^presence ' "$NORMAL_LOG" | cut -d' ' -f2 | tr '\n' ' ')
+if [[ $presence != "0 3 0 3 0 " ]]; then
+  echo "dsk presence went '$presence', not '0 3 0 3 0 ' (shown, off at lock, shown, off at dpms, shown)"
+  exit 1
+fi
+
+echo "presence $presence; suspended behind the lock ($locked_frames frames/s, game kept $game_frames) and with the output off ($off_frames frames/s); resumed after each"

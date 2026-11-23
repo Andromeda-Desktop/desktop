@@ -17,7 +17,7 @@
     Only unsandboxed clients see this global.
   </description>
 
-  <interface name="dsk_surface_manager_v1" version="19">
+  <interface name="dsk_surface_manager_v1" version="20">
     <request name="destroy" type="destructor"/>
 
     <request name="get_surface">
@@ -44,7 +44,7 @@
     </enum>
   </interface>
 
-  <interface name="dsk_surface_v1" version="19">
+  <interface name="dsk_surface_v1" version="20">
     <description summary="shape, elevation and animations of one surface">
       All requests are double-buffered and apply on the next wl_surface.commit,
       so new pixels and the motion that shows them start in the same frame.
@@ -321,6 +321,25 @@
       <arg name="width" type="int"/>
       <arg name="height" type="int"/>
     </request>
+
+    <enum name="presence" since="20">
+      <entry name="shown" value="0" summary="the user can see the window"/>
+      <entry name="occluded" value="1" summary="opaque windows cover all of it"/>
+      <entry name="hidden" value="2" summary="minimized, on another workspace or a background tab"/>
+      <entry name="off" value="3" summary="the session is locked or every output it is on is off"/>
+    </enum>
+
+    <event name="presence" since="20">
+      <description summary="what the user can see of this toplevel">
+        Sent for the root surface of a mapped toplevel: once when the
+        toplevel maps or when this object is created for a mapped one, then
+        each time the value changes. Content that only matters on screen
+        (animations, polls, previews) pauses unless the value is shown.
+        Frame callbacks follow their own rules: a captured window still gets
+        them while hidden.
+      </description>
+      <arg name="presence" type="uint" enum="presence"/>
+    </event>
   </interface>
 
   <interface name="dsk_shape_v1" version="12">

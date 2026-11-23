@@ -112,6 +112,11 @@ bool ToplevelSurface::initialize(wl_output* output, const ToplevelSurfaceConfig&
   }
 
   xdg_toplevel_add_listener(m_toplevel, &kToplevelListener, this);
+  if (DskSurfaceClient* client = dsk(); client != nullptr) {
+    client->setOnPresence([this](std::uint32_t presence) {
+      setPresence(static_cast<SurfacePresence>(presence));
+    });
+  }
   // The window draws its own header, so the compositor must not add a title bar.
   if (auto* manager = m_connection.decorationManager(); manager != nullptr) {
     m_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(manager, m_toplevel);
@@ -361,7 +366,6 @@ void ToplevelSurface::destroyRoleObjects() {
   }
   m_exportHandle.clear();
   m_exportReady = {};
-  m_dsk.reset();
   setShortcutsInhibited(false);
   if (m_menuBar != nullptr) {
     dsk_app_menu_v1_destroy(m_menuBar);
@@ -438,14 +442,8 @@ void ToplevelSurface::handleExportedHandle(void* data, zxdg_exported_v2* /*expor
 }
 
 bool ToplevelSurface::setCaptureSecure(bool secure) {
-  dsk_surface_manager_v1* manager = m_connection.dskSurfaceManager();
-  if (manager == nullptr || m_surface == nullptr) {
-    return false;
-  }
-  if (m_dsk == nullptr) {
-    m_dsk = std::make_unique<DskSurfaceClient>(manager, m_surface);
-  }
-  return m_dsk->setSecure(secure);
+  DskSurfaceClient* client = dsk();
+  return client != nullptr && client->setSecure(secure);
 }
 
 void ToplevelSurface::setMenuBar(const std::vector<MenuBarItem>& items, std::function<void(std::uint32_t id)> activated) {

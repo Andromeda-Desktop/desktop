@@ -3,6 +3,7 @@
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/surface_shape.h"
+#include "server/dsk_surface.h"
 #include "server/ipc.h"
 #include "server/server.h"
 #include "view/floating.h"
@@ -162,6 +163,9 @@ namespace andromeda {
     if (facts != m_presence) {
       m_presence = facts;
       m_server->scheduleQos();
+    }
+    if (wlr_surface* root = rootSurface(); root != nullptr && m_server->dskSurfaces() != nullptr) {
+      m_server->dskSurfaces()->sendPresence(root, facts.presence);
     }
     setSuspendedState(!facts.drawsFrames);
   }

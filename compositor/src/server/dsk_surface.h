@@ -2,6 +2,7 @@
 
 #include "server/surface_motion.h"
 #include "server/tracker_motion.h"
+#include "view/presence.h"
 
 #include <string_view>
 #include <pixman.h>
@@ -38,6 +39,7 @@ namespace andromeda {
     struct State {
       SurfaceMotion motion;
       float density = -1.0F; // last dsk_surface_v1.density sent, -1 = none yet
+      std::optional<Presence> presence; // last dsk_surface_v1.presence sent (v20)
       int version = 0; // dsk_surface_v1 version the client bound
       // dsk_surface_v1.set_visible_region (v8), surface-local; nullopt = the whole surface.
       std::optional<std::vector<pixman_box32_t>> visibleRegion;
@@ -98,6 +100,13 @@ namespace andromeda {
     // Also advances the trackers of `surface` and writes their bound values.
     bool tick(wlr_surface* surface, uint32_t nowMs) const;
     void sendDensity(wlr_surface* surface, float density) const;
+    // dsk_surface_v1.presence (v20) of a mapped toplevel's root surface; sends only a changed value.
+    void sendPresence(wlr_surface* surface, Presence presence) const;
+    // Presence of the mapped toplevel whose root is `surface`, nullopt otherwise: a dsk_surface_v1 made after the map
+    // gets the current value at once.
+    void setPresenceLookup(std::function<std::optional<Presence>(wlr_surface*)> lookup) {
+      m_presenceLookup = std::move(lookup);
+    }
     // True while a tracker drives a property of `surface` (interacting or inertia).
     [[nodiscard]] bool driven(wlr_surface* surface) const;
 
@@ -299,6 +308,7 @@ namespace andromeda {
 
     wl_global* m_global = nullptr;
     std::function<std::optional<std::pair<int, int>>(wlr_surface*)> m_originLookup;
+    std::function<std::optional<Presence>(wlr_surface*)> m_presenceLookup;
     std::function<void(wl_client*, wlr_surface*, const wlr_box&)> m_launchFromHandler;
     std::function<void(wlr_surface*, std::string_view, const wlr_box&)> m_windowIconHandler;
     std::function<void(wlr_surface*, bool)> m_secureHandler;

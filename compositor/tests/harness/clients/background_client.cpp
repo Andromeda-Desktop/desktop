@@ -4,10 +4,12 @@
 // first forks an idle child, prints "child <pid>" and stops itself (SIGSTOP) until the test moves it to another scope
 // and sends SIGCONT, as a browser forks its zygote before it moves into its own scope. WM_BASE_VERSION binds xdg_wm_base
 // at most that version (5 makes a client that cannot be suspended). While the file named by STOP_FILE exists, it
-// requests no further callback and prints "stopped".
+// requests no further callback and prints "stopped". It binds dsk_surface_v1 and prints "presence <value>" for each
+// dsk_surface_v1.presence event.
 // Usage: background-client [title].
 
 #include "content-type-v1-client-protocol.h"
+#include "dsk-surface-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
@@ -30,6 +32,7 @@ namespace {
     wl_shm* shm = nullptr;
     xdg_wm_base* wmBase = nullptr;
     wp_content_type_manager_v1* contentTypeManager = nullptr;
+    dsk_surface_manager_v1* dskManager = nullptr;
     wl_surface* surface = nullptr;
     xdg_surface* xdgSurface = nullptr;
     xdg_toplevel* toplevel = nullptr;
@@ -115,6 +118,9 @@ namespace {
           wl_registry_bind(registry, name, &xdg_wm_base_interface, std::min(version, wmBaseVersion()))
       );
       xdg_wm_base_add_listener(state.wmBase, &kWmBaseListener, &state);
+    } else if (std::strcmp(interface, dsk_surface_manager_v1_interface.name) == 0 && version >= 20) {
+      state.dskManager =
+          static_cast<dsk_surface_manager_v1*>(wl_registry_bind(registry, name, &dsk_surface_manager_v1_interface, 20));
     } else if (std::strcmp(interface, wp_content_type_manager_v1_interface.name) == 0) {
       state.contentTypeManager = static_cast<wp_content_type_manager_v1*>(
           wl_registry_bind(registry, name, &wp_content_type_manager_v1_interface, 1)
@@ -122,6 +128,17 @@ namespace {
     }
   }
   void registryRemove(void*, wl_registry*, uint32_t) {}
+  const dsk_surface_v1_listener kDskListener = {
+      .started = [](void*, dsk_surface_v1*, uint32_t, uint32_t) {},
+      .done = [](void*, dsk_surface_v1*, uint32_t, uint32_t) {},
+      .clip_mapped = [](void*, dsk_surface_v1*, wl_fixed_t, wl_fixed_t, wl_fixed_t, wl_fixed_t) {},
+      .backdrop = [](void*, dsk_surface_v1*, uint32_t) {},
+      .density = [](void*, dsk_surface_v1*, wl_fixed_t) {},
+      .presence = [](void*, dsk_surface_v1*, uint32_t presence) {
+        std::println("presence {}", presence);
+        std::fflush(stdout);
+      },
+  };
   constexpr wl_registry_listener kRegistryListener = {.global = registryGlobal, .global_remove = registryRemove};
 
   bool createBuffer(State& state) {
@@ -183,6 +200,9 @@ int main(int argc, char** argv) {
         wp_content_type_manager_v1_get_surface_content_type(state.contentTypeManager, state.surface),
         WP_CONTENT_TYPE_V1_TYPE_GAME
     );
+  }
+  if (state.dskManager != nullptr) {
+    dsk_surface_v1_add_listener(dsk_surface_manager_v1_get_surface(state.dskManager, state.surface), &kDskListener, nullptr);
   }
   state.xdgSurface = xdg_wm_base_get_xdg_surface(state.wmBase, state.surface);
   xdg_surface_add_listener(state.xdgSurface, &kXdgListener, &state);

@@ -405,12 +405,16 @@ void WaylandSurface::clearBlurRegion() {
   m_backgroundEffect = nullptr;
 }
 
+DskSurfaceClient* WaylandSurface::dsk() {
+  if (m_dsk == nullptr && m_surface != nullptr && m_connection.dskSurfaceManager() != nullptr) {
+    m_dsk = std::make_unique<DskSurfaceClient>(m_connection.dskSurfaceManager(), m_surface);
+  }
+  return m_dsk.get();
+}
+
 bool WaylandSurface::setGlassCard(const GlassCard& card) {
-  if (m_cardSurface == nullptr && m_surface != nullptr && m_connection.dskSurfaceManager() != nullptr) {
-    m_cardSurface = std::make_unique<DskSurfaceClient>(m_connection.dskSurfaceManager(), m_surface);
-    if (m_cardSurface->hasShapes()) {
-      m_cardShape = std::make_unique<DskShapeClient>(*m_cardSurface);
-    }
+  if (DskSurfaceClient* client = m_cardShape == nullptr ? dsk() : nullptr; client != nullptr && client->hasShapes()) {
+    m_cardShape = std::make_unique<DskShapeClient>(*client);
   }
   if (m_cardShape == nullptr) {
     return Surface::setGlassCard(card);
@@ -420,15 +424,15 @@ bool WaylandSurface::setGlassCard(const GlassCard& card) {
   const auto h = static_cast<double>(card.rect.height);
   m_cardShape->set(DskSurfaceClient::Property::Clip, {static_cast<double>(card.rect.x), static_cast<double>(card.rect.y), w, h});
   m_cardShape->set(DskSurfaceClient::Property::Radius, {std::min({static_cast<double>(card.radius), w * 0.5, h * 0.5}), 0.0, 0.0, 0.0});
-  setGlassMaterial(*m_cardShape, *m_cardSurface, &card.material);
-  const bool compositorTint = m_cardSurface->hasTintProperty() && Style::compositorDrawsTint();
-  if (m_cardSurface->hasTintProperty()) {
+  setGlassMaterial(*m_cardShape, *m_dsk, &card.material);
+  const bool compositorTint = m_dsk->hasTintProperty() && Style::compositorDrawsTint();
+  if (m_dsk->hasTintProperty()) {
     m_cardShape->set(
         DskSurfaceClient::Property::Tint,
         glassTintValue(materialRole(), compositorTint ? card.material.tint : 0.0F, card.node)
     );
   }
-  m_cardSurface->setOnDensity(card.onDensity);
+  m_dsk->setOnDensity(card.onDensity);
   return compositorTint;
 }
 
@@ -458,7 +462,7 @@ void WaylandSurface::destroySurface() {
   cancelFrameCallback();
   releaseRenderState();
   m_cardShape.reset();
-  m_cardSurface.reset();
+  m_dsk.reset();
 
   if (m_backgroundEffect != nullptr) {
     ext_background_effect_surface_v1_destroy(m_backgroundEffect);

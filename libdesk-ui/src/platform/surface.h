@@ -67,6 +67,11 @@ struct SurfaceIdleProfileSnapshot {
   std::vector<SurfaceIdleProfileEntry> surfaces;
 };
 
+// What the user can see of a toplevel window, from the compositor (dsk_surface_v1.presence). Off: the session is
+// locked or every output the window is on is off. Hidden: minimized, on another workspace or a background tab.
+// Occluded: opaque windows cover all of it. Other surfaces, and compositors without the event, stay Shown.
+enum class SurfacePresence : std::uint8_t { Shown, Occluded, Hidden, Off };
+
 // A window-system surface that draws a scene: render target, frame pacing, scale and damage. A platform subclass
 // (WaylandSurface) owns the native surface and implements the protected hooks.
 class Surface {
@@ -76,6 +81,7 @@ public:
   using UpdateCallback = std::function<void()>;
   using FrameTickCallback = std::function<void(float deltaMs)>;
   using ScaleChangedCallback = std::function<void(float scale)>;
+  using PresenceChangedCallback = std::function<void(SurfacePresence presence)>;
 
   Surface() = default;
   virtual ~Surface();
@@ -97,6 +103,10 @@ public:
   void setUpdateCallback(UpdateCallback callback);
   void setFrameTickCallback(FrameTickCallback callback);
   void setScaleChangedCallback(ScaleChangedCallback callback);
+  // The one visibility fact for content that only matters on screen (animations, polls, previews).
+  [[nodiscard]] SurfacePresence presence() const noexcept { return m_presence; }
+  // Runs when presence() changes.
+  void setPresenceChangedCallback(PresenceChangedCallback callback) { m_presenceChangedCallback = std::move(callback); }
   // Runs once, after the next render that swaps a new buffer.
   void callOnNextPresent(std::function<void()> callback) { m_nextPresentCallback = std::move(callback); }
   virtual void setInputRegion(const std::vector<InputRect>& rects) = 0;
@@ -180,6 +190,8 @@ public:
   [[nodiscard]] static SurfaceIdleProfileSnapshot takeIdleProfileSnapshot(bool reset);
 
 protected:
+  // The platform layer reports the compositor's value; runs the callback only on a change.
+  void setPresence(SurfacePresence presence);
   // Platform hooks.
   [[nodiscard]] virtual bool hasNativeSurface() const noexcept = 0;
   [[nodiscard]] virtual std::unique_ptr<NativeEglWindow> createNativeWindow() = 0;
@@ -251,6 +263,8 @@ private:
   UpdateCallback m_updateCallback;
   FrameTickCallback m_frameTickCallback;
   ScaleChangedCallback m_scaleChangedCallback;
+  PresenceChangedCallback m_presenceChangedCallback;
+  SurfacePresence m_presence = SurfacePresence::Shown;
   std::function<void()> m_nextPresentCallback;
   bool m_presentedOnce = false;
   // Waiting: no frame yet; Holding: the first frame waits for pending content until m_firstFrameDeadline;

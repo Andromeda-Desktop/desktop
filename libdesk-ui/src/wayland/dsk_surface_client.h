@@ -101,6 +101,8 @@ public:
   void setOnClipMapped(std::function<void(const Value&)> callback) { m_onClipMapped = std::move(callback); }
   // dsk_surface_v1.density (v16): how much the compositor thickens this surface's tint, 0 to 1.
   void setOnDensity(std::function<void(float density)> callback) { m_onDensity = std::move(callback); }
+  // dsk_surface_v1.presence (v20) of a toplevel's root surface: the protocol value, which matches SurfacePresence.
+  void setOnPresence(std::function<void(uint32_t presence)> callback) { m_onPresence = std::move(callback); }
 
   [[nodiscard]] dsk_surface_v1* resource() const noexcept { return m_surface; }
 
@@ -111,6 +113,7 @@ private:
   static void handleClipMapped(void* data, dsk_surface_v1* surface, int32_t x, int32_t y, int32_t width, int32_t height);
   static void handleBackdrop(void* data, dsk_surface_v1* surface, uint32_t tone);
   static void handleDensity(void* data, dsk_surface_v1* surface, int32_t density);
+  static void handlePresence(void* data, dsk_surface_v1* surface, uint32_t presence);
 
   dsk_surface_v1* m_surface = nullptr;
   uint32_t m_nextSerial = 1;
@@ -118,6 +121,7 @@ private:
   std::function<void(const Value&)> m_onClipMapped;
   float m_density = 0.0F;
   std::function<void(float)> m_onDensity;
+  std::function<void(uint32_t)> m_onPresence;
   std::unordered_map<uint32_t, DoneCallback> m_pending;
   std::unordered_map<uint32_t, StartedCallback> m_started;
 };

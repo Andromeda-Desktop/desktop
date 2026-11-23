@@ -57,6 +57,8 @@ public:
 
 protected:
   virtual bool createWlSurface();
+  // m_dsk, made on first use; null without our compositor or before createWlSurface.
+  DskSurfaceClient* dsk();
   bool prepareBlurEffect();
   void destroySurface();
 
@@ -80,7 +82,8 @@ private:
   OutputChangedCallback m_outputChangedCallback;
   wl_callback* m_frameCallback = nullptr;
   std::unique_ptr<FrameStats> m_frameStats;
-  std::unique_ptr<DskSurfaceClient> m_cardSurface;
+  // The one dsk_surface_v1 of m_surface (a second is a protocol error): glass card, secure flag and presence share it.
+  std::unique_ptr<DskSurfaceClient> m_dsk;
   std::unique_ptr<DskShapeClient> m_cardShape;
   ext_background_effect_surface_v1* m_backgroundEffect = nullptr;
   wp_viewport* m_viewport = nullptr;

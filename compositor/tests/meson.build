@@ -424,6 +424,8 @@ background_client = executable(
     xdg_shell_client_c,
     content_type_client_h,
     content_type_client_c,
+    dsk_surface_client_h,
+    dsk_surface_client_c,
   ],
   dependencies: [wayland_client_dep],
 )

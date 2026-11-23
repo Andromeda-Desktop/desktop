@@ -10,7 +10,7 @@
 namespace andromeda {
 
   namespace {
-    constexpr int kVersion = 19;
+    constexpr int kVersion = 20;
     constexpr uint32_t kPropertyCount = 14;
     constexpr uint32_t kCurveCount = 16;
     constexpr uint32_t kElevationCount = 3;
@@ -105,6 +105,20 @@ namespace andromeda {
     }
     state->current.density = density;
     dsk_surface_v1_send_density(state->resource, wl_fixed_from_double(density));
+  }
+
+  void DskSurfaceManager::sendPresence(wlr_surface* surface, Presence presence) const {
+    wlr_addon* addon = wlr_addon_find(&surface->addons, this, &kAddonInterface);
+    if (addon == nullptr) {
+      return;
+    }
+    Surface* state = wl_container_of(addon, state, addon);
+    if (state->current.presence == presence
+        || wl_resource_get_version(state->resource) < DSK_SURFACE_V1_PRESENCE_SINCE_VERSION) {
+      return;
+    }
+    state->current.presence = presence;
+    dsk_surface_v1_send_presence(state->resource, static_cast<uint32_t>(presence));
   }
 
   DskSurfaceManager::State* DskSurfaceManager::state(wlr_surface* surface) const {
@@ -326,6 +340,11 @@ namespace andromeda {
     // First of the commit listeners, so the role and scene handlers see the motion of the state they apply.
     wl_list_insert(&surface->events.commit.listener_list, &state->commit.link);
     wl_resource_set_implementation(object, &kSurfaceImplementation, state, handleSurfaceResourceDestroyed);
+    if (self->m_presenceLookup) {
+      if (const std::optional<Presence> presence = self->m_presenceLookup(surface)) {
+        self->sendPresence(surface, *presence);
+      }
+    }
   }
 
   void DskSurfaceManager::handleGetTracker(

@@ -74,7 +74,6 @@ private:
   std::string m_exportHandle; // "" until the compositor answers
   std::function<void(const std::string&)> m_exportReady;
   zxdg_imported_v2* m_imported = nullptr;
-  std::unique_ptr<DskSurfaceClient> m_dsk; // made on the first setCaptureSecure
   zwp_keyboard_shortcuts_inhibitor_v1* m_shortcutsInhibitor = nullptr;
   dsk_app_menu_v1* m_menuBar = nullptr; // made on the first non-empty setMenuBar
   std::function<void(std::uint32_t)> m_menuActivated;
