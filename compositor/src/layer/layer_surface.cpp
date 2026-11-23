@@ -3,6 +3,7 @@
 
 #include "server/background_effect.h"
 
+#include "scene/effect_draw.h"
 #include "scene/effect_registry.h"
 extern "C" {
 #include <andromedafx/render/effect.h>
@@ -465,10 +466,11 @@ namespace andromeda {
     if (m_scene == nullptr) {
       return;
     }
-    // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
-    float alpha = m_fade.animating() && effectRegistry().animationEffect(AnimationEvent::Layers) != nullptr
-        ? 1.0F
-        : std::clamp(static_cast<float>(m_fade.current()), 0.0F, 1.0F);
+    float alpha = fadeAlpha(
+        {.animating = m_fade.animating(),
+         .customEffect = effectRegistry().animationEffect(AnimationEvent::Layers) != nullptr},
+        static_cast<float>(m_fade.current())
+    );
     const DskSurfaceManager* dsk = m_server->dskSurfaces();
     if (const DskSurfaceManager::State* state = dsk != nullptr ? dsk->state(m_layerSurface->surface) : nullptr) {
       const float opacity =

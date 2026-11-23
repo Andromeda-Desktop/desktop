@@ -7,6 +7,7 @@
 #include "output/output.h"
 #include "overview/overview.h"
 #include "overview/overview_internal.h"
+#include "scene/effect_draw.h"
 #include "scene/effect_registry.h"
 #include "scene/ssd_frame.h"
 #include "scene/surface_blur.h"
@@ -56,13 +57,19 @@ namespace andromeda {
     m_posY.snap(layoutY());
   }
 
-  bool View::fadeComposited() const {
-    if (!m_fade.animating() || scaleOnlyOpening()) {
-      return false;
-    }
-    return m_customFade
-        || (!m_inScratchpad && !fadeInPlace() && effectRegistry().lifecycleEffect(AnimationEvent::WindowsIn) != nullptr);
+  FadeFacts View::fadeFacts() const {
+    return {
+        .animating = m_fade.animating() && !scaleOnlyOpening(),
+        .customEffect = m_customFade,
+        .builtinEffect = !m_inScratchpad && effectRegistry().lifecycleEffect(AnimationEvent::WindowsIn) != nullptr,
+        .alphaEquivalent = fadeInPlace(),
+        .slideStyle = !m_inScratchpad
+            && config().animation.windowsIn.style == "slide"
+            && effectRegistry().animationEffect(AnimationEvent::WindowsIn) == nullptr,
+    };
   }
+
+  bool View::fadeComposited() const { return effectDraw(fadeFacts()) == EffectDraw::Composited; }
 
   // The built-in fade of one fully opaque surface with no subsurface, popup, title bar or chrome: no node covers
   // another and the blur stays hidden, so each node drawn at the fade alpha gives the composited pixels without the
@@ -1050,13 +1057,7 @@ namespace andromeda {
           && m_fade.animating()
           && effectRegistry().animationEffect(m_inScratchpad ? AnimationEvent::Scratchpad : AnimationEvent::WindowsIn)
               != nullptr;
-      const float rawAlpha = std::clamp(static_cast<float>(m_fade.current()), 0.0F, 1.0F);
-      const bool builtInSlide = !m_inScratchpad
-          && !m_customFade
-          && config().animation.windowsIn.style == "slide"
-          && effectRegistry().animationEffect(AnimationEvent::WindowsIn) == nullptr;
-      // Keep the window visible through more of its travel so slide is clearly distinct from fade.
-      setFadeAlpha(builtInSlide ? std::sqrt(rawAlpha) : rawAlpha);
+      setFadeAlpha(fadeCurve(fadeFacts(), static_cast<float>(m_fade.current())));
       if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
         overview->onViewPresentationChanged(this);
       }

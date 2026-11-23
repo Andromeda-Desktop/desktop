@@ -38,6 +38,7 @@
 #include "scene/color.h"
 #include "scene/config_banner.h"
 #include "scene/fps_overlay.h"
+#include "scene/effect_draw.h"
 #include "scene/effect_registry.h"
 #include "scene/hint_rect.h"
 #include "scene/launch_feedback.h"
@@ -3010,13 +3011,15 @@ namespace andromeda {
     if (!movedAlpha && !movedSlide) {
       return false;
     }
-    // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
-    const float rawAlpha = std::clamp(static_cast<float>(m_alpha.current()), 0.0F, 1.0F);
     // A lifecycle shader fades the whole snapshot at once, so its buffers and borders stay opaque under it.
-    const bool composited = !m_perBufferFade && effectRegistry().lifecycleEffect(m_event) != nullptr;
-    const bool builtInSlide = !composited && m_slide.target() != m_slide.from();
-    // Keep the moving snapshot visible long enough for slide to read as motion. Fade keeps the configured timeline.
-    const float alpha = composited ? 1.0F : (builtInSlide ? std::sqrt(rawAlpha) : rawAlpha);
+    const FadeFacts facts{
+        .animating = true,
+        .customEffect = effectRegistry().animationEffect(m_event) != nullptr,
+        .builtinEffect = effectRegistry().lifecycleEffect(m_event) != nullptr,
+        .alphaEquivalent = m_perBufferFade,
+        .slideStyle = m_slide.target() != m_slide.from(),
+    };
+    const float alpha = fadeAlpha(facts, static_cast<float>(m_alpha.current()));
     for (const Buffer& buffer : m_buffers) {
       wlr_scene_buffer_set_opacity(buffer.node, std::clamp(buffer.baseOpacity * alpha, 0.0F, 1.0F));
     }
@@ -3038,7 +3041,8 @@ namespace andromeda {
 
     if (m_shadow.node != nullptr) {
       auto color = m_shadow.color;
-      color[3] *= builtInSlide ? alpha : rawAlpha;
+      // The analytic shadow follows the raw fade even under a lifecycle shader, and the slide curve while sliding.
+      color[3] *= effectSlides(facts) ? alpha : std::clamp(static_cast<float>(m_alpha.current()), 0.0F, 1.0F);
       wlr_scene_shadow_set_color(m_shadow.node, color.data());
     }
 

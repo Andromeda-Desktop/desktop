@@ -91,6 +91,7 @@ unit_tests = [
   ['tabbed-layout', ['unit/tabbed_layout.cpp'], []],
   ['border-ring', ['unit/border_ring.cpp'], []],
   ['glass-adapt', ['unit/glass_adapt.cpp'], []],
+  ['effect-draw', ['unit/effect_draw.cpp'], []],
   ['ssd-frame-geometry', ['unit/ssd_frame_geometry.cpp'], []],
   ['floating', ['unit/floating.cpp'], []],
   ['snap', ['unit/snap.cpp'], []],

@@ -52,6 +52,7 @@ struct wlr_xwayland_surface_configure_event;
 namespace andromeda {
 
   class Server;
+  struct FadeFacts;
   class SsdFrame;
   class ScratchpadManager;
   class ColorManager;
@@ -741,6 +742,7 @@ namespace andromeda {
     // lets the desktop show through instead.
     [[nodiscard]] bool fullscreenOpaque() const;
     // The lifecycle fade runs through a whole-window shader, so buffers and borders stay opaque under it.
+    [[nodiscard]] FadeFacts fadeFacts() const;
     [[nodiscard]] bool fadeComposited() const;
     [[nodiscard]] bool fadeInPlace() const;
     [[nodiscard]] float opacityWithoutFade() const;
