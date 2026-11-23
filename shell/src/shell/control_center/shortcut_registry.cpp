@@ -257,6 +257,26 @@ namespace {
     NotificationManager* m_svc;
   };
 
+  // nightlight.adaptive: the white point follows the room light.
+  class RoomLightShortcut final : public Shortcut {
+  public:
+    explicit RoomLightShortcut(ConfigService* config) : m_config(config) {}
+    std::string_view id() const override { return "room_light"; }
+    std::string defaultLabel() const override { return i18n::tr("control-center.shortcuts.room-light"); }
+    std::string_view iconOn() const override { return "room-light"; }
+    std::string_view iconOff() const override { return "room-light"; }
+    bool isToggle() const override { return true; }
+    bool active() const override { return m_config != nullptr && m_config->config().nightlight.adaptive; }
+    void onClick() override {
+      if (m_config != nullptr) {
+        m_config->setOverride({"nightlight", "adaptive"}, !m_config->config().nightlight.adaptive);
+      }
+    }
+
+  private:
+    ConfigService* m_config;
+  };
+
   class DarkModeShortcut final : public Shortcut {
   public:
     explicit DarkModeShortcut(noctalia::theme::ThemeService* svc) : m_svc(svc) {}
@@ -596,6 +616,10 @@ namespace {
       builtinShortcut<NightlightShortcut, &ShortcutServices::nightLight, &ShortcutServices::platform>({
           .type = "nightlight",
           .labelKey = "control-center.shortcuts.nightlight",
+      }),
+      builtinShortcut<RoomLightShortcut, &ShortcutServices::config>({
+          .type = "room_light",
+          .labelKey = "control-center.shortcuts.room-light",
       }),
       builtinShortcut<NotificationShortcut, &ShortcutServices::notifications>({
           .type = "notification",

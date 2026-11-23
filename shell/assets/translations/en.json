@@ -910,6 +910,7 @@
       "media": "Media",
       "mic-mute": "Microphone",
       "nightlight": "Night Light",
+      "room-light": "Room Light",
       "nightlight-states": {
         "forced": "Always On",
         "off": "Night Light",

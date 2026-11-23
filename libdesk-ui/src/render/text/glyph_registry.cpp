@@ -84,6 +84,7 @@ const std::unordered_map<std::string, std::string_view> kAliases = {
     // Night light / dark mode
     {"nightlight-on", "sun-low"},
     {"nightlight-off", "moon-off"},
+    {"room-light", "sun"},
     {"nightlight-forced", "moon-stars"},
     {"theme-mode", "circle-half-2"},
 

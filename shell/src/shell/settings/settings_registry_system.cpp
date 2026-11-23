@@ -258,6 +258,7 @@ namespace settings {
         generateSchemaEntries(noctalia::config::schema::nightlightSchema(), cfg.nightlight, {"nightlight"}, &env);
     appendRow(entries, nightLightRows, "enabled");
     if (env.gammaControlAvailable) {
+      appendRow(entries, nightLightRows, "adaptive");
       const SettingVisibility nightLightOn = [](const Config& c) { return c.nightlight.enabled; };
       appendRow(entries, nightLightRows, "force");
       entries.back().visibleWhen = nightLightOn;
