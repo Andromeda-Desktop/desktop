@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 namespace andromeda {
 
@@ -27,6 +28,25 @@ namespace andromeda {
 
   constexpr bool sleeping(SessionActivity activity) {
     return activity == SessionActivity::Sleeping || activity == SessionActivity::SleepingLocked;
+  }
+
+  // The Compositor1.Apps `Activity` value.
+  constexpr std::string_view activityName(SessionActivity activity) {
+    switch (activity) {
+    case SessionActivity::Active:
+      return "active";
+    case SessionActivity::Idle:
+      return "idle";
+    case SessionActivity::RestartLocked:
+      return "restart-locked";
+    case SessionActivity::Locked:
+      return "locked";
+    case SessionActivity::Sleeping:
+      return "sleeping";
+    case SessionActivity::SleepingLocked:
+      return "sleeping-locked";
+    }
+    return "active";
   }
 
   // The one transition rule. Input and IdleTimeout change only an unlocked, awake session; Sleep and Resume come from

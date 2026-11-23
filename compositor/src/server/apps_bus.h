@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <string_view>
 
 struct sd_bus;
 struct sd_bus_message;
@@ -29,6 +30,8 @@ namespace andromeda {
     void setPresenting(bool presenting);
     // The `Idle` property: ScreenActivityRecorder::idle().
     void setIdle(bool idle);
+    // The `Activity` property: activityName() of Server::activity().
+    void setActivity(std::string_view activity);
 
   private:
     struct Sample {
@@ -57,6 +60,8 @@ namespace andromeda {
                              sd_bus_message* reply, void* data, sd_bus_error* error);
     static int getIdle(sd_bus* bus, const char* path, const char* interface, const char* property,
                        sd_bus_message* reply, void* data, sd_bus_error* error);
+    static int getActivity(sd_bus* bus, const char* path, const char* interface, const char* property,
+                           sd_bus_message* reply, void* data, sd_bus_error* error);
 
     void dispatch();
     void updateEvents();
@@ -70,6 +75,7 @@ namespace andromeda {
     std::function<void()> m_refreshCapChanged;
     bool m_presenting = false;
     bool m_idle = false;
+    std::string_view m_activity = "active"; // a literal from activityName()
     sd_bus* m_bus = nullptr;
     sd_bus_slot* m_object = nullptr;
     sd_bus_slot* m_ownerMatch = nullptr;

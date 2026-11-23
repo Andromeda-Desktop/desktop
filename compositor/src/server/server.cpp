@@ -2056,6 +2056,7 @@ namespace andromeda {
       );
       if (m_screenActivity != nullptr) {
         m_appsBus->setIdle(m_screenActivity->idle());
+        m_appsBus->setActivity(activityName(m_activity));
         m_screenActivity->setIdleListener([this](bool idle) {
           if (m_appsBus != nullptr) {
             m_appsBus->setIdle(idle);

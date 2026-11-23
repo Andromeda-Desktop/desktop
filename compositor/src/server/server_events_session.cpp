@@ -27,6 +27,7 @@
 #include "scene/hint_rect.h"
 #include "scene/quit_confirm.h"
 #include "server/allocator.h"
+#include "server/apps_bus.h"
 #include "server/backend_manager.h"
 #include "server/desktop_output_manager.h"
 #include "server/desktop_settings_manager.h"
@@ -242,6 +243,9 @@ namespace andromeda {
     }
     if (m_screenActivity != nullptr) {
       m_screenActivity->setActivity(next);
+    }
+    if (m_appsBus != nullptr) {
+      m_appsBus->setActivity(activityName(next));
     }
     if (next == SessionActivity::RestartLocked) {
       m_restartLockEscape = wl_event_loop_add_timer(
