@@ -16,8 +16,8 @@ namespace {
   const sdbus::ServiceName kBusName{"org.andromeda.System1"};
   const sdbus::ObjectPath kPath{"/org/andromeda/System1/Sensors"};
   constexpr auto kInterface = "org.andromeda.System1.Sensors";
-  constexpr auto kSampleInterval = std::chrono::seconds(10);
-  constexpr auto kMaxSampleInterval = std::chrono::seconds(60);
+  constexpr auto kSampleInterval = std::chrono::seconds(3);
+  constexpr auto kMaxSampleInterval = std::chrono::seconds(15);
 } // namespace
 
 AmbientLightService::AmbientLightService(SystemBus& bus, ReadingCallback onReading)
@@ -51,7 +51,7 @@ void AmbientLightService::sample() {
       });
 }
 
-// A steady reading (within 15 % or 5 lux) doubles the interval up to 60 s; a change returns it to 10 s.
+// A steady reading (within 15 % or 5 lux) doubles the interval up to 15 s; a change returns it to 3 s.
 void AmbientLightService::onReading(double lux, int kelvin) {
   const bool steady = m_lastLux >= 0.0 && std::abs(lux - m_lastLux) <= std::max(5.0, 0.15 * m_lastLux);
   m_interval = steady ? std::min(m_interval * 2, kMaxSampleInterval) : kSampleInterval;

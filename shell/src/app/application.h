@@ -429,7 +429,8 @@ private:
     float to = 0.0F;
   };
   std::map<std::string, IdleDim> m_idleDimmed;
-  void applyIdleDim(bool dim);
+  // deep: nobody is at the screen (presence), so it dims to the floor instead of half.
+  void applyIdleDim(bool dim, bool deep = false);
   IdleInhibitor m_idleInhibitor;
   IdleManager m_idleManager;
   PluginIdleWatches m_pluginIdleWatches;

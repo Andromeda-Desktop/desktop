@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -49,6 +50,10 @@ public:
 
   void setAllBrightness(float value);
   void setBrightness(const std::string& displayId, float value);
+  // Moves a backlight to value over duration in perceptually even steps; a DDC display jumps. A later set or fade
+  // on the display replaces it.
+  void fadeBrightness(const std::string& displayId, float value, std::chrono::milliseconds duration);
+  [[nodiscard]] bool fading(const std::string& displayId) const;
   void requestDdcRefresh();
   void requestDdcRescan();
   void reload(const BrightnessConfig& config);

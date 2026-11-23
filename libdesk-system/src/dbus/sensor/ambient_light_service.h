@@ -11,7 +11,7 @@ namespace sdbus {
 }
 class SystemBus;
 
-// Ambient light in lux and colour temperature in kelvin (0 without a colour channel) from System1 (org.andromeda.System1.Sensors.ReadLight), sampled every 10 s, backing off to 60 s
+// Ambient light in lux and colour temperature in kelvin (0 without a colour channel) from System1 (org.andromeda.System1.Sensors.ReadLight), sampled every 3 s, backing off to 15 s
 // while the light stays steady.
 class AmbientLightService {
 public:
@@ -36,6 +36,6 @@ private:
   bool m_paused = false;
   bool m_readFailed = false;
   double m_lastLux = -1.0;
-  std::chrono::seconds m_interval{10};
+  std::chrono::seconds m_interval{3};
   std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);
 };

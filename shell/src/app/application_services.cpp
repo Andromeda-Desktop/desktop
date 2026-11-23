@@ -2240,11 +2240,13 @@ void Application::applyAmbientLight(double lux) {
       continue;
     }
     m_ambientSet[d.id] = target;
-    m_brightnessOsd.suppressFor(std::chrono::seconds(2));
+    m_brightnessOsd.suppressFor(std::chrono::seconds(3));
     if (stepped) {
       m_dimmedFrom[d.id] = target;
     }
-    m_brightnessService->setBrightness(d.id, stepped ? std::max(kStep, target - kStep) : target);
+    m_brightnessService->fadeBrightness(
+        d.id, stepped ? std::max(kStep, target - kStep) : target, std::chrono::milliseconds(2000)
+    );
   }
   m_ambientLux = lux;
 }
@@ -2301,7 +2303,7 @@ void Application::syncPresenceSettings() {
 
 void Application::applyPresence(const PresenceWatch::Effects& effects) {
   if (effects.dimChanged) {
-    applyIdleDim(m_presenceWatch.dimmed());
+    applyIdleDim(m_presenceWatch.dimmed(), true);
   }
   if (effects.lock && m_configService.isLockScreenEnabled()) {
     (void)m_sessionActionRunner.lock();
@@ -2339,24 +2341,26 @@ void Application::syncPresenceClaim() {
   }
 }
 
-// The idle "dim" behavior halves each display's brightness (not below 0.05) and restores it on input, unless the user
-// moved the brightness meanwhile.
-void Application::applyIdleDim(bool dim) {
+// The idle "dim" behavior fades each display to half its brightness (deep: to the floor, 0.05) and fades it back on
+// input, unless the user moved the brightness meanwhile (a move ends the fade).
+void Application::applyIdleDim(bool dim, bool deep) {
   if (m_brightnessService == nullptr || dim == !m_idleDimmed.empty()) {
     return;
   }
   constexpr float kFloor = 0.05F;
+  constexpr auto kDimFade = std::chrono::milliseconds(1500);
+  constexpr auto kUndimFade = std::chrono::milliseconds(400);
   m_brightnessOsd.suppressFor(std::chrono::seconds(2));
   for (const auto& d : m_brightnessService->displays()) {
     if (dim) {
       if (d.controllable && d.brightness > kFloor) {
-        const float to = std::max(kFloor, d.brightness * 0.5F);
+        const float to = deep ? kFloor : std::max(kFloor, d.brightness * 0.5F);
         m_idleDimmed[d.id] = {.from = d.brightness, .to = to};
-        m_brightnessService->setBrightness(d.id, to);
+        m_brightnessService->fadeBrightness(d.id, to, kDimFade);
       }
-    } else if (const auto it = m_idleDimmed.find(d.id);
-               it != m_idleDimmed.end() && std::abs(d.brightness - it->second.to) < 0.02F) {
-      m_brightnessService->setBrightness(d.id, it->second.from);
+    } else if (const auto it = m_idleDimmed.find(d.id); it != m_idleDimmed.end()
+               && (m_brightnessService->fading(d.id) || std::abs(d.brightness - it->second.to) < 0.02F)) {
+      m_brightnessService->fadeBrightness(d.id, it->second.from, kUndimFade);
     }
   }
   if (!dim) {

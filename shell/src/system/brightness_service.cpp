@@ -7,6 +7,7 @@
 #include "core/inotify/inotify.h"
 #include "core/log.h"
 #include "core/process/process.h"
+#include "core/timer_manager.h"
 #include "dbus/system_bus.h"
 #include "ipc/ipc_arg_parse.h"
 #include "ipc/ipc_service.h"
@@ -28,6 +29,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -704,6 +706,16 @@ struct BrightnessService::Impl {
   std::unique_ptr<sdbus::IProxy> loginProxy;
   std::shared_ptr<int> aliveToken = std::make_shared<int>(0);
 
+  struct Fade {
+    float from = 0.0F;
+    float to = 0.0F;
+    std::chrono::steady_clock::time_point start;
+    std::chrono::milliseconds duration{0};
+    std::uint32_t lastRaw = 0;
+  };
+  std::map<std::string, Fade> fades;
+  Timer fadeTimer;
+
   Inotify m_inotify;
 
   int eventFd = -1;
@@ -1181,12 +1193,66 @@ struct BrightnessService::Impl {
     if (display == nullptr) {
       return;
     }
+    fades.erase(displayId);
     setBrightness(display, value);
   }
 
   void setAllBrightness(float value) {
+    fades.clear();
+    fadeTimer.stop();
     for (auto& display : internals) {
       setBrightness(&display, value);
+    }
+  }
+
+  void fadeBrightness(const std::string& displayId, float value, std::chrono::milliseconds duration) {
+    DisplayInternal* display = findInternal(displayId);
+    if (activeConfig.syncBrightnessOfAllMonitors || display == nullptr || display->backend != RuntimeBackend::Backlight
+        || duration.count() <= 0) {
+      setBrightness(displayId, value);
+      return;
+    }
+    fades[displayId] = Fade{
+        .from = display->pub.brightness,
+        .to = std::clamp(value, activeConfig.minimumBrightness, 1.0F),
+        .start = std::chrono::steady_clock::now(),
+        .duration = duration,
+    };
+    if (!fadeTimer.active()) {
+      stepFades();
+    }
+  }
+
+  // Steps at 30 Hz, interpolating in gamma 2.2 space so each step looks the same size; a step that would write the
+  // same raw value is skipped.
+  void stepFades() {
+    const auto now = std::chrono::steady_clock::now();
+    for (auto it = fades.begin(); it != fades.end();) {
+      DisplayInternal* display = findInternal(it->first);
+      if (display == nullptr) {
+        it = fades.erase(it);
+        continue;
+      }
+      Fade& fade = it->second;
+      const float t = std::min(
+          1.0F, std::chrono::duration<float>(now - fade.start) / std::chrono::duration<float>(fade.duration)
+      );
+      const float eased = t * t * (3.0F - 2.0F * t);
+      constexpr float kGamma = 2.2F;
+      const float a = std::pow(fade.from, 1.0F / kGamma);
+      const float b = std::pow(fade.to, 1.0F / kGamma);
+      const float value = std::pow(a + (b - a) * eased, kGamma);
+      const auto raw = static_cast<std::uint32_t>(std::round(value * static_cast<float>(display->maxRaw)));
+      if (raw != fade.lastRaw || t >= 1.0F) {
+        fade.lastRaw = raw;
+        setBrightness(display, t >= 1.0F ? fade.to : value);
+      }
+      it = t >= 1.0F ? fades.erase(it) : std::next(it);
+    }
+    if (fades.empty()) {
+      fadeTimer.stop();
+    } else if (!fadeTimer.active()) {
+      fadeTimer.startRepeating(std::chrono::milliseconds(33), [this] { stepFades(); });
     }
   }
 
@@ -1750,6 +1816,12 @@ void BrightnessService::setBrightness(const std::string& displayId, float value)
 }
 
 void BrightnessService::setAllBrightness(float value) { m_impl->setAllBrightness(value); }
+
+void BrightnessService::fadeBrightness(const std::string& displayId, float value, std::chrono::milliseconds duration) {
+  m_impl->fadeBrightness(displayId, value, duration);
+}
+
+bool BrightnessService::fading(const std::string& displayId) const { return m_impl->fades.contains(displayId); }
 
 void BrightnessService::requestDdcRefresh() { m_impl->queueDdcRefreshes(); }
 
