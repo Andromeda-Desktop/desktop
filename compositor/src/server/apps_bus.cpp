@@ -6,8 +6,6 @@
 #include "core/log.h"
 #include "qos/holds.h"
 
-#include <poll.h>
-#include <sys/auxv.h>
 #include <wayland-server-core.h>
 
 #include <cstdint>
@@ -41,32 +39,6 @@ namespace andromeda {
       timespec now{};
       clock_gettime(CLOCK_MONOTONIC, &now);
       return static_cast<std::uint64_t>(now.tv_sec) * 1'000'000 + static_cast<std::uint64_t>(now.tv_nsec) / 1000;
-    }
-
-    // sd_bus_open_user reads its environment with secure_getenv, which is empty in a secure-exec process (the
-    // packaged cap_sys_nice binary); main() restored DBUS_SESSION_BUS_ADDRESS into environ for getenv.
-    int openUserBus(sd_bus** bus) {
-      const char* address = std::getenv("DBUS_SESSION_BUS_ADDRESS");
-      if (getauxval(AT_SECURE) == 0 || address == nullptr) {
-        return sd_bus_open_user(bus);
-      }
-      sd_bus* opened = nullptr;
-      int r = sd_bus_new(&opened);
-      if (r >= 0) {
-        r = sd_bus_set_address(opened, address);
-      }
-      if (r >= 0) {
-        r = sd_bus_set_bus_client(opened, 1);
-      }
-      if (r >= 0) {
-        r = sd_bus_start(opened);
-      }
-      if (r < 0) {
-        sd_bus_unref(opened);
-        return r;
-      }
-      *bus = opened;
-      return 0;
     }
 
     const char* tierName(qos::Tier tier) {
@@ -117,7 +89,30 @@ namespace andromeda {
   } // namespace
 
   AppsBus::AppsBus(wl_event_loop* loop, std::function<void()> reloadConfig, std::function<void()> refreshCapChanged)
-      : m_reloadConfig(std::move(reloadConfig)), m_refreshCapChanged(std::move(refreshCapChanged)) {
+      : m_reloadConfig(std::move(reloadConfig)), m_refreshCapChanged(std::move(refreshCapChanged)),
+        m_bus(loop, bus::Kind::User) {
+    if (m_bus.get() == nullptr) {
+      kLog.info("no session bus: org.andromeda.Compositor1.Apps is off");
+    }
+    m_sampleTimer = loop != nullptr ? wl_event_loop_add_timer(loop, onSample, this) : nullptr;
+    m_bus.onChange([this](sd_bus* bus) {
+      if (bus != nullptr) {
+        publish();
+      }
+    });
+    if (m_bus.get() != nullptr) {
+      publish();
+    }
+  }
+
+  AppsBus::~AppsBus() {
+    if (m_sampleTimer != nullptr) {
+      wl_event_source_remove(m_sampleTimer);
+    }
+  }
+
+  // Names that left while the bus was gone are stale: ListNames fills the set again.
+  void AppsBus::publish() {
     static const sd_bus_vtable kVtable[] = {
         SD_BUS_VTABLE_START(0),
         SD_BUS_METHOD("HoldTier", "sss", "s", onHoldTier, SD_BUS_VTABLE_UNPRIVILEGED),
@@ -136,101 +131,33 @@ namespace andromeda {
         SD_BUS_PROPERTY("Activity", "s", getActivity, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
         SD_BUS_VTABLE_END,
     };
-    if (loop == nullptr || openUserBus(&m_bus) < 0) {
-      kLog.info("no session bus: org.andromeda.Compositor1.Apps is off");
-      m_bus = nullptr;
-      return;
-    }
     const auto named = [](sd_bus_message* reply, void* /*data*/, sd_bus_error* /*error*/) -> int {
       if (sd_bus_message_is_method_error(reply, nullptr) != 0) {
         kLog.info("{} is taken: Compositor1.Apps is off in this compositor", busName());
       }
       return 0;
     };
-    if (sd_bus_add_object_vtable(m_bus, &m_object, kPath, kInterface, kVtable, this) < 0
-        || sd_bus_match_signal_async(m_bus, &m_ownerMatch, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+    sd_bus* bus = m_bus.get();
+    qos::registry().busNames.clear();
+    sd_bus_message* list = nullptr;
+    const bool published =
+        sd_bus_add_object_vtable(bus, m_bus.keep(), kPath, kInterface, kVtable, this) >= 0
+        && sd_bus_match_signal_async(bus, m_bus.keep(), "org.freedesktop.DBus", "/org/freedesktop/DBus",
                                      "org.freedesktop.DBus", "NameOwnerChanged", onOwnerChanged, nullptr, this)
-            < 0
-        || sd_bus_call_method_async(m_bus, nullptr, "org.freedesktop.DBus", "/org/freedesktop/DBus",
-                                    "org.freedesktop.DBus", "ListNames", onNames, this, "") < 0
-        || sd_bus_request_name_async(m_bus, nullptr, busName(), 0, named, nullptr) < 0) {
+            >= 0
+        && sd_bus_message_new_method_call(bus, &list, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                          "org.freedesktop.DBus", "ListNames") >= 0
+        && m_bus.call(list, [this](sd_bus_message* reply) {
+             if (reply != nullptr) {
+               onNames(reply, this, nullptr);
+             }
+           })
+        && sd_bus_request_name_async(bus, m_bus.keep(), busName(), 0, named, nullptr) >= 0;
+    sd_bus_message_unref(list);
+    if (!published) {
       kLog.warn("Compositor1.Apps: could not set up the bus object");
-      disconnect();
-      return;
     }
-    m_source = wl_event_loop_add_fd(loop, sd_bus_get_fd(m_bus), WL_EVENT_READABLE, onEvent, this);
-    m_timer = wl_event_loop_add_timer(loop, onTimer, this);
-    m_sampleTimer = wl_event_loop_add_timer(loop, onSample, this);
-    if (m_source == nullptr || m_timer == nullptr || m_sampleTimer == nullptr) {
-      disconnect();
-      return;
-    }
-    updateEvents();
-  }
-
-  AppsBus::~AppsBus() { disconnect(); }
-
-  void AppsBus::disconnect() {
-    for (wl_event_source** source : {&m_source, &m_timer, &m_sampleTimer}) {
-      if (*source != nullptr) {
-        wl_event_source_remove(*source);
-        *source = nullptr;
-      }
-    }
-    m_object = sd_bus_slot_unref(m_object);
-    m_ownerMatch = sd_bus_slot_unref(m_ownerMatch);
-    if (m_bus != nullptr) {
-      m_bus = sd_bus_flush_close_unref(m_bus);
-    }
-  }
-
-  int AppsBus::onEvent(int /*fd*/, unsigned mask, void* data) {
-    auto* self = static_cast<AppsBus*>(data);
-    self->dispatch();
-    if (self->m_bus != nullptr && (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) != 0) {
-      kLog.warn("session bus closed: Compositor1.Apps stops");
-      self->disconnect();
-    }
-    return 0;
-  }
-
-  int AppsBus::onTimer(void* data) {
-    static_cast<AppsBus*>(data)->dispatch();
-    return 0;
-  }
-
-  void AppsBus::dispatch() {
-    if (m_bus == nullptr) {
-      return;
-    }
-    int result = 0;
-    while ((result = sd_bus_process(m_bus, nullptr)) > 0) {
-    }
-    if (result < 0) {
-      kLog.warn("session bus failed: Compositor1.Apps stops");
-      disconnect();
-      return;
-    }
-    updateEvents();
-  }
-
-  void AppsBus::updateEvents() {
-    if (m_bus == nullptr) {
-      return;
-    }
-    const int events = sd_bus_get_events(m_bus);
-    wl_event_source_fd_update(
-        m_source,
-        WL_EVENT_READABLE | ((events > 0 && (events & POLLOUT) != 0) ? static_cast<uint32_t>(WL_EVENT_WRITABLE) : 0U)
-    );
-    // sd_bus_get_timeout: absolute CLOCK_MONOTONIC µs of the next timeout, UINT64_MAX for none.
-    std::uint64_t deadline = UINT64_MAX;
-    int delayMs = 0;
-    if (sd_bus_get_timeout(m_bus, &deadline) >= 0 && deadline != UINT64_MAX) {
-      const std::uint64_t now = monotonicUs();
-      delayMs = deadline <= now ? 1 : static_cast<int>((deadline - now + 999) / 1000);
-    }
-    wl_event_source_timer_update(m_timer, delayMs);
+    m_bus.sent();
   }
 
   void AppsBus::changed() {
@@ -253,9 +180,9 @@ namespace andromeda {
       return;
     }
     m_presenting = presenting;
-    if (m_bus != nullptr) {
-      (void)sd_bus_emit_properties_changed(m_bus, kPath, kInterface, "Presenting", nullptr);
-      updateEvents();
+    if (m_bus.get() != nullptr) {
+      (void)sd_bus_emit_properties_changed(m_bus.get(), kPath, kInterface, "Presenting", nullptr);
+      m_bus.sent();
     }
   }
 
@@ -264,9 +191,9 @@ namespace andromeda {
       return;
     }
     m_idle = idle;
-    if (m_bus != nullptr) {
-      (void)sd_bus_emit_properties_changed(m_bus, kPath, kInterface, "Idle", nullptr);
-      updateEvents();
+    if (m_bus.get() != nullptr) {
+      (void)sd_bus_emit_properties_changed(m_bus.get(), kPath, kInterface, "Idle", nullptr);
+      m_bus.sent();
     }
   }
 
@@ -275,9 +202,9 @@ namespace andromeda {
       return;
     }
     m_activity = activity;
-    if (m_bus != nullptr) {
-      (void)sd_bus_emit_properties_changed(m_bus, kPath, kInterface, "Activity", nullptr);
-      updateEvents();
+    if (m_bus.get() != nullptr) {
+      (void)sd_bus_emit_properties_changed(m_bus.get(), kPath, kInterface, "Activity", nullptr);
+      m_bus.sent();
     }
   }
 
@@ -298,7 +225,7 @@ namespace andromeda {
 
   int AppsBus::onSample(void* data) {
     auto* self = static_cast<AppsBus*>(data);
-    if (self->m_bus == nullptr) {
+    if (self->m_bus.get() == nullptr) {
       return 0;
     }
     if (qos::registry().holds.empty() && monotonicUs() > self->m_watchedUntilUs) {
@@ -308,12 +235,12 @@ namespace andromeda {
     }
     self->sample();
     sd_bus_message* signal = nullptr;
-    if (sd_bus_message_new_signal(self->m_bus, &signal, kPath, kInterface, "AppStats") >= 0
+    if (sd_bus_message_new_signal(self->m_bus.get(), &signal, kPath, kInterface, "AppStats") >= 0
         && self->appendApps(signal) >= 0) {
-      (void)sd_bus_send(self->m_bus, signal, nullptr);
+      (void)sd_bus_send(self->m_bus.get(), signal, nullptr);
     }
     sd_bus_message_unref(signal);
-    self->updateEvents();
+    self->m_bus.sent();
     wl_event_source_timer_update(self->m_sampleTimer, kSampleMs);
     return 0;
   }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/loop_bus.h"
+
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -38,7 +40,7 @@ namespace andromeda {
     SystemdUnits(const SystemdUnits&) = delete;
     SystemdUnits& operator=(const SystemdUnits&) = delete;
 
-    [[nodiscard]] bool active() const { return m_bus != nullptr; }
+    [[nodiscard]] bool active() const { return m_bus.get() != nullptr; }
     virtual void setProperties(const std::string& unit, const Properties& properties);
     // `done` gets true once systemd reports the unit frozen or thawed; it never runs after the bus is gone.
     // Returns false when the call was not sent; `done` then never runs.
@@ -54,15 +56,8 @@ namespace andromeda {
   private:
     using Reply = std::function<void(sd_bus_message*)>;
     bool call(sd_bus_message* message, Reply reply);
-    void dispatch();
-    void updateEvents();
-    void disconnect();
-    static int onEvent(int fd, unsigned mask, void* data);
-    static int onTimer(void* data);
 
-    sd_bus* m_bus = nullptr;
-    wl_event_source* m_source = nullptr;
-    wl_event_source* m_timer = nullptr; // fails calls that get no reply in time
+    bus::Client m_bus;
   };
 
 } // namespace andromeda

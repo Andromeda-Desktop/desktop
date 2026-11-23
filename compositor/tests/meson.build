@@ -5,6 +5,7 @@ unit_tests = [
   ['qos-cpu-topology', ['unit/qos_cpu_topology.cpp'], []],
   ['qos-holds', ['unit/qos_holds.cpp'], []],
   ['qos-controller', ['unit/qos_controller.cpp'], [andromeda_core_dep]],
+  ['loop-bus', ['unit/loop_bus.cpp'], [andromeda_core_dep]],
   ['overview-arrange', ['unit/overview_arrange.cpp'], []],
   ['overview-navigation', ['unit/overview_navigation.cpp'], []],
   ['overview-interact', ['unit/overview_interact.cpp'], []],

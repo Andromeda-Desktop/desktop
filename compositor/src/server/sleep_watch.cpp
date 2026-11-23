@@ -25,24 +25,33 @@ namespace andromeda {
   } // namespace
 
   SleepWatch::SleepWatch(wl_event_loop* loop, std::function<void(bool)> sleeping, std::function<void()> late)
-      : m_sleeping(std::move(sleeping)), m_late(std::move(late)) {
-    if (loop == nullptr || sd_bus_open_system(&m_bus) < 0) {
-      m_bus = nullptr;
+      : m_sleeping(std::move(sleeping)), m_late(std::move(late)), m_bus(loop, bus::Kind::System) {
+    if (m_bus.get() == nullptr) {
       kLog.warn("no system bus: the watchdog stays armed across sleep");
-      return;
     }
-    m_source = wl_event_loop_add_fd(loop, sd_bus_get_fd(m_bus), WL_EVENT_READABLE, onEvent, this);
-    m_lateTimer = wl_event_loop_add_timer(loop, onLate, this);
-    if (m_source == nullptr
-        || m_lateTimer == nullptr
+    m_lateTimer = loop != nullptr ? wl_event_loop_add_timer(loop, onLate, this) : nullptr;
+    m_bus.onChange([this](sd_bus* bus) {
+      if (bus != nullptr) {
+        follow();
+      }
+    });
+    if (m_bus.get() != nullptr) {
+      follow();
+    }
+  }
+
+  void SleepWatch::follow() {
+    sd_bus* bus = m_bus.get();
+    if (m_lateTimer == nullptr
         || sd_bus_match_signal_async(
-               m_bus, nullptr, kLogind, kLogindPath, kLogindManager, "PrepareForSleep", onLogindPrepare, nullptr, this
+               bus, m_bus.keep(), kLogind, kLogindPath, kLogindManager, "PrepareForSleep", onLogindPrepare, nullptr,
+               this
            ) < 0
         || sd_bus_match_signal_async(
-               m_bus, nullptr, kSystem1, kLoginPath, kLogin, "PrepareForSleep", onSystem1Prepare, nullptr, this
+               bus, m_bus.keep(), kSystem1, kLoginPath, kLogin, "PrepareForSleep", onSystem1Prepare, nullptr, this
            ) < 0
         || sd_bus_add_match_async(
-               m_bus, nullptr,
+               bus, m_bus.keep(),
                "type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.andromeda.System1'",
                onOwnerChanged, nullptr, this
            ) < 0) {
@@ -50,7 +59,7 @@ namespace andromeda {
       return;
     }
     holdThroughSystem1();
-    dispatch();
+    m_bus.sent();
   }
 
   SleepWatch::~SleepWatch() {
@@ -60,12 +69,6 @@ namespace andromeda {
     m_budgetSlot = sd_bus_slot_unref(m_budgetSlot);
     if (m_lateTimer != nullptr) {
       wl_event_source_remove(m_lateTimer);
-    }
-    if (m_source != nullptr) {
-      wl_event_source_remove(m_source);
-    }
-    if (m_bus != nullptr) {
-      sd_bus_flush_close_unref(m_bus);
     }
   }
 
@@ -77,11 +80,14 @@ namespace andromeda {
     wl_event_source_timer_update(m_lateTimer, 0);
     kLog.info("ready for sleep");
     if (m_relay == Relay::System1) {
-      if (sd_bus_call_method_async(m_bus, nullptr, kSystem1, kLoginPath, kLogin, "SleepReady", nullptr, nullptr, "")
-          < 0) {
+      sd_bus_message* message = nullptr;
+      if (sd_bus_message_new_method_call(m_bus.get(), &message, kSystem1, kLoginPath, kLogin, "SleepReady") < 0
+          || sd_bus_message_set_expect_reply(message, 0) < 0
+          || sd_bus_send(m_bus.get(), message, nullptr) < 0) {
         kLog.warn("cannot send SleepReady");
       }
-      sd_bus_flush(m_bus);
+      sd_bus_message_unref(message);
+      m_bus.sent();
     } else {
       release();
     }
@@ -89,7 +95,9 @@ namespace andromeda {
 
   void SleepWatch::holdThroughSystem1() {
     m_holdSlot = sd_bus_slot_unref(m_holdSlot);
-    if (sd_bus_call_method_async(m_bus, &m_holdSlot, kSystem1, kLoginPath, kLogin, "HoldSleep", onHoldReply, this, "")
+    if (sd_bus_call_method_async(
+            m_bus.get(), &m_holdSlot, kSystem1, kLoginPath, kLogin, "HoldSleep", onHoldReply, this, ""
+        )
         < 0) {
       holdThroughLogind();
     }
@@ -123,8 +131,8 @@ namespace andromeda {
     }
     m_budgetSlot = sd_bus_slot_unref(m_budgetSlot);
     if (sd_bus_call_method_async(
-            m_bus, &m_budgetSlot, kLogind, kLogindPath, "org.freedesktop.DBus.Properties", "Get", onBudgetReply, this,
-            "ss", kLogindManager, "InhibitDelayMaxUSec"
+            m_bus.get(), &m_budgetSlot, kLogind, kLogindPath, "org.freedesktop.DBus.Properties", "Get", onBudgetReply,
+            this, "ss", kLogindManager, "InhibitDelayMaxUSec"
         )
         < 0) {
       kLog.warn("cannot read logind's InhibitDelayMaxUSec");
@@ -144,7 +152,7 @@ namespace andromeda {
   void SleepWatch::inhibit() {
     m_inhibitSlot = sd_bus_slot_unref(m_inhibitSlot);
     if (sd_bus_call_method_async(
-            m_bus, &m_inhibitSlot, kLogind, kLogindPath, kLogindManager, "Inhibit", onInhibitReply, this, "ssss",
+            m_bus.get(), &m_inhibitSlot, kLogind, kLogindPath, kLogindManager, "Inhibit", onInhibitReply, this, "ssss",
             "sleep", "andromeda", "Lock the session before sleep", "delay"
         )
         < 0) {
@@ -229,17 +237,6 @@ namespace andromeda {
       self->ready();
     }
     return 0;
-  }
-
-  int SleepWatch::onEvent(int /*fd*/, std::uint32_t /*mask*/, void* data) {
-    static_cast<SleepWatch*>(data)->dispatch();
-    return 0;
-  }
-
-  void SleepWatch::dispatch() {
-    while (sd_bus_process(m_bus, nullptr) > 0) {
-    }
-    sd_bus_flush(m_bus);
   }
 
 } // namespace andromeda

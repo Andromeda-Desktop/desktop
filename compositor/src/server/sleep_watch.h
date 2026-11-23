@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/loop_bus.h"
+
 #include <cstdint>
 #include <functional>
 
@@ -33,7 +35,6 @@ namespace andromeda {
     // Awake; Waiting: a sleep waits for ready(); Released: the hold ended for this sleep.
     enum class Hold : std::uint8_t { Awake, Waiting, Released };
 
-    static int onEvent(int fd, std::uint32_t mask, void* data);
     static int onLate(void* data);
     static int onLogindPrepare(sd_bus_message* message, void* data, sd_bus_error* error);
     static int onSystem1Prepare(sd_bus_message* message, void* data, sd_bus_error* error);
@@ -46,15 +47,14 @@ namespace andromeda {
     void holdThroughLogind();
     void inhibit();
     void release();
-    void dispatch();
+    void follow();
 
     std::function<void(bool)> m_sleeping;
     std::function<void()> m_late;
-    sd_bus* m_bus = nullptr;
+    bus::Client m_bus;
     sd_bus_slot* m_holdSlot = nullptr;
     sd_bus_slot* m_inhibitSlot = nullptr;
     sd_bus_slot* m_budgetSlot = nullptr;
-    wl_event_source* m_source = nullptr;
     wl_event_source* m_lateTimer = nullptr;
     Relay m_relay = Relay::None;
     Hold m_hold = Hold::Awake;

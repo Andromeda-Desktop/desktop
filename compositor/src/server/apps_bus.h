@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/loop_bus.h"
+
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -41,8 +43,6 @@ namespace andromeda {
       std::uint64_t rssBytes = 0;
     };
 
-    static int onEvent(int fd, unsigned mask, void* data);
-    static int onTimer(void* data);
     static int onSample(void* data);
     static int onHoldTier(sd_bus_message* message, void* data, sd_bus_error* error);
     static int onHoldFreeze(sd_bus_message* message, void* data, sd_bus_error* error);
@@ -63,9 +63,7 @@ namespace andromeda {
     static int getActivity(sd_bus* bus, const char* path, const char* interface, const char* property,
                            sd_bus_message* reply, void* data, sd_bus_error* error);
 
-    void dispatch();
-    void updateEvents();
-    void disconnect();
+    void publish();
     void watch();
     void sample();
     int appendApps(sd_bus_message* message);
@@ -76,11 +74,7 @@ namespace andromeda {
     bool m_presenting = false;
     bool m_idle = false;
     std::string_view m_activity = "active"; // a literal from activityName()
-    sd_bus* m_bus = nullptr;
-    sd_bus_slot* m_object = nullptr;
-    sd_bus_slot* m_ownerMatch = nullptr;
-    wl_event_source* m_source = nullptr;
-    wl_event_source* m_timer = nullptr;
+    bus::Client m_bus;
     wl_event_source* m_sampleTimer = nullptr;
     bool m_sampling = false;
     std::uint64_t m_watchedUntilUs = 0;

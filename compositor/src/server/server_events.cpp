@@ -295,12 +295,18 @@ namespace andromeda {
     }
     if (m_keymapWorker == nullptr) {
       m_keymapWorker = std::make_unique<MainLoopWorker>(wl_display_get_event_loop(m_display));
+      m_keymapQuery = std::make_unique<SystemKeymapQuery>(wl_display_get_event_loop(m_display));
     }
-    m_keymapWorker->post<XkbNames>(querySystemKeymap, [this](XkbNames names) {
-      // A later reload may have turned the system keymap off while the read ran.
-      if (usesSystemXkbNames(config().input) && adoptSystemKeymap(std::move(names))) {
-        applyKeyboardConfig();
-      }
+    m_keymapQuery->query([this](XkbNames names) {
+      m_keymapWorker->post<XkbNames>(
+          [names = std::move(names)]() mutable { return validSystemKeymap(std::move(names)); },
+          [this](XkbNames valid) {
+            // A later reload may have turned the system keymap off while the read ran.
+            if (usesSystemXkbNames(config().input) && adoptSystemKeymap(std::move(valid))) {
+              applyKeyboardConfig();
+            }
+          }
+      );
     });
   }
 

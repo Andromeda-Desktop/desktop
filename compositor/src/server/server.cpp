@@ -29,6 +29,7 @@
 #include "input/keyboard.h"
 #include "input/keyboard_leds.h"
 #include "input/seat.h"
+#include "input/system_keymap.h"
 #include "input/text_input.h"
 #include "layer/layer_surface.h"
 #include "lock/session_lock.h"
@@ -1299,6 +1300,7 @@ namespace andromeda {
     // Their sources belong to the display's event loop, which is destroyed below.
     m_screenActivity.reset();
     m_keymapWorker.reset();
+    m_keymapQuery.reset();
     scanout_keeper::finishRelease();
     if (m_cursor != nullptr) {
       m_cursor->finishToplevelDrag(false);

@@ -1009,6 +1009,7 @@ core_sources = files(
   'src/core/scanout_keeper.cpp',
   'src/core/drm_clients.cpp',
   'src/core/screen_activity_recorder.cpp',
+  'src/core/loop_bus.cpp',
   'src/core/systemd_units.cpp',
   'src/qos/actuator.cpp',
   'src/qos/controller.cpp',

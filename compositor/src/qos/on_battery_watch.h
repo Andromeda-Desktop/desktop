@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/loop_bus.h"
 #include "qos/policy.h"
 
 #include <cstdint>
@@ -32,29 +33,17 @@ namespace andromeda::qos {
     [[nodiscard]] Profile profile() const { return m_profile; }
 
   private:
-    static int onEvent(int fd, std::uint32_t mask, void* data);
-    static int onTimer(void* data);
     static int onGetReply(sd_bus_message* reply, void* data, sd_bus_error* error);
     static int onPropertiesChanged(sd_bus_message* message, void* data, sd_bus_error* error);
     static int onOwnerChanged(sd_bus_message* message, void* data, sd_bus_error* error);
-    static int onRetry(void* data);
-    bool open();
-    void retryLater();
+    void follow();
     void requestValue();
     void set(std::optional<bool> onBattery, Profile profile);
     void readProperties(sd_bus_message* message);
-    void close();
-    void dispatch();
-    void updateEvents();
 
-    wl_event_loop* m_loop = nullptr;
     std::function<void()> m_changed;
-    sd_bus* m_bus = nullptr;
+    bus::Client m_bus;
     sd_bus_slot* m_getSlot = nullptr;
-    wl_event_source* m_source = nullptr;
-    wl_event_source* m_timer = nullptr;
-    wl_event_source* m_retry = nullptr; // outlives close(): it opens the bus again
-    int m_retryMs = 2000;
     std::optional<bool> m_onBattery;
     Profile m_profile = Profile::Balanced;
   };

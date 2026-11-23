@@ -2,12 +2,7 @@
 
 #include "core/log.h"
 
-#include <poll.h>
-#include <wayland-server-core.h>
-
-#include <algorithm>
 #include <cstring>
-#include <ctime>
 
 #include <systemd/sd-bus.h>
 
@@ -19,14 +14,6 @@ namespace andromeda::qos {
     constexpr const char* kName = "org.andromeda.System1";
     constexpr const char* kPath = "/org/andromeda/System1/Power";
     constexpr const char* kInterface = "org.andromeda.System1.Power";
-    constexpr int kRetryFirstMs = 2000;
-    constexpr int kRetryMaxMs = 60000;
-
-    std::uint64_t monotonicUs() {
-      timespec now{};
-      clock_gettime(CLOCK_MONOTONIC, &now);
-      return static_cast<std::uint64_t>(now.tv_sec) * 1'000'000 + static_cast<std::uint64_t>(now.tv_nsec) / 1000;
-    }
 
     // Reads a "b" variant into `out`; false on any other type.
     bool readBoolVariant(sd_bus_message* message, bool& out) {
@@ -51,88 +38,48 @@ namespace andromeda::qos {
   } // namespace
 
   OnBatteryWatch::OnBatteryWatch(wl_event_loop* loop, std::function<void()> changed)
-      : m_loop(loop), m_changed(std::move(changed)) {
-    if (m_loop == nullptr) {
-      return;
-    }
-    m_retry = wl_event_loop_add_timer(m_loop, onRetry, this);
-    if (!open()) {
-      retryLater();
+      : m_changed(std::move(changed)), m_bus(loop, bus::Kind::System) {
+    m_bus.onChange([this](sd_bus* bus) {
+      if (bus != nullptr) {
+        follow();
+        return;
+      }
+      m_getSlot = sd_bus_slot_unref(m_getSlot);
+      set(std::nullopt, Profile::Balanced);
+    });
+    if (m_bus.get() != nullptr) {
+      follow();
     }
   }
 
-  bool OnBatteryWatch::open() {
-    if (sd_bus_open_system(&m_bus) < 0) {
-      m_bus = nullptr;
-      return false;
-    }
-    m_source = wl_event_loop_add_fd(m_loop, sd_bus_get_fd(m_bus), WL_EVENT_READABLE, onEvent, this);
-    m_timer = wl_event_loop_add_timer(m_loop, onTimer, this);
-    if (m_source == nullptr || m_timer == nullptr
-        || sd_bus_match_signal_async(
-               m_bus, nullptr, kName, kPath, "org.freedesktop.DBus.Properties", "PropertiesChanged",
-               onPropertiesChanged, nullptr, this
-           ) < 0
+  OnBatteryWatch::~OnBatteryWatch() { m_getSlot = sd_bus_slot_unref(m_getSlot); }
+
+  void OnBatteryWatch::follow() {
+    if (sd_bus_match_signal_async(
+            m_bus.get(), m_bus.keep(), kName, kPath, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+            onPropertiesChanged, nullptr, this
+        ) < 0
         || sd_bus_add_match_async(
-               m_bus, nullptr,
+               m_bus.get(), m_bus.keep(),
                "type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.andromeda.System1'",
                onOwnerChanged, nullptr, this
            ) < 0) {
-      close();
-      return false;
+      kLog.warn("cannot follow System1 power: on-battery and profile stay unknown");
+      return;
     }
-    m_retryMs = kRetryFirstMs;
     requestValue();
-    return true;
-  }
-
-  // A lost system bus (dbus-broker restart) is opened again, 2 s after the loss, then up to every 60 s.
-  void OnBatteryWatch::retryLater() {
-    if (m_retry != nullptr) {
-      wl_event_source_timer_update(m_retry, m_retryMs);
-      m_retryMs = std::min(m_retryMs * 2, kRetryMaxMs);
-    }
-  }
-
-  int OnBatteryWatch::onRetry(void* data) {
-    auto* self = static_cast<OnBatteryWatch*>(data);
-    if (!self->open()) {
-      self->retryLater();
-    }
-    return 0;
-  }
-
-  OnBatteryWatch::~OnBatteryWatch() {
-    close();
-    if (m_retry != nullptr) {
-      wl_event_source_remove(m_retry);
-    }
-  }
-
-  void OnBatteryWatch::close() {
-    m_getSlot = sd_bus_slot_unref(m_getSlot);
-    for (wl_event_source** source : {&m_source, &m_timer}) {
-      if (*source != nullptr) {
-        wl_event_source_remove(*source);
-        *source = nullptr;
-      }
-    }
-    if (m_bus != nullptr) {
-      sd_bus_flush_close_unref(m_bus);
-      m_bus = nullptr;
-    }
   }
 
   void OnBatteryWatch::requestValue() {
     m_getSlot = sd_bus_slot_unref(m_getSlot);
     if (sd_bus_call_method_async(
-            m_bus, &m_getSlot, kName, kPath, "org.freedesktop.DBus.Properties", "GetAll", onGetReply, this, "s",
+            m_bus.get(), &m_getSlot, kName, kPath, "org.freedesktop.DBus.Properties", "GetAll", onGetReply, this, "s",
             kInterface
         )
         < 0) {
       m_getSlot = nullptr;
     }
-    updateEvents();
+    m_bus.sent();
   }
 
   void OnBatteryWatch::set(std::optional<bool> onBattery, Profile profile) {
@@ -218,51 +165,6 @@ namespace andromeda::qos {
       self->requestValue();
     }
     return 0;
-  }
-
-  int OnBatteryWatch::onEvent(int /*fd*/, std::uint32_t /*mask*/, void* data) {
-    static_cast<OnBatteryWatch*>(data)->dispatch();
-    return 0;
-  }
-
-  int OnBatteryWatch::onTimer(void* data) {
-    static_cast<OnBatteryWatch*>(data)->dispatch();
-    return 0;
-  }
-
-  void OnBatteryWatch::dispatch() {
-    if (m_bus == nullptr) {
-      return;
-    }
-    int result = 0;
-    while ((result = sd_bus_process(m_bus, nullptr)) > 0) {
-    }
-    if (result < 0) {
-      close();
-      set(std::nullopt, Profile::Balanced);
-      retryLater();
-      return;
-    }
-    updateEvents();
-  }
-
-  void OnBatteryWatch::updateEvents() {
-    if (m_bus == nullptr) {
-      return;
-    }
-    const int events = sd_bus_get_events(m_bus);
-    wl_event_source_fd_update(
-        m_source,
-        WL_EVENT_READABLE | ((events > 0 && (events & POLLOUT) != 0) ? static_cast<uint32_t>(WL_EVENT_WRITABLE) : 0U)
-    );
-    // sd_bus_get_timeout: absolute CLOCK_MONOTONIC µs of the next timeout, UINT64_MAX for none.
-    std::uint64_t deadline = UINT64_MAX;
-    int delayMs = 0;
-    if (sd_bus_get_timeout(m_bus, &deadline) >= 0 && deadline != UINT64_MAX) {
-      const std::uint64_t now = monotonicUs();
-      delayMs = deadline <= now ? 1 : static_cast<int>((deadline - now + 999) / 1000);
-    }
-    wl_event_source_timer_update(m_timer, delayMs);
   }
 
 } // namespace andromeda::qos

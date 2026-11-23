@@ -27,6 +27,12 @@ RULES = {
                   ("compositor/src/scene/effect_draw.h",)),
     "shadow-create": ("shadows come from SurfaceShadow (C3)", ("compositor/src/",), CPP,
                       r"\bwlr_scene_shadow_create\(", ("compositor/src/scene/surface_shadow.cpp",)),
+    "comp-bus": ("the compositor talks D-Bus through bus::Client, one async connection per bus on the loop (AR3); "
+                 "scanout_keeper is the capped sync hand-off, cli/ runs in its own process", ("compositor/src/",), CPP,
+                 r"\bsd_bus_(open\w*|new|default\w*)\s*\(",
+                 ("compositor/src/core/loop_bus.cpp", "compositor/src/core/scanout_keeper.cpp", "compositor/src/cli/")),
+    "bus-floating": ("a bus callback with a floating slot outlives its owner: use bus::Client keep() or call() (AR3)",
+                     ("compositor/src/",), CPP, r"\bsd_bus_\w+_async\(\s*[^,()]+,\s*nullptr\s*,", ()),
     "schedule-frame": ("redraws go through the Output frame owner (C8)", ("compositor/src/",), CPP,
                        r"\bwlr_output_schedule_frame\(", ("compositor/src/output/",)),
     "output-at": ("output under a point via Server::outputAt (C11)", ("compositor/src/",), CPP,

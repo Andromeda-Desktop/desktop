@@ -109,6 +109,7 @@ namespace andromeda {
   class EventPacer;
   class ScreenActivityRecorder;
   class MainLoopWorker;
+  class SystemKeymapQuery;
   class CpuBoost;
   class LaunchFeedback;
   class SystemdUnits;
@@ -1331,6 +1332,7 @@ namespace andromeda {
     XkbNames m_systemKeymap;
     // localed D-Bus reads; created at the first input config reload.
     std::unique_ptr<MainLoopWorker> m_keymapWorker;
+    std::unique_ptr<SystemKeymapQuery> m_keymapQuery;
     Keyboard* m_keyboardLayoutSource = nullptr;
     Keyboard* m_keyboardInputSource = nullptr;
     ModifierTapState m_modifierTap;
