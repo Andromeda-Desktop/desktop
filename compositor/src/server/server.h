@@ -536,10 +536,11 @@ namespace andromeda {
     void refreshSurfaceScales();
     // Re-evaluate each output's policy after keyboard focus or a dynamic window rule changes.
     void refreshOutputPolicies();
-    // Suspends every view out of sight (View::hidden) and resumes the rest; after a lock or output power change.
+    // Syncs every view and layer presence from the settled scene; only the idle that scheduleSuspensionSync adds calls it.
     void syncSuspendedViews();
     [[nodiscard]] Presence layerPresence(const LayerSurface& layer) const;
-    // Presence of the mapped view or layer surface that owns surface (root, subsurface or popup); nullopt for none.
+    // Presence of the mapped view or layer surface that owns surface (root, subsurface or popup); nullopt for none or
+    // while a presence sync is pending.
     [[nodiscard]] std::optional<Presence> surfacePresence(wlr_surface* surface) const;
     // Arms the 10 Hz frame-callback tick while a hidden view needs callbacks (see kBackgroundFrameIntervalMs).
     void armBackgroundFrameTimer();
@@ -676,6 +677,7 @@ namespace andromeda {
     void cancelInputCapture(uint64_t id);
     void inputCaptureStateChanged(bool active);
     static void onSessionActive(wl_listener* listener, void* data);
+    static void onSceneBufferVisibility(wl_listener* listener, void* data);
     static int onLogoutHandoffTimer(void* data);
     void startSessionShutdown();
     friend class Output;
@@ -913,6 +915,7 @@ namespace andromeda {
     wlr_backend* m_backend = nullptr;
     wlr_session* m_session = nullptr;
     wl_listener m_sessionActive{};
+    wl_listener m_sceneBufferVisibility{};
     wlr_renderer* m_renderer = nullptr;
     wlr_allocator* m_allocator = nullptr;
     wlr_compositor* m_compositor = nullptr;

@@ -166,6 +166,12 @@ struct wlr_scene {
   bool restack_xwayland_surfaces;
 
   struct {
+    // A buffer node gained its first output or lost its last one: opaque nodes above now cover all of it, it left
+    // every output, or it shows again. Data: the wlr_scene_buffer.
+    struct wl_signal buffer_visibility;
+  } events;
+
+  struct {
     struct wl_listener linux_dmabuf_v1_destroy;
     struct wl_listener gamma_control_manager_v1_destroy;
     struct wl_listener gamma_control_manager_v1_set_gamma;

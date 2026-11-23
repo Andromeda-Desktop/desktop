@@ -497,10 +497,7 @@ namespace andromeda {
   void Server::onSuspensionSyncIdle(void* data) {
     auto* server = static_cast<Server*>(data);
     server->m_suspensionSyncIdle = nullptr;
-    for (const auto& view : server->m_registry.all()) {
-            view->syncPresence();
-    }
-    server->armBackgroundRenderTimer();
+    server->syncSuspendedViews();
   }
 
     Presence Server::layerPresence(const LayerSurface& layer) const {
@@ -508,12 +505,23 @@ namespace andromeda {
     return layerPresenceOf(output != nullptr && output->dpmsOff(), sessionLocked());
   }
 
+  // Opaque coverage changed: Occluded follows on the next idle sync.
+  void Server::onSceneBufferVisibility(wl_listener* listener, void* /*data*/) {
+    Server* self = wl_container_of(listener, self, m_sceneBufferVisibility); // NOLINT(modernize-use-auto)
+    self->scheduleSuspensionSync();
+  }
+
   std::optional<Presence> Server::surfacePresence(wlr_surface* surface) const {
+    // A cached presence may be stale until the pending sync, which sends to every surface tree.
+    if (m_suspensionSyncIdle != nullptr) {
+      return std::nullopt;
+    }
     if (const LayerSurface* layer = LayerSurface::fromSurface(surface)) {
       return layerPresence(*layer);
     }
+    // A deferred opener has no presence yet: View::syncPresence computes it once the view is Mapped.
     const View* view = View::fromSurface(surface);
-    if (view == nullptr || !view->mapped()) {
+    if (view == nullptr || view->lifecycle() != Lifecycle::Mapped) {
       return std::nullopt;
     }
     return view->presenceFacts().presence;

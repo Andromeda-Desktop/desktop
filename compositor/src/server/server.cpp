@@ -987,6 +987,8 @@ namespace andromeda {
       throw std::runtime_error(std::string("andromedafx scene helpers are not linked correctly: ") + mismatch);
     }
     m_scene = wlr_scene_create();
+    m_sceneBufferVisibility.notify = onSceneBufferVisibility;
+    wl_signal_add(&m_scene->events.buffer_visibility, &m_sceneBufferVisibility);
     if (linuxDmabuf != nullptr) {
       wlr_scene_set_linux_dmabuf_v1(m_scene, linuxDmabuf);
     }
@@ -1497,6 +1499,7 @@ namespace andromeda {
   // wlroots objects are not owned by a member; chrome and managers above are already gone, so the scene is free to die.
   void Server::destroyWlrCore() {
     if (m_scene != nullptr) {
+      wl_list_remove(&m_sceneBufferVisibility.link);
       wlr_scene_node_destroy(&m_scene->tree.node);
     }
     if (m_allocator != nullptr) {

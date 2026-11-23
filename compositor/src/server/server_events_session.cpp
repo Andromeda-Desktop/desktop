@@ -248,7 +248,7 @@ namespace andromeda {
       m_cursor->clearConstraint();
       clearNormalFocus();
       updateIdleInhibit();
-      syncSuspendedViews();
+      scheduleSuspensionSync();
     } else {
       m_activity = next;
       if (locked(from) && !locked(next)) {
@@ -308,7 +308,7 @@ namespace andromeda {
       }
     }
     updateIdleInhibit();
-    syncSuspendedViews();
+    scheduleSuspensionSync();
     setLockBlankEnabled(false);
     // The cursor need not sit on the output that had focus, so restore the
     // remembered one. refocus() then keeps that output's active workspace, which

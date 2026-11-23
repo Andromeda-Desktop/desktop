@@ -573,6 +573,7 @@ struct wlr_scene* wlr_scene_create(void) {
   scene_tree_init(&scene->tree, NULL);
 
   wl_list_init(&scene->outputs);
+  wl_signal_init(&scene->events.buffer_visibility);
   wl_list_init(&scene->linux_dmabuf_v1_destroy.link);
   wl_list_init(&scene->gamma_control_manager_v1_destroy.link);
   wl_list_init(&scene->gamma_control_manager_v1_set_gamma.link);
@@ -1243,6 +1244,10 @@ static void update_node_update_outputs(
   // if there are active outputs on this node, we should always have a primary
   // output
   assert(!scene_buffer->active_outputs || scene_buffer->primary_output);
+
+  if ((old_active == 0) != (active_outputs == 0)) {
+    wl_signal_emit_mutable(&scene_node_get_root(node)->events.buffer_visibility, scene_buffer);
+  }
 
   // Skip output update event if nothing was updated
   if (old_active == active_outputs

@@ -113,7 +113,27 @@ namespace andromeda {
     return wlr_scene_node_coords(&m_sceneTree->node, &x, &y);
   }
 
+  bool View::culledOnScene() const {
+    // An output that powers on joins the scene only with its commit; until then its windows are not placed, not culled.
+    if (!everyOutputUnder([](const Output& output) { return output.wlr()->enabled; })) {
+      return false;
+    }
+    bool drawn = false;
+    wlr_scene_node_for_each_buffer(
+        &m_contentTree->node,
+        [](wlr_scene_buffer* buffer, int /*sx*/, int /*sy*/, void* data) {
+          *static_cast<bool*>(data) |= buffer->primary_output != nullptr;
+        },
+        &drawn
+    );
+    return !drawn;
+  }
+
   bool View::outputsOff() const {
+    return everyOutputUnder([](const Output& output) { return output.dpmsOff(); });
+  }
+
+  bool View::everyOutputUnder(bool (*holds)(const Output&)) const {
     const ClientSize size = currentSize();
     const wlr_box box{.x = layoutX(), .y = layoutY(), .width = size.width, .height = size.height};
     bool onAny = false;
@@ -123,7 +143,7 @@ namespace andromeda {
       if (!wlr_box_intersection(&overlap, &box, &outputBox)) {
         continue;
       }
-      if (!output->dpmsOff()) {
+      if (!holds(*output)) {
         return false;
       }
       onAny = true;
@@ -132,7 +152,7 @@ namespace andromeda {
       return true;
     }
     const Output* output = currentOutput();
-    return output != nullptr && output->dpmsOff();
+    return output != nullptr && holds(*output);
   }
 
   bool View::framePending() const {
@@ -157,6 +177,7 @@ namespace andromeda {
         {.presented = presented(),
          .sessionLocked = m_server->sessionLocked(),
          .outputsOff = outputsOff(),
+         .covered = culledOnScene(),
          .drawnOffscreen = m_server->viewDrawnOffscreen(*this),
          .backgroundRender = backgroundRender()}
     );

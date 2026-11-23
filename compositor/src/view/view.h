@@ -112,6 +112,10 @@ namespace andromeda {
     [[nodiscard]] bool presented() const;
     // True when every output the window overlaps is powered off, or, overlapping none, its current output is.
     [[nodiscard]] bool outputsOff() const;
+    // True when the scene draws no pixel of the window or its popups (no buffer has an output) on live outputs.
+    [[nodiscard]] bool culledOnScene() const;
+    // True when holds is true for every output the window overlaps, or, overlapping none, for its current output.
+    [[nodiscard]] bool everyOutputUnder(bool (*holds)(const Output&)) const;
     // True while a surface of the window waits for a wl_surface.frame callback.
     [[nodiscard]] bool framePending() const;
     // Recomputes the presence facts and suspends or resumes the window from them; QoS hears of a change. Callers

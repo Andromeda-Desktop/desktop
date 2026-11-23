@@ -5,14 +5,16 @@
 namespace andromeda {
 
   // What the user can see of a mapped window. Off: the scene draws it, but the session is locked or every output it is
-  // on is powered off. Hidden: the scene does not draw it (minimized, another workspace, a background tab).
-  // Occluded is reserved for opaque coverage, which nothing computes yet.
+  // on is powered off. Occluded: the scene draws none of its pixels on an enabled output (opaque nodes cover it, or it
+  // lies off every output). Hidden: the scene does not draw it (minimized, another workspace, a background tab).
   enum class Presence : uint8_t { Shown, Occluded, Hidden, Off };
 
   struct PresenceInputs {
     bool presented = false;
     bool sessionLocked = false;
     bool outputsOff = false;
+    // No buffer of it has an output: the scene culls all of it (wlr_scene_buffer.primary_output).
+    bool covered = false;
     // A capture or an overview card draws it off the scene.
     bool drawnOffscreen = false;
     // A game or a background_render rule keeps its frame loop alive, even behind the lock.
@@ -40,6 +42,8 @@ namespace andromeda {
       presence = Presence::Hidden;
     } else if (in.sessionLocked || in.outputsOff) {
       presence = Presence::Off;
+    } else if (in.covered) {
+      presence = Presence::Occluded;
     }
     const bool drawsFrames =
         presence == Presence::Shown || in.backgroundRender || (in.drawnOffscreen && !in.sessionLocked);

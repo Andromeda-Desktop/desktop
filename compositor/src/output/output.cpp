@@ -1678,7 +1678,7 @@ namespace andromeda {
       wlr_output_schedule_frame(m_output);
       m_server->scheduleDisplacedViewRestore();
     }
-    m_server->syncSuspendedViews();
+    m_server->scheduleSuspensionSync();
     if (SessionLock* lock = m_server->sessionLock()) {
       lock->handleOutputStateChanged(*this);
     }

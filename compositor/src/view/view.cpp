@@ -694,7 +694,8 @@ namespace andromeda {
       setForeignActivated(false);
       setBorderFocused(false);
     }
-    syncPresence();
+    // Inside a map commit the scene has no buffer for the surface yet; the idle sync reads the settled scene.
+    m_server->scheduleSuspensionSync();
     if (Output* output = currentOutput()) {
       output->updateHdr();
     }
