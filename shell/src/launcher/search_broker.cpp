@@ -48,9 +48,6 @@ std::vector<LauncherResult> SearchBroker::ask(LauncherProvider& provider, std::s
     m_budgetMisses.erase(id);
   }
 
-  if (isStale(provider)) {
-    results.clear();
-  }
   for (auto& result : results) {
     result.providerId = id;
   }

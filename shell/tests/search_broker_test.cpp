@@ -70,10 +70,11 @@ int main() {
   UsageTracker usage;
   SearchBroker broker(providers, usage, "/", [] { return g_now; });
 
-  // A cached async answer to an earlier query is stale: it is not shown and its callback starts no new search.
+  // A cached async answer to an earlier query stays shown until the fresh one lands, so the rows do not blink out on
+  // each keystroke; its callback starts no new search.
   plugin->answered = "ab";
   auto outcome = broker.search({.text = "abc"});
-  TEST_CHECK((providerOrder(outcome) == std::vector<std::string>{"Apps"}));
+  TEST_CHECK((providerOrder(outcome) == std::vector<std::string>{"Plugin", "Apps"}));
   // The fresh answer is on its way: the launcher shows loading, not "no results".
   TEST_CHECK(outcome.loading);
   TEST_CHECK(!broker.acceptsAnswer(*plugin));
