@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # A window on the active workspace is suspended and gets no frame callbacks while the session is locked and while its
 # output is powered off, and resumes with its frames after each; a game keeps its slow tick behind the lock. Its
-# dsk_surface_v1.presence goes shown (0) -> off (3) -> shown for each, one event per change.
+# dsk_surface_v1.presence goes shown (0) -> off (3) -> shown for each, one event per change. A layer surface (a bar)
+# follows the same presence sequence: it is not a view, but it shows only while its output is on and the session open.
 set -euo pipefail
 source "$ANDROMEDA_HARNESS_LIB"
 
@@ -11,9 +12,18 @@ readonly NORMAL_LOG="$ANDROMEDA_RUNTIME_DIR/visible-normal.log"
 readonly GAME_LOG="$ANDROMEDA_RUNTIME_DIR/visible-game.log"
 readonly LOCK_LOG="$ANDROMEDA_RUNTIME_DIR/lock-client.log"
 readonly LOCK_FIFO="$ANDROMEDA_RUNTIME_DIR/lock-control"
+readonly LAYER_CLIENT="${ANDROMEDA_LAYER_CLIENT:-./build-debug/tests/layer-client}"
+readonly LAYER_LOG="$ANDROMEDA_RUNTIME_DIR/layer.log"
+readonly LAYER_FIFO="$ANDROMEDA_RUNTIME_DIR/layer-control"
 
 "$CLIENT" visible-normal > "$NORMAL_LOG" 2>&1 &
 CONTENT_TYPE=game "$CLIENT" visible-game > "$GAME_LOG" 2>&1 &
+mkfifo "$LAYER_FIFO"
+exec {layer_fd}<> "$LAYER_FIFO"
+LAYER_DSK_VERSION=20 LAYER_CONTROL=1 "$LAYER_CLIENT" HEADLESS-1 40 <&"$layer_fd" > "$LAYER_LOG" 2>&1 &
+await_lines "$LAYER_LOG" ready 1
+printf '%s\n' "dsk-secure bar 0" >&"$layer_fd"
+await_lines "$LAYER_LOG" "dsk-presence 0" 1
 await_events "$NORMAL_LOG" mapped 1
 await_events "$GAME_LOG" mapped 1
 "$ANDROMEDA" settle
@@ -81,4 +91,11 @@ if [[ $presence != "0 3 0 3 0 " ]]; then
   exit 1
 fi
 
-echo "presence $presence; suspended behind the lock ($locked_frames frames/s, game kept $game_frames) and with the output off ($off_frames frames/s); resumed after each"
+await_lines "$LAYER_LOG" "dsk-presence 0" 3
+layer_presence=$(grep '^dsk-presence ' "$LAYER_LOG" | cut -d' ' -f2 | tr '\n' ' ')
+if [[ $layer_presence != "0 3 0 3 0 " ]]; then
+  echo "layer presence went '$layer_presence', not '0 3 0 3 0 '"
+  exit 1
+fi
+
+echo "presence $presence (layer $layer_presence); suspended behind the lock ($locked_frames frames/s, game kept $game_frames) and with the output off ($off_frames frames/s); resumed after each"

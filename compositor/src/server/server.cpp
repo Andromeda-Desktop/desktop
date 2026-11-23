@@ -919,7 +919,11 @@ namespace andromeda {
     }
     m_backgroundEffects = std::make_unique<BackgroundEffectManager>(m_display);
     m_dskSurfaces = std::make_unique<DskSurfaceManager>(m_display);
-    m_dskSurfaces->setPresenceLookup([](wlr_surface* surface) -> std::optional<Presence> {
+    m_dskSurfaces->setPresenceLookup([this](wlr_surface* surface) -> std::optional<Presence> {
+      if (const LayerSurface* layer = LayerSurface::fromSurface(surface);
+          layer != nullptr && layer->layerSurface()->surface == surface) {
+        return layerPresence(*layer);
+      }
       const View* view = View::fromSurface(surface);
       if (view == nullptr || !view->mapped() || view->rootSurface() != surface) {
         return std::nullopt;

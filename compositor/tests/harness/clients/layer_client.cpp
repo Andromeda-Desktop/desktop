@@ -65,7 +65,10 @@ namespace {
         std::println("dsk-density {:.2f}", wl_fixed_to_double(density));
         std::fflush(stdout);
       },
-      .presence = [](void* /*data*/, dsk_surface_v1* /*surface*/, uint32_t /*presence*/) {},
+      .presence = [](void* /*data*/, dsk_surface_v1* /*surface*/, uint32_t presence) {
+        std::println("dsk-presence {}", presence);
+        std::fflush(stdout);
+      },
   };
   const dsk_tracker_v1_listener kDskTrackerListener = {
       .interacting = [](void* /*data*/, dsk_tracker_v1* /*tracker*/, uint32_t /*time*/) {

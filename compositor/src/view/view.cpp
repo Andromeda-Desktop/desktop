@@ -395,6 +395,7 @@ namespace andromeda {
     if (hidden != m_captureBlocked) {
       m_captureBlocked = hidden;
       m_server->scheduleIpcWindowsEvent(false);
+      m_server->scheduleSuspensionSync();
     }
     wlr_scene_node* child = nullptr;
     wl_list_for_each(child, &m_captureScene->tree.children, link) {

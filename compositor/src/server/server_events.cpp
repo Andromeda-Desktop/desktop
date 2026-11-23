@@ -425,6 +425,11 @@ namespace andromeda {
     for (const auto& view : m_registry.all()) {
             view->syncPresence();
     }
+    if (m_dskSurfaces != nullptr) {
+      for (const auto& layer : m_layerSurfaces) {
+        m_dskSurfaces->sendPresence(layer->layerSurface()->surface, layerPresence(*layer));
+      }
+    }
     armBackgroundRenderTimer();
   }
 
@@ -498,8 +503,14 @@ namespace andromeda {
     server->armBackgroundRenderTimer();
   }
 
+    Presence Server::layerPresence(const LayerSurface& layer) const {
+    const Output* output = layer.output();
+    return layerPresenceOf(output != nullptr && output->dpmsOff(), sessionLocked());
+  }
+
     bool Server::viewDrawnOffscreen(const View& view) const {
-    return (m_overview != nullptr && m_overview->presentsLive(&view)) || viewCaptured(view);
+    // A capture of a capture-blocked window shows black, so it needs no frames from the window.
+    return (m_overview != nullptr && m_overview->presentsLive(&view)) || (viewCaptured(view) && !view.captureBlocked());
   }
 
   bool Server::outputCaptureListening(const wlr_output* output) const {

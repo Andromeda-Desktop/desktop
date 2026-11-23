@@ -27,6 +27,11 @@ namespace andromeda {
     constexpr bool operator==(const PresenceFacts&) const = default;
   };
 
+  // A layer surface is not a view: it shows while its output is powered and the session is not locked.
+  constexpr Presence layerPresenceOf(bool outputOff, bool sessionLocked) {
+    return outputOff || sessionLocked ? Presence::Off : Presence::Shown;
+  }
+
   // The one rule every visibility export derives from. The lock wins over off-scene drawing, so nothing renders a
   // window for a capture behind the lock screen; a background_render window only gets callbacks, so it keeps them.
   constexpr PresenceFacts presenceOf(const PresenceInputs& in) {

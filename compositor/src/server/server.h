@@ -22,6 +22,7 @@
 #include "server/sleep_watch.h"
 #include "server/xdg_session_state.h"
 #include "util/tracked.h"
+#include "view/presence.h"
 #include "view/registry.h"
 
 #include <array>
@@ -537,6 +538,7 @@ namespace andromeda {
     void refreshOutputPolicies();
     // Suspends every view out of sight (View::hidden) and resumes the rest; after a lock or output power change.
     void syncSuspendedViews();
+    [[nodiscard]] Presence layerPresence(const LayerSurface& layer) const;
     // Arms the 10 Hz frame-callback tick while a hidden view needs callbacks (see kBackgroundFrameIntervalMs).
     void armBackgroundFrameTimer();
     // Match every output's configured `mirror` to a connected source, starting or stopping mirrors as needed.
