@@ -306,6 +306,7 @@ namespace {
     return text;
   }
   constexpr float kDetailsMinWidth = 560.0F; // FILES-UI-SPEC §10 Narrow: the pane closes below this
+  constexpr float kTerminalMinView = 160.0F; // logical px of file view kept above the terminal pane
   constexpr std::size_t kRecentsMax = 200; // recently-used.xbel from other tools can hold thousands
   bool isDir(const fs::path& path) {
     std::error_code ec;
@@ -1056,9 +1057,11 @@ std::unique_ptr<Node> FilesWindow::buildContent(Renderer& renderer, float width,
     content->addChild(buildPanes(s));
   }
   if ((m_terminalOpen || m_terminalAnim != 0) && m_terminal != nullptr && !m_picker.has_value()) {
-    const float paneHeight = TerminalPane::kHeight * s;
+    // The file view keeps at least kTerminalMinView logical px above the pane.
+    auto pane = m_terminal->build(renderer, s, width, height / s - kTerminalMinView);
+    const float paneHeight = m_terminal->height() * s;
     auto clip = slideClip(FlexDirection::Vertical, 0.0F, paneHeight);
-    clip->addChild(m_terminal->build(renderer, s, width));
+    clip->addChild(std::move(pane));
     clip->setSlide(0.0F, paneHeight * (1.0F - m_terminalMix));
     m_terminalClip = clip.get();
     content->addChild(std::move(clip));
@@ -2426,7 +2429,8 @@ void FilesWindow::slideTerminal(float target) {
       [this](float v) {
         m_terminalMix = std::clamp(v, 0.0F, 1.0F);
         if (m_terminalClip != nullptr) {
-          m_terminalClip->setSlide(0.0F, TerminalPane::kHeight * m_window.uiScale() * (1.0F - m_terminalMix));
+          const float paneHeight = m_terminal != nullptr ? m_terminal->height() : TerminalPane::kDefaultHeight;
+          m_terminalClip->setSlide(0.0F, paneHeight * m_window.uiScale() * (1.0F - m_terminalMix));
         }
         m_window.invalidate();
       },
@@ -2455,8 +2459,9 @@ void FilesWindow::toggleTerminal() {
   }
   if (m_terminal == nullptr || !m_terminal->running()) {
     const fs::path dir = m_browser->listingId().empty() ? location() : fs::path(g_get_home_dir());
+    const float paneHeight = m_app.state().get<float>("/files/terminal_height", TerminalPane::kDefaultHeight);
     m_terminal = std::make_unique<TerminalPane>(
-        m_app.loop(), m_window, dir, TerminalPane::Host{
+        m_app.loop(), m_window, dir, paneHeight, TerminalPane::Host{
                  .cwdChanged =
                      [this](const fs::path& cwd) {
                        if (cwd != location()) {
@@ -2470,6 +2475,14 @@ void FilesWindow::toggleTerminal() {
                        m_window.requestRebuild();
                      },
                  .focus = [this](InputArea* area) { m_window.input().setFocus(area); },
+                 .resizing =
+                     [this](float height) {
+                       if (m_terminalClip != nullptr) {
+                         m_terminalClip->setMinHeight(height * m_window.uiScale());
+                         m_terminalClip->setMaxHeight(height * m_window.uiScale());
+                       }
+                     },
+                 .resized = [this](float height) { m_app.state().set("/files/terminal_height", height); },
              });
     if (!m_terminal->running()) {
       m_terminal.reset();

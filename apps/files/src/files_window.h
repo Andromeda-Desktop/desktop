@@ -124,6 +124,8 @@ public:
   [[nodiscard]] class SelectPatternSheet* patternSheet() const;
   [[nodiscard]] bool terminalFocused() const;
   [[nodiscard]] class TerminalPane* terminal() const { return m_terminal.get(); }
+  // The pane shows (F4), not only kept with its session while hidden.
+  [[nodiscard]] bool terminalShown() const { return m_terminalOpen && m_terminal != nullptr; }
   void copyLocation(); // the selected paths, else the folder, as text on the clipboard
   void showItemMenu(std::size_t index, float sceneX, float sceneY); // right click on an item (mockup §4)
   // A menu row id: share.device:<id>, share.email, open.app:<desktop id>, or a command id.
