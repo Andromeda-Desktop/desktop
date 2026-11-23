@@ -48,6 +48,10 @@ RULES = {
     "heap-trim": ("heap trim via sys::releaseFreeHeap (C12)", CPP_DIRS, CPP, r"\bmalloc_trim\s*\(",
                   ("libdesk-ui/src/core/sys/sys_linux.cpp",)),
     "sync-image": ("Image decides sync or async decode (C14)", ("shell/src/",), CPP, r"\bsetSourceFile\(", ()),
+    "logind-sleep": ("suspend comes from SessionActivity (Compositor1.Apps Activity, AR2); System1 alone reads logind "
+                     "PrepareForSleep, the compositor only as the fallback without System1", CPP_DIRS, CPP + (".rs",),
+                     r"\"PrepareForSleep\"|receive_prepare_for_sleep", ("system/crates/andromeda-system/src/login.rs",
+                                          "compositor/src/server/sleep_watch.cpp")),
     "rust-drop": ("D-Bus and job errors are logged, not dropped (C13)", ("system/", "apps/", "andromeda-preview/"),
                   (".rs",), r"let _ = [^;]*\.await|\.await\.ok\(\)", ()),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",

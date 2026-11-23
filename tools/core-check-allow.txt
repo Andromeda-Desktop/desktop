@@ -39,6 +39,11 @@ heap-trim compositor/src/main.cpp 1
 heap-trim indexer/src/content_worker.cpp 1
 heap-trim indexer/src/main.cpp 1
 heap-trim shell/src/app/application.cpp 1
+logind-sleep apps/files/src/vaults.cpp 1
+logind-sleep libdesk-system/src/dbus/logind/logind_service.cpp 1
+logind-sleep libdesk-system/src/dbus/logind/power_config_service.cpp 1
+logind-sleep shell/src/auth/face_authenticator.cpp 1
+logind-sleep shell/src/auth/fingerprint_authenticator.cpp 1
 output-at compositor/src/input/cursor.cpp 7
 output-at compositor/src/input/cursor_data_drag.cpp 1
 output-at compositor/src/input/cursor_grab.cpp 3
