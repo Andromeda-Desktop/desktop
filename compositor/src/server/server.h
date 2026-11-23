@@ -1244,7 +1244,9 @@ namespace andromeda {
     wl_event_source* m_restartLockEscape = nullptr;
     bool m_lockFileManaged = false;
     wl_event_source* m_watchdogTimer = nullptr;
+    // The session compositor's logind PrepareForSleep feed: Sleep and Resume for applyActivity, and the watchdog pause.
     std::unique_ptr<SleepWatch> m_sleepWatch;
+    void onPrepareForSleep(bool sleeping);
     int m_watchdogIntervalMs = 0;
     std::string m_notifySocket;
     // Snapshot events to IPC subscribers and the provider, at most one per kIpcSnapshotIntervalMs per family. Null in

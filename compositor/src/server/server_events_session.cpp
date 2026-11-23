@@ -170,7 +170,7 @@ namespace andromeda {
       }
     }
 
-    if (m_activity != SessionActivity::Locked && m_activity != SessionActivity::Sleeping) {
+    if (!locked(m_activity) || m_activity == SessionActivity::RestartLocked) {
       applyActivity(SessionEvent::Lock);
     }
 

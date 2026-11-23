@@ -1132,6 +1132,11 @@ namespace andromeda {
     m_screenActivity =
         std::make_unique<ScreenActivityRecorder>(wl_display_get_event_loop(m_display), sessionCompositor);
     m_screenActivity->setEventListener([this](SessionEvent event) { applyActivity(event); });
+    if (sessionCompositor) {
+      m_sleepWatch = std::make_unique<SleepWatch>(
+          wl_display_get_event_loop(m_display), [this](bool sleeping) { onPrepareForSleep(sleeping); }
+      );
+    }
     m_idleInhibitManager = wlr_idle_inhibit_v1_create(m_display);
     m_newIdleInhibitor.notify = onNewIdleInhibitor;
     wl_signal_add(&m_idleInhibitManager->events.new_inhibitor, &m_newIdleInhibitor);
@@ -1684,13 +1689,20 @@ namespace andromeda {
         this
     );
     wl_event_source_timer_update(m_watchdogTimer, m_watchdogIntervalMs);
+  }
+
+  void Server::onPrepareForSleep(bool sleeping) {
+    applyActivity(sleeping ? SessionEvent::Sleep : SessionEvent::Resume);
+    if (m_notifySocket.empty()) {
+      return;
+    }
     // systemd-sleep freezes this process but not the user manager, which then kills it at resume.
-    m_sleepWatch = std::make_unique<SleepWatch>(wl_display_get_event_loop(m_display), [this, interval](bool sleeping) {
-      (void)notifyService(m_notifySocket, sleeping ? "WATCHDOG_USEC=0" : std::format("WATCHDOG_USEC={}", interval));
-      if (!sleeping) {
-        (void)notifyService(m_notifySocket, "WATCHDOG=1");
-      }
-    });
+    (void)notifyService(
+        m_notifySocket, sleeping ? "WATCHDOG_USEC=0" : std::format("WATCHDOG_USEC={}", m_watchdogIntervalMs * 2000LL)
+    );
+    if (!sleeping) {
+      (void)notifyService(m_notifySocket, "WATCHDOG=1");
+    }
   }
 
   void Server::loadRestorePlacements(const std::filesystem::path& crashList) {

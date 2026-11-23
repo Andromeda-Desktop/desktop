@@ -19,8 +19,8 @@ namespace {
 
 } // namespace
 
-// Random event sequences against the design rules: unlock only from Locked, suspend only while locked, a restart
-// lock leaves only through a lock client, and input never changes a locked phase.
+// Random event sequences against the design rules: unlock only from Locked, a restart lock leaves only through a lock
+// client, suspend and resume work locked and unlocked, and input never changes a locked or suspended session.
 ANDROMEDA_TEST(randomEventSequencesKeepTheSessionInvariants) {
   std::mt19937 random(17);
   for (int run = 0; run < 2000; ++run) {
@@ -29,20 +29,18 @@ ANDROMEDA_TEST(randomEventSequencesKeepTheSessionInvariants) {
     for (int step = 0; step < 40; ++step) {
       const auto event = static_cast<SessionEvent>(random() % kEvents);
       const std::optional<SessionActivity> next = nextActivity(activity, event);
-      const bool wasLocked = locked(activity);
       switch (event) {
       case SessionEvent::Input:
       case SessionEvent::IdleTimeout:
         CHECK(next.has_value());
-        CHECK_EQ(locked(*next), wasLocked);
-        if (wasLocked) {
-          CHECK(*next == activity);
+        if (facts.lockRequested || facts.suspended) {
+          CHECK(next == activity);
         } else {
           facts.userQuiet = event == SessionEvent::IdleTimeout;
         }
         break;
       case SessionEvent::RestartLock:
-        CHECK_EQ(next.has_value(), !wasLocked);
+        CHECK_EQ(next.has_value(), !facts.lockRequested && !facts.suspended);
         if (next) {
           facts = {.lockRequested = true, .restartPending = true};
         }
@@ -50,7 +48,7 @@ ANDROMEDA_TEST(randomEventSequencesKeepTheSessionInvariants) {
       case SessionEvent::Lock:
         CHECK_EQ(next.has_value(), !facts.lockRequested || facts.restartPending);
         if (next) {
-          facts = {.lockRequested = true};
+          facts = {.lockRequested = true, .suspended = facts.suspended};
         }
         break;
       case SessionEvent::Unlock:
@@ -60,16 +58,15 @@ ANDROMEDA_TEST(randomEventSequencesKeepTheSessionInvariants) {
         }
         break;
       case SessionEvent::Sleep:
-        CHECK_EQ(next.has_value(), facts.lockRequested && !facts.restartPending && !facts.suspended);
-        if (next) {
-          facts.suspended = true;
-        }
+        CHECK(next.has_value());
+        facts.suspended = !facts.restartPending;
         break;
       case SessionEvent::Resume:
-        CHECK_EQ(next.has_value(), facts.suspended);
-        if (next) {
-          facts.suspended = false;
+        CHECK(next.has_value());
+        if (facts.suspended) {
+          facts.userQuiet = false;
         }
+        facts.suspended = false;
         break;
       }
       if (next) {
@@ -77,8 +74,8 @@ ANDROMEDA_TEST(randomEventSequencesKeepTheSessionInvariants) {
       }
       CHECK_EQ(locked(activity), facts.lockRequested);
       CHECK_EQ(activity == SessionActivity::RestartLocked, facts.restartPending);
-      CHECK_EQ(activity == SessionActivity::Sleeping, facts.suspended);
-      if (!facts.lockRequested) {
+      CHECK_EQ(sleeping(activity), facts.suspended);
+      if (!facts.lockRequested && !facts.suspended) {
         CHECK_EQ(activity == SessionActivity::Idle, facts.userQuiet);
       }
     }
