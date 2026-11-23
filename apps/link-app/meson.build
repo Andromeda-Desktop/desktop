@@ -31,12 +31,12 @@ executable('andromeda-link-app',
   'src/mirror_decoder.cpp',
   link_with: _model,
   dependencies: [_desk_app_dep, dependency('libqrencode'), dependency('libavcodec'), dependency('libavutil'), dependency('libavfilter'),
-                 dependency('libswscale'), dependency('tomlplusplus').partial_dependency(includes: true)],
+                 dependency('libswscale'), dependency('libva'), dependency('tomlplusplus').partial_dependency(includes: true)],
   cpp_args: _warnings,
   install: true,
 )
 
-_av_deps = [dependency('libavcodec'), dependency('libavutil'), dependency('libavfilter'), dependency('libswscale')]
+_av_deps = [dependency('libavcodec'), dependency('libavutil'), dependency('libavfilter'), dependency('libswscale'), dependency('libva')]
 test('mirror_decoder', executable('mirror_decoder_test', 'tests/mirror_decoder_test.cpp', 'src/mirror_decoder.cpp',
   dependencies: [_desk_app_dep] + _av_deps, include_directories: include_directories('src'),
   cpp_args: _warnings + ['-fsanitize=address', '-fno-omit-frame-pointer'], link_args: ['-fsanitize=address']),

@@ -1015,43 +1015,79 @@ namespace linkapp {
     m_mirrorScreenOff = false;
     const std::uint64_t session = m_mirror.session;
     changed();
+    openMirror(device, session, true);
+  }
+
+  // `withCodecs` asks for OpenMirrorWith; a linkd without it (UnknownMethod) gets OpenMirror, which is always H.264.
+  void LinkClient::openMirror(const std::string& device, std::uint64_t session, bool withCodecs) {
+    const auto opened = [this, session](sdbus::UnixFd fd, std::uint32_t width, std::uint32_t height, const std::string& name) {
+      const std::vector<std::string>& listed = mirrorCodecs();
+      const std::optional<MirrorCodec> codec = mirrorCodecFrom(name);
+      if (!codec || (*codec != MirrorCodec::H264 && std::ranges::find(listed, name) == listed.end())) {
+        kLog.warn("OpenMirror: the phone chose codec '{}', not offered", name);
+        if (mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Failed, .session = session,
+                                  .error = "The phone sent a video format this desktop cannot play."})) {
+          changed();
+        }
+        return; // fd closes here
+      }
+      if (!mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Opened, .session = session, .width = width, .height = height})) {
+        return; // stopped or restarted meanwhile: fd closes here
+      }
+      if (m_mirror.kind == Mirror::Kind::Failed) {
+        changed(); // no screen size: fd closes here
+        return;
+      }
+      m_decoder = std::make_unique<MirrorDecoder>(
+          fd.release(), *codec,
+          [this](MirrorDecoder::Frame frame) {
+            if (m_mirrorFrame) m_mirrorFrame(std::move(frame));
+          },
+          [this, session](std::string why) {
+            const MirrorEvent event = why.empty() ? MirrorEvent{.kind = MirrorEvent::Kind::Ended, .session = session}
+                                                  : MirrorEvent{.kind = MirrorEvent::Kind::Failed, .session = session, .error = why};
+            if (mirrorStep(m_mirror, event)) {
+              m_decoder.reset();
+              changed();
+            }
+          });
+      changed();
+    };
+    const auto failed = [this, session, device, withCodecs](const sdbus::Error& error) {
+      if (withCodecs && error.getName() == "org.freedesktop.DBus.Error.UnknownMethod") {
+        openMirror(device, session, false);
+        return;
+      }
+      kLog.warn("OpenMirror: {}", error.getMessage());
+      const std::string why = error.getName().ends_with(".Refused") ? "The phone did not allow screen sharing."
+                              : error.getName().ends_with(".NotConnected") ? "The phone is not connected."
+                                                                           : "The phone did not start sharing its screen.";
+      if (mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Failed, .session = session, .error = why})) changed();
+    };
     // The phone's user has 60 s to allow capture; the default D-Bus timeout is shorter.
+    if (withCodecs) {
+      m_proxy->callMethodAsync("OpenMirrorWith")
+          .onInterface(kInterface)
+          .withArguments(device, mirrorCodecs())
+          .withTimeout(std::chrono::seconds(70))
+          .uponReplyInvoke([opened, failed, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error, sdbus::UnixFd fd,
+                                                                                  std::uint32_t width, std::uint32_t height,
+                                                                                  std::string codec) {
+            if (alive.expired()) return;
+            if (error) failed(*error);
+            else opened(std::move(fd), width, height, codec);
+          });
+      return;
+    }
     m_proxy->callMethodAsync("OpenMirror")
         .onInterface(kInterface)
         .withArguments(device)
         .withTimeout(std::chrono::seconds(70))
-        .uponReplyInvoke([this, session, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error, sdbus::UnixFd fd,
+        .uponReplyInvoke([opened, failed, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error, sdbus::UnixFd fd,
                                                                                 std::uint32_t width, std::uint32_t height) {
           if (alive.expired()) return;
-          if (error) {
-            kLog.warn("OpenMirror: {}", error->getMessage());
-            const std::string why = error->getName().ends_with(".Refused") ? "The phone did not allow screen sharing."
-                                    : error->getName().ends_with(".NotConnected") ? "The phone is not connected."
-                                                                                  : "The phone did not start sharing its screen.";
-            if (mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Failed, .session = session, .error = why})) changed();
-            return;
-          }
-          if (!mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Opened, .session = session, .width = width, .height = height})) {
-            return; // stopped or restarted meanwhile: fd closes here
-          }
-          if (m_mirror.kind == Mirror::Kind::Failed) {
-            changed(); // no screen size: fd closes here
-            return;
-          }
-          m_decoder = std::make_unique<MirrorDecoder>(
-              fd.release(),
-              [this](MirrorDecoder::Frame frame) {
-                if (m_mirrorFrame) m_mirrorFrame(std::move(frame));
-              },
-              [this, session](std::string why) {
-                const MirrorEvent event = why.empty() ? MirrorEvent{.kind = MirrorEvent::Kind::Ended, .session = session}
-                                                      : MirrorEvent{.kind = MirrorEvent::Kind::Failed, .session = session, .error = why};
-                if (mirrorStep(m_mirror, event)) {
-                  m_decoder.reset();
-                  changed();
-                }
-              });
-          changed();
+          if (error) failed(*error);
+          else opened(std::move(fd), width, height, "h264");
         });
   }
 

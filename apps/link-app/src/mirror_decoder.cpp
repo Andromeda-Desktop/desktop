@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -19,6 +20,7 @@ extern "C" {
 #include <libavfilter/buffersrc.h>
 #include <libavutil/hwcontext_drm.h>
 #include <libavutil/hwcontext.h>
+#include <libavutil/hwcontext_vaapi.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 }
@@ -43,6 +45,52 @@ namespace linkapp {
         size -= static_cast<std::size_t>(n);
       }
       return true;
+    }
+
+    struct VaDecode {
+      bool hevc = false;
+      bool av1 = false;
+    };
+
+    bool vaDecodes(VADisplay display, VAProfile profile) {
+      std::vector<VAEntrypoint> entrypoints(static_cast<std::size_t>(vaMaxNumEntrypoints(display)));
+      int count = 0;
+      if (vaQueryConfigEntrypoints(display, profile, entrypoints.data(), &count) != VA_STATUS_SUCCESS) return false;
+      return std::find(entrypoints.begin(), entrypoints.begin() + count, VAEntrypointVLD) != entrypoints.begin() + count;
+    }
+
+    const VaDecode& vaDecode() {
+      static const VaDecode decode = [] {
+        AVBufferRef* device = nullptr;
+        if (av_hwdevice_ctx_create(&device, AV_HWDEVICE_TYPE_VAAPI, nullptr, nullptr, 0) < 0) return VaDecode{};
+        const VADisplay display =
+            static_cast<AVVAAPIDeviceContext*>(reinterpret_cast<AVHWDeviceContext*>(device->data)->hwctx)->display;
+        const VaDecode found{.hevc = vaDecodes(display, VAProfileHEVCMain), .av1 = vaDecodes(display, VAProfileAV1Profile0)};
+        av_buffer_unref(&device);
+        return found;
+      }();
+      return decode;
+    }
+
+    struct Decoder {
+      const AVCodec* codec = nullptr;
+      bool vaapi = false;
+      const char* name = "";
+    };
+
+    // HEVC is listed only with VA-API, so it always gets the device; software AV1 is dav1d (FFmpeg's own av1
+    // decoder needs a hardware accelerator).
+    Decoder decoderFor(MirrorCodec codec) {
+      switch (codec) {
+      case MirrorCodec::H264:
+        return {.codec = avcodec_find_decoder(AV_CODEC_ID_H264), .vaapi = true, .name = "H.264"};
+      case MirrorCodec::Hevc:
+        return {.codec = avcodec_find_decoder(AV_CODEC_ID_HEVC), .vaapi = true, .name = "HEVC"};
+      case MirrorCodec::Av1:
+        return vaDecode().av1 ? Decoder{.codec = avcodec_find_decoder_by_name("av1"), .vaapi = true, .name = "AV1"}
+                              : Decoder{.codec = avcodec_find_decoder_by_name("libdav1d"), .vaapi = false, .name = "AV1"};
+      }
+      return {};
     }
 
     AVPixelFormat pickFormat(AVCodecContext* ctx, const AVPixelFormat* formats) {
@@ -133,8 +181,25 @@ namespace linkapp {
 
   } // namespace
 
-  MirrorDecoder::MirrorDecoder(int fd, std::function<void(Frame)> frame, std::function<void(std::string)> ended)
-      : m_fd(fd), m_frame(std::move(frame)), m_ended(std::move(ended)), m_thread([this] { run(); }) {}
+  std::optional<MirrorCodec> mirrorCodecFrom(std::string_view name) {
+    if (name == "h264") return MirrorCodec::H264;
+    if (name == "hevc") return MirrorCodec::Hevc;
+    if (name == "av1") return MirrorCodec::Av1;
+    return std::nullopt;
+  }
+
+  const std::vector<std::string>& mirrorCodecs() {
+    static const std::vector<std::string> codecs = [] {
+      std::vector<std::string> out;
+      if (vaDecode().hevc && avcodec_find_decoder(AV_CODEC_ID_HEVC) != nullptr) out.emplace_back("hevc");
+      if (decoderFor(MirrorCodec::Av1).codec != nullptr) out.emplace_back("av1");
+      return out;
+    }();
+    return codecs;
+  }
+
+  MirrorDecoder::MirrorDecoder(int fd, MirrorCodec codec, std::function<void(Frame)> frame, std::function<void(std::string)> ended)
+      : m_fd(fd), m_codec(codec), m_frame(std::move(frame)), m_ended(std::move(ended)), m_thread([this] { run(); }) {}
 
   MirrorDecoder::~MirrorDecoder() {
     ::shutdown(m_fd, SHUT_RDWR); // wakes the worker's read
@@ -154,15 +219,17 @@ namespace linkapp {
         if (!alive.expired()) std::exchange(m_ended, {})(std::move(why));
       });
     };
-    const AVCodec* codec = avcodec_find_decoder(AV_CODEC_ID_H264);
+    const Decoder decoder = decoderFor(m_codec);
+    const AVCodec* codec = decoder.codec;
     AVCodecContext* ctx = codec != nullptr ? avcodec_alloc_context3(codec) : nullptr;
     if (ctx == nullptr) {
-      end("This desktop has no H.264 decoder.");
+      end(std::format("This desktop has no {} decoder.", decoder.name));
       return;
     }
-    if (av_hwdevice_ctx_create(&ctx->hw_device_ctx, AV_HWDEVICE_TYPE_VAAPI, nullptr, nullptr, 0) < 0) {
+    if (decoder.vaapi && av_hwdevice_ctx_create(&ctx->hw_device_ctx, AV_HWDEVICE_TYPE_VAAPI, nullptr, nullptr, 0) < 0) {
       kLog.info("mirror: no VA-API device, decoding in software");
     }
+    kLog.info("mirror: {} via {}{}", decoder.name, codec->name, ctx->hw_device_ctx != nullptr ? " + VA-API" : "");
     ctx->get_format = pickFormat;
     ctx->thread_count = 0;
     AVPacket* packet = av_packet_alloc();
@@ -171,7 +238,7 @@ namespace linkapp {
     SwsContext* scale = nullptr;
     Vpp vpp;
     std::string why;
-    if (avcodec_open2(ctx, codec, nullptr) < 0) why = "The H.264 decoder did not start.";
+    if (avcodec_open2(ctx, codec, nullptr) < 0) why = std::format("The {} decoder did not start.", decoder.name);
     std::vector<std::uint8_t> unit;
     int frames = 0;
     auto second = std::chrono::steady_clock::now();

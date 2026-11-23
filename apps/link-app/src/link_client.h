@@ -54,7 +54,7 @@ namespace linkapp {
     [[nodiscard]] const Photos& photos() const { return m_photos; }
     [[nodiscard]] const Files& files() const { return m_files; }
     [[nodiscard]] const Mirror& mirror() const { return m_mirror; }
-    // OpenMirror on the phone presence() shows; the phone's user allows it there.
+    // OpenMirrorWith on the phone presence() shows, offering mirrorCodecs(); the phone's user allows it there.
     void startMirror();
     void stopMirror();
     // MirrorInput without args: back, home, recents, screen-off.
@@ -163,6 +163,7 @@ namespace linkapp {
     void sendFiles(const std::string& deviceId, const std::vector<std::filesystem::path>& paths);
 
   private:
+    void openMirror(const std::string& device, std::uint64_t session, bool withCodecs);
     struct Download;
     void readChunk(const std::shared_ptr<Download>& download);
     void refresh();

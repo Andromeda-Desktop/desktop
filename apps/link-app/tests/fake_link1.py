@@ -181,11 +181,17 @@ def png(index, size=64):
             + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
-def stream_mirror(sock):
-    """MIRROR env: an Annex B H.264 clip with an AUD per access unit; one unit per access unit at MIRROR_FPS (30), looped."""
+# The first bytes of each access unit: an H.264 or HEVC access unit delimiter, an AV1 temporal delimiter OBU.
+UNIT_START = {"h264": b"\0\0\0\x01\x09", "hevc": b"\0\0\0\x01\x46\x01", "av1": b"\x12\x00"}
+
+
+def stream_mirror(sock, codec="h264"):
+    """MIRROR env: an Annex B H.264/HEVC clip with an AUD per access unit, or an AV1 OBU stream (ffmpeg -f obu); one
+    unit per access unit at MIRROR_FPS (30), looped."""
     fps = int(os.environ.get("MIRROR_FPS", "30"))
     data = open(os.environ["MIRROR"], "rb").read()
-    starts = [i for i in range(len(data) - 4) if data[i:i + 5] == b"\0\0\0\x01\x09"] + [len(data)]
+    mark = UNIT_START[codec]
+    starts = [i for i in range(len(data) - len(mark) + 1) if data[i:i + len(mark)] == mark] + [len(data)]
     units = [data[a:b] for a, b in zip(starts, starts[1:])]
     try:
         start = time.monotonic()
@@ -199,11 +205,14 @@ def stream_mirror(sock):
 
 def call(_conn, _sender, _path, _iface, method, params, invocation):
     print("call", method, params, flush=True)
-    if method == "OpenMirror":
+    if method in ("OpenMirror", "OpenMirrorWith"):
+        # MIRROR_CODEC: the codec of the MIRROR clip, returned whether or not the viewer offered it.
+        codec = os.environ.get("MIRROR_CODEC", "h264") if method == "OpenMirrorWith" else "h264"
         viewer, phone = socket.socketpair()
-        threading.Thread(target=stream_mirror, args=(phone,), daemon=True).start()
+        threading.Thread(target=stream_mirror, args=(phone, codec), daemon=True).start()
         fds = Gio.UnixFDList.new_from_array([viewer.detach()])
-        invocation.return_value_with_unix_fd_list(GLib.Variant("(huu)", (0, 1080, 2400)), fds)
+        reply = GLib.Variant("(huus)", (0, 1080, 2400, codec)) if method == "OpenMirrorWith" else GLib.Variant("(huu)", (0, 1080, 2400))
+        invocation.return_value_with_unix_fd_list(reply, fds)
         if os.environ.get("CORNERS"):  # corner radius in 1/10000 of the width, sent as the phone's ScreenShape
             radius = int(os.environ["CORNERS"])
             GLib.timeout_add(300, lambda: emit("ScreenShape", "(saqa(qqqq))", params[0], [radius] * 4, []) and False)

@@ -15,7 +15,7 @@ int main() {
   std::unique_ptr<linkapp::MirrorDecoder> decoder;
   bool ended = false;
   decoder = std::make_unique<linkapp::MirrorDecoder>(
-      fds[0], [](linkapp::MirrorDecoder::Frame) {},
+      fds[0], linkapp::MirrorCodec::H264, [](linkapp::MirrorDecoder::Frame) {},
       [&decoder, flag = &ended](std::string) {
         decoder.reset();
         *flag = true;
