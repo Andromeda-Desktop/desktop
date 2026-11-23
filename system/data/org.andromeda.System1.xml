@@ -125,6 +125,11 @@
       <arg name="enable" type="b" direction="in" />
       <arg name="interactive" type="b" direction="in" />
     </method>
+    <method name="HoldSleep">
+      <arg type="t" direction="out" />
+    </method>
+    <method name="SleepReady">
+      </method>
     <method name="Inhibit">
       <arg name="what" type="s" direction="in" />
       <arg name="who" type="s" direction="in" />

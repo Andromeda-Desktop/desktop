@@ -3,8 +3,11 @@
 # session "c2" of uid 4242, both active on seat0, and the inhibitors that argv[2] holds at each call, one "what mode uid" per line. Power,
 # firmware-setup, brightness and scheduled-shutdown calls only append a line to argv[1]; nothing reboots or suspends.
 # A suspend call emits PrepareForSleep(true); scheduling or cancelling emits the ScheduledShutdown change.
+# test.Login1.Sleep(b) emits PrepareForSleep(b). When andromeda-system closes its delay inhibitor fd, argv[1].sleep
+# gets "released <ms since the last PrepareForSleep(true)>".
 import os
 import sys
+import time
 
 import dbus
 import dbus.mainloop.glib
@@ -21,11 +24,19 @@ LOG = sys.argv[1]
 INHIBITORS = sys.argv[2]
 KEEP = []
 SCHEDULED = ["", dbus.UInt64(2**64 - 1)]
+SLEEP_AT = [0.0]
 
 
 def record(line):
     with open(LOG, "a") as log:
         log.write(line + "\n")
+
+
+def released(fd, _condition):
+    with open(LOG + ".sleep", "a") as log:
+        log.write(f"released {int((time.monotonic() - SLEEP_AT[0]) * 1000)}\n")
+    os.close(fd)
+    return False
 
 
 class Login1(dbus.service.FallbackObject):
@@ -74,7 +85,13 @@ class Login1(dbus.service.FallbackObject):
     @dbus.service.method(MANAGER, in_signature="t")
     def SuspendWithFlags(self, flags):
         record(f"SuspendWithFlags {flags}")
-        self.PrepareForSleep(True)
+        self.Sleep(True)
+
+    @dbus.service.method("test.Login1", in_signature="b")
+    def Sleep(self, start):
+        if start:
+            SLEEP_AT[0] = time.monotonic()
+        self.PrepareForSleep(start)
 
     @dbus.service.signal(MANAGER, signature="b")
     def PrepareForSleep(self, start):
@@ -105,8 +122,12 @@ class Login1(dbus.service.FallbackObject):
     def Inhibit(self, what, who, why, mode):
         read, write = os.pipe()
         KEEP.append(write)
-        record(f"Inhibit {what} {mode}")
-        return dbus.types.UnixFd(read)
+        record(f"Inhibit {what} {mode} {who}")
+        if who == "andromeda-system":
+            GLib.io_add_watch(write, GLib.PRIORITY_DEFAULT, GLib.IO_ERR, released)
+        fd = dbus.types.UnixFd(read)
+        os.close(read)
+        return fd
 
     @dbus.service.method(SESSION, in_signature="ssu", rel_path_keyword="path")
     def SetBrightness(self, subsystem, name, value, path=None):
@@ -115,7 +136,8 @@ class Login1(dbus.service.FallbackObject):
     @dbus.service.method(PROPS, in_signature="s", out_signature="a{sv}", rel_path_keyword="path")
     def GetAll(self, interface, path=None):
         return {"ScheduledShutdown": dbus.Struct(SCHEDULED, signature="st"), "HandleLidSwitch": "suspend",
-                "BlockInhibited": "idle", "PreparingForSleep": False, "NAutoVTs": dbus.UInt32(6)}
+                "BlockInhibited": "idle", "PreparingForSleep": False, "NAutoVTs": dbus.UInt32(6),
+                "InhibitDelayMaxUSec": dbus.UInt64(1_500_000)}
 
     @dbus.service.method(PROPS, in_signature="ss", out_signature="v", rel_path_keyword="path")
     def Get(self, interface, name, path=None):

@@ -14,7 +14,10 @@ use zbus::proxy::CacheProperties;
 use zbus::zvariant::{DynamicType, Type};
 use zbus::{Connection, OwnedFd, OwnedObjectPath, OwnedVariant, interface};
 
+use tokio::sync::mpsc;
+
 use crate::polkit::{self, Auth};
+use crate::sleep::{self, Event};
 
 pub const PATH: &str = "/org/andromeda/System1/Login";
 const LOGIN1: &str = "org.freedesktop.login1";
@@ -223,7 +226,7 @@ async fn call<B: serde::Serialize + DynamicType>(
     conn.call_method(Some(LOGIN1), path, Some(interface), method, body).await.map_err(|e| failed(method, e))
 }
 
-async fn manager<B, R>(conn: &Connection, method: &str, body: &B) -> Result<R>
+pub(crate) async fn manager<B, R>(conn: &Connection, method: &str, body: &B) -> Result<R>
 where
     B: serde::Serialize + DynamicType,
     R: serde::de::DeserializeOwned + Type,
@@ -311,6 +314,14 @@ async fn authorize_power(
     }
 }
 
+pub(crate) async fn manager_property<R>(conn: &Connection, name: &str) -> Result<R>
+where
+    R: TryFrom<OwnedVariant>,
+    R::Error: Display,
+{
+    property(conn, LOGIN1_PATH, MANAGER, name).await
+}
+
 async fn scheduled_shutdown(conn: &Connection) -> Result<String> {
     let (action, _): (String, u64) = property(conn, LOGIN1_PATH, MANAGER, "ScheduledShutdown").await?;
     Ok(action)
@@ -327,13 +338,14 @@ trait Login1 {
 }
 
 /// Relays logind's `PrepareForSleep` and the names of changed mirrored properties until the connection closes.
-pub async fn run(conn: Connection) {
-    if let Err(e) = relay(&conn).await {
+/// Also owns System1's logind sleep delay: `holds` carries `HoldSleep`, `SleepReady` and holder exits.
+pub async fn run(conn: Connection, mut holds: mpsc::UnboundedReceiver<Event>) {
+    if let Err(e) = relay(&conn, &mut holds).await {
         log::warn!("login: logind signal relay stopped: {e}");
     }
 }
 
-async fn relay(conn: &Connection) -> zbus::Result<()> {
+async fn relay(conn: &Connection, holds: &mut mpsc::UnboundedReceiver<Event>) -> zbus::Result<()> {
     // Proxies of a well-known name take signals only from its current owner, so no other peer can fake one.
     let login1 = Login1Proxy::builder(conn).cache_properties(CacheProperties::No).build().await?;
     let props = zbus::fdo::PropertiesProxy::builder(conn)
@@ -346,13 +358,36 @@ async fn relay(conn: &Connection) -> zbus::Result<()> {
     let mut changes = props.receive_properties_changed().await?;
     let iface: InterfaceRef<Login> = conn.object_server().interface(PATH).await?;
     let emitter = iface.signal_emitter();
+    let dbus = zbus::fdo::DBusProxy::new(conn).await?;
+    let mut logind_owner = dbus.receive_name_owner_changed_with_args(&[(0, LOGIN1)]).await?;
+    let mut delay = sleep::Delay::new(conn).await;
     loop {
+        let deadline = delay.deadline();
         // One bad signal must not end the relay: the shell would miss every later PrepareForSleep.
         let sent = tokio::select! {
             Some(signal) = sleep.next() => match signal.args() {
-                Ok(args) => Login::prepare_for_sleep(emitter, *args.start()).await,
+                Ok(args) => {
+                    let start = *args.start();
+                    delay.apply(conn, if start { Event::Prepare } else { Event::Resume }).await;
+                    Login::prepare_for_sleep(emitter, start).await
+                }
                 Err(e) => Err(e),
             },
+            Some(event) = holds.recv() => {
+                delay.apply(conn, event).await;
+                Ok(())
+            }
+            () = tokio::time::sleep_until(deadline.unwrap_or_else(tokio::time::Instant::now)), if deadline.is_some() => {
+                delay.apply(conn, Event::Budget).await;
+                Ok(())
+            }
+            Some(signal) = logind_owner.next() => {
+                // A new logind has no sleep in progress and none of the old one's inhibitors.
+                if signal.args().is_ok_and(|args| args.new_owner().is_some()) {
+                    delay.apply(conn, Event::Resume).await;
+                }
+                Ok(())
+            }
             Some(signal) = changes.next() => match signal.args() {
                 Ok(args) if args.interface_name().as_str() == MANAGER => {
                     let names: Vec<&str> = MIRRORED
@@ -374,7 +409,19 @@ async fn relay(conn: &Connection) -> zbus::Result<()> {
     }
 }
 
-pub struct Login;
+pub struct Login {
+    pub sleep: mpsc::UnboundedSender<Event>,
+}
+
+impl Login {
+    fn send(&self, event: Event) -> Result<()> {
+        self.sleep.send(event).map_err(|_| Error::Failed("sleep relay stopped".into()))
+    }
+}
+
+fn sender(header: &Header<'_>) -> Result<String> {
+    Ok(header.sender().ok_or_else(|| Error::Failed("call without sender".into()))?.to_string())
+}
 
 #[interface(name = "org.andromeda.System1.Login")]
 impl Login {
@@ -492,6 +539,32 @@ impl Login {
         polkit::check_with(conn, &header, FIRMWARE_ACTION, interactive).await?;
         call(conn, LOGIN1_PATH, MANAGER, "SetRebootToFirmwareSetup", &(enable,)).await?;
         Ok(())
+    }
+
+    /// Makes each sleep wait after `PrepareForSleep(true)` until the caller calls `SleepReady`, leaves the bus, or
+    /// the returned budget (microseconds) ends. For session compositors: they lock the session first.
+    async fn hold_sleep(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] conn: &Connection,
+    ) -> Result<u64> {
+        polkit::check_with(conn, &header, "org.freedesktop.login1.inhibit-delay-sleep", false).await?;
+        let name = sender(&header)?;
+        self.send(Event::Hold(name.clone()))?;
+        let (conn_, holds) = (conn.clone(), self.sleep.clone());
+        tokio::spawn(async move {
+            match crate::bus::vanished(&conn_, &name).await {
+                Ok(()) => drop(holds.send(Event::Gone(name))),
+                Err(e) => log::warn!("login: sleep holder {name} not watched: {e}"),
+            }
+        });
+        Ok(u64::try_from(sleep::budget(conn).await.as_micros()).unwrap_or(u64::MAX))
+    }
+
+    /// The caller, a `HoldSleep` holder, is ready for the sleep that `PrepareForSleep(true)` announced.
+    #[allow(clippy::needless_pass_by_value)] // zbus hands the header by value
+    fn sleep_ready(&self, #[zbus(header)] header: Header<'_>) -> Result<()> {
+        self.send(Event::Ready(sender(&header)?))
     }
 
     /// Takes a logind shutdown or sleep inhibitor after logind's polkit check for each kind in `what`

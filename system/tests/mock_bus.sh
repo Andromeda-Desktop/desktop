@@ -142,6 +142,7 @@ INH=$OUT/inhibitors
 echo "shutdown block 0" >"$INH"
 python3 "$ROOT/system/tests/mock_login1.py" "$OUT/login1.log" "$INH" >"$OUT/login1.out" 2>&1 & PIDS+=($!)
 until_has 50 ready cat "$OUT/login1.out"
+until_has 30 'Inhibit sleep delay andromeda-system' cat "$OUT/login1.log"
 L=(call org.andromeda.System1 /org/andromeda/System1/Login org.andromeda.System1.Login)
 until_has 10 's "yes"' "${B[@]}" "${L[@]}" CanPower s suspend
 until_has 10 's "na"' "${B[@]}" "${L[@]}" CanPower s reboot-to-firmware-setup
@@ -176,17 +177,54 @@ until_has 10 '"poweroff" 123' "${B[@]}" "${L[@]}" ManagerProperties
 "${B[@]}" "${L[@]}" ManagerProperties | grep -q NAutoVTs && fail "ManagerProperties returned an unmirrored property"
 "${B[@]}" "${L[@]}" CancelScheduledShutdown b false | grep -q '^b true' || fail "CancelScheduledShutdown"
 "${B[@]}" "${L[@]}" CancelScheduledShutdown b false | grep -q '^b false' || fail "nothing scheduled must answer false"
-diff -u - "$OUT/login1.log" <<'EOF' || fail "logind calls differ"
+diff -u - <(grep -v 'andromeda-system$' "$OUT/login1.log") <<'EOF' || fail "logind calls differ"
 RebootWithFlags 16
 SuspendWithFlags 1
 SuspendWithFlags 0
 SuspendWithFlags 1
-Inhibit sleep delay
+Inhibit sleep delay Andromeda
 SetBrightness /session/c1 backlight intel 5
 SuspendWithFlags 1
 ScheduleShutdown poweroff 123
 CancelScheduledShutdown
 EOF
+# System1 holds the only logind sleep delay. After PrepareForSleep(true) it closes the fd once every HoldSleep holder
+# called SleepReady or left the bus, else at InhibitDelayMaxUSec (mock: 1.5 s) less 0.5 s; on resume it takes it again.
+T=(call org.freedesktop.login1 /org/freedesktop/login1 test.Login1)
+lines() { grep -c "$2" "$1" 2>/dev/null || true; }
+resume() {
+  local taken; taken=$(lines "$OUT/login1.log" 'andromeda-system$')
+  "${B[@]}" "${T[@]}" Sleep b false
+  until_has 30 "$((taken + 1))" lines "$OUT/login1.log" 'andromeda-system$'
+}
+# Starts a holder ($1: ack or never) named $2 and waits for its HoldSleep.
+holder() {
+  python3 "$ROOT/system/tests/sleep_holder.py" "$1" >"$OUT/$2.out" 2>&1 & PIDS+=($!)
+  printf -v "$2" %s "$!"
+  until_has 50 'held 1000000' cat "$OUT/$2.out"
+}
+# Sleeps; $1 runs once each holder saw PrepareForSleep; prints the ms until System1 closed its fd.
+sleep_ms() {
+  local n; n=$(lines "$OUT/login1.log.sleep" released)
+  "${B[@]}" "${T[@]}" Sleep b true
+  "$@"
+  until_has 30 "$((n + 1))" lines "$OUT/login1.log.sleep" released
+  tail -n1 "$OUT/login1.log.sleep" | cut -d' ' -f2
+}
+resume
+holder never H1
+ms=$(sleep_ms true); ((ms >= 950 && ms <= 1400)) || fail "a holder without SleepReady held sleep ${ms} ms, wanted the 1 s budget"
+resume
+kill "$H1"
+holder ack H2
+ms=$(sleep_ms until_has 30 prepare cat "$OUT/H2.out"); ((ms < 500)) || fail "sleep waited ${ms} ms after every SleepReady"
+resume
+holder never H3
+ms=$(sleep_ms eval 'until_has 30 prepare cat "$OUT/H3.out"; kill "$H3"')
+((ms < 900)) || fail "sleep waited ${ms} ms for a holder that left the bus"
+resume
+grep -q 'budget ended before SleepReady from :' "$OUT/daemon.log" || fail "the budget release did not log the late holder"
+
 # The session part: the low battery rule holds power-saver through the system part, alerts once, and the alert's
 # Undo releases the hold.
 dbus-daemon --session --nofork --print-address=3 3>"$OUT/session-addr" & PIDS+=($!)

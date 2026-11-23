@@ -28,6 +28,7 @@ mod procs;
 mod rules;
 mod sensors;
 mod session;
+mod sleep;
 mod startup;
 mod state;
 mod storage;
@@ -53,13 +54,14 @@ async fn main() -> Result<()> {
     let state = std::env::var_os("STATE_DIRECTORY").map_or_else(|| "/var/lib/andromeda-system".into(), PathBuf::from);
     let policy = policy::new(state.join("explain.jsonl"));
     plugs::init(state.join("plugs.jsonl"), policy::now_ms() / 1000);
+    let (sleep_tx, sleep_rx) = tokio::sync::mpsc::unbounded_channel();
     let conn = zbus::connection::Builder::system()
         .serve_at(manager::PATH, zbus::fdo::ObjectManager)
         .serve_at(manager::PATH, manager::Manager::default())
         .serve_at(power::PATH, power::Power::default())
         .serve_at(memory::PATH, memory::Memory::default())
         .serve_at(network::PATH, network::Network::new(state.join("hotspot-interfaces")))
-        .serve_at(login::PATH, login::Login)
+        .serve_at(login::PATH, login::Login { sleep: sleep_tx })
         .serve_at(storage::PATH, storage::Storage::default())
         .serve_at(storage::PATH, drives::Drives)
         .serve_at(thermal::PATH, thermal::Thermal::default())
@@ -83,7 +85,7 @@ async fn main() -> Result<()> {
     tokio::spawn(power::sample_rapl(conn.clone()));
     tokio::spawn(memory::run(conn.clone()));
     tokio::spawn(network::run(conn.clone()));
-    tokio::spawn(login::run(conn.clone()));
+    tokio::spawn(login::run(conn.clone(), sleep_rx));
     tokio::spawn(storage::run(conn.clone()));
     tokio::spawn(thermal::run(conn.clone()));
     tokio::spawn(sensors::run(conn.clone()));
