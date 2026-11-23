@@ -72,21 +72,17 @@ const LinkToggles* LinkService::toggles(const std::string& deviceId) const {
 }
 
 const LinkCommandState* LinkService::commandState(const std::string& deviceId) const {
-  const auto it = m_commandStates.find(deviceId);
-  return it != m_commandStates.end() ? &it->second : nullptr;
+  return m_systemCommands.state(deviceId);
 }
 
 void LinkService::dismissCommandError(const std::string& deviceId) {
-  const auto it = m_commandStates.find(deviceId);
-  if (it != m_commandStates.end() && it->second.phase == LinkCommandState::Phase::Failed) {
-    m_commandStates.erase(it);
+  if (m_systemCommands.dismiss(deviceId)) {
     notify();
   }
 }
 
 void LinkService::sendSystemCommand(const std::string& deviceId, const std::string& command, std::uint32_t value) {
-  const std::uint64_t serial = ++m_commandSerial;
-  m_commandStates[deviceId] = LinkCommandState{.command = command, .value = value, .serial = serial};
+  const std::uint64_t serial = m_systemCommands.send(deviceId, command, value);
   notify();
   m_link->callMethodAsync("SendSystemCommand")
       .onInterface(kLinkInterface)
@@ -97,35 +93,33 @@ void LinkService::sendSystemCommand(const std::string& deviceId, const std::stri
 }
 
 void LinkService::commandAnswered(const std::string& deviceId, std::uint64_t serial, std::optional<std::string> error) {
-  const auto it = m_commandStates.find(deviceId);
-  // A newer command, or a disconnect, replaced this one.
-  if (it == m_commandStates.end() || it->second.serial != serial ||
-      it->second.phase != LinkCommandState::Phase::Pending) {
-    return;
-  }
   if (error.has_value()) {
-    kLog.warn("SendSystemCommand {} failed: {}", it->second.command, *error);
-    it->second.phase = LinkCommandState::Phase::Failed;
-    it->second.error = std::move(*error);
-    notify();
+    kLog.warn("SendSystemCommand failed: {}", *error);
+  }
+  LinkCommandState done;
+  switch (m_systemCommands.answered(deviceId, serial, std::move(error), &done)) {
+  case LinkCommands::Answer::Stale:
     return;
-  }
-  // The phone ran it; its next status confirms it, and this keeps the button from flicking back until then.
-  const auto value = static_cast<std::int32_t>(it->second.value);
-  const std::string& command = it->second.command;
-  if (const auto toggles = m_toggles.find(deviceId); toggles != m_toggles.end()) {
-    if (command == "set-wifi") {
-      toggles->second.wifi = value;
-    } else if (command == "set-bluetooth") {
-      toggles->second.bluetooth = value;
-    } else if (command == "set-torch") {
-      toggles->second.torch = value;
+  case LinkCommands::Answer::Failed:
+    break;
+  case LinkCommands::Answer::Succeeded: {
+    // The phone ran it; its next status confirms it, and this keeps the key from flicking back until then.
+    const auto value = static_cast<std::int32_t>(done.value);
+    if (const auto toggles = m_toggles.find(deviceId); toggles != m_toggles.end()) {
+      if (done.command == "set-wifi") {
+        toggles->second.wifi = value;
+      } else if (done.command == "set-bluetooth") {
+        toggles->second.bluetooth = value;
+      } else if (done.command == "set-torch") {
+        toggles->second.torch = value;
+      }
     }
+    if (const auto controls = m_controls.find(deviceId); controls != m_controls.end() && done.command == "set-dnd") {
+      controls->second.dnd = value;
+    }
+    break;
   }
-  if (const auto controls = m_controls.find(deviceId); controls != m_controls.end() && command == "set-dnd") {
-    controls->second.dnd = value;
   }
-  m_commandStates.erase(it);
   notify();
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/timer_manager.h"
+#include "dbus/link/link_commands.h"
 #include "dbus/link/link_phone_state.h"
 #include "notification/notification.h"
 
@@ -49,18 +50,6 @@ struct LinkToggles {
   std::int32_t wifi = -1;
   std::int32_t bluetooth = -1;
   std::int32_t torch = -1;
-};
-
-// The last system command this shell sent a phone, until it succeeds; a phone with none has no entry.
-struct LinkCommandState {
-  enum class Phase : std::uint8_t { Pending, Failed };
-  Phase phase = Phase::Pending;
-  std::string command;
-  std::uint32_t value = 0;
-  // The daemon's or the phone's reason, while Failed.
-  std::string error;
-  // Matches a reply to the command it answers.
-  std::uint64_t serial = 0;
 };
 
 // A text message on a phone; `date` in Unix milliseconds, `sent` for one the phone sent.
@@ -307,8 +296,7 @@ private:
   std::map<std::string, LinkDeviceInfo> m_info;
   std::map<std::string, LinkControls> m_controls;
   std::map<std::string, LinkToggles> m_toggles;
-  std::map<std::string, LinkCommandState> m_commandStates;
-  std::uint64_t m_commandSerial = 0;
+  LinkCommands m_systemCommands;
   void commandAnswered(const std::string& deviceId, std::uint64_t serial, std::optional<std::string> error);
   std::map<std::string, std::vector<LinkText>> m_texts;
   // Per phone, a number's last 9 digits to the contact's name.

@@ -1400,6 +1400,10 @@ namespace control_center {
     m_active = active;
     if (!active) {
       m_photosAsked = false;
+      // A failed command's reason belongs to the press that caused it, not to the next opening.
+      if (const LinkDevice* phone = device(); phone != nullptr) {
+        m_link->dismissCommandError(phone->id);
+      }
     }
   }
 
@@ -1462,6 +1466,15 @@ namespace control_center {
       key += "|" + controls->ringer;
     }
     key += m_link->phoneRinging(phone->id) ? "|r" : "|-";
+    if (const auto keys = phone->connected ? phone::toggleKeys(*m_link, phone->id) : std::nullopt; keys.has_value()) {
+      for (const phone::ToggleKey& toggle : *keys) {
+        key += std::format("|t{}{}{}", toggle.on, toggle.enabled, toggle.tooltip);
+      }
+    }
+    if (const LinkCommandState* command = m_link->commandState(phone->id);
+        command != nullptr && command->phase == LinkCommandState::Phase::Failed) {
+      key += "|e" + command->error;
+    }
     key += std::format("|{}", m_link->notificationCount(phone->id));
     for (const PhoneNotification& n : phoneNotifications(phone->id)) {
       key += std::format("|{}", n.id);
@@ -1557,7 +1570,43 @@ namespace control_center {
             }
           });
         })));
+    // Wi-Fi, Bluetooth and the torch fit one row at 360: their names are short.
+    if (const auto keys = connected ? phone::toggleKeys(*m_link, id) : std::nullopt; keys.has_value()) {
+      auto toggles = ui::row({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
+      for (const phone::ToggleKey& key : *keys) {
+        auto button = actionButton(key.glyph, i18n::tr(key.label), key.enabled, s,
+                                   [this, id, command = std::string(key.command), on = key.on] {
+                                     m_link->sendSystemCommand(id, command, on ? 0 : 1);
+                                   });
+        button->setSelected(key.on);
+        button->setTooltip(i18n::tr(key.tooltip));
+        toggles->addChild(std::move(button));
+      }
+      buttons->addChild(std::move(toggles));
+    }
     addBlock(std::move(buttons));
+    // Rulebook 9.13: an error shows where it happened, with the action that fixes it.
+    if (const LinkCommandState* command = connected ? m_link->commandState(id) : nullptr;
+        command != nullptr && command->phase == LinkCommandState::Phase::Failed) {
+      auto reason = std::make_unique<Label>();
+      reason->setFontSize(Tokens::typeFootnote.size * s);
+      reason->setLineHeight(Tokens::typeFootnote.line * s);
+      reason->setColor(colorSpecFromRole(ColorRole::Label1));
+      reason->setMaxLines(2);
+      reason->setText(command->error);
+      reason->setFlexGrow(1.0F);
+      auto retry = std::make_unique<Button>();
+      retry->setVariant(ButtonVariant::Ghost);
+      retry->setText(i18n::tr("bar.widgets.phone.try-again"));
+      retry->setFontSize(Tokens::typeFootnote.size * s);
+      retry->setOnClick([this, id, again = command->command, value = command->value] {
+        m_link->sendSystemCommand(id, again, value);
+      });
+      addBlock(ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s},
+                       ui::glyph({.glyph = "alert-circle", .glyphSize = Tokens::sizeSymbol * s,
+                                  .color = colorSpecFromRole(ColorRole::DangerText)}),
+                       std::move(reason), std::move(retry)));
+    }
 
     if (!m_message.empty()) {
       auto note = std::make_unique<Label>();

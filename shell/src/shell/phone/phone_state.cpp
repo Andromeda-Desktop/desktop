@@ -67,4 +67,38 @@ namespace phone {
     return ringer == "silent" ? "bell-off" : "bell";
   }
 
+  std::optional<std::array<ToggleKey, 3>> toggleKeys(const LinkService& link, const std::string& deviceId) {
+    const LinkToggles* toggles = link.toggles(deviceId);
+    const LinkDeviceInfo* info = link.info(deviceId);
+    if (toggles == nullptr) {
+      return std::nullopt;
+    }
+    const LinkCommandState* command = link.commandState(deviceId);
+    const std::string transport = info != nullptr ? info->transport : std::string();
+    std::array<ToggleKey, 3> keys{{
+        {.command = "set-wifi", .label = "bar.widgets.phone.wifi", .tooltip = "bar.widgets.phone.wifi"},
+        {.command = "set-bluetooth", .label = "bar.widgets.phone.bluetooth", .tooltip = "bar.widgets.phone.bluetooth"},
+        {.command = "set-torch", .label = "bar.widgets.phone.torch", .tooltip = "bar.widgets.phone.torch"},
+    }};
+    const std::array states{toggles->wifi, toggles->bluetooth, toggles->torch};
+    const std::array<std::pair<std::string_view, std::string_view>, 3> glyphs{
+        std::pair{"wifi", "wifi-off"}, std::pair{"bluetooth", "bluetooth-off"}, std::pair{"bulb", "bulb-off"}
+    };
+    const std::array<bool, 3> carries{transport == "wifi" || transport == "nearby", transport == "bluetooth", false};
+    const std::array<const char*, 3> carriesTip{
+        "bar.widgets.phone.wifi-carries-link", "bar.widgets.phone.bluetooth-carries-link", ""
+    };
+    for (std::size_t i = 0; i < keys.size(); ++i) {
+      const bool pending = command != nullptr && command->phase == LinkCommandState::Phase::Pending &&
+                           command->command == keys[i].command;
+      keys[i].on = pending ? command->value == 1 : states[i] == 1;
+      keys[i].enabled = states[i] >= 0 && !pending;
+      keys[i].glyph = keys[i].on ? glyphs[i].first : glyphs[i].second;
+      if (keys[i].on && carries[i]) {
+        keys[i].tooltip = carriesTip[i];
+      }
+    }
+    return keys;
+  }
+
 } // namespace phone

@@ -1406,6 +1406,7 @@ if build_tests
     'xdg_autostart',
     'launcher_view',
     'notification_center_model',
+    'link_commands',
   ]
 
   foreach test_name : _cpp_test_names

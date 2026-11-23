@@ -24,7 +24,6 @@ namespace {
       "bar.widgets.phone.ringer", "bar.widgets.phone.wifi",          "bar.widgets.phone.bluetooth",
       "bar.widgets.phone.torch",
   };
-  constexpr std::array<const char*, 3> kToggleCommands{"set-wifi", "set-bluetooth", "set-torch"};
 
 } // namespace
 
@@ -222,33 +221,14 @@ void PhonePanel::doUpdate(Renderer& /*renderer*/) {
   set(Ringer, phone::ringerGlyph(ringer), i18n::tr("bar.widgets.phone.ringer-" + (ringer.empty() ? "normal" : ringer)),
       !ringer.empty(), false);
 
-  const LinkToggles* toggles = connected ? m_link->toggles(phone->id) : nullptr;
+  const auto keys = connected ? phone::toggleKeys(*m_link, phone->id) : std::nullopt;
   const LinkCommandState* command = connected ? m_link->commandState(phone->id) : nullptr;
-  const LinkDeviceInfo* info = connected ? m_link->info(phone->id) : nullptr;
-  const std::string transport = info != nullptr ? info->transport : std::string();
-  m_toggles->setVisible(toggles != nullptr);
-  if (toggles != nullptr) {
-    const std::array states{toggles->wifi, toggles->bluetooth, toggles->torch};
-    // Turning off the radio Link runs on would end the connection: the key stays on and says why, and linkd's
-    // refusal shows inline when pressed.
-    const std::array<bool, 3> carries{transport == "wifi" || transport == "nearby", transport == "bluetooth", false};
-    const std::array<std::pair<const char*, const char*>, 3> glyphs{
-        std::pair{"wifi", "wifi-off"}, std::pair{"bluetooth", "bluetooth-off"}, std::pair{"bulb", "bulb-off"}
-    };
-    for (std::uint8_t i = 0; i < 3; ++i) {
-      const auto action = static_cast<Action>(kFirstToggle + i);
-      const bool pending = command != nullptr && command->phase == LinkCommandState::Phase::Pending &&
-                           command->command == kToggleCommands[i];
-      // A pending command shows the state it asks for, and takes no second press.
-      const bool on = pending ? command->value == 1 : states[i] == 1;
-      const bool locked = on && carries[i];
-      set(action, on ? glyphs[i].first : glyphs[i].second, i18n::tr(kTooltips[action]), states[i] >= 0 && !pending,
-          on);
-      m_actions[action]->setTooltip(
-          i18n::tr(locked ? (i == 0 ? "bar.widgets.phone.wifi-carries-link" : "bar.widgets.phone.bluetooth-carries-link")
-                          : kTooltips[action])
-      );
-    }
+  m_toggles->setVisible(keys.has_value());
+  for (std::uint8_t i = 0; keys.has_value() && i < keys->size(); ++i) {
+    const phone::ToggleKey& key = (*keys)[i];
+    const auto action = static_cast<Action>(kFirstToggle + i);
+    set(action, key.glyph, i18n::tr(key.label), key.enabled, key.on);
+    m_actions[action]->setTooltip(i18n::tr(key.tooltip));
   }
   const bool failed = command != nullptr && command->phase == LinkCommandState::Phase::Failed;
   m_error->setVisible(failed);
@@ -282,10 +262,9 @@ void PhonePanel::act(Action action) {
   case Wifi:
   case Bluetooth:
   case Torch:
-    if (const LinkToggles* toggles = m_link->toggles(phone->id); toggles != nullptr) {
-      const std::array states{toggles->wifi, toggles->bluetooth, toggles->torch};
-      const std::uint8_t i = action - kFirstToggle;
-      m_link->sendSystemCommand(phone->id, kToggleCommands[i], states[i] == 1 ? 0 : 1);
+    if (const auto keys = phone::toggleKeys(*m_link, phone->id); keys.has_value()) {
+      const phone::ToggleKey& key = (*keys)[action - kFirstToggle];
+      m_link->sendSystemCommand(phone->id, key.command, key.on ? 0 : 1);
     }
     break;
   case ActionCount:

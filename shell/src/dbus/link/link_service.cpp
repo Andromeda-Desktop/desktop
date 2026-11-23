@@ -369,7 +369,7 @@ void LinkService::detach() {
   m_info.clear();
   m_controls.clear();
   m_toggles.clear();
-  m_commandStates.clear();
+  m_systemCommands.clear();
   m_texts.clear();
   m_contactNames.clear();
   m_nearby.clear();

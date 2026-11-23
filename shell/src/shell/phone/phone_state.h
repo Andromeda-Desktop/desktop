@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -22,5 +24,20 @@ namespace phone {
   // The set-ringer value that follows `ringer` in the cycle normal, vibrate, silent.
   [[nodiscard]] std::uint32_t nextRinger(std::string_view ringer);
   [[nodiscard]] std::string ringerGlyph(std::string_view ringer);
+
+  // One of a phone's Wi-Fi, Bluetooth and torch keys, as the phone panel and the control center draw it.
+  struct ToggleKey {
+    const char* command = "";
+    // Translation keys of its short name, and of its tooltip.
+    const char* label = "";
+    const char* tooltip = "";
+    std::string_view glyph;
+    // A pending command shows the state it asks for, and takes no second press.
+    bool on = false;
+    bool enabled = false;
+  };
+  // Null for a disconnected phone or one without the toggle commands. The radio Link runs on stays enabled: linkd
+  // refuses turning it off, and the key's tooltip says why.
+  [[nodiscard]] std::optional<std::array<ToggleKey, 3>> toggleKeys(const LinkService& link, const std::string& deviceId);
 
 } // namespace phone
