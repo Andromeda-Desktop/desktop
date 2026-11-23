@@ -4381,6 +4381,10 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         pixman_region32_union_rect(&scene_blur->pending, &scene_blur->pending, blur_x, blur_y, scene_blur->width,
                                    scene_blur->height);
         scene_blur->dirty = false;
+        // The whole-node mark un-culled the nodes below; only the sampled part of pending needs them now.
+        struct wlr_scene* stale_root = scene_node_get_root(node);
+        pixman_region32_union_rect(&stale_root->blur_visibility_stale, &stale_root->blur_visibility_stale, blur_x,
+                                   blur_y, scene_blur->width, scene_blur->height);
         if (blur_cache_debug()) {
           wlr_log(WLR_INFO, "blur cache whole mark kept as pending (cache reusable)");
         }
@@ -4493,6 +4497,8 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         if (blur_cache_debug()) {
           blur_cache_log_region("render skipped, cache invalid; pending dropped", &scene_blur->pending);
         }
+        struct wlr_scene* stale_root = scene_node_get_root(node);
+        pixman_region32_union(&stale_root->blur_visibility_stale, &stale_root->blur_visibility_stale, &work);
         pixman_region32_clear(&scene_blur->pending);
       }
     }
