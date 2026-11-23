@@ -342,6 +342,7 @@ if build_tests
     'audio-spectrum',
     'backdrop-probe',
     'faded-blur',
+    'shared-blur',
     'buffer-tint',
     'blur-tint-fold',
     'blur-fade-source',

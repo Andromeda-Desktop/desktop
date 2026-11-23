@@ -57,6 +57,14 @@ struct fx_gles_render_pass {
   // Call `fx_render_pass_init_offscreen_buffers` to use advanced effects.
   struct fx_offscreen_buffers* fx_offscreen_buffers;
   unsigned animation_depth;
+  // Between fx_render_pass_begin_shared_blur and its end: one blur, and the sharp backdrop for lenses, of a run of
+  // live blur nodes at `strength`.
+  struct {
+    bool active;
+    float strength;
+    struct fx_framebuffer* blur;
+    struct fx_framebuffer* sharp;
+  } shared_blur;
   struct wlr_texture* workspace_incoming; // bound only while compositing a workspace pair
   // A scratch backdrop beneath an isolated subtree, excluded from composition.
   unsigned isolation_depth;
@@ -313,6 +321,18 @@ void fx_render_pass_add_box_shadow(
  * Render blur.
  */
 void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_blur_pass_options* fx_options);
+
+/**
+ * Blurs `clip` (buffer coordinates) once at `strength` for a run of live blur nodes drawn one after another, and
+ * copies the sharp backdrop inside `lens_region` (may be empty) for their lenses. Until
+ * fx_render_pass_end_shared_blur, fx_render_pass_add_blur composites live blurs of that strength from this result.
+ * False, with nothing shared, inside a capture or an animation, or when the blur or the copy fails.
+ */
+bool fx_render_pass_begin_shared_blur(
+    struct fx_gles_render_pass* pass, const pixman_region32_t* clip, struct blur_data* blur_data, float strength,
+    pixman_region32_t* lens_region
+);
+void fx_render_pass_end_shared_blur(struct fx_gles_render_pass* pass);
 
 /**
  * Render optimized blur. False when the blur or its copies fail, which leaves

@@ -157,6 +157,13 @@ s_overview_open() {
   while ((SECONDS < end)); do andromeda msg overview-open > /dev/null; sleep 2; andromeda msg overview-close > /dev/null; sleep 0.7; done
   kill "$v" "$f"
 }
+# Window open and close animations (transient effects) over a video. Not in the default list: SCENARIOS=window_open_close.
+s_window_open_close() {
+  local v; v=$(video); edges
+  local end=$((SECONDS + SECONDS_PER))
+  while ((SECONDS < end)); do foot --title=glass-win sh -c 'sleep 1.2' > /dev/null 2>&1; sleep 0.6; done
+  kill "$v"
+}
 s_worst() {
   local v; v=$(video); edges
   msg panel-open launcher

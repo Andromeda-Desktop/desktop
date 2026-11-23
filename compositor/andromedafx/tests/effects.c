@@ -5,6 +5,7 @@
 #include "render/fx_renderer/effect.h"
 #include "render_fixture.h"
 #include "andromedafx/render/effect.h"
+#include "andromedafx/render/frame_stats.h"
 #include "andromedafx/render/pass.h"
 
 #include <math.h>
@@ -2523,6 +2524,63 @@ static bool test_faded_blur(struct fixture* fixture) {
   return ok;
 }
 
+// Renders 1 px red/blue stripes under live blur nodes at the given x (3 px wide, full height) and reads the frame.
+static bool shared_blur_frame(
+    struct fixture* fixture, const int* xs, int count, uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4], uint32_t* blurs
+) {
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+  const float red[4] = {1, 0, 0, 1}, blue[4] = {0, 0, 1, 1};
+  for (int x = 0; x < TEST_WIDTH; x++) {
+    struct wlr_scene_rect* stripe = wlr_scene_rect_create(&scene->tree, 1, TEST_HEIGHT, x % 2 ? red : blue);
+    wlr_scene_node_set_position(&stripe->node, x, 0);
+  }
+  for (int i = 0; i < count; i++) {
+    struct wlr_scene_blur* blur = wlr_scene_blur_create(&scene->tree, 3, TEST_HEIGHT);
+    wlr_scene_node_set_position(&blur->node, xs[i], 0);
+  }
+  wlr_scene_set_blur_data(scene, 1, 1, 0, 1, 1, 1);
+  fx_frame_stats_take();
+  struct wlr_output_state state;
+  struct wlr_buffer* rendered = fixture_render_scene(fixture, scene_output, &state);
+  *blurs = fx_frame_stats_take().blurs;
+  bool ok = check(rendered != NULL, "scene renders");
+  if (rendered != NULL) {
+    ok &= check(read_buffer(fixture, rendered, DRM_FORMAT_ARGB8888, TEST_WIDTH * 4, pixels), "pixel readback");
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+  wlr_scene_node_destroy(&scene->tree.node);
+  return ok;
+}
+
+// Two live blur nodes beyond each other's blur reach (4 px here) blur their backdrop once, and each looks as it does
+// alone.
+static bool test_shared_blur(struct fixture* fixture) {
+  static uint8_t both[TEST_WIDTH * TEST_HEIGHT * 4], left[sizeof(both)], right[sizeof(both)];
+  uint32_t blurs_both = 0, blurs_left = 0, blurs_right = 0;
+  bool ok = shared_blur_frame(fixture, (const int[]){0, 13}, 2, both, &blurs_both)
+      && shared_blur_frame(fixture, (const int[]){0}, 1, left, &blurs_left)
+      && shared_blur_frame(fixture, (const int[]){13}, 1, right, &blurs_right);
+  if (!ok) {
+    return false;
+  }
+  ok &= check(blurs_left == 1 && blurs_right == 1, "a lone node blurs once");
+  ok &= check(blurs_both == 1, "two nodes in one run blur once");
+  int differ = 0;
+  for (int y = 0; y < TEST_HEIGHT; y++) {
+    for (int x = 0; x < TEST_WIDTH; x++) {
+      const uint8_t* alone = x < 8 ? left : right;
+      for (int c = 0; c < 4; c++) {
+        const int i = (y * TEST_WIDTH + x) * 4 + c;
+        differ += abs(both[i] - alone[i]) > 2;
+      }
+    }
+  }
+  ok &= check(differ == 0, "each node of a shared run draws what it draws alone");
+  return ok;
+}
+
 static struct wlr_buffer* painted_buffer(struct fixture* fixture, const float premultiplied[4]) {
   struct wlr_buffer* buffer = create_output_buffer(fixture, DRM_FORMAT_ARGB8888, TEST_WIDTH, TEST_HEIGHT);
   struct wlr_render_pass* paint = buffer ? wlr_renderer_begin_buffer_pass(fixture->renderer, buffer, NULL) : NULL;
@@ -3338,6 +3396,8 @@ int main(int argc, char* argv[]) {
     ok = test_backdrop_probe(&fixture);
   } else if (strcmp(argv[1], "faded-blur") == 0) {
     ok = test_faded_blur(&fixture);
+  } else if (strcmp(argv[1], "shared-blur") == 0) {
+    ok = test_shared_blur(&fixture);
   } else if (strcmp(argv[1], "buffer-tint") == 0) {
     ok = test_buffer_tint(&fixture);
   } else if (strcmp(argv[1], "blur-tint-fold") == 0) {

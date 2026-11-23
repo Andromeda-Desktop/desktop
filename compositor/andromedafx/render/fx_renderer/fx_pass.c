@@ -3560,6 +3560,16 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   // Glass whose strength leaves no blur pass (clear Liquid) tints and bends a copy of the sharp backdrop.
   struct blur_data applied = blur_data_apply_strength(fx_options->blur_data, fx_options->blur_strength);
   const bool sharp_glass = glass && !is_scene_blur_enabled(&applied);
+  // A run of live nodes blurred together (fx_render_pass_begin_shared_blur); a probe reads the shared blur.
+  const bool shared = pass->shared_blur.active && !use_optimized && !sharp_glass
+      && fx_options->blur_strength == pass->shared_blur.strength && pass->group_depth == 0
+      && pass->animation_depth == 0;
+  if (shared) {
+    sharp = pass->shared_blur.sharp;
+  } else if (pass->shared_blur.active) {
+    // This node's own blur reuses the scratch buffers that hold the shared one.
+    fx_render_pass_end_shared_blur(pass);
+  }
   // A fade (strength below full_strength) mixes two stored levels, sharp, half and full strength, instead of
   // blurring each frame at a new strength; only while the backdrop holds still.
   struct fx_framebuffer* buffer_cached = NULL;
@@ -3595,13 +3605,16 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   if (buffer_cached == NULL && use_optimized && has_strength && !sharp_glass) {
     buffer_cached = strength_blur(pass, fx_options, true);
   }
-  const bool fuse = (!use_optimized || has_strength) && buffer_cached == NULL && !(glass && (probe_due || !glass_fuse))
+  const bool fuse = !shared && (!use_optimized || has_strength) && buffer_cached == NULL
+      && !(glass && (probe_due || !glass_fuse))
       && !sharp_glass
       && blur_composite_is_copy(pass, tex_options);
   struct blur_data final_upsample = {0};
   TRACY_ZONE_TEXT_f("Use Optimized Blur: %d", fx_options->use_optimized_blur);
   TRACY_ZONE_TEXT_f("Fused Composite: %d", fuse);
-  if (buffer_cached != NULL) {
+  if (shared) {
+    buffer = pass->shared_blur.blur;
+  } else if (buffer_cached != NULL) {
     buffer = buffer_cached;
   } else if (!use_optimized || has_strength) {
     // Render the blur into its own buffer
@@ -3693,9 +3706,9 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   }
   if (sharp_glass && fx_options->lens > 0.0f) {
     lens = wlr_texture;
-  } else if (lens_enabled && glass && fx_options->lens > 0.0f && sharp != NULL && sharp == fbos->optimized_no_blur_buffer
-             && !wlr_box_empty(&probe_box)) {
-    // The cached backdrop is not the pass target, so the lens samples it in place.
+  } else if (lens_enabled && glass && fx_options->lens > 0.0f && sharp != NULL
+             && (sharp == fbos->optimized_no_blur_buffer || shared) && !wlr_box_empty(&probe_box)) {
+    // The cached or shared backdrop is not the pass target, so the lens samples it in place.
     lens = fx_texture_from_buffer(&renderer->wlr_renderer, sharp->buffer);
   } else if (lens_enabled && glass && fx_options->lens > 0.0f && sharp != NULL && !wlr_box_empty(&probe_box)) {
     struct fx_framebuffer* copy = ensure_offscreen_buffer(pass, &target_buffers(pass)->lens_source, true);
@@ -3788,6 +3801,50 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
 finish:
   pop_fx_debug(renderer);
   TRACY_BOTH_ZONES_END;
+}
+
+bool fx_render_pass_begin_shared_blur(
+    struct fx_gles_render_pass* pass, const pixman_region32_t* clip, struct blur_data* blur_data, float strength,
+    pixman_region32_t* lens_region
+) {
+  pass->shared_blur.active = false;
+  if (pass->fx_offscreen_buffers == NULL || pass->group_depth != 0 || pass->animation_depth != 0) {
+    return false;
+  }
+  struct fx_render_blur_pass_options options = {
+      .tex_options.base.clip = clip,
+      .blur_data = blur_data,
+      .blur_strength = strength,
+      .current_buffer = pass->buffer,
+  };
+  struct fx_framebuffer* blur = get_main_buffer_blur(pass, &options, NULL);
+  if (blur == NULL) {
+    fx_framebuffer_bind(pass->buffer);
+    return false;
+  }
+  struct fx_framebuffer* sharp = NULL;
+  if (pixman_region32_not_empty(lens_region)) {
+    // The lens bends the sharp backdrop; the pass target cannot be sampled while the run draws into it.
+    sharp = ensure_offscreen_buffer(pass, &target_buffers(pass)->lens_source, true);
+    if (sharp == NULL || !fx_render_pass_read_to_buffer(pass, lens_region, sharp, pass->buffer)) {
+      fx_framebuffer_bind(pass->buffer);
+      return false;
+    }
+    frame_stats.lens++;
+    frame_stats.lens_px += region_area(lens_region);
+  }
+  fx_framebuffer_bind(pass->buffer);
+  pass->shared_blur.active = true;
+  pass->shared_blur.strength = strength;
+  pass->shared_blur.blur = blur;
+  pass->shared_blur.sharp = sharp;
+  return true;
+}
+
+void fx_render_pass_end_shared_blur(struct fx_gles_render_pass* pass) {
+  pass->shared_blur.active = false;
+  pass->shared_blur.blur = NULL;
+  pass->shared_blur.sharp = NULL;
 }
 
 bool fx_render_pass_optimized_blur_stale(const struct fx_gles_render_pass* pass) {

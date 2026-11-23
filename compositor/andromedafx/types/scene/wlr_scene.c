@@ -3894,6 +3894,36 @@ static void render_optimized_source(
   pixman_region32_fini(&below.damage);
 }
 
+// The part of `entry` this frame draws, in buffer coordinates. The caller initializes and finishes the region.
+static void entry_render_region(
+    const struct render_list_entry* entry, const struct render_data* data, pixman_region32_t* render_region
+) {
+  struct wlr_scene_node* node = entry->node;
+  pixman_region32_copy(render_region, &node->visible);
+  pixman_region32_translate(render_region, -data->logical.x, -data->logical.y);
+  // Blur draws the raw backdrop: the 1 px safety expansion for fractional scales would show it outside its clip.
+  logical_to_buffer_coords(render_region, data, node->type != WLR_SCENE_NODE_BLUR);
+  pixman_region32_intersect(render_region, render_region, &data->damage);
+  if (data->overlay_entry != NULL && entry >= data->overlay_entry) {
+    pixman_region32_intersect(render_region, render_region, data->overlay_clip);
+  }
+  if (data->faded_entry != NULL && !data->optimized_source && data->entries <= data->faded_entry
+      && entry > data->faded_entry && entry < data->entries + data->entry_count
+      && node->type != WLR_SCENE_NODE_OPTIMIZED_BLUR) {
+    pixman_region32_subtract(render_region, render_region, &data->faded);
+  }
+  if (node->type == WLR_SCENE_NODE_BUFFER && wlr_scene_buffer_from_node(node)->has_content_region) {
+    // The buffer draws nothing outside its content region, so a mostly transparent surface costs only its content.
+    pixman_region32_t content;
+    pixman_region32_init(&content);
+    pixman_region32_copy(&content, &wlr_scene_buffer_from_node(node)->content_region);
+    pixman_region32_translate(&content, entry->x - data->logical.x, entry->y - data->logical.y);
+    logical_to_buffer_coords(&content, data, true);
+    pixman_region32_intersect(render_region, render_region, &content);
+    pixman_region32_fini(&content);
+  }
+}
+
 static void scene_entry_render(struct render_list_entry* entry, const struct render_data* data) {
   struct wlr_scene_node* node = entry->node;
   // Backdrop effects are not part of a window's shadow caster. Shadows are
@@ -3908,29 +3938,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
 
   pixman_region32_t render_region;
   pixman_region32_init(&render_region);
-  pixman_region32_copy(&render_region, &node->visible);
-  pixman_region32_translate(&render_region, -data->logical.x, -data->logical.y);
-  // Blur draws the raw backdrop: the 1 px safety expansion for fractional scales would show it outside its clip.
-  logical_to_buffer_coords(&render_region, data, node->type != WLR_SCENE_NODE_BLUR);
-  pixman_region32_intersect(&render_region, &render_region, &data->damage);
-  if (data->overlay_entry != NULL && entry >= data->overlay_entry) {
-    pixman_region32_intersect(&render_region, &render_region, data->overlay_clip);
-  }
-  if (data->faded_entry != NULL && !data->optimized_source && data->entries <= data->faded_entry
-      && entry > data->faded_entry && entry < data->entries + data->entry_count
-      && node->type != WLR_SCENE_NODE_OPTIMIZED_BLUR) {
-    pixman_region32_subtract(&render_region, &render_region, &data->faded);
-  }
-  if (node->type == WLR_SCENE_NODE_BUFFER && wlr_scene_buffer_from_node(node)->has_content_region) {
-    // The buffer draws nothing outside its content region, so a mostly transparent surface costs only its content.
-    pixman_region32_t content;
-    pixman_region32_init(&content);
-    pixman_region32_copy(&content, &wlr_scene_buffer_from_node(node)->content_region);
-    pixman_region32_translate(&content, entry->x - data->logical.x, entry->y - data->logical.y);
-    logical_to_buffer_coords(&content, data, true);
-    pixman_region32_intersect(&render_region, &render_region, &content);
-    pixman_region32_fini(&content);
-  }
+  entry_render_region(entry, data, &render_region);
   if (pixman_region32_empty(&render_region)) {
     pixman_region32_fini(&render_region);
     return;
@@ -4898,10 +4906,76 @@ static void render_background(
     const pixman_region32_t* clip, enum wlr_render_blend_mode blend_mode
 );
 
+// A live blur node fx_render_pass_add_blur can composite from a shared blur: it blurs what is under it now (no cache)
+// and keeps a blur pass at its strength. Its backdrop probe reads the shared blur.
+static bool blur_entry_shareable(
+    const struct render_list_entry* entry, struct wlr_scene_node* stop, const struct render_data* data
+) {
+  if (entry->node->type != WLR_SCENE_NODE_BLUR || data->shadow_capture
+      || excluded_from_backdrop(entry->node, data->backdrop_group)
+      || excluded_from_backdrop(entry->node, data->workspace_group)
+      || outer_animation(entry->node, stop, fx_get_render_pass(data->render_pass)->buffer->renderer) != NULL) {
+    return false;
+  }
+  const struct wlr_scene_blur* blur = wlr_scene_blur_from_node(entry->node);
+  struct blur_data applied = blur_data_apply_strength(&data->output->scene->blur_data, blur->strength);
+  return !blur_samples_cache(blur) && is_scene_blur_enabled(&applied);
+}
+
+// Live blur nodes drawn one after another blur their backdrop once, together. Starts the shared blur for the run
+// beginning at entries[i] and returns the index of its last entry, or -1 when it holds fewer than two nodes.
+static int begin_shared_blur_run(
+    struct render_list_entry* entries, int i, int low, struct wlr_scene_node* stop, const struct render_data* data
+) {
+  // ANDROMEDA_SHARED_BLUR=0 blurs each node on its own, for A/B runs.
+  static int enabled = -1;
+  if (enabled < 0) {
+    const char* env = getenv("ANDROMEDA_SHARED_BLUR");
+    enabled = env == NULL || strcmp(env, "0") != 0;
+  }
+  if (!enabled || !blur_entry_shareable(&entries[i], stop, data)) {
+    return -1;
+  }
+  const float strength = wlr_scene_blur_from_node(entries[i].node)->strength;
+  int end = i;
+  while (end > low && blur_entry_shareable(&entries[end - 1], stop, data)
+         && wlr_scene_blur_from_node(entries[end - 1].node)->strength == strength) {
+    end--;
+  }
+  if (end == i) {
+    return -1;
+  }
+  pixman_region32_t clip, lens;
+  pixman_region32_init(&clip);
+  pixman_region32_init(&lens);
+  for (int k = i; k >= end; k--) {
+    pixman_region32_t region;
+    pixman_region32_init(&region);
+    entry_render_region(&entries[k], data, &region);
+    pixman_region32_union(&clip, &clip, &region);
+    const struct wlr_scene_blur* blur = wlr_scene_blur_from_node(entries[k].node);
+    if (blur->lens > 0.0f && blur_node_is_glass(blur) && pixman_region32_not_empty(&region)) {
+      struct wlr_box box = {.x = entries[k].x - data->logical.x, .y = entries[k].y - data->logical.y};
+      scene_node_get_size(entries[k].node, &box.width, &box.height);
+      transform_output_box(&box, data);
+      pixman_region32_union_rect(&lens, &lens, box.x, box.y, box.width, box.height);
+    }
+    pixman_region32_fini(&region);
+  }
+  const bool shared = pixman_region32_not_empty(&clip)
+      && fx_render_pass_begin_shared_blur(
+                          fx_get_render_pass(data->render_pass), &clip, &data->output->scene->blur_data, strength, &lens
+      );
+  pixman_region32_fini(&clip);
+  pixman_region32_fini(&lens);
+  return shared ? end : -1;
+}
+
 static void render_animated_range(
     struct render_list_entry* entries, int high, int low, struct wlr_scene_node* stop, const struct render_data* data
 ) {
   struct fx_gles_render_pass* pass = fx_get_render_pass(data->render_pass);
+  int shared_end = -1;
   for (int i = high; i >= low;) {
     if (excluded_from_backdrop(entries[i].node, data->backdrop_group)
         || excluded_from_backdrop(entries[i].node, data->workspace_group)) {
@@ -4910,8 +4984,15 @@ static void render_animated_range(
     }
     struct scene_animation* animation = outer_animation(entries[i].node, stop, pass->buffer->renderer);
     if (animation == NULL) {
+      if (shared_end < 0) {
+        shared_end = begin_shared_blur_run(entries, i, low, stop, data);
+      }
       if (entries[i].node->type != WLR_SCENE_NODE_SHADOW || !render_animation_shadow(&entries[i], data)) {
         scene_entry_render(&entries[i], data);
+      }
+      if (i == shared_end) {
+        fx_render_pass_end_shared_blur(pass);
+        shared_end = -1;
       }
       i--;
       continue;
