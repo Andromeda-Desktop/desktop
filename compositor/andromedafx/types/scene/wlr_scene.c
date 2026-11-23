@@ -4958,6 +4958,15 @@ static int begin_shared_blur_run(
       struct wlr_box box = {.x = entries[k].x - data->logical.x, .y = entries[k].y - data->logical.y};
       scene_node_get_size(entries[k].node, &box.width, &box.height);
       transform_output_box(&box, data);
+      // The lens reads only its liquid box, as fx_render_pass_add_blur's own copy does.
+      if (!wlr_box_empty(&blur->liquid_box)) {
+        box = (struct wlr_box){
+            .x = box.x + (int)lround(blur->liquid_box.x * data->scale),
+            .y = box.y + (int)lround(blur->liquid_box.y * data->scale),
+            .width = (int)lround(blur->liquid_box.width * data->scale),
+            .height = (int)lround(blur->liquid_box.height * data->scale),
+        };
+      }
       pixman_region32_union_rect(&lens, &lens, box.x, box.y, box.width, box.height);
     }
     pixman_region32_fini(&region);
