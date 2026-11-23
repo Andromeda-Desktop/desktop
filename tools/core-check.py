@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Fail when code bypasses a core owner (.agent/TASK-core.md): each rule bans a call pattern outside its owner files.
+
+Today's violations are listed in tools/core-check-allow.txt as "rule path count"; a count may only fall.
+--update rewrites the list after a count fell; it refuses when any count rose.
+"""
+import os
+import re
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ALLOW = os.path.join(ROOT, "tools/core-check-allow.txt")
+CPP = (".c", ".cc", ".cpp", ".h", ".hpp")
+CPP_DIRS = ("compositor/src/", "shell/src/", "libdesk-ui/src/", "libdesk-app/src/", "libdesk-system/src/",
+            "libdesk-term/src/", "apps/", "portal/src/", "indexer/src/", "andromeda-preview/", "session/", "system/")
+SKIP = re.compile(r"(^|/)(tests?|subprojects|build[^/]*|greeter)/|_test\.|^shell/src/greeter/|^greeter/")
+
+# id: (why and owner, path prefixes, suffixes, pattern, owner paths exempt from the rule)
+RULES = {
+    "blur-mark": ("the scene keys its blur cache; no hand marks (C1)", ("compositor/src/",), CPP,
+                  r"markBlurBackgroundDirty|wlr_scene_optimized_blur_mark_dirty", ()),
+    "blur-create": ("blur nodes come from SurfaceBlur (C1b)", ("compositor/src/",), CPP,
+                    r"\bwlr_scene_blur_create\(", ("compositor/src/scene/surface_blur.cpp",)),
+    "shadow-create": ("shadows come from SurfaceShadow (C3)", ("compositor/src/",), CPP,
+                      r"\bwlr_scene_shadow_create\(", ("compositor/src/scene/surface_shadow.cpp",)),
+    "schedule-frame": ("redraws go through the Output frame owner (C8)", ("compositor/src/",), CPP,
+                       r"\bwlr_output_schedule_frame\(", ("compositor/src/output/",)),
+    "output-at": ("output under a point via Server::outputAt (C11)", ("compositor/src/",), CPP,
+                  r"\bwlr_output_layout_output_at\(", ()),
+    "glass-raw": ("island glass via GlassSurface (C6)", ("shell/src/",), CPP,
+                  r"\bsetGlassMaterial\(|\bsetPaletteTone\(", ()),
+    "shell-timer": ("shell repeats under 1 s or of unknown interval go through the frame host (C5)",
+                    ("shell/src/shell/",), CPP, r"\bstartRepeating\((?!\s*std::chrono::(seconds|minutes|hours)\b)", ()),
+    "const-frame-tick": ("needsFrameTick states a fact, never a constant true (C5)", ("shell/src/",), CPP,
+                         r"needsFrameTick\(\)[^{;]*\{\s*return\s+true;", ()),
+    "hand-spring": ("springs from tokens via Style::spring (C11)", CPP_DIRS, CPP,
+                    r"\.damping\s*=\s*[\w.:>-]+\.damping\b", ("libdesk-ui/src/ui/style.h",)),
+    "radius-scale": ("radii through scaledRadius (C11)", CPP_DIRS, CPP, r"Tokens::radius\w*\s*\*",
+                     ("libdesk-ui/src/ui/style.cpp",)),
+    "settings-control": ("settings rows via SettingsControlFactory", ("shell/src/shell/settings/",), CPP,
+                         r"\bui::(toggle|slider)\(", ("shell/src/shell/settings/settings_control_factory.cpp",)),
+    "shell-string": ("no sh -c command strings (C12)", CPP_DIRS, CPP, r"\"(/bin/)?sh\"\s*,\s*\"-c\"", ()),
+    "raw-spawn": ("child processes via libdesk-system process (C12)", CPP_DIRS, CPP,
+                  r"\b(v?fork|posix_spawnp?)\s*\(", ("libdesk-system/src/core/process/",)),
+    "exit-poll": ("child exit by pidfd in libdesk-system process (C12)", CPP_DIRS, CPP, r"\bWNOHANG\b",
+                  ("libdesk-system/src/core/process/",)),
+    "heap-trim": ("heap trim via sys::releaseFreeHeap (C12)", CPP_DIRS, CPP, r"\bmalloc_trim\s*\(",
+                  ("libdesk-ui/src/core/sys/sys_linux.cpp",)),
+    "sync-image": ("Image decides sync or async decode (C14)", ("shell/src/",), CPP, r"\bsetSourceFile\(", ()),
+    "rust-drop": ("D-Bus and job errors are logged, not dropped (C13)", ("system/", "apps/", "andromeda-preview/"),
+                  (".rs",), r"let _ = [^;]*\.await|\.await\.ok\(\)", ()),
+    "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
+                       ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
+}
+
+
+def tracked():
+    out = subprocess.run(["git", "-C", ROOT, "ls-files", "--cached", "--others", "--exclude-standard"], capture_output=True, text=True, check=True).stdout
+    return [p for p in out.splitlines() if not SKIP.search(p) and os.path.isfile(os.path.join(ROOT, p))]
+
+
+def scan():
+    found = {}
+    files = tracked()
+    for rule, (_, dirs, suffixes, pattern, owners) in RULES.items():
+        rx = re.compile(pattern, re.M)
+        for path in files:
+            if not path.startswith(dirs) or not path.endswith(suffixes) or path.startswith(owners):
+                continue
+            text = open(os.path.join(ROOT, path), encoding="utf-8", errors="replace").read()
+            hits = rx.findall(text) if rule != "app-executable" else [
+                m.group(1) for m in rx.finditer(text) if f"shared_library('{m.group(1)}'" not in text]
+            if hits:
+                found[(rule, path)] = len(hits)
+    return found
+
+
+def load():
+    allow = {}
+    if os.path.exists(ALLOW):
+        for line in open(ALLOW):
+            if line.strip() and not line.startswith("#"):
+                rule, path, count = line.split()
+                allow[(rule, path)] = int(count)
+    return allow
+
+
+def write(found):
+    with open(ALLOW, "w") as f:
+        f.write("# core-check allowlist: rule path count. Counts only fall; tools/core-check.py --update after a fix.\n")
+        for (rule, path), count in sorted(found.items()):
+            f.write(f"{rule} {path} {count}\n")
+
+
+def main():
+    found, allow = scan(), load()
+    if "--init" in sys.argv:
+        write(found)
+        print(f"core-check: wrote {len(found)} entries")
+        return 0
+    rose = {k: v for k, v in found.items() if v > allow.get(k, 0)}
+    fell = {k: v for k, v in allow.items() if found.get(k, 0) < v}
+    for (rule, path), count in sorted(rose.items()):
+        print(f"core-check: {path}: {rule} x{count} (allowed {allow.get((rule, path), 0)}): {RULES[rule][0]}")
+    if rose:
+        return 1
+    if fell and "--update" in sys.argv:
+        write(found)
+    elif fell:
+        print(f"core-check: {len(fell)} counts fell; tighten with tools/core-check.py --update")
+    total = sum(found.values())
+    print(f"core-check: ok, {total} allowlisted violations in {len(RULES)} rules")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

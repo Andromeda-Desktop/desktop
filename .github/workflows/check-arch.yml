@@ -48,6 +48,8 @@ jobs:
           workspaces: |
             link
             system
+      - name: Core owners
+        run: just core-check
       - name: Build
         run: just build
       # The repo's caches share 10 GiB: trim to 1.2G (least recently used first) so the release caches survive.

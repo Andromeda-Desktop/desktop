@@ -119,6 +119,10 @@ e2e-run +scripts:
 modules:
     @tools/module-check.py
 
+# Core owners: fails when code bypasses an owner (.agent/TASK-core.md); --update tightens tools/core-check-allow.txt.
+core-check *flags:
+    @tools/core-check.py {{flags}}
+
 # Cross-builds and links the portable libdesk-app and libdesk-ui for arm64 macOS: fails when Linux-only code leaves the platform layer.
 macos-check:
     #!/usr/bin/env bash
@@ -138,7 +142,7 @@ macos-check:
 macos-terminal:
     tools/macos/terminal.sh
 
-check: modules test link system
+check: modules core-check test link system
     cd compositor && just check
     just e2e
 
