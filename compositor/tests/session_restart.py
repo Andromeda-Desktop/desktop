@@ -142,6 +142,8 @@ def main(binary, mode):
                                           "--print-address=1", "--print-pid=1"],
                                          capture_output=True, text=True, check=True).stdout.split()
                     environment["DBUS_SYSTEM_BUS_ADDRESS"] = bus[0]
+                    # A headless compositor holds no sleep unless a test asks for it.
+                    environment["ANDROMEDA_TEST_SLEEP_HOLD"] = "1"
                     logind_log = root / "logind.log"
                     logind = subprocess.Popen([sys.executable, "-I", str(E2E / "fake_logind.py")], text=True,
                                               stdin=subprocess.PIPE, stdout=logind_log.open("w"),
