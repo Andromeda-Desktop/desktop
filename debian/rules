@@ -13,6 +13,13 @@ override_dh_auto_build:
 override_dh_auto_install:
 	pkg/deb-build.sh install
 
+# The update helper runs the apt commit that configures this package: a restart of it, or a start of recover while
+# the journal exists, waits on the commit that waits on the postinst. The helper is D-Bus activated and idles out.
+override_dh_installsystemd:
+	dh_installsystemd -Nandromeda-system
+	dh_installsystemd -pandromeda-system andromeda-system.service andromeda-update-tonight.timer
+	dh_installsystemd -pandromeda-system --no-start --no-stop-on-upgrade andromeda-update-helper.service andromeda-update-recover.service andromeda-update-tonight.service
+
 # libandromeda-desk.so and the app modules sit in the private dir /usr/lib/andromeda.
 override_dh_shlibdeps:
 	dh_shlibdeps -l$(CURDIR)/debian/andromeda-libdesk/usr/lib/andromeda:$(CURDIR)/debian/andromeda-files/usr/lib/andromeda:$(CURDIR)/debian/andromeda-terminal/usr/lib/andromeda
