@@ -60,31 +60,68 @@ namespace andromeda {
     if (!m_fade.animating() || scaleOnlyOpening()) {
       return false;
     }
-    return m_customFade || (!m_inScratchpad && effectRegistry().lifecycleEffect(AnimationEvent::WindowsIn) != nullptr);
+    return m_customFade
+        || (!m_inScratchpad && !fadeInPlace() && effectRegistry().lifecycleEffect(AnimationEvent::WindowsIn) != nullptr);
+  }
+
+  // The built-in fade of one fully opaque surface with no subsurface, popup, title bar or chrome: no node covers
+  // another and the blur stays hidden, so each node drawn at the fade alpha gives the composited pixels without the
+  // offscreen pass.
+  bool View::fadeInPlace() const {
+    wlr_surface* surface = rootSurface();
+    if (m_customFade || surface == nullptr) {
+      return false;
+    }
+    wlr_subsurface* child;
+    wl_list_for_each(child, &surface->current.subsurfaces_below, current.link) {
+      if (child->surface->mapped) {
+        return false;
+      }
+    }
+    wl_list_for_each(child, &surface->current.subsurfaces_above, current.link) {
+      if (child->surface->mapped) {
+        return false;
+      }
+    }
+    return titleBarHeight() == 0 && m_chromeAttachment == nullptr
+        && (m_toplevel == nullptr || wl_list_empty(&m_toplevel->base->popups)) && opacityWithoutFade() >= 1.0F
+        && shapeCoversSurface() && contentOpaque();
+  }
+
+  float View::opacityWithoutFade() const {
+    const float ruleOpacity = scheduledFullscreen() && config().appearance.opaqueFullscreen ? 1.0F : m_ruleOpacity;
+    return ruleOpacity * m_dragOpacity * m_overviewOpacity * static_cast<float>(m_focusDim.current());
   }
 
   float View::effectiveOpacity() const {
     // Overshooting curves can push this past [0, 1]; wlr_scene_buffer_set_opacity asserts.
-    const float ruleOpacity = scheduledFullscreen() && config().appearance.opaqueFullscreen ? 1.0F : m_ruleOpacity;
     const float fade = fadeComposited() ? 1.0F : m_fadeAlpha;
-    return std::clamp(
-        fade * ruleOpacity * m_dragOpacity * m_overviewOpacity * static_cast<float>(m_focusDim.current()), 0.0F, 1.0F
-    );
+    return std::clamp(fade * opacityWithoutFade(), 0.0F, 1.0F);
   }
 
-  bool View::fullscreenOpaque() const {
+  bool View::shapeCoversSurface() const {
     wlr_surface* surface = rootSurface();
     if (m_xsurface != nullptr) {
       if (const pixman_region32_t* shape = m_server->xwayland()->surfaceShape(surface)) {
         const pixman_box32_t bounds{0, 0, surface->current.width, surface->current.height};
-        if (pixman_region32_contains_rectangle(shape, &bounds) != PIXMAN_REGION_IN) {
-          return false;
-        }
+        return pixman_region32_contains_rectangle(shape, &bounds) == PIXMAN_REGION_IN;
       }
+    }
+    return true;
+  }
+
+  bool View::fullscreenOpaque() const {
+    if (!shapeCoversSurface()) {
+      return false;
     }
     if (config().appearance.opaqueFullscreen) {
       return true;
     }
+    return contentOpaque();
+  }
+
+  bool View::contentOpaque() const {
+    wlr_surface* surface = rootSurface();
     if (m_ruleOpacity < 1.0F) {
       return false;
     }
@@ -921,7 +958,7 @@ namespace andromeda {
       m_dragSlotBound = false;
     }
     bindAnimationEffect(&target->node, AnimationEvent::DimUnfocused, m_focusDim);
-    if (!m_inScratchpad && scaleOnlyOpening()) {
+    if (!m_inScratchpad && (scaleOnlyOpening() || (m_fade.animating() && fadeInPlace()))) {
       wlr_scene_node_set_animation(&target->node, static_cast<unsigned>(AnimationEvent::WindowsIn), nullptr, nullptr);
     } else {
       bindAnimationEffect(&target->node, m_inScratchpad ? AnimationEvent::Scratchpad : AnimationEvent::WindowsIn, m_fade);

@@ -735,6 +735,10 @@ namespace andromeda {
     [[nodiscard]] bool fullscreenOpaque() const;
     // The lifecycle fade runs through a whole-window shader, so buffers and borders stay opaque under it.
     [[nodiscard]] bool fadeComposited() const;
+    [[nodiscard]] bool fadeInPlace() const;
+    [[nodiscard]] float opacityWithoutFade() const;
+    [[nodiscard]] bool shapeCoversSurface() const;
+    [[nodiscard]] bool contentOpaque() const;
     void applyEffectiveOpacity();
     void watchViewSurfaceTree(wlr_surface* root, wlr_subsurface* attachment = nullptr);
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);

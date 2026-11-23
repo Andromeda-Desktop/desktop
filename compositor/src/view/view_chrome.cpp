@@ -330,7 +330,8 @@ namespace andromeda {
       pixman_region32_translate(&region, -geometryBox().x, -geometryBox().y);
     }
     m_decoration.updateBlur(
-        m_contentTree, rootSurface(), nodeBox, geometryBox(), corners, nullptr, effectiveOpacity(), m_fadeAlpha,
+        m_contentTree, rootSurface(), nodeBox, geometryBox(), corners, nullptr,
+        fadeInPlace() ? 1.0F : effectiveOpacity(), m_fadeAlpha,
         surfaceRegion != nullptr ? &region : nullptr
     );
     pixman_region32_fini(&region);
