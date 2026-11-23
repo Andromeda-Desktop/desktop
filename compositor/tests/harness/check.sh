@@ -543,6 +543,8 @@ start_instance() {
   local log=$RUNTIME_DIR/compositor.log
   local config=$RUNTIME_DIR/config.toml
   local socket=$RUNTIME_DIR/andromeda-wayland-0.sock
+  # Parallel instances all name their output HEADLESS-1, so one shared frame log mixes their frames.
+  [[ -z ${ANDROMEDA_FRAME_LOG:-} ]] || export ANDROMEDA_FRAME_LOG=$RUNTIME_DIR/frames.log
   if [[ -n $cursor_theme ]]; then
     export XCURSOR_PATH="$RUNTIME_DIR/icons"
     export XCURSOR_THEME=$cursor_theme
