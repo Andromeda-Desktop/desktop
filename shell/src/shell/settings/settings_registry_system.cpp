@@ -436,6 +436,9 @@ namespace settings {
     // Idle
     auto idleRows = generateSchemaEntries(noctalia::config::schema::idleSchema(), cfg.idle, {"idle"});
     appendRow(entries, idleRows, "pre_action_fade_seconds");
+    appendRow(entries, idleRows, "lock_on_leave");
+    appendRow(entries, idleRows, "leave_delay_seconds");
+    appendRow(entries, idleRows, "wake_on_approach");
     entries.push_back(makeEntry(
         SettingsSection::Power, "idle", tr("settings.schema.idle.behaviors.label"),
         tr("settings.schema.idle.behaviors.description"), {"idle", "behavior"},

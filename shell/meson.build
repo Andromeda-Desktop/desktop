@@ -448,6 +448,7 @@ _noctalia_source_paths = [
   'src/idle/idle_inhibitor.cpp',
   'src/idle/idle_grace_overlay.cpp',
   'src/idle/idle_manager.cpp',
+  'src/idle/presence_watch.cpp',
   'src/idle/plugin_idle_watches.cpp',
   'src/ipc/ipc_client.cpp',
   'src/ipc/ipc_events.cpp',
@@ -1462,6 +1463,13 @@ if build_tests
     override_options: ['b_ndebug=false'],
   )
   test('idle_manager', idle_manager_exe)
+
+  presence_watch_exe = executable('presence_watch_test',
+    sources: files('tests/presence_watch_test.cpp'),
+    dependencies: [noctalia_core_dep],
+    override_options: ['b_ndebug=false'],
+  )
+  test('presence_watch', presence_watch_exe)
 
   test('design_lint', find_program('python3'),
     args: [meson.project_source_root() / '..' / 'docs' / 'design' / 'design_lint.py', '--root', meson.project_source_root() / '..'])

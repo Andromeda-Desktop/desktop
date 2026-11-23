@@ -3933,9 +3933,21 @@
           "description": "Named idle actions with presets (lock, screen off, suspend) or custom commands, timeouts, resume pairing, and order",
           "label": "Behaviors"
         },
+        "leave-delay": {
+          "description": "Seconds from the dim to the lock after you leave",
+          "label": "Lock Delay After Leaving"
+        },
+        "lock-on-leave": {
+          "description": "Dim and lock the screen when the presence sensor sees you leave",
+          "label": "Lock When I Leave"
+        },
         "pre-action-fade": {
           "description": "Seconds of fullscreen dim before the idle command (0 disables)",
           "label": "Fade Before Idle Action"
+        },
+        "wake-on-approach": {
+          "description": "Turn the screen on when you come back within a minute after it turned off",
+          "label": "Wake When I Come Back"
         }
       },
       "keybinds": {

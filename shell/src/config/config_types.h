@@ -358,6 +358,11 @@ struct IdleConfig {
   /// (component.lock.idle_warning_dim) over this many seconds, then runs `command`. Compositor activity during
   /// the fade cancels. When 0, the idle command runs immediately with no overlay.
   float preActionFadeSeconds = 10.0F;
+  // The presence sensor (System1 Sensors.ClaimPresence): dim, then lock leaveDelaySeconds after you leave; wake a
+  // blanked screen when you come back within a minute.
+  bool lockOnLeave = false;
+  bool wakeOnApproach = false;
+  int leaveDelaySeconds = 30;
 
   bool operator==(const IdleConfig&) const = default;
 };

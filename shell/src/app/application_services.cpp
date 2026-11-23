@@ -2284,6 +2284,56 @@ void Application::applyBrightnessSchedule() {
   m_brightnessScheduleTimer.start(delay, [this] { applyBrightnessSchedule(); });
 }
 
+void Application::syncPresenceSettings() {
+  const auto& idle = m_configService.config().idle;
+  const bool bus = m_systemBus != nullptr;
+  applyPresence(m_presenceWatch.setSettings({
+      .lockOnLeave = bus && idle.lockOnLeave && m_configService.isLockScreenEnabled(),
+      .wakeOnApproach = bus && idle.wakeOnApproach,
+      .leaveDelaySeconds = idle.leaveDelaySeconds,
+  }));
+}
+
+void Application::applyPresence(const PresenceWatch::Effects& effects) {
+  if (effects.dimChanged) {
+    applyIdleDim(m_presenceWatch.dimmed());
+  }
+  if (effects.lock && m_configService.isLockScreenEnabled()) {
+    (void)m_sessionActionRunner.lock();
+  }
+  if (effects.wake) {
+    (void)setOutputPower(true);
+  }
+  if (effects.rearm) {
+    if (const auto delay = m_presenceWatch.timerDelay(); delay.has_value()) {
+      m_presenceTimer.start(*delay, [this] { applyPresence(m_presenceWatch.timer(m_idleManager.liveIdleSeconds())); });
+    } else {
+      m_presenceTimer.stop();
+    }
+  }
+  // Deferred: a change can come from the client's own D-Bus callback, which must not destroy the client.
+  if (m_presenceWatch.claimed() != (m_presence != nullptr)) {
+    DeferredCall::callLater([this] { syncPresenceClaim(); });
+  }
+}
+
+void Application::syncPresenceClaim() {
+  if (m_presenceWatch.claimed() == (m_presence != nullptr)) {
+    return;
+  }
+  if (!m_presenceWatch.claimed()) {
+    m_presence.reset();
+    return;
+  }
+  try {
+    m_presence = std::make_unique<PresenceService>(*m_systemBus, [this](Presence presence) {
+      applyPresence(m_presenceWatch.reading(presence));
+    });
+  } catch (const std::exception& e) {
+    kLog.warn("presence sensing disabled: {}", e.what());
+  }
+}
+
 // The idle "dim" behavior halves each display's brightness (not below 0.05) and restores it on input, unless the user
 // moved the brightness meanwhile.
 void Application::applyIdleDim(bool dim) {

@@ -26,6 +26,7 @@
 #include "idle/idle_grace_overlay.h"
 #include "idle/idle_inhibitor.h"
 #include "idle/idle_manager.h"
+#include "idle/presence_watch.h"
 #include "idle/plugin_idle_watches.h"
 #include "shell/polkit/askpass_broker.h"
 #include "shell/polkit/auth_dialog_state.h"
@@ -398,6 +399,14 @@ private:
   std::map<std::string, float> m_ambientSet;
   double m_ambientLux = -1.0;
   void syncAmbientLight();
+  // Lock-on-leave and wake-on-approach (idle.lock_on_leave, idle.wake_on_approach): the claim exists iff the watch
+  // asks for it.
+  PresenceWatch m_presenceWatch;
+  std::unique_ptr<PresenceService> m_presence;
+  Timer m_presenceTimer;
+  void syncPresenceSettings();
+  void applyPresence(const PresenceWatch::Effects& effects);
+  void syncPresenceClaim();
   void applyBrightnessSchedule();
   Timer m_brightnessScheduleTimer;
   void applyAmbientLight(double lux);

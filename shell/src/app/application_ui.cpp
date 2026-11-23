@@ -350,6 +350,7 @@ void Application::initLockScreenAndSession() {
         m_idleGraceOverlay.hide();
         m_lockscreenWidgetsController.onLockStateChanged();
         m_idleManager.setSessionLocked(true);
+        applyPresence(m_presenceWatch.setLocked(true));
         m_screenTimeService.setSessionLocked(true);
         m_hookManager.fire(HookKind::SessionLocked);
         syncLockScreenDoNotDisturb();
@@ -364,6 +365,7 @@ void Application::initLockScreenAndSession() {
         m_idleGraceOverlay.hide();
         m_lockscreenWidgetsController.onLockStateChanged();
         m_idleManager.setSessionLocked(false);
+        applyPresence(m_presenceWatch.setLocked(false));
         m_screenTimeService.setSessionLocked(false);
         m_hookManager.fire(HookKind::SessionUnlocked);
         syncLockScreenDoNotDisturb();
@@ -391,6 +393,8 @@ void Application::initLockScreenAndSession() {
   m_compositorPlatform.setOutputPowerChangeCallback([this] {
     m_lockScreen.onOutputPowerChanged();
     syncLockStreamPause();
+    const auto states = m_compositorPlatform.outputPowerStates();
+    applyPresence(m_presenceWatch.setScreenOn(states.empty() || std::ranges::any_of(states, [](const auto& s) { return s.second; })));
   });
   if (m_logindService != nullptr) {
     m_logindService->setSessionLockIntegrationEnabled(m_configService.isLockScreenEnabled());
@@ -1129,8 +1133,12 @@ void Application::initNotificationAndOsd() {
   );
   m_idleManager.setLiveIdleChangeCallback([this] {
     DeferredCall::callLater([this] { m_settingsWindow.onIdleLiveStatusChanged(); });
+    if (m_idleManager.liveIdleSeconds() == 0) {
+      applyPresence(m_presenceWatch.activity());
+    }
   });
   m_idleManager.reload(m_configService.config().idle);
+  syncPresenceSettings();
   m_screenSaverModule = m_services.add<ScreenSaverModule>(m_systemBus.get());
   if (!m_services.start(m_configService.config())) {
     kLog.error("service modules: {}", m_services.error());
@@ -1149,6 +1157,7 @@ void Application::initNotificationAndOsd() {
       [this] {
         if (m_configService.lastChange().idle) {
           m_idleManager.reload(m_configService.config().idle);
+          syncPresenceSettings();
         }
       },
       "idle"

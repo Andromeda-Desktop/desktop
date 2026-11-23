@@ -1970,6 +1970,36 @@ namespace noctalia::config::schema {
                 .range = {0.0, 30.0, 1.0},
             }
         ),
+        field(
+            &IdleConfig::lockOnLeave, "lock_on_leave",
+            RowSpec{
+                .section = "power",
+                .group = "idle",
+                .label = "idle.lock-on-leave",
+                .tags = "presence sensor away walk leave lock dim",
+            }
+        ),
+        field(
+            &IdleConfig::leaveDelaySeconds, "leave_delay_seconds", Range<std::int64_t>{5, 600},
+            RowSpec{
+                .kind = RowSpec::Kind::Stepper,
+                .section = "power",
+                .group = "idle",
+                .label = "idle.leave-delay",
+                .tags = "presence sensor away leave lock seconds",
+                .suffix = "s",
+                .range = {5.0, 300.0, 5.0},
+            }
+        ),
+        field(
+            &IdleConfig::wakeOnApproach, "wake_on_approach",
+            RowSpec{
+                .section = "power",
+                .group = "idle",
+                .label = "idle.wake-on-approach",
+                .tags = "presence sensor approach return wake screen",
+            }
+        ),
         // behavior_order is emitted here (vector order); the actual reorder runs
         // last, after the behavior map has been read.
         custom<IdleConfig>(
