@@ -3,7 +3,7 @@
 #include <cassert>
 
 PresenceWatch::Mode PresenceWatch::watchMode() const {
-  if (!m_settings.lockOnLeave || m_locked || !m_screenOn) {
+  if (m_settings.onLeave == Leave::Off || m_locked || !m_screenOn) {
     return Mode::Off;
   }
   return m_presence == Presence::Absent ? Mode::Leaving : Mode::Watching;
@@ -47,7 +47,9 @@ PresenceWatch::Effects PresenceWatch::settle() {
 
 PresenceWatch::Effects PresenceWatch::setSettings(const Settings& settings) {
   m_settings = settings;
-  return settle();
+  Effects effects = settle();
+  effects.rearm = true;
+  return effects;
 }
 
 PresenceWatch::Effects PresenceWatch::setLocked(bool locked) {
@@ -98,6 +100,9 @@ PresenceWatch::Effects PresenceWatch::timer(std::int64_t idleSeconds) {
     }
     break;
   case Mode::Away:
+    if (m_settings.onLeave != Leave::Lock) {
+      break;
+    }
     if (idleSeconds >= kDebounceSeconds + m_settings.leaveDelaySeconds) {
       transition(Mode::Locking, effects);
       effects.lock = true;
@@ -123,6 +128,9 @@ std::optional<std::chrono::seconds> PresenceWatch::timerDelay() const {
   case Mode::Leaving:
     return std::chrono::seconds(kDebounceSeconds);
   case Mode::Away:
+    if (m_settings.onLeave != Leave::Lock) {
+      return std::nullopt;
+    }
     return std::chrono::seconds(m_settings.leaveDelaySeconds);
   case Mode::Waking:
   case Mode::Approach:

@@ -25,7 +25,7 @@ namespace {
 
     void apply(const PresenceWatch::Effects& effects) {
       if (effects.lock) {
-        TEST_CHECK(settings.lockOnLeave && !locked && screenOn && presence == Presence::Absent && !inhibited);
+        TEST_CHECK(settings.onLeave == PresenceWatch::Leave::Lock && !locked && screenOn && presence == Presence::Absent && !inhibited);
         const std::int64_t need = PresenceWatch::kDebounceSeconds + settings.leaveDelaySeconds;
         TEST_CHECK(absentSince.has_value() && now - *absentSince >= need);
         TEST_CHECK(now - lastInput >= need);
@@ -39,17 +39,17 @@ namespace {
       }
       TEST_CHECK(watch.claimed() == (watch.mode() != PresenceWatch::Mode::Off));
       TEST_CHECK(watch.claimed() || !watch.dimmed());
-      if (!settings.lockOnLeave && !settings.wakeOnApproach) {
+      if (settings.onLeave == PresenceWatch::Leave::Off && !settings.wakeOnApproach) {
         TEST_CHECK(!watch.claimed());
       }
       if (watch.dimmed()) {
-        TEST_CHECK(settings.lockOnLeave && !locked && screenOn && presence == Presence::Absent);
+        TEST_CHECK(settings.onLeave != PresenceWatch::Leave::Off && !locked && screenOn && presence == Presence::Absent);
       }
       if (watch.mode() == PresenceWatch::Mode::Waking || watch.mode() == PresenceWatch::Mode::Approach) {
         TEST_CHECK(settings.wakeOnApproach && !screenOn);
       }
       if (watch.mode() == PresenceWatch::Mode::Watching || watch.mode() == PresenceWatch::Mode::Leaving) {
-        TEST_CHECK(settings.lockOnLeave && !locked && screenOn);
+        TEST_CHECK(settings.onLeave != PresenceWatch::Leave::Off && !locked && screenOn);
       }
       TEST_CHECK(deadline.has_value() == watch.timerDelay().has_value());
     }
@@ -106,7 +106,7 @@ namespace {
         }
         break;
       case 5:
-        w.settings = {.lockOnLeave = (rng() % 3) != 0, .wakeOnApproach = (rng() % 2) != 0,
+        w.settings = {.onLeave = static_cast<PresenceWatch::Leave>(rng() % 3), .wakeOnApproach = (rng() % 2) != 0,
                       .leaveDelaySeconds = 10 + static_cast<std::int64_t>(rng() % 50)};
         w.apply(w.watch.setSettings(w.settings));
         break;
@@ -120,7 +120,7 @@ namespace {
   // The plain walk-away path reaches the lock: present, then away with no input for debounce + delay.
   void walkAwayLocks() {
     World w;
-    w.settings = {.lockOnLeave = true, .leaveDelaySeconds = 20};
+    w.settings = {.onLeave = PresenceWatch::Leave::Lock, .leaveDelaySeconds = 20};
     w.apply(w.watch.setSettings(w.settings));
     w.presence = Presence::Absent;
     w.absentSince = 0;

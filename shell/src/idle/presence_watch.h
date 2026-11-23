@@ -14,13 +14,14 @@ public:
     Off,      // no claim
     Watching, // claimed: unlocked, screen on, nobody reported away
     Leaving,  // reported away; waits kDebounce of absence and input idle
-    Away,     // dimmed; waits leaveDelay, then locks
+    Away,     // dimmed; with Leave::Lock waits leaveDelay, then locks
     Locking,  // dimmed; lock requested
     Waking,   // screen off, nobody away yet: an approach needs an away reading first; ends after kWakeWindow
     Approach, // screen off after an away reading: wakes it on a present reading; ends after kWakeWindow
   };
+  enum class Leave : std::uint8_t { Off, Dim, Lock };
   struct Settings {
-    bool lockOnLeave = false;
+    Leave onLeave = Leave::Off;
     bool wakeOnApproach = false;
     std::int64_t leaveDelaySeconds = 30;
     bool operator==(const Settings&) const = default;

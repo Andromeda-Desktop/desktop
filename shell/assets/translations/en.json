@@ -3194,6 +3194,13 @@
           "zoom": "Zoom"
         }
       },
+      "idle": {
+        "on-leave": {
+          "dim": "Dim",
+          "lock": "Dim and Lock",
+          "off": "Off"
+        }
+      },
       "weather": {
         "unit": {
           "imperial": "Imperial",
@@ -3937,9 +3944,9 @@
           "description": "Seconds from the dim to the lock after you leave",
           "label": "Lock Delay After Leaving"
         },
-        "lock-on-leave": {
-          "description": "Dim and lock the screen when the presence sensor sees you leave",
-          "label": "Lock When I Leave"
+        "on-leave": {
+          "description": "What the screen does when the presence sensor sees you leave",
+          "label": "When I Leave"
         },
         "pre-action-fade": {
           "description": "Seconds of fullscreen dim before the idle command (0 disables)",

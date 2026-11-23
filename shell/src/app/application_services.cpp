@@ -2287,8 +2287,13 @@ void Application::applyBrightnessSchedule() {
 void Application::syncPresenceSettings() {
   const auto& idle = m_configService.config().idle;
   const bool bus = m_systemBus != nullptr;
+  using Leave = PresenceWatch::Leave;
+  Leave onLeave = idle.onLeave == "dim" ? Leave::Dim : idle.onLeave == "lock" ? Leave::Lock : Leave::Off;
+  if (onLeave == Leave::Lock && !m_configService.isLockScreenEnabled()) {
+    onLeave = Leave::Dim;
+  }
   applyPresence(m_presenceWatch.setSettings({
-      .lockOnLeave = bus && idle.lockOnLeave && m_configService.isLockScreenEnabled(),
+      .onLeave = bus ? onLeave : Leave::Off,
       .wakeOnApproach = bus && idle.wakeOnApproach,
       .leaveDelaySeconds = idle.leaveDelaySeconds,
   }));

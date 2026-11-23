@@ -1971,12 +1971,17 @@ namespace noctalia::config::schema {
             }
         ),
         field(
-            &IdleConfig::lockOnLeave, "lock_on_leave",
+            &IdleConfig::onLeave, "on_leave",
             RowSpec{
+                .kind = RowSpec::Kind::Select,
                 .section = "power",
                 .group = "idle",
-                .label = "idle.lock-on-leave",
+                .label = "idle.on-leave",
                 .tags = "presence sensor away walk leave lock dim",
+                .segmented = true,
+                .choices = {{"off", "settings.options.idle.on-leave.off"},
+                            {"dim", "settings.options.idle.on-leave.dim"},
+                            {"lock", "settings.options.idle.on-leave.lock"}},
             }
         ),
         field(
