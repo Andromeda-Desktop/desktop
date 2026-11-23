@@ -3177,10 +3177,13 @@ static struct fx_framebuffer* get_main_buffer_blur(
       fx_options->tex_options.base.dst_box.height, fx_options->tex_options.base.dst_box.x,
       fx_options->tex_options.base.dst_box.y
   );
+  // clip_box is optional: a shared blur has none.
+  const struct wlr_box tracy_clip =
+      fx_options->tex_options.clip_box != NULL ? *fx_options->tex_options.clip_box : (struct wlr_box){0};
   TRACY_ZONE_TEXT_f(
-      "clip_box (WxH, X, Y): %dx%d, %d, %d", fx_options->tex_options.clip_box->width,
-      fx_options->tex_options.clip_box->height, fx_options->tex_options.clip_box->x, fx_options->tex_options.clip_box->y
+      "clip_box (WxH, X, Y): %dx%d, %d, %d", tracy_clip.width, tracy_clip.height, tracy_clip.x, tracy_clip.y
   );
+  (void)tracy_clip;
   TRACY_ZONE_TEXT_f(
       "Corners (TL, TR, BL, BR): %f, %f, %f, %f", fx_options->corners.top_left, fx_options->corners.top_right,
       fx_options->corners.bottom_left, fx_options->corners.bottom_right
@@ -3911,10 +3914,13 @@ bool fx_render_pass_add_optimized_blur(
       fx_options->tex_options.base.dst_box.height, fx_options->tex_options.base.dst_box.x,
       fx_options->tex_options.base.dst_box.y
   );
+  // clip_box is optional: a shared blur has none.
+  const struct wlr_box tracy_clip =
+      fx_options->tex_options.clip_box != NULL ? *fx_options->tex_options.clip_box : (struct wlr_box){0};
   TRACY_ZONE_TEXT_f(
-      "clip_box (WxH, X, Y): %dx%d, %d, %d", fx_options->tex_options.clip_box->width,
-      fx_options->tex_options.clip_box->height, fx_options->tex_options.clip_box->x, fx_options->tex_options.clip_box->y
+      "clip_box (WxH, X, Y): %dx%d, %d, %d", tracy_clip.width, tracy_clip.height, tracy_clip.x, tracy_clip.y
   );
+  (void)tracy_clip;
   TRACY_ZONE_TEXT_f(
       "src_box (WxH, X, Y): %lfx%lf, %lf, %lf", fx_options->tex_options.base.src_box.width,
       fx_options->tex_options.base.src_box.height, fx_options->tex_options.base.src_box.x,
