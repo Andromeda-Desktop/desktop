@@ -20,7 +20,8 @@ namespace {
   constexpr auto kMaxSampleInterval = std::chrono::seconds(60);
 } // namespace
 
-AmbientLightService::AmbientLightService(SystemBus& bus, LuxCallback onLux) : m_onLux(std::move(onLux)) {
+AmbientLightService::AmbientLightService(SystemBus& bus, ReadingCallback onReading)
+    : m_onReading(std::move(onReading)) {
   m_proxy = sdbus::createProxy(bus.connection(), kBusName, kPath);
   sample();
 }
@@ -31,7 +32,7 @@ void AmbientLightService::sample() {
   const std::weak_ptr<int> alive = m_lifetimeToken;
   m_proxy->callMethodAsync("ReadLight")
       .onInterface(kInterface)
-      .uponReplyInvoke([this, alive](std::optional<sdbus::Error> err, double lux, std::uint32_t /*kelvin*/) {
+      .uponReplyInvoke([this, alive](std::optional<sdbus::Error> err, double lux, std::uint32_t kelvin) {
         if (alive.expired() || m_paused) {
           return;
         }
@@ -45,17 +46,17 @@ void AmbientLightService::sample() {
           return;
         }
         m_readFailed = false;
-        onReading(lux);
+        onReading(lux, static_cast<int>(std::min<std::uint32_t>(kelvin, 100000)));
         m_nextSample.start(m_interval, [this] { sample(); });
       });
 }
 
 // A steady reading (within 15 % or 5 lux) doubles the interval up to 60 s; a change returns it to 10 s.
-void AmbientLightService::onReading(double lux) {
+void AmbientLightService::onReading(double lux, int kelvin) {
   const bool steady = m_lastLux >= 0.0 && std::abs(lux - m_lastLux) <= std::max(5.0, 0.15 * m_lastLux);
   m_interval = steady ? std::min(m_interval * 2, kMaxSampleInterval) : kSampleInterval;
   m_lastLux = lux;
-  m_onLux(lux);
+  m_onReading(lux, kelvin);
 }
 
 void AmbientLightService::setPaused(bool paused) {

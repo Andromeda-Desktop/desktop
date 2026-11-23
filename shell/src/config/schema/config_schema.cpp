@@ -617,6 +617,17 @@ namespace noctalia::config::schema {
             }
         ),
         field(
+            &NightLightConfig::adaptive, "adaptive",
+            RowSpec{
+                .section = "location",
+                .group = "night-light",
+                .label = "services.adaptive-white-point",
+                .tags = "nightlight true tone ambient white balance",
+                .needs = RowSpec::Needs::GammaControl,
+                .missingKey = "requires-gamma-control",
+            }
+        ),
+        field(
             &NightLightConfig::dayTemperature, "temperature_day", Range<std::int64_t>{1000, 25000},
             RowSpec{
                 .kind = RowSpec::Kind::Slider,

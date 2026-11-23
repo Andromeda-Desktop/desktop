@@ -4553,6 +4553,10 @@
         }
       },
       "services": {
+        "adaptive-white-point": {
+          "description": "The screen white point follows the colour of the room light (needs a colour light sensor)",
+          "label": "Adapt to Room Light"
+        },
         "audio-hdmi-switch": {
           "description": "Play sound on a TV, monitor or Bluetooth device when it connects, instead of the laptop speaker",
           "label": "Switch to New Audio Devices"

@@ -1389,6 +1389,7 @@ void Application::initAuxServicesAndHooks() {
   });
   m_configService.addReloadCallback([this] {
     m_gammaService.reload(m_configService.config().nightlight, m_configService.config().location);
+    syncAmbientLight();
   });
 
   // Register all wallpaper consumers in the single-callback slot.
@@ -2189,8 +2190,9 @@ void Application::notifyFailedUnlocks(const std::vector<std::int64_t>& rejectedA
 }
 
 void Application::syncAmbientLight() {
-  const bool want = m_systemBus != nullptr && m_brightnessService != nullptr
-      && m_configService.config().brightness.automatic;
+  const bool want = m_systemBus != nullptr
+      && ((m_brightnessService != nullptr && m_configService.config().brightness.automatic)
+          || m_configService.config().nightlight.adaptive);
   if (want == (m_ambientLight != nullptr)) {
     return;
   }
@@ -2198,10 +2200,16 @@ void Application::syncAmbientLight() {
   m_ambientLux = -1.0;
   if (!want) {
     m_ambientLight.reset();
+    m_gammaService.setAmbientKelvin(0);
     return;
   }
   try {
-    m_ambientLight = std::make_unique<AmbientLightService>(*m_systemBus, [this](double lux) { applyAmbientLight(lux); });
+    m_ambientLight = std::make_unique<AmbientLightService>(*m_systemBus, [this](double lux, int kelvin) {
+      if (m_configService.config().brightness.automatic) {
+        applyAmbientLight(lux);
+      }
+      m_gammaService.setAmbientKelvin(kelvin);
+    });
   } catch (const std::exception& e) {
     kLog.warn("automatic brightness disabled: {}", e.what());
   }

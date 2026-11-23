@@ -11,13 +11,13 @@ namespace sdbus {
 }
 class SystemBus;
 
-// Ambient light in lux from System1 (org.andromeda.System1.Sensors.ReadLight), sampled every 10 s, backing off to 60 s
+// Ambient light in lux and colour temperature in kelvin (0 without a colour channel) from System1 (org.andromeda.System1.Sensors.ReadLight), sampled every 10 s, backing off to 60 s
 // while the light stays steady.
 class AmbientLightService {
 public:
-  using LuxCallback = std::function<void(double lux)>;
+  using ReadingCallback = std::function<void(double lux, int kelvin)>;
 
-  AmbientLightService(SystemBus& bus, LuxCallback onLux);
+  AmbientLightService(SystemBus& bus, ReadingCallback onReading);
   ~AmbientLightService();
 
   AmbientLightService(const AmbientLightService&) = delete;
@@ -28,10 +28,10 @@ public:
 
 private:
   void sample();
-  void onReading(double lux);
+  void onReading(double lux, int kelvin);
 
   std::unique_ptr<sdbus::IProxy> m_proxy;
-  LuxCallback m_onLux;
+  ReadingCallback m_onReading;
   Timer m_nextSample;
   bool m_paused = false;
   bool m_readFailed = false;

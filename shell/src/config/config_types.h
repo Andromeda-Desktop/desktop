@@ -1665,6 +1665,7 @@ struct NightLightConfig {
   bool force = false;
   std::int32_t dayTemperature = 6500;
   std::int32_t nightTemperature = 4000;
+  bool adaptive = true; // the white point follows the ambient colour temperature; works with night light off
 
   bool operator==(const NightLightConfig&) const = default;
 };

@@ -39,6 +39,10 @@ public:
   void setStateFeedbackCallback(StateFeedbackCallback callback);
   void onOutputsChanged();
   void reevaluateSchedule();
+  // Room light colour temperature from the ambient light sensor; 0 when there is no reading.
+  void setAmbientKelvin(int kelvin);
+  // The white point for a room light colour temperature, -1 when it stays native (no reading, or close to 6500 K).
+  [[nodiscard]] static int adaptiveWhite(int ambientKelvin);
 
   [[nodiscard]] bool enabled() const;
   [[nodiscard]] bool forceEnabled() const;
@@ -65,6 +69,8 @@ private:
     bool transitioning = false; // true while inside the fade ramp window (target still drifting)
   };
   [[nodiscard]] GammaTarget computeTarget() const;
+  // Night light and the adaptive white point together: the warmer wins.
+  [[nodiscard]] GammaTarget target() const;
   [[nodiscard]] bool isNightPhase() const;
 
   struct OutputGamma {
@@ -109,6 +115,7 @@ private:
 
   std::list<OutputGamma> m_outputs;
 
+  int m_ambientKelvin = 0;
   int m_currentKelvin = -1;
   int m_targetKelvin = -1;
   int m_lastProfiledKelvin = -1; // probe only: previous upload's Kelvin, to report the step size

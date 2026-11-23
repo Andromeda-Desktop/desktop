@@ -434,7 +434,7 @@ void GammaService::ensureTick() {
 }
 
 void GammaService::tickGamma() {
-  const GammaTarget t = computeTarget();
+  const GammaTarget t = target();
   if (t.kelvin < 0) {
     restoreAll();
     return;
@@ -523,6 +523,39 @@ GammaService::GammaTarget GammaService::computeTarget() const {
   return {.kelvin = kelvin, .transitioning = transitioning};
 }
 
+// Moves 40 % of the way from 6500 K toward the room light, within 5500-6800 K, in 100 K steps: a gentle tint that
+// keeps colours believable; each step is one gamma upload per output.
+int GammaService::adaptiveWhite(int ambientKelvin) {
+  if (ambientKelvin <= 0) {
+    return -1;
+  }
+  constexpr int kNative = 6500;
+  const double shifted = kNative + 0.4 * (ambientKelvin - kNative);
+  const int white = static_cast<int>(std::lround(std::clamp(shifted, 5500.0, 6800.0) / 100.0)) * 100;
+  return white == kNative ? -1 : white;
+}
+
+GammaService::GammaTarget GammaService::target() const {
+  const GammaTarget night = effectiveEnabled() ? computeTarget() : GammaTarget{};
+  const int white = m_config.adaptive ? adaptiveWhite(m_ambientKelvin) : -1;
+  if (white < 0) {
+    return night;
+  }
+  if (night.kelvin < 0) {
+    return {.kelvin = white, .transitioning = false};
+  }
+  return {.kelvin = std::min(night.kelvin, white), .transitioning = night.transitioning};
+}
+
+void GammaService::setAmbientKelvin(int kelvin) {
+  if (adaptiveWhite(kelvin) == adaptiveWhite(m_ambientKelvin)) {
+    m_ambientKelvin = kelvin;
+    return;
+  }
+  m_ambientKelvin = kelvin;
+  apply();
+}
+
 void GammaService::apply() {
   if (!m_wayland.hasGammaControl()) {
     if (!m_gammaUnavailableLogged) {
@@ -549,8 +582,8 @@ void GammaService::apply() {
     m_scheduleTimer.stop();
   }
 
-  if (!effectiveEnabled()) {
-    m_scheduleTimer.stop();
+  const GammaTarget t = target();
+  if (t.kelvin < 0) {
     restoreAll(); // instant: releasing gamma control restores the compositor's native gamma
     if (m_changeCallback) {
       m_changeCallback();
@@ -559,15 +592,6 @@ void GammaService::apply() {
   }
 
   syncOutputs();
-
-  const GammaTarget t = computeTarget();
-  if (t.kelvin < 0) {
-    restoreAll();
-    if (m_changeCallback) {
-      m_changeCallback();
-    }
-    return;
-  }
 
   if (t.kelvin != m_targetKelvin) {
     const int dayTemp =
