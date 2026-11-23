@@ -1871,8 +1871,16 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
       m_surface->requestLayout();
     }
   }
-  if (m_popover != nullptr && m_popover->isOpen() && m_popover->onPointerEvent(event)) {
-    return;
+  if (m_popover != nullptr && m_popover->isOpen()) {
+    if (m_popover->onPointerEvent(event)) {
+      return;
+    }
+    // The compositor dismisses the grab only for presses outside this client. Consuming the press keeps its release
+    // from clicking the anchor, which would open the popover again.
+    if (event.type == PointerEvent::Type::Button && event.pressed && event.surface == m_surface.get()) {
+      m_popover->close();
+      return;
+    }
   }
   if (m_select != nullptr && m_select->isSelectDropdownOpen()) {
     if (m_select->onPointerEvent(event)) {
