@@ -759,7 +759,7 @@ namespace andromeda {
             .durationMs = layers.durationMs, .curve = layers.curve, .style = "fade", .event = AnimationEvent::Layers
         }
     );
-    wlr_output_schedule_frame(out->wlr());
+    out->requestFrame();
   }
 
   Output* LayerSurface::output() const {
@@ -977,7 +977,7 @@ namespace andromeda {
     }
     if (glides) {
       if (Output* out = output()) {
-        wlr_output_schedule_frame(out->wlr());
+        out->requestFrame();
       }
     }
     applyDensity();
@@ -1406,7 +1406,7 @@ namespace andromeda {
       applyFadeAlpha();
       m_fade.retarget(1.0, layers.durationMs, layers.curve);
       if (Output* out = output()) {
-        wlr_output_schedule_frame(out->wlr());
+        out->requestFrame();
       }
     } else {
       m_fade.snap(1.0);
@@ -1460,7 +1460,7 @@ namespace andromeda {
       applySurfaceMotion();
       applyFadeAlpha();
       if (Output* out = hasActiveAnimations() ? output() : nullptr) {
-        wlr_output_schedule_frame(out->wlr());
+        out->requestFrame();
       }
     }
     if (m_layerSurface->initial_commit) {

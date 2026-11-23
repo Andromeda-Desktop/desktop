@@ -686,7 +686,7 @@ namespace andromeda {
     if (m_workspace != nullptr) {
       m_workspace->syncViewPresentation(this);
       if (m_workspace->group() != nullptr && m_workspace->group()->output() != nullptr) {
-        wlr_output_schedule_frame(m_workspace->group()->output()->wlr());
+        m_workspace->group()->output()->requestFrame();
       }
     }
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {

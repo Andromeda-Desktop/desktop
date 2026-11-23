@@ -463,7 +463,7 @@ namespace andromeda {
       if (output->wlr()->enabled) {
         connection.waitOutputs.emplace_back(output->wlr()->name);
         // An idle output draws no frame on its own, and the reply waits for one from each.
-        wlr_output_schedule_frame(output->wlr());
+        output->requestFrame();
       }
     }
     if (connection.waitOutputs.empty() && (wait == FrameWait::Drawn || (m_server->settled() && renderSettled()))) {

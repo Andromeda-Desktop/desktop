@@ -887,7 +887,7 @@ namespace andromeda {
     const View* liveTarget = liveTargetView();
     for (const auto& state : m_outputs) {
       layoutChrome(*state, liveTarget);
-      wlr_output_schedule_frame(state->output->wlr());
+      state->output->requestFrame();
     }
   }
 

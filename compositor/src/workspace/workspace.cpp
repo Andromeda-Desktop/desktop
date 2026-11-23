@@ -1495,7 +1495,7 @@ namespace andromeda {
     for (View* view : openingViews) {
       view->raiseToTop();
     }
-    wlr_output_schedule_frame(m_group->output()->wlr());
+    m_group->output()->requestFrame();
   }
 
   void Workspace::startLayoutTimelines(double positionSpeed, double sizeSpeed) {
@@ -3684,7 +3684,7 @@ namespace andromeda {
     if (slide->previous != nullptr) {
       offset(slide->previous, (-1.0 - progress) * extent);
     }
-    wlr_output_schedule_frame(m_output->wlr());
+    m_output->requestFrame();
   }
 
   void WorkspaceGroup::slideSettle(int delta, double velocity) {
@@ -3742,7 +3742,7 @@ namespace andromeda {
     } else {
       m_slideAnim.retarget(static_cast<double>(delta), workspaces.durationMs, workspaces.curve);
     }
-    wlr_output_schedule_frame(m_output->wlr());
+    m_output->requestFrame();
   }
 
   bool WorkspaceGroup::tickAnimations(double nowMsec) {

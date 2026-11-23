@@ -558,13 +558,14 @@ namespace andromeda {
     if (workspace == nullptr) {
       return nullptr;
     }
+    // Cheap facts first: the walk below runs on every frame without a fullscreen focus.
     const auto eligible = [this](View* view) {
       return view != nullptr
           && view->mapped()
-          && view->onActiveWorkspace()
-          && view->currentOutput() == this
           && view->layoutFullscreen()
-          && view->currentFullscreen();
+          && view->currentFullscreen()
+          && view->onActiveWorkspace()
+          && view->currentOutput() == this;
     };
     if (View* focused = workspace->focusedView(); eligible(focused)) {
       return focused;
@@ -2726,6 +2727,18 @@ namespace andromeda {
       lock->handleOutputStateChanged(*this);
     }
     wlr_output_schedule_frame(m_output);
+  }
+
+  void Output::requestFrame() {
+    if (m_output->enabled && outputFrameAllowed(m_server->stopping(), m_server->session())) {
+      wlr_output_schedule_frame(m_output);
+    }
+  }
+
+  void Output::requestFrameOn(wlr_output* output) {
+    if (auto* owner = static_cast<Output*>(output->data)) {
+      owner->requestFrame();
+    }
   }
 
   void Output::scheduleFullFrame() {

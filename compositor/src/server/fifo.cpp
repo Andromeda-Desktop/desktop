@@ -1,6 +1,7 @@
 #include "server/fifo.h"
 
 #include "fifo-v1-protocol.h"
+#include "output/output.h"
 #include "wlr.h"
 
 #include <algorithm>
@@ -144,7 +145,7 @@ namespace andromeda {
       update.lock = wlr_surface_lock_pending(state->surface);
       // A barrier clears only at a latch, and nothing else may be about to draw this output.
       wlr_surface_output* entry;
-      wl_list_for_each(entry, &state->surface->current_outputs, link) { wlr_output_schedule_frame(entry->output); }
+      wl_list_for_each(entry, &state->surface->current_outputs, link) { Output::requestFrameOn(entry->output); }
     }
     state->updates.push_back(update);
   }

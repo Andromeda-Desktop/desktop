@@ -170,7 +170,7 @@ namespace andromeda {
   void Overview::onDesktopSurfaceCommit(DesktopSurface* source, void* /*data*/) {
     source->overview->syncDesktopMirrors(*source->state);
     source->overview->layoutOutput(*source->state);
-    wlr_output_schedule_frame(source->state->output->wlr());
+    source->state->output->requestFrame();
   }
 
   void Overview::onDesktopSurfaceDestroy(DesktopSurface* source, void* /*data*/) {
@@ -195,7 +195,7 @@ namespace andromeda {
     std::erase_if(state->desktop, [source](const std::unique_ptr<DesktopSurface>& candidate) {
       return candidate.get() == source;
     });
-    wlr_output_schedule_frame(state->output->wlr());
+    state->output->requestFrame();
   }
 
   void Overview::onDesktopMirrorOutputSample(DesktopMirror* mirror, void* data) {

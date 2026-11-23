@@ -136,7 +136,7 @@ namespace andromeda {
     m_output = output;
     applyState();
     wlr_scene_node_raise_to_top(&m_tree->node);
-    wlr_output_schedule_frame(output->wlr());
+    output->requestFrame();
   }
 
   void HintRect::hideImmediate() {

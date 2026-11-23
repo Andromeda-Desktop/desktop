@@ -53,7 +53,7 @@ namespace andromeda {
 
   void TitleBarMotion::scheduleFrames() {
     for (const auto& output : m_server.outputs()) {
-      wlr_output_schedule_frame(output->wlr());
+      output->requestFrame();
     }
   }
 

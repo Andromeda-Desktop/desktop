@@ -175,7 +175,7 @@ namespace andromeda {
     // passive buffer mirrors, then re-derive their overview crop and scale.
     syncCardSurfaces(card);
     self->layoutCard(*card, self->liveTargetView());
-    wlr_output_schedule_frame(card->owner->output->wlr());
+    card->owner->output->requestFrame();
   }
 
   void Overview::onCardSurfaceDestroy(CardSurface* entry, void* /*data*/) {
@@ -223,7 +223,7 @@ namespace andromeda {
     if (!entry->sendFrame) {
       // The next frame sends it; a client that waits for one must not stall on an output with nothing else to draw.
       if (!wl_list_empty(&entry->surface->current.frame_callback_list)) {
-        wlr_output_schedule_frame(output);
+        Output::requestFrameOn(output);
       }
       return;
     }
@@ -382,7 +382,7 @@ namespace andromeda {
     // but do not carry the live card's windows_move effect into the close snapshot.
     wlr_scene_node_set_animation(&snapshot->node, static_cast<unsigned>(AnimationEvent::WindowsMove), nullptr, nullptr);
     (void)m_server->animateCloseSnapshot(card.owner->output, snapshot, snapshot, std::move(borders), {});
-    wlr_output_schedule_frame(card.owner->output->wlr());
+    card.owner->output->requestFrame();
   }
 
   void Overview::destroyCard(Card* card) {
@@ -447,7 +447,7 @@ namespace andromeda {
       card->grows = grows;
     }
     layoutOutput(*state);
-    wlr_output_schedule_frame(state->output->wlr());
+    state->output->requestFrame();
   }
 
   Overview::OutputState* Overview::stateFor(const Output* output) {

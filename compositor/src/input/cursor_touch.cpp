@@ -251,7 +251,7 @@ namespace andromeda {
     touch.lastX = lx;
     touch.lastY = ly;
     for (const auto& output : m_server->outputs()) {
-      wlr_output_schedule_frame(output->wlr());
+      output->requestFrame();
     }
     return true;
   }
@@ -271,7 +271,7 @@ namespace andromeda {
     if (m_trackerDrag->claimed) {
       dsk->updateSwipe(m_cursor->x - oldX, m_cursor->y - oldY, timeMsec);
       for (const auto& output : m_server->outputs()) {
-        wlr_output_schedule_frame(output->wlr());
+        output->requestFrame();
       }
       return true;
     }
@@ -291,7 +291,7 @@ namespace andromeda {
     wlr_seat_pointer_notify_clear_focus(m_server->seat()->wlr());
     dsk->updateSwipe(dx, dy, timeMsec);
     for (const auto& output : m_server->outputs()) {
-      wlr_output_schedule_frame(output->wlr());
+      output->requestFrame();
     }
     return true;
   }

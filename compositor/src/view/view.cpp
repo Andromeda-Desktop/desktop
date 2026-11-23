@@ -990,7 +990,7 @@ namespace andromeda {
 
   void View::scheduleFrame() {
     if (Output* output = currentOutput()) {
-      wlr_output_schedule_frame(output->wlr());
+      output->requestFrame();
     }
   }
 

@@ -137,7 +137,7 @@ namespace andromeda {
   void SnapFlyout::scheduleFrame() {
     // Every output: the sheet's own output can be unknown or gone, and a fade must still finish.
     for (const auto& output : m_server.outputs()) {
-      wlr_output_schedule_frame(output->wlr());
+      output->requestFrame();
     }
   }
 

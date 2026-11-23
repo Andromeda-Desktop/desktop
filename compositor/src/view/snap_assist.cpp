@@ -212,7 +212,7 @@ namespace andromeda {
       m_fade.snap(0.0);
       m_fade.settleSpring(1.0, {.damping = Tokens::springFade.damping, .stiffness = Tokens::springFade.stiffness});
       if (m_output != nullptr) {
-        wlr_output_schedule_frame(m_output);
+        Output::requestFrameOn(m_output);
       }
     } else {
       m_fade.snap(1.0);
@@ -461,7 +461,7 @@ namespace andromeda {
     }
     placeLens();
     if (travel && m_output != nullptr) {
-      wlr_output_schedule_frame(m_output);
+      Output::requestFrameOn(m_output);
     }
   }
 
@@ -530,7 +530,7 @@ namespace andromeda {
           0.0, {.damping = Tokens::springFadeOut.damping, .stiffness = Tokens::springFadeOut.stiffness}
       );
       if (m_output != nullptr) {
-        wlr_output_schedule_frame(m_output);
+        Output::requestFrameOn(m_output);
       }
       return;
     }

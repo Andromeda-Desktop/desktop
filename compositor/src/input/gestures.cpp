@@ -190,7 +190,7 @@ namespace andromeda {
   void Gestures::scheduleTrackerFrames() const {
     // Bound surfaces may sit on any output; the frame loop then runs while the tracker is driven.
     for (const auto& output : m_server->outputs()) {
-      wlr_output_schedule_frame(output->wlr());
+      output->requestFrame();
     }
   }
 

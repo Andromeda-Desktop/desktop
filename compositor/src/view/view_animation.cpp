@@ -1295,7 +1295,7 @@ namespace andromeda {
         output, snap, content, std::move(snapBorders), m_presentedBox,
         held ? std::optional{Server::CloseSnapshotOverrides{.held = true}} : std::nullopt, shadow, titleBarHeight()
     );
-    wlr_output_schedule_frame(output->wlr());
+    output->requestFrame();
     return id;
   }
 

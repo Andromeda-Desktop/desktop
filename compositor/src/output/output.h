@@ -110,6 +110,11 @@ namespace andromeda {
     // Record that something on this output became stale; flushed at the top of the next frame. Schedules that frame, so
     // recording is always enough on its own: marking work that nothing then asks for would simply never happen.
     void markDirty(Dirty what);
+    // The one frame request from outside Output. Skips the idle wakeup when no frame can follow: wlroots drops frame
+    // events of a disabled or powered-off output, handleFrame those of an inactive session or a stopping server.
+    void requestFrame();
+    // requestFrame for the Output behind a wlr_output; none for a wlr_output no Output owns.
+    static void requestFrameOn(wlr_output* output);
     // Asks for a frame on behalf of persistent effects.
     void scheduleEffectFrame();
     void scheduleAudioFrame();

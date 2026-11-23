@@ -2327,7 +2327,7 @@ namespace andromeda {
     // that nothing then flushes would simply never happen.
     for (const auto& output : m_outputs) {
       if (output->wlr() != nullptr) {
-        wlr_output_schedule_frame(output->wlr());
+        output->requestFrame();
       }
     }
   }
@@ -3138,7 +3138,7 @@ namespace andromeda {
     // clockAdvancing on the next frame instead of skipping it as a repeat.
     m_lastAnimTickMsec = 0;
     for (const auto& output : m_outputs) {
-      wlr_output_schedule_frame(output->wlr());
+      output->requestFrame();
     }
   }
 
@@ -3158,7 +3158,7 @@ namespace andromeda {
     tickAnimations(static_cast<double>(*m_frozenAnimationClockMsec));
     *m_frozenAnimationClockMsec += ms;
     for (const auto& output : m_outputs) {
-      wlr_output_schedule_frame(output->wlr());
+      output->requestFrame();
     }
     return true;
   }
@@ -3170,7 +3170,7 @@ namespace andromeda {
       m_frozenAnimationClockMsec.reset();
     }
     for (const auto& output : m_outputs) {
-      wlr_output_schedule_frame(output->wlr());
+      output->requestFrame();
     }
   }
 

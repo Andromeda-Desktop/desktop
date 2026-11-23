@@ -30,7 +30,7 @@ namespace andromeda {
       const View* liveTarget = liveTargetView();
       for (const auto& state : m_outputs) {
         layoutChrome(*state, liveTarget);
-        wlr_output_schedule_frame(state->output->wlr());
+        state->output->requestFrame();
       }
     });
   }
@@ -1205,7 +1205,7 @@ namespace andromeda {
 
   void Overview::scheduleFrames() const {
     for (const auto& state : m_outputs) {
-      wlr_output_schedule_frame(state->output->wlr());
+      state->output->requestFrame();
     }
   }
 
@@ -1827,7 +1827,7 @@ namespace andromeda {
         wlr_scene_node_destroy(&state->tree->node);
         state->tree = nullptr;
       }
-      wlr_output_schedule_frame(state->output->wlr());
+      state->output->requestFrame();
     }
     m_outputs.clear();
     wlr_scene_node_set_enabled(&m_server->overviewBlurTree()->node, false);
@@ -1988,7 +1988,7 @@ namespace andromeda {
     });
     syncCardSurfaces(card);
     layoutOutput(*card->owner);
-    wlr_output_schedule_frame(card->owner->output->wlr());
+    card->owner->output->requestFrame();
   }
 
   void Overview::onViewPinnedChanged(View* view) {
@@ -2017,7 +2017,7 @@ namespace andromeda {
     }
     if (state != nullptr) {
       layoutOutput(*state);
-      wlr_output_schedule_frame(state->output->wlr());
+      state->output->requestFrame();
     }
     applyProgress();
   }
@@ -2073,7 +2073,7 @@ namespace andromeda {
     }
     if (state != nullptr) {
       layoutOutput(*state);
-      wlr_output_schedule_frame(state->output->wlr());
+      state->output->requestFrame();
     }
     applyProgress();
   }
@@ -2094,7 +2094,7 @@ namespace andromeda {
       if (target != nullptr) {
         createCard(*target, view, workspace->index());
         layoutOutput(*target);
-        wlr_output_schedule_frame(target->output->wlr());
+        target->output->requestFrame();
       }
       applyProgress();
       return;
@@ -2105,7 +2105,7 @@ namespace andromeda {
       dropCard(view);
       if (source != nullptr) {
         layoutOutput(*source);
-        wlr_output_schedule_frame(source->output->wlr());
+        source->output->requestFrame();
       }
       applyProgress();
       return;
@@ -2114,7 +2114,7 @@ namespace andromeda {
     card->workspaceIndex = workspace->index();
     if (source == target) {
       layoutOutput(*target);
-      wlr_output_schedule_frame(target->output->wlr());
+      target->output->requestFrame();
       applyProgress();
       return;
     }
@@ -2144,8 +2144,8 @@ namespace andromeda {
     target->cards.push_back(std::move(moved));
     layoutOutput(*source);
     layoutOutput(*target);
-    wlr_output_schedule_frame(source->output->wlr());
-    wlr_output_schedule_frame(target->output->wlr());
+    source->output->requestFrame();
+    target->output->requestFrame();
     applyProgress();
   }
 
@@ -2179,7 +2179,7 @@ namespace andromeda {
     }
     if (OutputState* state = stateForWorkspace(workspace)) {
       layoutOutput(*state);
-      wlr_output_schedule_frame(state->output->wlr());
+      state->output->requestFrame();
     }
   }
 
@@ -2203,7 +2203,7 @@ namespace andromeda {
     }
     syncWorkspaceRows(*state, *group);
     layoutOutput(*state);
-    wlr_output_schedule_frame(state->output->wlr());
+    state->output->requestFrame();
     applyProgress();
   }
 
@@ -2232,7 +2232,7 @@ namespace andromeda {
     if (OutputState* state = stateFor(output)) {
       // layoutOutput re-resolves the stack before placing the rows.
       layoutOutput(*state);
-      wlr_output_schedule_frame(state->output->wlr());
+      state->output->requestFrame();
     }
   }
 

@@ -675,7 +675,7 @@ namespace andromeda {
       output->dropFrameTimers();
       wlr_output* wlrOutput = output->wlr();
       wlr_output_init_render(wlrOutput, newAllocator, newRenderer);
-      wlr_output_schedule_frame(wlrOutput);
+      output->requestFrame();
     }
 
     wlr_allocator_destroy(oldAllocator);

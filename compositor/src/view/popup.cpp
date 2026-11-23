@@ -97,7 +97,7 @@ namespace andromeda {
       dsk->sendDensity(m_popup->base->surface, m_density.target());
     }
     if (Output* out = parentOutput(); glides && out != nullptr) {
-      wlr_output_schedule_frame(out->wlr());
+      out->requestFrame();
     }
     const auto& tint = m_glass.tint;
     m_blur.setTintMix({tint[0], tint[1], tint[2]}, m_density.amount(tint[3], m_glass.dense));

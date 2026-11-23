@@ -1602,7 +1602,7 @@ namespace andromeda {
     }
     StallProbe::stallNextFrame(ms);
     for (const auto& output : server.outputs()) {
-      wlr_output_schedule_frame(output->wlr());
+      output->requestFrame();
     }
 #endif
     return nlohmann::json{{"ok", nullptr}};
