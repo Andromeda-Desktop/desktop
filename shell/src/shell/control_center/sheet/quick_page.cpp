@@ -76,6 +76,7 @@ namespace {
     Flex* ink = nullptr;
     Flex* inkRow = nullptr;
     Glyph* inkIcon = nullptr;
+    InputArea* iconHit = nullptr;
     Label* inkName = nullptr;
     Label* inkValue = nullptr;
 
@@ -105,6 +106,11 @@ namespace {
         inkName->setPosition(name->x(), name->y());
         inkValue->setPosition(value->x(), value->y());
         ink->setPosition(0.0F, 0.0F);
+      }
+      // Over the slider, so a tap on the icon does not move the level.
+      if (iconHit != nullptr) {
+        iconHit->setPosition(icon->x(), 0.0F);
+        iconHit->setFrameSize(icon->width(), height());
       }
       clipInk();
     }
@@ -496,7 +502,8 @@ std::unique_ptr<Flex> QuickPage::makeDropTile(std::string_view type) {
 }
 
 std::unique_ptr<Flex> QuickPage::makePill(
-    std::string_view glyph, Slider*& slider, Label*& name, Label*& value, std::function<void()> onMore
+    std::string_view glyph, Slider*& slider, Label*& name, Label*& value, std::function<void()> onMore,
+    std::function<void()> onIcon
 ) {
   const float s = contentScale();
   auto pill = std::make_unique<SliderPill>();
@@ -595,6 +602,18 @@ std::unique_ptr<Flex> QuickPage::makePill(
   ink->addChild(std::move(inkRow));
   pill->ink = ink.get();
   pill->addChild(std::move(ink));
+  if (onIcon) {
+    auto hit = std::make_unique<InputArea>();
+    hit->setParticipatesInLayout(false);
+    hit->setHitTestOutset({.left = 6.0F * s, .top = 0.0F, .right = 6.0F * s, .bottom = 0.0F});
+    hit->setOnClick([onIcon = std::move(onIcon)](const InputArea::PointerData& d) {
+      if (d.button == BTN_LEFT) {
+        onIcon();
+      }
+    });
+    pill->iconHit = hit.get();
+    pill->addChild(std::move(hit));
+  }
   slider->setOnLevelChanged([pillPtr = pill.get()] { pillPtr->clipInk(); });
   return pill;
 }
@@ -654,7 +673,12 @@ std::unique_ptr<Flex> QuickPage::create() {
   root->addChild(makeDots());
   buildPages(tileOrder());
 
-  auto brightness = makePill("sun", m_brightnessSlider, m_brightnessName, m_brightnessValue);
+  // The icon toggles automatic brightness; it shows the auto symbol while that runs.
+  auto brightness = makePill("sun", m_brightnessSlider, m_brightnessName, m_brightnessValue, nullptr, [this] {
+    if (m_services.config != nullptr) {
+      m_services.config->setOverride({"brightness", "automatic"}, !m_services.config->config().brightness.automatic);
+    }
+  });
   m_brightnessName->setText(i18n::tr("control-center.detail.display.brightness"));
   m_brightnessPill = brightness.get();
   m_brightnessSlider->setOnValueChanged([this](double value) {
@@ -1363,6 +1387,11 @@ void QuickPage::syncFooter() {
 }
 
 void QuickPage::syncSliders() {
+  if (m_services.config != nullptr) {
+    static_cast<SliderPill*>(m_brightnessPill)->icon->setGlyph(
+        m_services.config->config().brightness.automatic ? "brightness-auto" : "sun"
+    );
+  }
   if (m_brightnessSlider->dragging() || m_volumeSlider->dragging()) {
     return;
   }

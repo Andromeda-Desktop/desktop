@@ -115,9 +115,10 @@ private:
   [[nodiscard]] int editSlotAt(float x, float y) const;
   [[nodiscard]] static float offsetIn(const Node* node, const Node* ancestor, bool y);
   void refreshDots(float offset);
-  // onMore set: a trailing chevron opens the pill's detail page.
+  // onMore set: a trailing chevron opens the pill's detail page. onIcon set: a tap on the icon runs it.
   std::unique_ptr<Flex> makePill(
-      std::string_view glyph, Slider*& slider, Label*& name, Label*& value, std::function<void()> onMore = nullptr
+      std::string_view glyph, Slider*& slider, Label*& name, Label*& value, std::function<void()> onMore = nullptr,
+      std::function<void()> onIcon = nullptr
   );
   void syncToggleRow(ToggleRow& row, const std::string& subtitle);
   void syncSliders();
