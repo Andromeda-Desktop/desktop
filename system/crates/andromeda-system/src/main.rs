@@ -86,6 +86,7 @@ async fn main() -> Result<()> {
     tokio::spawn(login::run(conn.clone()));
     tokio::spawn(storage::run(conn.clone()));
     tokio::spawn(thermal::run(conn.clone()));
+    tokio::spawn(sensors::run(conn.clone()));
     crashes::watch_devcoredumps(state.join("crashes"));
     let _ = sd_notify::notify(&[sd_notify::NotifyState::Ready]);
     if let Some(timeout) = sd_notify::watchdog_enabled() {

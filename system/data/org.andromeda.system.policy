@@ -67,6 +67,15 @@
       <allow_active>yes</allow_active>
     </defaults>
   </action>
+  <action id="org.andromeda.system.presence">
+    <description>Sense whether someone is at the computer</description>
+    <message>Authentication is required to sense whether someone is at the computer</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
   <action id="org.andromeda.system.undo">
     <description>Undo an automatic system action</description>
     <message>Authentication is required to undo a system action</message>
