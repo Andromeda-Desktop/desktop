@@ -341,6 +341,11 @@ namespace andromeda {
     wlr_scene_rect_set_color(m_backdrop, config().colors.backdrop.data());
     wlr_scene_rect_set_size(m_backdrop, layoutBox.width, layoutBox.height);
     wlr_scene_node_set_position(&m_backdrop->node, layoutBox.x, layoutBox.y);
+    const AppliedBackdrop applied{config().colors.backdrop, layoutBox.x, layoutBox.y, layoutBox.width, layoutBox.height};
+    if (m_appliedBackdrop == applied) {
+      return;
+    }
+    m_appliedBackdrop = applied;
     for (const auto& output : m_outputs) {
       output->markBlurBackgroundDirty();
     }

@@ -973,6 +973,13 @@ namespace andromeda {
     wlr_scene_tree* m_heldFrameTree = nullptr;
     wlr_scene_rect* m_lockBlank = nullptr;
     wlr_scene_rect* m_backdrop = nullptr;
+    // The backdrop the blur caches last saw: an appearance reload that keeps it (a glass change) keeps the caches.
+    struct AppliedBackdrop {
+      std::array<float, 4> color;
+      int x, y, width, height;
+      bool operator==(const AppliedBackdrop&) const = default;
+    };
+    std::optional<AppliedBackdrop> m_appliedBackdrop;
     // RestartLocked: the previous compositor stopped locked and no lock client has taken over; it owns the escape timer.
     enum class LockState : uint8_t { Unlocked, RestartLocked, Locked };
     LockState m_lockState = LockState::Unlocked;

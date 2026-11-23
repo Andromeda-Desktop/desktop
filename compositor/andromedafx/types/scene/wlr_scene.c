@@ -4373,7 +4373,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     break;
   case WLR_SCENE_NODE_OPTIMIZED_BLUR:;
     struct wlr_scene_optimized_blur* scene_blur = wlr_scene_optimized_blur_from_node(node);
-    // A valid cache whose content or blur parameters changed (wallpaper, glass slider, scheme) needs a new blur only
+    // A valid cache whose content or blur parameters changed (wallpaper, backdrop, scheme) needs a new blur only
     // where blur nodes sample it; a whole-output re-blur costs about 10 ms on a low-end GPU. The rest waits in pending.
     if (scene_blur->dirty && fx_pass->has_blur && fx_render_pass_optimized_blur_reusable(fx_pass)) {
       int blur_x, blur_y;
