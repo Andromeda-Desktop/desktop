@@ -3346,6 +3346,16 @@ static struct fx_framebuffer* strength_blur(
   return rendered ? target : NULL;
 }
 
+// ANDROMEDA_GLASS_FUSE=0 draws glass through the stored full-resolution level, for A/B runs.
+static bool glass_fuse_enabled(void) {
+  static int enabled = -1;
+  if (enabled < 0) {
+    const char* env = getenv("ANDROMEDA_GLASS_FUSE");
+    enabled = env == NULL || strcmp(env, "0") != 0;
+  }
+  return enabled;
+}
+
 // True when fx_render_pass_add_texture would draw the full-resolution blur
 // level with nothing beyond the alpha, corners, clipped region and blending
 // that render_blur_composite reproduces.
@@ -3554,19 +3564,14 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   if (probe_redrawn && !probe_due) {
     fx_backdrop_probe_mark_stale(fx_options->backdrop_probe);
   }
-  // ANDROMEDA_GLASS_FUSE=0 draws glass through the stored level, for A/B runs.
-  static int glass_fuse = -1;
-  if (glass_fuse < 0) {
-    const char* env = getenv("ANDROMEDA_GLASS_FUSE");
-    glass_fuse = env == NULL || strcmp(env, "0") != 0;
-  }
+  const bool glass_fuse = glass_fuse_enabled();
   // Glass whose strength leaves no blur pass (clear Liquid) tints and bends a copy of the sharp backdrop.
   struct blur_data applied = blur_data_apply_strength(fx_options->blur_data, fx_options->blur_strength);
   const bool sharp_glass = glass && !is_scene_blur_enabled(&applied);
   // A run of live nodes blurred together (fx_render_pass_begin_shared_blur); a probe reads the shared blur.
   const bool shared = pass->shared_blur.active && !use_optimized && !sharp_glass
       && fx_options->blur_strength == pass->shared_blur.strength && pass->group_depth == 0
-      && pass->animation_depth == 0;
+      && pass->animation_depth == 0 && (!pass->shared_blur.fused || blur_composite_is_copy(pass, tex_options));
   if (shared) {
     sharp = pass->shared_blur.sharp;
   } else if (pass->shared_blur.active) {
@@ -3608,11 +3613,12 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   if (buffer_cached == NULL && use_optimized && has_strength && !sharp_glass) {
     buffer_cached = strength_blur(pass, fx_options, true);
   }
-  const bool fuse = !shared && (!use_optimized || has_strength) && buffer_cached == NULL
-      && !(glass && (probe_due || !glass_fuse))
-      && !sharp_glass
-      && blur_composite_is_copy(pass, tex_options);
-  struct blur_data final_upsample = {0};
+  const bool fuse = shared ? pass->shared_blur.fused
+                           : (!use_optimized || has_strength) && buffer_cached == NULL
+          && !(glass && (probe_due || !glass_fuse))
+          && !sharp_glass
+          && blur_composite_is_copy(pass, tex_options);
+  struct blur_data final_upsample = shared ? pass->shared_blur.final_upsample : (struct blur_data){0};
   TRACY_ZONE_TEXT_f("Use Optimized Blur: %d", fx_options->use_optimized_blur);
   TRACY_ZONE_TEXT_f("Fused Composite: %d", fuse);
   if (shared) {
@@ -3672,10 +3678,14 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   }
   struct fx_texture* blur_texture = fx_get_texture(wlr_texture);
 
-  if (probe_due && !fuse) {
+  if (probe_due && (!fuse || shared)) {
+    // A fused shared blur holds the half-resolution level, at half the coordinates; the probe averages it.
+    const struct wlr_box level_box = fuse ? (struct wlr_box){probe_box.x / 2, probe_box.y / 2,
+                                                             (probe_box.width + 1) / 2, (probe_box.height + 1) / 2}
+                                          : probe_box;
     fx_backdrop_probe_capture(
         fx_options->backdrop_probe, blur_texture->tex, blur_texture->target, buffer->buffer->width,
-        buffer->buffer->height, &probe_box, pass->has_color_transform
+        buffer->buffer->height, &level_box, pass->has_color_transform
     );
     fx_framebuffer_bind(pass->buffer);
   }
@@ -3820,7 +3830,9 @@ bool fx_render_pass_begin_shared_blur(
       .blur_strength = strength,
       .current_buffer = pass->buffer,
   };
-  struct fx_framebuffer* blur = get_main_buffer_blur(pass, &options, NULL);
+  const bool fused = glass_fuse_enabled();
+  struct blur_data final_upsample = {0};
+  struct fx_framebuffer* blur = get_main_buffer_blur(pass, &options, fused ? &final_upsample : NULL);
   if (blur == NULL) {
     fx_framebuffer_bind(pass->buffer);
     return false;
@@ -3841,6 +3853,8 @@ bool fx_render_pass_begin_shared_blur(
   pass->shared_blur.strength = strength;
   pass->shared_blur.blur = blur;
   pass->shared_blur.sharp = sharp;
+  pass->shared_blur.fused = fused;
+  pass->shared_blur.final_upsample = final_upsample;
   return true;
 }
 

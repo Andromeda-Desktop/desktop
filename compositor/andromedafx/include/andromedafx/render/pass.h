@@ -8,6 +8,7 @@
 #include <GLES2/gl2.h>
 #include <stdbool.h>
 #include <andromedafx/render/effect.h>
+#include <andromedafx/types/fx/blur_data.h>
 #include <wlr/render/color.h>
 #include <wlr/render/interface.h>
 #include <wlr/render/pass.h>
@@ -64,6 +65,9 @@ struct fx_gles_render_pass {
     float strength;
     struct fx_framebuffer* blur;
     struct fx_framebuffer* sharp;
+    // Set: `blur` holds the half-resolution level and each node does the final upsample in its composite.
+    bool fused;
+    struct blur_data final_upsample;
   } shared_blur;
   struct wlr_texture* workspace_incoming; // bound only while compositing a workspace pair
   // A scratch backdrop beneath an isolated subtree, excluded from composition.
