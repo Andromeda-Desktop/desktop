@@ -577,9 +577,13 @@ void LauncherPanel::openSelectedClipboardImage() {
   }
   auto* clipboard = dynamic_cast<ClipboardProvider*>(provider->get());
   const LauncherResult& result = m_results[m_selectedIndex];
-  if (clipboard != nullptr
-      && (result.presentation == "clipboard-files" ? clipboard->reveal(result) : clipboard->openImage(result))) {
-    finishActivation(*clipboard, result.id, false);
+  if (clipboard == nullptr) {
+    return;
+  }
+  if (result.presentation == "clipboard-files") {
+    clipboard->reveal(result);
+  } else {
+    clipboard->openImage(result);
   }
 }
 
@@ -591,9 +595,8 @@ void LauncherPanel::copySelectedClipboardPaths() {
   if (provider == m_providers.end()) {
     return;
   }
-  if (auto* clipboard = dynamic_cast<ClipboardProvider*>(provider->get()); clipboard != nullptr
-      && clipboard->copyPaths(m_results[m_selectedIndex])) {
-    finishActivation(*clipboard, m_results[m_selectedIndex].id, false);
+  if (auto* clipboard = dynamic_cast<ClipboardProvider*>(provider->get()); clipboard != nullptr) {
+    clipboard->copyPaths(m_results[m_selectedIndex]);
   }
 }
 

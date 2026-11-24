@@ -133,4 +133,9 @@ private:
   float m_lastPreviewHeight = -1.0F;
   float m_listRowHeight = 0.0F;
   bool m_pendingScrollToSelected = false;
+  // The text preview's payload read for m_previewLoadId.
+  enum class PreviewLoad { None, Loading, Failed };
+  PreviewLoad m_previewLoad = PreviewLoad::None;
+  std::string m_previewLoadId;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

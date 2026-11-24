@@ -66,9 +66,21 @@ namespace {
     return cleared == true;
   }
 
+  bool loadEntry(ClipboardService& clipboard, std::size_t index) {
+    if (index >= clipboard.history().size()) {
+      return false;
+    }
+    std::optional<bool> loaded;
+    clipboard.withEntryPayload(clipboard.history()[index].storageId, [&loaded](const ClipboardEntry* entry) {
+      loaded = entry != nullptr;
+    });
+    (void)runDeferredUntil([&loaded] { return loaded.has_value(); });
+    return loaded == true;
+  }
+
   // Paste reads the live selection, so persisted history is checked directly.
   std::optional<std::string> newestEntryText(ClipboardService& clipboard) {
-    if (clipboard.history().empty() || !clipboard.ensureEntryLoaded(0)) {
+    if (clipboard.history().empty() || !loadEntry(clipboard, 0)) {
       return std::nullopt;
     }
     const auto& data = clipboard.history().front().data;
@@ -285,7 +297,7 @@ namespace {
           && ok;
       ok = expect(!clipboard.persistenceMigrationPending(), "migration remained pending") && ok;
       ok = expect(clipboard.history().size() == 1, "legacy history was not loaded") && ok;
-      ok = expect(clipboard.ensureEntryLoaded(0), "migrated payload was not available") && ok;
+      ok = expect(loadEntry(clipboard, 0), "migrated payload was not available") && ok;
       ok = expect(newestEntryText(clipboard) == "secret", "migrated plaintext changed") && ok;
       ok = expect(!fs::exists(clipboardDir / "index.json"), "legacy manifest was not removed") && ok;
       ok = expect(!fs::exists(entriesDir / "entry.bin"), "legacy payload was not removed") && ok;
@@ -310,7 +322,7 @@ namespace {
            )
           && ok;
       ok = expect(clipboard.history().size() == 1, "encrypted history was not loaded") && ok;
-      ok = expect(clipboard.ensureEntryLoaded(0), "encrypted payload could not be decrypted") && ok;
+      ok = expect(loadEntry(clipboard, 0), "encrypted payload could not be decrypted") && ok;
       ok = expect(newestEntryText(clipboard) == "secret", "decrypted clipboard text changed") && ok;
     }
 

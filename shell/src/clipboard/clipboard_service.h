@@ -75,6 +75,8 @@ struct ClipboardEntry {
   std::chrono::system_clock::time_point capturedAt;
   std::chrono::steady_clock::time_point timestamp;
   bool pinned = false;
+  // 64-bit BLAKE2b of `data` for dedup without a decrypt; 0 when unknown (manifests written before the hash).
+  std::uint64_t contentHash = 0;
 
   [[nodiscard]] bool isImage() const;
   [[nodiscard]] bool isFiles() const; // copied files: data is a text/uri-list
@@ -136,10 +138,14 @@ public:
   [[nodiscard]] bool hasEncryptedPersistence() const;
   // True while a storage job (open, write, delete) has not delivered its result to the main loop.
   [[nodiscard]] bool persistenceBusy() const noexcept;
-  bool ensureEntryLoaded(std::size_t index);
+  // Runs `done` with the entry once its payload is in memory: at once when it is loaded, otherwise later on the main
+  // loop after a decrypt on the storage worker. nullptr when the entry is gone or its payload does not decrypt.
+  // Callers guard their own lifetime.
+  void withEntryPayload(const std::string& storageId, std::function<void(const ClipboardEntry*)> done);
   // The same data URI with the decrypt and base64 on the SharedWorker; `done` runs on the main loop.
   void imageDataUriAsync(const std::string& storageId, std::function<void(std::optional<std::string>)> done);
-  [[nodiscard]] std::optional<std::string> exportEntryForExternalTool(std::size_t index);
+  // Writes an image entry to the exports directory on the storage worker; `done(path)` runs later on the main loop.
+  void exportEntryAsync(const std::string& storageId, std::function<void(std::optional<std::string>)> done);
   void evictEntryPayload(std::size_t index);
   void evictAllPayloads();
   // TextClipboard implementation (used by UI controls for copy/paste). Reflects
@@ -301,7 +307,15 @@ private:
   void cancelPendingWrites();
   void finishPersist(const PersistResult& result);
   void trimHistoryToBudget();
-  [[nodiscard]] bool loadEntryPayload(ClipboardEntry& entry);
+  struct DecryptedPayload {
+    ClipboardBytes bytes;
+    std::uint64_t hash = 0;
+  };
+  [[nodiscard]] static std::optional<DecryptedPayload>
+  decryptPayload(const security::SecureKey& key, const std::string& storageId, std::size_t byteSize,
+                 std::string_view mimeType);
+  [[nodiscard]] static std::uint64_t contentHash(std::span<const std::uint8_t> data);
+  [[nodiscard]] ClipboardEntry* findEntry(std::string_view storageId);
   [[nodiscard]] static bool loadLegacyEntryPayload(ClipboardEntry& entry);
   static void evictPayloadData(ClipboardEntry& entry);
   [[nodiscard]] static std::string stateDirectory();

@@ -156,7 +156,10 @@ std::size_t ClipboardProvider::indexOf(const LauncherResult& result) const {
   if (m_clipboard == nullptr || !result.id.starts_with(kIdPrefix)) {
     return static_cast<std::size_t>(-1);
   }
-  const std::string_view storageId = std::string_view(result.id).substr(kIdPrefix.size());
+  return indexOfStorageId(std::string_view(result.id).substr(kIdPrefix.size()));
+}
+
+std::size_t ClipboardProvider::indexOfStorageId(std::string_view storageId) const {
   const auto& history = m_clipboard->history();
   for (std::size_t i = 0; i < history.size(); ++i) {
     if (history[i].storageId == storageId) {
@@ -168,14 +171,31 @@ std::size_t ClipboardProvider::indexOf(const LauncherResult& result) const {
 
 bool ClipboardProvider::activate(const LauncherResult& result) {
   const std::size_t index = indexOf(result);
-  if (index == static_cast<std::size_t>(-1) || !m_clipboard->ensureEntryLoaded(index)) {
+  if (index == static_cast<std::size_t>(-1)) {
     return false;
   }
-  const ClipboardEntry entry = m_clipboard->history()[index];
-  if (!entry.pinned) {
-    (void)m_clipboard->promoteEntry(index);
+  const auto copy = [this](const ClipboardEntry& loaded) {
+    const ClipboardEntry entry = loaded;
+    if (!entry.pinned) {
+      if (const std::size_t at = indexOfStorageId(entry.storageId); at != static_cast<std::size_t>(-1)) {
+        (void)m_clipboard->promoteEntry(at);
+      }
+    }
+    return m_clipboard->copyEntry(entry);
+  };
+  const ClipboardEntry& entry = m_clipboard->history()[index];
+  if (entry.payloadLoaded) {
+    return !entry.data.empty() && copy(entry);
   }
-  return m_clipboard->copyEntry(entry);
+  // The payload decrypts on the storage worker; the launcher closes through the done callback, as for async providers.
+  m_clipboard->withEntryPayload(
+      entry.storageId, [this, copy, id = result.id, alive = std::weak_ptr<int>(m_alive)](const ClipboardEntry* loaded) {
+        if (!alive.expired() && loaded != nullptr && copy(*loaded) && m_onActivationDone) {
+          m_onActivationDone(id, true);
+        }
+      }
+  );
+  return false;
 }
 
 bool ClipboardProvider::togglePinned(const LauncherResult& result) {
@@ -188,13 +208,19 @@ bool ClipboardProvider::remove(const LauncherResult& result) {
   return index != static_cast<std::size_t>(-1) && m_clipboard->removeHistoryEntry(index);
 }
 
-bool ClipboardProvider::openImage(const LauncherResult& result) {
+void ClipboardProvider::openImage(const LauncherResult& result) {
   const std::size_t index = indexOf(result);
   if (index == static_cast<std::size_t>(-1) || !m_clipboard->history()[index].isImage()) {
-    return false;
+    return;
   }
-  const std::optional<std::string> path = m_clipboard->exportEntryForExternalTool(index);
-  return path.has_value() && net::openFile(*path);
+  m_clipboard->exportEntryAsync(
+      m_clipboard->history()[index].storageId,
+      [this, id = result.id, alive = std::weak_ptr<int>(m_alive)](std::optional<std::string> path) {
+        if (!alive.expired() && path.has_value() && net::openFile(*path) && m_onActivationDone) {
+          m_onActivationDone(id, false);
+        }
+      }
+  );
 }
 
 std::string ClipboardProvider::text(const LauncherResult& result) const {
@@ -213,30 +239,42 @@ std::string ClipboardProvider::text(const LauncherResult& result) const {
   return paths;
 }
 
-std::vector<std::filesystem::path> ClipboardProvider::filePaths(const LauncherResult& result) const {
+void ClipboardProvider::withFilePaths(
+    const LauncherResult& result, std::function<bool(const std::vector<std::filesystem::path>&)> use
+) {
   const std::size_t index = indexOf(result);
-  if (index == static_cast<std::size_t>(-1) || !m_clipboard->history()[index].isFiles()
-      || !m_clipboard->ensureEntryLoaded(index)) {
-    return {};
+  if (index == static_cast<std::size_t>(-1) || !m_clipboard->history()[index].isFiles()) {
+    return;
   }
-  return ClipboardService::filePaths(m_clipboard->history()[index].data.span());
+  m_clipboard->withEntryPayload(
+      m_clipboard->history()[index].storageId,
+      [this, use = std::move(use), id = result.id, alive = std::weak_ptr<int>(m_alive)](const ClipboardEntry* loaded) {
+        if (alive.expired() || loaded == nullptr) {
+          return;
+        }
+        const auto paths = ClipboardService::filePaths(loaded->data.span());
+        if (!paths.empty() && use(paths) && m_onActivationDone) {
+          m_onActivationDone(id, false);
+        }
+      }
+  );
 }
 
-bool ClipboardProvider::copyPaths(const LauncherResult& result) {
-  std::string text;
-  for (const auto& path : filePaths(result)) {
-    text += (text.empty() ? "" : "\n") + path.string();
-  }
-  return !text.empty() && m_clipboard->copyText(std::move(text));
+void ClipboardProvider::copyPaths(const LauncherResult& result) {
+  withFilePaths(result, [this](const std::vector<std::filesystem::path>& paths) {
+    std::string text;
+    for (const auto& path : paths) {
+      text += (text.empty() ? "" : "\n") + path.string();
+    }
+    return m_clipboard->copyText(std::move(text));
+  });
 }
 
-bool ClipboardProvider::reveal(const LauncherResult& result) {
-  const auto paths = filePaths(result);
-  if (paths.empty()) {
-    return false;
-  }
-  m_fileManager.showItem(paths.front());
-  return true;
+void ClipboardProvider::reveal(const LauncherResult& result) {
+  withFilePaths(result, [this](const std::vector<std::filesystem::path>& paths) {
+    m_fileManager.showItem(paths.front());
+    return true;
+  });
 }
 
 void ClipboardProvider::requestThumbnail(const LauncherResult& result) {

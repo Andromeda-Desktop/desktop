@@ -134,10 +134,12 @@ namespace {
     (void)clipboard.bind(&gManager, &fakeOps(), gSeat);
     keys.configure(StorageKeySource::File, keyFile.string(), false);
     bool retention = true;
+    // A recovery drops the key at once and clears the history when its delete lands.
+    bool recovering = false;
 
     for (int op = 0; op < kOps; ++op) {
       const std::size_t size = clipboard.history().size();
-      switch (rng() % 12) {
+      switch (rng() % 15) {
       case 0:
       case 1:
       case 2:
@@ -169,7 +171,9 @@ namespace {
         break;
       case 8:
         if (rng() % 4 == 0) {
-          clipboard.clearEncryptedPersistenceForRecovery([&keys](bool cleared) {
+          recovering = true;
+          clipboard.clearEncryptedPersistenceForRecovery([&keys, &recovering](bool cleared) {
+            recovering = false;
             if (cleared) {
               keys.resetAfterEncryptedDataCleared([](bool) {});
             }
@@ -179,6 +183,33 @@ namespace {
       case 9:
         retention = !retention;
         clipboard.setHistoryRetentionEnabled(retention);
+        break;
+      case 10:
+        clipboard.evictAllPayloads();
+        break;
+      case 11:
+        // Copying a pinned entry again (its payload maybe evicted) adds nothing.
+        if (size > 0 && clipboard.history().front().pinned) {
+          const std::string text = clipboard.history().front().textPreview;
+          simulateCopy(clipboard, &offers[op], "text/plain;charset=utf-8", {text.begin(), text.end()});
+          expect(clipboard.history().size() == size, "a pinned entry's copy was added again", seed);
+        }
+        break;
+      case 12:
+        if (size > 0) {
+          const std::string id = clipboard.history()[rng() % size].storageId;
+          clipboard.withEntryPayload(id, [&clipboard, &recovering, id, seed](const ClipboardEntry* loaded) {
+            const bool present = std::ranges::find(clipboard.history(), id, &ClipboardEntry::storageId)
+                != clipboard.history().end();
+            if (loaded == nullptr) {
+              expect(!present || recovering || clipboard.persistenceState() != ClipboardPersistenceState::Ready,
+                     "a listed payload did not load", seed);
+              return;
+            }
+            expect(std::string(loaded->data.begin(), loaded->data.end()) == loaded->textPreview,
+                   "a loaded payload differs from its text", seed);
+          });
+        }
         break;
       default:
         runSomeDeferred(rng);

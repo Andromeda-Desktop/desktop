@@ -1376,14 +1376,38 @@ void ClipboardPanel::rebuildPreview(Renderer& renderer, float width, float heigh
       );
     }
 
-    if (m_clipboard != nullptr) {
-      (void)m_clipboard->ensureEntryLoaded(historyIndex);
+    if (m_clipboard != nullptr && !entry.payloadLoaded && m_previewLoadId != entry.storageId) {
+      m_previewLoadId = entry.storageId;
+      m_previewLoad = PreviewLoad::Loading;
+      m_clipboard->withEntryPayload(
+          entry.storageId,
+          [this, id = entry.storageId, alive = std::weak_ptr<int>(m_alive)](const ClipboardEntry* loaded) {
+            if (alive.expired() || m_previewLoadId != id) {
+              return;
+            }
+            m_previewLoad = loaded != nullptr ? PreviewLoad::None : PreviewLoad::Failed;
+            m_lastPreviewWidth = -1.0F;
+            PanelManager::instance().refresh();
+          }
+      );
     }
-    const auto& loadedEntry = m_clipboard != nullptr ? m_clipboard->history()[historyIndex] : entry;
+    if (!entry.payloadLoaded && m_previewLoadId == entry.storageId && m_previewLoad == PreviewLoad::Loading) {
+      m_previewContent->addChild(
+          ui::label({
+              .text = i18n::tr("clipboard.preview.loading"),
+              .color = colorSpecFromRole(ColorRole::Label2),
+              .maxWidth = width,
+          })
+      );
+      m_lastPreviewWidth = width;
+      m_lastPreviewHeight = height;
+      return;
+    }
     constexpr std::size_t kMaxPreviewChars = 8000;
     constexpr int kMaxPreviewLines = 200;
 
-    std::string text(loadedEntry.data.begin(), loadedEntry.data.end());
+    // A payload that did not decrypt shows its stored preview.
+    std::string text = entry.payloadLoaded ? std::string(entry.data.begin(), entry.data.end()) : entry.textPreview;
     const bool truncated = text.size() > kMaxPreviewChars;
     if (truncated) {
       text.resize(kMaxPreviewChars);
@@ -1783,18 +1807,24 @@ void ClipboardPanel::runImageAction() {
     return;
   }
 
-  const std::optional<std::string> exportedPath = m_clipboard->exportEntryForExternalTool(historyIndex);
-  if (!exportedPath.has_value()) {
-    kLog.warn("clipboard image action failed: selected image could not be exported");
-    return;
-  }
-
-  const std::string command = buildImageActionCommand(configuredCommand, *exportedPath);
-  if (!process::runAsync(command)) {
-    kLog.warn("clipboard image action failed to launch: {}", configuredCommand);
-    return;
-  }
-  PanelManager::instance().close();
+  m_clipboard->exportEntryAsync(
+      history[historyIndex].storageId,
+      [configuredCommand, alive = std::weak_ptr<int>(m_alive)](std::optional<std::string> exportedPath) {
+        if (alive.expired()) {
+          return;
+        }
+        if (!exportedPath.has_value()) {
+          kLog.warn("clipboard image action failed: selected image could not be exported");
+          return;
+        }
+        const std::string command = buildImageActionCommand(configuredCommand, *exportedPath);
+        if (!process::runAsync(command)) {
+          kLog.warn("clipboard image action failed to launch: {}", configuredCommand);
+          return;
+        }
+        PanelManager::instance().close();
+      }
+  );
 }
 
 void ClipboardPanel::openSelectedImage() {
@@ -1807,48 +1837,65 @@ void ClipboardPanel::openSelectedImage() {
     return;
   }
 
-  const std::optional<std::string> exportedPath = m_clipboard->exportEntryForExternalTool(historyIndex);
-  if (!exportedPath.has_value()) {
-    kLog.warn("clipboard open image failed: selected image could not be exported");
-    return;
-  }
-
-  if (net::openFile(*exportedPath)) {
-    PanelManager::instance().close();
-  }
+  m_clipboard->exportEntryAsync(
+      history[historyIndex].storageId,
+      [alive = std::weak_ptr<int>(m_alive)](std::optional<std::string> exportedPath) {
+        if (alive.expired()) {
+          return;
+        }
+        if (!exportedPath.has_value()) {
+          kLog.warn("clipboard open image failed: selected image could not be exported");
+          return;
+        }
+        if (net::openFile(*exportedPath)) {
+          PanelManager::instance().close();
+        }
+      }
+  );
 }
 
 void ClipboardPanel::copySelectedPaths() {
   const std::size_t historyIndex = selectedHistoryIndex();
-  if (m_clipboard == nullptr || historyIndex >= m_clipboard->history().size()) {
+  if (m_clipboard == nullptr || historyIndex >= m_clipboard->history().size()
+      || !m_clipboard->history()[historyIndex].isFiles()) {
     return;
   }
-  const ClipboardEntry& entry = m_clipboard->history()[historyIndex];
-  if (!entry.isFiles() || !m_clipboard->ensureEntryLoaded(historyIndex)) {
-    return;
-  }
-  std::string text;
-  for (const auto& path : ClipboardService::filePaths(m_clipboard->history()[historyIndex].data.span())) {
-    text += (text.empty() ? "" : "\n") + path.string();
-  }
-  if (m_clipboard->copyText(std::move(text))) {
-    PanelManager::instance().close();
-  }
+  m_clipboard->withEntryPayload(
+      m_clipboard->history()[historyIndex].storageId,
+      [this, alive = std::weak_ptr<int>(m_alive)](const ClipboardEntry* loaded) {
+        if (alive.expired() || loaded == nullptr) {
+          return;
+        }
+        std::string text;
+        for (const auto& path : ClipboardService::filePaths(loaded->data.span())) {
+          text += (text.empty() ? "" : "\n") + path.string();
+        }
+        if (m_clipboard->copyText(std::move(text))) {
+          PanelManager::instance().close();
+        }
+      }
+  );
 }
 
 void ClipboardPanel::showSelectedInFiles() {
   const std::size_t historyIndex = selectedHistoryIndex();
-  if (m_clipboard == nullptr || historyIndex >= m_clipboard->history().size() || !m_showInFilesCallback) {
+  if (m_clipboard == nullptr || historyIndex >= m_clipboard->history().size() || !m_showInFilesCallback
+      || !m_clipboard->history()[historyIndex].isFiles()) {
     return;
   }
-  if (!m_clipboard->history()[historyIndex].isFiles() || !m_clipboard->ensureEntryLoaded(historyIndex)) {
-    return;
-  }
-  const auto paths = ClipboardService::filePaths(m_clipboard->history()[historyIndex].data.span());
-  if (!paths.empty()) {
-    m_showInFilesCallback(paths.front());
-    PanelManager::instance().close();
-  }
+  m_clipboard->withEntryPayload(
+      m_clipboard->history()[historyIndex].storageId,
+      [this, alive = std::weak_ptr<int>(m_alive)](const ClipboardEntry* loaded) {
+        if (alive.expired() || loaded == nullptr || !m_showInFilesCallback) {
+          return;
+        }
+        const auto paths = ClipboardService::filePaths(loaded->data.span());
+        if (!paths.empty()) {
+          m_showInFilesCallback(paths.front());
+          PanelManager::instance().close();
+        }
+      }
+  );
 }
 
 void ClipboardPanel::activateSelected() {
@@ -1859,24 +1906,33 @@ void ClipboardPanel::activateSelected() {
   if (historyIndex == static_cast<std::size_t>(-1)) {
     return;
   }
-  if (!m_clipboard->ensureEntryLoaded(historyIndex)) {
-    return;
-  }
-  const ClipboardEntry entry = m_clipboard->history()[historyIndex];
-  // Pinned entries already sit at the top; don't reorder them or jump the
-  // selection back to the front when they are actioned — just copy.
-  const bool wasPinned = entry.pinned;
-  const bool promoted = wasPinned ? false : m_clipboard->promoteEntry(historyIndex);
-  const bool copied = m_clipboard->copyEntry(entry);
-  if (copied || promoted) {
-    if (!wasPinned) {
-      selectByStorageId(entry.storageId);
-    }
-    PanelManager::instance().refresh();
-    if (m_activateCallback) {
-      m_activateCallback(entry);
-    }
-  }
+  m_clipboard->withEntryPayload(
+      m_clipboard->history()[historyIndex].storageId,
+      [this, alive = std::weak_ptr<int>(m_alive)](const ClipboardEntry* loaded) {
+        if (alive.expired() || loaded == nullptr) {
+          return;
+        }
+        const ClipboardEntry entry = *loaded;
+        const auto& history = m_clipboard->history();
+        const auto at = static_cast<std::size_t>(
+            std::ranges::find(history, entry.storageId, &ClipboardEntry::storageId) - history.begin()
+        );
+        // Pinned entries already sit at the top; don't reorder them or jump the
+        // selection back to the front when they are actioned — just copy.
+        const bool wasPinned = entry.pinned;
+        const bool promoted = wasPinned ? false : m_clipboard->promoteEntry(at);
+        const bool copied = m_clipboard->copyEntry(entry);
+        if (copied || promoted) {
+          if (!wasPinned) {
+            selectByStorageId(entry.storageId);
+          }
+          PanelManager::instance().refresh();
+          if (m_activateCallback) {
+            m_activateCallback(entry);
+          }
+        }
+      }
+  );
 }
 
 bool ClipboardPanel::handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers) {

@@ -3,6 +3,7 @@
 #include "config/atomic_file.h"
 #include "config/config_limits.h"
 #include "core/log.h"
+#include "core/deferred_call.h"
 #include "core/shared_worker.h"
 #include "render/core/image_encoder.h"
 #include "render/core/image_file_loader.h"
@@ -947,11 +948,75 @@ std::size_t ClipboardService::addPollFds(std::vector<pollfd>& fds) const {
 
 bool ClipboardService::hasPendingOrphanAdopt() const noexcept { return m_pendingOrphanAdopt; }
 
-bool ClipboardService::ensureEntryLoaded(std::size_t index) {
-  if (index >= m_history.size()) {
-    return false;
+ClipboardEntry* ClipboardService::findEntry(std::string_view storageId) {
+  const auto it = std::ranges::find(m_history, storageId, &ClipboardEntry::storageId);
+  return it == m_history.end() ? nullptr : &*it;
+}
+
+std::optional<ClipboardService::DecryptedPayload> ClipboardService::decryptPayload(
+    const security::SecureKey& key, const std::string& storageId, std::size_t byteSize, std::string_view mimeType
+) {
+  auto result = security::readEncryptedFile(
+      payloadPathForId(storageId), key,
+      security::EncryptionContext{.purpose = std::string(kPayloadPurpose), .objectId = storageId},
+      maxEntryBytesFor(mimeType)
+  );
+  if (!result.succeeded() || result.plaintext.empty() || result.plaintext.size() != byteSize) {
+    if (result.status != security::EncryptedReadStatus::NotFound) {
+      kLog.warn("failed to decrypt clipboard payload {} (status={})", storageId, static_cast<int>(result.status));
+    }
+    return std::nullopt;
   }
-  return loadEntryPayload(m_history[index]);
+  const std::uint64_t hash = contentHash(result.plaintext);
+  return DecryptedPayload{.bytes = ClipboardBytes(std::move(result.plaintext)), .hash = hash};
+}
+
+std::uint64_t ClipboardService::contentHash(std::span<const std::uint8_t> data) {
+  std::uint64_t hash = 0;
+  crypto_generichash(reinterpret_cast<unsigned char*>(&hash), sizeof(hash), data.data(), data.size(), nullptr, 0);
+  return hash == 0 ? 1 : hash;
+}
+
+void ClipboardService::withEntryPayload(const std::string& storageId, std::function<void(const ClipboardEntry*)> done) {
+  ClipboardEntry* entry = findEntry(storageId);
+  if (entry != nullptr && entry->payloadLoaded) {
+    done(entry->data.empty() ? nullptr : entry);
+    return;
+  }
+  if (entry == nullptr || m_dataKey == nullptr || !isValidStorageId(storageId)) {
+    DeferredCall::callLater([alive = std::weak_ptr<void>(m_alive), done = std::move(done)] {
+      if (!alive.expired()) {
+        done(nullptr);
+      }
+    });
+    return;
+  }
+  postStorageJob<std::optional<DecryptedPayload>>(
+      [key = m_dataKey, storageId, byteSize = entry->byteSize, mimeType = entry->dataMimeType] {
+        return decryptPayload(*key, storageId, byteSize, mimeType);
+      },
+      [this, storageId, done = std::move(done)](std::optional<DecryptedPayload> payload) {
+        ClipboardEntry* entry = findEntry(storageId);
+        if (entry == nullptr) {
+          done(nullptr);
+          return;
+        }
+        if (!entry->payloadLoaded) {
+          if (!payload.has_value()) {
+            setPersistenceState(ClipboardPersistenceState::RecoveryRequired, m_persistenceMigrationPending);
+            done(nullptr);
+            return;
+          }
+          entry->data = std::move(payload->bytes);
+          entry->payloadLoaded = true;
+          entry->contentHash = payload->hash;
+          if (entry->textPreview.empty()) {
+            entry->textPreview = previewText(entry->dataMimeType, entry->data.span());
+          }
+        }
+        done(entry->data.empty() ? nullptr : entry);
+      }
+  );
 }
 
 namespace {
@@ -1007,16 +1072,10 @@ void ClipboardService::imageDataUriAsync(
   if (entry->payloadLoaded) {
     work = [bytes = entry->data.shared()] { return imageDataUri(*bytes); };
   } else if (m_dataKey != nullptr && isValidStorageId(storageId)) {
-    work = [path = payloadPathForId(storageId), key = m_dataKey, storageId, byteSize = entry->byteSize,
-            limit = maxEntryBytesFor(entry->dataMimeType)]() -> std::optional<std::string> {
-      auto result = security::readEncryptedFile(
-          path, *key, security::EncryptionContext{.purpose = std::string(kPayloadPurpose), .objectId = storageId},
-          limit
-      );
-      if (!result.succeeded() || result.plaintext.size() != byteSize) {
-        return std::nullopt;
-      }
-      return imageDataUri(result.plaintext);
+    work = [key = m_dataKey, storageId, byteSize = entry->byteSize,
+            mimeType = entry->dataMimeType]() -> std::optional<std::string> {
+      const auto payload = decryptPayload(*key, storageId, byteSize, mimeType);
+      return payload.has_value() ? imageDataUri(*payload->bytes.shared()) : std::nullopt;
     };
   } else {
     done(std::nullopt);
@@ -1025,48 +1084,51 @@ void ClipboardService::imageDataUriAsync(
   SharedWorker::instance().post<std::optional<std::string>>(m_alive, std::move(work), std::move(done));
 }
 
-std::optional<std::string> ClipboardService::exportEntryForExternalTool(std::size_t index) {
+void ClipboardService::exportEntryAsync(
+    const std::string& storageId, std::function<void(std::optional<std::string>)> done
+) {
   namespace fs = std::filesystem;
 
-  if (index >= m_history.size()) {
-    return std::nullopt;
+  const ClipboardEntry* entry = findEntry(storageId);
+  std::function<std::optional<ClipboardBytes>()> bytes;
+  if (entry != nullptr && entry->isImage() && entry->payloadLoaded) {
+    bytes = [data = entry->data] { return std::optional<ClipboardBytes>(data); };
+  } else if (entry != nullptr && entry->isImage() && m_dataKey != nullptr && isValidStorageId(storageId)) {
+    bytes = [key = m_dataKey, storageId, byteSize = entry->byteSize,
+             mimeType = entry->dataMimeType]() -> std::optional<ClipboardBytes> {
+      auto payload = decryptPayload(*key, storageId, byteSize, mimeType);
+      return payload.has_value() ? std::optional(std::move(payload->bytes)) : std::nullopt;
+    };
+  } else {
+    DeferredCall::callLater([alive = std::weak_ptr<void>(m_alive), done = std::move(done)] {
+      if (!alive.expired()) {
+        done(std::nullopt);
+      }
+    });
+    return;
   }
-
-  ClipboardEntry& entry = m_history[index];
-  if (!entry.isImage()) {
-    return std::nullopt;
-  }
-
-  const bool wasLoaded = entry.payloadLoaded;
-  if (!loadEntryPayload(entry)) {
-    return std::nullopt;
-  }
-
-  try {
-    if (entry.storageId.empty()) {
-      entry.storageId = generateStorageId();
-    }
-
-    const fs::path exportDir = fs::path(stateDirectory()) / "exports";
-    ensurePrivateDirectory(stateDirectory());
-    ensurePrivateDirectory(exportDir);
-    const fs::path exportPath = exportDir / (entry.storageId + exportExtensionForEntry(entry));
-
-    if (!writeTextFileAtomic(exportPath, binaryView(entry.data), FileUtils::privateFileMode())) {
-      throw std::runtime_error("failed to write exported clipboard image");
-    }
-
-    if (!wasLoaded) {
-      evictPayloadData(entry);
-    }
-    return exportPath.string();
-  } catch (const std::exception& e) {
-    if (!wasLoaded) {
-      evictPayloadData(entry);
-    }
-    kLog.warn("failed to export clipboard image: {}", e.what());
-    return std::nullopt;
-  }
+  postStorageJob<std::optional<std::string>>(
+      [bytes = std::move(bytes), name = storageId + exportExtensionForEntry(*entry)]() -> std::optional<std::string> {
+        const auto data = bytes();
+        if (!data.has_value()) {
+          return std::nullopt;
+        }
+        try {
+          const fs::path exportDir = fs::path(stateDirectory()) / "exports";
+          ensurePrivateDirectory(stateDirectory());
+          ensurePrivateDirectory(exportDir);
+          const fs::path exportPath = exportDir / name;
+          if (!writeTextFileAtomic(exportPath, binaryView(data->span()), FileUtils::privateFileMode())) {
+            throw std::runtime_error("failed to write exported clipboard image");
+          }
+          return exportPath.string();
+        } catch (const std::exception& e) {
+          kLog.warn("failed to export clipboard image: {}", e.what());
+          return std::nullopt;
+        }
+      },
+      std::move(done)
+  );
 }
 
 void ClipboardService::evictEntryPayload(std::size_t index) {
@@ -1754,6 +1816,9 @@ void ClipboardService::addToHistory(ClipboardEntry entry) {
   if (entry.textPreview.empty() && !entry.data.empty()) {
     entry.textPreview = previewText(entry.dataMimeType, entry.data.span());
   }
+  if (entry.contentHash == 0 && !entry.data.empty()) {
+    entry.contentHash = contentHash(entry.data.span());
+  }
 
   if (!m_historyRetention) {
     // History is disabled: retain only the latest capture in memory and never
@@ -1783,16 +1848,11 @@ void ClipboardService::addToHistory(ClipboardEntry entry) {
   // pinned entry echoes its content back as a fresh selection, which would
   // otherwise reappear as a duplicate unpinned entry at the top.
   if (!entry.data.empty()) {
-    auto matchesExisting = [&](ClipboardEntry& current) {
-      const bool currentWasLoaded = current.payloadLoaded;
-      bool samePayload = false;
-      if (current.byteSize == entry.byteSize) {
-        const bool currentLoaded = current.payloadLoaded || loadEntryPayload(current);
-        samePayload = currentLoaded && current.data == entry.data;
-        if (!currentWasLoaded) {
-          evictPayloadData(current);
-        }
-      }
+    // An unloaded entry compares by hash; one from a manifest without hashes (0) is not a duplicate.
+    auto matchesExisting = [&](const ClipboardEntry& current) {
+      const bool samePayload = current.byteSize == entry.byteSize
+          && (current.payloadLoaded ? current.data == entry.data
+                                    : current.contentHash != 0 && current.contentHash == entry.contentHash);
       const bool sameMime = current.dataMimeType == entry.dataMimeType;
       const bool equivalentText = isTextMimeType(current.dataMimeType) && isTextMimeType(entry.dataMimeType);
       return samePayload && (sameMime || equivalentText);
@@ -1861,6 +1921,7 @@ bool ClipboardService::readLegacyHistory(std::deque<ClipboardEntry>& entries) {
       kLog.warn("failed to read legacy clipboard payload {}", entry.storageId);
       return false;
     }
+    entry.contentHash = contentHash(entry.data.span());
   }
   return true;
 }
@@ -1932,6 +1993,7 @@ bool ClipboardService::parseManifest(
       entry.textPreview = item.value("text_preview", "");
       entry.byteSize = item.at("byte_size").get<std::size_t>();
       entry.pinned = item.value("pinned", false);
+      entry.contentHash = item.value("hash", std::uint64_t{0});
       entry.payloadLoaded = false;
       // A legacy entry's payload is plaintext: migration still has to write the encrypted file.
       entry.payloadOnDisk = !legacy;
@@ -2077,6 +2139,7 @@ bool ClipboardService::persistEntries(std::deque<ClipboardEntry>& entries) {
           {"byte_size", entry.byteSize},
           {"captured_at_ms", capturedAtMs},
           {"pinned", entry.pinned},
+          {"hash", entry.contentHash},
       });
     }
     manifestContent = nlohmann::json{{"entries", manifestEntries}}.dump(2);
@@ -2276,39 +2339,6 @@ void ClipboardService::trimHistoryToBudget() {
 
     break;
   }
-}
-
-bool ClipboardService::loadEntryPayload(ClipboardEntry& entry) {
-  if (entry.payloadLoaded) {
-    return !entry.data.empty();
-  }
-  if (!(m_dataKey != nullptr) || !isValidStorageId(entry.storageId)) {
-    return false;
-  }
-  entry.payloadPath = payloadPathForId(entry.storageId);
-
-  auto result = security::readEncryptedFile(
-      entry.payloadPath, *m_dataKey,
-      security::EncryptionContext{
-          .purpose = std::string(kPayloadPurpose),
-          .objectId = entry.storageId,
-      },
-      maxEntryBytesFor(entry.dataMimeType)
-  );
-  if (!result.succeeded() || result.plaintext.empty() || result.plaintext.size() != entry.byteSize) {
-    if (result.status != security::EncryptedReadStatus::NotFound) {
-      kLog.warn("failed to decrypt clipboard payload {} (status={})", entry.storageId, static_cast<int>(result.status));
-    }
-    setPersistenceState(ClipboardPersistenceState::RecoveryRequired, m_persistenceMigrationPending);
-    return false;
-  }
-
-  entry.data = ClipboardBytes(std::move(result.plaintext));
-  entry.payloadLoaded = true;
-  if (entry.textPreview.empty()) {
-    entry.textPreview = previewText(entry.dataMimeType, entry.data.span());
-  }
-  return true;
 }
 
 bool ClipboardService::loadLegacyEntryPayload(ClipboardEntry& entry) {
