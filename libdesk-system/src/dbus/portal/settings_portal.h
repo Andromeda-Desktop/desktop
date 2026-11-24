@@ -31,6 +31,8 @@ public:
   // org.andromeda.appearance ui-scale and text-scale (factors, 1 = default): apps scale their windows and text;
   // corner-radius-scale (0..2, 1 = default) scales their corner radii.
   void setScales(double uiScale, double textScale, double cornerRadiusScale);
+  // org.andromeda.appearance language: the shell's language tag; empty means each app reads its locale environment.
+  void setLanguage(const std::string& language);
   // org.andromeda.appearance glass, frost and liquid (0..1), reduce-transparency and compositor-blur (1 = on): apps
   // take the same glass material as the shell.
   void setGlass(double glass, double frost, double liquid, bool reduceTransparency, bool compositorBlur);
@@ -53,6 +55,7 @@ private:
   double m_uiScale = 1.0;
   double m_textScale = 1.0;
   double m_cornerRadiusScale = 1.0;
+  std::string m_language;
   double m_glass = 1.0;
   double m_frost = 1.0;
   double m_liquid = 0.5;

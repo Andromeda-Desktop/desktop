@@ -4,6 +4,7 @@
 #include "app/app_services.h"
 #include "app/desk_app.h"
 #include "core/sys/sys.h"
+#include "i18n/i18n_service.h"
 #include "render/text/cairo_text_renderer.h"
 
 #include <dlfcn.h>
@@ -44,7 +45,11 @@ namespace {
 
 int main() {
   std::vector<std::string> args = serveAppZygote(
-      "appd", [] { CairoTextRenderer::preloadFonts(fontWarmupFiles()); },
+      "appd",
+      [] {
+        CairoTextRenderer::preloadFonts(fontWarmupFiles());
+        i18n::Service::instance().setLanguage({});
+      },
       [](const std::vector<std::string>& argv) {
         std::error_code ec;
         const auto library = appLibrary(argv);

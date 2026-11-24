@@ -1062,12 +1062,13 @@ void Application::initStyleThemeAndWayland() {
     m_settingsPortal->setDark(!m_themeService.isLightMode());
     const Color accent = colorForRole(ColorRole::Accent, 1.0F);
     m_settingsPortal->setAccent(accent.r, accent.g, accent.b);
-    const auto publishScales = [this] {
+    const auto publishAppSettings = [this] {
       const auto& config = m_configService.config();
       m_settingsPortal->setScales(config.accessibility.uiScale, config.accessibility.textScale, config.shell.cornerRadiusScale);
+      m_settingsPortal->setLanguage(config.shell.lang);
     };
-    publishScales();
-    m_configService.addReloadCallback(publishScales);
+    publishAppSettings();
+    m_configService.addReloadCallback(publishAppSettings);
   }
   if (m_configService.config().theme.toolkitThemes) {
     const auto& toolkit = m_themeService.toolkitColors();

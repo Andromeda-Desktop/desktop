@@ -79,6 +79,7 @@ namespace i18n {
     // English, both slots end up pointing at the same catalog contents.
     void init(std::string_view preferredLang = {});
 
+    // Loads like init, unless the catalogs for this request are already loaded.
     void setLanguage(std::string_view lang);
     [[nodiscard]] std::string_view language() const noexcept { return m_language; }
     [[nodiscard]] std::string_view requestedLanguage() const noexcept { return m_requestedLanguage; }
@@ -96,6 +97,7 @@ namespace i18n {
     std::string m_language;
     std::string m_requestedLanguage;
     bool m_rtl = false;
+    bool m_loaded = false;
   };
 
 } // namespace i18n

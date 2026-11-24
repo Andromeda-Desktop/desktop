@@ -2,6 +2,7 @@
 #include "app/appearance.h"
 #include "dbus/portal/settings_portal.h"
 #include "dbus/session_bus.h"
+#include "i18n/i18n_service.h"
 #include "ui/style.h"
 
 #include <chrono>
@@ -52,5 +53,16 @@ int main() {
 
   portal.setScales(1.0, 1.0, 3.0);
   expectCorner(shellBus, appBus, 2.0F, "a value above the range clamps to 2");
+
+  const int beforeLanguage = changes;
+  portal.setLanguage("de");
+  if (!pumpUntil(shellBus, appBus, [] { return i18n::Service::instance().requestedLanguage() == "de"; })
+      || changes == beforeLanguage) {
+    std::println(
+        stderr, "appearance_portal_test: the shell language did not reach the app (requested '{}')",
+        i18n::Service::instance().requestedLanguage()
+    );
+    ++g_failures;
+  }
   return g_failures == 0 ? 0 : 1;
 }

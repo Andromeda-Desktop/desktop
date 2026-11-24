@@ -34,6 +34,7 @@ namespace {
   constexpr auto kLiquidBlur = "liquid-blur";
   constexpr auto kTextScale = "text-scale";
   constexpr auto kCornerRadiusScale = "corner-radius-scale";
+  constexpr auto kLanguage = "language";
   constexpr auto kWmPreferences = "org.gnome.desktop.wm.preferences";
   constexpr auto kButtonLayout = "button-layout";
   constexpr std::uint32_t kVersion = 2;
@@ -81,6 +82,7 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                   all[kAndromeda][kEdgeReflection] = sdbus::Variant{m_edgeReflection};
                   all[kAndromeda][kLiquidTint] = sdbus::Variant{m_liquidTint};
                   all[kAndromeda][kLiquidBlur] = sdbus::Variant{m_liquidBlur};
+                  all[kAndromeda][kLanguage] = sdbus::Variant{m_language};
                 }
                 if (wanted(namespaces, kWmPreferences)) {
                   all[kWmPreferences][kButtonLayout] = sdbus::Variant{m_buttonLayout};
@@ -138,6 +140,9 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                 }
                 if (ns == kAndromeda && key == kLiquidBlur) {
                   return sdbus::Variant{m_liquidBlur};
+                }
+                if (ns == kAndromeda && key == kLanguage) {
+                  return sdbus::Variant{m_language};
                 }
                 if (ns == kWmPreferences && key == kButtonLayout) {
                   return sdbus::Variant{m_buttonLayout};
@@ -197,6 +202,14 @@ void SettingsPortal::setReducedMotion(bool reduce) {
   }
   m_reducedMotion = reduced;
   emitChanged(kAppearance, kReducedMotion, sdbus::Variant{reduced});
+}
+
+void SettingsPortal::setLanguage(const std::string& language) {
+  if (language == m_language) {
+    return;
+  }
+  m_language = language;
+  emitChanged(kAndromeda, kLanguage, sdbus::Variant{m_language});
 }
 
 void SettingsPortal::setButtonsLeft(bool left) {

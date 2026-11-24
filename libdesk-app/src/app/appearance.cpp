@@ -1,6 +1,7 @@
 #include "app/appearance.h"
 
 #include "core/log.h"
+#include "i18n/i18n_service.h"
 #include "render/animation/motion_service.h"
 #include "dbus/session_bus.h"
 #include "ui/palette.h"
@@ -79,6 +80,7 @@ void Appearance::read(bool backend) {
       {kAndromeda, "ui-scale"},     {kAndromeda, "text-scale"},     {kAndromeda, "corner-radius-scale"}, {kAndromeda, "glass"},
       {kAndromeda, "frost"},        {kAndromeda, "liquid"},       {kAndromeda, "reduce-transparency"}, {kAndromeda, "compositor-blur"},
       {kAndromeda, "glass-style"},  {kAndromeda, "edge-reflection"}, {kAndromeda, "liquid-tint"},     {kAndromeda, "liquid-blur"},
+      {kAndromeda, "language"},
   };
   for (const auto& [ns, key] : keys) {
     proxy->callMethodAsync("Read")
@@ -136,6 +138,13 @@ bool Appearance::take(const std::string& ns, const std::string& key, const sdbus
     }
     return true;
   }
+  if (ns == kAndromeda && key == "language") {
+    if (!value.containsValueOfType<std::string>()) {
+      return false;
+    }
+    m_language = value.get<std::string>();
+    return true;
+  }
   if (ns == kAndromeda) {
     if (!value.containsValueOfType<double>()) {
       return false;
@@ -191,10 +200,11 @@ void Appearance::apply() {
   MotionService::instance().setReduced(m_reducedMotion);
   Style::setGlass(m_glass, m_compositorBlur);
   Style::setCornerRadiusScale(static_cast<float>(m_cornerRadiusScale));
+  i18n::Service::instance().setLanguage(m_language);
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
   const Applied now{
       m_light,   m_hasAccent, m_reducedMotion, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
-      m_uiScale, m_textScale, m_cornerRadiusScale, m_glass, m_compositorBlur
+      m_uiScale, m_textScale, m_cornerRadiusScale, m_glass, m_compositorBlur, m_language
   };
   if (now == m_applied) {
     return;

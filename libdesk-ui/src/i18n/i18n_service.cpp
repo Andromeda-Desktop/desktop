@@ -81,6 +81,7 @@ namespace i18n {
   void Service::init(std::string_view preferredLang) {
     const std::string candidate = resolveRequestedLanguage(preferredLang);
     m_requestedLanguage = candidate;
+    m_loaded = true;
 
     // English is always loaded as the fallback; for English itself the active catalog stays empty.
     if (!loadCatalog("en", m_fallback)) {
@@ -121,7 +122,7 @@ namespace i18n {
   void Service::setLanguage(std::string_view lang) {
     // Compare the resolved request, not the loaded catalog: an empty (auto) or regional tag
     // resolves to a different catalog name and would otherwise reload on every config reload.
-    if (resolveRequestedLanguage(lang) == m_requestedLanguage) {
+    if (m_loaded && resolveRequestedLanguage(lang) == m_requestedLanguage) {
       return;
     }
     init(lang);

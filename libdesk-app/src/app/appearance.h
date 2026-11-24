@@ -49,6 +49,7 @@ private:
   double m_uiScale = 1.0;
   double m_textScale = 1.0;
   double m_cornerRadiusScale = 1.0;
+  std::string m_language; // empty: the locale environment
   // Style::setGlass inputs; the defaults match Style's.
   glass::Settings m_glass;
   bool m_compositorBlur = false;
@@ -63,6 +64,7 @@ private:
     double cornerRadiusScale = 1.0;
     glass::Settings glass;
     bool compositorBlur = false;
+    std::string language;
     bool operator==(const Applied&) const = default;
   };
   Applied m_applied; // what windows last built with; the defaults match the startup palette

@@ -7,6 +7,7 @@
 #include "core/log.h"
 #include "core/process/process_phase.h"
 #include "core/sys/sys.h"
+#include "i18n/i18n_service.h"
 #include "platform/surface.h"
 #include "protocols/uri.h"
 #include "render/text/cairo_text_renderer.h"
@@ -186,6 +187,7 @@ std::filesystem::path DeskApp::fontWarmupDir() {
 std::optional<int> DeskApp::start(int argc, char* argv[]) {
   initLogLevelFromEnvironment();
   auto [uris, serviceStart, startAction] = parseLaunchArgs(argc, argv);
+  i18n::Service::instance().setLanguage({});
 
   m_services = createAppServices(
       m_info.id, m_info.name, m_info.singleInstance,
