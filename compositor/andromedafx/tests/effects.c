@@ -2879,6 +2879,78 @@ static bool test_blur_source_model(struct fixture* fixture) {
   return ok;
 }
 
+// Model: glass at strengths below 1 over the cached backdrop while random changes rebuild parts of it and the nodes
+// move. Every frame draws what a cache re-rendered whole draws, so a strength slot never shows a stale backdrop.
+static bool blur_strength_model_seed(struct fixture* fixture, uint32_t seed) {
+  enum { NODES = 3, STEPS = 40, OPS = 5 };
+  const uint32_t start = seed;
+  static const float strengths[2] = {0.5f, 0.25f};
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
+  wlr_scene_set_blur_data(scene, 1, 2, 0, 1, 1, 1);
+  struct wlr_scene_tree* source = wlr_scene_tree_create(&scene->tree);
+  const float base[4] = {0.2f, 0.6f, 0.3f, 1};
+  wlr_scene_rect_create(source, TEST_WIDTH, TEST_HEIGHT, base);
+  struct wlr_scene_rect* spot = wlr_scene_rect_create(source, 2, 2, base);
+  struct wlr_scene_optimized_blur* cache = wlr_scene_optimized_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT);
+  wlr_scene_optimized_blur_add_source(cache, &source->node);
+  struct wlr_scene_blur* nodes[NODES];
+  for (int i = 0; i < NODES; i++) {
+    nodes[i] = wlr_scene_blur_create(&scene->tree, 4, 4);
+    wlr_scene_blur_set_should_only_blur_bottom_layer(nodes[i], true);
+    wlr_scene_blur_set_strength(nodes[i], strengths[i % 2]);
+    wlr_scene_node_set_position(&nodes[i]->node, i * 5, i * 5);
+  }
+  uint8_t kept[TEST_WIDTH * TEST_HEIGHT * 4], whole[TEST_WIDTH * TEST_HEIGHT * 4];
+  bool ok = blur_model_render(fixture, output, kept);
+  for (int step = 0; ok && step < STEPS; step++) {
+    const uint32_t op = blur_model_next(&seed) % OPS;
+    struct wlr_scene_blur* node = nodes[blur_model_next(&seed) % NODES];
+    const int x = (int)(blur_model_next(&seed) % 15), y = (int)(blur_model_next(&seed) % 15);
+    if (op == 0) {
+      const float colour[4] = {(blur_model_next(&seed) % 5) / 4.0f, (blur_model_next(&seed) % 5) / 4.0f, 0.5f, 1};
+      wlr_scene_rect_set_color(spot, colour);
+    } else if (op == 1) {
+      wlr_scene_node_set_position(&spot->node, x, y);
+    } else if (op == 2) {
+      wlr_scene_node_set_position(&node->node, x, y);
+    } else if (op == 3) {
+      wlr_scene_blur_set_size(node, 1 + x % 8, 1 + y % 8);
+    } else {
+      wlr_scene_blur_set_strength(node, strengths[x % 2]);
+    }
+    // Frames after a change pass the rebuilt and the still backdrop rules of the strength slots.
+    const int frames = 1 + (int)(blur_model_next(&seed) % 4);
+    for (int f = 0; ok && f < frames; f++) {
+      ok = blur_model_render(fixture, output, kept);
+    }
+    if (!ok || blur_model_next(&seed) % 3 != 0) {
+      continue;
+    }
+    // The reference starts from no effect buffers: a stale strength slot would draw the same stale pixels in both.
+    fx_renderer_clear_output_effect_buffers(fixture->output);
+    wlr_scene_optimized_blur_mark_dirty(cache);
+    ok = blur_model_render(fixture, output, whole);
+    for (int i = 0; ok && i < TEST_WIDTH * TEST_HEIGHT * 4; i++) {
+      if (abs(kept[i] - whole[i]) > 1) {
+        fprintf(stderr, "  seed %u step %d op %u: pixel (%d, %d) channel %d kept %u, whole %u\n", start, step, op,
+                i / 4 % TEST_WIDTH, i / 4 / TEST_WIDTH, i % 4, kept[i], whole[i]);
+        ok = false;
+      }
+    }
+  }
+  wlr_scene_node_destroy(&scene->tree.node);
+  return ok;
+}
+
+static bool test_blur_strength_model(struct fixture* fixture) {
+  bool ok = true;
+  for (uint32_t seed = 1; seed <= 16; seed++) {
+    ok &= blur_strength_model_seed(fixture, seed * 2654435761u);
+  }
+  return ok;
+}
+
 // A whole mark over a valid cache waits in pending where no blur node samples it. Once it has waited 30 rendered frames
 // without growing, the cache renders it whole, so a glass node that then moves there renders no cache part.
 static bool test_blur_pending_flush(struct fixture* fixture) {
@@ -3613,6 +3685,8 @@ int main(int argc, char* argv[]) {
     ok = test_blur_tint_fold(&fixture);
   } else if (strcmp(argv[1], "blur-source-model") == 0) {
     ok = test_blur_source_model(&fixture);
+  } else if (strcmp(argv[1], "blur-strength-model") == 0) {
+    ok = test_blur_strength_model(&fixture);
   } else if (strcmp(argv[1], "blur-pending-flush") == 0) {
     ok = test_blur_pending_flush(&fixture);
   } else if (strcmp(argv[1], "blur-strength-partial") == 0) {

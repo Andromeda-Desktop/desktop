@@ -1968,6 +1968,14 @@ int wlr_scene_node_animation_expand(struct wlr_scene_node* node) {
  */
 static void scene_node_damage_update(struct wlr_scene_node* node, pixman_region32_t* damage);
 static void scene_node_update(struct wlr_scene_node* node, pixman_region32_t* damage) {
+  // The blur source note can recompute the node's visibility at its new place, so take where it showed before first.
+  pixman_region32_t visible;
+  int x, y;
+  if (damage == NULL && wlr_scene_node_coords(node, &x, &y)) {
+    pixman_region32_init(&visible);
+    scene_node_visibility(node, &visible);
+    damage = &visible;
+  }
   scene_node_note_update(node);
   scene_node_damage_update(node, damage);
 }
