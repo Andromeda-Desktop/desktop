@@ -1,6 +1,7 @@
 #include "ipc/pixel_stream_client.h"
 
 #include "core/log.h"
+#include "protocols/ipc_channel.h"
 
 #include <cerrno>
 #include <cstdint>
@@ -124,14 +125,12 @@ void PixelStreamClient::connect() {
     ::close(fd);
     return;
   }
-  ucred peer{};
-  socklen_t size = sizeof(peer);
-  if (::getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &size) != 0 || peer.uid != ::geteuid()) {
+  auto peer = ipc::checkPeer(ipc::Fd(fd));
+  if (!peer) {
     kLog.warn("refusing '{}': companion runs as another user", m_path);
-    ::close(fd);
     return;
   }
-  m_fd = fd;
+  m_fd = peer->conn.release();
   if (send(kHello, kProtocolVersion) && send(kRequest, 0)) {
     m_requested = true;
     kLog.debug("connected '{}'", m_path);

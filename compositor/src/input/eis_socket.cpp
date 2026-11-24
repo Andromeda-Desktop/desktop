@@ -1,6 +1,7 @@
 #include "input/eis_socket.h"
 
 #include "core/log.h"
+#include "protocols/ipc_channel.h"
 
 #include <algorithm>
 #include <array>
@@ -313,25 +314,18 @@ namespace andromeda {
 
     void accept() {
       for (unsigned attempt = 0; attempt < kDispatchBudget; ++attempt) {
-        const int peer = accept4(listener, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
-        if (peer < 0) {
-          if (errno == EINTR) {
+        auto accepted = ipc::acceptPeer(listener, SOCK_NONBLOCK);
+        if (!accepted) {
+          if (errno == EINTR || errno == EACCES) {
             continue;
           }
           return;
         }
-        ucred credentials{};
-        socklen_t length = sizeof(credentials);
-        if (relays.size() >= kMaxConnections
-            || getsockopt(peer, SOL_SOCKET, SO_PEERCRED, &credentials, &length) != 0
-            || length != sizeof(credentials)
-            || credentials.pid <= 0
-            || credentials.uid != geteuid()
-            || !authenticate
-            || !authenticate(credentials.pid)) {
-          close(peer);
+        if (relays.size() >= kMaxConnections || accepted->pid <= 0 || !authenticate
+            || !authenticate(accepted->pid)) {
           continue;
         }
+        const int peer = accepted->conn.release();
         const int backend = openClient ? openClient() : -1;
         if (backend < 0) {
           close(peer);

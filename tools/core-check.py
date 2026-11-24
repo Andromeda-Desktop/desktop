@@ -78,6 +78,10 @@ RULES = {
     "std-fs-async": ("no blocking file I/O on a daemon's runtime thread: tokio::fs or spawn_blocking (AR3 5e)",
                      ("system/", "apps/", "andromeda-preview/"), (".rs",),
                      r"\bstd::fs::\w+\s*\(|\bPath::new\([^;]*\)\.exists\(\)", ()),
+    "peer-cred": ("socket peers are checked by ipc::acceptPeer / checkPeer (protocol/ipc_channel.h) or "
+                  "andromeda_rt::ipc (AR4)", CPP_DIRS + ("protocol/",), CPP + (".rs",),
+                  r"SOL_SOCKET\s*,\s*SO_PEER(CRED|PIDFD)\b|sockopt::Peer(Credentials|Pidfd)\b",
+                  ("protocol/ipc_channel.", "system/crates/andromeda-rt/src/ipc.rs")),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
                        ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",

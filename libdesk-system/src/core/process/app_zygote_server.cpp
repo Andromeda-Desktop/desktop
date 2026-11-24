@@ -1,5 +1,6 @@
 #include "core/process/app_zygote.h"
 #include "core/sys/sys.h"
+#include "protocols/ipc_channel.h"
 
 #include <dlfcn.h>
 #include <glib.h>
@@ -118,19 +119,17 @@ namespace process::zygote {
     };
     std::array<char, 64 * 1024> buffer{};
     for (;;) {
-      const int conn = accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
-      if (conn < 0) {
+      int conn = -1;
+      if (auto peer = ipc::acceptPeer(listener, 0)) {
+        conn = peer->conn.release();
+      } else {
         continue;
       }
       // One thread serves every launch: a client that connects and stays silent must not block the next one.
       const timeval timeout{.tv_sec = 1, .tv_usec = 0};
       setsockopt(conn, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
       setsockopt(conn, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-      ucred peer{};
-      socklen_t peerSize = sizeof(peer);
-      const ssize_t size = getsockopt(conn, SOL_SOCKET, SO_PEERCRED, &peer, &peerSize) == 0 && peer.uid == getuid()
-          ? recv(conn, buffer.data(), buffer.size(), 0)
-          : -1;
+      const ssize_t size = recv(conn, buffer.data(), buffer.size(), 0);
       auto message = size > 0 ? decode(std::span(buffer.data(), static_cast<std::size_t>(size))) : std::nullopt;
       if (const auto* status = message ? std::get_if<StatusQuery>(&*message) : nullptr) {
         const auto found = std::ranges::find(outcomes, status->id, &LaunchRecord::id);

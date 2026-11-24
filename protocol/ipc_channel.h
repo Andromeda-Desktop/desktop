@@ -41,8 +41,11 @@ namespace ipc {
     Fd pidfd;
   };
 
-  // Accepts one connection (flags as accept4) and checks it: another user or no pidfd closes it and returns
-  // nothing; errno tells EAGAIN (no connection waits) apart. Close-on-exec always.
+  // Checks a connected socket: another user or no pidfd closes it and returns nothing (errno EACCES).
+  [[nodiscard]] std::optional<Peer> checkPeer(Fd conn);
+
+  // Accepts one connection (flags as accept4) and checks it as checkPeer; errno tells EAGAIN (no connection
+  // waits) apart. Close-on-exec always.
   [[nodiscard]] std::optional<Peer> acceptPeer(int listenFd, int flags);
 
   // Splits a byte stream into '\n' lines and holds at most cap bytes: a line that does not fit in cap bytes with

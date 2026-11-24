@@ -60,11 +60,7 @@ namespace ipc {
     return fd;
   }
 
-  std::optional<Peer> acceptPeer(int listenFd, int flags) {
-    Fd conn(accept4(listenFd, nullptr, nullptr, flags | SOCK_CLOEXEC));
-    if (!conn) {
-      return std::nullopt;
-    }
+  std::optional<Peer> checkPeer(Fd conn) {
     ucred cred{};
     socklen_t credSize = sizeof(cred);
     int pidfd = -1;
@@ -75,6 +71,14 @@ namespace ipc {
       return std::nullopt;
     }
     return Peer{.conn = std::move(conn), .pid = cred.pid, .gid = cred.gid, .pidfd = Fd(pidfd)};
+  }
+
+  std::optional<Peer> acceptPeer(int listenFd, int flags) {
+    Fd conn(accept4(listenFd, nullptr, nullptr, flags | SOCK_CLOEXEC));
+    if (!conn) {
+      return std::nullopt;
+    }
+    return checkPeer(std::move(conn));
   }
 
   std::size_t LineReader::readFrom(int fd) {
