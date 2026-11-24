@@ -9,6 +9,7 @@
 #include "render/core/renderer.h"
 #include "render/scene/node.h"
 #include "render/scene/rect_node.h"
+#include "shell/notification_center/notification_icon.h"
 #include "shell/phone/phone_state.h"
 #include "ui/controls/glyph.h"
 #include "ui/controls/image.h"
@@ -464,16 +465,17 @@ void LockCards::layoutNoticeCard(
   const float pad = 12.0F * s;
   const float icon = 24.0F * s;
   const float iconY = snap(rect.y + (rect.h - icon) * 0.5F);
-  const bool file = !group.icon.empty() && group.icon.front() == '/';
-  if (file && group.icon != card.imagePath) {
-    card.imagePath =
-        card.image->load(
-            renderer, group.icon, {.targetSize = static_cast<int>(icon), .mipmap = true, .decode = {.centerSquareCrop = true}}
-        ) != ImageLoad::Failed
-        ? group.icon
-        : std::string{};
+  // Files and file URIs only: lock cards keep no icon theme resolver.
+  std::string glyph = "bell";
+  if (!group.icon.empty() && group.icon != card.imagePath) {
+    const NotificationIconResult result = loadNotificationIcon(
+        *card.image, renderer, {.icon = group.icon}, nullptr,
+        {.targetSize = static_cast<int>(icon), .mipmap = true, .decode = {.centerSquareCrop = true}}
+    );
+    card.imagePath = result.loaded ? group.icon : std::string{};
+    glyph = result.glyph;
   }
-  const bool showIcon = file && card.imagePath == group.icon;
+  const bool showIcon = !group.icon.empty() && card.imagePath == group.icon;
   card.image->setVisible(showIcon);
   card.tile->setVisible(!showIcon);
   card.glyph->setVisible(!showIcon);
@@ -485,7 +487,7 @@ void LockCards::layoutNoticeCard(
     card.tile->setPosition(rect.x + pad, iconY);
     card.tile->setSize(icon, icon);
     card.tile->setStyle(RoundedRectStyle{.fill = kFill2, .radius = icon * 0.25F});
-    card.glyph->setGlyph("bell");
+    card.glyph->setGlyph(glyph);
     card.glyph->setGlyphSize(14.0F * s);
     card.glyph->setColor(kLabel1);
     card.glyph->measure(renderer);

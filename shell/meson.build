@@ -582,6 +582,7 @@ _noctalia_source_paths = [
   'src/shell/launcher/launcher_panel.cpp',
   'src/shell/notification_center/notification_center_model.cpp',
   'src/shell/notification_center/notification_center_panel.cpp',
+  'src/shell/notification_center/notification_icon.cpp',
   'src/shell/calendar_panel/calendar_panel.cpp',
   'src/shell/launcher/launcher_panel_input.cpp',
   'src/shell/launcher/launcher_panel_modes.cpp',

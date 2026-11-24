@@ -65,7 +65,8 @@ private:
   struct IconSlot {
     Image* image = nullptr;
     Glyph* fallback = nullptr;
-    std::vector<std::string> candidates;
+    std::string icon;
+    std::string desktopEntry;
     std::shared_ptr<const NotificationImageData> raw;
     bool done = false;
   };

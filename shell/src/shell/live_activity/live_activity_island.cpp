@@ -11,8 +11,8 @@
 #include "core/ui_phase.h"
 #include "calendar/calendar_service.h"
 #include "dbus/mpris/mpris_art.h"
+#include "shell/notification_center/notification_icon.h"
 #include "dbus/mpris/mpris_service.h"
-#include "net/uri.h"
 #include "render/core/texture_manager.h"
 #include "notification/notification_display_name.h"
 #include "notification/notification_manager.h"
@@ -2201,38 +2201,19 @@ void LiveActivityIsland::applyContent(Instance& inst) {
     const BannerItem& b = *m_banner;
     const std::string key = std::to_string(b.id) + "|" + b.icon + "|" + b.desktopEntry + (b.imageData.has_value() ? "|img" : "");
     if (inst.bannerIconKey != key) {
-      bool ok = false;
-      bool pending = false;
-      const auto& img = b.imageData;
-      if (img.has_value() && img->width > 0 && img->height > 0 && !img->data.empty() && img->bitsPerSample == 8
-          && ((img->channels == 4 && img->hasAlpha) || (img->channels == 3 && !img->hasAlpha))) {
-        ok = inst.bannerImage->setSourceRaw(
-            renderer, img->data.data(), img->data.size(), img->width, img->height, img->rowStride,
-            img->channels == 3 ? PixmapFormat::RGB : PixmapFormat::RGBA, true
-        );
-      }
-      // A shell glyph (`noctalia-glyph:<name>`, as Link sends) is the symbol in the accent circle; else the bell.
-      constexpr std::string_view kGlyphPrefix = "noctalia-glyph:";
-      const bool glyph = b.icon.starts_with(kGlyphPrefix);
-      inst.bannerGlyph->setGlyph(glyph ? b.icon.substr(kGlyphPrefix.size()) : std::string("bell"));
-      for (const std::string* name : {&b.icon, &b.desktopEntry}) {
-        if (ok || name->empty() || (glyph && name == &b.icon)) {
-          continue;
-        }
-        std::string path;
-        if (uri::isRemoteUrl(*name)) {
-          // Same download cache as the media art; the island refreshes when the file lands.
-          path = mpris::resolveArtworkSource(m_http, m_pendingArt, *name, refresher(), std::weak_ptr<void>(m_alive));
-          pending = pending || path.empty();
-        } else {
-          path = uri::normalizeFileUrl(*name);
-          if (path.empty() || path.front() != '/') {
-            path = m_iconResolver.resolve(path, static_cast<int>(kBannerGlyph));
-          }
-        }
-        ok = !path.empty()
-            && inst.bannerImage->load(renderer, path, {.targetSize = static_cast<int>(kBannerGlyph)}) != ImageLoad::Failed;
-      }
+      // Same download cache as the media art; the island refreshes when the file lands.
+      const NotificationIconRemote remote{
+          .http = m_http, .pending = &m_pendingArt, .onReady = refresher(), .lifetime = std::weak_ptr<void>(m_alive)
+      };
+      const NotificationIconResult icon = loadNotificationIcon(
+          *inst.bannerImage, renderer,
+          {.raw = b.imageData.has_value() ? &*b.imageData : nullptr, .icon = b.icon, .desktopEntry = b.desktopEntry},
+          &m_iconResolver, {.targetSize = static_cast<int>(kBannerGlyph)}, &remote
+      );
+      // A shell glyph is the symbol in the accent circle; else the bell.
+      inst.bannerGlyph->setGlyph(icon.glyph);
+      const bool ok = icon.loaded;
+      const bool pending = icon.pending;
       inst.bannerImage->setVisible(ok);
       inst.bannerCircle->setVisible(!ok);
       if (ok || !pending) {

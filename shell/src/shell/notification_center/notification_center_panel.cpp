@@ -5,8 +5,8 @@
 #include "i18n/i18n.h"
 #include "notification/notification_display_name.h"
 #include "notification/notification_manager.h"
-#include "render/core/texture_manager.h"
 #include "render/scene/input_area.h"
+#include "shell/notification_center/notification_icon.h"
 #include "shell/panel/panel_manager.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
@@ -391,13 +391,9 @@ std::unique_ptr<Flex> NotificationCenterPanel::makeCard(const Notification& n) {
   if (n.imageData.has_value()) {
     slot.raw = std::make_shared<const NotificationImageData>(*n.imageData);
   }
-  if (n.icon.has_value()) {
-    slot.candidates.push_back(*n.icon);
-  }
-  if (n.desktopEntry.has_value()) {
-    slot.candidates.push_back(*n.desktopEntry);
-  }
-  if (slot.raw != nullptr || !slot.candidates.empty()) {
+  slot.icon = n.icon.value_or("");
+  slot.desktopEntry = n.desktopEntry.value_or("");
+  if (slot.raw != nullptr || !slot.icon.empty() || !slot.desktopEntry.empty()) {
     m_icons.push_back(std::move(slot));
   }
   card->addChild(std::move(frame));
@@ -509,20 +505,13 @@ void NotificationCenterPanel::loadIcons(Renderer& renderer) {
       continue;
     }
     slot.done = true;
-    bool loaded = false;
-    if (slot.raw != nullptr && slot.raw->width > 0 && slot.raw->height > 0 && !slot.raw->data.empty() && slot.raw->bitsPerSample == 8
-        && (slot.raw->channels == 3 || slot.raw->channels == 4)) {
-      const PixmapFormat format = slot.raw->channels == 3 ? PixmapFormat::RGB : PixmapFormat::RGBA;
-      loaded = slot.image->setSourceRaw(renderer, slot.raw->data.data(), slot.raw->data.size(), slot.raw->width, slot.raw->height,
-                                        slot.raw->rowStride, format, true);
-    }
-    for (std::size_t i = 0; !loaded && i < slot.candidates.size(); ++i) {
-      const std::string& candidate = slot.candidates[i];
-      const std::string path = !candidate.empty() && candidate.front() == '/' ? candidate : m_iconResolver.resolve(candidate, px);
-      loaded = !path.empty() && slot.image->load(renderer, path, {.targetSize = px, .mipmap = true}) != ImageLoad::Failed;
-    }
-    slot.image->setVisible(loaded);
-    slot.fallback->setVisible(!loaded);
+    const NotificationIconResult icon = loadNotificationIcon(
+        *slot.image, renderer, {.raw = slot.raw.get(), .icon = slot.icon, .desktopEntry = slot.desktopEntry}, &m_iconResolver,
+        {.targetSize = px, .mipmap = true}
+    );
+    slot.fallback->setGlyph(icon.glyph);
+    slot.image->setVisible(icon.loaded);
+    slot.fallback->setVisible(!icon.loaded);
   }
 }
 
