@@ -1,5 +1,7 @@
 #pragma once
 
+#include "protocols/i18n_catalog.h"
+
 #include <array>
 #include <cstddef>
 #include <filesystem>
@@ -10,22 +12,6 @@
 #include <vector>
 
 namespace i18n {
-
-  // Transparent hash/eq so Catalog::find() can take string_view without
-  // allocating a temporary std::string.
-  struct StringHash {
-    using is_transparent = void;
-    std::size_t operator()(std::string_view s) const noexcept { return std::hash<std::string_view>{}(s); }
-    std::size_t operator()(const std::string& s) const noexcept { return std::hash<std::string_view>{}(s); }
-    std::size_t operator()(const char* s) const noexcept { return std::hash<std::string_view>{}(s); }
-  };
-
-  struct StringEq {
-    using is_transparent = void;
-    bool operator()(std::string_view a, std::string_view b) const noexcept { return a == b; }
-  };
-
-  using Catalog = std::unordered_map<std::string, std::string, StringHash, StringEq>;
 
   struct LanguageOption {
     std::string_view code;

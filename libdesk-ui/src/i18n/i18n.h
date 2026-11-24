@@ -34,10 +34,6 @@ namespace i18n {
       }
     }
 
-    using Pair = std::pair<std::string_view, std::string>;
-
-    std::string interpolate(std::string_view tmpl, std::span<const Pair> args);
-
     template <typename Name, typename Value, typename... Rest>
     void fillPairs(Pair* pairs, std::size_t idx, Name&& name, Value&& value, Rest&&... rest) {
       pairs[idx] = Pair{std::string_view(name), argToString(std::forward<Value>(value))};

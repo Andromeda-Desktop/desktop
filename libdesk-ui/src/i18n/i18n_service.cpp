@@ -6,8 +6,6 @@
 
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <utility>
 
@@ -16,17 +14,6 @@ namespace i18n {
   namespace {
 
     constexpr Logger kLog("i18n");
-
-    void flatten(const nlohmann::json& node, const std::string& prefix, Catalog& out) {
-      for (auto it = node.begin(); it != node.end(); ++it) {
-        std::string path = prefix.empty() ? it.key() : prefix + "." + it.key();
-        if (it->is_object()) {
-          flatten(*it, path, out);
-        } else if (it->is_string()) {
-          out.insert_or_assign(std::move(path), it->get<std::string>());
-        }
-      }
-    }
 
     // Reads $LC_ALL / $LC_MESSAGES / $LANG. Returns empty string if unset.
     std::string detectSystemLanguage() {
@@ -51,22 +38,12 @@ namespace i18n {
   }
 
   bool mergeCatalogFile(const std::filesystem::path& path, Catalog& out, std::string_view prefix) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
-      return false;
+    std::string error;
+    const CatalogRead read = readCatalogFile(path, out, prefix, &error);
+    if (read == CatalogRead::Invalid) {
+      kLog.warn("catalog {}: {}", path.string(), error);
     }
-    try {
-      auto json = nlohmann::json::parse(file);
-      if (!json.is_object()) {
-        kLog.warn("catalog {} is not a JSON object", path.string());
-        return false;
-      }
-      flatten(json, std::string(prefix), out);
-      return true;
-    } catch (const std::exception& e) {
-      kLog.error("failed to parse {}: {}", path.string(), e.what());
-      return false;
-    }
+    return read == CatalogRead::Ok;
   }
 
   bool Service::loadCatalog(std::string_view lang, Catalog& out) const {
