@@ -61,6 +61,7 @@ namespace andromeda {
       self->m_restartPending = false;
       dsk_shell_v1_send_restarted(resource);
     }
+    self->m_server.showConfigDiagnostics();
   }
 
   void DesktopShell::handleDestroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }

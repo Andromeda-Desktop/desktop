@@ -2319,6 +2319,10 @@ namespace andromeda {
           "general.xwayland is enabled, but the Xwayland server could not be created; X11 applications will not work";
       diagnostics.push_back(std::move(diagnostic));
     }
+    if (m_desktopShell != nullptr && m_desktopShell->sendAction(configDiagnosticsAction(diagnostics))) {
+      m_configBanner->hide();
+      return;
+    }
     m_configBanner->show(diagnostics);
   }
 

@@ -360,6 +360,8 @@ private:
   TimeService m_timeService;
   LockKeysService m_lockKeysService;
   NotificationManager m_notificationManager;
+  std::optional<std::uint32_t> m_configNotice; // the notice for the compositor's configuration problems
+  std::string m_configNoticeText; // the problem list that notice shows
   CalendarService m_calendarService;
   CalendarReminderMonitor m_calendarReminderMonitor{m_configService, m_notificationManager};
   std::unique_ptr<SessionBus> m_bus;

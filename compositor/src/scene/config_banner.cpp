@@ -62,6 +62,24 @@ namespace {
 
 namespace andromeda {
 
+  std::string configDiagnosticsAction(const std::vector<ConfigDiagnostic>& diagnostics) {
+    const std::filesystem::path configDir = configRootPath().parent_path();
+    std::string action = "config-diagnostics";
+    char separator = ' ';
+    for (const ConfigDiagnostic& diagnostic : diagnostics) {
+      const std::string loc = shortPath(diagnostic, configDir);
+      std::string line = std::format(
+          "{} {}{}{}", diagnostic.severity == ConfigDiagnostic::Severity::Error ? "error" : "warning", loc,
+          loc.empty() ? "" : ": ", diagnostic.message
+      );
+      std::ranges::replace(line, '\n', ' ');
+      action += separator;
+      action += line;
+      separator = '\n';
+    }
+    return action;
+  }
+
   ConfigBanner::ConfigBanner(Server& server, wlr_scene_tree* parent) : m_server(server), m_parent(parent) {}
 
   ConfigBanner::~ConfigBanner() {

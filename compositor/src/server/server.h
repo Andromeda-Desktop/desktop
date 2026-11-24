@@ -433,6 +433,8 @@ namespace andromeda {
       return pending;
     }
     void relayoutBanner();
+    // The shell shows the diagnostics when one is bound; the compositor banner only when none is.
+    void showConfigDiagnostics();
     void relayoutQuitConfirm();
     void spawn(const char* command, const char* description = nullptr, bool withActivationToken = false);
     void completeIpcLaunch(std::string_view tokenName, pid_t pid);
@@ -827,7 +829,6 @@ namespace andromeda {
     // Re-read the system keymap on a worker when the config uses it; applies the keyboard config when it changed.
     void refreshSystemKeymapAsync();
     bool adoptSystemKeymap(XkbNames names);
-    void showConfigDiagnostics();
     void clearNormalFocus() { m_focus.clearNormalFocus(); }
     void setLockBlankEnabled(bool enabled);
     void handleWorkspaceCommit(void* data);

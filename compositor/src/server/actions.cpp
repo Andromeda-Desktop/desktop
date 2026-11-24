@@ -576,8 +576,15 @@ namespace andromeda {
       const bool skip = arg != nullptr && arg->skipConfirmation;
       QuitConfirm* confirm = server.quitConfirm();
       // While locked the dialog would be hidden behind the lock surface, so quit
-      // directly; the lock client's own UI is the confirmation there.
-      if (!skip && !server.sessionLocked() && confirm != nullptr && !confirm->visible()) {
+      // directly; the lock client's own UI is the confirmation there. A bound shell asks with its session-end sheet.
+      if (skip || server.sessionLocked()) {
+        server.requestSessionExit();
+        return true;
+      }
+      if (DesktopShell* shell = server.desktopShell(); shell != nullptr && shell->sendAction("power-overlay end logout")) {
+        return true;
+      }
+      if (confirm != nullptr && !confirm->visible()) {
         confirm->show(QuitConfirm::Kind::SessionQuit);
         return true;
       }

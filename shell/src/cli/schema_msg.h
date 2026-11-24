@@ -844,6 +844,10 @@ namespace noctalia::cli {
     inline constexpr Command session{"session", "Run a built-in session action", {}, {},
                                      {},        kMsgSessionPositionals,          {}, false};
     inline constexpr Command settingsClose{"settings-close", "Close the settings window", {}, {}, {}, {}, {}, false};
+    inline constexpr Command configDiagnostics{
+        "config-diagnostics", "Show the compositor's configuration problems (the compositor sends it)", {}, {}, {}, {},
+        {}, true
+    };
     inline constexpr Command powerOverlay{
         "power-overlay", "Show or hide the full-screen power choices (Ctrl+Alt+Delete, power key)", {}, {}, {}, {}, {},
         false
@@ -1271,6 +1275,7 @@ namespace noctalia::cli {
       msg::session,
       msg::settingsClose,
       msg::powerOverlay,
+      msg::configDiagnostics,
       msg::settingsOpen,
       msg::settingsOpenPlugin,
       msg::settingsOpenWidget,

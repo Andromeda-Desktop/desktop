@@ -1887,7 +1887,10 @@
       "desktop-restarted-none": "Your apps kept their windows.",
       "desktop-restore": "Restore apps",
       "desktop-report": "Save crash report",
-      "desktop": "Desktop"
+      "desktop": "Desktop",
+      "config": "Configuration",
+      "config-errors-title": "Configuration errors",
+      "config-warnings-title": "Configuration warnings"
     }
   },
   "osd": {

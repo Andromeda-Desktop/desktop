@@ -217,6 +217,10 @@ void PowerOverlay::registerIpc(IpcService& ipc) {
         kLog.warn("{} refused: the compositor has no layer shell for the session-end sheet", action);
         return "error: power-overlay end needs a layer-shell compositor\n";
       }
+      // A repeated request (session-quit pressed again) keeps the running end instead of restarting its countdown.
+      if (m_mode != Mode::Choices && action == m_endAction) {
+        return "ok\n";
+      }
       beginEnd(action);
       return "ok\n";
     }

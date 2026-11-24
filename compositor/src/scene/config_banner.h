@@ -2,6 +2,7 @@
 
 #include "scene/surface_shadow.h"
 
+#include <string>
 #include <vector>
 
 struct wl_event_source;
@@ -14,6 +15,10 @@ namespace andromeda {
   // Configuration diagnostics panel, drawn with the same chrome as the
   // session-quit confirmation: shadow, severity-colored
   // border, rounded background. Errors stay up, warnings auto-hide.
+  // The dsk_shell_v1 action that hands the diagnostics to the shell: "config-diagnostics", then one
+  // "<error|warning> <location>: <message>" line per diagnostic after a space, lines joined by newlines.
+  [[nodiscard]] std::string configDiagnosticsAction(const std::vector<ConfigDiagnostic>& diagnostics);
+
   class ConfigBanner {
   public:
     ConfigBanner(Server& server, wlr_scene_tree* parent);

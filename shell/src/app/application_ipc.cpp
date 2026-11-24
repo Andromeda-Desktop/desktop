@@ -156,6 +156,38 @@ void Application::initIpc() {
   m_dmenuIpc.setPanelManager(&m_panelManager);
   m_dmenuIpc.start();
 
+  // One notice for the compositor's current configuration problems: each batch replaces it, an empty one clears it.
+  m_ipcService.bind(noctalia::cli::msg::configDiagnostics, [this](const std::string& args) -> std::string {
+    // Every reload and every shell bind resends the list; an unchanged one keeps the notice as it is.
+    if (args == m_configNoticeText) {
+      return "ok\n";
+    }
+    m_configNoticeText = args;
+    if (m_configNotice.has_value()) {
+      m_notificationManager.close(*m_configNotice);
+      m_configNotice.reset();
+    }
+    if (args.empty()) {
+      return "ok\n";
+    }
+    bool error = false;
+    std::string body;
+    for (const auto part : std::views::split(std::string_view(args), '\n')) {
+      const std::string_view line(part.begin(), part.end());
+      const auto space = line.find(' ');
+      error = error || line.substr(0, space) == "error";
+      body += body.empty() ? "" : "\n";
+      body += space == std::string_view::npos ? line : line.substr(space + 1);
+    }
+    m_configNotice = m_notificationManager.addInternal(
+        i18n::tr("notifications.internal.config"),
+        i18n::tr(error ? "notifications.internal.config-errors-title" : "notifications.internal.config-warnings-title"),
+        body, error ? Urgency::Critical : Urgency::Normal, error ? 0 : kDefaultNotificationTimeout,
+        std::string("noctalia-glyph:settings"), std::nullopt, std::nullopt, std::nullopt,
+        error ? NotificationDndPolicy::ShowToast : NotificationDndPolicy::Respect
+    );
+    return "ok\n";
+  });
   m_ipcService.bind(noctalia::cli::msg::airplaneToggle, [](const std::string&) -> std::string {
     const RfkillSwitchResult result = setAllRadiosSoftBlocked(!areAllRadiosSoftBlocked());
     return result.success ? "ok\n" : "error: " + result.detail + "\n";
