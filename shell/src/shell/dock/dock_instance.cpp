@@ -331,10 +331,8 @@ namespace shell::dock {
     if (instance.surface == nullptr) {
       return;
     }
-    if (instance.dsk == nullptr && instance.surface->wlSurface() != nullptr) {
-      if (auto* manager = deps.platform.wayland().dskSurfaceManager(); manager != nullptr) {
-        instance.dsk = std::make_unique<DskSurfaceClient>(manager, instance.surface->wlSurface());
-      }
+    if (instance.dsk == nullptr) {
+      instance.dsk = instance.surface->dsk();
     }
     if (instance.dsk != nullptr && instance.dsk->hasShapes() && instance.shape == nullptr) {
       instance.shape = std::make_unique<DskShapeClient>(*instance.dsk);

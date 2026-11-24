@@ -914,7 +914,7 @@ void OsdOverlay::updateBlurRegion(Instance& inst) const {
   const int rh = std::max(1, static_cast<int>(std::ceil(inst.background->height())));
   const float radius = osdCardRadius(inst.background->width(), inst.background->height(), inst.uiLayoutScale);
   inst.surface->setBlurRegion(Surface::tessellateRoundedRect(rx, ry, rw, rh, radius));
-  inst.glass.apply(m_wayland->dskSurfaceManager(), inst.surface->wlSurface(), GlassSurface::Kind::Shape);
+  inst.glass.apply(*inst.surface, GlassSurface::Kind::Shape);
 }
 
 void OsdOverlay::applyReveal(Instance& inst, float reveal) {

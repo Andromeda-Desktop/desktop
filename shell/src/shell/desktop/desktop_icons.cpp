@@ -225,8 +225,7 @@ void DesktopIcons::open() {
   if (!m_surface->initialize(m_output)) {
     kLog.warn("desktop icons: no surface on the first output");
     m_surface.reset();
-  } else if (dsk_surface_manager_v1* manager = m_wayland->dskSurfaceManager(); manager != nullptr) {
-    m_dsk = std::make_unique<DskSurfaceClient>(manager, m_surface->wlSurface());
+  } else if (m_dsk = m_surface->dsk(); m_dsk != nullptr) {
     m_contentRects.reset();
   }
   if (DragAndDrop* dnd = m_wayland->dragAndDrop(); dnd != nullptr && m_surface != nullptr) {
@@ -828,7 +827,7 @@ void DesktopIcons::close() {
     m_surface->setSceneRoot(nullptr);
   }
   m_sceneRoot.reset();
-  m_dsk.reset();
+  m_dsk = nullptr;
   m_surface.reset();
   m_band = nullptr;
   m_cells.clear();

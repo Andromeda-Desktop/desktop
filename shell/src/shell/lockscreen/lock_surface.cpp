@@ -1958,7 +1958,7 @@ void LockSurface::layoutAndromeda(Renderer& renderer, float sw, float sh) {
   const AuthPlacement place = placeAuth(input);
   m_auth->setState(std::move(state));
   m_auth->layout(renderer, place, sw, scale);
-  m_clockGlass.sync(m_connection, wlSurface(), m_auth->clockGlassMask(renderer));
+  m_clockGlass.sync(m_connection, *this, m_auth->clockGlassMask(renderer));
   m_cards.layout(renderer, place, scale);
   m_callCard.setState(std::move(call));
   m_callCard.layout(renderer, place.columnCx, place.cardBottom, scale);

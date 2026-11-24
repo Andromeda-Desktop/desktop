@@ -176,7 +176,7 @@ private:
     float scale = 1.0F; // surface px per layout px
     std::unique_ptr<LayerSurface> surface;
     // Our compositor morphs the island (clip and radius) and draws its shadow; null on other compositors.
-    std::unique_ptr<DskSurfaceClient> dsk;
+    DskSurfaceClient* dsk = nullptr; // surface's own
     // On our compositor the island glass is shapes and the surface clip spans the surface: in a bar lane the pill and
     // the card are two shapes, so the pill stays beside its card; in a row one card shape morphs between the faces
     // (rowGlass). The banner peeks are created last, so they draw under both. Null elsewhere. After `dsk`, so

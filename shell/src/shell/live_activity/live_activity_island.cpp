@@ -590,8 +590,7 @@ void LiveActivityIsland::ensureSurfaces() {
       continue;
     }
     inst->surface->setInputRegion({});
-    if (auto* manager = m_wayland->dskSurfaceManager(); manager != nullptr) {
-      inst->dsk = std::make_unique<DskSurfaceClient>(manager, inst->surface->wlSurface());
+    if (inst->dsk = inst->surface->dsk(); inst->dsk != nullptr) {
       inst->dsk->setOnDensity([raw = inst.get()](float density) {
         if (raw->sceneRoot != nullptr) {
           raw->sceneRoot->setInkLift(std::round(density * 32.0F) / 32.0F);

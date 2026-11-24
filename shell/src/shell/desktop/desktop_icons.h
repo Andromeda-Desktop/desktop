@@ -181,7 +181,7 @@ private:
   wl_output* m_output = nullptr;
   std::unique_ptr<LayerSurface> m_surface;
   // Tells the compositor where the surface draws, so glass above the clear desktop reuses its cached backdrop.
-  std::unique_ptr<DskSurfaceClient> m_dsk;
+  DskSurfaceClient* m_dsk = nullptr; // m_surface's own
   // The content region last sent (x, y, width, height); nullopt = the whole surface (the default).
   std::optional<std::vector<std::array<int, 4>>> m_contentRects;
   void syncContentRegion();

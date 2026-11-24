@@ -222,7 +222,7 @@ void ToastOverlay::prepareFrame() {
   m_surface->setBlurRegion(Surface::tessellateRoundedRect(
       static_cast<int>(x), 0, static_cast<int>(std::ceil(row->width())), static_cast<int>(height), radius
   ));
-  m_glass.apply(m_wayland->dskSurfaceManager(), m_surface->wlSurface(), GlassSurface::Kind::Shape);
+  m_glass.apply(*m_surface, GlassSurface::Kind::Shape);
   if (first) {
     m_glass.set(Property::Scale, scalar(kScaleFrom));
     m_glass.set(Property::Opacity, scalar(0.0));

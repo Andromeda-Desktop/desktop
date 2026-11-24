@@ -835,7 +835,7 @@ namespace {
       view.auth.setState(std::move(state));
       const AuthPlacement place = placeAuth(input);
       view.auth.layout(renderer, place, w, 1.0F);
-      view.clockGlass.sync(m_wayland, view.surface->wlSurface(), view.auth.clockGlassMask(renderer));
+      view.clockGlass.sync(m_wayland, *view.surface, view.auth.clockGlassMask(renderer));
       view.chrome.setVisible(place.chrome);
       view.chrome.setState(chromeState(view));
       view.chrome.layout(renderer, w, h, 1.0F);

@@ -1903,7 +1903,7 @@ void WindowSwitcher::positionPanel(Instance& instance, float screenW, float scre
     blurRects.insert(blurRects.end(), strips.begin(), strips.end());
   }
   instance.surface->setBlurRegion(blurRects);
-  instance.glass.apply(m_wayland->dskSurfaceManager(), instance.surface->wlSurface(), GlassSurface::Kind::Shape);
+  instance.glass.apply(*instance.surface, GlassSurface::Kind::Shape);
 }
 
 void WindowSwitcher::buildScene(Instance& instance, std::uint32_t width, std::uint32_t height) {

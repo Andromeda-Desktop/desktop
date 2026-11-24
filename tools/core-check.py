@@ -48,6 +48,9 @@ RULES = {
     "glass-raw": ("island glass via glass_surface.h (sendIslandGlass, islandGlassTint, applyIslandTone) and "
                   "Style::islandGlass (C6)", ("shell/src/",), CPP,
                   r"\bsetGlassMaterial\(|\bsetPaletteTone\(|\bglassMaterial\(", ()),
+    "dsk-create": ("one dsk_surface_v1 per wl_surface: WaylandSurface::dsk() (a second is a protocol error)",
+                   CPP_DIRS, CPP, r"make_unique<DskSurfaceClient>|\bnew DskSurfaceClient\b",
+                   ("libdesk-ui/src/wayland/surface.cpp",)),
     "shell-timer": ("shell repeats under 1 s or of unknown interval go through the frame host (C5)",
                     ("shell/src/shell/",), CPP, r"\bstartRepeating\((?!\s*std::chrono::(seconds|minutes|hours)\b)", ()),
     "const-frame-tick": ("needsFrameTick states a fact, never a constant true (C5)", ("shell/src/",), CPP,

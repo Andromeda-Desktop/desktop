@@ -392,7 +392,7 @@ void LockEditor::layoutScene(float width, float height) {
   }
   m_cards.layout(renderer, place, scale);
   m_auth.glanceLayer().setVisible(!ryoku);
-  m_clockGlass.sync(*m_wayland, m_surface->wlSurface(), m_auth.clockGlassMask(renderer));
+  m_clockGlass.sync(*m_wayland, *m_surface, m_auth.clockGlassMask(renderer));
 
   m_themeNotice->setVisible(ryoku);
   if (ryoku) {

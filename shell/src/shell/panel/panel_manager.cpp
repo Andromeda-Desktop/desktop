@@ -1141,6 +1141,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
 
   const auto resetPanelOpenState = [this] {
     deactivateOutsideClickHandlers();
+    m_dsk = nullptr;
     m_surface.reset();
     m_layerSurface = nullptr;
     m_output = nullptr;
@@ -1402,9 +1403,8 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     if (ok) {
       m_output = request.output;
       m_wlSurface = m_surface->wlSurface();
-      if (dsk_surface_manager_v1* manager = wayland() != nullptr ? wayland()->dskSurfaceManager() : nullptr;
-          manager != nullptr && m_dsk == nullptr) {
-        m_dsk = std::make_unique<DskSurfaceClient>(manager, m_wlSurface);
+      if (m_dsk == nullptr) {
+        m_dsk = m_surface->dsk();
         bindBackdrop();
       }
       m_surface->setInputRegion(
@@ -1436,6 +1436,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     if (m_attachedPanelGeometryCallback) {
       m_attachedPanelGeometryCallback(request.output, m_sourceBarName, std::nullopt);
     }
+    m_dsk = nullptr;
     m_surface.reset();
     m_layerSurface = nullptr;
     m_attachedToBar = false;
@@ -1837,7 +1838,7 @@ void PanelManager::destroyPanel() {
   m_pieceOpacity.clear();
   m_pieceRest.clear();
   m_piecesShown = false;
-  m_dsk.reset();
+  m_dsk = nullptr;
   m_sheetElevated = false;
   m_restClip = {};
   m_densityMeasured = false;
@@ -2979,7 +2980,7 @@ bool PanelManager::startDetachedMorph() {
   m_morphSettled = false;
   const auto& r = m_morphSourceRect;
   if (!m_dsk->setClipFrom(source, {r[0], r[1], r[2], r[3]})) {
-    m_dsk.reset();
+    m_dsk = nullptr;
     return false;
   }
   // The sheet is drawn once at full size; the compositor grows its clip and corners out of the island.
@@ -3039,10 +3040,11 @@ DskSurfaceClient::Value PanelManager::detachedScaleShift(double scale) const {
 }
 
 bool PanelManager::ensureDsk() {
-  dsk_surface_manager_v1* manager = wayland() != nullptr ? wayland()->dskSurfaceManager() : nullptr;
-  if (m_dsk == nullptr && manager != nullptr && m_wlSurface != nullptr) {
-    m_dsk = std::make_unique<DskSurfaceClient>(manager, m_wlSurface);
-    bindBackdrop();
+  if (m_dsk == nullptr && m_surface != nullptr) {
+    m_dsk = m_surface->dsk();
+    if (m_dsk != nullptr) {
+      bindBackdrop();
+    }
   }
   return m_dsk != nullptr;
 }

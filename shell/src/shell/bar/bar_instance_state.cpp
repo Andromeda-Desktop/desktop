@@ -312,7 +312,7 @@ bool Bar::syncIslandLiquid(BarInstance& instance) {
   const bool want = instance.barConfig.islands && !Style::reduceTransparency();
   if (instance.dsk == nullptr && want && manager != nullptr && instance.surface != nullptr
       && instance.surface->wlSurface() != nullptr) {
-    instance.dsk = std::make_unique<DskSurfaceClient>(manager, instance.surface->wlSurface());
+    instance.dsk = instance.surface->dsk();
     instance.dsk->setOnDensity([inst = &instance](float density) {
       if (inst->sceneRoot != nullptr) {
         inst->sceneRoot->setInkLift(std::round(density * 32.0F) / 32.0F);

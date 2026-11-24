@@ -70,7 +70,7 @@ namespace shell::dock {
     std::uint64_t entriesVersion = 0;
     std::unique_ptr<LayerSurface> surface;
     // Liquid glass on the dock (dsk_surface_v1 v5); declared after `surface`: destroyed first.
-    std::unique_ptr<DskSurfaceClient> dsk;
+    DskSurfaceClient* dsk = nullptr; // surface's own
     // The dock glass as one dsk shape (v10): the compositor draws its blur, tint, concave join and shadow.
     std::unique_ptr<DskShapeClient> shape;
     std::array<double, 4> shapeClip{};

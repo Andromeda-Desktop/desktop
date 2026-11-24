@@ -392,7 +392,7 @@ private:
 
   std::unique_ptr<WaylandSurface> m_surface;
   // Morphs the detached panel from its bar island; null when the panel opens with the shell's own reveal.
-  std::unique_ptr<DskSurfaceClient> m_dsk;
+  DskSurfaceClient* m_dsk = nullptr; // m_surface's own; null while unused
   std::vector<std::unique_ptr<DskShapeClient>> m_pieceShapes;
   std::vector<DskSurfaceClient::Value> m_pieceClips;
   std::vector<float> m_pieceOpacity;

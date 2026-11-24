@@ -576,7 +576,7 @@ void DesktopWidgetsHost::prepareFrame(DesktopWidgetInstance& instance, bool need
         instance.state.rotationRad
     );
     instance.surface->setBlurRegion(blurStrips);
-    instance.glass.apply(m_wayland->dskSurfaceManager(), instance.surface->wlSurface(), GlassSurface::Kind::Shape);
+    instance.glass.apply(*instance.surface, GlassSurface::Kind::Shape);
   } else {
     instance.surface->clearBlurRegion();
   }
