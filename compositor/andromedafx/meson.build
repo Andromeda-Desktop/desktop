@@ -347,6 +347,7 @@ if build_tests
     'blur-tint-fold',
     'blur-fade-source',
     'blur-source-model',
+    'blur-strength-partial',
     'corner-split',
     'glass-split',
     'glass-split-full-corners',

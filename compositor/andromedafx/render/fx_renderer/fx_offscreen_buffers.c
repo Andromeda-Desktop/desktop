@@ -90,6 +90,7 @@ static void clear_effect_buffers(struct fx_offscreen_buffers* fbos) {
   drop_framebuffer(&fbos->optimized_no_blur_buffer);
   for (size_t i = 0; i < sizeof(fbos->strength_blurs) / sizeof(fbos->strength_blurs[0]); i++) {
     drop_framebuffer(&fbos->strength_blurs[i].buffer);
+    pixman_region32_clear(&fbos->strength_blurs[i].valid);
   }
   for (size_t i = 0; i < sizeof(fbos->shadows) / sizeof(fbos->shadows[0]); i++) {
     drop_framebuffer(&fbos->shadows[i].buffer);
@@ -111,6 +112,9 @@ static void addon_handle_destroy(struct wlr_addon* addon) {
 
   fx_renderer_delete_gl(fbos->renderer, FX_GL_TEXTURE, fbos->audio_texture);
   clear_effect_buffers(fbos);
+  for (size_t i = 0; i < sizeof(fbos->strength_blurs) / sizeof(fbos->strength_blurs[0]); i++) {
+    pixman_region32_fini(&fbos->strength_blurs[i].valid);
+  }
   drop_framebuffer(&fbos->sdr_capture_buffer);
   drop_framebuffer(&fbos->blend_buffer);
 
@@ -200,6 +204,9 @@ create_new:;
     return NULL;
   }
   fbos->renderer = renderer;
+  for (size_t i = 0; i < sizeof(fbos->strength_blurs) / sizeof(fbos->strength_blurs[0]); i++) {
+    pixman_region32_init(&fbos->strength_blurs[i].valid);
+  }
 
   if (!fx_offscreen_buffers_assign(output, fbos)) {
     wlr_log(WLR_ERROR, "Could not assign fx_offscreen_buffers to output: '%s'", output->name);

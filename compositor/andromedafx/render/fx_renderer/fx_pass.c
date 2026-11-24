@@ -3283,7 +3283,7 @@ static struct fx_framebuffer* strength_blur(
         slot = s;
       }
     }
-    slot->count = 0;
+    pixman_region32_clear(&slot->valid);
     slot->strength = fx_options->blur_strength;
     slot->data = *fx_options->blur_data;
     slot->since = fbos->frame;
@@ -3294,55 +3294,43 @@ static struct fx_framebuffer* strength_blur(
   slot->last_used = ++fbos->strength_blur_clock;
   if (slot->buffer == NULL || !optimized_buffer_fits(pass, slot->buffer)
       || slot->generation != fbos->optimized_blur_generation) {
-    slot->count = 0;
+    pixman_region32_clear(&slot->valid);
   }
-  for (size_t i = 0; i < slot->count; i++) {
-    struct wlr_box covered;
-    if (wlr_box_intersection(&covered, &slot->boxes[i], &box) && wlr_box_equal(&covered, &box)) {
-      return slot->buffer;
-    }
+  const pixman_box32_t extents = {box.x, box.y, box.x + box.width, box.y + box.height};
+  if (pixman_region32_contains_rectangle(&slot->valid, &extents) == PIXMAN_REGION_IN) {
+    return slot->buffer;
   }
   if (!render) {
     return NULL;
   }
   struct fx_framebuffer* target = ensure_offscreen_buffer(pass, &slot->buffer, false);
   if (target == NULL) {
-    slot->count = 0;
+    pixman_region32_clear(&slot->valid);
     return NULL;
   }
-  // A second box at a held strength means several or moving nodes use it: blur the whole output once, so every node at
-  // this strength hits until the backdrop changes, instead of re-blurring each frame. A strength new in this frame may
-  // be animating and never come back, and a backdrop rebuilt in this or the last frame drops a whole-output box at once
-  // (~10 ms of GPU on an HD 520 each time): those render only their box.
+  // A miss at a held strength that already holds a part means several or moving nodes use it: blur everything the slot
+  // lacks, so every node at this strength hits until the backdrop changes, instead of re-blurring each frame; after a
+  // partial rebuild that is only the rebuild's reach, not the whole output (~10 ms of GPU on an HD 520). A strength new
+  // in this frame may be animating and never come back, and a backdrop rebuilt in this or the last frame may change
+  // again: those render only their box.
   const bool backdrop_still = fbos->optimized_blur_rebuilt_frame + 1 < fbos->frame;
-  const struct wlr_box area = slot->held && slot->count > 0 && backdrop_still ? output : box;
   pixman_region32_t region;
-  pixman_region32_init_rect(&region, area.x, area.y, area.width, area.height);
+  pixman_region32_init_rect(&region, box.x, box.y, box.width, box.height);
+  if (slot->held && pixman_region32_not_empty(&slot->valid) && backdrop_still) {
+    pixman_region32_union_rect(&region, &region, output.x, output.y, output.width, output.height);
+  }
+  pixman_region32_subtract(&region, &region, &slot->valid);
   struct fx_render_blur_pass_options blur_options = *fx_options;
   blur_options.current_buffer = fbos->optimized_no_blur_buffer;
   blur_options.tex_options.base.clip = &region;
   struct fx_framebuffer* blurred = get_main_buffer_blur(pass, &blur_options, NULL);
   const bool rendered = blurred != NULL && fx_render_pass_read_to_buffer(pass, &region, target, blurred);
-  pixman_region32_fini(&region);
   fx_framebuffer_bind(pass->buffer);
   slot->generation = fbos->optimized_blur_generation;
-  // The copy overwrote every box that overlaps the area; the oldest box leaves when the table is full.
-  size_t kept = 0;
-  for (size_t i = 0; i < slot->count; i++) {
-    struct wlr_box overlap;
-    if (!wlr_box_intersection(&overlap, &slot->boxes[i], &area)) {
-      slot->boxes[kept++] = slot->boxes[i];
-    }
-  }
-  const size_t capacity = sizeof(slot->boxes) / sizeof(slot->boxes[0]);
-  if (kept == capacity) {
-    memmove(&slot->boxes[0], &slot->boxes[1], (capacity - 1) * sizeof(slot->boxes[0]));
-    kept--;
-  }
   if (rendered) {
-    slot->boxes[kept++] = area;
+    pixman_region32_union(&slot->valid, &slot->valid, &region);
   }
-  slot->count = kept;
+  pixman_region32_fini(&region);
   return rendered ? target : NULL;
 }
 
@@ -3993,7 +3981,7 @@ bool fx_render_pass_add_optimized_blur(
     }
     fbos->optimized_blur_valid = rendered;
     fbos->optimized_blur_sdr_tf = linear_sdr_tf(pass);
-    // Strength boxes read the backdrop only within their blur reach: a rebuild elsewhere keeps them valid.
+    // A strength blur reads the backdrop within its reach: a rebuild removes only that reach from each valid region.
     const uint64_t previous = fbos->optimized_blur_generation++;
     fbos->optimized_blur_rebuilt_frame = fbos->frame;
     for (size_t s = 0; s < sizeof(fbos->strength_blurs) / sizeof(fbos->strength_blurs[0]); s++) {
@@ -4002,18 +3990,11 @@ bool fx_render_pass_add_optimized_blur(
         continue;
       }
       const int reach = blur_data_calc_size(&slot->data);
-      size_t kept = 0;
-      for (size_t i = 0; i < slot->count; i++) {
-        const struct wlr_box* b = &slot->boxes[i];
-        pixman_region32_t reads;
-        pixman_region32_init_rect(&reads, b->x - reach, b->y - reach, b->width + 2 * reach, b->height + 2 * reach);
-        pixman_region32_intersect(&reads, &reads, &clip);
-        if (!pixman_region32_not_empty(&reads)) {
-          slot->boxes[kept++] = *b;
-        }
-        pixman_region32_fini(&reads);
-      }
-      slot->count = kept;
+      pixman_region32_t reads;
+      pixman_region32_init(&reads);
+      wlr_region_expand(&reads, &clip, reach);
+      pixman_region32_subtract(&slot->valid, &slot->valid, &reads);
+      pixman_region32_fini(&reads);
       slot->generation = fbos->optimized_blur_generation;
     }
     if (rendered) {

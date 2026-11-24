@@ -1,6 +1,7 @@
 #ifndef _FX_OFFSCREEN_BUFFERS_H
 #define _FX_OFFSCREEN_BUFFERS_H
 
+#include <pixman.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <andromedafx/render/effect.h>
@@ -64,10 +65,10 @@ struct fx_offscreen_buffers {
   // Bumped each time the optimized blur buffers are re-rendered or replaced.
   uint64_t optimized_blur_generation;
   uint64_t optimized_blur_rebuilt_frame; // `frame` at the last generation bump
-  // optimized_no_blur_buffer blurred at one strength (below 1) and blur data per slot, inside the slot's boxes, valid
+  // optimized_no_blur_buffer blurred at one strength (below 1) and blur data per slot, inside the slot's valid region,
   // while the slot generation equals optimized_blur_generation: glass over a still backdrop composites it instead of
   // blurring again each frame. One slot per strength, so a whole-output render of one never evicts another. A partial
-  // rebuild drops only the boxes whose blur reach it touches.
+  // rebuild removes only its blur reach from the valid region.
   struct fx_strength_blur {
     struct fx_framebuffer* buffer;
     uint64_t generation;
@@ -76,8 +77,7 @@ struct fx_offscreen_buffers {
     bool held; // looked up in a frame after since: a settled strength, not one step of a fade
     float strength;
     struct blur_data data;
-    struct wlr_box boxes[32]; // more than the glass boxes of one frame (launcher: 7), or boxes evict in turn
-    size_t count;
+    pixman_region32_t valid; // buffer coordinates
   } strength_blurs[4];
   uint64_t strength_blur_clock;
   // Box shadow shapes drawn once and then copied: the analytic shader takes 4 erf samples per pixel, and a panel of
