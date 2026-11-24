@@ -2903,15 +2903,18 @@ static struct fx_framebuffer* cached_box_shadow(
   if (!repeated) {
     return NULL;
   }
-  struct fx_framebuffer* target = ensure_offscreen_buffer_size(pass, &entry->buffer, true, box->width, box->height);
+  // The buffer is sized in 64 px steps, so a growing shadow keeps it: a new size is a new buffer (an allocation and, on
+  // gen9, a CCS clear). The fill and the copy use only the box's corner of it.
+  struct fx_framebuffer* target =
+      ensure_offscreen_buffer_size(pass, &entry->buffer, true, (box->width + 63) & ~63, (box->height + 63) & ~63);
   if (target == NULL) {
     return NULL;
   }
   fx_framebuffer_bind(target);
   glViewport(0, 0, box->width, box->height);
   glDisable(GL_SCISSOR_TEST);
-  glClearColor(0, 0, 0, 0);
-  glClear(GL_COLOR_BUFFER_BIT);
+  // No clear: the draw below writes every pixel of the box, its blend ignores the destination, and the copy reads only
+  // the box.
   float projection[9];
   matrix_projection(projection, box->width, box->height, WL_OUTPUT_TRANSFORM_FLIPPED_180);
   const struct wlr_box local = {.width = box->width, .height = box->height};
