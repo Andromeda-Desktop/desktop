@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/files/resource_paths.h"
+#include "core/freedesktop_key_file.h"
 #include "core/log.h"
 #include "protocols/crash_capture.h"
 #include "protocols/heap.h"
@@ -242,33 +243,19 @@ namespace {
     std::ranges::stable_partition(entries, [](const auto& p) { return p.filename() == "andromeda.desktop"; });
     std::vector<SessionEntry> sessions;
     for (const auto& path : entries) {
-      std::ifstream in(path);
-      std::string exec;
-      std::string tryExec;
-      std::string desktopNames;
-      std::string name;
-      bool hidden = false;
-      bool handoff = false;
-      bool inEntry = false;
-      for (std::string line; std::getline(in, line);) {
-        if (line.starts_with('[')) {
-          inEntry = line == "[Desktop Entry]";
-        } else if (!inEntry) {
-          continue;
-        } else if (line.starts_with("Exec=")) {
-          exec = line.substr(5);
-        } else if (line.starts_with("TryExec=")) {
-          tryExec = line.substr(8);
-        } else if (line.starts_with("DesktopNames=")) {
-          desktopNames = line.substr(13);
-        } else if (line.starts_with("Name=")) {
-          name = line.substr(5);
-        } else if (line == "Hidden=true" || line == "NoDisplay=true") {
-          hidden = true;
-        } else if (line == "X-Greetd-Handoff=true") {
-          handoff = true;
-        }
+      const auto parsed = freedesktop::parseKeyFile(path);
+      if (!parsed) {
+        continue;
       }
+      const auto key = [&](std::string_view k) {
+        return std::string(parsed->file.value("Desktop Entry", k).value_or(std::string_view{}));
+      };
+      const std::string exec = key("Exec");
+      const std::string tryExec = key("TryExec");
+      std::string desktopNames = key("DesktopNames");
+      const std::string name = key("Name");
+      const bool hidden = key("Hidden") == "true" || key("NoDisplay") == "true";
+      const bool handoff = key("X-Greetd-Handoff") == "true";
       if (hidden || (!tryExec.empty() && !onPath(tryExec))) {
         continue;
       }

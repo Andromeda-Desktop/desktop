@@ -806,7 +806,6 @@ _noctalia_source_paths = [
   'src/system/dependency_service.cpp',
   'src/system/desktop_entry.cpp',
   'src/system/dconf_read.cpp',
-  'src/system/freedesktop_key_file.cpp',
   'src/system/system_font.cpp',
   'src/system/desktop_entry_launch.cpp',
   'src/system/media_player_open.cpp',

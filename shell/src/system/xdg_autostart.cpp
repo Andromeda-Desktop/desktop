@@ -1,6 +1,7 @@
 #include "system/xdg_autostart.h"
 
 #include "dbus/systemd/systemd_unit_name.h"
+#include "core/freedesktop_key_file.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -15,37 +16,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-  std::map<std::string, std::string> readDesktopEntryGroup(const fs::path& path) {
-    std::map<std::string, std::string> keys;
-    std::ifstream in(path);
-    std::string line;
-    bool inGroup = false;
-    while (std::getline(in, line)) {
-      if (line.empty() || line.front() == '#') {
-        continue;
-      }
-      if (line.front() == '[') {
-        inGroup = line == "[Desktop Entry]";
-        continue;
-      }
-      const std::size_t eq = line.find('=');
-      if (!inGroup || eq == std::string::npos) {
-        continue;
-      }
-      std::string key = line.substr(0, eq);
-      while (!key.empty() && key.back() == ' ') {
-        key.pop_back();
-      }
-      std::size_t valueStart = eq + 1;
-      while (valueStart < line.size() && line[valueStart] == ' ') {
-        ++valueStart;
-      }
-      keys.try_emplace(std::move(key), line.substr(valueStart));
-    }
-    return keys;
-  }
-
-  bool isTrue(const std::map<std::string, std::string>& keys, const std::string& key) {
+  bool isTrue(const freedesktop::KeyFile::Section& keys, const std::string& key) {
     const auto it = keys.find(key);
     return it != keys.end() && it->second == "true";
   }
@@ -76,7 +47,7 @@ namespace {
     });
   }
 
-  bool shownIn(const std::map<std::string, std::string>& keys, std::string_view currentDesktops) {
+  bool shownIn(const freedesktop::KeyFile::Section& keys, std::string_view currentDesktops) {
     const auto desktops = splitList(currentDesktops, ':');
     const auto intersects = [&desktops](const std::string& list) {
       return std::ranges::any_of(splitList(list, ';'), [&desktops](const auto& d) { return desktops.contains(d); });
@@ -140,7 +111,10 @@ std::vector<AutostartEntry> scanAutostart(const AutostartDirs& dirs, std::string
       if (!seen.insert(id).second) {
         continue;
       }
-      const auto keys = readDesktopEntryGroup(file);
+      const auto parsed = freedesktop::parseKeyFile(file);
+      const freedesktop::KeyFile::Section* group = parsed ? parsed->file.section("Desktop Entry") : nullptr;
+      static const freedesktop::KeyFile::Section kNoKeys;
+      const freedesktop::KeyFile::Section& keys = group != nullptr ? *group : kNoKeys;
       const auto value = [&keys](const std::string& key) {
         const auto it = keys.find(key);
         return it == keys.end() ? std::string{} : it->second;

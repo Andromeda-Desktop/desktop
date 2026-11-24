@@ -3,7 +3,7 @@
 #include "core/lazy_library.h"
 #include "core/log.h"
 #include "pipewire/pipewire_context.h"
-#include "system/freedesktop_key_file.h"
+#include "core/freedesktop_key_file.h"
 
 #include <algorithm>
 #include <array>

@@ -1,4 +1,4 @@
-#include "system/freedesktop_key_file.h"
+#include "core/freedesktop_key_file.h"
 
 #include <cctype>
 #include <format>

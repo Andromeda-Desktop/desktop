@@ -202,6 +202,7 @@ endif
 _desk_ui_sources = files(
   'src/core/blocking_pool.cpp',
   'src/core/deferred_call.cpp',
+  'src/core/freedesktop_key_file.cpp',
   'src/core/files/directory_scanner.cpp',
   'src/core/files/file_info.cpp',
   'src/core/files/media_info.cpp',
