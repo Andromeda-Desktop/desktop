@@ -13,6 +13,7 @@ use andromeda_update::news;
 
 use crate::{flatpak, fwupd, packages, snap};
 use andromeda_rt::logged::Logged;
+use andromeda_rt::notify;
 
 pub const PATH: &str = "/org/andromeda/Update1";
 /// checkupdates downloads every sync database; firmware and Flatpak answer faster.
@@ -220,26 +221,19 @@ impl Update {
         }
         let body =
             if count == 1 { "1 update is available".to_owned() } else { format!("{count} updates are available") };
-        let hints: HashMap<&str, zbus::Variant<'_>> =
-            HashMap::from([("x-andromeda-settings-page", "software-update".into()), ("category", "system".into())]);
-        let reply = conn
-            .call_method(
-                Some("org.freedesktop.Notifications"),
-                "/org/freedesktop/Notifications",
-                Some("org.freedesktop.Notifications"),
-                "Notify",
-                &(
-                    "Software Update",
-                    0u32,
-                    "system-software-update",
-                    "Software Update",
-                    body.as_str(),
-                    vec!["default", "Open"],
-                    hints,
-                    -1i32,
-                ),
-            )
-            .await;
+        let notice = notify::Notice {
+            app: "Software Update",
+            replaces: 0,
+            icon: "system-software-update",
+            summary: "Software Update",
+            body: &body,
+            actions: &["default", "Open"],
+            hints: HashMap::from([
+                ("x-andromeda-settings-page", "software-update".into()),
+                ("category", "system".into()),
+            ]),
+        };
+        let reply = notify::notify(conn, &notice).await;
         match reply {
             Ok(_) => {
                 if let Err(e) = write_number(&self.state_dir, &file, now()).await {

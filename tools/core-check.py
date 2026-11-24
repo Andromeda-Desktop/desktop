@@ -88,6 +88,11 @@ RULES = {
                      "PrepareForSleep, the compositor only as the fallback without System1", CPP_DIRS, CPP + (".rs",),
                      r"\"PrepareForSleep\"|receive_prepare_for_sleep", ("system/crates/andromeda-system/src/login.rs",
                                           "compositor/src/server/sleep_watch.cpp")),
+    "notify-client": ("apps send notifications through AppNotifier (libdesk-app), system crates through "
+                      "andromeda_rt::notify; the shell serves them", CPP_DIRS, CPP + (".rs",),
+                      r"callMethod(Async)?\(\"(Notify|CloseNotification)\"\)|\"(Notify|CloseNotification)\",",
+                      ("libdesk-app/src/app/app_notifier_dbus.cpp", "system/crates/andromeda-rt/src/notify.rs",
+                       "shell/src/dbus/notification/")),
     "rust-drop": ("D-Bus and job errors are logged, not dropped (C13)", ("system/", "apps/", "andromeda-preview/"),
                   (".rs",), r"let _ = [^;]*\.await|\.await\.ok\(\)", ()),
     "std-fs-async": ("no blocking file I/O on a daemon's runtime thread: tokio::fs or spawn_blocking (AR3 5e)",

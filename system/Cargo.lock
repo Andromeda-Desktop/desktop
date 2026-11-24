@@ -114,6 +114,7 @@ dependencies = [
  "log",
  "nix",
  "tokio",
+ "zbus",
 ]
 
 [[package]]

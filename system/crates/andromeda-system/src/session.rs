@@ -24,6 +24,7 @@ use crate::rules::{self, Alert, Scope};
 use crate::state::{AppRow, AppValues, Fields, InstanceRow, InstanceValues, Snapshot};
 use crate::{NAME, crashes, knobs, memory, network, nm, power, procs, startup, storage, thermal, units};
 use andromeda_rt::logged::Logged;
+use andromeda_rt::notify;
 
 const BATTERY: &str = "/org/andromeda/System1/Battery/DisplayDevice";
 const RULES: &str = "/org/andromeda/System1/Rules";
@@ -33,8 +34,6 @@ const CLOCK_STEP: Duration = Duration::from_secs(5 * 60);
 const SYSTEM_KNOBS: [&str; 3] = ["power.profile", "battery.charge_limit", "network.wifi_power_save"];
 /// A synthetic state field: a session rule holds the profile, so the profile shown is not the user's pick.
 const PROFILE_BY_RULE: &str = "power.profile_by_rule";
-const NOTIFICATIONS: &str = "org.freedesktop.Notifications";
-const NOTIFICATIONS_PATH: &str = "/org/freedesktop/Notifications";
 const COMPOSITOR: &str = "org.andromeda.Compositor1";
 const APPS_PATH: &str = "/org/andromeda/Compositor1/Apps";
 const APPS: &str = "org.andromeda.Compositor1.Apps";
@@ -366,20 +365,21 @@ impl Session {
         };
         // A repeat alert replaces the episode's earlier notification instead of adding one.
         let replaces = self.alerts.iter().find(|(_, e)| **e == entry.episode).map_or(0, |(n, _)| *n);
-        let mut hints: HashMap<&str, Variant<'_>> = HashMap::new();
-        hints.insert("urgency", urgency.into());
-        hints.insert("x-andromeda-rule", entry.rule.as_str().into());
-        hints.insert("x-andromeda-episode", entry.id.as_str().into());
-        let reply = session
-            .call_method(
-                Some(NOTIFICATIONS),
-                NOTIFICATIONS_PATH,
-                Some(NOTIFICATIONS),
-                "Notify",
-                &("Andromeda", replaces, icon, summary.as_str(), body.as_str(), actions, hints, -1i32),
-            )
-            .await;
-        match reply.and_then(|r| r.body().deserialize::<u32>()) {
+        let hints = HashMap::from([
+            ("urgency", urgency.into()),
+            ("x-andromeda-rule", entry.rule.as_str().into()),
+            ("x-andromeda-episode", entry.id.as_str().into()),
+        ]);
+        let notice = notify::Notice {
+            app: "Andromeda",
+            replaces,
+            icon,
+            summary: &summary,
+            body: &body,
+            actions: &actions,
+            hints,
+        };
+        match notify::notify(session, &notice).await {
             Ok(id) => {
                 self.alerts.remove(&replaces);
                 self.alerts.insert(id, entry.episode);
@@ -434,16 +434,7 @@ impl Session {
             let ended: Vec<u32> = self.alerts.iter().filter(|(_, e)| **e == entry.episode).map(|(n, _)| *n).collect();
             for note in ended {
                 self.alerts.remove(&note);
-                session
-                    .call_method(
-                        Some(NOTIFICATIONS),
-                        NOTIFICATIONS_PATH,
-                        Some(NOTIFICATIONS),
-                        "CloseNotification",
-                        &(note,),
-                    )
-                    .await
-                    .expected("close alert notification");
+                notify::close(session, note).await.expected("close alert notification");
             }
         }
         for (knob, value) in apply {
@@ -904,7 +895,7 @@ async fn follow(system: &Connection, session: &Connection, shared: &Shared) -> R
             .logged("Network proxy"),
     ];
     let mut released = signals(system, Some(NAME), "org.andromeda.System1.Knobs", "Released").await?;
-    let mut actions = signals(session, None, NOTIFICATIONS, "ActionInvoked").await?;
+    let mut actions = signals(session, None, notify::NAME, "ActionInvoked").await?;
     let me = system.unique_name().map(ToString::to_string).unwrap_or_default();
     {
         let mut inner = shared.lock().await;

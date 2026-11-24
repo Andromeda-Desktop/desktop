@@ -13,6 +13,10 @@ env_logger = { version = "0.11", default-features = false, features = ["auto-col
 log = "0.4"
 nix = { version = "0.31", default-features = false, features = ["socket", "user"] }
 tokio = { version = "1", features = ["rt", "macros", "time", "sync", "signal", "net", "io-util"] }
+zbus = { version = "6", default-features = false, features = ["tokio"], optional = true }
+
+[features]
+notify = ["dep:zbus"]
 
 [lints]
 workspace = true

@@ -4,6 +4,8 @@
 pub mod backoff;
 pub mod ipc;
 pub mod logged;
+#[cfg(feature = "notify")]
+pub mod notify;
 
 use std::future::Future;
 use std::sync::Arc;
