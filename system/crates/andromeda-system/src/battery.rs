@@ -14,6 +14,7 @@ use crate::bus::{self, Props, Remote};
 use crate::holds::KnobValue;
 use crate::policy::{CHARGE_LIMIT, Shared};
 use crate::{knobs, manager, plugs, polkit, power};
+use andromeda_rt::logged::Logged;
 
 pub const AREA: &str = "battery";
 pub const UPOWER: &str = "org.freedesktop.UPower";
@@ -60,7 +61,7 @@ async fn devices(conn: &Connection) -> Result<Vec<DeviceProxy<'static>>> {
 pub async fn set_charge_limit(conn: &Connection, on: bool) -> Result<()> {
     for device in devices(conn).await? {
         if device.charge_threshold_supported().await.unwrap_or_default()
-            && device.charge_threshold_enabled().await.ok() != Some(on)
+            && device.charge_threshold_enabled().await.logged("charge threshold enabled") != Some(on)
         {
             device.enable_charge_threshold(on).await?;
         }
@@ -373,7 +374,7 @@ impl Devices {
             if let Err(e) = follow_device(conn.clone(), path.clone(), policy).await {
                 log::warn!("battery {path}: {e:#}");
             }
-            let _ = conn.object_server().remove::<Battery, _>(object_path(path.as_str())).await;
+            conn.object_server().remove::<Battery, _>(object_path(path.as_str())).await.logged("remove Battery object");
         });
         self.tasks.insert(key, task);
     }
@@ -382,7 +383,11 @@ impl Devices {
         if let Some(task) = self.tasks.remove(path) {
             task.abort();
         }
-        let _ = self.conn.object_server().remove::<Battery, _>(object_path(path.as_str())).await;
+        self.conn
+            .object_server()
+            .remove::<Battery, _>(object_path(path.as_str()))
+            .await
+            .logged("remove Battery object");
     }
 
     async fn clear(&mut self) {

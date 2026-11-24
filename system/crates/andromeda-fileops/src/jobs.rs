@@ -19,6 +19,7 @@ use crate::ops::{self, Control, OpError, Resolution, UndoStep};
 use crate::storage;
 use crate::tags;
 use crate::trash;
+use andromeda_rt::logged::Logged;
 
 /// Errors of `ListArchive` a client acts on (a password prompt).
 #[derive(Debug, zbus::DBusError)]
@@ -462,20 +463,20 @@ async fn publish(conn: Connection, path: OwnedObjectPath, shared: Arc<Shared>, a
         let finished = matches!(lock(&shared.status).state, State::Done | State::Failed | State::Cancelled);
         let job = iface.get().await;
         let emitter = iface.signal_emitter();
-        let _ = job.state_changed(emitter).await;
-        let _ = job.total_files_changed(emitter).await;
-        let _ = job.total_bytes_changed(emitter).await;
-        let _ = job.done_files_changed(emitter).await;
-        let _ = job.done_bytes_changed(emitter).await;
-        let _ = job.current_changed(emitter).await;
-        let _ = job.conflict_changed(emitter).await;
-        let _ = job.conflict_progress_changed(emitter).await;
-        let _ = job.folder_clash_changed(emitter).await;
+        job.state_changed(emitter).await.logged("emit state_changed");
+        job.total_files_changed(emitter).await.logged("emit total_files_changed");
+        job.total_bytes_changed(emitter).await.logged("emit total_bytes_changed");
+        job.done_files_changed(emitter).await.logged("emit done_files_changed");
+        job.done_bytes_changed(emitter).await.logged("emit done_bytes_changed");
+        job.current_changed(emitter).await.logged("emit current_changed");
+        job.conflict_changed(emitter).await.logged("emit conflict_changed");
+        job.conflict_progress_changed(emitter).await.logged("emit conflict_progress_changed");
+        job.folder_clash_changed(emitter).await.logged("emit folder_clash_changed");
         if finished {
-            let _ = job.error_changed(emitter).await;
-            let _ = job.undoable_changed(emitter).await;
-            let _ = job.moves_changed(emitter).await;
-            let _ = job.result_changed(emitter).await;
+            job.error_changed(emitter).await.logged("emit error_changed");
+            job.undoable_changed(emitter).await.logged("emit undoable_changed");
+            job.moves_changed(emitter).await.logged("emit moves_changed");
+            job.result_changed(emitter).await.logged("emit result_changed");
             let mut activity = lock(&activity);
             activity.0 -= 1;
             activity.1 = Some(Instant::now());
@@ -942,7 +943,7 @@ impl Manager {
         }
         .ok_or_else(|| zbus::fdo::Error::Failed("nothing to undo".into()))?;
         if let Ok(iface) = conn.object_server().interface::<_, Job>(&job).await {
-            let _ = iface.get().await.undoable_changed(iface.signal_emitter()).await;
+            iface.get().await.undoable_changed(iface.signal_emitter()).await.logged("emit undoable_changed");
         }
         let path = self.start(conn, "undo", Request::Undo(steps, Some(shared))).await?;
         self.jobs_changed(&emitter).await?;

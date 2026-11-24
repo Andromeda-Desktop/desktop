@@ -203,7 +203,9 @@ pub async fn run(
     let mut stderr = child.stderr.take().expect("piped stderr");
     let stderr_task = tokio::spawn(async move {
         let mut bytes = Vec::new();
-        let _ = stderr.read_to_end(&mut bytes).await;
+        if let Err(e) = stderr.read_to_end(&mut bytes).await {
+            eprintln!("failed reading claude stderr: {e}");
+        }
         String::from_utf8_lossy(&bytes).into_owned()
     });
     let mut lines = BufReader::new(stdout).lines();
@@ -228,13 +230,13 @@ pub async fn run(
             line = lines.next_line() => match line {
                 Ok(line) => line,
                 Err(e) => {
-                    let _ = child.kill().await;
+                    kill_claude(&mut child).await;
                     return Err(RunError::Failed(format!("failed reading claude output: {e}")));
                 }
             },
             _ = cancelled.changed() => {
                 if *cancelled.borrow() {
-                    let _ = child.kill().await;
+                    kill_claude(&mut child).await;
                     return Err(RunError::Cancelled);
                 }
                 continue;
@@ -282,7 +284,7 @@ pub async fn run(
                     answer = on_permission(permission) => answer,
                     _ = cancelled.changed() => {
                         if *cancelled.borrow() {
-                            let _ = child.kill().await;
+                            kill_claude(&mut child).await;
                             return Err(RunError::Cancelled);
                         }
                         continue;
@@ -437,7 +439,7 @@ pub async fn run(
             .map_err(|e| RunError::Failed(format!("claude process failed: {e}")))?,
         _ = cancelled.changed() => {
             if *cancelled.borrow() {
-                let _ = child.kill().await;
+                kill_claude(&mut child).await;
                 return Err(RunError::Cancelled);
             }
             child.wait().await.map_err(|e| RunError::Failed(format!("claude process failed: {e}")))?
@@ -467,5 +469,12 @@ fn tool_result_text(content: &Value) -> String {
             .collect::<Vec<_>>()
             .join("\n"),
         _ => String::new(),
+    }
+}
+
+/// Kills the claude process; an error means it already exited.
+async fn kill_claude(child: &mut tokio::process::Child) {
+    if let Err(e) = child.kill().await {
+        eprintln!("failed to stop claude: {e}");
     }
 }

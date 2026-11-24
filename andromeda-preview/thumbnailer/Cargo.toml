@@ -6,6 +6,7 @@ license = "GPL-3.0-or-later"
 publish = false
 
 [dependencies]
+andromeda-rt = { path = "../../system/crates/andromeda-rt" }
 command-fds = "0.3"
 crc32fast = "1"
 libc = "0.2"

@@ -16,6 +16,7 @@ use zbus_polkit::policykit1::{AuthorityProxy, CheckAuthorizationFlags, Subject};
 use crate::snapshot;
 use crate::transaction::{self, Event, Scope};
 use crate::{guard, migrations};
+use andromeda_rt::logged::Logged;
 
 pub const PATH: &str = "/org/andromeda/UpdateHelper1";
 
@@ -147,7 +148,7 @@ impl Helper {
         if self.running.swap(true, Ordering::SeqCst) {
             return Err(zbus::fdo::Error::Failed("an update already runs".into()));
         }
-        let _ = self.running_changed(&emitter).await;
+        self.running_changed(&emitter).await.logged("emit running_changed");
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let state_dir = self.state_dir.clone();
         let runtime = tokio::runtime::Handle::current();
@@ -184,7 +185,7 @@ impl Helper {
         let emitter = emitter.to_owned();
         tokio::spawn(async move {
             while let Some(Event::Progress(stage, percent, package)) = rx.recv().await {
-                let _ = Self::progress(&emitter, &stage, percent, &package).await;
+                Self::progress(&emitter, &stage, percent, &package).await.logged("emit Progress");
             }
             let (ok, message, targets, questions) = match work.await {
                 Ok(Ok((outcome, Err(e)))) => (false, format!("updated, but {e:#}"), outcome.targets, Vec::new()),
@@ -206,8 +207,10 @@ impl Helper {
             log::info!("upgrade (dry run {dry_run}): {message}");
             drop(inhibitor);
             this.running.store(false, Ordering::SeqCst);
-            let _ = this.running_changed(&emitter).await;
-            let _ = Self::finished(&emitter, ok, &message, targets, questions, scope == Scope::Andromeda).await;
+            this.running_changed(&emitter).await.logged("emit running_changed");
+            Self::finished(&emitter, ok, &message, targets, questions, scope == Scope::Andromeda)
+                .await
+                .logged("emit Finished");
         });
         Ok(())
     }
@@ -361,7 +364,7 @@ impl Helper {
             self.remove_tonight().await;
         }
         set_tonight_timer(conn, enable).await;
-        let _ = self.tonight_changed(&emitter).await;
+        self.tonight_changed(&emitter).await.logged("emit tonight_changed");
         Ok(())
     }
 
@@ -393,7 +396,7 @@ impl Helper {
         let Some(scheduled) = self.tonight_token().await else { return Ok(()) };
         self.remove_tonight().await;
         set_tonight_timer(conn, false).await;
-        let _ = self.tonight_changed(&emitter).await;
+        self.tonight_changed(&emitter).await.logged("emit tonight_changed");
         // A token older than a day was for a night that passed (machine off or on battery then).
         if now_secs() - scheduled > TONIGHT_MAX_AGE {
             return Ok(());
@@ -407,7 +410,7 @@ impl Helper {
         if let Some(reason) = refused {
             log::info!("tonight: not updating: {reason}");
             let message = format!("tonight's update did not run: {reason}");
-            let _ = Self::finished(&emitter, false, &message, vec![], vec![], false).await;
+            Self::finished(&emitter, false, &message, vec![], vec![], false).await.logged("emit Finished");
         }
         Ok(())
     }

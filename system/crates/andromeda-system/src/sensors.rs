@@ -15,6 +15,7 @@ use zbus::message::Header;
 use zbus::{Connection, interface};
 
 use crate::polkit;
+use andromeda_rt::logged::Logged;
 
 pub const PATH: &str = "/org/andromeda/System1/Sensors";
 const PRESENCE_USAGE: &str = "2004b1";
@@ -130,7 +131,10 @@ pub async fn run(conn: Connection) {
             }
         }
         let reading = if sensing {
-            tokio::task::spawn_blocking(|| read_presence(Path::new("/"))).await.ok().and_then(Result::ok)
+            tokio::task::spawn_blocking(|| read_presence(Path::new("/")))
+                .await
+                .logged("presence read task")
+                .and_then(Result::ok)
         } else {
             None
         };
@@ -160,9 +164,11 @@ async fn publish(conn: &Connection, (presence, proximity_mm): (Presence, u32)) -
 
 /// The input field directory of `usage` in a HID custom sensor, e.g. `input-7-2004b1`.
 fn field(sensor: &Path, usage: &str) -> Option<PathBuf> {
-    std::fs::read_dir(sensor).ok()?.flatten().map(|e| e.path()).find(|p| {
-        p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("input-") && n.ends_with(usage))
-    })
+    std::fs::read_dir(sensor)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("input-") && n.ends_with(usage)))
 }
 
 fn presence_sensor(root: &Path) -> Result<PathBuf> {
@@ -284,10 +290,9 @@ mod tests {
         assert!(read_presence(&root).is_err());
         let sensor = root.join("sys/bus/platform/devices/HID-SENSOR-2000e1.6.auto");
         let wifi = root.join("sys/bus/pci/drivers/iwlwifi/0000:00:14.3");
-        for (dir, file, value) in [
-            ("input-7-2004b1", "input-7-2004b1-value", "1\n"),
-            ("input-6-2004b2", "input-6-2004b2-value", "1200\n"),
-        ] {
+        for (dir, file, value) in
+            [("input-7-2004b1", "input-7-2004b1-value", "1\n"), ("input-6-2004b2", "input-6-2004b2-value", "1200\n")]
+        {
             fs::create_dir_all(sensor.join(dir)).unwrap();
             fs::write(sensor.join(dir).join(file), value).unwrap();
         }

@@ -13,6 +13,7 @@ use zbus::{Connection, OwnedObjectPath, OwnedVariant, Variant, interface};
 
 use crate::bus::{self, Remote};
 use crate::{manager, nm_control, polkit, wifi};
+use andromeda_rt::logged::Logged;
 
 pub const PATH: &str = "/org/andromeda/System1/Network";
 pub const AREA: &str = "network";
@@ -187,7 +188,8 @@ async fn create_ap(conn: &Connection, records: Arc<wifi::Records>, client: Strin
             // A re-armed interface stays: its caller removes it. A new one goes now; its caller never had it.
             if !plan.exists {
                 let n = name.clone();
-                if let Some(ifindex) = blocking(move || Ok(wifi::kernel()?.ifindex(&n))).await.ok().flatten()
+                if let Some(ifindex) =
+                    blocking(move || Ok(wifi::kernel()?.ifindex(&n))).await.logged("wifi ifindex").flatten()
                     && let Err(cleanup) = delete_ap(conn, Arc::clone(&records), &name, ifindex).await
                 {
                     log::warn!("network: {name} stays after a failed start: {cleanup}");

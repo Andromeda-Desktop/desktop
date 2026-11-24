@@ -11,6 +11,7 @@ use zbus::{Connection, OwnedObjectPath, interface};
 
 use crate::battery::{UPOWER, UPowerProxy};
 use crate::{bus, manager, polkit};
+use andromeda_rt::logged::Logged;
 
 pub const AREA: &str = "keyboard_backlight";
 const PATH_PREFIX: &str = "/org/andromeda/System1/KbdBacklight/";
@@ -106,7 +107,10 @@ impl Devices {
                 if let Err(e) = follow_device(conn.clone(), path.clone()).await {
                     log::warn!("keyboard backlight {path}: {e:#}");
                 }
-                let _ = conn.object_server().remove::<KbdBacklight, _>(object_path(path.as_str())).await;
+                conn.object_server()
+                    .remove::<KbdBacklight, _>(object_path(path.as_str()))
+                    .await
+                    .logged("remove KbdBacklight object");
             });
             self.tasks.insert(key, task);
         }
@@ -117,7 +121,11 @@ impl Devices {
         if let Some(task) = self.tasks.remove(path) {
             task.abort();
         }
-        let _ = self.conn.object_server().remove::<KbdBacklight, _>(object_path(path.as_str())).await;
+        self.conn
+            .object_server()
+            .remove::<KbdBacklight, _>(object_path(path.as_str()))
+            .await
+            .logged("remove KbdBacklight object");
     }
 
     async fn clear(&mut self) {

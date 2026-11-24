@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use zbus::object_server::SignalEmitter;
+use andromeda_rt::logged::Logged;
 
 const BUS_NAME: &str = "org.freedesktop.thumbnails.Thumbnailer1";
 const PATH: &str = "/org/freedesktop/thumbnails/Thumbnailer1";
@@ -99,18 +100,18 @@ async fn run_job(
     if dequeued.lock().unwrap().remove(&job.handle) {
         return;
     }
-    let _ = Service::started(emitter, job.handle).await;
+    Service::started(emitter, job.handle).await.logged("emit Started");
     for (uri, mime) in job.uris.into_iter().zip(job.mimes) {
         if dequeued.lock().unwrap().contains(&job.handle) {
             break;
         }
         let Some(r) = runner.map(Arc::clone) else {
-            let _ = Service::error(emitter, job.handle, vec![uri], ERROR_FAILED, "sandbox unavailable".into()).await;
+            Service::error(emitter, job.handle, vec![uri], ERROR_FAILED, "sandbox unavailable".into()).await.logged("emit Error");
             continue;
         };
         let (uri_c, flavor) = (uri.clone(), job.flavor);
         let result = tokio::task::spawn_blocking(move || r.thumbnail(&uri_c, &mime, flavor)).await;
-        let _ = match result {
+        let sent = match result {
             Ok(Ok(_)) => Service::ready(emitter, job.handle, vec![uri]).await,
             Ok(Err(Error::Unsupported | Error::NotLocal)) => {
                 Service::error(emitter, job.handle, vec![uri], ERROR_UNSUPPORTED, "unsupported".into()).await
@@ -118,10 +119,11 @@ async fn run_job(
             Ok(Err(e)) => Service::error(emitter, job.handle, vec![uri], ERROR_FAILED, format!("{e:?}")).await,
             Err(_) => Service::error(emitter, job.handle, vec![uri], ERROR_FAILED, "panic".into()).await,
         };
+        sent.logged("emit Ready or Error");
     }
     // Handles only grow: a dequeue of this or an older handle can no longer match a job.
     dequeued.lock().unwrap().retain(|&h| h > job.handle);
-    let _ = Service::finished(emitter, job.handle).await;
+    Service::finished(emitter, job.handle).await.logged("emit Finished");
 }
 
 async fn work(
@@ -139,9 +141,9 @@ async fn work(
         }
     }
     // Leave the bus first, then finish what arrived meanwhile: a queued caller always gets Finished.
-    let _ = connection.release_name(BUS_NAME).await;
+    connection.release_name(BUS_NAME).await.logged("release bus name");
     // No more Queue calls after this: a call already on the connection is answered with an error, not a handle.
-    let _ = connection.object_server().remove::<Service, _>(PATH).await;
+    connection.object_server().remove::<Service, _>(PATH).await.logged("remove Service object");
     while let Ok(job) = jobs.try_recv() {
         run_job(&emitter, runner.as_ref(), job, &dequeued).await;
     }

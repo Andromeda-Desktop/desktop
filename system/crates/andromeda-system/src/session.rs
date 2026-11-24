@@ -23,6 +23,7 @@ use crate::rules::RuleValues;
 use crate::rules::{self, Alert, Scope};
 use crate::state::{AppRow, AppValues, Fields, InstanceRow, InstanceValues, Snapshot};
 use crate::{NAME, crashes, knobs, memory, network, nm, power, procs, startup, storage, thermal, units};
+use andromeda_rt::logged::Logged;
 
 const BATTERY: &str = "/org/andromeda/System1/Battery/DisplayDevice";
 const RULES: &str = "/org/andromeda/System1/Rules";
@@ -394,7 +395,7 @@ impl Session {
                 log::warn!("explain log: {e}");
             }
             if let Ok(emitter) = SignalEmitter::new(session, explain::PATH) {
-                let _ = explain::Explain::entry(&emitter, entry.to_dict()).await;
+                explain::Explain::entry(&emitter, entry.to_dict()).await.logged("emit Explain entry");
             }
             if entry.event == "started" {
                 if entry.instance.is_empty() {
@@ -418,18 +419,22 @@ impl Session {
             self.again.remove(&entry.episode);
             for id in self.app_held.remove(&entry.episode).unwrap_or_default() {
                 // The hold is gone already when the app or the compositor ended.
-                let _ = session.call_method(Some(COMPOSITOR), APPS_PATH, Some(APPS), "Release", &(id,)).await;
+                session
+                    .call_method(Some(COMPOSITOR), APPS_PATH, Some(APPS), "Release", &(id,))
+                    .await
+                    .expected("release app hold");
             }
             for id in self.held.remove(&entry.episode).map(|(_, ids)| ids).unwrap_or_default() {
                 // The hold may already be gone (a user Set ended it, or the system part restarted).
-                let _ = system
+                system
                     .call_method(Some(NAME), knobs::PATH, Some("org.andromeda.System1.Knobs"), "Release", &(id,))
-                    .await;
+                    .await
+                    .expected("release knob hold");
             }
             let ended: Vec<u32> = self.alerts.iter().filter(|(_, e)| **e == entry.episode).map(|(n, _)| *n).collect();
             for note in ended {
                 self.alerts.remove(&note);
-                let _ = session
+                session
                     .call_method(
                         Some(NOTIFICATIONS),
                         NOTIFICATIONS_PATH,
@@ -437,7 +442,8 @@ impl Session {
                         "CloseNotification",
                         &(note,),
                     )
-                    .await;
+                    .await
+                    .expected("close alert notification");
             }
         }
         for (knob, value) in apply {
@@ -593,7 +599,7 @@ async fn publish(session: &Connection, knob: &str, value: Option<&KnobValue>) {
             None => knobs.effective.remove(knob),
         };
     }
-    let _ = iface.get().await.effective_changed(iface.signal_emitter()).await;
+    iface.get().await.effective_changed(iface.signal_emitter()).await.logged("emit effective_changed");
 }
 
 /// The session's explain log merged with the system part's.
@@ -883,12 +889,19 @@ async fn follow(system: &Connection, session: &Connection, shared: &Shared) -> R
     let mut power = Remote::new(system, NAME, power::PATH.to_owned(), "org.andromeda.System1.Power").await?;
     // The system part exports the battery once UPower reports it, which can be after this starts.
     let mut added = signals(system, Some(NAME), "org.freedesktop.DBus.ObjectManager", "InterfacesAdded").await?;
-    let mut battery = Remote::new(system, NAME, BATTERY.to_owned(), "org.andromeda.System1.Battery").await.ok();
+    let mut battery =
+        Remote::new(system, NAME, BATTERY.to_owned(), "org.andromeda.System1.Battery").await.logged("Battery proxy");
     let mut extra = [
-        Remote::new(system, NAME, memory::PATH.to_owned(), "org.andromeda.System1.Memory").await.ok(),
-        Remote::new(system, NAME, thermal::PATH.to_owned(), "org.andromeda.System1.Thermal").await.ok(),
-        Remote::new(system, NAME, storage::PATH.to_owned(), "org.andromeda.System1.Storage").await.ok(),
-        Remote::new(system, NAME, network::PATH.to_owned(), "org.andromeda.System1.Network").await.ok(),
+        Remote::new(system, NAME, memory::PATH.to_owned(), "org.andromeda.System1.Memory").await.logged("Memory proxy"),
+        Remote::new(system, NAME, thermal::PATH.to_owned(), "org.andromeda.System1.Thermal")
+            .await
+            .logged("Thermal proxy"),
+        Remote::new(system, NAME, storage::PATH.to_owned(), "org.andromeda.System1.Storage")
+            .await
+            .logged("Storage proxy"),
+        Remote::new(system, NAME, network::PATH.to_owned(), "org.andromeda.System1.Network")
+            .await
+            .logged("Network proxy"),
     ];
     let mut released = signals(system, Some(NAME), "org.andromeda.System1.Knobs", "Released").await?;
     let mut actions = signals(session, None, NOTIFICATIONS, "ActionInvoked").await?;
@@ -940,7 +953,7 @@ async fn follow(system: &Connection, session: &Connection, shared: &Shared) -> R
                 let message = message.context("InterfacesAdded stream ended")??;
                 let Ok((path, _)) = message.body().deserialize::<(zbus::OwnedObjectPath, Interfaces)>() else { continue };
                 if battery.is_none() && path.as_str() == BATTERY {
-                    battery = Remote::new(system, NAME, BATTERY.to_owned(), "org.andromeda.System1.Battery").await.ok();
+                    battery = Remote::new(system, NAME, BATTERY.to_owned(), "org.andromeda.System1.Battery").await.logged("Battery proxy");
                     shared.lock().await.state.set_battery(battery.as_ref().map(|b| &b.props));
                 }
             }

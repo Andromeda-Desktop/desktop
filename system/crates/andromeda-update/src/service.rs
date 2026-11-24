@@ -12,6 +12,7 @@ use zbus::{Connection, interface};
 use andromeda_update::news;
 
 use crate::{flatpak, fwupd, packages, snap};
+use andromeda_rt::logged::Logged;
 
 pub const PATH: &str = "/org/andromeda/Update1";
 /// checkupdates downloads every sync database; firmware and Flatpak answer faster.
@@ -118,12 +119,12 @@ impl Update {
     async fn emit_all(iface: &InterfaceRef<Self>) {
         let this = iface.get().await;
         let emitter = iface.signal_emitter();
-        let _ = this.updates_changed(emitter).await;
-        let _ = this.news_changed(emitter).await;
-        let _ = this.news_blocks_system_changed(emitter).await;
-        let _ = this.errors_changed(emitter).await;
-        let _ = this.last_check_changed(emitter).await;
-        let _ = this.checking_changed(emitter).await;
+        this.updates_changed(emitter).await.logged("emit updates_changed");
+        this.news_changed(emitter).await.logged("emit news_changed");
+        this.news_blocks_system_changed(emitter).await.logged("emit news_blocks_system_changed");
+        this.errors_changed(emitter).await.logged("emit errors_changed");
+        this.last_check_changed(emitter).await.logged("emit last_check_changed");
+        this.checking_changed(emitter).await.logged("emit checking_changed");
     }
 
     /// A panicking check has already reset `run` through its guard; this tells clients so.
@@ -295,7 +296,7 @@ impl Update {
         #[zbus(connection)] conn: &Connection,
     ) -> zbus::fdo::Result<()> {
         let Some(guard) = CheckGuard::begin(&self.state, false) else { return Ok(()) };
-        let _ = self.checking_changed(&emitter).await;
+        self.checking_changed(&emitter).await.logged("emit checking_changed");
         self.spawn_check(conn.clone(), guard);
         Ok(())
     }
@@ -312,7 +313,7 @@ impl Update {
             return Ok(());
         }
         let Some(guard) = CheckGuard::begin(&self.state, true) else { return Ok(()) };
-        let _ = self.checking_changed(&emitter).await;
+        self.checking_changed(&emitter).await.logged("emit checking_changed");
         self.spawn_check(conn.clone(), guard);
         Ok(())
     }
@@ -330,8 +331,8 @@ impl Update {
             .await
             .map_err(|e| zbus::fdo::Error::IOError(e.to_string()))?;
         self.lock().unread.retain(|i| i.published > token);
-        let _ = self.news_changed(&emitter).await;
-        let _ = self.news_blocks_system_changed(&emitter).await;
+        self.news_changed(&emitter).await.logged("emit news_changed");
+        self.news_blocks_system_changed(&emitter).await.logged("emit news_blocks_system_changed");
         Ok(())
     }
 }

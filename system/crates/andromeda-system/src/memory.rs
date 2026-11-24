@@ -14,6 +14,7 @@ use zbus::object_server::{InterfaceRef, SignalEmitter};
 use zbus::{Connection, interface};
 
 use crate::manager;
+use andromeda_rt::logged::Logged;
 
 pub const PATH: &str = "/org/andromeda/System1/Memory";
 pub const AREA: &str = "memory";
@@ -194,7 +195,7 @@ fn watch_triggers(medium: OwnedFd, critical: OwnedFd) -> Result<mpsc::UnboundedR
 pub async fn run(conn: Connection) {
     if let Err(e) = follow(&conn).await {
         log::warn!("memory: {e:#}");
-        let _ = manager::set_area(&conn, AREA, false, &format!("{e:#}")).await;
+        manager::set_area(&conn, AREA, false, &format!("{e:#}")).await.logged("mark memory area off");
     }
 }
 

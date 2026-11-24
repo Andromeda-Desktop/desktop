@@ -9,6 +9,7 @@ use zbus::{Connection, OwnedVariant, interface};
 
 use crate::bus::{self, Remote};
 use crate::manager;
+use andromeda_rt::logged::Logged;
 
 pub const PATH: &str = "/org/andromeda/System1/Power";
 pub const AREA: &str = "power";
@@ -242,7 +243,7 @@ pub async fn sample_rapl(conn: Connection) {
     let range = read_u64(&format!("{RAPL}/max_energy_range_uj"));
     loop {
         if !watched.borrow_and_update().contains(AREA) {
-            let _ = update(&conn, |d| d.package_power_w = f64::NAN).await;
+            update(&conn, |d| d.package_power_w = f64::NAN).await.logged("publish package power");
             if watched.changed().await.is_err() {
                 return;
             }
@@ -261,7 +262,7 @@ pub async fn sample_rapl(conn: Connection) {
                     let Some(after) = read_u64(&format!("{RAPL}/energy_uj")) else { break };
                     let watts = rapl_watts(before, after, range, (now - at).as_secs_f64());
                     (before, at) = (after, now);
-                    let _ = update(&conn, |d| d.package_power_w = watts).await;
+                    update(&conn, |d| d.package_power_w = watts).await.logged("publish package power");
                 }
                 changed = watched.changed() => if changed.is_err() { return },
             }

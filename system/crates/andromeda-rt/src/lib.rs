@@ -3,6 +3,7 @@
 
 pub mod backoff;
 pub mod ipc;
+pub mod logged;
 
 use std::future::Future;
 use std::sync::Arc;
