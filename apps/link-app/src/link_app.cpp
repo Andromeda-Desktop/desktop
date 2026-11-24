@@ -38,7 +38,7 @@
 // Parse errors come back as values.
 #define TOML_HEADER_ONLY 1
 #define TOML_EXCEPTIONS 0
-#include <toml++/toml.hpp>
+#include "protocols/toml.h"
 #pragma GCC diagnostic pop
 #include <xkbcommon/xkbcommon-keysyms.h>
 

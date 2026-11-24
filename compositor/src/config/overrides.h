@@ -2,7 +2,7 @@
 
 // Runtime overrides: config values set over IPC that every load lays over the config file and its includes.
 
-#include "core/toml.h"
+#include "protocols/toml.h"
 
 #include <nlohmann/json.hpp>
 #include <optional>

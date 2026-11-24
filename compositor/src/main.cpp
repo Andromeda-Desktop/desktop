@@ -15,7 +15,7 @@
 #include "server/ipc_commands.h"
 #include "config/change.h"
 #include "config/store.h"
-#include "core/toml.h"
+#include "protocols/toml.h"
 #include "server/agent_session.h"
 #include "server/greeter_mode.h"
 #include "server/server.h"

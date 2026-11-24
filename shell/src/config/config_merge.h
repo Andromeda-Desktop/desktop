@@ -2,7 +2,7 @@
 
 #include "config/config_origins.h"
 #include "config/schema/diagnostics.h"
-#include "core/toml.h"
+#include "protocols/toml.h"
 
 #include <filesystem>
 #include <span>

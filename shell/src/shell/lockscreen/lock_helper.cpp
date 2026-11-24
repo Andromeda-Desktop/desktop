@@ -4,7 +4,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/timer_manager.h"
-#include "core/toml.h"
+#include "protocols/toml.h"
 #include "ipc/pixel_stream_server.h"
 #include "render/animation/animation_manager.h"
 #include "render/backend/render_backend.h"

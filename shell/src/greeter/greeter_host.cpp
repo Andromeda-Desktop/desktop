@@ -52,7 +52,7 @@
 #include <unistd.h>
 #include <sstream>
 #include <string>
-#include <toml++/toml.hpp>
+#include "protocols/toml.h"
 #include <vector>
 #include <wayland-client-core.h>
 #include <xkbcommon/xkbcommon-keysyms.h>

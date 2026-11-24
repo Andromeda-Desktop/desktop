@@ -1,7 +1,7 @@
 #include "output/display_store.h"
 
 #include "config/generated_file.h"
-#include "core/toml.h"
+#include "protocols/toml.h"
 #include "output/identity.h"
 
 #include <algorithm>

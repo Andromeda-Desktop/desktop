@@ -1,7 +1,7 @@
 #pragma once
 
 #include "config/config_types.h"
-#include "core/toml.h"
+#include "protocols/toml.h"
 
 #include <optional>
 #include <string_view>

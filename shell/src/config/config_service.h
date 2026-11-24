@@ -6,7 +6,7 @@
 #include "config/state_store.h"
 #include "core/inotify/inotify.h"
 #include "core/timer_manager.h"
-#include "core/toml.h"
+#include "protocols/toml.h"
 #include "ui/ui_settings.h"
 
 #include <cstdint>

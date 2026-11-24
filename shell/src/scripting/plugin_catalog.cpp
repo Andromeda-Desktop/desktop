@@ -2,7 +2,7 @@
 
 #include "config/config_types.h"
 #include "core/log.h"
-#include "core/toml.h" // IWYU pragma: keep
+#include "protocols/toml.h" // IWYU pragma: keep
 #include "scripting/plugin_api.h"
 #include "scripting/plugin_git.h"
 #include "scripting/plugin_id.h"

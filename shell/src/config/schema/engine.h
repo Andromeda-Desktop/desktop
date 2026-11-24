@@ -2,7 +2,7 @@
 
 #include "config/schema/diagnostics.h"
 #include "config/schema/field.h"
-#include "core/toml.h"
+#include "protocols/toml.h"
 
 #include <algorithm>
 #include <string>

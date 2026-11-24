@@ -2,7 +2,7 @@
 
 #include "config/config_types.h"
 #include "config/schema/diagnostics.h"
-#include "core/toml.h"
+#include "protocols/toml.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"
 

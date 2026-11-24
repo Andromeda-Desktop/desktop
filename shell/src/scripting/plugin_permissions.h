@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/toml.h" // IWYU pragma: keep
+#include "protocols/toml.h" // IWYU pragma: keep
 
 #include <filesystem>
 #include <string>

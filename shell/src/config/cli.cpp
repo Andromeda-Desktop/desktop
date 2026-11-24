@@ -6,7 +6,7 @@
 #include "config/config_service.h"
 #include "config/config_validate.h"
 #include "core/log.h"
-#include "core/toml.h" // IWYU pragma: keep
+#include "protocols/toml.h" // IWYU pragma: keep
 #include "shell/settings/settings_pages.h"
 #include "shell/settings/settings_registry.h"
 #include "util/file_utils.h"
