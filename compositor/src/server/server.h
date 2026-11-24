@@ -1216,6 +1216,9 @@ namespace andromeda {
     static int onLaunchBusyTimer(void* data);
     // Paces hidden `background_render` windows at their output's refresh rate; disarmed while none is hidden.
     wl_event_source* m_backgroundRenderTimer = nullptr;
+    // The last tick, or when pacing began; empty while disarmed. Re-arms count from it, so frequent suspension syncs
+    // cannot push a capped tick out forever.
+    std::optional<std::chrono::steady_clock::time_point> m_backgroundRenderBase;
     // One-shot refresh when dynamic startup rules expire.
     wl_event_source* m_startupRulesTimer = nullptr;
     // libinput opens and sets up each input device on the main thread, one device per loop turn (~430 ms in total

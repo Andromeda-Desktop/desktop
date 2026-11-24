@@ -95,7 +95,9 @@ REPAINT_ON_STDIN=1 env WAYLAND_DISPLAY="$RUNTIME/wayland-0" XDG_RUNTIME_DIR="$RU
   "$ROOT/compositor/build-debug/tests/unmap-client" paced 400 300 < "$RUNTIME/paced.fifo" > "$OUT/paced.log" 2>&1 &
 exec 4> "$RUNTIME/paced.fifo"
 for _ in $(seq 100); do run "$ANDROMEDA" windows --json 2> /dev/null | grep -q '"paced"' && break; sleep 0.05; done
-run "$ANDROMEDA" msg workspace-switch:3 > /dev/null
+# Back to workspace 1, which always exists: the window maps during the 1 → 2 slide, and a dynamic group appends its
+# trailing empty workspace 3 only when the slide ends.
+run "$ANDROMEDA" msg workspace-switch:1 > /dev/null
 # Mid-slide the outputs still draw the window and send its callbacks.
 run "$ANDROMEDA" settle > /dev/null
 # Milliseconds for ten frame callbacks one after another.

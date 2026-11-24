@@ -471,6 +471,7 @@ namespace andromeda {
           &now
       );
     }
+    self->m_backgroundRenderBase = std::chrono::steady_clock::now();
     self->armBackgroundRenderTimer();
     return 0;
   }
@@ -487,8 +488,19 @@ namespace andromeda {
         interval = interval == 0 ? candidate : std::min(interval, candidate);
       }
     }
-    // Zero disarms the timer.
-    wl_event_source_timer_update(m_backgroundRenderTimer, interval);
+    if (interval == 0) {
+      m_backgroundRenderBase.reset();
+      wl_event_source_timer_update(m_backgroundRenderTimer, 0);
+      return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (!m_backgroundRenderBase) {
+      m_backgroundRenderBase = now;
+    }
+    const auto left =
+        std::chrono::ceil<std::chrono::milliseconds>(*m_backgroundRenderBase + std::chrono::milliseconds(interval) - now);
+    // Zero would disarm the timer: an overdue tick fires after 1 ms.
+    wl_event_source_timer_update(m_backgroundRenderTimer, static_cast<int>(std::max<int64_t>(1, left.count())));
   }
 
   void Server::scheduleSuspensionSync() {
