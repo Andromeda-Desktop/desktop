@@ -388,7 +388,23 @@ void Node::setZIndex(std::int32_t zIndex) {
     return;
   }
   m_zIndex = zIndex;
+  if (m_parent != nullptr) {
+    m_parent->m_paintOrderValid = false;
+  }
   markPaintDirty();
+}
+
+const std::vector<Node*>& Node::childrenInPaintOrder() const {
+  if (!m_paintOrderValid) {
+    m_paintOrder.clear();
+    m_paintOrder.reserve(m_children.size());
+    for (const auto& child : m_children) {
+      m_paintOrder.push_back(child.get());
+    }
+    std::ranges::stable_sort(m_paintOrder, {}, &Node::zIndex);
+    m_paintOrderValid = true;
+  }
+  return m_paintOrder;
 }
 
 void Node::setExcludeSubtreeFromTabOrder(bool exclude) noexcept { m_excludeSubtreeFromTabOrder = exclude; }
@@ -552,6 +568,7 @@ Node* Node::addChild(std::unique_ptr<Node> child) {
   auto* raw = child.get();
   attachChild(raw);
   m_children.push_back(std::move(child));
+  m_paintOrderValid = false;
   markLayoutDirty();
   raw->markPaintDirty();
   return raw;
@@ -567,6 +584,7 @@ Node* Node::insertChildAt(std::size_t index, std::unique_ptr<Node> child) {
   } else {
     m_children.insert(m_children.begin() + static_cast<std::ptrdiff_t>(index), std::move(child));
   }
+  m_paintOrderValid = false;
   markLayoutDirty();
   raw->markPaintDirty();
   return raw;
@@ -591,6 +609,7 @@ std::unique_ptr<Node> Node::removeChild(Node* child) {
   }
   takePaintedBounds(removed.get(), *root->m_pendingDamage);
   m_children.erase(it);
+  m_paintOrderValid = false;
   removed->m_parent = nullptr;
   markLayoutDirty();
   return removed;
@@ -736,40 +755,10 @@ Node* Node::hitTestImpl(Node* node, float px, float py, bool allowOverflow, cons
     return nullptr;
   }
 
-  // Fast path: children are already in zIndex order (the common case). Skip
-  // allocating/sorting a side vector and iterate the child list directly in
-  // reverse. Only fall back to the sorted copy when there's an out-of-order
-  // pair, which removes a per-node heap allocation from every pointer event.
-  auto& children = node->m_children;
-  bool childrenSorted = true;
-  for (std::size_t i = 1; i < children.size(); ++i) {
-    if (children[i]->zIndex() < children[i - 1]->zIndex()) {
-      childrenSorted = false;
-      break;
-    }
-  }
-
-  // Traverse children in reverse (topmost first).
-  // Children are allowed to overflow parent bounds (needed for menus/popovers).
-  if (childrenSorted) {
-    for (const auto& child : std::views::reverse(children)) {
-      auto* hit = hitTestImpl(child.get(), px, py, allowOverflow, worldTransform);
-      if (hit != nullptr) {
-        return hit;
-      }
-    }
-  } else {
-    std::vector<Node*> orderedChildren;
-    orderedChildren.reserve(children.size());
-    for (auto& child : children) {
-      orderedChildren.push_back(child.get());
-    }
-    std::ranges::stable_sort(orderedChildren, [](const Node* a, const Node* b) { return a->zIndex() < b->zIndex(); });
-    for (Node* child : std::views::reverse(orderedChildren)) {
-      auto* hit = hitTestImpl(child, px, py, allowOverflow, worldTransform);
-      if (hit != nullptr) {
-        return hit;
-      }
+  // Topmost first; children may overflow the parent bounds (menus, popovers).
+  for (Node* child : std::views::reverse(node->childrenInPaintOrder())) {
+    if (auto* hit = hitTestImpl(child, px, py, allowOverflow, worldTransform); hit != nullptr) {
+      return hit;
     }
   }
 

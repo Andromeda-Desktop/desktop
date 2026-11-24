@@ -3,6 +3,7 @@
 #include <functional>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 class DragSource;
 class DropZone;
@@ -70,5 +71,5 @@ private:
   float m_previewTargetOpacity = 1.0F;
   bool m_previewTargetParticipatesInLayout = true;
   std::unordered_set<DragSource*> m_sources;
-  std::unordered_set<DropZone*> m_dropZones;
+  std::vector<DropZone*> m_dropZones; // registration order: the first of two equally close zones wins
 };

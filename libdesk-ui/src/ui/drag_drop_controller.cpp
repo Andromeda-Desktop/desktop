@@ -192,8 +192,8 @@ void DragDropController::registerSource(DragSource* source) {
 }
 
 void DragDropController::registerDropZone(DropZone* zone) {
-  if (zone != nullptr) {
-    m_dropZones.insert(zone);
+  if (zone != nullptr && std::ranges::find(m_dropZones, zone) == m_dropZones.end()) {
+    m_dropZones.push_back(zone);
   }
 }
 
@@ -217,7 +217,7 @@ void DragDropController::unregisterSource(DragSource* source) {
 }
 
 void DragDropController::unregisterDropZone(DropZone* zone) {
-  m_dropZones.erase(zone);
+  std::erase(m_dropZones, zone);
   if (zone == nullptr || zone != m_target) {
     return;
   }

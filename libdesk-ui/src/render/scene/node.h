@@ -135,6 +135,8 @@ public:
   [[nodiscard]] std::int32_t zIndex() const noexcept { return m_zIndex; }
   [[nodiscard]] Node* parent() const noexcept { return m_parent; }
   [[nodiscard]] const std::vector<std::unique_ptr<Node>>& children() const noexcept { return m_children; }
+  // Children by z-index, stable in storage order; rebuilt only after a child list or child z-index change.
+  [[nodiscard]] const std::vector<Node*>& childrenInPaintOrder() const;
   // True while this node waits for content it will draw soon (an image decode); the first frame of its surface waits.
   [[nodiscard]] virtual bool hasPendingContent() const { return false; }
   // What assistive technology sees for this node; null = not exposed (children join the nearest exposed ancestor).
@@ -325,6 +327,8 @@ private:
   std::function<void(NodeInvalidation)> m_invalidationCallback;
   Node* m_parent = nullptr;
   std::vector<std::unique_ptr<Node>> m_children;
+  mutable std::vector<Node*> m_paintOrder;
+  mutable bool m_paintOrderValid = false;
   std::unique_ptr<Accessible> m_accessible;
   std::optional<PaletteTone> m_paletteTone;
   std::optional<PaletteToneFade> m_paletteToneFade;

@@ -114,22 +114,8 @@ namespace {
     };
   }
 
-  // Calls fn for each child in paint order (zIndex, stable).
   template <typename Fn> void forEachChildInPaintOrder(const Node* node, Fn&& fn) {
-    const auto& children = node->children();
-    if (std::ranges::is_sorted(children, {}, [](const auto& child) { return child->zIndex(); })) {
-      for (const auto& child : children) {
-        fn(child.get());
-      }
-      return;
-    }
-    std::vector<const Node*> ordered;
-    ordered.reserve(children.size());
-    for (const auto& child : children) {
-      ordered.push_back(child.get());
-    }
-    std::ranges::stable_sort(ordered, {}, [](const Node* child) { return child->zIndex(); });
-    for (const Node* child : ordered) {
+    for (const Node* child : node->childrenInPaintOrder()) {
       fn(child);
     }
   }

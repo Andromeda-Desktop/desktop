@@ -1383,6 +1383,7 @@ if build_tests
     'plugin_source_paths',
     'pixel_stream_client',
     'process',
+    'node_paint_order',
     'reorder_drag',
     'rounded_rect_region',
     'shell_palette',
