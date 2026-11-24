@@ -61,8 +61,10 @@ RULES = {
     "radius-scale": ("radii through Style::scaledRadius, windowCornerRadius in the compositor (C11)", CPP_DIRS, CPP,
                      r"Tokens::\w*[Rr]adius\w*\s*\*|appearance\.cornerRadius\s*\*",
                      ("libdesk-ui/src/ui/style.cpp", "compositor/src/config/config.h")),
-    "settings-control": ("settings rows via SettingsControlFactory", ("shell/src/shell/settings/",), CPP,
-                         r"\bui::(toggle|slider)\(", ("shell/src/shell/settings/settings_control_factory.cpp",)),
+    "settings-control": ("a toggle or slider that writes config (setOverride) comes from SettingsControlFactory; "
+                         "callback controls on live state use ui:: directly", ("shell/src/shell/settings/",), CPP,
+                         r"\bui::(?:toggle|slider)\(\{(?:(?!\}\);)[\s\S]){0,1200}?\bsetOverride\b",
+                         ("shell/src/shell/settings/settings_control_factory.cpp",)),
     "shell-string": ("command strings run only through process::shellArgv/runShell (libdesk-system) or execShell "
                      "(compositor core/process); fixed commands pass argv (C12)", CPP_DIRS, CPP,
                      r"\"(/bin/)?sh\"\s*,\s*\"-l?c\"",

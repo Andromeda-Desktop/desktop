@@ -44,6 +44,9 @@ namespace settings {
         bool checked, bool enabled, const std::vector<std::string>& path,
         std::optional<bool> clearWhenValue = std::nullopt
     );
+    // A toggle over a string key: writes `onValue` when on, `offValue` when off.
+    [[nodiscard]] std::unique_ptr<Toggle>
+    makeValueToggle(bool checked, const std::vector<std::string>& path, std::string onValue, std::string offValue);
 
     [[nodiscard]] std::unique_ptr<Node> makeSelect(const SelectSetting& setting, const std::vector<std::string>& path);
 

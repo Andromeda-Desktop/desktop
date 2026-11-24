@@ -533,6 +533,22 @@ namespace settings {
     });
   }
 
+  std::unique_ptr<Toggle> SettingsControlFactory::makeValueToggle(
+      bool checked, const std::vector<std::string>& path, std::string onValue, std::string offValue
+  ) {
+    return ui::toggle({
+        .checked = checked,
+        .scale = m_scale,
+        .onChange = [setOverride = m_ctx.setOverride, requestRebuild = m_ctx.requestRebuild, path,
+                     on = std::move(onValue), off = std::move(offValue)](bool value) {
+          setOverride(path, value ? on : off);
+          if (requestRebuild) {
+            requestRebuild();
+          }
+        },
+    });
+  }
+
   std::unique_ptr<Node>
   SettingsControlFactory::makeSelect(const SelectSetting& setting, const std::vector<std::string>& path) {
     auto& ctx = m_ctx;

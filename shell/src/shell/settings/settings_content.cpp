@@ -887,17 +887,7 @@ namespace settings {
                 });
               }
               if (!control.valuePath.empty()) {
-                return ui::toggle({
-                    .checked = control.checked,
-                    .scale = scale,
-                    .onChange = [setOverride = ctx.setOverride, requestRebuild = ctx.requestRebuild,
-                                 path = control.valuePath, on = control.onValue, off = control.offValue](bool value) {
-                      setOverride(path, value ? on : off);
-                      if (requestRebuild) {
-                        requestRebuild();
-                      }
-                    },
-                });
+                return factory.makeValueToggle(control.checked, control.valuePath, control.onValue, control.offValue);
               }
               return makeToggle(control.checked, control.enabled, entry.path);
             } else if constexpr (std::is_same_v<T, SelectSetting>) {
