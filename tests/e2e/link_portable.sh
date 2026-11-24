@@ -23,14 +23,15 @@ E2E=$ROOT/tests/e2e
 
 if [[ ${1:-} != inner ]]; then
   case $COMPOSITOR in
-    sway | kwin | x11) ;;
-    mutter)
-      for need in gnome-shell /usr/lib/xdg-desktop-portal-gnome; do
-        command -v "$need" > /dev/null || { echo "SKIP: COMPOSITOR=mutter needs $need"; exit 0; }
-      done
-      ;;
+    sway) need=(sway) ;;
+    kwin) need=(kwin_wayland) ;;
+    x11) need=(Xvfb xdpyinfo) ;;
+    mutter) need=(gnome-shell /usr/lib/xdg-desktop-portal-gnome) ;;
     *) echo "COMPOSITOR is sway, kwin, x11, or mutter, not $COMPOSITOR" >&2; exit 2 ;;
   esac
+  for tool in "${need[@]}"; do
+    command -v "$tool" > /dev/null || { echo "COMPOSITOR=$COMPOSITOR needs $tool"; exit 77; }
+  done
   rm -rf "$OUT"
   mkdir -p "$OUT"
   RUNTIME=$(mktemp -d /tmp/lss.XXXX)
