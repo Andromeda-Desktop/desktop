@@ -103,6 +103,7 @@ private:
   ShellConfig::ShadowConfig m_lastShadow;
   std::vector<std::string> m_lastBarLayerStack;
   float m_lastUiScale = 1.0F;
+  float m_lastCornerRadiusScale = 1.0F;
   IconResolver m_iconResolver;
   struct PendingLaunchFocus {
     std::string idLower;

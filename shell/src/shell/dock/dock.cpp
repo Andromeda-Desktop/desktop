@@ -420,7 +420,7 @@ bool Dock::initialize(
         const auto newBarLayerStack = barLayerStackSignature(m_config->config());
         const float newUiScale = m_config->config().accessibility.uiScale;
         if (newCfg == m_lastDockConfig && newShadow == m_lastShadow && newBarLayerStack == m_lastBarLayerStack &&
-            newUiScale == m_lastUiScale) {
+            newUiScale == m_lastUiScale && m_config->config().shell.cornerRadiusScale == m_lastCornerRadiusScale) {
           return;
         }
         if (newBarLayerStack != m_lastBarLayerStack && newCfg == m_lastDockConfig && newShadow == m_lastShadow) {
@@ -447,6 +447,7 @@ bool Dock::initialize(
   m_lastShadow = m_config->config().shell.shadow;
   m_lastBarLayerStack = barLayerStackSignature(m_config->config());
   m_lastUiScale = m_config->config().accessibility.uiScale;
+  m_lastCornerRadiusScale = m_config->config().shell.cornerRadiusScale;
 
   if (!dockMayBeEnabled(cfg)) {
     kLog.info("dock disabled in config");
@@ -462,6 +463,7 @@ void Dock::reload() {
   m_lastShadow = m_config->config().shell.shadow;
   m_lastBarLayerStack = barLayerStackSignature(m_config->config());
   m_lastUiScale = m_config->config().accessibility.uiScale;
+  m_lastCornerRadiusScale = m_config->config().shell.cornerRadiusScale;
 
   if (!dockMayBeEnabled(cfg)) {
     closeAllInstances();

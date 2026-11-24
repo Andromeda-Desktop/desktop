@@ -431,7 +431,6 @@ action_gap = 8.0
 
 [component.slider]  # sheet slider pill
 height = 48.0
-radius = 24.0        # pill: height / 2
 inset = 16.0         # symbol and value: (48 - 16) / 2
 
 [component.media]

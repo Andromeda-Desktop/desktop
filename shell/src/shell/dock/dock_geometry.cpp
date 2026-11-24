@@ -78,10 +78,10 @@ namespace shell::dock {
   DockConcaveShape dockConcaveShape(const DockConfig& cfg) {
     DockConcaveShape g;
     g.radii = Radii{
-        static_cast<float>(cfg.radiusTopLeft),
-        static_cast<float>(cfg.radiusTopRight),
-        static_cast<float>(cfg.radiusBottomRight),
-        static_cast<float>(cfg.radiusBottomLeft),
+        Style::scaledRadius(static_cast<float>(cfg.radiusTopLeft)),
+        Style::scaledRadius(static_cast<float>(cfg.radiusTopRight)),
+        Style::scaledRadius(static_cast<float>(cfg.radiusBottomRight)),
+        Style::scaledRadius(static_cast<float>(cfg.radiusBottomLeft)),
     };
 
     if (!cfg.concaveEdgeCorners || cfg.marginEdge > 0) {

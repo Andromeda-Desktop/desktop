@@ -506,14 +506,15 @@ std::unique_ptr<Flex> QuickPage::makePill(
     std::function<void()> onIcon
 ) {
   const float s = contentScale();
+  const float capsule = kPillHeight * s * 0.5F;
   auto pill = std::make_unique<SliderPill>();
   pill->setDirection(FlexDirection::Horizontal);
   pill->setAlign(FlexAlign::Center);
   pill->setGap(Tokens::componentSliderInset * s);
   pill->setPadding(0.0F, Tokens::componentSliderInset * s, 0.0F, Tokens::componentSliderInset * s);
   pill->setMinHeight(kPillHeight * s);
-  pill->setRadius(Style::scaledRadius(Tokens::componentSliderRadius, s));
-  pill->setGlassPiece(Style::scaledRadius(Tokens::componentSliderRadius, s));
+  pill->setRadius(capsule);
+  pill->setGlassPiece(capsule);
   if (!Style::compositorDrawsTint()) {
     pill->setFill(colorSpecFromRole(ColorRole::SliderTrack));
   }
@@ -523,7 +524,7 @@ std::unique_ptr<Flex> QuickPage::makePill(
   bar->setStep(0.01);
   bar->setControlHeight(kPillHeight * s);
   bar->setFilled(true);
-  bar->setTrackRadius(Style::scaledRadius(Tokens::componentSliderRadius, s));
+  bar->setTrackRadius(capsule);
   bar->setParticipatesInLayout(false);
   slider = bar.get();
   pill->slider = slider;
