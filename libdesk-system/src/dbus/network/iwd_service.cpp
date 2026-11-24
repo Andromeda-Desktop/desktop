@@ -90,6 +90,21 @@ IwdService::IwdService(SystemBus& bus) : m_bus(bus) {
   m_iwd->uponSignal("InterfacesRemoved")
       .onInterface(kObjectManagerInterface)
       .call([this](const sdbus::ObjectPath&, const std::vector<std::string>&) { refresh(); });
+  // An iwd restart makes new objects: forget the old ones. No call while it is gone, as a call would start it again.
+  m_iwdOwner = NameOwnerWatch::changes(
+      m_bus.connection(), std::string(kIwdBusName),
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        m_objectProxies.clear();
+        m_connectProxy.reset();
+        m_knownNetworks.clear();
+        m_deviceNames.clear();
+        if (newOwner.empty()) {
+          m_accessPoints.clear();
+          emitChangedIfNeeded(NetworkState{});
+        } else {
+          refresh();
+        }
+      });
 
   refresh();
 }
@@ -198,7 +213,15 @@ void IwdService::refresh() {
       continue;
     }
 
-    auto stationProxy = sdbus::createProxy(m_bus.connection(), kIwdBusName, stationPath);
+    // subscribeObject above holds a proxy for every station; a station it failed to subscribe gets a local one.
+    std::unique_ptr<sdbus::IProxy> unsubscribed;
+    sdbus::IProxy* stationProxy = nullptr;
+    if (const auto it = m_objectProxies.find(std::string(stationPath)); it != m_objectProxies.end()) {
+      stationProxy = it->second.get();
+    } else {
+      unsubscribed = sdbus::createProxy(m_bus.connection(), kIwdBusName, stationPath);
+      stationProxy = unsubscribed.get();
+    }
     const auto state = stringProp(stationIt->second, "State").value_or("");
     const bool connected = state == "connected";
     const bool connecting = state == "connecting" || state == "associating" || state == "authenticating";

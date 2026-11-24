@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
 #include "dbus/network/inetwork_service.h"
 
 #include <map>
@@ -69,4 +70,5 @@ private:
   bool m_refreshInFlight = false;
   bool m_refreshQueued = false;
   ChangeCallback m_changeCallback;
+  NameOwnerWatch m_iwdOwner;
 };

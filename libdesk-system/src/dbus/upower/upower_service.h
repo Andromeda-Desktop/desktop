@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -242,4 +244,5 @@ private:
   bool m_rescanQueued = false;
   bool m_firstSnapshotPending = true;
   bool m_firstRescanDone = false;
+  NameOwnerWatch m_ownerWatch;
 };

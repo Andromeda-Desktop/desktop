@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config/config_types.h"
+#include "dbus/name_owner_watch.h"
 
 #include <chrono>
 #include <cstdint>
@@ -90,6 +91,7 @@ private:
   SystemBus* m_systemBus = nullptr;
   std::unique_ptr<sdbus::IProxy> m_geoclueClient;
   std::unique_ptr<sdbus::IProxy> m_geoclueLocation;
+  NameOwnerWatch m_geoclueOwner;
   LocationConfig m_config;
   std::vector<ChangeCallback> m_callbacks;
 

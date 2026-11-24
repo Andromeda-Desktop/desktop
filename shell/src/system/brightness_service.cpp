@@ -739,7 +739,12 @@ struct BrightnessService::Impl {
 
   Impl(SystemBus* systemBus, CompositorPlatform& compositorPlatform, BrightnessConfig config)
       : bus(systemBus), wayland(compositorPlatform.wayland()), platform(compositorPlatform),
-        activeConfig(std::move(config)) {}
+        activeConfig(std::move(config)) {
+    if (bus != nullptr) {
+      loginProxy =
+          sdbus::createProxy(bus->connection(), kSystem1BusName, sdbus::ObjectPath{"/org/andromeda/System1/Login"});
+    }
+  }
 
   ~Impl() {
     requestStop();
@@ -777,7 +782,6 @@ struct BrightnessService::Impl {
 
     clearBacklightWatches();
     removeDdcDisplays();
-    updateSessionProxy();
     enumerateBacklights();
     rebuildPublic();
     scheduleDdcDetect();
@@ -785,14 +789,6 @@ struct BrightnessService::Impl {
     if (notify && oldPublic != publicDisplays && changeCallback) {
       changeCallback();
     }
-  }
-
-  void updateSessionProxy() {
-    loginProxy.reset();
-    if (bus == nullptr) {
-      return;
-    }
-    loginProxy = sdbus::createProxy(bus->connection(), kSystem1BusName, sdbus::ObjectPath{"/org/andromeda/System1/Login"});
   }
 
   // Empty means "the caller's session"; System1 resolves it by pid, then by the user's display session.

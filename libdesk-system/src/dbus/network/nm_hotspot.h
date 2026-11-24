@@ -89,6 +89,8 @@ private:
 
   SystemBus& m_bus;
   std::unique_ptr<sdbus::IProxy> m_nm;
+  // Shared: async replies keep it alive.
+  std::shared_ptr<sdbus::IProxy> m_system1;
   ClientPlan m_plan;
   // Drops plan replies that a newer plan query replaced.
   std::uint64_t m_planToken = 0;

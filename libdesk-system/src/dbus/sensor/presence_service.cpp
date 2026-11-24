@@ -2,6 +2,7 @@
 #include "protocols/bus_names.h"
 
 #include "core/log.h"
+#include "dbus/name_owner_watch.h"
 #include "dbus/system_bus.h"
 
 #include <map>
@@ -32,6 +33,20 @@ PresenceService::PresenceService(SystemBus& bus, ChangeCallback onChange) : m_on
           report(it->second.get<std::uint32_t>());
         }
       });
+  // A System1 restart drops every claim: claim again from the new instance.
+  m_ownerWatch = NameOwnerWatch::changes(
+      bus.connection(), std::string(kBusName),
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (newOwner.empty()) {
+          m_onChange(Presence::Unknown);
+        } else {
+          claim();
+        }
+      });
+  claim();
+}
+
+void PresenceService::claim() {
   const std::weak_ptr<int> alive = m_lifetimeToken;
   m_proxy->callMethodAsync("ClaimPresence")
       .onInterface(kInterface)

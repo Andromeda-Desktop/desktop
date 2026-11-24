@@ -58,6 +58,20 @@ AccountsService::AccountsService(SystemBus& bus) : m_bus(bus) {
   }
 
   m_accountsProxy = sdbus::createProxy(m_bus.connection(), kAccountsBusName, kAccountsObjectPath);
+  // A failed lookup is retried when accounts-daemon starts again.
+  m_ownerWatch = NameOwnerWatch::changes(
+      m_bus.connection(), std::string(kAccountsBusName),
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (!newOwner.empty()) {
+          findSessionUser();
+        }
+      });
+  findSessionUser();
+}
+
+void AccountsService::findSessionUser() {
+  m_userProxy.reset();
+  m_pendingUserProxy.reset();
   const std::weak_ptr<int> alive = m_aliveToken;
   m_accountsProxy->callMethodAsync("FindUserById")
       .onInterface(kAccountsInterface)
@@ -77,12 +91,15 @@ AccountsService::AccountsService(SystemBus& bus) : m_bus(bus) {
 void AccountsService::bindUser(const std::string& userPath) {
   m_pendingUserProxy = sdbus::createProxy(m_bus.connection(), kAccountsBusName, sdbus::ObjectPath{userPath});
   const std::weak_ptr<int> alive = m_aliveToken;
+  const sdbus::IProxy* pending = m_pendingUserProxy.get();
   m_pendingUserProxy->callMethodAsync("GetAll")
       .onInterface(kPropertiesInterface)
       .withArguments(std::string(kUserInterface))
-      .uponReplyInvoke([this,
-                        alive](std::optional<sdbus::Error> error, std::map<std::string, sdbus::Variant> properties) {
-        if (alive.expired()) {
+      .uponReplyInvoke([this, alive, pending](
+                           std::optional<sdbus::Error> error, std::map<std::string, sdbus::Variant> properties
+                       ) {
+        // A newer lookup replaced this proxy.
+        if (alive.expired() || pending != m_pendingUserProxy.get()) {
           return;
         }
         std::optional<std::uint64_t> uid;

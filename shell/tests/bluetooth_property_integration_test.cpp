@@ -109,4 +109,22 @@ int main() {
   emitPowered(false);
   TEST_CHECK(lastOrigin == BluetoothStateChangeOrigin::External);
   connection->leaveEventLoop();
+
+  // BlueZ restart: its objects go with its bus name, and the new instance is read again.
+  device.reset();
+  adapter.reset();
+  root.reset();
+  connection.reset();
+  wait([&] { return !service.state().adapterPresent && service.devices().empty(); });
+  auto restarted = sdbus::createSessionBusConnection(sdbus::ServiceName{"org.bluez"});
+  auto root2 = sdbus::createObject(*restarted, sdbus::ObjectPath{"/"});
+  root2->addObjectManager();
+  auto adapter2 = sdbus::createObject(*restarted, sdbus::ObjectPath{"/org/bluez/hci0"});
+  adapter2->addVTable(sdbus::registerProperty("Powered").withGetter([] { return true; })).forInterface("org.bluez.Adapter1");
+  auto device2 = sdbus::createObject(*restarted, devicePath);
+  device2->addVTable(sdbus::registerProperty("Address").withGetter([] { return std::string{"00:11:22:33:44:55"}; }))
+      .forInterface("org.bluez.Device1");
+  restarted->enterEventLoopAsync();
+  wait([&] { return service.state().adapterPresent && service.state().powered && service.devices().size() == 1; });
+  restarted->leaveEventLoop();
 }

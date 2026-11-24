@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -35,6 +37,7 @@ public:
   );
 
 private:
+  void findSessionUser();
   void bindUser(const std::string& userPath);
   void readIconFile();
   void emitChangedIfNeeded(std::string_view nextIconFile);
@@ -47,4 +50,5 @@ private:
   std::string m_iconFile;
   ChangeCallback m_changeCallback;
   std::shared_ptr<int> m_aliveToken = std::make_shared<int>(0);
+  NameOwnerWatch m_ownerWatch;
 };

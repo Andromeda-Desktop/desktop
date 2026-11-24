@@ -379,6 +379,14 @@ UPowerService::UPowerService(SystemBus& bus) : m_bus(bus), m_props(std::make_uni
     kLog.info("dummy battery enabled ({:.0F}% discharging)", m_dummyDevice->state.percentage);
   }
 
+  m_ownerWatch = NameOwnerWatch::changes(
+      m_bus.connection(), std::string(kSystemBusName),
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (!newOwner.empty()) {
+          rescanDevices();
+        }
+      });
+
   rescanDevices();
 }
 

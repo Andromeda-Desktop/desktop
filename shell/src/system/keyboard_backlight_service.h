@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <functional>
 #include <memory>
 #include <vector>
@@ -50,4 +52,5 @@ private:
   ChangeCallback m_changeCallback;
   std::shared_ptr<Batch> m_batch;
   std::shared_ptr<int> m_aliveToken = std::make_shared<int>(0);
+  NameOwnerWatch m_ownerWatch;
 };

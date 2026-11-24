@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
 #include "dbus/network/inetwork_service.h"
 
 #include <memory>
@@ -46,6 +47,7 @@ public:
   [[nodiscard]] bool hasSavedConnection(const std::string& ssid) const override;
 
 private:
+  void subscribeInterfaces();
   void subscribeInterface(const std::string& ifacePath);
   void scheduleRebuild();
   void rebuildState();
@@ -58,6 +60,7 @@ private:
   std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> m_interfaces;
   // BSS path -> cached proxy, populated via BSSAdded/BSSRemoved signals.
   std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> m_bssProxies;
+  std::unique_ptr<sdbus::IProxy> m_currentNetworkProxy;
   // ssid -> network object path.
   std::unordered_map<std::string, std::string> m_savedNetworks;
   NetworkState m_state;
@@ -67,4 +70,5 @@ private:
   bool m_rebuildPending = false;
   std::optional<bool> m_wirelessEnabledOverride;
   ChangeCallback m_changeCallback;
+  NameOwnerWatch m_wpaOwner;
 };

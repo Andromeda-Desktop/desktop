@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -24,9 +26,11 @@ public:
   PresenceService& operator=(const PresenceService&) = delete;
 
 private:
+  void claim();
   void report(std::uint32_t value);
 
   std::unique_ptr<sdbus::IProxy> m_proxy;
   ChangeCallback m_onChange;
   std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);
+  NameOwnerWatch m_ownerWatch;
 };

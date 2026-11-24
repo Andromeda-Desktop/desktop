@@ -75,6 +75,23 @@ void LocationService::initialize() {
   m_config = m_configService.config().location;
   m_configService.addReloadCallback([this] { onConfigReload(); });
   loadCache();
+  if (m_systemBus != nullptr) {
+    // A GeoClue restart drops our client: forget it, so the next refresh asks the new instance.
+    m_geoclueOwner = NameOwnerWatch::changes(
+        m_systemBus->connection(), std::string{kGeoclueName},
+        [this](const std::string& /*name*/, const std::string& oldOwner, const std::string& /*newOwner*/) {
+          if (oldOwner.empty() || m_geoclueClient == nullptr) {
+            return;
+          }
+          kLog.info("GeoClue left the bus");
+          m_geoclueLocation.reset();
+          m_geoclueClient.reset();
+          if (m_requestKind == RequestKind::Geolocate) {
+            m_requestKind = RequestKind::None;
+          }
+          scheduleRetryAfterFailure();
+        });
+  }
   if (networkResolutionConfigured() && !m_resolved) {
     requestRefresh();
   }
@@ -299,6 +316,13 @@ void LocationService::registerIpc(IpcService& ipc) {
 }
 
 void LocationService::startGeolocate() {
+  if (m_geoclueClient != nullptr && m_resolvedAutoLocate) {
+    // GeoClue pushes every move to the running client.
+    m_nextRefreshAt = Clock::now() + kIdleInterval;
+    return;
+  }
+  // A client that never delivered a location (Start refused) is replaced.
+  stopGeoclue();
   if (m_systemBus != nullptr && m_systemBus->nameHasOwner(std::string{kGeoclueName})) {
     startGeoclue();
     return;

@@ -72,6 +72,14 @@ SystemHealthService::SystemHealthService(SessionBus& bus) : m_bus(bus) {
           loadKnobs();
         }
       });
+  m_ownerWatch = NameOwnerWatch::changes(
+      m_bus.connection(), std::string(kName),
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (!newOwner.empty()) {
+          refresh();
+          loadKnobs();
+        }
+      });
   refresh();
   loadKnobs();
 }

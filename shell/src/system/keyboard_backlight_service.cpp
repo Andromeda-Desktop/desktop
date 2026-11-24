@@ -78,6 +78,13 @@ KeyboardBacklightService::KeyboardBacklightService(SystemBus& bus) : m_bus(bus) 
           rescanDevices();
         }
       });
+  m_ownerWatch = NameOwnerWatch::changes(
+      m_bus.connection(), std::string(kUpowerBusName),
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (!newOwner.empty()) {
+          rescanDevices();
+        }
+      });
   rescanDevices();
 }
 

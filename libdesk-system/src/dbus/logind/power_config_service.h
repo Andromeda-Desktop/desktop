@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <cstdint>
 #include <ctime>
 #include <functional>
@@ -94,4 +96,5 @@ private:
   std::time_t m_trialSince = 0;
   std::string m_trialFingerprint;
   std::shared_ptr<int> m_aliveToken = std::make_shared<int>(0);
+  NameOwnerWatch m_ownerWatch;
 };

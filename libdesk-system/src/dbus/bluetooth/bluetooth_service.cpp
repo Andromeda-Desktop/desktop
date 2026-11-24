@@ -7,6 +7,7 @@
 #include "dbus/service_notice.h"
 #include "system/rfkill_helper.h"
 #include "util/string_utils.h"
+#include "dbus/name_owner_watch.h"
 #include "dbus/reply_log.h"
 
 #include <algorithm>
@@ -262,6 +263,7 @@ struct BluetoothService::Impl {
   std::unique_ptr<sdbus::IProxy> adapter;
   std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> objectProxies;
   std::string adapterPath;
+  NameOwnerWatch ownerWatch;
 
   Impl(BluetoothService& s, SystemBus& b) : self(s), bus(b) {}
 
@@ -430,6 +432,41 @@ struct BluetoothService::Impl {
     self.m_devices.push_back(std::move(info));
   }
 
+  // Replaces all state with one GetManagedObjects snapshot; an empty one when BlueZ leaves the bus.
+  void applySnapshot(const ManagedObjects& objects) {
+    const BluetoothState previous = self.m_state;
+    // `connecting` is local state BlueZ does not report; keep it so a re-sync does not hide an
+    // in-flight Connect() or let the connect pass dial the same device twice.
+    std::vector<std::string> connectingPaths;
+    for (const auto& dev : self.m_devices) {
+      if (dev.connecting) {
+        connectingPaths.push_back(dev.path);
+      }
+    }
+    self.m_devices.clear();
+    self.m_state = BluetoothState{};
+    adapterPath.clear();
+    adapter.reset();
+    seedFromManagedObjects(objects);
+    for (const auto& path : connectingPaths) {
+      if (auto* dev = self.findDevice(path); dev != nullptr && !dev->connected) {
+        dev->connecting = true;
+      }
+    }
+    const BluetoothStateChangeOrigin origin = previous.powered != self.m_state.powered
+        ? self.consumePoweredChangeOrigin(self.m_state.powered)
+        : BluetoothStateChangeOrigin::External;
+    self.m_hasStateSnapshot = true;
+    self.emitState(origin);
+    self.emitDevices();
+    // Startup, resume and a BlueZ restart are the only callers; a pass that is already queued or running is kept.
+    if (self.m_state.powered) {
+      self.requestConnectPass();
+    } else {
+      self.cancelConnectPass();
+    }
+  }
+
   void seedFromManagedObjects(const ManagedObjects& objects) {
     for (const auto& [path, interfaces] : objects) {
       if (auto it = interfaces.find(kAdapterInterface); it != interfaces.end() && adapterPath.empty()) {
@@ -472,6 +509,16 @@ BluetoothService::BluetoothService(SystemBus& bus, UPowerService* upowerService)
       .call([this](const sdbus::ObjectPath& path, const std::vector<std::string>& interfaces) {
         m_impl->onInterfacesRemoved(path, interfaces);
       });
+  m_impl->ownerWatch = NameOwnerWatch::changes(
+      bus.connection(), std::string(kBluezBusName),
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (newOwner.empty()) {
+          m_impl->objectProxies.clear();
+          m_impl->applySnapshot({});
+        } else {
+          refresh();
+        }
+      });
 
   refresh();
 }
@@ -493,37 +540,7 @@ void BluetoothService::refresh() {
           kLog.debug("GetManagedObjects failed: {}", err->what());
           return;
         }
-        const BluetoothState previous = m_state;
-        // `connecting` is local state BlueZ does not report; keep it so a re-sync does not hide an
-        // in-flight Connect() or let the connect pass dial the same device twice.
-        std::vector<std::string> connectingPaths;
-        for (const auto& dev : m_devices) {
-          if (dev.connecting) {
-            connectingPaths.push_back(dev.path);
-          }
-        }
-        m_devices.clear();
-        m_state = BluetoothState{};
-        m_impl->adapterPath.clear();
-        m_impl->adapter.reset();
-        m_impl->seedFromManagedObjects(objects);
-        for (const auto& path : connectingPaths) {
-          if (auto* dev = findDevice(path); dev != nullptr && !dev->connected) {
-            dev->connecting = true;
-          }
-        }
-        const BluetoothStateChangeOrigin origin = previous.powered != m_state.powered
-            ? consumePoweredChangeOrigin(m_state.powered)
-            : BluetoothStateChangeOrigin::External;
-        m_hasStateSnapshot = true;
-        emitState(origin);
-        emitDevices();
-        // Startup and resume are the only callers; a pass that is already queued or running is kept.
-        if (m_state.powered) {
-          requestConnectPass();
-        } else {
-          cancelConnectPass();
-        }
+        m_impl->applySnapshot(objects);
       });
 }
 

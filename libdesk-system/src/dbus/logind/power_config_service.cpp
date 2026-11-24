@@ -169,6 +169,13 @@ PowerConfigService::PowerConfigService(SystemBus& bus) {
           }
         });
   }
+  m_ownerWatch = NameOwnerWatch::changes(
+      bus.connection(), std::string(kSystem1BusName),
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (!newOwner.empty()) {
+          refresh();
+        }
+      });
   refresh();
 }
 

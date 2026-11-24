@@ -286,10 +286,6 @@ namespace {
     return settings;
   }
 
-  Proxy system1(SystemBus& bus) {
-    return Proxy(sdbus::createProxy(bus.connection(), kSystem1BusName, kSystem1NetworkPath));
-  }
-
   // Reads one property of a NetworkManager object; nullopt on any error.
   template <typename T>
   void readProperty(SystemBus& bus, const std::string& path, const char* interface, const char* name,
@@ -373,7 +369,9 @@ namespace {
 
 } // namespace
 
-NmHotspot::NmHotspot(SystemBus& bus) : m_bus(bus), m_nm(sdbus::createProxy(bus.connection(), kNmBusName, kNmPath)) {
+NmHotspot::NmHotspot(SystemBus& bus)
+    : m_bus(bus), m_nm(sdbus::createProxy(bus.connection(), kNmBusName, kNmPath)),
+      m_system1(sdbus::createProxy(bus.connection(), kSystem1BusName, kSystem1NetworkPath)) {
   m_nm->uponSignal("PropertiesChanged")
       .onInterface("org.freedesktop.DBus.Properties")
       .call([this](
@@ -400,7 +398,7 @@ NmHotspot::~NmHotspot() {
   }
   // The shell exits: nothing waits for the replies. System1 also removes the interface when this bus name leaves.
   try {
-    auto system = system1(m_bus);
+    auto system = m_system1;
     if (!m_activePath.empty()) {
       system->callMethod("DeactivateConnection")
           .onInterface(kSystem1NetworkInterface)
@@ -576,7 +574,7 @@ void NmHotspot::startPlan() {
           return;
         }
         try {
-          auto system = system1(m_bus);
+          auto system = m_system1;
           system->callMethodAsync("CanRunApWithClient")
               .onInterface(kSystem1NetworkInterface)
               .withArguments(*client)
@@ -757,7 +755,7 @@ void NmHotspot::startDeactivate() {
       return;
     }
     try {
-      auto system = system1(m_bus);
+      auto system = m_system1;
       system->callMethodAsync("DeactivateConnection")
           .onInterface(kSystem1NetworkInterface)
           .withArguments(sdbus::ObjectPath{active})
@@ -786,7 +784,7 @@ void NmHotspot::startCreateInterface() {
                             error.value_or("")));
   };
   try {
-    auto system = system1(m_bus);
+    auto system = m_system1;
     system->callMethodAsync("CreateApInterface")
         .onInterface(kSystem1NetworkInterface)
         .withArguments(m_ap.client)
@@ -894,7 +892,7 @@ void NmHotspot::startActivateOnInterface() {
       if (profile.empty()) {
         // Saves the new profile so its key stays the same next time.
         Settings settings = newProfile();
-        auto store = system1(m_bus);
+        auto store = m_system1;
         store->callMethodAsync("AddConnection")
             .onInterface(kSystem1NetworkInterface)
             .withArguments(settings)
@@ -957,7 +955,7 @@ void NmHotspot::startRemoveInterface() {
     startQuery();
   };
   try {
-    auto system = system1(m_bus);
+    auto system = m_system1;
     system->callMethodAsync("RemoveApInterface")
         .onInterface(kSystem1NetworkInterface)
         .withArguments(ap)

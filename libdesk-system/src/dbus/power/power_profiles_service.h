@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -69,4 +71,5 @@ private:
   bool m_hasStateSnapshot = false;
   bool m_refreshInFlight = false;
   bool m_refreshQueued = false;
+  NameOwnerWatch m_ownerWatch;
 };

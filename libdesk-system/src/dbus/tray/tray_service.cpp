@@ -2003,19 +2003,11 @@ void TrayService::resolvePathOnlyItemProxy(const std::string& itemId) {
                         }
 
                         resolvedItemIt->second.busName = candidate;
-                        auto [proxyIt, inserted] = m_itemProxies.emplace(
-                            itemId,
-                            sdbus::createProxy(
-                                m_bus.connection(), sdbus::ServiceName{candidate}, sdbus::ObjectPath{objectPath}
-                            )
+                        auto& proxy = m_itemProxies[itemId];
+                        proxy = sdbus::createProxy(
+                            m_bus.connection(), sdbus::ServiceName{candidate}, sdbus::ObjectPath{objectPath}
                         );
-                        if (!inserted) {
-                          proxyIt->second = sdbus::createProxy(
-                              m_bus.connection(), sdbus::ServiceName{candidate}, sdbus::ObjectPath{objectPath}
-                          );
-                        }
-
-                        attachItemProxySignals(itemId, *proxyIt->second);
+                        attachItemProxySignals(itemId, *proxy);
                         m_pathOnlyResolutionsInFlight.erase(itemId);
                         refreshItemMetadata(itemId);
                         emitChanged();

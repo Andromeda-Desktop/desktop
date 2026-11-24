@@ -163,6 +163,13 @@ PowerProfilesService::PowerProfilesService(SystemBus& bus) : m_bus(bus) {
           refresh();
         }
       });
+  m_ownerWatch = NameOwnerWatch::changes(
+      m_bus.connection(), std::string(kPowerProfilesBusName),
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (!newOwner.empty()) {
+          refresh();
+        }
+      });
 
   refresh();
 }

@@ -126,6 +126,28 @@ WpaSupplicantService::WpaSupplicantService(SystemBus& bus) : m_bus(bus) {
     scheduleRebuild();
   });
 
+  // A wpa_supplicant restart makes new interface objects: forget the old ones. No call while it is gone, as a call
+  // would start it again.
+  m_wpaOwner = NameOwnerWatch::changes(
+      m_bus.connection(), std::string(kWpaBusName),
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        m_interfaces.clear();
+        m_bssProxies.clear();
+        m_currentNetworkProxy.reset();
+        m_savedNetworks.clear();
+        if (newOwner.empty()) {
+          m_accessPoints.clear();
+          emitChangedIfNeeded(NetworkState{});
+        } else {
+          subscribeInterfaces();
+          scheduleRebuild();
+        }
+      });
+  subscribeInterfaces();
+  rebuildState();
+}
+
+void WpaSupplicantService::subscribeInterfaces() {
   try {
     const auto ifaces =
         m_wpa->getProperty("Interfaces").onInterface(kWpaInterface).get<std::vector<sdbus::ObjectPath>>();
@@ -135,8 +157,6 @@ WpaSupplicantService::WpaSupplicantService(SystemBus& bus) : m_bus(bus) {
   } catch (const sdbus::Error& e) {
     kLog.warn("failed to enumerate interfaces: {}", e.what());
   }
-
-  rebuildState();
 }
 
 WpaSupplicantService::~WpaSupplicantService() = default;
@@ -416,10 +436,12 @@ void WpaSupplicantService::rebuildState() {
         const auto currentNetwork =
             proxy->getProperty("CurrentNetwork").onInterface(kWpaIfaceInterface).get<sdbus::ObjectPath>();
         if (std::string(currentNetwork) != "/") {
-          auto netProxy = sdbus::createProxy(m_bus.connection(), kWpaBusName, currentNetwork);
+          if (m_currentNetworkProxy == nullptr || m_currentNetworkProxy->getObjectPath() != currentNetwork) {
+            m_currentNetworkProxy = sdbus::createProxy(m_bus.connection(), kWpaBusName, currentNetwork);
+          }
           using VariantMap = std::map<std::string, sdbus::Variant>;
           const auto props =
-              netProxy->getProperty("Properties").onInterface("fi.w1.wpa_supplicant1.Network").get<VariantMap>();
+              m_currentNetworkProxy->getProperty("Properties").onInterface("fi.w1.wpa_supplicant1.Network").get<VariantMap>();
           if (const auto it = props.find("ssid"); it != props.end()) {
             try {
               next.ssid = it->second.get<std::string>();

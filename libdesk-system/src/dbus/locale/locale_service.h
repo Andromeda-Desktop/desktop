@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -52,4 +54,5 @@ private:
   std::string m_x11Options;
   std::string m_lastError;
   bool m_ready = false;
+  NameOwnerWatch m_ownerWatch;
 };

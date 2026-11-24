@@ -61,6 +61,16 @@ TimeDateService::TimeDateService(SystemBus& bus, ChangeCallback onChange)
             m_onChange();
           }
         });
+    m_ownerWatch = NameOwnerWatch::changes(
+        m_bus.connection(), std::string(kBusName),
+        [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+          if (!newOwner.empty()) {
+            refreshProperties();
+            if (m_onChange) {
+              m_onChange();
+            }
+          }
+        });
     m_ready = true;
   } catch (const sdbus::Error& e) {
     kLog.warn("timedate1 unavailable: {}", e.what());

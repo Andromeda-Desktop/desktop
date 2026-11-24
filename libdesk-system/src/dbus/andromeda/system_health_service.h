@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -92,4 +94,5 @@ private:
   std::vector<SystemExplainEntry> m_entries;
   std::function<void()> m_changeCallback;
   std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);
+  NameOwnerWatch m_ownerWatch;
 };

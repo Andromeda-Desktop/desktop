@@ -1654,10 +1654,10 @@ void MprisService::scheduleRecoveryDiscovery() {
 }
 
 void MprisService::addOrRefreshPlayer(const std::string& busName) {
-  auto [proxyIt, inserted] =
-      m_playerProxies.emplace(busName, sdbus::createProxy(m_bus.connection(), sdbus::ServiceName{busName}, kMprisPath));
+  auto [proxyIt, inserted] = m_playerProxies.try_emplace(busName);
 
   if (inserted) {
+    proxyIt->second = sdbus::createProxy(m_bus.connection(), sdbus::ServiceName{busName}, kMprisPath);
     proxyIt->second->uponSignal("PropertiesChanged")
         .onInterface(kPropertiesInterface)
         .call([this, busName](
