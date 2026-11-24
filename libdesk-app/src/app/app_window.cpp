@@ -608,6 +608,9 @@ bool AppWindow::open() {
   });
   m_surface->setPrepareFrameCallback([this](bool /*needsUpdate*/, bool needsLayout) { prepareFrame(needsLayout); });
   m_surface->setUpdateCallback([] {});
+  m_surface->setPresenceChangedCallback([this](SurfacePresence presence) {
+    m_shownTimers.setShown(presence == SurfacePresence::Shown);
+  });
 
   const ToplevelSurfaceConfig cfg{
       .width = width,
@@ -627,6 +630,7 @@ bool AppWindow::open() {
     return false;
   }
   m_surface->setParentWindow(m_config.parentWindow);
+  m_shownTimers.setShown(m_surface->presence() == SurfacePresence::Shown);
   syncMenuBar();
   m_input.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
     m_loop.display().setCursorShape(serial, std::to_underlying(shape));
@@ -698,6 +702,7 @@ void AppWindow::close() {
   m_sheetShade = nullptr;
   m_sheetScrim = nullptr;
   m_captureSecure = false;
+  m_shownTimers.setShown(false);
   m_surface.reset();
   m_maximizeButton = nullptr;
   m_buttonDown = false;

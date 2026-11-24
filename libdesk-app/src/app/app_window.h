@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/app_popover.h"
+#include "app/shown_timer.h"
 #include "ui/controls/context_menu.h"
 #include "ui/palette.h"
 
@@ -280,6 +281,8 @@ public:
   void setUiScale(float scale) noexcept { m_uiScale = scale; }
   [[nodiscard]] InputDispatcher& input() noexcept { return m_input; }
   [[nodiscard]] Toplevel* surface() noexcept { return m_surface.get(); }
+  // Content ticks (clocks, elapsed times) start through ShownTimer on this, so they stop while the window is not shown.
+  [[nodiscard]] ShownTimers& shownTimers() noexcept { return m_shownTimers; }
 
   // The app routes events here only for this window's surface (DeskApp::routePointer, routeKey).
   void onPointerEvent(const PointerEvent& event);
@@ -389,6 +392,7 @@ private:
   std::array<std::optional<std::chrono::steady_clock::time_point>, 5> m_scenePulses{}; // by ScenePulse
   bool m_sceneTicking = false; // a scene step waits on its present or the step timer
   Timer m_sceneTimer;
+  ShownTimers m_shownTimers;
   // The scene draws on its own subsurface below the window at reduced resolution: its frames repaint only that layer,
   // and the window's own frames stay as cheap as without a scene.
   std::unique_ptr<Subsurface> m_sceneLayer;

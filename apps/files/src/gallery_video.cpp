@@ -18,8 +18,8 @@ namespace {
   constexpr std::uint32_t kFlagAudio = 2;
 } // namespace
 
-GalleryVideo::GalleryVideo(AppLoop& loop, WaylandConnection& wayland, Callbacks callbacks)
-    : m_loop(loop), m_wayland(wayland), m_callbacks(std::move(callbacks)) {}
+GalleryVideo::GalleryVideo(AppLoop& loop, WaylandConnection& wayland, ShownTimers& shown, Callbacks callbacks)
+    : m_loop(loop), m_wayland(wayland), m_callbacks(std::move(callbacks)), m_shown(shown) {}
 
 GalleryVideo::~GalleryVideo() { stop(); }
 
@@ -115,7 +115,7 @@ void GalleryVideo::start(const std::filesystem::path& video, bool sound, bool so
       return;
     }
     m_video->place(m_rect[0], m_rect[1], m_rect[2], m_rect[3]);
-    m_tick.startRepeating(std::chrono::milliseconds(250), [this] { tick(); });
+    m_tick.startRepeating(m_shown, std::chrono::milliseconds(250), [this] { tick(); });
     kLog.debug("gallery video playing {}{}", name, m_audio ? " with sound" : " muted");
   });
 }

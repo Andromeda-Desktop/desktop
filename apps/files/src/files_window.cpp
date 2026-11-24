@@ -1403,7 +1403,7 @@ void FilesWindow::makePane(std::size_t index) {
   host.galleryPlayVideo = [this](const fs::path& video, bool sound, std::array<float, 4> rect) {
     if (m_galleryVideo == nullptr) {
       m_galleryVideo = std::make_unique<GalleryVideo>(
-          m_app.loop(), m_app.loop().wayland(),
+          m_app.loop(), m_app.loop().wayland(), m_window.shownTimers(),
           GalleryVideo::Callbacks{
               .parent = [this] { return m_window.wlSurface(); },
               .redraw = [this] { m_window.invalidate(); },

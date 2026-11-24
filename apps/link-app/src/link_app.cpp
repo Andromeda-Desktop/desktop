@@ -1605,7 +1605,7 @@ namespace linkapp {
     vol->addChild(ui::label({.out = &m_playerView.level, .text = volume < 0 ? std::string() : volume == 0 ? std::string("Muted") : std::format("{} %", volume),
                              .fontSize = Tokens::typeCaption.size * s, .color = colorSpecFromRole(ColorRole::Label2)}));
     pop->addChild(std::move(vol));
-    if (p->playing && !m_playerTick.active()) m_playerTick.startRepeating(std::chrono::seconds(1), [this] { syncPlayer(); });
+    if (p->playing && !m_playerTick.active()) m_playerTick.startRepeating(m_window->shownTimers(), std::chrono::seconds(1), [this] { syncPlayer(); });
     return pop;
   }
 
@@ -1643,7 +1643,7 @@ namespace linkapp {
     m_playerView.level->setText(volume < 0 ? std::string() : volume == 0 ? std::string("Muted") : std::format("{} %", volume));
     m_window->invalidatePopover();
     if (p->playing && !m_playerTick.active()) {
-      m_playerTick.startRepeating(std::chrono::seconds(1), [this] { syncPlayer(); });
+      m_playerTick.startRepeating(m_window->shownTimers(), std::chrono::seconds(1), [this] { syncPlayer(); });
     } else if (!p->playing) {
       m_playerTick.stop();
     }

@@ -365,7 +365,7 @@ namespace linkapp {
     std::map<std::string, std::string> m_viewSaved; // phone path to its saved copy, from the viewer's Save
     std::pair<int, int> m_viewImage;  // the shown photo's decoded size, 0 until it decodes
     AsyncTextureCache m_viewCache;    // the viewer's full-size decode, off the UI thread
-    Timer m_playerTick;               // 1 s, only while the popover shows a playing player
+    ShownTimer m_playerTick;          // 1 s, only while the popover shows a playing player
     int m_unmutedVolume = 50;         // the media volume Unmute gives back
     std::unique_ptr<desk::FileChooser> m_chooser;
     Page m_page = Page::Waiting;

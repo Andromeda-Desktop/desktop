@@ -1653,7 +1653,7 @@ namespace term {
     if (!view->ticking()) {
       m_agentTick.stop();
     } else if (!m_agentTick.active()) {
-      m_agentTick.startRepeating(std::chrono::seconds(1), [this] {
+      m_agentTick.startRepeating(m_window.shownTimers(), std::chrono::seconds(1), [this] {
         ContentView* now = shownView();
         if (AgentView* agent = now != nullptr ? now->agent() : nullptr; agent != nullptr) {
           if (m_bandStatus != nullptr) {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/timer_manager.h"
+#include "app/shown_timer.h"
 
 #include <array>
 #include <filesystem>
@@ -31,7 +31,7 @@ public:
     std::function<void()> ended;
   };
 
-  GalleryVideo(AppLoop& loop, WaylandConnection& wayland, Callbacks callbacks);
+  GalleryVideo(AppLoop& loop, WaylandConnection& wayland, ShownTimers& shown, Callbacks callbacks);
   ~GalleryVideo();
   GalleryVideo(const GalleryVideo&) = delete;
   GalleryVideo& operator=(const GalleryVideo&) = delete;
@@ -57,5 +57,6 @@ private:
   std::array<float, 4> m_rect{};
   std::uint32_t m_durationMs = 0;
   std::uint64_t m_generation = 0;
-  Timer m_tick;
+  ShownTimers& m_shown;
+  ShownTimer m_tick;
 };

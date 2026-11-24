@@ -293,7 +293,7 @@ namespace term {
     std::vector<std::pair<std::uint64_t, Flex*>> m_groups;    // a split's first session, its sidebar block
     // Session ids as the sidebar lists them: a split's members together, in pane order.
     [[nodiscard]] std::vector<std::uint64_t> sidebarOrder() const;
-    Timer m_agentTick;             // 1 Hz while the shown agent session runs a turn
+    ShownTimer m_agentTick;        // 1 Hz while the shown agent session runs a turn
     Label* m_bandStatus = nullptr; // the shown agent's status pill label
     [[nodiscard]] StatusRow::Data rowData(const SessionInfo& session) const;
     void refreshRows();
