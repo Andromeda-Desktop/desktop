@@ -231,34 +231,46 @@ namespace linkapp {
     const std::int64_t ago = std::max<std::int64_t>(0, nowS - lastSeenS);
     if (ago < 60) return i18n::tr("link.last-seen.just-now");
     if (ago < 3600) return i18n::tr("link.last-seen.minutes", "count", ago / 60);
-    const std::string day = dayLabel(lastSeenS * 1000, nowS * 1000);
-    if (day == i18n::tr("link.day.today")) return i18n::tr("link.last-seen.hours", "count", ago / 3600);
-    return day == i18n::tr("link.day.yesterday") ? i18n::tr("link.last-seen.yesterday") : i18n::tr("link.last-seen.day", "day", day);
+    const long days = daysAgo(lastSeenS * 1000, nowS * 1000);
+    if (days == 0) return i18n::tr("link.last-seen.hours", "count", ago / 3600);
+    if (days == 1) return i18n::tr("link.last-seen.yesterday");
+    return i18n::tr("link.last-seen.day", "day", dayLabel(lastSeenS * 1000, nowS * 1000));
   }
 
-  std::string dayLabel(std::int64_t atMs, std::int64_t nowMs) {
-    const auto local = [](std::int64_t ms) {
+  namespace {
+    std::tm localTm(std::int64_t ms) {
       const auto t = static_cast<std::time_t>(ms / 1000);
       std::tm tm{};
       localtime_r(&t, &tm);
       return tm;
-    };
-    const std::tm at = local(atMs);
-    std::tm now = local(nowMs);
-    // Whole local days between the two dates; mktime normalizes the midnights across DST.
-    std::tm a = at;
+    }
+  } // namespace
+
+  long daysAgo(std::int64_t atMs, std::int64_t nowMs) {
+    // Noon of each local date; mktime normalizes the midnights across DST.
+    std::tm a = localTm(atMs);
+    std::tm now = localTm(nowMs);
     a.tm_hour = now.tm_hour = 12;
     a.tm_min = now.tm_min = a.tm_sec = now.tm_sec = 0;
     a.tm_isdst = now.tm_isdst = -1;
-    const auto days = static_cast<long>(std::lround(std::difftime(std::mktime(&now), std::mktime(&a)) / 86400.0));
+    return static_cast<long>(std::lround(std::difftime(std::mktime(&now), std::mktime(&a)) / 86400.0));
+  }
+
+  std::string dayLabel(std::int64_t atMs, std::int64_t nowMs, bool shortWeekday) {
+    const std::tm at = localTm(atMs);
+    const std::tm now = localTm(nowMs);
+    const long days = daysAgo(atMs, nowMs);
     static constexpr std::array kDays{"link.day.sunday", "link.day.monday", "link.day.tuesday", "link.day.wednesday",
                                       "link.day.thursday", "link.day.friday", "link.day.saturday"};
+    static constexpr std::array kShortDays{"link.day.short-sunday", "link.day.short-monday", "link.day.short-tuesday",
+                                           "link.day.short-wednesday", "link.day.short-thursday", "link.day.short-friday",
+                                           "link.day.short-saturday"};
     static constexpr std::array kMonths{"link.month.jan", "link.month.feb", "link.month.mar", "link.month.apr",
                                         "link.month.may", "link.month.jun", "link.month.jul", "link.month.aug",
                                         "link.month.sep", "link.month.oct", "link.month.nov", "link.month.dec"};
     if (days == 0) return i18n::tr("link.day.today");
     if (days == 1) return i18n::tr("link.day.yesterday");
-    if (days > 1 && days < 7) return i18n::tr(kDays[static_cast<std::size_t>(at.tm_wday)]);
+    if (days > 1 && days < 7) return i18n::tr((shortWeekday ? kShortDays : kDays)[static_cast<std::size_t>(at.tm_wday)]);
     const std::string month = i18n::tr(kMonths[static_cast<std::size_t>(at.tm_mon)]);
     if (at.tm_year == now.tm_year) return std::format("{} {}", at.tm_mday, month);
     return std::format("{} {} {}", at.tm_mday, month, at.tm_year + 1900);
@@ -698,7 +710,7 @@ namespace linkapp {
     FeedItem item{.kind = FeedItem::Kind::Photos, .key = "p:new", .deviceId = deviceId};
     std::size_t n = 0;
     for (const Photo& photo : photos) {
-      if (photo.atS <= seenS || dayLabel(photo.atS * 1000, nowMs) != i18n::tr("link.day.today")) continue;
+      if (photo.atS <= seenS || daysAgo(photo.atS * 1000, nowMs) != 0) continue;
       if (n++ == 0) item.atMs = photo.atS * 1000;
       if (item.photos.size() < kStripPhotos) item.photos.push_back(photo.path);
     }

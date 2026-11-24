@@ -121,10 +121,8 @@ namespace linkapp {
 
     // A list row's time: the clock today, else "Yesterday", a short weekday, or the date.
     std::string when(std::int64_t ms) {
-      const std::string day = dayLabel(ms, nowMs());
-      if (day == i18n::tr("link.day.today")) return clock(ms);
-      const bool weekday = day != i18n::tr("link.day.yesterday") && std::ranges::none_of(day, [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; });
-      return weekday ? day.substr(0, 3) : day;
+      const std::int64_t now = nowMs();
+      return daysAgo(ms, now) == 0 ? clock(ms) : dayLabel(ms, now, true);
     }
 
     std::string initials(const std::string& name) {
@@ -513,7 +511,7 @@ namespace linkapp {
     const auto& calls = m_client.calls();
     const CallEntry& c = calls[at(index)];
     const std::int64_t now = nowMs();
-    const auto today = [&](std::size_t row) { return dayLabel(calls[at(row)].atMs, now) == i18n::tr("link.day.today"); };
+    const auto today = [&](std::size_t row) { return daysAgo(calls[at(row)].atMs, now) == 0; };
     const float indent = Tokens::sizeControlM * s + Tokens::spaceP12 * s;
     auto block = ui::column({.align = FlexAlign::Stretch});
     if (index == 0 || today(index - 1) != today(index)) {
@@ -1260,8 +1258,9 @@ namespace linkapp {
       case Page::Mirror: line.first = i18n::tr("link.sidebar.show-screen"); break;
       case Page::Photos: {
         if (!m_client) break;
-        const auto days = m_client->photos().days(nowMs());
-        if (days.empty() || days.front().second != i18n::tr("link.day.today")) break;
+        const std::int64_t now = nowMs();
+        const auto days = m_client->photos().days(now);
+        if (days.empty() || daysAgo(m_client->photos().items()[days.front().first].atS * 1000, now) != 0) break;
         const std::size_t today = days.size() > 1 ? days[1].first : m_client->photos().items().size();
         line.first = i18n::trp("link.sidebar.new-photos-today", static_cast<long>(today));
         break;

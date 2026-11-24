@@ -398,6 +398,9 @@ namespace {
     expect(dayLabel(now, now) == "Today", "Today", 0, 0);
     expect(dayLabel(now - day, now) == "Yesterday", "Yesterday", 0, 0);
     expect(dayLabel(now - 3 * day, now) == "Monday", "weekday within a week", 0, 0);
+    expect(dayLabel(now - 3 * day, now, true) == "Mon" && dayLabel(now - day, now, true) == "Yesterday" &&
+               daysAgo(now - 3 * day, now) == 3,
+           "short weekday from its own key; daysAgo counts local days", 0, 0);
     expect(dayLabel(now - 9 * day, now) == "11 Nov", "date this year", 0, 0);
     expect(dayLabel(now - 365 * day, now) == "20 Nov 2024", "date with year", 0, 0);
   }

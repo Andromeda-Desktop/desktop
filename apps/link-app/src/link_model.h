@@ -328,8 +328,11 @@ namespace linkapp {
   // "0:41", "12:48", "1:02:03".
   [[nodiscard]] std::string duration(std::uint32_t seconds);
 
-  // "Today", "Yesterday", a weekday within the last week, else "12 Mar" (and the year when it is not this year).
-  [[nodiscard]] std::string dayLabel(std::int64_t atMs, std::int64_t nowMs);
+  // Whole local days from atMs to nowMs, across DST; 0 is today.
+  [[nodiscard]] long daysAgo(std::int64_t atMs, std::int64_t nowMs);
+  // "Today", "Yesterday", a weekday within the last week ("Mon" when short), else "12 Mar" (and the year when it is not
+  // this year).
+  [[nodiscard]] std::string dayLabel(std::int64_t atMs, std::int64_t nowMs, bool shortWeekday = false);
 
   // "Last seen 12 min ago" from unix seconds; "Not connected" when the phone was never seen.
   [[nodiscard]] std::string lastSeenText(std::int64_t lastSeenS, std::int64_t nowS);
