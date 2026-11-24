@@ -1,15 +1,15 @@
-# A tag libdesk-v*, player-v*, viewer-v* or link-app-v* builds only that release unit and adds
+# A tag libdesk-v* builds the libdesk release unit and adds
 # its packages to the repositories the desktop releases serve: the pacman and Ubuntu apt repository of the rolling
 # release `repo` (Latest, so releases/latest/download) and the Debian apt repository (releases/download/debian). The app's
 # own release holds its Arch packages and is never marked latest. The tag is <app>-vYYYY.M.N from tools/unit-version.sh <app> next.
-# libdesk-v* releases libdesk, Files and Terminal together (they link libdesk shared); the preview releases with the core.
+# libdesk-v* releases libdesk, Files, Terminal, Player, Viewer and Link app together (appd modules on libdesk shared); the preview releases with the core.
 # A v* release with the app package split must exist first: andromeda 0.2.8 and older own the app files.
 # Dry run: run by hand with publish off; the packages stay as workflow artifacts.
 name: release-apps
 
 on:
   push:
-    tags: ["libdesk-v*", "player-v*", "viewer-v*", "link-app-v*"]
+    tags: ["libdesk-v*"]
   workflow_dispatch:
     inputs:
       tag: { description: "App tag (files-v0.1.0); it must exist unless ref is set", required: true }
@@ -47,17 +47,17 @@ jobs:
           # The tag holds the computed version (tools/unit-version.sh next); packages and binaries take it from here.
           app=${TAG%%-v*} version=${TAG#*-v}
           [[ $version =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]] || { echo "::error::$TAG is not <app>-vYYYY.M.N"; exit 1; }
-          # Files and Terminal link libdesk shared and pin its exact version: the three release together, from one
+          # The appd module apps link libdesk shared and pin its exact version: they release with libdesk, from one
           # commit, with one version (tools/unit-version.sh libdesk next), in one repository upload.
           case $app in
-            files|terminal) echo "::error::$app releases with libdesk: push libdesk-v$(tools/unit-version.sh libdesk next)"; exit 1 ;;
-            libdesk) units="libdesk files terminal" ;;
+            files|terminal|player|viewer|link-app) echo "::error::$app releases with libdesk: push libdesk-v$(tools/unit-version.sh libdesk next)"; exit 1 ;;
+            libdesk) units="libdesk files terminal player viewer link-app" ;;
             *) units=$app ;;
           esac
-          # The release pages of Files and Terminal carry their own tags at the same commit; a tag pushed with the
+          # The release pages of the module apps carry their own tags at the same commit; a tag pushed with the
           # workflow token starts no other run.
           if [[ $app == libdesk && $PUBLISH == true ]]; then
-            for unit in files terminal; do
+            for unit in files terminal player viewer link-app; do
               tag=$unit-v$version
               if ! git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
                 git tag "$tag" HEAD
@@ -152,7 +152,7 @@ jobs:
       # Link-app needs Link's latest andromeda-link, which may not be in the index yet: it is installed and published
       # with the app.
       - name: Link
-        if: needs.version.outputs.app == 'link-app'
+        if: needs.version.outputs.app == 'libdesk'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release download -R Andromeda-Desktop/link -p 'andromeda-link_*_amd64.deb' -D "$HOME/.cache/andromeda-ubuntu/link-${{ matrix.base }}"
@@ -172,7 +172,7 @@ jobs:
           out=$HOME/.cache/andromeda-ubuntu/deb-$BASE
           # The debs of the other packages are empty in an app build.
           for unit in $UNITS; do cp "$out/andromeda-${unit}_"*.deb debs/; done
-          [[ $UNITS != link-app ]] || cp "$HOME/.cache/andromeda-ubuntu/link-$BASE"/andromeda-link_*.deb debs/
+          [[ " $UNITS " != *" link-app "* ]] || cp "$HOME/.cache/andromeda-ubuntu/link-$BASE"/andromeda-link_*.deb debs/
           tools/repo-publish.sh apt "$target" debs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

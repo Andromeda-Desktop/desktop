@@ -8,8 +8,10 @@ pkgname=(andromeda andromeda-compositor-git andromeda-shell-git xdg-desktop-port
 _app_units=()
 if [[ -n ${ANDROMEDA_APP:-} ]]; then
   case $ANDROMEDA_APP in
-    libdesk) _app_units=(files terminal) pkgname=(andromeda-libdesk-git andromeda-files-git andromeda-terminal-git) ;;
-    files|terminal) echo "$ANDROMEDA_APP releases with libdesk: ANDROMEDA_APP=libdesk" >&2; exit 1 ;;
+    libdesk) _app_units=(files terminal player viewer link-app)
+      pkgname=(andromeda-libdesk-git andromeda-files-git andromeda-terminal-git andromeda-player-git andromeda-viewer-git
+        andromeda-link-app-git) ;;
+    files|terminal|player|viewer|link-app) echo "$ANDROMEDA_APP releases with libdesk: ANDROMEDA_APP=libdesk" >&2; exit 1 ;;
     *) _app_units=("$ANDROMEDA_APP") pkgname=(andromeda-$ANDROMEDA_APP-git) ;;
   esac
 fi
@@ -328,22 +330,25 @@ package_andromeda-files-git() {
 }
 
 package_andromeda-player-git() {
+  _check_libdesk_abi || return 1
   pkgdesc='Andromeda Player: media player and library'
-  depends=("${_app_libs[@]}" mpv ffmpeg)
+  depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" mpv ffmpeg)
   meson install --no-rebuild -C build-player --destdir "$pkgdir" --skip-subprojects
   _pin_depends
 }
 
 package_andromeda-link-app-git() {
+  _check_libdesk_abi || return 1
   pkgdesc='Andromeda Link: the paired phone on the desktop'
-  depends=("${_app_libs[@]}" andromeda-link ffmpeg qrencode md4c fribidi)
+  depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" andromeda-link ffmpeg qrencode md4c fribidi)
   meson install --no-rebuild -C build-link-app --destdir "$pkgdir" --skip-subprojects
   _pin_depends
 }
 
 package_andromeda-viewer-git() {
+  _check_libdesk_abi || return 1
   pkgdesc='Andromeda Viewer: image and PDF viewer'
-  depends=("${_app_libs[@]}" andromeda-preview-git glycin)
+  depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" andromeda-preview-git glycin)
   meson install --no-rebuild -C build-viewer --destdir "$pkgdir" --skip-subprojects
   _pin_depends
 }

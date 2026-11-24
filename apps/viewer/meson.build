@@ -25,19 +25,29 @@ test('document_model', executable('document_model_test', 'tests/document_model_t
 test('tab_set', executable('tab_set_test', 'tests/tab_set_test.cpp', link_with: _model,
   include_directories: include_directories('src'), cpp_args: _warnings))
 
-_desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
+_desk_app_sp = subproject('libdesk-app', default_options: ['shared_app_lib=true'])
 _preview_dep = subproject('andromeda-preview').get_variable('preview_client_dep')
 
-executable('andromeda-viewer',
+_app_dir = get_option('prefix') / get_option('libdir') / 'andromeda'
+# The app is a library (desk_app_main) so andromeda-appd can load it in a forked child; the executable only calls it.
+_viewer_app = shared_library('andromeda-viewer',
   'src/annotations.cpp',
-  'src/main.cpp',
+  'src/app_main.cpp',
   'src/viewer_app.cpp',
   'src/viewer_tabs.cpp',
   'src/viewer_window.cpp',
   link_with: _model,
-  dependencies: [_desk_app_dep, _preview_dep, dependency('wayland-client')],
+  dependencies: [_desk_app_sp.get_variable('desk_app_shared_dep'), _preview_dep, dependency('wayland-client')],
   cpp_args: _warnings + ['-DANDROMEDA_TRANSLATIONS_DIR="' + meson.current_source_dir() / 'translations' + '"'],
   install: true,
+  install_dir: _app_dir,
+  install_rpath: _app_dir,
+)
+executable('andromeda-viewer', 'src/main.cpp',
+  link_with: _viewer_app,
+  dependencies: _desk_app_sp.get_variable('desk_app_shared_dep').partial_dependency(includes: true),
+  install: true,
+  install_rpath: _app_dir,
 )
 
 install_data('data/dev.andromeda.Viewer.desktop', install_dir: get_option('datadir') / 'applications')

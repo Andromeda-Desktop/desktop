@@ -12,16 +12,16 @@ prefix=$([[ $unit == core ]] && echo v || echo "$unit-v")
 # The core's packages release alone too (release-<unit>.yml); they share the core's counter, so each release sorts above
 # every core and unit release before it (pacman and apt compare the numbers, never the tag names).
 core_units="compositor shell portal greeter preview system greetd power"
-# libdesk, Files and Terminal release together from one commit with one version (release-apps.yml, tag libdesk-v*):
-# Files and Terminal link libdesk shared and pin its exact version.
-libdesk_group="libdesk files terminal"
+# libdesk and its appd module apps release together from one commit with one version (release-apps.yml, tag
+# libdesk-v*): the apps link libdesk shared and pin its exact version.
+libdesk_group="libdesk files terminal player viewer link-app"
 if [[ " $libdesk_group " == *" $unit "* ]]; then
   unit=libdesk prefix=libdesk-v
 fi
 if [[ ${2:-} == next ]]; then
   month=$(date -u +%Y.%-m)
   if [[ $unit == libdesk ]]; then
-    # One above the highest of the three this month, so each package's version only grows.
+    # One above the highest of the group this month, so each package's version only grows.
     n=$(for u in $libdesk_group; do git tag -l "$u-v$month.*"; done | sed 's/.*\.//' | sort -n | tail -n 1)
     echo "$month.$((${n:-0} + 1))"
     exit 0

@@ -23,7 +23,7 @@ if get_option('buildtype') != 'release'
   endif
 endif
 
-_desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
+_desk_app_sp = subproject('libdesk-app', default_options: ['shared_app_lib=true'])
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
 _scanner = find_program('wayland-scanner')
@@ -37,10 +37,12 @@ _inhibit = [
 # Headers only: libmpv.so.2 is opened at run time.
 _mpv_headers = dependency('mpv').partial_dependency(compile_args: true, includes: true)
 
-executable('andromeda-player',
+_app_dir = get_option('prefix') / get_option('libdir') / 'andromeda'
+# The app is a library (desk_app_main) so andromeda-appd can load it in a forked child; the executable only calls it.
+_player_app = shared_library('andromeda-player',
   _inhibit,
   sources: files(
-    'src/main.cpp',
+    'src/app_main.cpp',
     'src/mpris_server.cpp',
     'src/music_library.cpp',
     'src/mpv_lib.cpp',
@@ -48,9 +50,17 @@ executable('andromeda-player',
     'src/player_app.cpp',
     'src/video_surface.cpp',
   ),
-  dependencies: [_desk_app_dep, _mpv_headers, dependency('libavformat'), dependency('libavutil'), dependency('wayland-egl'), dependency('egl'), dependency('dl')],
+  dependencies: [_desk_app_sp.get_variable('desk_app_shared_dep'), _mpv_headers, dependency('libavformat'), dependency('libavutil'), dependency('wayland-egl'), dependency('egl'), dependency('dl')],
   cpp_args: _warnings + ['-DANDROMEDA_TRANSLATIONS_DIR="' + meson.current_source_dir() / 'translations' + '"'],
   install: true,
+  install_dir: _app_dir,
+  install_rpath: _app_dir,
+)
+executable('andromeda-player', 'src/main.cpp',
+  link_with: _player_app,
+  dependencies: _desk_app_sp.get_variable('desk_app_shared_dep').partial_dependency(includes: true),
+  install: true,
+  install_rpath: _app_dir,
 )
 
 install_data('data/dev.andromeda.Player.desktop', install_dir: get_option('datadir') / 'applications')
