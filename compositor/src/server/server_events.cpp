@@ -381,12 +381,13 @@ namespace andromeda {
   }
 
     namespace {
-    // A shown view gets its callbacks from the outputs that draw it, including the outgoing workspace mid-slide, and a
-    // background_render view from its own faster tick. A suspended one gets them only to commit a configure it still
-    // owes, such as a resize while hidden. A view with no callback pending needs none.
+    // A view that draws frames gets its callbacks from what draws it: a shown view from its outputs, including the
+    // outgoing workspace mid-slide, an overview card or capture from its own frame, and a background_render view from
+    // its own faster tick. A suspended one gets them only to commit a configure it still owes, such as a resize while
+    // hidden. A view with no callback pending needs none.
     bool needsBackgroundFrame(const View& view) {
-      return view.mapped() && view.presenceFacts().presence != Presence::Shown && !view.backgroundRender()
-          && (!view.suspended() || view.configureOutstanding()) && view.framePending();
+      return view.mapped() && !view.presenceFacts().drawsFrames && (!view.suspended() || view.configureOutstanding())
+          && view.framePending();
     }
   } // namespace
 
