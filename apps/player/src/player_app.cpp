@@ -74,6 +74,7 @@ void PlayerApp::startup() {
   loop().addSource(&m_mpv);
   m_artCache.initialize(&loop().gl());
   m_artCache.setMakeCurrentCallback([this] { (void)loop().renderContext().backend().makeCurrentNoSurface(); });
+  m_artCache.releaseUnusedOn(loop().renderContext().unusedCacheRelease());
   loop().addSource(&m_artCache);
   m_mpv.setChangedCallback([this](bool seeked) { onPlayerChanged(seeked); });
   if (bus() != nullptr) {

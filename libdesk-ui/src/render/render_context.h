@@ -7,6 +7,7 @@
 #include "render/core/renderer.h"
 #include "render/text/cairo_glyph_renderer.h"
 #include "render/text/cairo_text_renderer.h"
+#include "ui/signal.h"
 
 #include <array>
 #include <chrono>
@@ -76,8 +77,11 @@ public:
   [[nodiscard]] std::uint64_t textMetricsGeneration() const noexcept { return m_textMetricsGeneration; }
   [[nodiscard]] float textScale() const noexcept { return m_textScale; }
 
-  // Frees every cached text and glyph texture; the next frame draws them again (memory pressure, docs/qos.md §5).
+  // Frees every unused GPU cache entry: text and glyph textures here, then each cache connected to
+  // unusedCacheRelease. The one trim entry for memory pressure, hide and lock (docs/qos.md §5).
   void releaseUnusedCaches();
+  // Caches outside this context that keep unused GPU entries (AsyncTextureCache) connect here.
+  [[nodiscard]] Signal<>& unusedCacheRelease() noexcept { return m_unusedCacheRelease; }
 
 private:
   // Text setters free glyph textures only once GL is attached; before that none exist, and a pending attach waits.
@@ -131,6 +135,7 @@ private:
   std::unique_ptr<RenderBackend> m_backend;
   CairoTextRenderer m_textRenderer;
   CairoGlyphRenderer m_glyphRenderer;
+  Signal<> m_unusedCacheRelease;
   std::string m_textFontFamily{Tokens::fontFamily}; // the design font; the shell overrides it from its config
   bool m_textBaseDirRtl = false;
   std::uint64_t m_textMetricsGeneration = 1;

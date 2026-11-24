@@ -1226,6 +1226,7 @@ if build_tests
     'cli_parse',
     'child_signals',
     'blocking_pool',
+    'gpu_cache_release',
     'clipboard_persistence_model',
     'clipboard_service',
     'clipboard_storage_permissions',

@@ -1169,6 +1169,7 @@ void Application::initStyleThemeAndWayland() {
   auto* sharedGlPtr = sharedGlContext ? &m_glShared : nullptr;
   m_sharedTextureCache.initialize(sharedGlPtr);
   m_asyncTextureCache.initialize(sharedGlPtr);
+  m_asyncTextureCache.releaseUnusedOn(m_renderContext.unusedCacheRelease());
   m_wayland.setTextInputService(&m_textInputService);
   m_wayland.setVirtualKeyboardService(&m_virtualKeyboardService);
 

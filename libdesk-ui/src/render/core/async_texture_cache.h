@@ -4,6 +4,7 @@
 #include "core/poll_source.h"
 #include "core/idle_worker_slots.h"
 #include "render/core/texture_handle.h"
+#include "ui/signal.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -75,6 +76,10 @@ public:
   [[nodiscard]] bool failed(const std::string& path, int targetSize = 0, bool mipmap = false, DecodeOptions options = {}) const;
   void release(const std::string& path, int targetSize = 0, bool mipmap = false, DecodeOptions options = {});
   void trimUnused(std::size_t maxUnusedEntries = 0);
+  // Frees every unused entry each time `release` emits (RenderContext::unusedCacheRelease).
+  void releaseUnusedOn(Signal<>& release) {
+    m_releaseConn = release.connect([this] { pruneUnusedEntries(0); });
+  }
   void abandonGpuResources() noexcept;
   void reloadResidentTextures();
 
@@ -155,4 +160,5 @@ private:
   std::unordered_map<std::uint64_t, ReadyListener> m_readyListeners;
   std::uint64_t m_nextReadyListenerId = 0;
   std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);
+  Signal<>::ScopedConnection m_releaseConn; // last: disconnects before the entries go
 };

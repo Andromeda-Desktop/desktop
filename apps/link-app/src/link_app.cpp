@@ -861,6 +861,7 @@ namespace linkapp {
       });
       m_viewCache.initialize(&loop().gl());
       m_viewCache.setMakeCurrentCallback([this] { (void)loop().renderContext().backend().makeCurrentNoSurface(); });
+      m_viewCache.releaseUnusedOn(loop().renderContext().unusedCacheRelease());
       loop().addSource(&m_viewCache);
       m_files = std::make_unique<FileAdapter>(*m_client, m_scale, m_search,
                                               [this](std::size_t index, float x, float y) { fileMenu(index, x, y); });

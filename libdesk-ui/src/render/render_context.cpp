@@ -736,12 +736,12 @@ TextMetrics RenderContext::measureGlyphScaled(float scale, char32_t codepoint, f
 }
 
 void RenderContext::releaseUnusedCaches() {
-  if (!makeCurrentNoSurface()) {
-    return;
+  if (makeCurrentNoSurface()) {
+    const auto now = std::chrono::steady_clock::now();
+    m_textRenderer.evictUnusedBefore(now);
+    m_glyphRenderer.evictUnusedBefore(now);
   }
-  const auto now = std::chrono::steady_clock::now();
-  m_textRenderer.evictUnusedBefore(now);
-  m_glyphRenderer.evictUnusedBefore(now);
+  m_unusedCacheRelease.emit();
 }
 
 TextureManager& RenderContext::textureManager() {
