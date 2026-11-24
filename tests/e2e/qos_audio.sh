@@ -59,7 +59,7 @@ EFFICIENCY=$(sed -n 's/.*efficiency CPUs for hidden apps: //p' "$OUT/andromeda.l
 : > "$OUT/result.txt"
 
 # The shell on a private session bus (no real BlueZ or NetworkManager), with the real PipeWire.
-run dbus-run-session --config-file="$RUNTIME/bus.conf" -- \
+run dbus-run-session --config-file="$ROOT/tests/e2e/private-bus.conf" -- \
   sh -c 'DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS exec "$0"' "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
 for _ in $(seq 100); do run "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
 run "$NOCTALIA" msg settings-close > /dev/null 2>&1 || fail "the shell did not start: $(tail -n 3 "$OUT/noctalia.log")"

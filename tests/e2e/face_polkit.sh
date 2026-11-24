@@ -23,7 +23,7 @@ trap 'busctl --system call com.gundulabs.Gaze /com/gundulabs/Gaze com.gundulabs.
 
 printf '[shell]\npolkit_agent = true\n' >> "$RUNTIME/home/.config/andromeda/shell/config.toml"
 # A private session bus keeps this shell off the user's notification and MPRIS names; the system bus stays real.
-run env GIO_USE_VFS=local ANDROMEDA_POLKIT_TEST_PROCESS="$subject" dbus-run-session --config-file="$RUNTIME/bus.conf" -- "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
+run env GIO_USE_VFS=local ANDROMEDA_POLKIT_TEST_PROCESS="$subject" dbus-run-session --config-file="$ROOT/tests/e2e/private-bus.conf" -- "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
 wait_for "the agent did not register" logged "polkit authentication agent active"
 wait_for "gazed was not told about polkit-1" logged "gazed sends face prompts to this agent"
 run wtype -s 3600000 &

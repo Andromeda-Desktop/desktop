@@ -25,9 +25,11 @@ boot_headless() {
   [[ -s $RUNTIME/bus.address ]] || { echo "dbus-daemon did not start" >&2; exit 1; }
   BUS_ADDRESS=$(head -n 1 "$RUNTIME/bus.address")
   # NESTED_PARENT (a parent Wayland socket path): one output as a window on that session, with its GPU and vsync.
-  local backend=headless
+  local backend=headless session_bus=$BUS_ADDRESS
   [[ -n ${NESTED_PARENT:-} ]] && backend=wayland
-  env -u WAYLAND_DISPLAY -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$BUS_ADDRESS" DBUS_SYSTEM_BUS_ADDRESS="$BUS_ADDRESS" XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
+  # A test that links $RUNTIME/bus to the real user bus gives the compositor the real systemd user manager.
+  [[ -S $RUNTIME/bus ]] && session_bus=unix:path=$RUNTIME/bus
+  env -u WAYLAND_DISPLAY -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$session_bus" DBUS_SYSTEM_BUS_ADDRESS="$BUS_ADDRESS" XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
     ${NESTED_PARENT:+WAYLAND_DISPLAY=$NESTED_PARENT} ${SLEEP_ON_TEST_BUS:+ANDROMEDA_TEST_SLEEP_HOLD=1} WLR_BACKENDS=$backend WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS="$1" \
     "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" > "$OUT/andromeda.log" 2>&1 &
   # The IPC socket comes after the Wayland socket (server.cpp creates Ipc later); `msg` needs it.

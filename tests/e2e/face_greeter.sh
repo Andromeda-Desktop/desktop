@@ -24,7 +24,7 @@ posted_atleast() { [[ $(posted "$1") -ge $2 ]]; }
 run wtype -s 3600000 > /dev/null 2>&1 &
 
 # A private system bus, so the greeter registers with the mock and never with the machine's gazed.
-dbus-daemon --config-file="$RUNTIME/bus.conf" --nofork --print-address=3 3> "$RUNTIME/system-bus" &
+dbus-daemon --config-file="$ROOT/tests/e2e/private-bus.conf" --nofork --print-address=3 3> "$RUNTIME/system-bus" &
 wait_for "no private system bus" test -s "$RUNTIME/system-bus"
 export DBUS_SYSTEM_BUS_ADDRESS=$(head -1 "$RUNTIME/system-bus")
 python3 "$ROOT/tests/e2e/mock_gaze.py" "$OUT/gaze-calls.txt" > "$OUT/mock-gaze.log" 2>&1 &

@@ -18,7 +18,7 @@ first_frame_ms() {
   local name=$1 delay=$2
   boot_headless 1
   run env NOCTALIA="$NOCTALIA" OUT="$OUT" ANDROMEDA="$ANDROMEDA" HERE="$HERE" NAME="$name" DELAY="$delay" \
-    dbus-run-session --config-file="$RUNTIME/bus.conf" -- bash -c '
+    dbus-run-session --config-file="$ROOT/tests/e2e/private-bus.conf" -- bash -c '
       set -euo pipefail
       export DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS MOCK_DELAY=$DELAY
       trap '"'"'kill $(jobs -p) 2>/dev/null || true; wait'"'"' EXIT
