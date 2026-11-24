@@ -107,9 +107,10 @@ _sources = files(
   'src/dbus/upower/upower_service.cpp',
   'src/printing/cups_printers.cpp',
   'src/printing/print_settings.cpp',
+  'protocols/ipc_channel.cpp',
 )
 
-_inc = include_directories('src')
+_inc = include_directories('src', '.')
 
 desk_system_lib = static_library('desk_system',
   sources: _sources,

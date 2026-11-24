@@ -1285,3 +1285,12 @@ module = "shell"
 entry = ["tools/where.sh", "docs/map.toml"]
 test = "tools/tests/map_test.sh"
 build = "shell"
+
+[[feature]]
+name = "local IPC sockets (peer check, capped reads, client caps)"
+keywords = ["ipc", "socket", "unix socket", "peer", "pidfd", "SO_PEERCRED", "line reader", "client cap"]
+module = "protocol"
+entry = ["protocol/ipc_channel.h", "protocol/ipc_channel.cpp"]
+test = "compositor/tests/unit/ipc_channel.cpp"
+build = "compositor"
+notes = "One owner for every local socket server and client: acceptPeer, LineReader, readAll, ClientSlots, writeAll, request."

@@ -118,6 +118,7 @@ unit_tests = [
   ['managed-settings', ['unit/managed_settings.cpp'], [andromeda_core_dep]],
   ['action-registry', ['unit/action_registry.cpp'], [andromeda_core_dep]],
   ['ipc-commands', ['unit/ipc_commands.cpp'], [andromeda_core_dep]],
+  ['ipc-channel', ['unit/ipc_channel.cpp'], []],
   ['config-resolve', ['unit/config_resolve.cpp'], []],
   # Reads docs/user/actions.md from the source tree: the doc's tables are generated from the same spec strings the CLI
   # prints, so the compiled table and the page cannot drift apart unnoticed.
