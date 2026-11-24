@@ -69,7 +69,6 @@ radius-scale shell/src/shell/notification_center/notification_center_panel.cpp 3
 radius-scale shell/src/shell/settings/settings_content_about.cpp 1
 radius-scale shell/src/shell/wallpaper/panel/wallpaper_panel.cpp 3
 radius-scale shell/src/shell/wallpaper/panel/wallpaper_tile.cpp 1
-raw-spawn andromeda-preview/src/helper_client.cpp 1
 raw-spawn apps/terminal/src/agent_host.cpp 1
 raw-spawn compositor/src/cli/debug.cpp 1
 raw-spawn compositor/src/cli/update.cpp 2
@@ -77,13 +76,10 @@ raw-spawn compositor/src/core/process.cpp 1
 raw-spawn compositor/src/server/greeter_mode.cpp 1
 raw-spawn compositor/src/server/server.cpp 2
 raw-spawn indexer/src/content_worker.cpp 1
-raw-spawn libdesk-system/src/dbus/polkit/polkit_agent.cpp 1
 raw-spawn libdesk-ui/src/core/sys/sys_macos.cpp 1
 raw-spawn libdesk-ui/src/core/sys/sys_posix.cpp 2
 raw-spawn portal/src/dbus/request.cpp 1
 raw-spawn shell/src/app/shell_main.cpp 1
-raw-spawn shell/src/auth/pam_authenticator.cpp 1
-raw-spawn shell/src/shell/lockscreen/lock_helper_process.cpp 1
 rust-drop andromeda-preview/thumbnailer/src/main.rs 6
 rust-drop apps/terminal/agentd/src/runner.rs 5
 rust-drop system/crates/andromeda-fileops/src/jobs.rs 14

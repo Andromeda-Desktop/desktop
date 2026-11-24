@@ -1,5 +1,7 @@
 #pragma once
 
+#include "protocols/ipc_channel.h"
+
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -56,6 +58,25 @@ namespace process {
 
   // Prefer run0 over pkexec: pkexec often stays on PATH without the setuid wrapper (e.g. NixOS).
   [[nodiscard]] std::optional<std::string> resolvePrivilegeEscalator();
+
+  // A child that is not detached: helpers that talk over mapped fds. Every child process outside the run*/launch*
+  // entries starts here.
+  struct SpawnSpec {
+    std::vector<std::string> argv;
+    std::string path; // the program; empty: argv[0], searched in PATH unless it holds a '/'
+    // {fd here, fd number in the child}. The child keeps 0-2 unless mapped over and closes every fd above the highest
+    // mapped number (below it, fds here are close-on-exec).
+    std::vector<std::pair<int, int>> fds;
+    bool inheritEnv = true; // false: env holds the whole environment
+    std::vector<EnvOverride> env;
+    enum class Group { Inherit, NewGroup, NewSession } group = Group::Inherit;
+  };
+  struct Child {
+    pid_t pid = -1;
+    ipc::Fd pidfd; // readable once the child exits
+  };
+  // Starts spec with default signal handling; nothing on failure, errno says why (also a failed exec).
+  [[nodiscard]] std::optional<Child> spawn(const SpawnSpec& spec);
 
   // The one shell entry, for user command strings (config, hooks, scripts, dmenu entries): /bin/sh -c command, with
   // args as $1, $2, ... Fixed commands pass argv. No -l: the session start already sourced the login profile.

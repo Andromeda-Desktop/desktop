@@ -2,7 +2,7 @@
 
 #include "core/lazy_library.h"
 #include "core/log.h"
-#include "core/sys/sys.h"
+#include "core/process/process.h"
 #include "i18n/i18n.h"
 
 #include <algorithm>
@@ -394,30 +394,17 @@ PamAuthenticator::Result PamAuthenticator::authenticateCurrentUser(
     return fail();
   }
 
-  const char* helperArgv[] = {
-      "noctalia", "pam-helper", serviceCopy.c_str(), languageCopy.c_str(), nullptr,
-  };
-
-  const pid_t pid = ::fork();
-  if (pid < 0) {
+  const auto child = process::spawn({
+      .argv = {"noctalia", "pam-helper", serviceCopy, languageCopy},
+      .path = "/proc/self/exe",
+      .fds = {{inPipe[0], STDIN_FILENO}, {outPipe[1], STDOUT_FILENO}},
+  });
+  if (!child) {
     closePipe(inPipe);
     closePipe(outPipe);
     return fail();
   }
-
-  if (pid == 0) {
-    // Keep this path async-signal-safe until execv().
-    sys::resetChildSignals();
-    if (::dup2(inPipe[0], STDIN_FILENO) < 0 || ::dup2(outPipe[1], STDOUT_FILENO) < 0) {
-      ::_exit(127);
-    }
-    (void)::close(inPipe[0]);
-    (void)::close(inPipe[1]);
-    (void)::close(outPipe[0]);
-    (void)::close(outPipe[1]);
-    ::execv("/proc/self/exe", const_cast<char* const*>(helperArgv));
-    ::_exit(127);
-  }
+  const pid_t pid = child->pid;
 
   closeFd(inPipe[0]);
   closeFd(outPipe[1]);

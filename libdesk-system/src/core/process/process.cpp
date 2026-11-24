@@ -28,6 +28,8 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <spawn.h>
+#include <sys/pidfd.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
@@ -1322,6 +1324,75 @@ namespace process {
       std::ranges::move(args, std::back_inserter(argv));
     }
     return argv;
+  }
+
+  std::optional<Child> spawn(const SpawnSpec& spec) {
+    if (spec.argv.empty()) {
+      errno = EINVAL;
+      return std::nullopt;
+    }
+    std::vector<std::string> envStrings;
+    if (spec.inheritEnv) {
+      for (char** entry = environ; *entry != nullptr; ++entry) {
+        envStrings.emplace_back(*entry);
+      }
+    }
+    for (const auto& item : spec.env) {
+      if (!validEnvName(item.name)) {
+        continue;
+      }
+      std::erase_if(envStrings, [&](const std::string& entry) {
+        return entry.starts_with(item.name) && entry.size() > item.name.size() && entry[item.name.size()] == '=';
+      });
+      if (item.value) {
+        envStrings.push_back(item.name + "=" + *item.value);
+      }
+    }
+    std::vector<char*> envp;
+    for (auto& entry : envStrings) {
+      envp.push_back(entry.data());
+    }
+    envp.push_back(nullptr);
+    std::vector<char*> argv = makeArgv(spec.argv);
+
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    // A source may sit on another mapping's target: park every source above all numbers first, then move it home.
+    int park = 3;
+    for (const auto& [from, to] : spec.fds) {
+      park = std::max({park, from + 1, to + 1});
+    }
+    for (std::size_t i = 0; i < spec.fds.size(); ++i) {
+      posix_spawn_file_actions_adddup2(&actions, spec.fds[i].first, park + static_cast<int>(i));
+    }
+    int keepFrom = 3;
+    for (std::size_t i = 0; i < spec.fds.size(); ++i) {
+      posix_spawn_file_actions_adddup2(&actions, park + static_cast<int>(i), spec.fds[i].second);
+      keepFrom = std::max(keepFrom, spec.fds[i].second + 1);
+    }
+    posix_spawn_file_actions_addclosefrom_np(&actions, keepFrom);
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    sys::resetChildSignals(&attr);
+    short flags = 0;
+    posix_spawnattr_getflags(&attr, &flags);
+    if (spec.group == SpawnSpec::Group::NewGroup) {
+      flags |= POSIX_SPAWN_SETPGROUP;
+      posix_spawnattr_setpgroup(&attr, 0);
+    } else if (spec.group == SpawnSpec::Group::NewSession) {
+      flags |= POSIX_SPAWN_SETSID;
+    }
+    posix_spawnattr_setflags(&attr, flags);
+    int pidfd = -1;
+    const char* program = spec.path.empty() ? argv[0] : spec.path.c_str();
+    const int rc = pidfd_spawnp(&pidfd, program, &actions, &attr, argv.data(), envp.data());
+    posix_spawnattr_destroy(&attr);
+    posix_spawn_file_actions_destroy(&actions);
+    if (rc != 0) {
+      errno = rc;
+      return std::nullopt;
+    }
+    return Child{.pid = pidfd_getpid(pidfd), .pidfd = ipc::Fd(pidfd)};
   }
 
   bool runShell(const std::string& command) { return !command.empty() && runAsync(shellArgv(command)); }

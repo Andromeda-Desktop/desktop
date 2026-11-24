@@ -1,7 +1,7 @@
 #include "helper_client.h"
 
 #include "core/log.h"
-#include "core/sys/sys.h"
+#include "core/process/process.h"
 
 #include <algorithm>
 #include <array>
@@ -10,7 +10,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
-#include <spawn.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -92,46 +91,33 @@ namespace preview {
       kLog.warn("socketpair: {}", std::strerror(errno));
       return nullptr;
     }
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    // dup2 clears FD_CLOEXEC on the target, so the helper gets fd 3 and nothing else past stderr.
-    posix_spawn_file_actions_adddup2(&actions, sv[1], kHelperSocketFd);
-    posix_spawn_file_actions_addclosefrom_np(&actions, kHelperSocketFd + 1);
-
     const std::string helper = helperPath();
     const std::string kindArg = kind == HelperKind::Pdf ? "pdf" : kind == HelperKind::Media ? "media"
         : kind == HelperKind::MediaSoftware                         ? "media-sw"
         : kind == HelperKind::Font                                  ? "font"
                                                                     : "text";
-    std::vector<std::string> envStrings;
+    std::vector<process::EnvOverride> env;
     // GST_DEBUG lets a test see which decoder the helper picked.
     for (const char* name : {"HOME", "XDG_CACHE_HOME", "RUST_BACKTRACE", "GST_DEBUG"}) {
       if (const char* value = std::getenv(name); value != nullptr) {
-        envStrings.push_back(std::string(name) + "=" + value);
+        env.push_back({.name = name, .value = value});
       }
     }
-    std::vector<char*> env;
-    for (auto& s : envStrings) {
-      env.push_back(s.data());
-    }
-    env.push_back(nullptr);
-    std::array<char*, 4> argv{
-        const_cast<char*>(helper.c_str()), const_cast<char*>(kindArg.c_str()), const_cast<char*>(path.c_str()), nullptr
-    };
-    posix_spawnattr_t attr;
-    posix_spawnattr_init(&attr);
-    sys::resetChildSignals(&attr);
-    pid_t pid = -1;
-    const int rc = posix_spawn(&pid, helper.c_str(), &actions, &attr, argv.data(), env.data());
-    posix_spawnattr_destroy(&attr);
-    posix_spawn_file_actions_destroy(&actions);
+    const auto child = process::spawn({
+        .argv = {helper, kindArg, path},
+        .path = helper,
+        .fds = {{sv[1], kHelperSocketFd}},
+        .inheritEnv = false,
+        .env = std::move(env),
+    });
+    const int spawnError = errno;
     ::close(sv[1]);
-    if (rc != 0) {
-      kLog.warn("cannot start {}: {}", helper, std::strerror(rc));
+    if (!child) {
+      kLog.warn("cannot start {}: {}", helper, std::strerror(spawnError));
       ::close(sv[0]);
       return nullptr;
     }
-    return std::unique_ptr<HelperClient>(new HelperClient(sv[0], pid));
+    return std::unique_ptr<HelperClient>(new HelperClient(sv[0], child->pid));
   }
 
   HelperClient::~HelperClient() {

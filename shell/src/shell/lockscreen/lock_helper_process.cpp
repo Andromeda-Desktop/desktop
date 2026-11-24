@@ -1,7 +1,7 @@
 #include "shell/lockscreen/lock_helper_process.h"
 
 #include "core/log.h"
-#include "core/sys/sys.h"
+#include "core/process/process.h"
 #include "core/toml.h"
 
 #include <array>
@@ -25,8 +25,6 @@ namespace {
   constexpr int kFirstSlotFd = 4;
   // Bounds the child's fixed fd table; a lock never has this many widgets.
   constexpr std::size_t kMaxSlots = 64;
-  // Above every target number (3 + kMaxSlots), so no copy lands on a target before its dup2.
-  constexpr int kScratchFd = kFirstSlotFd + static_cast<int>(kMaxSlots) + 1;
 
   toml::table settingsTable(const LockHelperProcess::Settings& settings) {
     toml::table table;
@@ -131,32 +129,16 @@ std::vector<int> LockHelperProcess::start(const std::vector<Slot>& slots, const 
     shellEnds[i] = pair[0];
     helperEnds[i] = pair[1];
   }
-  const pid_t pid = ok ? ::fork() : -1;
-  if (pid == 0) {
-    // Async-signal-safe until execv. Every fd moves above the target range first: dup2 onto
-    // the same number keeps FD_CLOEXEC, and a source may already sit on another target number.
-    sys::resetChildSignals();
-    const int startCopy = ::fcntl(startFd, F_DUPFD_CLOEXEC, kScratchFd);
-    const int aliveCopy = ::fcntl(alive[0], F_DUPFD_CLOEXEC, kScratchFd);
-    std::array<int, kMaxSlots> copies{};
+  std::optional<process::Child> child;
+  if (ok) {
+    process::SpawnSpec spec{.argv = {"noctalia", "lock-helper", "--start-fd", "3"}, .path = "/proc/self/exe"};
+    spec.fds = {{alive[0], STDIN_FILENO}, {startFd, kStartFd}};
     for (std::size_t i = 0; i < helperEnds.size(); ++i) {
-      copies[i] = ::fcntl(helperEnds[i], F_DUPFD_CLOEXEC, kScratchFd);
-      if (copies[i] < 0) {
-        ::_exit(127);
-      }
+      spec.fds.emplace_back(helperEnds[i], kFirstSlotFd + static_cast<int>(i));
     }
-    if (startCopy < 0 || aliveCopy < 0 || ::dup2(aliveCopy, STDIN_FILENO) < 0 || ::dup2(startCopy, kStartFd) < 0) {
-      ::_exit(127);
-    }
-    for (std::size_t i = 0; i < helperEnds.size(); ++i) {
-      if (::dup2(copies[i], kFirstSlotFd + static_cast<int>(i)) < 0) {
-        ::_exit(127);
-      }
-    }
-    const char* argv[] = {"noctalia", "lock-helper", "--start-fd", "3", nullptr};
-    ::execv("/proc/self/exe", const_cast<char* const*>(argv));
-    ::_exit(127);
+    child = process::spawn(spec);
   }
+  const pid_t pid = child ? child->pid : -1;
 
   ::close(startFd);
   closeAll(helperEnds);

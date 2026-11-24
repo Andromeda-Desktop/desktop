@@ -1,6 +1,7 @@
 #include "core/process/async_process_manager.h"
 #include "core/process/process.h"
 
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
@@ -14,6 +15,8 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <fcntl.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -297,6 +300,43 @@ namespace {
     );
   }
 
+  std::string readAllFrom(int fd) {
+    std::string out;
+    char buffer[64];
+    for (ssize_t n; (n = ::read(fd, buffer, sizeof(buffer))) > 0;) {
+      out.append(buffer, static_cast<std::size_t>(n));
+    }
+    return out;
+  }
+
+  bool spawnMapsCrossedFdsAndEnv() {
+    std::array<int, 2> a{};
+    std::array<int, 2> b{};
+    if (::pipe2(a.data(), O_CLOEXEC) != 0 || ::pipe2(b.data(), O_CLOEXEC) != 0
+        || ::dup3(a[1], 50, O_CLOEXEC) != 50 || ::dup3(b[1], 51, O_CLOEXEC) != 51) {
+      return expect(false, "spawn test could not set up its pipes");
+    }
+    ::close(a[1]);
+    ::close(b[1]);
+    // Each source sits on the other's target number: dup2 in list order would send both lines into one pipe.
+    auto child = process::spawn({
+        .argv = {"/bin/sh", "-c", "printf A >&51; printf \"$X\" >&50"},
+        .fds = {{50, 51}, {51, 50}},
+        .inheritEnv = false,
+        .env = {{.name = "X", .value = "B"}},
+    });
+    ::close(50);
+    ::close(51);
+    siginfo_t info{};
+    const bool exited = child && ::waitid(P_PIDFD, static_cast<id_t>(child->pidfd.get()), &info, WEXITED) == 0;
+    const std::string fromA = readAllFrom(a[0]);
+    const std::string fromB = readAllFrom(b[0]);
+    ::close(a[0]);
+    ::close(b[0]);
+    return expect(exited && info.si_status == 0 && fromA == "A" && fromB == "B",
+                  "spawn maps crossed fds to their targets and applies env");
+  }
+
 } // namespace
 
 int main() {
@@ -311,5 +351,6 @@ int main() {
   ok = detachedMissingBinaryReturnsFalse() && ok;
   ok = commandExistsRejectsDirectories() && ok;
   ok = cgroupDetectsSystemdUserManager() && ok;
+  ok = spawnMapsCrossedFdsAndEnv() && ok;
   return ok ? 0 : 1;
 }

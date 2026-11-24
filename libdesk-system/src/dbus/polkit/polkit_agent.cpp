@@ -1,7 +1,7 @@
 #include "dbus/polkit/polkit_agent.h"
 
 #include "core/log.h"
-#include "core/sys/sys.h"
+#include "core/process/process.h"
 #include "dbus/system_bus.h"
 #include "i18n/i18n.h"
 
@@ -25,7 +25,6 @@
 #include <sdbus-c++/Types.h>
 #include <sdbus-c++/VTableItems.h>
 #include <signal.h>
-#include <spawn.h>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -38,8 +37,6 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
-
-extern char** environ;
 
 namespace {
 
@@ -353,25 +350,18 @@ namespace {
       if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets.data()) != 0) {
         return nullptr;
       }
-      posix_spawn_file_actions_t actions;
-      posix_spawn_file_actions_init(&actions);
-      posix_spawn_file_actions_adddup2(&actions, sockets[1], STDIN_FILENO);
-      posix_spawn_file_actions_adddup2(&actions, sockets[1], STDOUT_FILENO);
-      std::array<char*, 3> argv{const_cast<char*>(helper), const_cast<char*>(user.c_str()), nullptr};
-      posix_spawnattr_t attr;
-      posix_spawnattr_init(&attr);
-      sys::resetChildSignals(&attr);
-      pid_t pid = -1;
-      const int rc = ::posix_spawn(&pid, helper, &actions, &attr, argv.data(), environ);
-      posix_spawnattr_destroy(&attr);
-      posix_spawn_file_actions_destroy(&actions);
+      const auto child = process::spawn({
+          .argv = {helper, user},
+          .fds = {{sockets[1], STDIN_FILENO}, {sockets[1], STDOUT_FILENO}},
+      });
+      const int spawnError = errno;
       ::close(sockets[1]);
-      if (rc != 0) {
-        kLog.warn("could not start {}: {}", helper, std::strerror(rc));
+      if (!child) {
+        kLog.warn("could not start {}: {}", helper, std::strerror(spawnError));
         ::close(sockets[0]);
         return nullptr;
       }
-      return std::make_unique<HelperConversation>(sockets[0], pid);
+      return std::make_unique<HelperConversation>(sockets[0], child->pid);
     }
 
     int m_fd;
