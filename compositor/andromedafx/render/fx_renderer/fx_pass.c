@@ -499,6 +499,7 @@ static bool render_pass_submit(struct wlr_render_pass* wlr_pass) {
   // refresh period.
   TRACY_FN(bool gpu_zones_open = true;)
   push_fx_debug(renderer);
+  fx_render_pass_end_shared_blur(pass);
   if (pass->require_animation_success && (pass->animation_failed || glGetError() != GL_NO_ERROR)) {
     goto out;
   }
@@ -3666,14 +3667,19 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   }
   struct fx_texture* blur_texture = fx_get_texture(wlr_texture);
 
-  if (probe_due && (!fuse || shared)) {
-    // A fused shared blur holds the half-resolution level, at half the coordinates; the probe averages it.
+  if (probe_due && shared) {
+    // A fused shared blur holds the half-resolution level, at half the coordinates; the probe averages it. The run's
+    // end draws every probe queued in it at once.
     const struct wlr_box level_box = fuse ? (struct wlr_box){probe_box.x / 2, probe_box.y / 2,
                                                              (probe_box.width + 1) / 2, (probe_box.height + 1) / 2}
                                           : probe_box;
+    if (!fx_backdrop_probe_queue(fx_options->backdrop_probe, &level_box, pass->has_color_transform)) {
+      fx_backdrop_probe_mark_stale(fx_options->backdrop_probe);
+    }
+  } else if (probe_due && !fuse) {
     fx_backdrop_probe_capture(
         fx_options->backdrop_probe, blur_texture->tex, blur_texture->target, buffer->buffer->width,
-        buffer->buffer->height, &level_box, pass->has_color_transform
+        buffer->buffer->height, &probe_box, pass->has_color_transform
     );
     fx_framebuffer_bind(pass->buffer);
   }
@@ -3808,7 +3814,7 @@ bool fx_render_pass_begin_shared_blur(
     struct fx_gles_render_pass* pass, const pixman_region32_t* clip, struct blur_data* blur_data, float strength,
     pixman_region32_t* lens_region
 ) {
-  pass->shared_blur.active = false;
+  fx_render_pass_end_shared_blur(pass);
   if (pass->fx_offscreen_buffers == NULL || pass->group_depth != 0 || pass->animation_depth != 0) {
     return false;
   }
@@ -3847,6 +3853,19 @@ bool fx_render_pass_begin_shared_blur(
 }
 
 void fx_render_pass_end_shared_blur(struct fx_gles_render_pass* pass) {
+  struct fx_renderer* renderer = pass->buffer->renderer;
+  if (pass->shared_blur.active && fx_backdrop_probes_queued(renderer)) {
+    struct wlr_buffer* source = pass->shared_blur.blur->buffer;
+    struct wlr_texture* texture = fx_texture_from_buffer(&renderer->wlr_renderer, source);
+    const struct fx_texture* blur = texture != NULL ? fx_get_texture(texture) : NULL;
+    fx_backdrop_probes_flush(
+        renderer, blur != NULL ? blur->tex : 0, blur != NULL ? blur->target : 0, source->width, source->height
+    );
+    if (texture != NULL) {
+      wlr_texture_destroy(texture);
+    }
+    fx_framebuffer_bind(pass->buffer);
+  }
   pass->shared_blur.active = false;
   pass->shared_blur.blur = NULL;
   pass->shared_blur.sharp = NULL;

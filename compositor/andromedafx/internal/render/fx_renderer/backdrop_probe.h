@@ -15,22 +15,32 @@ bool fx_backdrop_probe_due(const struct fx_backdrop_probe* probe);
 // A pass redrew the whole probe box but did not capture: the sample is out of date until the next capture.
 void fx_backdrop_probe_mark_stale(struct fx_backdrop_probe* probe);
 
-/**
- * Draws the 4x2 sample grid of box (texture px, top-left origin) from texture into the probe and fences it. linear:
- * the texture holds linear-light values. Restores viewport, blend and
- * scissor; the caller rebinds its framebuffer.
- */
+/** Queues the probe and flushes it alone: no other probe may be queued. */
 void fx_backdrop_probe_capture(
     struct fx_backdrop_probe* probe, GLuint texture, GLenum target, int texture_width, int texture_height,
     const struct wlr_box* box, bool linear
 );
 
-/** Releases the GL objects of every probe of this renderer; the renderer's context is current. */
+/**
+ * Queues the probe's 4x2 sample grid of box (source texture px, top-left origin) for the next flush; false when the
+ * probe has a sample in flight or the batch is full. linear: the source holds linear-light values.
+ */
+bool fx_backdrop_probe_queue(struct fx_backdrop_probe* probe, const struct wlr_box* box, bool linear);
+bool fx_backdrop_probes_queued(const struct fx_renderer* renderer);
+/**
+ * Draws every queued grid from texture into one atlas and reads them back with one copy, which the next submit fences.
+ * Without a texture the queued probes stay due. Restores viewport, blend and scissor; the caller rebinds its framebuffer.
+ */
+void fx_backdrop_probes_flush(
+    struct fx_renderer* renderer, GLuint texture, GLenum target, int texture_width, int texture_height
+);
+
 // Fences every probe captured since the last submit with one sync; called at render pass submit.
 void fx_backdrop_probes_fence(struct fx_renderer* renderer);
 // Hands `sync` (made on the render thread for this pass) to every probe awaiting one; destroys it when none does.
 // Main thread only: it walks the probe list.
 void fx_backdrop_probes_attach_fence(struct fx_renderer* renderer, EGLSyncKHR sync);
+/** Releases the GL objects of every probe of this renderer; the renderer's context is current. */
 void fx_backdrop_probes_release(struct fx_renderer* renderer);
 
 #endif

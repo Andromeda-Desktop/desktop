@@ -2477,6 +2477,78 @@ static bool test_backdrop_probe(struct fixture* fixture) {
   return ok;
 }
 
+// Two probes drawn in one batch over a texture whose halves differ: each must read its own half, not its neighbour's
+// slot of the shared readback.
+static bool test_backdrop_probe_batch(struct fixture* fixture) {
+  static const uint8_t halves[2][4] = {{200, 100, 50, 255}, {20, 240, 90, 255}};
+  uint8_t pixels[8 * 8 * 4];
+  for (int i = 0; i < 8 * 8; i++) {
+    memcpy(&pixels[i * 4], halves[(i % 8) / 4], 4);
+  }
+  struct fx_backdrop_probe* probes[2] = {
+      fx_backdrop_probe_create(fixture->renderer), fx_backdrop_probe_create(fixture->renderer)
+  };
+  struct wlr_texture* source = wlr_texture_from_pixels(fixture->renderer, DRM_FORMAT_ABGR8888, 8 * 4, 8, 8, pixels);
+  struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_ARGB8888, TEST_WIDTH, TEST_HEIGHT);
+  struct wlr_render_pass* pass = probes[0] != NULL && probes[1] != NULL && source != NULL && target != NULL
+      ? wlr_renderer_begin_buffer_pass(fixture->renderer, target, NULL)
+      : NULL;
+  bool ok = check(pass != NULL, "probes, source, target and pass");
+  if (ok) {
+    const struct fx_texture* texture = fx_get_texture(source);
+    glBindTexture(texture->target, texture->tex);
+    glTexParameteri(texture->target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    struct fx_renderer* renderer = fx_get_renderer(fixture->renderer);
+    // The right half first: a slot mixup would hand each probe the other's colour.
+    ok &= check(
+        fx_backdrop_probe_queue(probes[0], &(struct wlr_box){.x = 4, .y = 0, .width = 4, .height = 8}, false),
+        "queue right half"
+    );
+    ok &= check(
+        fx_backdrop_probe_queue(probes[1], &(struct wlr_box){.x = 0, .y = 0, .width = 4, .height = 8}, false),
+        "queue left half"
+    );
+    fx_backdrop_probes_flush(renderer, texture->tex, texture->target, 8, 8);
+    ok &= check(wlr_render_pass_submit(pass), "submit");
+    struct fx_backdrop_luminance luminance[2] = {{-1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f}};
+    bool done[2] = {false, false};
+    struct timespec start, now;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    do {
+      for (int i = 0; i < 2; i++) {
+        done[i] = done[i] || fx_backdrop_probe_poll(probes[i], &luminance[i]);
+      }
+      clock_gettime(CLOCK_MONOTONIC, &now);
+    } while (!(done[0] && done[1]) && now.tv_sec - start.tv_sec < 5);
+    ok &= check(done[0] && done[1], "both samples arrive");
+    for (int i = 0; ok && i < 2; i++) {
+      const uint8_t* c = halves[1 - i];
+      double lin[3];
+      for (int k = 0; k < 3; k++) {
+        const double v = c[k] / 255.0;
+        lin[k] = v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4);
+      }
+      const float expected = (float)pow(0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2], 1.0 / 2.2);
+      const float error = fmaxf(fabsf(luminance[i].mean - expected),
+                                fmaxf(fabsf(luminance[i].darkest - expected), fabsf(luminance[i].brightest - expected)));
+      if (error > 1.5f / 255.0f) {
+        fprintf(stderr, "  probe %d: luminance %.4f %.4f %.4f, expected %.4f\n", i, luminance[i].mean,
+                luminance[i].darkest, luminance[i].brightest, expected);
+        ok = false;
+      }
+    }
+  }
+  if (target != NULL) {
+    wlr_buffer_drop(target);
+  }
+  if (source != NULL) {
+    wlr_texture_destroy(source);
+  }
+  fx_backdrop_probe_destroy(probes[0]);
+  fx_backdrop_probe_destroy(probes[1]);
+  return ok;
+}
+
 static int error_logs;
 
 static void count_error_logs(enum wlr_log_importance importance, const char* fmt, va_list args) {
@@ -3675,6 +3747,8 @@ int main(int argc, char* argv[]) {
     ok = test_in_place_shape(&fixture);
   } else if (strcmp(argv[1], "backdrop-probe") == 0) {
     ok = test_backdrop_probe(&fixture);
+  } else if (strcmp(argv[1], "backdrop-probe-batch") == 0) {
+    ok = test_backdrop_probe_batch(&fixture);
   } else if (strcmp(argv[1], "faded-blur") == 0) {
     ok = test_faded_blur(&fixture);
   } else if (strcmp(argv[1], "shared-blur") == 0) {

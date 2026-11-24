@@ -341,6 +341,7 @@ if build_tests
     'output-effects',
     'audio-spectrum',
     'backdrop-probe',
+    'backdrop-probe-batch',
     'faded-blur',
     'shared-blur',
     'buffer-tint',

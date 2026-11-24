@@ -10,7 +10,9 @@
 #include <time.h>
 #include <wlr/util/log.h>
 
-enum { kProbeWidth = 4, kProbeHeight = 2 };
+// A batch draws up to kBatchSlots probes into one atlas, kProbeHeight rows each, and reads them back at once: on gen9
+// every separate capture cost a render target switch and a driver download draw (~12 us).
+enum { kProbeWidth = 4, kProbeHeight = 2, kBatchSlots = 32 };
 // Density follows the backdrop within this; each capture costs a tiny draw and a readback.
 static const int64_t kProbeIntervalNs = 100 * 1000 * 1000;
 
@@ -21,14 +23,27 @@ struct probe_fence {
   bool signaled;
 };
 
+// The pack buffer one batch reads its samples into, shared by the probes of that batch.
+struct probe_readback {
+  GLuint pack_buffer;
+  int refs;
+};
+
+enum probe_state {
+  PROBE_IDLE,
+  PROBE_QUEUED,         // in the batch; the next flush draws it
+  PROBE_AWAITING_FENCE, // drawn and read back; the pass submit fences it
+  PROBE_FENCED,         // poll maps the samples once the fence signalled
+};
+
 struct fx_backdrop_probe {
   struct fx_renderer* renderer; // NULL once the renderer is gone
   struct wl_list link;          // fx_renderer.backdrop_probes
-  GLuint texture;
-  GLuint framebuffer;
-  GLuint pack_buffer; // GL_PIXEL_PACK_BUFFER the capture reads the samples into
-  struct probe_fence* fence;
-  bool awaiting_fence; // captured; the pass submit fences it
+  enum probe_state state;
+  struct probe_fence* fence;       // PROBE_FENCED
+  struct probe_readback* readback; // PROBE_AWAITING_FENCE and PROBE_FENCED
+  int slot;                        // the probe's rows in the batch atlas and readback
+  struct wlr_box box;              // PROBE_QUEUED: the sampled region, source texture px
   bool linear;
   bool captured;          // the first capture runs at once: a new sheet stays hidden until its first sample
   int64_t last_capture_ns; // CLOCK_MONOTONIC
@@ -61,6 +76,14 @@ static struct {
   GLint tex;
   struct fx_renderer* renderer;
 } probe_shader;
+
+static struct {
+  struct fx_renderer* renderer;
+  GLuint texture; // the atlas: kProbeWidth x kProbeHeight * kBatchSlots
+  GLuint framebuffer;
+  struct fx_backdrop_probe* queued[kBatchSlots];
+  int count;
+} batch;
 
 static bool ensure_program(struct fx_renderer* renderer) {
   if (probe_shader.renderer == renderer && probe_shader.program != 0) {
@@ -95,22 +118,54 @@ static bool ensure_program(struct fx_renderer* renderer) {
   return true;
 }
 
-static void release_fence(struct fx_backdrop_probe* probe) {
+static bool ensure_atlas(struct fx_renderer* renderer) {
+  if (batch.renderer == renderer && batch.framebuffer != 0) {
+    return true;
+  }
+  batch.renderer = renderer;
+  glGenTextures(1, &batch.texture);
+  glBindTexture(GL_TEXTURE_2D, batch.texture);
+  glTexImage2D(
+      GL_TEXTURE_2D, 0, GL_RGBA, kProbeWidth, kProbeHeight * kBatchSlots, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL
+  );
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glGenFramebuffers(1, &batch.framebuffer);
+  glBindFramebuffer(GL_FRAMEBUFFER, batch.framebuffer);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, batch.texture, 0);
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    wlr_log(WLR_ERROR, "backdrop probe: incomplete framebuffer");
+    glDeleteFramebuffers(1, &batch.framebuffer);
+    glDeleteTextures(1, &batch.texture);
+    batch.framebuffer = batch.texture = 0;
+    return false;
+  }
+  return true;
+}
+
+// Ends whatever sample the probe has in flight; the probe is idle after it.
+static void release_sample(struct fx_backdrop_probe* probe) {
+  if (probe->state == PROBE_QUEUED) {
+    for (int i = 0; i < batch.count; i++) {
+      if (batch.queued[i] == probe) {
+        batch.queued[i] = batch.queued[--batch.count];
+        break;
+      }
+    }
+  }
   struct probe_fence* fence = probe->fence;
   probe->fence = NULL;
-  probe->awaiting_fence = false;
   if (fence != NULL && --fence->refs == 0) {
     wlr_egl_destroy_sync(probe->renderer->egl, fence->sync);
     free(fence);
   }
-}
-
-static void release_gl(struct fx_backdrop_probe* probe) {
-  release_fence(probe);
-  fx_renderer_delete_gl(probe->renderer, FX_GL_FRAMEBUFFER, probe->framebuffer);
-  fx_renderer_delete_gl(probe->renderer, FX_GL_BUFFER, probe->pack_buffer);
-  fx_renderer_delete_gl(probe->renderer, FX_GL_TEXTURE, probe->texture);
-  probe->framebuffer = probe->pack_buffer = probe->texture = 0;
+  struct probe_readback* readback = probe->readback;
+  probe->readback = NULL;
+  if (readback != NULL && --readback->refs == 0) {
+    fx_renderer_delete_gl(probe->renderer, FX_GL_BUFFER, readback->pack_buffer);
+    free(readback);
+  }
+  probe->state = PROBE_IDLE;
 }
 
 struct fx_backdrop_probe* fx_backdrop_probe_create(struct wlr_renderer* wlr_renderer) {
@@ -143,7 +198,7 @@ void fx_backdrop_probe_destroy(struct fx_backdrop_probe* probe) {
     return;
   }
   if (probe->renderer != NULL) {
-    release_gl(probe);
+    release_sample(probe);
     wl_list_remove(&probe->link);
   }
   free(probe);
@@ -156,7 +211,7 @@ struct wlr_renderer* fx_backdrop_probe_renderer(const struct fx_backdrop_probe* 
 // Every probe shares one phase (a new kProbeIntervalNs epoch): a pass that redraws two overlapping probes finds both due
 // or neither. Per-probe phases ping-pong: each refresh redraw marks its sibling stale, and the output never idles.
 bool fx_backdrop_probe_due(const struct fx_backdrop_probe* probe) {
-  return probe != NULL && probe->fence == NULL && !probe->awaiting_fence
+  return probe != NULL && probe->state == PROBE_IDLE
       && (!probe->captured || monotonic_ns() / kProbeIntervalNs > probe->last_capture_ns / kProbeIntervalNs);
 }
 
@@ -179,69 +234,90 @@ bool fx_backdrop_probe_take_stale(struct fx_backdrop_probe* probe) {
 }
 
 bool fx_backdrop_probe_pending(const struct fx_backdrop_probe* probe) {
-  return probe != NULL && probe->renderer != NULL && (probe->fence != NULL || probe->awaiting_fence);
+  return probe != NULL && probe->renderer != NULL && probe->state != PROBE_IDLE;
 }
 
-void fx_backdrop_probe_capture(
-    struct fx_backdrop_probe* probe, GLuint texture, GLenum target, int texture_width, int texture_height,
-    const struct wlr_box* box, bool linear
-) {
-  if (probe == NULL || probe->renderer == NULL || target != GL_TEXTURE_2D || texture_width <= 0
-      || texture_height <= 0 || box->width <= 0 || box->height <= 0 || !ensure_program(probe->renderer)) {
-    return;
-  }
-  if (probe->texture == 0) {
-    glGenTextures(1, &probe->texture);
-    glBindTexture(GL_TEXTURE_2D, probe->texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, kProbeWidth, kProbeHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glGenFramebuffers(1, &probe->framebuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, probe->framebuffer);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, probe->texture, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-      wlr_log(WLR_ERROR, "backdrop probe: incomplete framebuffer");
-      release_gl(probe);
-      return;
-    }
-    glGenBuffers(1, &probe->pack_buffer);
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, probe->pack_buffer);
-    glBufferData(GL_PIXEL_PACK_BUFFER, kProbeWidth * kProbeHeight * 4, NULL, GL_STREAM_READ);
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-  }
+bool fx_backdrop_probe_queue(struct fx_backdrop_probe* probe, const struct wlr_box* box, bool linear) {
   // The caller skips a capture while one is in flight; a node redrawn every frame would otherwise never finish one.
-  if (fx_backdrop_probe_pending(probe)) {
+  if (probe == NULL || probe->renderer == NULL || probe->state != PROBE_IDLE || box->width <= 0 || box->height <= 0
+      || batch.count == kBatchSlots || (batch.count > 0 && batch.queued[0]->renderer != probe->renderer)) {
+    return false;
+  }
+  probe->state = PROBE_QUEUED;
+  probe->box = *box;
+  probe->linear = linear;
+  batch.queued[batch.count++] = probe;
+  return true;
+}
+
+bool fx_backdrop_probes_queued(const struct fx_renderer* renderer) {
+  return batch.count > 0 && batch.queued[0]->renderer == renderer;
+}
+
+void fx_backdrop_probes_flush(
+    struct fx_renderer* renderer, GLuint texture, GLenum target, int texture_width, int texture_height
+) {
+  if (!fx_backdrop_probes_queued(renderer)) {
     return;
   }
-
+  struct probe_readback* readback = NULL;
+  if (texture != 0 && target == GL_TEXTURE_2D && texture_width > 0 && texture_height > 0 && ensure_program(renderer)
+      && ensure_atlas(renderer)) {
+    readback = calloc(1, sizeof(*readback));
+  }
+  if (readback == NULL) {
+    // Not drawn: each probe stays due and captures on a later pass.
+    while (batch.count > 0) {
+      struct fx_backdrop_probe* probe = batch.queued[batch.count - 1];
+      release_sample(probe);
+      probe->stale = true;
+    }
+    return;
+  }
   const GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
   const GLboolean blend = glIsEnabled(GL_BLEND);
   GLint viewport[4];
   glGetIntegerv(GL_VIEWPORT, viewport);
-  glBindFramebuffer(GL_FRAMEBUFFER, probe->framebuffer);
-  glViewport(0, 0, kProbeWidth, kProbeHeight);
+  glBindFramebuffer(GL_FRAMEBUFFER, batch.framebuffer);
   glDisable(GL_SCISSOR_TEST);
   glDisable(GL_BLEND);
   glUseProgram(probe_shader.program);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, texture);
   glUniform1i(probe_shader.tex, 0);
-  // Each probe pixel center samples one point of a 4x2 grid over the box; the grid is symmetric in y, so the
-  // texture's row order does not move it.
-  glUniform4f(
-      probe_shader.src, (float)box->x / (float)texture_width, (float)box->y / (float)texture_height,
-      (float)box->width / (float)texture_width, (float)box->height / (float)texture_height
-  );
   static const GLfloat quad[] = {0, 0, 1, 0, 0, 1, 1, 1};
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glVertexAttribPointer(probe_shader.pos, 2, GL_FLOAT, GL_FALSE, 0, quad);
   glEnableVertexAttribArray(probe_shader.pos);
-  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+  const int64_t now = monotonic_ns();
+  for (int i = 0; i < batch.count; i++) {
+    struct fx_backdrop_probe* probe = batch.queued[i];
+    const struct wlr_box* box = &probe->box;
+    glViewport(0, i * kProbeHeight, kProbeWidth, kProbeHeight);
+    // Each probe pixel center samples one point of a 4x2 grid over the box; the grid is symmetric in y, so the
+    // texture's row order does not move it.
+    glUniform4f(
+        probe_shader.src, (float)box->x / (float)texture_width, (float)box->y / (float)texture_height,
+        (float)box->width / (float)texture_width, (float)box->height / (float)texture_height
+    );
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    probe->state = PROBE_AWAITING_FENCE;
+    probe->readback = readback;
+    probe->slot = i;
+    probe->captured = true;
+    probe->last_capture_ns = now;
+    probe->stale = false;
+  }
   glDisableVertexAttribArray(probe_shader.pos);
-  // The pass submit fences this copy with the draw, so poll maps the buffer only once the GPU finished it.
-  glBindBuffer(GL_PIXEL_PACK_BUFFER, probe->pack_buffer);
-  glReadPixels(0, 0, kProbeWidth, kProbeHeight, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+  // The pass submit fences this copy with the draws, so poll maps the buffer only once the GPU finished it.
+  const GLsizeiptr bytes = (GLsizeiptr)batch.count * kProbeWidth * kProbeHeight * 4;
+  glGenBuffers(1, &readback->pack_buffer);
+  glBindBuffer(GL_PIXEL_PACK_BUFFER, readback->pack_buffer);
+  glBufferData(GL_PIXEL_PACK_BUFFER, bytes, NULL, GL_STREAM_READ);
+  glReadPixels(0, 0, kProbeWidth, kProbeHeight * batch.count, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
   glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+  readback->refs = batch.count;
+  batch.count = 0;
   if (blend) {
     glEnable(GL_BLEND);
   }
@@ -249,12 +325,20 @@ void fx_backdrop_probe_capture(
     glEnable(GL_SCISSOR_TEST);
   }
   glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+}
 
-  probe->awaiting_fence = true;
-  probe->linear = linear;
-  probe->captured = true;
-  probe->last_capture_ns = monotonic_ns();
-  probe->stale = false;
+void fx_backdrop_probe_capture(
+    struct fx_backdrop_probe* probe, GLuint texture, GLenum target, int texture_width, int texture_height,
+    const struct wlr_box* box, bool linear
+) {
+  if (probe == NULL || probe->renderer == NULL) {
+    return;
+  }
+  // Probes left queued by a pass that never ended its shared run sampled another source: they capture later.
+  fx_backdrop_probes_flush(probe->renderer, 0, 0, 0, 0);
+  if (fx_backdrop_probe_queue(probe, box, linear)) {
+    fx_backdrop_probes_flush(probe->renderer, texture, target, texture_width, texture_height);
+  }
 }
 
 bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, struct fx_backdrop_luminance* luminance) {
@@ -270,7 +354,7 @@ bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, struct fx_backdrop_
   if (!fence->signaled) {
     const EGLint status = egl->eglClientWaitSyncKHR(egl->display, fence->sync, 0, 0);
     if (status == EGL_FALSE) {
-      release_fence(probe);
+      release_sample(probe);
       return false;
     }
     if (status != EGL_CONDITION_SATISFIED_KHR) {
@@ -281,14 +365,15 @@ bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, struct fx_backdrop_
   if (!fx_renderer_context_home(&probe->renderer->wlr_renderer)) {
     return false; // the render thread holds the context; the caller polls again
   }
-  release_fence(probe);
   struct wlr_egl_context saved;
   if (!wlr_egl_make_current(egl, &saved)) {
+    release_sample(probe);
     return false;
   }
   bool done = false;
-  glBindBuffer(GL_PIXEL_PACK_BUFFER, probe->pack_buffer);
-  const GLubyte* pixels = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, kProbeWidth * kProbeHeight * 4, GL_MAP_READ_BIT);
+  const GLsizeiptr bytes = kProbeWidth * kProbeHeight * 4;
+  glBindBuffer(GL_PIXEL_PACK_BUFFER, probe->readback->pack_buffer);
+  const GLubyte* pixels = glMapBufferRange(GL_PIXEL_PACK_BUFFER, probe->slot * bytes, bytes, GL_MAP_READ_BIT);
   if (pixels != NULL) {
     // Rec.709 weights apply to linear light; on encoded bytes they underrate saturated colours (pink reads as dark).
     double sum = 0.0;
@@ -313,6 +398,7 @@ bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, struct fx_backdrop_
     glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
   }
   glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+  release_sample(probe);
   wlr_egl_restore_context(&saved);
   return done;
 }
@@ -321,7 +407,7 @@ void fx_backdrop_probes_attach_fence(struct fx_renderer* renderer, EGLSyncKHR sy
   struct probe_fence* fence = NULL;
   struct fx_backdrop_probe* probe;
   wl_list_for_each(probe, &renderer->backdrop_probes, link) {
-    if (!probe->awaiting_fence || sync == EGL_NO_SYNC_KHR) {
+    if (probe->state != PROBE_AWAITING_FENCE || sync == EGL_NO_SYNC_KHR) {
       continue; // without a sync the probes stay awaiting; the next submit fences them
     }
     if (fence == NULL) {
@@ -331,7 +417,7 @@ void fx_backdrop_probes_attach_fence(struct fx_renderer* renderer, EGLSyncKHR sy
       }
       fence->sync = sync;
     }
-    probe->awaiting_fence = false;
+    probe->state = PROBE_FENCED;
     probe->fence = fence;
     fence->refs++;
   }
@@ -348,7 +434,7 @@ void fx_backdrop_probes_fence(struct fx_renderer* renderer) {
 void fx_backdrop_probes_release(struct fx_renderer* renderer) {
   struct fx_backdrop_probe *probe, *tmp;
   wl_list_for_each_safe(probe, tmp, &renderer->backdrop_probes, link) {
-    release_gl(probe);
+    release_sample(probe);
     wl_list_remove(&probe->link);
     wl_list_init(&probe->link);
     probe->renderer = NULL;
@@ -357,5 +443,11 @@ void fx_backdrop_probes_release(struct fx_renderer* renderer) {
     glDeleteProgram(probe_shader.program);
     probe_shader.program = 0;
     probe_shader.renderer = NULL;
+  }
+  if (batch.renderer == renderer) {
+    glDeleteFramebuffers(1, &batch.framebuffer);
+    glDeleteTextures(1, &batch.texture);
+    batch.framebuffer = batch.texture = 0;
+    batch.renderer = NULL;
   }
 }
