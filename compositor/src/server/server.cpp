@@ -2494,7 +2494,7 @@ namespace andromeda {
           || !restoreSystemdControlEnvironment(m_systemdControlEnvironment)) {
         _exit(1);
       }
-      execl("/bin/sh", "/bin/sh", "-c", command.c_str(), nullptr);
+      execShell(command.c_str());
       _exit(1);
     }
     if (pid < 0) {
@@ -2668,7 +2668,7 @@ namespace andromeda {
             m_applicationScopeEnvironmentArguments, command, launchWeight
         );
       }
-      execl("/bin/sh", "/bin/sh", "-c", command, nullptr);
+      execShell(command);
       _exit(1);
     }
     if (launchToken != nullptr) {

@@ -47,7 +47,7 @@ namespace andromeda {
     m_pid = fork();
     if (m_pid == 0) {
       resetChildSignalState();
-      execl("/bin/sh", "/bin/sh", "-c", command, static_cast<char*>(nullptr));
+      execShell(command);
       _exit(127);
     }
     if (m_pid < 0) {

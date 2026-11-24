@@ -30,6 +30,8 @@ namespace {
   constexpr auto kItemInterface = "org.kde.StatusNotifierItem";
   constexpr auto kMenuInterface = "com.canonical.dbusmenu";
   constexpr auto kDefaultItemPath = "/StatusNotifierItem";
+  constexpr auto kLayoutRetryFirst = std::chrono::milliseconds(500);
+  constexpr auto kLayoutRetryCap = std::chrono::milliseconds(4000);
   constexpr auto kAyatanaItemPath = "/org/ayatana/NotificationItem";
   // SNI GetAll often carries IconPixmap; 200 ms drops slow-but-valid clients.
   constexpr auto kItemPropertyTimeout = std::chrono::milliseconds(3000);
@@ -1074,19 +1076,16 @@ void TrayService::requestMenuLayoutAfterAboutToShow(
           replyCache.loadingParents.erase(parentId);
 
           if (error.has_value()) {
-            std::uint8_t& streak = replyCache.failureStreak[parentId];
-            streak = static_cast<std::uint8_t>(std::min<int>(4, static_cast<int>(streak) + 1));
-            const int exponent = std::min<int>(4, static_cast<int>(streak));
-            const auto backoff = std::chrono::milliseconds(250 * (1 << exponent));
+            const auto backoff = replyCache.retryBackoff.try_emplace(parentId, kLayoutRetryFirst, kLayoutRetryCap)
+                                     .first->second.nextDelay();
             replyCache.nextRetryAt[parentId] = std::chrono::steady_clock::now() + backoff;
             kLog.debug(
-                "GetLayout failed id={} parent={} err={} streak={} backoffMs={}", itemId, parentId, error->what(),
-                streak, backoff.count()
+                "GetLayout failed id={} parent={} err={} backoffMs={}", itemId, parentId, error->what(), backoff.count()
             );
             return;
           }
 
-          replyCache.failureStreak.erase(parentId);
+          replyCache.retryBackoff.erase(parentId);
           replyCache.nextRetryAt.erase(parentId);
 
           replyCache.revision = revision;
@@ -1262,7 +1261,7 @@ void TrayService::ensureMenuCache(const std::string& itemId, const std::string& 
               cache.loadedParents.erase(0);
               cache.loadingParents.erase(0);
               cache.nextRetryAt.erase(0);
-              cache.failureStreak.erase(0);
+              cache.retryBackoff.erase(0);
               cache.rootLoaded = false;
               // Allow a fresh root AboutToShow after provider-side resets.
               cache.rootAboutToShowPrimed = false;
@@ -1276,7 +1275,7 @@ void TrayService::ensureMenuCache(const std::string& itemId, const std::string& 
               cache.loadedParents.erase(parent);
               cache.loadingParents.erase(parent);
               cache.nextRetryAt.erase(parent);
-              cache.failureStreak.erase(parent);
+              cache.retryBackoff.erase(parent);
             }
           }
           emitChanged();

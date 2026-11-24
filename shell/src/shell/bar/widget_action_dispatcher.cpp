@@ -57,7 +57,7 @@ namespace noctalia::bar {
       return false;
 
     case WidgetAction::Kind::Exec:
-      if (!process::runAsync(action.args)) {
+      if (!process::runShell(action.args)) {
         kLog.warn("{}: failed to launch \"{}\"", sourceLabel(context), action.args);
         return false;
       }

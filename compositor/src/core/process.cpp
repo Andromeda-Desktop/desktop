@@ -47,6 +47,8 @@ namespace andromeda {
     sigprocmask(SIG_SETMASK, &empty, nullptr);
   }
 
+  void execShell(const char* command) { execl("/bin/sh", "/bin/sh", "-c", command, static_cast<char*>(nullptr)); }
+
   int startShellCommand(const std::string& command) {
     int completion[2];
     if (pipe2(completion, O_CLOEXEC) != 0) {
@@ -64,7 +66,7 @@ namespace andromeda {
       if (dup2(completion[1], STDOUT_FILENO) < 0 || !closeChildFileDescriptors()) {
         _exit(1);
       }
-      execl("/bin/sh", "/bin/sh", "-c", script.c_str(), nullptr);
+      execShell(script.c_str());
       _exit(1);
     }
     const int forkError = errno;

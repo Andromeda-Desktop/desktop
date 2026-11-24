@@ -318,7 +318,7 @@ void SettingsWindow::openHookRuleEditor(std::optional<std::size_t> hookIndex, st
                 }
               };
               constexpr auto kTestTimeout = std::chrono::seconds(10);
-              const bool started = process::runAsync(
+              const bool started = process::runShell(
                   command,
                   process::RunCallbacks{.onExit = [show](process::RunResult result) {
                     show(static_cast<bool>(result), result.timedOut ? -1 : result.exitCode);

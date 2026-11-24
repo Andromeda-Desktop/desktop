@@ -1,5 +1,6 @@
 #pragma once
 
+#include "protocols/backoff.h"
 #include "core/timer_manager.h"
 
 #include <chrono>
@@ -229,7 +230,11 @@ private:
   std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_lastPlayingUpdate;
   std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_lastStrongMetadataUpdate;
   std::unordered_map<std::string, int> m_playerPropertiesFailures;
-  std::unordered_map<std::string, std::chrono::milliseconds> m_playerPropertiesRefreshBackoffMs;
+  struct PropertiesRetry {
+    retry::Backoff backoff;
+    std::chrono::milliseconds interval{};
+  };
+  std::unordered_map<std::string, PropertiesRetry> m_playerPropertiesRetry;
   std::unordered_set<std::string> m_stoppedPlayers;
   std::deque<std::string> m_pendingDiscoveryBusNames;
   std::string m_lastActivePlayer;
@@ -240,6 +245,6 @@ private:
   std::function<void()> m_changeCallback;
   int m_startupRediscoveryPassesRemaining = 4;
   Timer m_recoveryTimer;
-  std::chrono::milliseconds m_recoveryBackoffMs{500};
+  retry::Backoff m_recoveryBackoff{std::chrono::milliseconds(500), std::chrono::seconds(30)};
   bool m_discoveryDrainScheduled = false;
 };

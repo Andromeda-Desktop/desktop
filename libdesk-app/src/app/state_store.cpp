@@ -13,7 +13,6 @@
 namespace {
   constexpr Logger kLog("app-state");
   constexpr auto kSaveDelay = std::chrono::milliseconds(500);
-  constexpr auto kMaxRetryDelay = std::chrono::milliseconds(60'000);
 
   bool writeAll(int fd, const std::string& text) {
     std::size_t done = 0;
@@ -81,9 +80,11 @@ void StateStore::set(std::string_view pointer, nlohmann::json value) {
 }
 
 void StateStore::saveAfter(std::chrono::milliseconds delay) {
-  m_saveTimer.start(delay, [this, delay] {
-    if (!flush()) {
-      saveAfter(std::min(delay * 2, kMaxRetryDelay));
+  m_saveTimer.start(delay, [this] {
+    if (flush()) {
+      m_saveRetry.reset();
+    } else {
+      saveAfter(m_saveRetry.nextDelay());
     }
   });
 }

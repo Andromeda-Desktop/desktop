@@ -15,6 +15,7 @@ use tokio::net::UnixStream;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::idl::{ActionEntry, SCHEMA_VERSION};
+use andromeda_rt::backoff::Backoff;
 use andromeda_rt::ipc::{Line, check_peer, read_line};
 
 use crate::proto::MAX_LINE;
@@ -77,14 +78,14 @@ enum End {
     Resync,
 }
 
-/// A provider that keeps sending out-of-order events must not drive a reconnect loop: the first resync runs at once,
-/// repeats wait from 50 ms doubling to 5 s, and a session that stayed in order for 10 s starts the count again.
+/// A provider that keeps sending out-of-order events must not drive a reconnect loop: each resync waits from 50 ms
+/// doubling to 5 s, and a session that stayed in order for 10 s starts the count again.
 const RESYNC_DELAY_MIN: Duration = Duration::from_millis(50);
 const RESYNC_DELAY_MAX: Duration = Duration::from_secs(5);
 const RESYNC_RESET_AFTER: Duration = Duration::from_secs(10);
 
 async fn link(shared: Arc<Shared>, path: PathBuf) {
-    let mut delay = Duration::ZERO;
+    let mut resync = Backoff::new(RESYNC_DELAY_MIN, RESYNC_DELAY_MAX);
     loop {
         let stream = match connect(&path).await {
             Ok(stream) => stream,
@@ -99,23 +100,19 @@ async fn link(shared: Arc<Shared>, path: PathBuf) {
             End::Resync => log::info!("{}: event out of order, reading a new snapshot", path.display()),
         }
         if started.elapsed() >= RESYNC_RESET_AFTER {
-            delay = Duration::ZERO;
+            resync.reset();
         }
-        tokio::time::sleep(delay).await;
-        delay = (delay * 2).clamp(RESYNC_DELAY_MIN, RESYNC_DELAY_MAX);
+        tokio::time::sleep(resync.next_delay()).await;
     }
 }
 
 /// A provider binds before it listens, so its inotify event can come before it accepts: retry a refused connect a
 /// few times, with backoff, after each event. The provider must run as this user.
 async fn connect(path: &Path) -> io::Result<UnixStream> {
-    let mut delay = Duration::from_millis(10);
+    let mut refused = Backoff::new(Duration::from_millis(10), Duration::from_millis(160));
     for _ in 0..5 {
         match UnixStream::connect(path).await {
-            Err(e) if e.kind() == ErrorKind::ConnectionRefused => {
-                tokio::time::sleep(delay).await;
-                delay *= 2;
-            }
+            Err(e) if e.kind() == ErrorKind::ConnectionRefused => tokio::time::sleep(refused.next_delay()).await,
             result => return checked(result?),
         }
     }

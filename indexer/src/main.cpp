@@ -4,6 +4,8 @@
 #include "live_index.h"
 #include "query_server.h"
 
+#include "protocols/heap.h"
+
 #include <malloc.h>
 #include <poll.h>
 
@@ -148,7 +150,7 @@ int main(int argc, char** argv) {
             content->wake();
           }
           // A sweep's folder list is freed at once; give the pages back instead of keeping them in the heap.
-          malloc_trim(0);
+          heap::releaseFree();
           nextSweep = Clock::now() + std::chrono::milliseconds(kSweepMs);
         }
       } else if (live.dirty() && now >= quietAt) {

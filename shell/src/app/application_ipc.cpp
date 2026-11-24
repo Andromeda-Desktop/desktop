@@ -1197,7 +1197,7 @@ void Application::initIpc() {
 }
 
 bool Application::runShellCommand(const std::string& command) {
-  if (!process::runAsync(command)) {
+  if (!process::runShell(command)) {
     kLog.warn("command failed to launch: {}", command);
     return false;
   }
@@ -1205,7 +1205,7 @@ bool Application::runShellCommand(const std::string& command) {
 }
 
 bool Application::runShellCommandBlocking(const std::string& command) {
-  const auto result = process::runSync(command);
+  const auto result = process::runShellSync(command);
   if (!result) {
     kLog.warn("command failed: {} exit_code={} stderr={}", command, result.exitCode, result.err);
     return false;

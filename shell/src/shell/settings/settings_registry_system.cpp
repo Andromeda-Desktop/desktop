@@ -80,7 +80,7 @@ namespace settings {
           tr("settings.schema.system.app-priority.description", "scheduler", env.schedExtScheduler), {},
           ButtonSetting{
               .label = tr("settings.schema.system.app-priority.button"),
-              .action = [] { (void)process::runAsync("xdg-open https://docs.kernel.org/scheduler/sched-ext.html"); },
+              .action = [] { (void)process::runAsync({"xdg-open", "https://docs.kernel.org/scheduler/sched-ext.html"}); },
           },
           "app priority cpu scheduler sched_ext scx boost performance"
       ));

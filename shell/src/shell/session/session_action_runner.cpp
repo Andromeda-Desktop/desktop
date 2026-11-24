@@ -118,7 +118,7 @@ namespace {
 
   [[nodiscard]] bool runPowerOverride(std::string_view action, const std::string& command, PowerLaunchMode mode) {
     if (mode == PowerLaunchMode::Detached) {
-      if (process::runAsync(command)) {
+      if (process::runShell(command)) {
         kLog.info("{}: custom override launched", action);
         return true;
       }
@@ -126,7 +126,7 @@ namespace {
       return false;
     }
 
-    const process::RunResult result = process::runSync(command);
+    const process::RunResult result = process::runShellSync(command);
     if (result) {
       kLog.info("{}: custom override accepted", action);
       return true;
@@ -167,13 +167,13 @@ namespace {
   ) {
     auto launch = [guard, command = std::move(command), actionName = std::string(actionName), failed = std::move(failed)] {
       if (!failed) {
-        if (!process::runAsync(command)) {
+        if (!process::runShell(command)) {
           kLog.warn("{}: command failed", actionName);
         }
         return;
       }
       // A caller that waits on the outcome needs the exit status: tracked, not detached.
-      const bool started = process::runAsync(
+      const bool started = process::runShell(
           command, process::RunCallbacks{.onExit = [guard, actionName, failed](const process::RunResult& result) {
             if (!result && !guard.expired()) {
               kLog.warn("{}: command exited with {}", actionName, result.exitCode);

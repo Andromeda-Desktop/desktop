@@ -253,7 +253,7 @@ namespace {
       size_t len = 0;
       const char* cmd = lua_tolstring(L, 1, &len);
       if (len != 0) {
-        args = {"/bin/sh", "-c", std::string(cmd, len)};
+        args = process::shellArgv(std::string(cmd, len));
       }
     } else if (lua_type(L, 1) == LUA_TTABLE) {
       args = processArgsFromLua(L, 1);
@@ -2734,7 +2734,7 @@ bool LuauHost::startStream(std::string command, int callbackRef) {
   process::RunOptions options;
   options.cancel = std::move(cancel);
   options.maxOutputBytes = 0; // stream only; do not accumulate for onExit
-  if (!process::runAsync({"/bin/sh", "-c", std::move(command)}, std::move(callbacks), std::move(options))) {
+  if (!process::runShell(command, std::move(callbacks), std::move(options))) {
     m_streams.pop_back();
     return false;
   }

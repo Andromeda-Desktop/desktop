@@ -42,7 +42,7 @@ HookManager::AsyncCommandRunner HookManager::shellCommandRunner(std::chrono::mil
       }
       done(static_cast<bool>(result));
     }};
-    if (!process::runAsync(std::vector<std::string>{"/bin/sh", "-lc", command}, std::move(callbacks), std::move(options))) {
+    if (!process::runShell(command, std::move(callbacks), std::move(options))) {
       kLog.warn("command failed to launch: {}", command);
       done(false);
     }

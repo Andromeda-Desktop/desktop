@@ -23,8 +23,6 @@ namespace compositors::andromeda {
 
     constexpr Logger kLog("andromeda_runtime");
     constexpr auto kRequestTimeout = std::chrono::milliseconds(500);
-    constexpr auto kReconnectInitial = std::chrono::seconds(2);
-    constexpr auto kReconnectMax = std::chrono::seconds(30);
     constexpr std::size_t kReadBufferMaxBytes = 1024U * 1024U;
     constexpr std::string_view kSlideFamily = "workspace_slide";
     // A request of its own: a compositor that predates workspace_slide rejects only this one.
@@ -225,7 +223,7 @@ namespace compositors::andromeda {
   void AndromedaRuntime::cleanup() {
     closeSocket(false);
     m_readBuffer.clear();
-    m_reconnectBackoff = kReconnectInitial;
+    m_reconnectBackoff.reset();
     notifyStreamReset();
   }
 
@@ -379,7 +377,7 @@ namespace compositors::andromeda {
 
     m_eventSocketFd = fd;
     m_nextReconnectAt = {};
-    m_reconnectBackoff = kReconnectInitial;
+    m_reconnectBackoff.reset();
     m_readBuffer.clear();
     kLog.debug("connected to andromeda event stream");
   }
@@ -400,9 +398,7 @@ namespace compositors::andromeda {
 
   void AndromedaRuntime::scheduleReconnect() {
     const auto now = std::chrono::steady_clock::now();
-    m_nextReconnectAt = now + m_reconnectBackoff;
-    const auto doubled = m_reconnectBackoff * 2;
-    m_reconnectBackoff = std::min(doubled, kReconnectMax);
+    m_nextReconnectAt = now + m_reconnectBackoff.nextDelay();
   }
 
   void AndromedaRuntime::readSocket() {

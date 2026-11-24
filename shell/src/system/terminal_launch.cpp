@@ -3,8 +3,10 @@
 #include "core/process/process.h"
 #include "util/file_utils.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <iterator>
 #include <string>
 #include <unistd.h>
 #include <utility>
@@ -144,9 +146,7 @@ namespace terminal_launch {
     } else {
       terminal.emplace_back("-e");
     }
-    terminal.emplace_back("sh");
-    terminal.emplace_back("-lc");
-    terminal.emplace_back(command);
+    std::ranges::move(process::shellArgv(std::string(command)), std::back_inserter(terminal));
     return terminal;
   }
 

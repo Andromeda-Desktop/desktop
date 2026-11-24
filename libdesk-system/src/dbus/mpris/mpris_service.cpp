@@ -445,9 +445,8 @@ std::chrono::milliseconds MprisService::propertiesRefreshRetryInterval(
   if (!usePropertiesBackoff) {
     return fallback;
   }
-  if (const auto backoffIt = m_playerPropertiesRefreshBackoffMs.find(busName);
-      backoffIt != m_playerPropertiesRefreshBackoffMs.end()) {
-    return backoffIt->second;
+  if (const auto retryIt = m_playerPropertiesRetry.find(busName); retryIt != m_playerPropertiesRetry.end()) {
+    return retryIt->second.interval;
   }
   return fallback;
 }
@@ -1641,9 +1640,7 @@ void MprisService::scheduleRecoveryDiscovery() {
     return;
   }
 
-  static constexpr std::chrono::milliseconds kMaxBackoff{30'000};
-  const auto delay = m_recoveryBackoffMs;
-  m_recoveryBackoffMs = std::min(m_recoveryBackoffMs * 2, kMaxBackoff);
+  const auto delay = m_recoveryBackoff.nextDelay();
 
   const std::weak_ptr<void> aliveGuard = m_aliveGuard;
   m_recoveryTimer.start(delay, [this, aliveGuard] {
@@ -1826,15 +1823,18 @@ void MprisService::addOrRefreshPlayer(const std::string& busName) {
                         if (failureCount > 1) {
                           // Keep the first failure on the normal retry cadence before backing off.
                           // Apply exponential backoff
-                          auto& backoff = m_playerPropertiesRefreshBackoffMs[busName];
-                          if (backoff.count() == 0) {
-                            backoff = kPositionRetryInitialBackoff;
-                          } else {
-                            backoff = std::min(backoff * 2, kPositionRetryMaxBackoff);
-                          }
+                          auto& playerRetry = m_playerPropertiesRetry
+                                            .try_emplace(
+                                                busName, PropertiesRetry{.backoff = retry::Backoff(
+                                                                             kPositionRetryInitialBackoff,
+                                                                             kPositionRetryMaxBackoff
+                                                                         )}
+                                            )
+                                            .first->second;
+                          playerRetry.interval = playerRetry.backoff.nextDelay();
                           kLog.debug(
                               "player properties refresh backoff failures={} interval={}ms name={}", failureCount,
-                              backoff.count(), busName
+                              playerRetry.interval.count(), busName
                           );
                         }
                       }
@@ -1885,10 +1885,10 @@ void MprisService::addOrRefreshPlayer(const std::string& busName) {
 void MprisService::applyPlayerSnapshot(
     const std::string& busName, const MprisPlayerInfo& info, bool hadPositionSignal, bool hadFullRefreshFailure
 ) {
-  m_recoveryBackoffMs = std::chrono::milliseconds{500};
+  m_recoveryBackoff.reset();
   if (!hadFullRefreshFailure) {
     m_playerPropertiesFailures[busName] = 0;
-    m_playerPropertiesRefreshBackoffMs.erase(busName);
+    m_playerPropertiesRetry.erase(busName);
   }
   const auto previousActive = activePlayer();
   const auto now = std::chrono::steady_clock::now();
@@ -2223,7 +2223,7 @@ void MprisService::clearPlayerState(const std::string& busName) {
   m_lastPlayingUpdate.erase(busName);
   m_lastStrongMetadataUpdate.erase(busName);
   m_playerPropertiesFailures.erase(busName);
-  m_playerPropertiesRefreshBackoffMs.erase(busName);
+  m_playerPropertiesRetry.erase(busName);
   if (m_lastActivePlayer == busName) {
     m_lastActivePlayer.clear();
   }

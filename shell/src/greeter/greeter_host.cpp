@@ -4,6 +4,7 @@
 #include "core/files/resource_paths.h"
 #include "core/log.h"
 #include "protocols/crash_capture.h"
+#include "protocols/heap.h"
 #include "core/ui_phase.h"
 #include "greeter/greetd_client.h"
 #include "render/gl_shared_context.h"
@@ -449,7 +450,7 @@ namespace {
   }
 
   // Startup leaves freed pages in the allocator; give them back once the first frames are on screen.
-  void trimAllocator() { malloc_trim(0); }
+  void trimAllocator() { (void)heap::releaseFree(); }
 
   // Backspace leaves typed bytes past size(): wipe the whole reserved buffer.
   void wipe(std::string& secret) { util::secureWipe(secret); }

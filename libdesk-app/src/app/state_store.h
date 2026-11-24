@@ -1,5 +1,6 @@
 #pragma once
 
+#include "protocols/backoff.h"
 #include "core/timer_manager.h"
 
 #include <filesystem>
@@ -46,5 +47,6 @@ private:
   std::filesystem::path m_file;
   nlohmann::json m_data = nlohmann::json::object();
   Timer m_saveTimer;
+  retry::Backoff m_saveRetry{std::chrono::seconds(1), std::chrono::seconds(60)};
   bool m_dirty = false;
 };

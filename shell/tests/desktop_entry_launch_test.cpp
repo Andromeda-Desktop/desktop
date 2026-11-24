@@ -128,7 +128,7 @@ int main() {
   terminalOptions.terminalCandidates = {"missing-terminal-candidate", fakeTerminal};
   ok = expectArgs(
            desktop_entry_launch::prepareCommand("sample --flag", true, terminalOptions),
-           {fakeTerminal, "-e", "sh", "-lc", "sample --flag"},
+           {fakeTerminal, "-e", "/bin/sh", "-c", "sample --flag"},
            "terminal candidates should use the first executable candidate"
        )
       && ok;
@@ -145,7 +145,7 @@ int main() {
   terminalOptions.terminalCandidates = {"gnome-terminal"};
   ok = expectArgs(
            desktop_entry_launch::prepareCommand("sample --flag", true, terminalOptions),
-           {"gnome-terminal", "--", "sh", "-lc", "sample --flag"},
+           {"gnome-terminal", "--", "/bin/sh", "-c", "sample --flag"},
            "gnome-style terminals should use -- before the shell command"
        )
       && ok;

@@ -3,8 +3,9 @@
 #include "extract.h"
 #include "index_db.h"
 
+#include "protocols/heap.h"
+
 #include <fcntl.h>
-#include <malloc.h>
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
@@ -291,7 +292,7 @@ namespace andromeda::index {
       extractor.reset();
       if (done > 0) {
         db.releaseMemory();
-        malloc_trim(0);
+        heap::releaseFree();
         std::fprintf(stderr, "content: %s: %zu files read in %lld ms\n", live ? "live" : "bulk", done,
                      static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                                 std::chrono::steady_clock::now() - start)

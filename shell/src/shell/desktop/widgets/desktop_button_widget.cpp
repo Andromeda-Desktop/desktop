@@ -306,7 +306,7 @@ void DesktopButtonWidget::executeCommand() const {
   if (m_command.empty()) {
     return;
   }
-  if (!process::runAsync(m_command)) {
+  if (!process::runShell(m_command)) {
     kLog.warn("failed to launch command");
   }
 }

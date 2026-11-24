@@ -1,6 +1,7 @@
 #include "core/sys/sys.h"
 #include "application.h"
 #include "protocols/crash_capture.h"
+#include "protocols/heap.h"
 #include "shell/lockscreen/lock_client.h"
 #include "a11y/atspi_bridge.h"
 
@@ -126,25 +127,15 @@
 #include <csignal>
 #include <cstdint>
 #include <cstring>
-#include <dlfcn.h>
 #include <filesystem>
 #include <fstream>
 #include <limits>
-#include <malloc.h>
-#ifdef NOCTALIA_USE_JEMALLOC
-#include <jemalloc/jemalloc.h>
-#endif
 #include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
 
 #include <nlohmann/json.hpp>
-
-#ifdef NOCTALIA_USE_JEMALLOC
-#define NOCTALIA_STRINGIFY_HELPER(x) #x
-#define NOCTALIA_STRINGIFY(x) NOCTALIA_STRINGIFY_HELPER(x)
-#endif
 
 std::atomic<bool> Application::s_shutdownRequested{false};
 std::atomic<bool> Application::s_displayLost{false};
@@ -227,24 +218,9 @@ void Application::restoreShellHandoff() {
 
 
 void trimAllocator() {
-#ifdef __GLIBC__
-#ifdef NOCTALIA_USE_JEMALLOC
-  // jemalloc is preloaded by the launcher, never linked (its static TLS cannot load through dlopen), so mallctl is
-  // looked up; without it the shell runs on glibc malloc.
-  using Mallctl = int (*)(const char*, void*, std::size_t*, void*, std::size_t);
-  if (void* symbol = dlsym(RTLD_DEFAULT, "mallctl"); symbol != nullptr) {
-    Mallctl mallctlFn = nullptr;
-    std::memcpy(&mallctlFn, &symbol, sizeof(mallctlFn));
-    const int purgeResult =
-        mallctlFn("arena." NOCTALIA_STRINGIFY(MALLCTL_ARENAS_ALL) ".purge", nullptr, nullptr, nullptr, 0);
-    if (purgeResult != 0) {
-      kLog.warn("failed to purge jemalloc arenas: {}", std::strerror(purgeResult));
-    }
-    return;
+  if (const int purgeResult = heap::releaseFree(); purgeResult != 0) {
+    kLog.warn("failed to purge jemalloc arenas: {}", std::strerror(purgeResult));
   }
-#endif
-  malloc_trim(0);
-#endif
 }
 
 Application::Application()

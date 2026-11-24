@@ -1,6 +1,7 @@
 #include "core/sys/sys.h"
 
 #include "protocols/crash_capture.h"
+#include "protocols/heap.h"
 
 #include <cerrno>
 #include <chrono>
@@ -13,7 +14,6 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
-#include <malloc.h>
 #include <pthread.h>
 #include <sched.h>
 #include <sstream>
@@ -122,7 +122,7 @@ namespace sys {
   }
 
   // glibc keeps freed pages until a trim.
-  void releaseFreeHeap() { malloc_trim(0); }
+  void releaseFreeHeap() { (void)heap::releaseFree(); }
 
   void shareSchedulingWithThreads(std::string_view namePart) {
     const int policy = sched_getscheduler(0) & ~SCHED_RESET_ON_FORK;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "protocols/backoff.h"
 #include "config/config_types.h"
 
 #include <chrono>
@@ -162,7 +163,7 @@ private:
   std::chrono::system_clock::time_point m_nextRefreshAt;
   bool m_loading = false;
   bool m_refreshQueued = false;
-  std::chrono::seconds m_retryDelay{30};
+  retry::Backoff m_retry{std::chrono::seconds(30), std::chrono::minutes(5)};
   bool m_hasLocation = false;
   std::string m_error;
   std::string m_locationName;

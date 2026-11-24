@@ -31,7 +31,7 @@ namespace compositors::andromeda {
     m_enabled = enabled;
     disconnect();
     m_due = m_lastSentAt + kMinInterval;
-    m_backoff = std::chrono::milliseconds(100);
+    m_backoff.reset();
   }
 
   void AndromedaAudioProvider::notifyChanged() {
@@ -50,8 +50,7 @@ namespace compositors::andromeda {
     m_output.clear();
     m_written = 0;
     m_input.clear();
-    m_due = Clock::now() + m_backoff;
-    m_backoff = std::min(m_backoff * 2, std::chrono::milliseconds(2000));
+    m_due = Clock::now() + m_backoff.nextDelay();
   }
 
   bool AndromedaAudioProvider::connectSocket() {
@@ -104,7 +103,7 @@ namespace compositors::andromeda {
     }
     m_input.clear();
     m_awaitingReply = false;
-    m_backoff = std::chrono::milliseconds(100);
+    m_backoff.reset();
     m_due = m_lastSentAt + (m_dirty ? kMinInterval : kHeartbeat);
     return true;
   }

@@ -15,6 +15,10 @@ namespace andromeda {
   // cannot start when SIGCHLD is ignored. wlroots tolerates its Xwayland launcher being reaped here.
   void installChildReaper();
 
+  // The one shell entry, for a forked child that runs a command string (spawn, autostart, greeter command): execs
+  // /bin/sh -c command and returns only when exec failed. Async-signal-safe.
+  void execShell(const char* command);
+
   // Start a shell command without racing the global child reaper; its output goes to stderr. Returns the read end of a
   // completion pipe (-1 when the fork failed): it yields 'x' when the command succeeded, else EOF without a byte.
   [[nodiscard]] int startShellCommand(const std::string& command);

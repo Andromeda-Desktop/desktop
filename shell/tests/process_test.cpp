@@ -198,7 +198,7 @@ namespace {
   }
 
   bool stringCommandsSupportShellComposition() {
-    const auto result = process::runSync("printf first && printf second");
+    const auto result = process::runShellSync("printf first && printf second");
     bool ok = expect(result.exitCode == 0, "composed shell command failed");
     ok = expect(result.out == "firstsecond", "composed shell command did not execute both commands") && ok;
     return ok;
@@ -215,7 +215,7 @@ namespace {
 
     const std::string command = R"(printf '%s\n%s' "$ANDROMEDA_WALLPAPER_PATH" "$ANDROMEDA_WALLPAPER_CONNECTOR" > )"
         + shellQuote(outPath.string());
-    const bool launched = process::runAsync(command);
+    const bool launched = process::runShell(command);
     ::unsetenv("ANDROMEDA_WALLPAPER_PATH");
     ::unsetenv("ANDROMEDA_WALLPAPER_CONNECTOR");
 
@@ -301,7 +301,7 @@ namespace {
 
 int main() {
   bool ok = true;
-  ok = expect(!process::runAsync("true", process::RunCallbacks{}), "empty callback set should not launch") && ok;
+  ok = expect(!process::runShell("true", process::RunCallbacks{}), "empty callback set should not launch") && ok;
   ok = capturedAsyncDeliversCallbacksAndResult() && ok;
   ok = capturedAsyncDeliversCompletionOnly() && ok;
   ok = syncAppliesEnvOverrides() && ok;

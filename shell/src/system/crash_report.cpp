@@ -3,7 +3,6 @@
 #include "core/process/process.h"
 
 #include <cstdlib>
-#include <format>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -21,11 +20,11 @@ namespace crash_report {
 
   void save(int pid) {
     const std::string match = pid > 0 ? std::to_string(pid) : "-1 andromeda";
-    (void)process::runAsync(std::format(
-        "d='{}'; mkdir -p \"$d\"; f=\"$d/$(date +%Y%m%d-%H%M%S).txt\"; "
-        "{{ echo \"Andromeda crash report $(date -Is)\"; coredumpctl info --no-pager {} 2>&1; echo; "
-        "journalctl --user -u andromeda.service -n 300 --no-pager 2>&1; }} > \"$f\"; xdg-open \"$f\"",
-        directory().string(), match
+    (void)process::runAsync(process::shellArgv(
+        "mkdir -p \"$1\"; f=\"$1/$(date +%Y%m%d-%H%M%S).txt\"; "
+        "{ echo \"Andromeda crash report $(date -Is)\"; coredumpctl info --no-pager $2 2>&1; echo; "
+        "journalctl --user -u andromeda.service -n 300 --no-pager 2>&1; } > \"$f\"; xdg-open \"$f\"",
+        {directory().string(), match}
     ));
   }
 

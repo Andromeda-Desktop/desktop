@@ -9,6 +9,7 @@
 #include "core/log.h"
 #include "core/process.h"
 #include "core/scanout_keeper.h"
+#include "protocols/heap.h"
 #include "config/action_groups.h"
 #include "server/ipc.h"
 #include "server/ipc_commands.h"
@@ -176,9 +177,6 @@ namespace {
 // thp:never keeps the kernel from backing the sparse heap with 2 MiB pages when transparent huge pages are `always`.
 const char* malloc_conf =
     "background_thread:true,narenas:2,dirty_decay_ms:1000,muzzy_decay_ms:5000,lg_tcache_max:12,thp:never";
-
-#define ANDROMEDA_STRINGIFY_HELPER(x) #x
-#define ANDROMEDA_STRINGIFY(x) ANDROMEDA_STRINGIFY_HELPER(x)
 #endif
 
 namespace {
@@ -582,15 +580,10 @@ int main(int argc, char** argv) {
     size = sizeof(dirtyDecayMs);
     mallctl("opt.dirty_decay_ms", &dirtyDecayMs, &size, nullptr, 0);
     kLog.info("jemalloc: narenas={} dirty_decay_ms={}ms", narenas, dirtyDecayMs);
-
-    const int purgeResult =
-        mallctl("arena." ANDROMEDA_STRINGIFY(MALLCTL_ARENAS_ALL) ".purge", nullptr, nullptr, nullptr, 0);
-    if (purgeResult != 0) {
+#endif
+    if (const int purgeResult = heap::releaseFree(); purgeResult != 0) {
       kLog.warn("failed to purge jemalloc arenas: {}", std::strerror(purgeResult));
     }
-#elif defined(__GLIBC__)
-    malloc_trim(0);
-#endif
 
     if (!server.run()) {
       kLog.error("failed to start server");

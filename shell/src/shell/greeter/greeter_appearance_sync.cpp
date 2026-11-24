@@ -1084,7 +1084,7 @@ namespace {
       if (command.empty()) {
         return false;
       }
-      return process::runAsync(command, std::move(callbacks), helperOptions());
+      return process::runShell(command, std::move(callbacks), helperOptions());
     }
 
     if (mode == GreeterSyncMode::Constrained) {

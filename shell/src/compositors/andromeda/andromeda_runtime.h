@@ -1,5 +1,6 @@
 #pragma once
 
+#include "protocols/backoff.h"
 #include <chrono>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -65,7 +66,7 @@ namespace compositors::andromeda {
     int m_eventSocketFd = -1;
     std::vector<char> m_readBuffer;
     std::chrono::steady_clock::time_point m_nextReconnectAt;
-    std::chrono::seconds m_reconnectBackoff{2};
+    retry::Backoff m_reconnectBackoff{std::chrono::seconds(2), std::chrono::seconds(30)};
     bool m_slideStreamUnsupportedLogged = false;
   };
 

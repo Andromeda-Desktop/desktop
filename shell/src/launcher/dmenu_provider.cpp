@@ -38,7 +38,7 @@ namespace {
 std::vector<std::string> dmenuExecArgv(std::string tmpl, std::string_view selection, std::string_view query) {
   substituteToken(tmpl, "{selection}", "\"$1\"");
   substituteToken(tmpl, "{query}", "\"$2\"");
-  return {"/bin/sh", "-lc", std::move(tmpl), "sh", std::string(selection), std::string(query)};
+  return process::shellArgv(std::move(tmpl), {std::string(selection), std::string(query)});
 }
 
 DmenuProvider::Line DmenuProvider::parseLine(std::string&& raw) {
@@ -121,7 +121,7 @@ void DmenuProvider::ensureLoaded() const {
   options.maxOutputBytes = kMaxOutputBytes;
   options.cancel = cancel;
 
-  const bool launched = process::runAsync(
+  const bool launched = process::runShell(
       m_entry.command,
       process::RunCallbacks{
           .onExit =

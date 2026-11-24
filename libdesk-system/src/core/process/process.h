@@ -57,19 +57,15 @@ namespace process {
   // Prefer run0 over pkexec: pkexec often stays on PATH without the setuid wrapper (e.g. NixOS).
   [[nodiscard]] std::optional<std::string> resolvePrivilegeEscalator();
 
-  // Shell string — runs fully detached (double-fork + setsid) so the child is not a direct
-  // subprocess of noctalia (hooks, idle commands, launcher parity).
-  [[nodiscard]] bool runAsync(const std::string& command);
-  // Shell string — runs on a worker thread, captures stdout/stderr, and invokes callbacks from
-  // that worker. Output chunk views are valid only for the callback call.
-  [[nodiscard]] bool runAsync(const std::string& command, RunCallbacks callbacks, RunOptions options = {});
-  [[nodiscard]] RunResult runSync(const std::string& command);
-  // Interruptible shell run: honors options.timeout and options.cancel, killing the
-  // child's process group when either fires (used for template hooks so a hung hook
-  // cannot block teardown).
-  [[nodiscard]] RunResult runSync(const std::string& command, const RunOptions& options);
+  // The one shell entry, for user command strings (config, hooks, scripts, dmenu entries): /bin/sh -c command, with
+  // args as $1, $2, ... Fixed commands pass argv. No -l: the session start already sourced the login profile.
+  [[nodiscard]] std::vector<std::string> shellArgv(std::string command, std::vector<std::string> args = {});
+  // runAsync(shellArgv(command)); an empty command runs nothing.
+  [[nodiscard]] bool runShell(const std::string& command);
+  [[nodiscard]] bool runShell(const std::string& command, RunCallbacks callbacks, RunOptions options = {});
+  [[nodiscard]] RunResult runShellSync(const std::string& command, const RunOptions& options = {});
 
-  // Arg vector — direct execvp; same detach semantics as runAsync(string). When activationToken is
+  // Arg vector — direct execvp; runs fully detached (double-fork + setsid). When activationToken is
   // non-empty, the grandchild sets XDG_ACTIVATION_TOKEN and DESKTOP_STARTUP_ID (launcher).
   [[nodiscard]] bool runAsync(
       const std::vector<std::string>& args, const std::string& activationToken = {}, const std::string& workingDir = {}

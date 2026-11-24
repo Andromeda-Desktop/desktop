@@ -1315,18 +1315,19 @@ namespace process {
     return command.has_value() && runAsync(*command, std::move(callbacks), std::move(options));
   }
 
-  bool runAsync(const std::string& command) {
-    if (command.empty()) {
-      return false;
+  std::vector<std::string> shellArgv(std::string command, std::vector<std::string> args) {
+    std::vector<std::string> argv{"/bin/sh", "-c", std::move(command)};
+    if (!args.empty()) {
+      argv.emplace_back("sh");
+      std::ranges::move(args, std::back_inserter(argv));
     }
-    return runAsync(std::vector<std::string>{"/bin/sh", "-lc", command});
+    return argv;
   }
 
-  bool runAsync(const std::string& command, RunCallbacks callbacks, RunOptions options) {
-    if (command.empty()) {
-      return false;
-    }
-    return runAsync(std::vector<std::string>{"/bin/sh", "-lc", command}, std::move(callbacks), std::move(options));
+  bool runShell(const std::string& command) { return !command.empty() && runAsync(shellArgv(command)); }
+
+  bool runShell(const std::string& command, RunCallbacks callbacks, RunOptions options) {
+    return !command.empty() && runAsync(shellArgv(command), std::move(callbacks), std::move(options));
   }
 
   std::optional<int> launchDetachedTracked(const std::vector<std::string>& args) {
@@ -1438,12 +1439,11 @@ namespace process {
     return false;
   }
 
-  RunResult runSync(const std::string& command) { return runSync(command, RunOptions{}); }
-
-  RunResult runSync(const std::string& command, const RunOptions& options) {
-    if (command.empty())
+  RunResult runShellSync(const std::string& command, const RunOptions& options) {
+    if (command.empty()) {
       return {-1, {}, {}};
-    return runSyncProcess(std::vector<std::string>{"/bin/sh", "-lc", command}, options);
+    }
+    return runSyncProcess(shellArgv(command), options);
   }
 
   bool launchFirstAvailable(std::initializer_list<std::initializer_list<const char*>> commandVariants) {

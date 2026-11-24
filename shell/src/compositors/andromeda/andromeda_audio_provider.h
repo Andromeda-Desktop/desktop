@@ -1,5 +1,6 @@
 #pragma once
 
+#include "protocols/backoff.h"
 #include "core/poll_source.h"
 
 #include <array>
@@ -46,7 +47,7 @@ namespace compositors::andromeda {
     std::string m_input;
     Clock::time_point m_due;
     Clock::time_point m_lastSentAt;
-    std::chrono::milliseconds m_backoff{100};
+    retry::Backoff m_backoff{std::chrono::milliseconds(100), std::chrono::milliseconds(2000)};
   };
 
 } // namespace compositors::andromeda

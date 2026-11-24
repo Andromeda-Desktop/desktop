@@ -1,5 +1,6 @@
 #pragma once
 
+#include "protocols/backoff.h"
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -111,7 +112,7 @@ private:
     // Decoded child ids per parent-id. parentId=0 is the root menu.
     std::unordered_map<std::int32_t, std::vector<std::int32_t>> childrenByParent;
     std::unordered_map<std::int32_t, std::chrono::steady_clock::time_point> nextRetryAt;
-    std::unordered_map<std::int32_t, std::uint8_t> failureStreak;
+    std::unordered_map<std::int32_t, retry::Backoff> retryBackoff;
     std::unordered_map<std::int32_t, std::uint32_t> lastLayoutUpdatedRevisionByParent;
     std::unordered_set<std::int32_t> loadedParents;
     std::unordered_set<std::int32_t> loadingParents;
