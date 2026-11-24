@@ -203,9 +203,8 @@ namespace andromeda {
     m_zone = *target;
     const auto resolved = anchor->workspace() != nullptr ? anchor->workspace()->layoutConfig() : resolveGlobalLayout(config());
     m_box = snapZoneBox(anchor->floatingMarginArea(anchor->floatingUsableArea(), &resolved), m_zone, resolved.totalGap);
-    m_output = wlr_output_layout_output_at(
-        m_server.outputLayout(), m_box.x + m_box.width / 2.0, m_box.y + m_box.height / 2.0
-    );
+    const Output* output = m_server.outputAt(m_box.x + m_box.width / 2.0, m_box.y + m_box.height / 2.0);
+    m_output = output != nullptr ? output->wlr() : nullptr;
     m_lit = 0;
     m_mode.show(std::move(picture));
     wlr_scene_node_raise_to_top(&m_tree->node);

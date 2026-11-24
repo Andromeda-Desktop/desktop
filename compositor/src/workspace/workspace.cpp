@@ -600,7 +600,7 @@ namespace andromeda {
           && output != nullptr
           && pointer != nullptr
           && (overview == nullptr || !overview->active())
-          && wlr_output_layout_output_at(server->outputLayout(), pointer->x, pointer->y) == output->wlr()) {
+          && server->outputAt(pointer->x, pointer->y) == output) {
         dwindle->insertViewToward(view, layoutAttachIndex(view), pointer->x, pointer->y);
       } else {
         dwindle->insertView(view, layoutAttachIndex(view));

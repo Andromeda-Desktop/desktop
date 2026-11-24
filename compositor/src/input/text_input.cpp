@@ -3,6 +3,7 @@
 #include "input/input_capture.h"
 #include "input/seat.h"
 #include "layer/layer_surface.h"
+#include "output/output.h"
 #include "server/desktop_shell.h"
 #include "server/server.h"
 #include "wlr.h"
@@ -388,10 +389,10 @@ namespace andromeda {
       }
       if (const std::optional<wlr_box> rect = cursorRectInLayout()) {
         state.rect = *rect;
-        wlr_output* output = wlr_output_layout_output_at(m_server->outputLayout(), rect->x, rect->y);
+        const Output* output = m_server->outputAt(rect->x, rect->y);
         wlr_box outputBox{};
         if (output != nullptr) {
-          wlr_output_layout_get_box(m_server->outputLayout(), output, &outputBox);
+          wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &outputBox);
         }
         state.rect.x -= outputBox.x;
         state.rect.y -= outputBox.y;
@@ -477,10 +478,8 @@ namespace andromeda {
     }
     wlr_box cursorRect = *layoutRect;
 
-    wlr_output* output = wlr_output_layout_output_at(m_server->outputLayout(), cursorRect.x, cursorRect.y);
-    if (output == nullptr) {
-      output = m_server->preferredOutput();
-    }
+    const Output* under = m_server->outputAt(cursorRect.x, cursorRect.y);
+    wlr_output* output = under != nullptr ? under->wlr() : m_server->preferredOutput();
     if (output == nullptr) {
       return;
     }

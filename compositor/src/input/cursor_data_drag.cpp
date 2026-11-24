@@ -28,8 +28,7 @@ namespace andromeda {
       return nullptr;
     }
 
-    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
-    Output* output = m_server->outputFromWlr(wlrOutput);
+    Output* output = m_server->outputAt(m_cursor->x, m_cursor->y);
     WorkspaceGroup* group = output != nullptr ? output->workspaceGroup() : nullptr;
     Workspace* workspace = group != nullptr ? group->active() : nullptr;
     ScrollingLayout* scrolling = workspace != nullptr ? workspace->scrollingLayout() : nullptr;

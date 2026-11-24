@@ -39,7 +39,7 @@ namespace andromeda::cursor_detail {
     if (covered) {
       return std::nullopt;
     }
-    Output* output = server.outputFromWlr(wlr_output_layout_output_at(server.outputLayout(), lx, ly));
+    Output* output = server.outputAt(lx, ly);
     WorkspaceGroup* group = output != nullptr ? output->workspaceGroup() : nullptr;
     Workspace* workspace = group != nullptr ? group->active() : nullptr;
     return workspace != nullptr ? workspace->tabs().tabAt(lx, ly) : std::nullopt;

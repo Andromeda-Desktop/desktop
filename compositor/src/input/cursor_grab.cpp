@@ -231,7 +231,7 @@ namespace andromeda {
       return;
     }
     Output* output =
-        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
+        m_server->outputAt(m_cursor->x, m_cursor->y);
     if (output == nullptr || output->workspaceGroup() == nullptr) {
       clearSnapPreview();
       return;
@@ -239,8 +239,8 @@ namespace andromeda {
     const wlr_box area = output->layoutBox();
     uint32_t shared = 0;
     const auto adjacent = [&](double x, double y) {
-      wlr_output* other = wlr_output_layout_output_at(m_server->outputLayout(), x, y);
-      return other != nullptr && other != output->wlr();
+      const Output* other = m_server->outputAt(x, y);
+      return other != nullptr && other != output;
     };
     if (m_cursor->x - area.x < kSnapEdge && adjacent(area.x - 1, m_cursor->y))
       shared |= WLR_EDGE_LEFT;
@@ -325,8 +325,7 @@ namespace andromeda {
       return;
     }
 
-    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
-    Output* output = m_server->outputFromWlr(wlrOutput);
+    Output* output = m_server->outputAt(m_cursor->x, m_cursor->y);
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && scratchpad->contains(view)) {
       scratchpad->finishMove(view, output);

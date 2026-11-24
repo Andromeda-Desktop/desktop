@@ -480,7 +480,7 @@ namespace andromeda {
     }
     // A point in the layout gap between a usable-area edge and a window probes again just inside the edge pad, so a
     // pointer pushed against the screen edge reaches the window there (auto-hide sidebars, edge scrolling).
-    Output* output = m_server.outputFromWlr(wlr_output_layout_output_at(m_server.outputLayout(), lx, ly));
+    Output* output = m_server.outputAt(lx, ly);
     if (output == nullptr || output->workspaceGroup() == nullptr || output->workspaceGroup()->active() == nullptr) {
       return nullptr;
     }

@@ -86,7 +86,8 @@ namespace andromeda {
         mini.zones.emplace_back(id, snapZoneBox(mini.box, id, kZoneGap));
       }
     }
-    m_output = wlr_output_layout_output_at(m_server.outputLayout(), m_box.x + m_box.width / 2.0, m_box.y);
+    const Output* output = m_server.outputAt(m_box.x + m_box.width / 2.0, m_box.y);
+    m_output = output != nullptr ? output->wlr() : nullptr;
     m_open = true;
     m_lit = keyboard ? std::optional<SnapZone>(SnapZone{}) : std::nullopt;
     // P10 Grow: scale 0.92 -> 1 on open with opacity on fade; reduced motion keeps only the fade (7.8).

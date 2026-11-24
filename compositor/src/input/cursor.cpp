@@ -559,10 +559,11 @@ namespace andromeda {
   }
 
   std::optional<Cursor::RenderedCursorStateForTest> Cursor::renderedCursorStateForTest() const {
-    wlr_output* output = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
-    if (output == nullptr) {
+    const Output* under = m_server->outputAt(m_cursor->x, m_cursor->y);
+    if (under == nullptr) {
       return std::nullopt;
     }
+    wlr_output* output = under->wlr();
 
     wlr_output_cursor* outputCursor = nullptr;
     wl_list_for_each(outputCursor, &output->cursors, link) {
@@ -1477,8 +1478,7 @@ namespace andromeda {
         }
       } else if (surface == nullptr || wlr_xwayland_surface_try_from_wlr_surface(surface) == nullptr) {
         // A press on an override-redirect X11 menu leaves the keyboard with the menu.
-        wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
-        m_server->refocusExplicit(m_server->outputFromWlr(wlrOutput));
+        m_server->refocusExplicit(m_server->outputAt(m_cursor->x, m_cursor->y));
       }
     }
   }
@@ -1819,7 +1819,8 @@ namespace andromeda {
   void Cursor::updatePointerOutput(bool allowFocusChange) {
     // Crossing outputs updates keyboard / foreign-toplevel focus so clients that follow the
     // focused screen match preferredOutput() / workspace-switch behavior.
-    wlr_output* pointerOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
+    const Output* under = m_server->outputAt(m_cursor->x, m_cursor->y);
+    wlr_output* pointerOutput = under != nullptr ? under->wlr() : nullptr;
     if (pointerOutput != m_pointerOutput) {
       m_pointerOutput = pointerOutput;
       // `focused` in the workspaces payload is the active workspace of the cursor's output, so crossing heads changes
@@ -1952,7 +1953,7 @@ namespace andromeda {
 
   void Cursor::applySceneRefocus() {
     const Output* output =
-        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
+        m_server->outputAt(m_cursor->x, m_cursor->y);
     // Only a workspace switch queues this under sloppy; every other scene change queues it only under always.
     if (!config().input.focus.followsMouseEnabled() || output == nullptr) {
       setSceneRefocus(SceneRefocus::Idle);
@@ -2175,8 +2176,7 @@ namespace andromeda {
     if (grab->target != DragTarget::Tiled) {
       return;
     }
-    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
-    Output* output = m_server->outputFromWlr(wlrOutput);
+    Output* output = m_server->outputAt(m_cursor->x, m_cursor->y);
     if (output == nullptr || output->workspaceGroup() == nullptr || output->workspaceGroup()->active() == nullptr) {
       return;
     }
@@ -2298,7 +2298,7 @@ namespace andromeda {
     // (a fullscreen window cannot be pinned) is still tiled here and drops back
     // into the layout rather than staying detached.
     Output* destination =
-        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
+        m_server->outputAt(m_cursor->x, m_cursor->y);
     Workspace* workspace = destination != nullptr ? destination->workspaceGroup()->active() : nullptr;
     if (grab->target == DragTarget::Tiled && workspace != nullptr && workspace->layoutMode() == LayoutMode::Floating) {
       view->floatForLayout();
@@ -2574,7 +2574,7 @@ namespace andromeda {
     if (output == nullptr
         || m_cursorHidden
         || std::ranges::any_of(m_tools, [](const auto& tool) { return tool->inProximity; })
-        || wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y) != output->wlr()) {
+        || m_server->outputAt(m_cursor->x, m_cursor->y) != output) {
       return true;
     }
     if (seat->drag != nullptr) {

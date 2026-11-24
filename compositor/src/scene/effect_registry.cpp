@@ -317,7 +317,8 @@ vec4 animation(vec2 uv) {
       motionStarted = motionStarted || (!motionBefore && wlr_scene_output_cursor_motion_active(sceneOutput));
     }
     // The cursor instance's visibility follows the output under the pointer.
-    const wlr_output* under = wlr_output_layout_output_at(m_server->outputLayout(), lx, ly);
+    const Output* pointerOutput = m_server->outputAt(lx, ly);
+    const wlr_output* under = pointerOutput != nullptr ? pointerOutput->wlr() : nullptr;
     if (under != m_pointerWlrOutput || visible != m_pointerVisible || motionStarted) {
       m_pointerWlrOutput = under;
       m_pointerVisible = visible;

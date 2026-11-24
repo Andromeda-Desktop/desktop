@@ -190,6 +190,10 @@ namespace andromeda {
     return nullptr;
   }
 
+  Output* Server::outputAt(double lx, double ly) const {
+    return outputFromWlr(wlr_output_layout_output_at(m_outputLayout, lx, ly));
+  }
+
   Output* Server::outputFromName(const std::string& name) const {
     for (const auto& entry : m_outputs) {
       // Disabled outputs are off the desktop: rules and keybinds must not be

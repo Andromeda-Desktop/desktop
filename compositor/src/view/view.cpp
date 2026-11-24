@@ -1068,11 +1068,9 @@ namespace andromeda {
     }
     // Other floating views with no workspace use their scene coordinates.
     if (m_sceneTree != nullptr && m_server != nullptr && m_server->outputLayout() != nullptr) {
-      wlr_output* wlrOut = wlr_output_layout_output_at(
-          m_server->outputLayout(), layoutX() + (currentSize().width / 2), layoutY() + (currentSize().height / 2)
-      );
-      if (wlrOut != nullptr) {
-        return m_server->outputFromWlr(wlrOut);
+      if (Output* output =
+              m_server->outputAt(layoutX() + (currentSize().width / 2), layoutY() + (currentSize().height / 2))) {
+        return output;
       }
     }
     return m_server->outputFromWlr(m_server->preferredOutput());

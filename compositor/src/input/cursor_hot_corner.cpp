@@ -25,12 +25,12 @@ namespace andromeda {
       return nullptr;
     }
 
-    wlr_output* output = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
+    const Output* andromedaOutput = m_server->outputAt(m_cursor->x, m_cursor->y);
     wlr_box box{};
-    if (output == nullptr) {
+    if (andromedaOutput == nullptr) {
       return nullptr;
     }
-    wlr_output_layout_get_box(m_server->outputLayout(), output, &box);
+    wlr_output_layout_get_box(m_server->outputLayout(), andromedaOutput->wlr(), &box);
 
     // A small logical area lets delayed corners remain reachable beside another output.
     const double horizontalExtent = std::min(kHotCornerExtent, box.width / 2.0);
@@ -56,7 +56,6 @@ namespace andromeda {
     if (!corner.enabled || !corner.action) {
       return nullptr;
     }
-    const Output* andromedaOutput = m_server->outputFromWlr(output);
     View* focused = View::fromSurface(seat->keyboard_state.focused_surface);
     // Corner handling precedes pointer-output refocus. Use the destination's remembered focus when the seat is
     // elsewhere, including click-to-focus sessions where crossing outputs does not move keyboard focus at all.

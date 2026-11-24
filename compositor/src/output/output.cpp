@@ -372,7 +372,7 @@ namespace andromeda {
     if (cursorPreset != nullptr && pointer != nullptr) {
       const double lx = pointer->wlr()->x;
       const double ly = pointer->wlr()->y;
-      const bool here = wlr_output_layout_output_at(m_server->outputLayout(), lx, ly) == m_output;
+      const bool here = m_server->outputAt(lx, ly) == this;
       fx_animation_parameters parameters{};
       registry.fillTimeUniforms(parameters, m_effectSeconds, *cursorPreset, cursor);
       wlr_scene_output_set_cursor_effect(m_sceneOutput, cursor, &parameters, cursorPreset->radius);

@@ -568,6 +568,8 @@ namespace andromeda {
     void inputDevicesChanged();
     [[nodiscard]] wlr_output* preferredOutput() const;
     [[nodiscard]] Output* outputFromWlr(wlr_output* output) const;
+    // The output whose layout box holds the layout point, or nullptr in a gap between outputs.
+    [[nodiscard]] Output* outputAt(double lx, double ly) const;
     [[nodiscard]] Output* outputFromName(const std::string& name) const;
     // Named workspaces on enabled outputs, with native local names taking precedence over displaced ones. A qualifier
     // for an unavailable output identifies a displaced workspace's original output; positions remain output-local.

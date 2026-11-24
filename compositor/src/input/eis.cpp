@@ -8,6 +8,7 @@
 #include "input/keyboard.h"
 #include "input/keyboard_layout.h"
 #include "input/seat.h"
+#include "output/output.h"
 #include "scene/quit_confirm.h"
 #include "server/server.h"
 #include "wlr.h"
@@ -516,7 +517,8 @@ namespace andromeda {
         }
         if (Xwayland* xwayland = server.xwayland()) {
           const wlr_cursor* cursor = server.cursor()->wlr();
-          wlr_output* output = wlr_output_layout_output_at(server.outputLayout(), cursor->x, cursor->y);
+          const Output* under = server.outputAt(cursor->x, cursor->y);
+          wlr_output* output = under != nullptr ? under->wlr() : nullptr;
           const auto mapped = xwayland->outputs().region(output, cursor->x, cursor->y);
           dx /= mapped.scale;
           dy /= mapped.scale;

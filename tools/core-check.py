@@ -45,7 +45,7 @@ RULES = {
     "schedule-frame": ("redraws go through the Output frame owner (C8)", ("compositor/src/",), CPP,
                        r"\bwlr_output_schedule_frame\(", ("compositor/src/output/",)),
     "output-at": ("output under a point via Server::outputAt (C11)", ("compositor/src/",), CPP,
-                  r"\bwlr_output_layout_output_at\(", ()),
+                  r"\bwlr_output_layout_output_at\(", ("compositor/src/server/server_outputs.cpp",)),
     "glass-raw": ("island glass via glass_surface.h (sendIslandGlass, islandGlassTint, applyIslandTone) and "
                   "Style::islandGlass (C6)", ("shell/src/",), CPP,
                   r"\bsetGlassMaterial\(|\bsetPaletteTone\(|\bglassMaterial\(", ()),

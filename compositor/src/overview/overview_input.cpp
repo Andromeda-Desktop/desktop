@@ -365,7 +365,7 @@ namespace andromeda {
     }
     // The live target resolves through preferredOutput(), and the overview owns motion while it is up: repaint when
     // the pointer crosses outputs, whether by hand or through the warp a keybind performs to change output.
-    if (Output* output = m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), lx, ly));
+    if (Output* output = m_server->outputAt(lx, ly);
         output != m_pointerOutput) {
       m_pointerOutput = output;
       activateLiveTarget();
@@ -896,7 +896,7 @@ namespace andromeda {
     if (!interactive()) {
       return true;
     }
-    Output* output = m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), lx, ly));
+    Output* output = m_server->outputAt(lx, ly);
     const WorkspaceGroup* group = output != nullptr ? output->workspaceGroup() : nullptr;
     const bool horizontalWorkspaces = group != nullptr && group->workspaceAxis() == WorkspaceAxis::Horizontal;
     const int sign = direction < 0 ? -1 : 1;
@@ -953,7 +953,7 @@ namespace andromeda {
     if (!interactive() || dragging() || pointer == nullptr) {
       return;
     }
-    Output* output = m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), lx, ly));
+    Output* output = m_server->outputAt(lx, ly);
     if (output == nullptr || output->workspaceGroup() == nullptr) {
       return;
     }
