@@ -1,5 +1,6 @@
 #include "agent_view.h"
 
+#include "i18n/i18n.h"
 #include "agent_host.h"
 #include "agent_markup.h"
 #include "core/input/cursor_shape.h"
@@ -43,18 +44,18 @@ namespace term {
     // A running action: "41 s", then "1:05".
     std::string elapsedText(agent::WallTime started) {
       const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - started);
-      return elapsed.count() < 60 ? std::format("{} s", std::max<std::int64_t>(0, elapsed.count())) : clockText(elapsed);
+      return elapsed.count() < 60 ? i18n::tr("terminal.agent.seconds", "count", std::max<std::int64_t>(0, elapsed.count())) : clockText(elapsed);
     }
 
     std::string agoText(agent::WallTime at) {
       const auto minutes = std::chrono::duration_cast<std::chrono::minutes>(std::chrono::system_clock::now() - at).count();
       if (minutes < 1) {
-        return "now";
+        return i18n::tr("terminal.agent.now");
       }
       if (minutes < 60) {
-        return std::format("{} min ago", minutes);
+        return i18n::tr("terminal.agent.minutes-ago", "count", minutes);
       }
-      return minutes < 24 * 60 ? std::format("{} h ago", minutes / 60) : std::format("{} d ago", minutes / (24 * 60));
+      return minutes < 24 * 60 ? i18n::tr("terminal.agent.hours-ago", "count", minutes / 60) : i18n::tr("terminal.agent.days-ago", "count", minutes / (24 * 60));
     }
 
     const agent::Turn* lastTurn(const agent::Session& model) {
@@ -138,7 +139,7 @@ namespace term {
 
     struct Verb {
       std::string_view glyph;
-      std::string_view word;
+      std::string word;
     };
 
     // The command, else the first path (relative to the session folder when inside it), else the title.
@@ -167,24 +168,24 @@ namespace term {
 
     Verb verbFor(std::string_view kind) {
       if (kind == "read") {
-        return {"file-text", "Read"};
+        return {"file-text", i18n::tr("terminal.agent.verb-read")};
       }
       if (kind == "search") {
-        return {"search", "Search"};
+        return {"search", i18n::tr("terminal.agent.verb-search")};
       }
       if (kind == "edit" || kind == "delete" || kind == "move") {
-        return {"pencil", kind == "edit" ? "Edit" : kind == "delete" ? "Delete" : "Move"};
+        return {"pencil", kind == "edit" ? i18n::tr("terminal.agent.verb-edit") : kind == "delete" ? i18n::tr("terminal.agent.verb-delete") : i18n::tr("terminal.agent.verb-move")};
       }
       if (kind == "execute") {
-        return {"terminal", "Run"};
+        return {"terminal", i18n::tr("terminal.agent.verb-run")};
       }
       if (kind == "fetch") {
-        return {"world", "Fetch"};
+        return {"world", i18n::tr("terminal.agent.verb-fetch")};
       }
       if (kind == "think") {
-        return {"bulb", "Think"};
+        return {"bulb", i18n::tr("terminal.agent.verb-think")};
       }
-      return {"sparkles", "Tool"};
+      return {"sparkles", i18n::tr("terminal.agent.verb-tool")};
     }
 
     // The first hunk of a whole-file edit: the changed middle after the common leading and trailing lines.
@@ -216,9 +217,9 @@ namespace term {
     std::string durationText(const agent::Action& action) {
       const double seconds = std::chrono::duration<double>(action.ended - action.started).count();
       if (seconds < 10.0) {
-        return std::format("{:.1f} s", std::max(0.0, seconds));
+        return i18n::tr("terminal.agent.seconds-fraction", "count", std::format("{:.1f}", std::max(0.0, seconds)));
       }
-      return seconds < 60.0 ? std::format("{} s", static_cast<int>(seconds))
+      return seconds < 60.0 ? i18n::tr("terminal.agent.seconds", "count", static_cast<int>(seconds))
                             : clockText(std::chrono::seconds(static_cast<std::int64_t>(seconds)));
     }
 
@@ -381,7 +382,7 @@ namespace term {
           row->addChild(text(std::format("\u2212{}", removed), Tokens::typeFootnote, ColorRole::TermRed));
         }
         if (action.diffs.size() > 1) {
-          row->addChild(text(std::format("\u00b7 {} hunks", action.diffs.size()), Tokens::typeFootnote, ColorRole::Label2));
+          row->addChild(text(i18n::tr("terminal.agent.hunks", "count", action.diffs.size()), Tokens::typeFootnote, ColorRole::Label2));
         }
         return row;
       }
@@ -417,15 +418,28 @@ namespace term {
       }
     };
 
-    std::string optionWord(const agent::Request& request) {
+    enum class Answer : std::uint8_t { None, AllowedOnce, AlwaysAllowed, Rejected, Cancelled };
+
+    Answer answerOf(const agent::Request& request) {
       if (!request.answer) {
-        return {};
+        return Answer::None;
       }
       const auto it = std::ranges::find(request.options, *request.answer, &agent::Option::id);
       if (it == request.options.end()) {
-        return *request.answer;
+        return Answer::Cancelled; // the answer is an option id or "cancelled"
       }
-      return it->kind == "allow_once" ? "allowed once" : it->kind == "allow_always" ? "always allowed" : "rejected";
+      return it->kind == "allow_once" ? Answer::AllowedOnce : it->kind == "allow_always" ? Answer::AlwaysAllowed : Answer::Rejected;
+    }
+
+    std::string answerWord(Answer answer) {
+      switch (answer) {
+      case Answer::None: return {};
+      case Answer::AllowedOnce: return i18n::tr("terminal.agent.allowed-once");
+      case Answer::AlwaysAllowed: return i18n::tr("terminal.agent.always-allowed");
+      case Answer::Rejected: return i18n::tr("terminal.agent.rejected");
+      case Answer::Cancelled: return i18n::tr("terminal.agent.cancelled");
+      }
+      return {};
     }
 
   } // namespace
@@ -440,7 +454,7 @@ namespace term {
     std::string planCount(const std::vector<agent::PlanEntry>& plan) {
       const auto done = std::ranges::count(plan, std::string("completed"), &agent::PlanEntry::status);
       const bool running = std::ranges::contains(plan, std::string("in_progress"), &agent::PlanEntry::status);
-      return std::format("{} of {}", done + (running ? 1 : 0), plan.size());
+      return i18n::tr("terminal.agent.plan-progress", i18n::tr("terminal.agent.row-done"), done + (running ? 1 : 0), "total", plan.size());
     }
 
     // The title band: the status pill never shrinks; the agent pill hides first, then the plan pill reads "N of M"
@@ -513,19 +527,19 @@ namespace term {
       return " \u00b7 " + clockText(std::chrono::duration_cast<std::chrono::seconds>(end - turn->started));
     };
     switch (model->rowStatus()) {
-      case agent::RowStatus::Starting: return "starting";
-      case agent::RowStatus::Ready: return "ready";
+      case agent::RowStatus::Starting: return i18n::tr("terminal.agent.row-starting");
+      case agent::RowStatus::Ready: return i18n::tr("terminal.agent.row-ready");
       case agent::RowStatus::Working:
-        return (thinking()                                      ? "thinking"
-                : streamingAt(model->entries().size() - 1) ? "replying"
-                                                                : "working")
+        return (thinking()                                      ? i18n::tr("terminal.agent.thinking")
+                : streamingAt(model->entries().size() - 1) ? i18n::tr("terminal.agent.replying")
+                                                                : i18n::tr("terminal.agent.working"))
                + clock(true);
-      case agent::RowStatus::NeedsPermission: return "needs you" + clock(true);
+      case agent::RowStatus::NeedsPermission: return i18n::tr("terminal.agent.row-needs-you") + clock(true);
       case agent::RowStatus::Done:
-      case agent::RowStatus::Declined: return "done" + clock(false);
+      case agent::RowStatus::Declined: return i18n::tr("terminal.agent.row-done") + clock(false);
       case agent::RowStatus::Limited:
-      case agent::RowStatus::Stopped: return "stopped" + clock(false);
-      case agent::RowStatus::Failed: return "agent stopped";
+      case agent::RowStatus::Stopped: return i18n::tr("terminal.agent.row-stopped") + clock(false);
+      case agent::RowStatus::Failed: return i18n::tr("terminal.agent.row-agent-stopped");
     }
     return {};
   }
@@ -569,7 +583,7 @@ namespace term {
     const auto& plan = model->plan();
     if (!plan.empty()) {
       const auto current = std::ranges::find(plan, std::string("in_progress"), &agent::PlanEntry::status);
-      std::string text = "Plan " + planCount(plan);
+      std::string text = i18n::tr("terminal.agent.plan-title", "progress", planCount(plan));
       if (current != plan.end()) {
         text += " \u00b7 " + current->content;
       }
@@ -660,10 +674,10 @@ namespace term {
     if (model == nullptr) {
       return list;
     }
-    // Mockup .planpop h2: "Plan" 600 13/18, the count 12/18 label_2 at the end, padding 6 8 8 (top on the 4 grid).
+    // Mockup .planpop h2: i18n::tr("terminal.agent.plan") 600 13/18, the count 12/18 label_2 at the end, padding 6 8 8 (top on the 4 grid).
     auto header = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::SpaceBetween});
     header->setPadding(Tokens::spaceP4 * s, Tokens::spaceP8 * s, Tokens::spaceP8 * s, Tokens::spaceP8 * s);
-    header->addChild(kit.text("Plan", Tokens::typeFootnote, ColorRole::Label1, FontWeight::SemiBold));
+    header->addChild(kit.text(i18n::tr("terminal.agent.plan"), Tokens::typeFootnote, ColorRole::Label1, FontWeight::SemiBold));
     header->addChild(kit.text(planCount(model->plan()), Tokens::typeCaption, ColorRole::Label2));
     list->addChild(std::move(header));
     for (const auto& step : model->plan()) {
@@ -707,7 +721,7 @@ namespace term {
       return {};
     }
     if (thinking()) {
-      return "thinking";
+      return i18n::tr("terminal.agent.thinking");
     }
     const auto& entries = model->entries();
     for (auto it = entries.rbegin(); it != entries.rend() && !std::holds_alternative<agent::Turn>(*it); ++it) {
@@ -715,7 +729,7 @@ namespace term {
         return std::string(verbFor(action->kind).word) + " \u00b7 " + actionTarget(*action, model->cwd());
       }
     }
-    return streamingAt(entries.size() - 1) ? "replying" : "working";
+    return streamingAt(entries.size() - 1) ? i18n::tr("terminal.agent.replying") : i18n::tr("terminal.agent.working");
   }
 
   // Working with the user's prompt as the last entry: the agent has not answered yet.
@@ -978,10 +992,10 @@ namespace term {
       const std::string agent = model->model().empty() ? agentName() : agentName() + " \u00b7 " + model->model();
       banner->addChild(kit.text(agent + " in " + model->cwd(), Tokens::typeFootnote, ColorRole::Label1, FontWeight::SemiBold));
       if (const agent::Session::Mode* mode = model->currentMode(); mode != nullptr) {
-        banner->addChild(kit.text(std::format("{} mode: {}.", mode->name, mode->description), Tokens::typeCaption,
+        banner->addChild(kit.text(i18n::tr("terminal.agent.mode-described", "name", mode->name, "description", mode->description), Tokens::typeCaption,
                                   ColorRole::Label2));
       } else if (!model->mode().empty()) {
-        banner->addChild(kit.text("Mode: " + model->mode(), Tokens::typeCaption, ColorRole::Label2));
+        banner->addChild(kit.text(i18n::tr("terminal.agent.mode-raw", "name", model->mode()), Tokens::typeCaption, ColorRole::Label2));
       }
       // An exact width: a Content-width row measures one line, then wraps taller at arrange.
       auto chips = ui::row({.align = FlexAlign::Center, .wrap = true, .gap = Tokens::spaceP8 * s,
@@ -1007,7 +1021,7 @@ namespace term {
         chips->addChild(std::move(chip));
       }
       if (model->modes().size() > 1) {
-        chips->addChild(kit.text("Shift+Tab changes the mode", Tokens::typeCaption, ColorRole::Label2));
+        chips->addChild(kit.text(i18n::tr("terminal.agent.mode-hint"), Tokens::typeCaption, ColorRole::Label2));
       }
       if (!chips->children().empty()) {
         banner->addChild(std::move(chips));
@@ -1080,7 +1094,7 @@ namespace term {
                 pinned->addChild(kit.well(lines(block.text), ColorRole::Label1, false, Kit::Overflow::Scroll));
                 const float size = Tokens::componentAgentCopyButton * s;
                 pinned->addChild(ui::button({.glyph = std::string("copy"), .glyphSize = Tokens::spaceP12 * s,
-                                             .variant = ButtonVariant::Ghost, .tooltip = std::string("Copy"),
+                                             .variant = ButtonVariant::Ghost, .tooltip = std::string(i18n::tr("terminal.agent.copy")),
                                              .radius = size / 2.0F, .width = size, .height = size,
                                              .onClick = [code = block.text] {
                                                if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
@@ -1107,7 +1121,7 @@ namespace term {
             }
             const bool created = e.kind == "edit" && !e.diffs.empty()
                                  && std::ranges::none_of(e.diffs, [](const agent::DiffHunk& d) { return d.oldText.has_value(); });
-            const Verb verb = created ? Verb{"file-plus", "Create"} : verbFor(e.kind);
+            const Verb verb = created ? Verb{"file-plus", i18n::tr("terminal.agent.verb-create")} : verbFor(e.kind);
             const bool failed = e.status == agent::ActionStatus::Failed;
             const bool muted = e.status == agent::ActionStatus::Cancelled || e.status == agent::ActionStatus::Rejected;
             auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .width = width - 2.0F * inset, .height = Tokens::componentAgentActionRow * s});
@@ -1129,14 +1143,14 @@ namespace term {
             // An answered request folds into its row: "allowed once · 41 s".
             std::string allowed;
             if (const agent::Request* asked = requestFor(e); asked != nullptr && asked->answer) {
-              if (std::string word = optionWord(*asked); word != "rejected" && word != "cancelled") {
-                allowed = std::move(word) + " \u00b7 ";
+              if (const Answer answer = answerOf(*asked); answer == Answer::AllowedOnce || answer == Answer::AlwaysAllowed) {
+                allowed = answerWord(answer) + " \u00b7 ";
               }
             }
             std::string end;
             ColorRole endRole = ColorRole::Label2;
             switch (e.status) {
-              case agent::ActionStatus::Pending: end = "waiting for you"; break;
+              case agent::ActionStatus::Pending: end = i18n::tr("terminal.agent.waiting"); break;
               case agent::ActionStatus::Running: end = allowed + elapsedText(e.started); break;
               case agent::ActionStatus::Done:
                 end = allowed + doneCaption(e);
@@ -1152,9 +1166,9 @@ namespace term {
                 }
                 endRole = ColorRole::TermRed;
                 break;
-              case agent::ActionStatus::Rejected: end = "rejected"; break;
+              case agent::ActionStatus::Rejected: end = i18n::tr("terminal.agent.rejected"); break;
               case agent::ActionStatus::Cancelled:
-                end = "cancelled \u00b7 " + clockText(std::chrono::duration_cast<std::chrono::seconds>(e.ended - e.started));
+                end = i18n::tr("terminal.agent.cancelled") + " \u00b7 " + clockText(std::chrono::duration_cast<std::chrono::seconds>(e.ended - e.started));
                 break;
             }
             if (!end.empty()) {
@@ -1217,24 +1231,23 @@ namespace term {
             switch (e.kind) {
               case agent::StopKind::Refusal:
                 glyph = "ban";
-                sentence = agentName() + " declined this request.";
+                sentence = i18n::tr("terminal.agent.declined", "name", agentName());
                 break;
               case agent::StopKind::Cancelled:
                 glyph = "player-stop-filled";
-                sentence = "You stopped the turn.";
+                sentence = i18n::tr("terminal.agent.stopped-by-you");
                 for (std::size_t i = entry; i-- > 0;) {
                   if (const auto* turn = std::get_if<agent::Turn>(&entries[i])) {
                     if (turn->ended) {
-                      sentence = "You stopped the turn at "
-                                 + clockText(std::chrono::duration_cast<std::chrono::seconds>(*turn->ended - turn->started)) + ".";
+                      sentence = i18n::tr("terminal.agent.stopped-by-you-at", "time", clockText(std::chrono::duration_cast<std::chrono::seconds>(*turn->ended - turn->started)));
                     }
                     break;
                   }
                 }
                 break;
-              case agent::StopKind::MaxTokens: sentence = "The reply reached its token limit."; break;
-              case agent::StopKind::MaxTurns: sentence = "The turn reached its request limit."; break;
-              case agent::StopKind::Failed: sentence = cause.empty() ? agentName() + " stopped." : agentName() + " stopped: " + cause; break;
+              case agent::StopKind::MaxTokens: sentence = i18n::tr("terminal.agent.token-limit"); break;
+              case agent::StopKind::MaxTurns: sentence = i18n::tr("terminal.agent.request-limit"); break;
+              case agent::StopKind::Failed: sentence = cause.empty() ? i18n::tr("terminal.agent.stopped", "name", agentName()) : i18n::tr("terminal.agent.stopped-with-cause", "name", agentName(), "cause", cause); break;
             }
             auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP8 * s});
             row->setPadding(Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s, indent);
@@ -1251,7 +1264,7 @@ namespace term {
                                    .height = Tokens::componentButtonHeightS * s,
                                    .onClick = std::move(click)});
               };
-              row->addChild(small("Restart", [this] {
+              row->addChild(small(i18n::tr("terminal.agent.restart"), [this] {
                 if (agent::Session* model = m_host.session(m_key); model != nullptr) {
                   model->restarting();
                   m_host.flush(m_key);
@@ -1259,7 +1272,7 @@ namespace term {
                 }
               }));
               if (!log.empty()) {
-                row->addChild(small("Copy log", [log] {
+                row->addChild(small(i18n::tr("terminal.agent.copy-log"), [log] {
                   if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
                     clipboard->setClipboardText(log);
                   }
@@ -1295,10 +1308,10 @@ namespace term {
       }
     }
     const std::string kind = action != nullptr ? action->kind : std::string();
-    const std::string title = kind == "execute" ? "Run a command"
-                              : kind == "edit"  ? "Edit a file"
+    const std::string title = kind == "execute" ? i18n::tr("terminal.agent.run-command")
+                              : kind == "edit"  ? i18n::tr("terminal.agent.edit-file")
                               : action != nullptr && !action->title.empty() ? action->title
-                                                                            : std::string("Use a tool");
+                                                                            : std::string(i18n::tr("terminal.agent.use-tool"));
     const auto& pending = model.pending();
     const auto at = std::ranges::find(pending, entry);
     if (at == pending.end() && action != nullptr) {
@@ -1311,7 +1324,7 @@ namespace term {
       auto what = kit.text(title, Tokens::typeFootnote, ColorRole::Label2);
       what->setFlexGrow(1.0F);
       row->addChild(std::move(what));
-      row->addChild(kit.text(optionWord(request), Tokens::typeFootnote, ColorRole::Label2));
+      row->addChild(kit.text(answerWord(answerOf(request)), Tokens::typeFootnote, ColorRole::Label2));
       return row;
     }
     const bool front = at == pending.begin();
@@ -1327,7 +1340,7 @@ namespace term {
     auto heading = kit.text(title, Tokens::typeFootnote, ColorRole::Label1, FontWeight::SemiBold);
     heading->setFlexGrow(1.0F);
     header->addChild(std::move(heading));
-    header->addChild(kit.text(std::format("{} asks · {} of {}", agentName(), (at - pending.begin()) + 1, pending.size()),
+    header->addChild(kit.text(i18n::tr("terminal.agent.asks", "name", agentName(), "index", (at - pending.begin()) + 1, "total", pending.size()),
                               Tokens::typeCaption, ColorRole::Label2));
     card->addChild(std::move(header));
     if (action != nullptr && kind == "execute" && !action->command.empty()) {
@@ -1350,7 +1363,7 @@ namespace term {
       name->setFlexGrow(1.0F);
       bar->addChild(std::move(name));
       bar->addChild(kit.counts(*action));
-      auto open = kit.text("Open", Tokens::typeFootnote, ColorRole::AccentText);
+      auto open = kit.text(i18n::tr("terminal.agent.open"), Tokens::typeFootnote, ColorRole::AccentText);
       open->setCursorShape(::CursorShape::Pointer);
       open->setOnClick([this, path](const InputArea::PointerData&) {
         if (m_openUri) {
@@ -1364,8 +1377,8 @@ namespace term {
       hunk->setRadii(Radii{0.0F, 0.0F, r, r});
       block->addChild(std::move(hunk));
       card->addChild(std::move(block));
-      card->addChild(kit.text(action->diffs.size() > 1 ? std::format("Shows the first of {} hunks \u00b7 the full diff opens in the editor", action->diffs.size())
-                                                        : "Shows the first hunk \u00b7 the full diff opens in the editor",
+      card->addChild(kit.text(action->diffs.size() > 1 ? i18n::tr("terminal.agent.first-of-hunks", "count", action->diffs.size())
+                                                        : i18n::tr("terminal.agent.first-hunk"),
                               Tokens::typeCaption, ColorRole::Label2));
     } else if (action != nullptr && !action->paths.empty()) {
       card->addChild(kit.code(action->paths.front(), ColorRole::Label1, 1));
@@ -1400,7 +1413,7 @@ namespace term {
       }
       card->addChild(std::move(options));
     } else {
-      card->addChild(kit.text("Answer the request above first", Tokens::typeCaption, ColorRole::Label2));
+      card->addChild(kit.text(i18n::tr("terminal.agent.answer-first"), Tokens::typeCaption, ColorRole::Label2));
     }
     auto outer = ui::column({.align = FlexAlign::Stretch});
     outer->setPadding(Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s, Tokens::spaceP16 * s);
@@ -1465,7 +1478,7 @@ namespace term {
                                    .glyph = std::string("arrow-up"),
                                    .glyphSize = Tokens::sizeSymbol * s,
                                    .variant = ButtonVariant::Primary,
-                                   .tooltip = std::string("Send  Enter"),
+                                   .tooltip = std::string(i18n::tr("terminal.agent.send")),
                                    .radius = round / 2.0F,
                                    .width = round,
                                    .height = round,
@@ -1474,7 +1487,7 @@ namespace term {
                                    .glyph = std::string("player-stop-filled"),
                                    .glyphSize = Tokens::sizeSymbol * s,
                                    .variant = ButtonVariant::Outline,
-                                   .tooltip = std::string("Stop  Esc"),
+                                   .tooltip = std::string(i18n::tr("terminal.agent.stop")),
                                    .radius = round / 2.0F,
                                    .width = round,
                                    .height = round,
@@ -1614,7 +1627,7 @@ namespace term {
     if (show) {
       const float s = m_scale;
       const Kit kit{s};
-      std::string text = std::format("{} new below", fresh);
+      std::string text = i18n::tr("terminal.agent.new-below", "count", fresh);
       std::string command;
       if (asks) {
         const auto& request = std::get<agent::Request>(model->entries()[model->pending().front()]);
@@ -1624,7 +1637,7 @@ namespace term {
             target = !action->command.empty() ? action->command : action->title;
           }
         }
-        text = agentName() + (target.empty() ? " asks you" : " asks to run");
+        text = target.empty() ? i18n::tr("terminal.agent.asks-you", "name", agentName()) : i18n::tr("terminal.agent.asks-to-run", "name", agentName());
         command = target;
       }
       while (!m_jump->children().empty()) {
@@ -1762,22 +1775,22 @@ namespace term {
     const bool running = phase == agent::Phase::Working || phase == agent::Phase::Cancelling;
     // Scrolled up, the jump pill names the request and the card sits below the view.
     const bool below = m_jump != nullptr && m_jump->visible();
-    m_input->setPlaceholder(!model->pending().empty()    ? (below ? "1–4 answers the request below" : "1–4 answers the request above")
-                            : running                    ? "Queue a follow-up · Esc stops"
-                            : phase == agent::Phase::Starting ? "Starting " + agentName() + "…"
-                            : phase == agent::Phase::Failed   ? "Reply to restart " + agentName() + " in this session"
-                            : model->rowStatus() == agent::RowStatus::Ready ? "Ask " + agentName() + ", or / for commands"
-                                                                            : std::string("Reply, or / for commands"));
+    m_input->setPlaceholder(!model->pending().empty()    ? (below ? i18n::tr("terminal.agent.answer-below") : i18n::tr("terminal.agent.answer-above"))
+                            : running                    ? i18n::tr("terminal.agent.queue")
+                            : phase == agent::Phase::Starting ? i18n::tr("terminal.agent.starting-placeholder", "name", agentName())
+                            : phase == agent::Phase::Failed   ? i18n::tr("terminal.agent.restart-placeholder", "name", agentName())
+                            : model->rowStatus() == agent::RowStatus::Ready ? i18n::tr("terminal.agent.ask-placeholder", "name", agentName())
+                                                                            : std::string(i18n::tr("terminal.agent.reply-placeholder")));
     const agent::Session::Mode* mode = model->currentMode();
     std::string meta = mode != nullptr ? mode->name : model->mode();
     bool full = false;
     if (model->contextSize() > 0) {
       const auto percent = model->contextUsed() * 100 / model->contextSize();
       full = percent >= 90;
-      meta += std::format("{}{} % context", meta.empty() ? "" : " · ", percent);
+      meta += i18n::tr("terminal.agent.context", "separator", meta.empty() ? "" : " · ", "percent", percent);
     }
     if (model->compacting()) {
-      meta += meta.empty() ? "compacting" : " · compacting";
+      meta += (meta.empty() ? std::string() : std::string(" · ")) + i18n::tr("terminal.agent.compacting");
     }
     m_meta->setText(meta);
     m_meta->setColor(colorSpecFromRole(full ? ColorRole::TermRed : ColorRole::Label2));

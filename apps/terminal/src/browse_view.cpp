@@ -1,5 +1,6 @@
 #include "browse_view.h"
 
+#include "i18n/i18n.h"
 #include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/files/directory_watcher.h"
@@ -40,11 +41,11 @@ namespace term {
     std::string statusText(FileModelView& view) {
       switch (view.model().status()) {
       case FileModel::Status::Loading:
-        return "Loading…";
+        return i18n::tr("terminal.browse.loading");
       case FileModel::Status::Missing:
-        return "This folder no longer exists";
+        return i18n::tr("terminal.browse.missing");
       case FileModel::Status::Denied:
-        return "No access to this folder";
+        return i18n::tr("terminal.browse.denied");
       case FileModel::Status::Error:
         return view.model().error();
       case FileModel::Status::Ready:
@@ -369,7 +370,7 @@ namespace term {
     }
     std::string status = m_current != nullptr ? statusText(*m_current) : std::string();
     if (status.empty() && m_rows.empty()) {
-      status = m_model.filter().empty() ? "Empty folder" : "No match";
+      status = m_model.filter().empty() ? i18n::tr("terminal.browse.empty") : i18n::tr("terminal.browse.no-match");
     }
     fillColumn(*m_folderColumn, m_rows, m_rows.empty() ? kNone : m_model.cursor(), true, m_offset, status);
     fillPreview();
@@ -428,7 +429,7 @@ namespace term {
     const float s = m_scale;
     const auto matches = m_model.jumpMatches();
     if (matches.empty()) {
-      m_folderColumn->addChild(ui::label({.text = std::string("No visited folder matches"),
+      m_folderColumn->addChild(ui::label({.text = std::string(i18n::tr("terminal.browse.no-visited")),
                                           .fontSize = Tokens::typeBody.size * s,
                                           .color = colorSpecFromRole(ColorRole::Label3)}));
       return;
@@ -526,7 +527,7 @@ namespace term {
     if (m_child != nullptr) {
       std::string status = statusText(*m_child);
       if (status.empty() && m_child->rows().empty()) {
-        status = "Empty folder";
+        status = i18n::tr("terminal.browse.empty");
       }
       fillColumn(*m_previewColumn, m_child->rows(), kNone, false, m_childOffset, status);
       return;
@@ -571,25 +572,25 @@ namespace term {
     ColorRole role = ColorRole::Label2;
     const browse::Input& input = m_model.input();
     if (const auto* filter = std::get_if<browse::FilterInput>(&input)) {
-      text = "Filter: " + filter->text + "▏";
+      text = i18n::tr("terminal.browse.filter", "text", filter->text);
       role = ColorRole::Label1;
     } else if (const auto* rename = std::get_if<browse::RenameInput>(&input)) {
-      text = "Rename to: " + rename->text + "▏";
+      text = i18n::tr("terminal.browse.rename-to", "text", rename->text);
       role = ColorRole::Label1;
     } else if (const auto* jump = std::get_if<browse::JumpInput>(&input)) {
-      text = "Jump to: " + jump->text + "▏   ↑↓ pick · Enter go · Esc back";
+      text = i18n::tr("terminal.browse.jump-to", "text", jump->text);
       role = ColorRole::Label1;
     } else if (std::holds_alternative<browse::BulkRename>(input)) {
-      text = m_hint.empty() ? "One name per line · Ctrl+Enter renames · Esc cancels" : m_hint;
+      text = m_hint.empty() ? i18n::tr("terminal.browse.bulk-rename") : m_hint;
       role = m_hint.empty() ? ColorRole::Label2 : ColorRole::DangerText;
     } else if (const auto* trash = std::get_if<browse::ConfirmTrash>(&input)) {
-      text = "Move " + std::to_string(trash->paths.size()) + " to the Trash? Enter or y: yes; any other key: no";
+      text = i18n::tr("terminal.browse.confirm-trash", "count", trash->paths.size());
       role = ColorRole::DangerText;
     } else if (!m_hint.empty()) {
       text = m_hint;
       role = ColorRole::Label1;
     } else {
-      text = "q cd here · i insert · z jump · o Files · / filter · Space mark · y x p · r R rename · d trash";
+      text = i18n::tr("terminal.browse.keys");
     }
     m_footer->addChild(ui::label({.text = std::move(text),
                                   .fontSize = Tokens::typeFootnote.size * s,

@@ -1,5 +1,6 @@
 #include "terminal_window.h"
 
+#include "i18n/i18n.h"
 #include "agent_host.h"
 
 #include "core/sys/sys.h"
@@ -171,15 +172,15 @@ namespace term {
       banner->addChild(ui::glyph({.glyph = "alert-triangle",
                                   .glyphSize = Tokens::sizeSymbolInline * s,
                                   .color = colorSpecFromRole(ColorRole::DangerText)}));
-      banner->addChild(ui::label({.text = name + (invalid->error.line > 0 ? ", line " + std::to_string(invalid->error.line) : "") + ": "
-                                          + invalid->error.message + ". The last good settings stay in use.",
+      banner->addChild(ui::label({.text = i18n::tr(invalid->error.line > 0 ? "terminal.window.settings-error-line" : "terminal.window.settings-error",
+                                          "name", name, "line", invalid->error.line, "message", invalid->error.message),
                                   .fontSize = Tokens::typeFootnote.size * s,
                                   .color = colorSpecFromRole(ColorRole::Label1),
                                   .maxWidth = width - pad * 2.0F - (Tokens::sizeSymbolInline + Tokens::spaceP64 + Tokens::spaceP8 * 3.0F) * s,
                                   .maxLines = 1,
                                   .ellipsize = TextEllipsize::End,
                                   .flexGrow = 1.0F}));
-      banner->addChild(ui::button({.text = "Show file",
+      banner->addChild(ui::button({.text = i18n::tr("terminal.window.show-file"),
                                    .fontSize = Tokens::typeFootnote.size * s,
                                    .variant = ButtonVariant::Ghost,
                                    .radius = Style::scaledRadiusSm(s),
@@ -202,7 +203,7 @@ namespace term {
       } else {
         top->addChild(ui::searchCapsule({
             .out = &m_search,
-            .placeholder = "Sessions",
+            .placeholder = i18n::tr("terminal.sidebar.sessions"),
             .scale = s,
             .value = m_filter,
             .flexGrow = 1.0F,
@@ -220,7 +221,7 @@ namespace term {
       }
       // A click opens a shell session; a right-click offers the other kinds.
       top->addChild(ui::button({.out = &m_newButton, .glyph = std::string("plus"), .glyphSize = Tokens::sizeSymbol * s,
-                                .variant = ButtonVariant::Ghost, .tooltip = std::string("New session"),
+                                .variant = ButtonVariant::Ghost, .tooltip = std::string(i18n::tr("terminal.session.new")),
                                 .radius = button / 2.0F, .height = button,
                                 .onClick = [this] { openSession(NewShell{}); }}));
       m_newButton->setOnRightClick([this] { openNewMenu(); });
@@ -281,7 +282,7 @@ namespace term {
         bottom->addChild(std::move(track));
       }
       bottom->addChild(ui::button({.out = &m_prefsButton, .glyph = std::string("settings"), .glyphSize = Tokens::sizeSymbol * s,
-                                   .variant = ButtonVariant::Ghost, .tooltip = std::string("Preferences"),
+                                   .variant = ButtonVariant::Ghost, .tooltip = std::string(i18n::tr("terminal.window.preferences")),
                                    .radius = button / 2.0F, .width = button, .height = button,
                                    .onClick = [this] { m_preferences(m_window.activationToken()); }}));
       fillFootBar(renderer);
@@ -303,7 +304,7 @@ namespace term {
       auto field = ui::row({.align = FlexAlign::Center, .maxWidth = Tokens::componentTerminalFindWidth * s, .flexGrow = 1.0F});
       field->addChild(ui::searchCapsule({
           .out = &m_findInput,
-          .placeholder = "Find",
+          .placeholder = i18n::tr("terminal.find.title"),
           .scale = s,
           .value = m_findQuery,
           .flexGrow = 1.0F,
@@ -345,33 +346,33 @@ namespace term {
           },
       }));
       bar->addChild(std::move(field));
-      const auto toggle = [&](const char* glyph, const char* tooltip, bool on, Button** out, bool regex) {
+      const auto toggle = [&](const char* glyph, const std::string& tooltip, bool on, Button** out, bool regex) {
         return ui::button({.out = out, .glyph = std::string(glyph), .glyphSize = Tokens::spaceP12 * s, .controlHeight = button, .selected = on,
                            .variant = ButtonVariant::Ghost, .tooltip = std::string(tooltip),
                            .radius = button / 2.0F, .width = button, .height = button,
                            .onClick = [this, regex] { toggleFindOption(regex); }});
       };
-      bar->addChild(toggle("letter-case", "Match case  Alt+C", m_findOptions.matchCase, &m_findToggles[0], false));
-      bar->addChild(toggle("regex", "Regular expression  Alt+R", m_findOptions.regex, &m_findToggles[1], true));
+      bar->addChild(toggle("letter-case", i18n::tr("terminal.find.match-case"), m_findOptions.matchCase, &m_findToggles[0], false));
+      bar->addChild(toggle("regex", i18n::tr("terminal.find.regex"), m_findOptions.regex, &m_findToggles[1], true));
       bar->addChild(ui::label({.out = &m_findCount, .fontSize = Tokens::typeFootnote.size * s,
                                .fontFeatures = std::string("tnum"), .color = colorSpecFromRole(ColorRole::Label2),
                                .maxLines = 1}));
-      const auto round = [&](const char* glyph, const char* tooltip, Button** out, std::function<void()> onClick) {
+      const auto round = [&](const char* glyph, const std::string& tooltip, Button** out, std::function<void()> onClick) {
         return ui::button({.out = out, .glyph = std::string(glyph), .glyphSize = Tokens::spaceP12 * s, .controlHeight = button,
                            .variant = ButtonVariant::Ghost, .tooltip = std::string(tooltip), .radius = button / 2.0F,
                            .width = button, .height = button, .onClick = std::move(onClick)});
       };
-      bar->addChild(round("chevron-up", "Previous match  Shift+Enter", &m_findSteps[0], [this] {
+      bar->addChild(round("chevron-up", i18n::tr("terminal.find.previous"), &m_findSteps[0], [this] {
         if (TerminalView* view = shownTerminal(); view != nullptr) {
           view->findStep(false);
         }
       }));
-      bar->addChild(round("chevron-down", "Next match  Enter", &m_findSteps[1], [this] {
+      bar->addChild(round("chevron-down", i18n::tr("terminal.find.next"), &m_findSteps[1], [this] {
         if (TerminalView* view = shownTerminal(); view != nullptr) {
           view->findStep(true);
         }
       }));
-      bar->addChild(round("x", "Close  Escape", nullptr, [this] { closeFind(); }));
+      bar->addChild(round("x", i18n::tr("terminal.find.close"), nullptr, [this] { closeFind(); }));
       m_findBar = bar.get();
       m_findBar->setVisible(m_findOpen);
       m_findBar->setParticipatesInLayout(m_findOpen);
@@ -737,7 +738,7 @@ namespace term {
     while (!m_footBar->children().empty()) m_footBar->removeChild(m_footBar->children().back().get());
     m_footTrack->setVisible(!m_shownBar.empty());
     const auto here = std::ranges::find(m_shownBar, true, &workspace_bar::Item::here);
-    if (m_search != nullptr) m_search->setPlaceholder(here != m_shownBar.end() ? here->name : std::string("Sessions"));
+    if (m_search != nullptr) m_search->setPlaceholder(here != m_shownBar.end() ? here->name : std::string(i18n::tr("terminal.sidebar.sessions")));
     if (here == m_shownBar.end()) return;
     const float s = m_window.uiScale();
     const float item = Tokens::sizeControlM * s;
@@ -795,7 +796,7 @@ namespace term {
     }
     m_footBar->addChild(ui::box({.flexGrow = 1.0F}));
     m_footBar->addChild(ui::button({.glyph = std::string("plus"), .glyphSize = symbol, .customPalette = palette(ColorRole::Label2, ColorRole::Fill2),
-                                    .tooltip = std::string("New Window"), .radius = item / 2.0F, .width = item,
+                                    .tooltip = std::string(i18n::tr("terminal.sidebar.new-window")), .radius = item / 2.0F, .width = item,
                                     .height = item, .onClick = [this] { if (m_addWorkspace) m_addWorkspace(); }}));
   }
 
@@ -1153,9 +1154,9 @@ namespace term {
     row->setOnDrag([this, id](StatusRow::DragPhase phase, float x, float y) { rowDrag(id, phase, x, y); });
     std::vector<StatusRow::Action> actions;
     if (m_sessions.splitOf(id) != nullptr) {
-      actions.push_back({.glyph = "arrow-up-right", .tooltip = "Leave split", .onClick = [this, id] { apply(session_event::Leave{id}); }});
+      actions.push_back({.glyph = "arrow-up-right", .tooltip = i18n::tr("terminal.session.leave-split"), .onClick = [this, id] { apply(session_event::Leave{id}); }});
     }
-    actions.push_back({.glyph = "close", .tooltip = "Close", .onClick = [this, id] { askClose({id}); }});
+    actions.push_back({.glyph = "close", .tooltip = i18n::tr("terminal.common.close"), .onClick = [this, id] { askClose({id}); }});
     row->setActions(std::move(actions));
     return row;
   }
@@ -1193,7 +1194,7 @@ namespace term {
       return;
     }
     const Keybindings& keys = m_settings.settings().keys;
-    const auto entry = [&keys](Action action, const char* label, bool enabled = true) {
+    const auto entry = [&keys](Action action, const std::string& label, bool enabled = true) {
       return ContextMenuControlEntry{.id = static_cast<std::int32_t>(action), .label = label, .shortcut = keys.label(action),
                                      .enabled = enabled};
     };
@@ -1203,18 +1204,18 @@ namespace term {
     std::optional<std::string> link = view->linkUnder(sceneX, sceneY);
     std::vector<ContextMenuControlEntry> entries;
     if (link) {
-      entries.push_back({.id = kOpenLink, .label = "Open Link"});
-      entries.push_back({.id = kCopyLink, .label = "Copy Link"});
+      entries.push_back({.id = kOpenLink, .label = i18n::tr("terminal.menu.open-link")});
+      entries.push_back({.id = kCopyLink, .label = i18n::tr("terminal.menu.copy-link")});
       entries.push_back({.separator = true});
     }
     for (ContextMenuControlEntry& item :
-         std::vector<ContextMenuControlEntry>{entry(Action::Copy, "Copy", view->hasSelection()), entry(Action::Paste, "Paste"),
-                                              entry(Action::SelectAll, "Select All"), {.separator = true},
-                                              entry(Action::SplitRight, "Split right"), entry(Action::SplitDown, "Split down"),
-                                              {.separator = true}, entry(Action::Find, "Find"),
-                                              entry(Action::ClearScrollback, "Clear Scrollback"),
-                                              entry(Action::ResetTerminal, "Reset"), {.separator = true},
-                                              entry(Action::Preferences, "Preferences…")}) {
+         std::vector<ContextMenuControlEntry>{entry(Action::Copy, i18n::tr("terminal.menu.copy"), view->hasSelection()), entry(Action::Paste, i18n::tr("terminal.menu.paste")),
+                                              entry(Action::SelectAll, i18n::tr("terminal.menu.select-all")), {.separator = true},
+                                              entry(Action::SplitRight, i18n::tr("terminal.menu.split-right")), entry(Action::SplitDown, i18n::tr("terminal.menu.split-down")),
+                                              {.separator = true}, entry(Action::Find, i18n::tr("terminal.find.title")),
+                                              entry(Action::ClearScrollback, i18n::tr("terminal.menu.clear-scrollback")),
+                                              entry(Action::ResetTerminal, i18n::tr("terminal.menu.reset")), {.separator = true},
+                                              entry(Action::Preferences, i18n::tr("terminal.menu.preferences"))}) {
       entries.push_back(std::move(item));
     }
     m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id, link = std::move(link)](std::int32_t item) {
@@ -1244,23 +1245,23 @@ namespace term {
     const bool others = m_sessions.sessions().size() > 1;
     const bool member = m_sessions.splitOf(id) != nullptr;
     const bool canSplit = canJoinShown(id);
-    std::vector<ContextMenuControlEntry> entries{{.id = kSplit, .label = "Split with current", .enabled = canSplit}};
+    std::vector<ContextMenuControlEntry> entries{{.id = kSplit, .label = i18n::tr("terminal.session.split-with-current"), .enabled = canSplit}};
     if (member) {
-      entries.push_back({.id = kLeave, .label = "Leave split"});
+      entries.push_back({.id = kLeave, .label = i18n::tr("terminal.session.leave-split")});
     }
-    entries.push_back({.id = kRename, .label = "Rename"});
-    entries.push_back({.id = kDuplicate, .label = "Duplicate"});
-    entries.push_back({.id = kMoveToWindow, .label = "Move to new window", .enabled = others});
+    entries.push_back({.id = kRename, .label = i18n::tr("terminal.session.rename")});
+    entries.push_back({.id = kDuplicate, .label = i18n::tr("terminal.session.duplicate")});
+    entries.push_back({.id = kMoveToWindow, .label = i18n::tr("terminal.session.move-to-window"), .enabled = others});
     entries.push_back({.separator = true});
     const bool terminal = terminalOf(id) != nullptr;
-    entries.push_back({.id = kShowScrollback, .label = "Show scrollback", .shortcut = keys.label(Action::ShowScrollback), .enabled = terminal});
-    entries.push_back({.id = kSaveScrollback, .label = "Save scrollback…", .enabled = terminal});
+    entries.push_back({.id = kShowScrollback, .label = i18n::tr("terminal.session.show-scrollback"), .shortcut = keys.label(Action::ShowScrollback), .enabled = terminal});
+    entries.push_back({.id = kSaveScrollback, .label = i18n::tr("terminal.session.save-scrollback"), .enabled = terminal});
     entries.push_back({.separator = true});
-    entries.push_back({.id = kSecureEntry, .label = "Secure keyboard entry", .shortcut = keys.label(Action::SecureEntry),
+    entries.push_back({.id = kSecureEntry, .label = i18n::tr("terminal.session.secure-entry"), .shortcut = keys.label(Action::SecureEntry),
                        .checkmark = true, .toggleState = m_secureEntry ? 1 : 0});
     entries.push_back({.separator = true});
-    entries.push_back({.id = kCloseOthers, .label = "Close other sessions", .enabled = others});
-    entries.push_back({.id = kClose, .label = "Close", .shortcut = keys.label(Action::CloseSession), .danger = true});
+    entries.push_back({.id = kCloseOthers, .label = i18n::tr("terminal.session.close-others"), .enabled = others});
+    entries.push_back({.id = kClose, .label = i18n::tr("terminal.common.close"), .shortcut = keys.label(Action::CloseSession), .danger = true});
     m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id](std::int32_t item) {
                                switch (item) {
                                case kSplit: joinShown(id); break;
@@ -1406,12 +1407,12 @@ namespace term {
         [this, text, commit](float s) {
           auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
                                  .width = Tokens::componentTerminalFindWidth * s});
-          box->addChild(ui::label({.text = std::string("Rename session"),
+          box->addChild(ui::label({.text = std::string(i18n::tr("terminal.rename.title")),
                                    .fontSize = Tokens::typeTitle3.size * s,
                                    .fontWeight = FontWeight::SemiBold,
                                    .color = colorSpecFromRole(ColorRole::Label1)}));
           box->addChild(ui::input({.value = *text,
-                                   .placeholder = std::string("Automatic name"),
+                                   .placeholder = std::string(i18n::tr("terminal.rename.placeholder")),
                                    .onChange = [text](const std::string& value) { *text = value; },
                                    .onSubmit = [commit](const std::string&) { commit(); },
                                    .configure = [this](Input& field) {
@@ -1419,14 +1420,14 @@ namespace term {
                                      m_window.input().setFocus(field.inputArea());
                                    }}));
           auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
-          buttons->addChild(ui::button({.text = std::string("Cancel"),
+          buttons->addChild(ui::button({.text = std::string(i18n::tr("terminal.common.cancel")),
                                         .fontSize = Tokens::typeBody.size * s,
                                         .variant = ButtonVariant::Default,
                                         .onClick = [this] {
                                           m_window.dismissSheet();
                                           focusGrid();
                                         }}));
-          buttons->addChild(ui::button({.text = std::string("Rename"),
+          buttons->addChild(ui::button({.text = std::string(i18n::tr("terminal.session.rename")),
                                         .fontSize = Tokens::typeBody.size * s,
                                         .variant = ButtonVariant::Primary,
                                         .onClick = commit}));
@@ -1448,11 +1449,10 @@ namespace term {
         std::exchange(*answer, nullptr)(allow);
       }
     };
-    m_window.presentAlert({.title = "Allow clipboard access?",
-                           .body = "A program in this session wants to read the clipboard. Your choice lasts until the "
-                                   "session closes.",
-                           .buttons = {{.text = "Deny", .onClick = [choose] { choose(false); }},
-                                       {.text = "Allow", .variant = ButtonVariant::Primary,
+    m_window.presentAlert({.title = i18n::tr("terminal.clipboard.title"),
+                           .body = i18n::tr("terminal.clipboard.body"),
+                           .buttons = {{.text = i18n::tr("terminal.clipboard.deny"), .onClick = [choose] { choose(false); }},
+                                       {.text = i18n::tr("terminal.clipboard.allow"), .variant = ButtonVariant::Primary,
                                         .onClick = [choose] { choose(true); }}}},
                           [choose] { choose(false); });
   }
@@ -1473,13 +1473,13 @@ namespace term {
     }
     const bool one = ids.size() == 1;
     m_window.presentAlert(
-        {.title = window ? std::string("Close this window?")
-                  : one  ? std::string("Close this session?")
-                         : std::format("Close {} sessions?", ids.size()),
-         .body = running == 1 ? std::string("A command is still running. Closing stops it.")
-                              : std::format("Commands still run in {} sessions. Closing stops them.", running),
-         .buttons = {{.text = "Cancel", .onClick = [this] { m_window.dismissSheet(); }},
-                     {.text = "Close", .variant = ButtonVariant::Destructive,
+        {.title = window ? std::string(i18n::tr("terminal.close.window-title"))
+                  : one  ? std::string(i18n::tr("terminal.close.session-title"))
+                         : i18n::tr("terminal.close.sessions-title", "count", ids.size()),
+         .body = running == 1 ? std::string(i18n::tr("terminal.close.one-running"))
+                              : i18n::tr("terminal.close.many-running", "count", running),
+         .buttons = {{.text = i18n::tr("terminal.common.cancel"), .onClick = [this] { m_window.dismissSheet(); }},
+                     {.text = i18n::tr("terminal.common.close"), .variant = ButtonVariant::Destructive,
                       .onClick =
                           [this, ids, close] {
                             m_window.dismissSheet();
@@ -1492,12 +1492,12 @@ namespace term {
   void TerminalWindow::askPaste(const std::string& text, std::function<void()> paste) {
     const auto lines = std::ranges::count(text, '\n') + (text.ends_with('\n') ? 0 : 1);
     // Paste is the default, so Enter pastes; Tab reaches Cancel and Escape cancels.
-    m_window.presentAlert({.title = lines == 1 ? std::string("Paste and run this line?")
-                                               : std::format("Paste {} lines?", lines),
-                           .body = "The program does not guard pastes, so each line runs as a command.",
+    m_window.presentAlert({.title = lines == 1 ? std::string(i18n::tr("terminal.paste.title-one"))
+                                               : i18n::tr("terminal.paste.title-many", "count", lines),
+                           .body = i18n::tr("terminal.paste.body"),
                            .excerpt = text.substr(0, 400),
-                           .buttons = {{.text = "Cancel", .onClick = [this] { m_window.dismissSheet(); }},
-                                       {.text = "Paste", .variant = ButtonVariant::Destructive,
+                           .buttons = {{.text = i18n::tr("terminal.common.cancel"), .onClick = [this] { m_window.dismissSheet(); }},
+                                       {.text = i18n::tr("terminal.menu.paste"), .variant = ButtonVariant::Destructive,
                                         .onClick =
                                             [this, paste] {
                                               m_window.dismissSheet();
@@ -1518,7 +1518,7 @@ namespace term {
     } else if (session->kind == SessionKind::Agent) {
       ContentView* view = shownView();
       const agent::Session* model = view != nullptr && view->agent() != nullptr ? view->agent()->session() : nullptr;
-      m_window.setTitle(model != nullptr && !model->title().empty() ? model->title() : std::string("New session"));
+      m_window.setTitle(model != nullptr && !model->title().empty() ? model->title() : std::string(i18n::tr("terminal.session.new")));
     } else if (!session->cwd.empty()) {
       m_window.setTitle(session->cwd);
     }
@@ -1553,14 +1553,14 @@ namespace term {
     float y = 0.0F;
     Node::absolutePosition(m_newButton, x, y);
     const agent::Kind shortcutKind = defaultAgentKind();
-    std::vector<ContextMenuControlEntry> items{{.id = kShell, .label = "New session", .shortcut = keys.label(Action::NewSession), .glyph = "prompt"}};
+    std::vector<ContextMenuControlEntry> items{{.id = kShell, .label = i18n::tr("terminal.session.new"), .shortcut = keys.label(Action::NewSession), .glyph = "prompt"}};
     for (const agent::KindInfo& kind : agent::kinds()) {
       if (agent::installed(kind.kind) || kind.kind == shortcutKind) {
-        items.push_back({.id = kAgent + static_cast<std::int32_t>(kind.kind), .label = "New " + std::string(kind.name) + " session",
+        items.push_back({.id = kAgent + static_cast<std::int32_t>(kind.kind), .label = i18n::tr("terminal.session.new-agent", "name", kind.name),
                          .shortcut = kind.kind == shortcutKind ? keys.label(Action::NewAgent) : std::string(), .glyph = "robot"});
       }
     }
-    items.push_back({.id = kWindow, .label = "New window", .shortcut = keys.label(Action::NewWindow), .glyph = "app-window"});
+    items.push_back({.id = kWindow, .label = i18n::tr("terminal.window.new"), .shortcut = keys.label(Action::NewWindow), .glyph = "app-window"});
     m_window.openContextMenu(std::move(items),
                              x, y + m_newButton->height(),
                              [this, alive = std::weak_ptr<bool>(m_alive)](std::int32_t id) {
@@ -1930,9 +1930,9 @@ namespace term {
                          || action == Action::ResizeSplitUp || action == Action::ResizeSplitDown;
       std::string off;
       if (focus && !m_split.split()) {
-        off = "Not in a split";
+        off = i18n::tr("terminal.palette.not-in-split");
       } else if (action == Action::Copy && (shownTerminal() == nullptr || !shownTerminal()->hasSelection())) {
-        off = "No selection";
+        off = i18n::tr("terminal.palette.no-selection");
       }
       addAction(std::format("action:{}", info.name), std::string(info.label), std::move(caps), std::move(off), [this, action] {
                   if (TerminalView* view = shownTerminal(); view != nullptr && view->runAction(action)) {
@@ -1943,17 +1943,17 @@ namespace term {
     }
     const bool others = m_sessions.sessions().size() > 1;
     const bool canSplit = std::ranges::any_of(sidebarOrder(), [this](std::uint64_t id) { return canJoinShown(id); });
-    addAction("menu:split", "Split with…", {}, canSplit ? "" : "No session can join",
+    addAction("menu:split", i18n::tr("terminal.palette.split-with"), {}, canSplit ? "" : i18n::tr("terminal.palette.no-join"),
               [this] { openPalette(PaletteTarget::SplitWith); });
-    addAction("menu:leave", "Leave split", {}, m_sessions.splitOf(shown) != nullptr ? "" : "Not in a split",
+    addAction("menu:leave", i18n::tr("terminal.session.leave-split"), {}, m_sessions.splitOf(shown) != nullptr ? "" : i18n::tr("terminal.palette.not-in-split"),
               [this, shown] { apply(session_event::Leave{shown}); });
-    addAction("menu:rename", "Rename…", {}, "", [this, shown] { renameSession(shown); });
-    addAction("menu:duplicate", "Duplicate session", {}, "", [this, shown] { duplicateSession(shown); });
-    addAction("menu:move", "Move to new window", {}, others ? "" : "Only one session",
+    addAction("menu:rename", i18n::tr("terminal.palette.rename"), {}, "", [this, shown] { renameSession(shown); });
+    addAction("menu:duplicate", i18n::tr("terminal.palette.duplicate"), {}, "", [this, shown] { duplicateSession(shown); });
+    addAction("menu:move", i18n::tr("terminal.session.move-to-window"), {}, others ? "" : i18n::tr("terminal.palette.only-one"),
               [this, shown] { moveToNewWindow(shown); });
-    addAction("menu:save", "Save scrollback…", {}, terminalOf(shown) != nullptr ? "" : "Not a terminal",
+    addAction("menu:save", i18n::tr("terminal.session.save-scrollback"), {}, terminalOf(shown) != nullptr ? "" : i18n::tr("terminal.palette.not-terminal"),
               [this, shown] { saveScrollback(shown); });
-    addAction("menu:close-others", "Close other sessions", {}, others ? "" : "Only one session", [this, shown] {
+    addAction("menu:close-others", i18n::tr("terminal.session.close-others"), {}, others ? "" : i18n::tr("terminal.palette.only-one"), [this, shown] {
       std::vector<std::uint64_t> ids;
       for (const SessionInfo& session : m_sessions.sessions()) {
         if (session.id != shown) {
@@ -2180,8 +2180,7 @@ namespace term {
       open.ui->setFolders(std::move(folders));
     }
     if (view->remote()) {
-      open.ui->refuse("The shell runs on another host. Browse mode shows only this machine's folders, so it is off "
-                      "here. Press any key.");
+      open.ui->refuse(i18n::tr("terminal.browse.remote"));
     }
     m_browse = std::move(open);
     m_window.updateInPlace([&](Renderer& renderer) {
@@ -2250,7 +2249,7 @@ namespace term {
       }
     };
     const auto noActions = [&] {
-      open->ui->hint("File operations need the session bus");
+      open->ui->hint(i18n::tr("terminal.browse.needs-bus"));
     };
     if (const auto* cd = std::get_if<browse::effect::Cd>(&effect)) {
       if (shell != nullptr) {
@@ -2293,11 +2292,11 @@ namespace term {
       return;
     }
     m_findCount->setText(m_findQuery.empty()                    ? std::string()
-                         : error == FindError::InvalidPattern ? std::string("Invalid pattern")
-                         : error == FindError::TooComplex     ? std::string("Pattern too complex")
-                         : total == 0                         ? std::string("No matches")
-                         : current          ? std::format("{} of {}", *current, total)
-                                            : std::format("{} matches", total));
+                         : error == FindError::InvalidPattern ? std::string(i18n::tr("terminal.find.invalid"))
+                         : error == FindError::TooComplex     ? std::string(i18n::tr("terminal.find.too-complex"))
+                         : total == 0                         ? std::string(i18n::tr("terminal.find.none"))
+                         : current          ? i18n::tr("terminal.find.position", "current", *current, "total", total)
+                                            : i18n::tr("terminal.find.matches", "count", total));
     for (Button* step : m_findSteps) {
       if (step != nullptr) {
         step->setEnabled(total > 0);
@@ -2397,7 +2396,7 @@ namespace term {
                                         .glyph = std::string("dots"),
                                         .glyphSize = Tokens::spaceP12 * s,
                                         .customPalette = ghost,
-                                        .tooltip = std::string("Session menu"),
+                                        .tooltip = std::string(i18n::tr("terminal.session.menu")),
                                         .radius = Tokens::spaceP24 * s / 2.0F,
                                         .width = Tokens::spaceP24 * s,
                                         .height = Tokens::spaceP24 * s});

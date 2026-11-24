@@ -144,7 +144,7 @@ _app_src = files('src/app_main.cpp',
   'src/agent_host.cpp', 'src/agent_kind.cpp',
   'src/agent_view.cpp',
 ) + _platform_src
-_app_args = _warnings + _agentd_path + _helpers_arg
+_app_args = _warnings + _agentd_path + _helpers_arg + ['-DANDROMEDA_TRANSLATIONS_DIR="' + meson.current_source_dir() / 'translations' + '"']
 if is_macos
 executable('andromeda-terminal', _app_src, 'src/main.cpp',
   dependencies: [_core_dep, _agent_dep, _desk_app_dep, dependency('fontconfig')] + _platform_deps,
@@ -191,6 +191,7 @@ install_symlink('andromeda-ptyd.socket', pointing_to: '../andromeda-ptyd.socket'
 
 install_subdir(_desk_term_sp.get_variable('shell_integration_dir'), install_dir: get_option('datadir') / 'andromeda' / 'terminal')
 install_subdir('themes', install_dir: get_option('datadir') / 'andromeda' / 'terminal')
+install_data('translations/en.json', install_dir: get_option('datadir') / 'andromeda' / 'translations' / 'terminal')
 install_data('data/dev.andromeda.Terminal.desktop', install_dir: get_option('datadir') / 'applications')
 # DBusActivatable=true in the .desktop file: the bus starts the app by its id, then calls Activate or Open.
 configure_file(

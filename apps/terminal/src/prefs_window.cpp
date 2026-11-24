@@ -1,5 +1,6 @@
 #include "prefs_window.h"
 
+#include "i18n/i18n.h"
 #include "platform/input_events.h"
 #include "app/app_window.h"
 #include "core/input/cursor_shape.h"
@@ -33,12 +34,12 @@ namespace term {
   namespace {
     std::string_view materialName(WindowMaterial material) {
     switch (material) {
-    case WindowMaterial::Solid: return "Solid";
-    case WindowMaterial::Glass: return "Glass";
-    case WindowMaterial::GlassSidebar: return "Glass sidebar";
-    case WindowMaterial::GlassContent: return "Glass content";
+    case WindowMaterial::Solid: return i18n::tr("terminal.prefs.material-solid");
+    case WindowMaterial::Glass: return i18n::tr("terminal.prefs.material-glass");
+    case WindowMaterial::GlassSidebar: return i18n::tr("terminal.prefs.material-glass-sidebar");
+    case WindowMaterial::GlassContent: return i18n::tr("terminal.prefs.material-glass-content");
     }
-    return "Solid";
+    return i18n::tr("terminal.prefs.material-solid");
   }
 
   } // namespace
@@ -100,8 +101,6 @@ namespace term {
       slot->setMaxHeight(height);
       return slot;
     }
-
-    constexpr std::string_view kCursorHint = "Programs that choose their own cursor keep it";
 
     std::string lower(std::string_view text) {
       std::string out(text);
@@ -197,7 +196,7 @@ namespace term {
       auto column = ui::column({.align = FlexAlign::Stretch, .width = columnW, .height = height});
       auto search = ui::searchCapsule({
           .out = &m_search,
-          .placeholder = "Search preferences",
+          .placeholder = i18n::tr("terminal.prefs.search"),
           .height = Tokens::sizeControlL,
           .scale = s,
           .value = m_query,
@@ -474,17 +473,17 @@ namespace term {
     };
 
     out.push_back({.pane = Pane::Main,
-                   .title = "Theme",
-                   .rows = {{"Theme", "", [self](float s, float w) { return self->themeTiles(s, w); }, true}},
+                   .title = i18n::tr("terminal.prefs.theme"),
+                   .rows = {{i18n::tr("terminal.prefs.theme"), "", [self](float s, float w) { return self->themeTiles(s, w); }, true}},
                    .bare = true,
                    .themeErrors = true});
     out.push_back({.pane = Pane::Main,
-                   .title = "Window",
-                   .rows = {{"Window", "", [self](float s, float w) { return self->materialTiles(s, w); }, true}},
+                   .title = i18n::tr("terminal.prefs.window"),
+                   .rows = {{i18n::tr("terminal.prefs.window"), "", [self](float s, float w) { return self->materialTiles(s, w); }, true}},
                    .bare = true});
     // Text
     {
-      std::vector<std::string> fonts{"Default (" + std::string(Tokens::fontMono).substr(0, std::string(Tokens::fontMono).find(',')) + ")"};
+      std::vector<std::string> fonts{i18n::tr("terminal.prefs.font-default", "name", std::string(Tokens::fontMono).substr(0, std::string(Tokens::fontMono).find(',')))};
       std::size_t selected = 0;
       for (const auto& family : m_monoFonts) {
         if (family == now.font) {
@@ -497,51 +496,51 @@ namespace term {
         fonts.push_back(now.font); // set by hand to a font fontconfig does not list as mono
       }
       out.push_back({Pane::Main,
-                     "Text",
-                     {{"Font", "", select(fonts, selected, [fonts](Settings& x, std::size_t i) {
+                     i18n::tr("terminal.prefs.text"),
+                     {{i18n::tr("terminal.prefs.font"), "", select(fonts, selected, [fonts](Settings& x, std::size_t i) {
                          x.font = i == 0 ? std::string() : fonts[i];
                        })},
-                      {"Size", "",
+                      {i18n::tr("terminal.prefs.size"), "",
                        stepper(now.fontSize, SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax, " px",
                                [](Settings& x, int v) { x.fontSize = v; })},
-                      {"Bright bold", "Bold text in the first 8 colours takes their bright shade",
+                      {i18n::tr("terminal.prefs.bright-bold"), i18n::tr("terminal.prefs.bright-bold-hint"),
                        toggle(now.boldIsBright, [](Settings& x, bool on) { x.boldIsBright = on; })},
-                      {"Padding", "Extra space around the text",
+                      {i18n::tr("terminal.prefs.padding"), i18n::tr("terminal.prefs.padding-hint"),
                        stepper(now.padding, SettingsLimits::kPaddingMin, SettingsLimits::kPaddingMax, " px",
                                [](Settings& x, int v) { x.padding = v; })}}});
     }
 
     out.push_back({Pane::Main,
-                   "Cursor",
-                   {{"Shape", std::string(kCursorHint),
-                     segmented({"Block", "Bar", "Underline"}, static_cast<std::size_t>(now.cursor),
+                   i18n::tr("terminal.prefs.cursor"),
+                   {{i18n::tr("terminal.prefs.cursor-shape"), i18n::tr("terminal.prefs.cursor-hint"),
+                     segmented({i18n::tr("terminal.prefs.cursor-block"), i18n::tr("terminal.prefs.cursor-bar"), i18n::tr("terminal.prefs.cursor-underline")}, static_cast<std::size_t>(now.cursor),
                                [](Settings& x, std::size_t i) { x.cursor = static_cast<CursorShape>(i); })},
-                    {"Blink", "", toggle(now.cursorBlink, [](Settings& x, bool on) { x.cursorBlink = on; })},
-                    {"Focus outline", "An accent ring around the focused pane",
+                    {i18n::tr("terminal.prefs.blink"), "", toggle(now.cursorBlink, [](Settings& x, bool on) { x.cursorBlink = on; })},
+                    {i18n::tr("terminal.prefs.focus-outline"), i18n::tr("terminal.prefs.focus-outline-hint"),
                      toggle(now.focusRing, [](Settings& x, bool on) { x.focusRing = on; })}}});
 
     // Terminal
     out.push_back({Pane::Main,
-                   "Terminal",
-                   {{"Scrollback", "Kept per session; lowering it drops the oldest lines",
+                   i18n::tr("terminal.prefs.terminal"),
+                   {{i18n::tr("terminal.prefs.scrollback"), i18n::tr("terminal.prefs.scrollback-hint"),
                      stepper(now.scrollbackMb, SettingsLimits::kScrollbackMin, SettingsLimits::kScrollbackMax, " MB",
                              [](Settings& x, int v) { x.scrollbackMb = v; })},
-                    {"Unlimited scrollback", "Every line stays in memory; the size limit is off",
+                    {i18n::tr("terminal.prefs.unlimited-scrollback"), i18n::tr("terminal.prefs.unlimited-scrollback-hint"),
                      toggle(now.scrollback == Scrollback::Unlimited,
                             [](Settings& x, bool on) { x.scrollback = on ? Scrollback::Unlimited : Scrollback::Limited; })},
-                    {"Copy on select", "Selected text goes to the clipboard",
+                    {i18n::tr("terminal.prefs.copy-on-select"), i18n::tr("terminal.prefs.copy-on-select-hint"),
                      toggle(now.copyOnSelect, [](Settings& x, bool on) { x.copyOnSelect = on; })},
-                    {"Focus follows mouse", "A split pane takes focus when the pointer enters it",
+                    {i18n::tr("terminal.prefs.focus-follows-mouse"), i18n::tr("terminal.prefs.focus-follows-mouse-hint"),
                      toggle(now.focusFollowsMouse, [](Settings& x, bool on) { x.focusFollowsMouse = on; })},
-                    {"Scroll speed", "Rows per wheel step",
+                    {i18n::tr("terminal.prefs.scroll-speed"), i18n::tr("terminal.prefs.scroll-speed-hint"),
                      stepper(now.scrollRows, SettingsLimits::kScrollRowsMin, SettingsLimits::kScrollRowsMax, " rows",
                              [](Settings& x, int v) { x.scrollRows = v; })},
-                    {"Bell", "", segmented({"Flash", "Sound", "Off"}, static_cast<std::size_t>(now.bell),
+                    {i18n::tr("terminal.prefs.bell"), "", segmented({i18n::tr("terminal.prefs.bell-flash"), i18n::tr("terminal.prefs.bell-sound"), i18n::tr("terminal.prefs.bell-off")}, static_cast<std::size_t>(now.bell),
                                            [](Settings& x, std::size_t i) { x.bell = static_cast<Bell>(i); })}}});
 
     // Sessions
     {
-      std::vector<std::string> shells{"Login shell (" + defaultShell() + ")"};
+      std::vector<std::string> shells{i18n::tr("terminal.prefs.login-shell", "name", defaultShell())};
       std::size_t selected = 0;
       for (const auto& shell : m_shells) {
         if (shell == now.shell) {
@@ -554,26 +553,26 @@ namespace term {
         shells.push_back(now.shell);
       }
       out.push_back({Pane::Main,
-                     "Sessions",
-                     {{"Shell", "New sessions", select(shells, selected, [shells](Settings& x, std::size_t i) {
+                     i18n::tr("terminal.prefs.sessions"),
+                     {{i18n::tr("terminal.prefs.shell"), i18n::tr("terminal.prefs.shell-hint"), select(shells, selected, [shells](Settings& x, std::size_t i) {
                          x.shell = i == 0 ? std::string() : shells[i];
                        })},
-                      {"New sessions start in", "",
-                       segmented({"Home", "Current folder"}, static_cast<std::size_t>(now.startDir),
+                      {i18n::tr("terminal.prefs.start-dir"), "",
+                       segmented({i18n::tr("terminal.prefs.start-home"), i18n::tr("terminal.prefs.start-current")}, static_cast<std::size_t>(now.startDir),
                                  [](Settings& x, std::size_t i) { x.startDir = static_cast<StartDir>(i); })},
-                      {"Restore sessions", "After a restart: folders, names and splits",
+                      {i18n::tr("terminal.prefs.restore-sessions"), i18n::tr("terminal.prefs.restore-sessions-hint"),
                        toggle(now.restoreSessions, [](Settings& x, bool on) { x.restoreSessions = on; })}}});
     }
 
     // Notifications
     out.push_back({Pane::Main,
-                   "Notifications",
-                   {{"Notify when a long command finishes", "",
+                   i18n::tr("terminal.prefs.notifications"),
+                   {{i18n::tr("terminal.prefs.notify-long"), "",
                      toggle(now.notifyLong, [](Settings& x, bool on) { x.notifyLong = on; })},
-                    {"Long means at least", "",
+                    {i18n::tr("terminal.prefs.notify-seconds"), "",
                      stepper(now.notifySeconds, SettingsLimits::kNotifyMin, SettingsLimits::kNotifyMax, " s",
                              [](Settings& x, int v) { x.notifySeconds = v; }, now.notifyLong)},
-                    {"Only when the window is not focused", "",
+                    {i18n::tr("terminal.prefs.notify-unfocused"), "",
                      toggle(now.notifyUnfocusedOnly, [](Settings& x, bool on) { x.notifyUnfocusedOnly = on; },
                             now.notifyLong)}}});
 
@@ -581,8 +580,8 @@ namespace term {
     {
       const std::size_t bound = std::ranges::count_if(actionTable(), [&](const ActionInfo& info) { return !now.keys.chords(info.action).empty(); });
       out.push_back({Pane::Main,
-                     "Keyboard",
-                     {{"Shortcuts", "", [self, n = bound](float s, float) -> std::unique_ptr<Node> {
+                     i18n::tr("terminal.prefs.keyboard"),
+                     {{i18n::tr("terminal.prefs.shortcuts"), "", [self, n = bound](float s, float) -> std::unique_ptr<Node> {
                          const float w = Tokens::sizeControlL * s;
                          const float h = Tokens::sizeControlS * s;
                          auto link = ui::row({.align = FlexAlign::Center,
@@ -611,13 +610,13 @@ namespace term {
         std::string combo = now.keys.label(action, " ");
         std::string prompt;
         if (const auto* r = std::get_if<Recording>(&m_capture); r != nullptr && r->action == action) {
-          prompt = "Type a shortcut";
+          prompt = i18n::tr("terminal.prefs.type-shortcut");
         } else if (const auto* q = std::get_if<Replacing>(&m_capture); q != nullptr && q->action == action) {
-          prompt = "Used by " + labelOf(q->other);
+          prompt = i18n::tr("terminal.prefs.used-by", "name", labelOf(q->other));
         }
         const bool active = !prompt.empty();
         if (!active && combo.empty()) {
-          prompt = "None";
+          prompt = i18n::tr("terminal.prefs.none");
         }
         group.rows.push_back(
             {.label = std::string(info.label),
@@ -644,8 +643,8 @@ namespace term {
       if (now.keys != Keybindings{}) {
         out.push_back({Pane::Keyboard,
                        "",
-                       {{"Restore default shortcuts", "", [self](float s, float) -> std::unique_ptr<Node> {
-                           return ui::button({.text = "Restore",
+                       {{i18n::tr("terminal.prefs.restore-shortcuts"), "", [self](float s, float) -> std::unique_ptr<Node> {
+                           return ui::button({.text = i18n::tr("terminal.prefs.restore"),
                                               .fontSize = Tokens::typeFootnote.size * s,
                                               .variant = ButtonVariant::Ghost,
                                               .radius = Style::scaledRadiusSm(s),
@@ -659,9 +658,9 @@ namespace term {
     }
     if (m_actions.openPath) {
       out.push_back({Pane::Main,
-                     "Settings file",
+                     i18n::tr("terminal.prefs.settings-file"),
                      {{m_store.path().filename().string(), tildePath(m_store.path()), [self](float s, float) -> std::unique_ptr<Node> {
-                         return ui::button({.text = "Open",
+                         return ui::button({.text = i18n::tr("terminal.prefs.open"),
                                             .fontSize = Tokens::typeFootnote.size * s,
                                             .variant = ButtonVariant::Ghost,
                                             .radius = Style::scaledRadiusSm(s),
@@ -776,27 +775,27 @@ namespace term {
       }
       return [this, path = std::move(path)] { m_actions.openPath(path); };
     };
-    const auto lineOf = [](int line) { return line > 0 ? "Line " + std::to_string(line) + ": " : std::string(); };
+    const auto lineOf = [](int line) { return line > 0 ? i18n::tr("terminal.prefs.error-line", "line", line) : std::string(); };
 
     if (const auto* invalid = std::get_if<SettingsStore::Invalid>(&m_store.fileState())) {
-      errorCard(m_store.path().filename().string() + " has an error",
-                lineOf(invalid->error.line) + invalid->error.message + ". The last good settings stay in use.", "Show file",
+      errorCard(i18n::tr("terminal.prefs.file-error", "name", m_store.path().filename().string()),
+                lineOf(invalid->error.line) + invalid->error.message + i18n::tr("terminal.prefs.last-good-settings"), i18n::tr("terminal.prefs.show-file"),
                 open(m_store.path()));
     }
 
     const std::vector<Group> all = groups();
     const auto themeErrors = [&] {
       if (m_importError) {
-        errorCard("\"" + m_importError->folder + "\" was not imported",
-                  lineOf(m_importError->error.line) + m_importError->error.message + ".", "Try again",
+        errorCard(i18n::tr("terminal.prefs.import-failed", "name", m_importError->folder),
+                  lineOf(m_importError->error.line) + m_importError->error.message + ".", i18n::tr("terminal.prefs.try-again"),
                   m_actions.importPackage);
       }
       for (const ThemeEntry& entry : m_store.themes().entries()) {
         if (const auto* invalid = std::get_if<ThemeEntry::Invalid>(&entry.state)) {
-          errorCard("Theme \"" + entry.id + "\" has an error",
+          errorCard(i18n::tr("terminal.prefs.theme-error", "name", entry.id),
                     lineOf(invalid->error.line) + invalid->error.message
-                        + (invalid->lastGood ? ". The last good version stays in use." : "."),
-                    invalid->error.line > 0 ? "Show file" : "Show folder",
+                        + (invalid->lastGood ? i18n::tr("terminal.prefs.last-good-theme") : "."),
+                    invalid->error.line > 0 ? i18n::tr("terminal.prefs.show-file") : i18n::tr("terminal.prefs.show-folder"),
                     open(invalid->error.line > 0 ? m_store.themes().dir() / entry.id / "theme.toml" : m_store.themes().dir() / entry.id));
         }
       }
@@ -829,7 +828,7 @@ namespace term {
           }
         }
         if (group.pane == Pane::Keyboard && !hits.rows.empty()) {
-          hits.title = "Keyboard";
+          hits.title = i18n::tr("terminal.prefs.keyboard");
         }
         if (!hits.rows.empty()) {
           addGroup(hits, !any);
@@ -838,7 +837,7 @@ namespace term {
       }
       if (!any) {
         auto empty = ui::column({.align = FlexAlign::Center, .paddingV = Tokens::spaceP48 * s, .width = cardWidth});
-        empty->addChild(ui::label({.text = "No settings for “" + m_query + "”",
+        empty->addChild(ui::label({.text = i18n::tr("terminal.prefs.no-results", "query", m_query),
                                    .fontSize = Tokens::typeHeadline.size * s,
                                    .fontWeight = FontWeight::SemiBold,
                                    .color = colorSpecFromRole(ColorRole::Label1)}));
@@ -849,7 +848,7 @@ namespace term {
       back->addChild(ui::glyph({.glyph = "chevron-left",
                                 .glyphSize = Tokens::sizeSymbolInline * s,
                                 .color = colorSpecFromRole(ColorRole::AccentText)}));
-      back->addChild(ui::label({.text = "Preferences",
+      back->addChild(ui::label({.text = i18n::tr("terminal.prefs.title"),
                                 .fontSize = Tokens::typeBody.size * s,
                                 .fontWeight = FontWeight::Medium,
                                 .color = colorSpecFromRole(ColorRole::AccentText)}));
@@ -859,13 +858,13 @@ namespace term {
                                        .onClick = [this](const InputArea::PointerData&) { showPane(Pane::Main); }},
                                       std::move(back)));
       auto title = ui::column({.align = FlexAlign::Start, .paddingH = Tokens::spaceP12 * s});
-      title->addChild(ui::label({.text = "Keyboard",
+      title->addChild(ui::label({.text = i18n::tr("terminal.prefs.keyboard"),
                                  .fontSize = Tokens::typeTitle3.size * s,
                                  .fontWeight = FontWeight::SemiBold,
                                  .color = colorSpecFromRole(ColorRole::Label1)}));
       content->addChild(std::move(title));
       auto hint = ui::column({.align = FlexAlign::Start, .paddingH = Tokens::spaceP12 * s});
-      hint->addChild(ui::label({.text = "Click a shortcut to change it. Esc cancels, Backspace removes it. A shortcut in use moves when you press it again.",
+      hint->addChild(ui::label({.text = i18n::tr("terminal.prefs.shortcuts-help"),
                                 .fontSize = Tokens::typeFootnote.size * s,
                                 .color = colorSpecFromRole(ColorRole::Label2),
                                 .maxWidth = cardWidth - Tokens::spaceP12 * s * 2.0F}));
@@ -1167,11 +1166,11 @@ namespace term {
                           ui::glyph({.glyph = std::string("plus"),
                                      .glyphSize = Tokens::sizeSymbolInline * s,
                                      .color = colorSpecFromRole(ColorRole::Label2)}));
-    row->addChild(tile(std::move(add), "Add theme", false, s, tileW, tileH, false, [this](const InputArea::PointerData& at) {
+    row->addChild(tile(std::move(add), i18n::tr("terminal.prefs.add-theme"), false, s, tileW, tileH, false, [this](const InputArea::PointerData& at) {
       enum : std::int32_t { kCreate = 1, kImport, kFolder };
-      m_window.openContextMenu({{.id = kCreate, .label = "Create with Claude", .glyph = "robot"},
-                                {.id = kImport, .label = "Import…", .glyph = "file-import"},
-                                {.id = kFolder, .label = "Open themes folder", .glyph = "folder"}},
+      m_window.openContextMenu({{.id = kCreate, .label = i18n::tr("terminal.prefs.create-with-claude"), .glyph = "robot"},
+                                {.id = kImport, .label = i18n::tr("terminal.prefs.import"), .glyph = "file-import"},
+                                {.id = kFolder, .label = i18n::tr("terminal.prefs.open-themes-folder"), .glyph = "folder"}},
                                at.sceneX, at.sceneY, [this](std::int32_t item) {
                                  const auto& action = item == kCreate   ? m_actions.createWithAgent
                                                       : item == kImport ? m_actions.importPackage

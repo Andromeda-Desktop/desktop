@@ -1,5 +1,6 @@
 #include "command_palette.h"
 
+#include "i18n/i18n.h"
 #include "render/animation/animation_manager.h"
 #include "ui/builders.h"
 #include "ui/controls/box.h"
@@ -153,7 +154,7 @@ namespace term {
                               .glyphSize = Tokens::sizeSymbol * s,
                               .color = colorSpecFromRole(ColorRole::Label2)}));
     line->addChild(ui::input({.out = &m_input,
-                              .placeholder = std::string("Session, action or theme"),
+                              .placeholder = std::string(i18n::tr("terminal.palette.placeholder")),
                               .fontSize = Tokens::typeTitle3.size * s,
                               .horizontalPadding = 0.0F,
                               .frameVisible = false,
@@ -257,11 +258,11 @@ namespace term {
                                  .gap = Tokens::spaceP4 * s,
                                  .paddingV = Tokens::spaceP12 * s,
                                  .paddingH = Tokens::spaceP8 * s});
-        empty->addChild(ui::label({.text = std::format("No session, action or theme matches “{}”", m_query),
+        empty->addChild(ui::label({.text = i18n::tr("terminal.palette.no-match", "query", m_query),
                                    .fontSize = Tokens::typeBody.size * s,
                                    .color = colorSpecFromRole(ColorRole::Label1),
                                    .maxLines = 1}));
-        empty->addChild(footnote(std::format("Enter opens a new session named “{}”", m_query), FontWeight::Normal));
+        empty->addChild(footnote(i18n::tr("terminal.palette.new-named", "query", m_query), FontWeight::Normal));
         m_rows->addChild(std::move(empty));
       }
     } else {
@@ -274,7 +275,7 @@ namespace term {
       }
       for (std::size_t i = end; i-- > m_offset;) {
         if (m_query.empty() && (i + 1 == m_list.size() || i + 1 == m_recentCount)) {
-          headerLine(i >= m_recentCount ? "Sessions" : "Recent", FontWeight::SemiBold);
+          headerLine(i >= m_recentCount ? i18n::tr("terminal.palette.sessions") : i18n::tr("terminal.palette.recent"), FontWeight::SemiBold);
           y += header;
         }
         if (i == m_current) {
@@ -332,7 +333,7 @@ namespace term {
                                .maxLines = 1}));
     };
     if (current) {
-      endText(item.kind == palette::Kind::Session ? "Show ↩" : item.kind == palette::Kind::Theme ? "Apply ↩" : "Run ↩");
+      endText(item.kind == palette::Kind::Session ? i18n::tr("terminal.palette.show") : item.kind == palette::Kind::Theme ? i18n::tr("terminal.palette.apply") : i18n::tr("terminal.palette.run"));
     } else if (!item.off.empty()) {
       endText(item.off);
     } else if (!item.keys.empty()) {

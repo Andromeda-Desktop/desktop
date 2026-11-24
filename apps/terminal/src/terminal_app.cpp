@@ -2,6 +2,7 @@
 #include "theme_cli.h"
 #include "theme_store.h"
 #include "protocols/uri.h"
+#include "i18n/i18n.h"
 
 #include "agent_host.h"
 #include "holder_client.h"
@@ -42,9 +43,10 @@ namespace term {
                             },
                             .setSession = [this](std::uint64_t held, std::uint64_t id) { m_workspaces.setSession(held, id); },
                             .close = [this](std::uint64_t id) { m_workspaces.close(id); }}) {
+    i18n::Service::instance().addDomain("terminal", ANDROMEDA_TRANSLATIONS_DIR);
     KittyImages::installPngDecoder();
     // The header's sidebar button; the keyboard path is Action::ToggleSidebar, which the user can rebind.
-    commands().add({.id = "view.toggle-sidebar", .label = "Show Sidebar", .group = "View",
+    commands().add({.id = "view.toggle-sidebar", .label = i18n::tr("terminal.app.show-sidebar"), .group = "View",
                     .enabled = [this] { return activeWindow() != nullptr; },
                     .run = [this] {
                       if (AppWindow* window = activeWindow(); window != nullptr) {
@@ -222,13 +224,13 @@ namespace term {
       m_chooser = std::make_unique<desk::FileChooser>(bus());
     }
     window.exportHandle([this, suggested, picked = std::move(picked)](const std::string& parent) {
-      m_chooser->saveFile(parent, "Save Scrollback", suggested, picked);
+      m_chooser->saveFile(parent, i18n::tr("terminal.app.save-scrollback"), suggested, picked);
     });
   }
 
   void TerminalApp::openPreferences(const std::string& activationToken) {
     if (m_prefsWindow == nullptr) {
-      m_prefsWindow = &addWindow({.appId = info().id, .title = "Preferences", .stateKey = "preferences", .width = 760,
+      m_prefsWindow = &addWindow({.appId = info().id, .title = i18n::tr("terminal.app.preferences"), .stateKey = "preferences", .width = 760,
                                   .height = 560, .minWidth = 560, .minHeight = 400});
       m_prefs = std::make_unique<PrefsWindow>(
           *m_prefsWindow, m_settings,
@@ -261,7 +263,7 @@ namespace term {
                       if (m_prefs == nullptr) {
                         return;
                       }
-                      m_chooser->chooseFolder(parent, "Import Theme", [this](std::optional<std::filesystem::path> folder) {
+                      m_chooser->chooseFolder(parent, i18n::tr("terminal.app.import-theme"), [this](std::optional<std::filesystem::path> folder) {
                         if (folder && m_prefs != nullptr) {
                           m_prefs->importTheme(*folder);
                         }

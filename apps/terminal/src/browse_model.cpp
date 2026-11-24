@@ -1,5 +1,6 @@
 #include "browse_model.h"
 
+#include "i18n/i18n.h"
 #include "palette_model.h"
 
 #include <algorithm>
@@ -80,10 +81,6 @@ namespace term::browse {
     bool validName(std::string_view name) {
       return !name.empty() && name != "." && name != ".." && name.find('/') == std::string_view::npos &&
              name.find('\0') == std::string_view::npos;
-    }
-
-    std::string count(std::size_t n, const char* what) {
-      return std::to_string(n) + " " + what + (n == 1 ? "" : "s");
     }
   } // namespace
 
@@ -177,7 +174,7 @@ namespace term::browse {
         RenameInput done = std::move(*rename);
         m_input = NoInput{};
         if (!validName(done.text)) {
-          return {effect::Hint{"A name cannot be empty, . or .., or hold a /"}};
+          return {effect::Hint{i18n::tr("terminal.browse.name-invalid")}};
         }
         if (done.text == done.original) {
           return {};
@@ -222,7 +219,7 @@ namespace term::browse {
       if (enter(key) || typed(key) == U'y') {
         m_marks.clear();
         const std::size_t n = paths.size();
-        return {effect::Trash{std::move(paths)}, effect::Hint{count(n, "item") + " moved to the Trash"}};
+        return {effect::Trash{std::move(paths)}, effect::Hint{i18n::trp("terminal.browse.trashed", static_cast<long>(n))}};
       }
       return {};
     }
@@ -236,7 +233,7 @@ namespace term::browse {
     const char32_t c = typed(key);
     if ((enter(key) && (key.mods & kCtrl) != 0) || c == U'q') {
       if (!promptIdle) {
-        return {effect::Hint{"A command runs in the shell: it cannot change folder now"}};
+        return {effect::Hint{i18n::tr("terminal.browse.busy")}};
       }
       return {effect::Cd{m_dir}, effect::Close{}};
     }
@@ -298,11 +295,11 @@ namespace term::browse {
         const std::size_t n = paths.size();
         m_yank = Yank{std::move(paths), c == U'x'};
         m_marks.clear();
-        return {effect::Hint{count(n, "item") + (c == U'x' ? " to move: p puts them here" : " to copy: p puts them here")}};
+        return {effect::Hint{i18n::trp(c == U'x' ? "terminal.browse.yank-move" : "terminal.browse.yank-copy", static_cast<long>(n))}};
       }
     } else if (c == U'p') {
       if (!m_yank) {
-        return {effect::Hint{"Nothing to put: y copies, x moves"}};
+        return {effect::Hint{i18n::tr("terminal.browse.nothing-to-put")}};
       }
       Yank yank = *m_yank;
       if (yank.cut) {
@@ -385,8 +382,7 @@ namespace term::browse {
     }
     const std::vector<std::string> names = bulk->names;
     if (lines.size() != names.size()) {
-      return {effect::Hint{std::to_string(lines.size()) + " lines for " + std::to_string(names.size()) +
-                           " names: keep one line per name"}};
+      return {effect::Hint{i18n::tr("terminal.browse.line-count", "lines", lines.size(), "names", names.size())}};
     }
     std::set<std::string> taken;
     for (const Row& row : m_rows) {
@@ -397,10 +393,10 @@ namespace term::browse {
     effect::RenameMany many;
     for (std::size_t i = 0; i < names.size(); ++i) {
       if (!validName(lines[i])) {
-        return {effect::Hint{"Line " + std::to_string(i + 1) + ": a name cannot be empty, . or .., or hold a /"}};
+        return {effect::Hint{i18n::tr("terminal.browse.line-invalid", "line", i + 1)}};
       }
       if (!taken.insert(lines[i]).second) {
-        return {effect::Hint{"Line " + std::to_string(i + 1) + ": two items cannot both be named " + lines[i]}};
+        return {effect::Hint{i18n::tr("terminal.browse.line-duplicate", "line", i + 1, "name", lines[i])}};
       }
       if (lines[i] != names[i]) {
         many.items.emplace_back(m_dir / names[i], lines[i]);

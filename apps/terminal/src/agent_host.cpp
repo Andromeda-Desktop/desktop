@@ -1,4 +1,5 @@
 #include "agent_host.h"
+#include "i18n/i18n.h"
 #include "core/sys/sys.h"
 
 #include <array>
@@ -227,7 +228,7 @@ namespace term::agent {
           ::close(fd);
         }
       }
-      onExit(127, "Could not create pipes for the agent.");
+      onExit(127, i18n::tr("terminal.agent.no-pipes"));
       return false;
     }
     const std::vector<std::string> args = command(m_kind);
@@ -246,7 +247,7 @@ namespace term::agent {
       ::close(in[1]);
       ::close(out[0]);
       ::close(err[0]);
-      onExit(127, "Could not start " + args.front() + ".");
+      onExit(127, i18n::tr("terminal.agent.no-start", "name", args.front()));
       return false;
     }
     m_pid = pid;
@@ -395,7 +396,7 @@ namespace term::agent {
             slot.model->configure(result.value("configOptions", Json::array()));
             slot.model->started(sid);
           } else {
-            slot.model->exited(1, message.value("error", Json::object()).value("message", std::string{"The agent did not open the session."}));
+            slot.model->exited(1, message.value("error", Json::object()).value("message", std::string{i18n::tr("terminal.agent.no-session")}));
           }
           flush(key);
           m_changed(key);

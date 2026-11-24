@@ -84,6 +84,8 @@ shopt -s nullglob
 for dir in "$res/terminfo"/?; do mv "$dir" "$res/terminfo/$(printf '%x' "'${dir##*/}")"; done
 shopt -u nullglob
 cp tools/macos/fonts.conf "$res/fonts/"
+mkdir -p "$res/translations/terminal"
+cp apps/terminal/translations/en.json "$res/translations/terminal/"
 tools/macos/icns.py apps/terminal/data/icons/dev.andromeda.Terminal.svg "$res/AppIcon.icns"
 for conf in 05-macos 10-hinting-slight 10-scale-bitmap-fonts 30-metric-aliases 40-nonlatin 45-generic 45-latin 48-spacing \
     49-sansserif 60-generic 60-latin 65-nonlatin 80-delicious 90-synthetic; do
