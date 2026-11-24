@@ -419,6 +419,7 @@ void Bar::attachWidgetsToSections(BarInstance& instance) {
           auto* panel = PanelManager::current();
           return panel != nullptr && panel->isPanelTransitionActive();
         });
+        plugin->setShown(instance.surface == nullptr || instance.surface->presence() == SurfacePresence::Shown);
       }
       widget->setPanelToggleCallback([this, inst = &instance, w = widget.get()](
                                          std::string_view panelId, std::string_view context,

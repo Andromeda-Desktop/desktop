@@ -15,7 +15,6 @@
 #include "ui/style.h"
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -30,11 +29,9 @@
 
 namespace {
   constexpr Logger kLog("plugin-widget");
-  constexpr std::chrono::milliseconds kDeferredUpdateRetry{50};
+  constexpr int kInitialUpdateMs = 250;
   constexpr std::chrono::milliseconds kImageReloadRetry{150};
   constexpr int kImageReloadRetryCount = 2;
-  constexpr std::chrono::milliseconds kTimerPhaseStep{50};
-  constexpr std::chrono::milliseconds kTimerMaxPhase{500};
 
   bool
   settingBool(const std::unordered_map<std::string, WidgetSettingValue>& settings, const std::string& key, bool def) {
@@ -87,11 +84,6 @@ namespace {
     return out.str();
   }
 
-  std::uint32_t nextTimerPhase() {
-    static std::atomic<std::uint32_t> next{0};
-    return next.fetch_add(1, std::memory_order_relaxed);
-  }
-
   std::string readFile(const std::filesystem::path& path) {
     std::ifstream f(path);
     if (!f)
@@ -111,7 +103,7 @@ PluginWidget::PluginWidget(
       m_pluginDir(std::move(context.pluginDir)), m_barName(std::move(barName)), m_outputName(std::move(outputName)),
       m_scriptApi(context.scriptApi), m_settings(std::move(context.settings)), m_fileWatcher(context.fileWatcher),
       m_platform(context.platform), m_clipboard(context.clipboard), m_httpClient(context.httpClient),
-      m_audioSpectrum(context.audioSpectrum), m_mpris(context.mpris), m_timerPhase(nextTimerPhase()),
+      m_audioSpectrum(context.audioSpectrum), m_mpris(context.mpris),
       m_isVertical(isVertical), m_enableScroll(enableScroll) {
   m_audioSpectrumEnabled = settingBool(m_settings, "audio_spectrum", false);
   m_audioSpectrumBands =
@@ -312,7 +304,8 @@ void PluginWidget::create() {
   });
 
   m_runtime->start(m_sourcePath.string(), std::move(source), makeScriptSnapshot());
-  startUpdateTimer();
+  m_updateTimer.setInterval(kInitialUpdateMs);
+  m_updateTimer.start();
   setupScriptWatch();
   setupAudioSpectrum();
 }
@@ -533,12 +526,11 @@ void PluginWidget::luaSetGlyphColor(std::string_view role, std::string_view mode
 }
 
 void PluginWidget::luaSetUpdateInterval(float ms) {
-  m_updateIntervalMs = std::max(16, static_cast<int>(ms));
-  startUpdateTimer();
+  m_updateTimer.setInterval(static_cast<int>(ms));
 }
 
 void PluginWidget::setUpdateDeferralCallback(std::function<bool()> callback) {
-  m_updateDeferralCallback = std::move(callback);
+  m_updateTimer.setDeferral(std::move(callback));
 }
 
 void PluginWidget::luaSetVisible(bool visible) {
@@ -594,78 +586,6 @@ std::optional<ColorSpec> PluginWidget::scriptColorFromToken(std::string_view tok
   return std::nullopt;
 }
 
-void PluginWidget::startUpdateTimer() {
-  ++m_updateTimerGeneration;
-  m_updateDeferred = false;
-  m_deferredUpdateTimer.stop();
-
-  const auto interval = std::chrono::milliseconds(m_updateIntervalMs);
-  const auto generation = m_updateTimerGeneration;
-  m_updateTimer.start(initialUpdateDelay(interval), [this, generation, interval] {
-    if (m_updateTimerGeneration != generation) {
-      return;
-    }
-    handleUpdateTimer();
-    if (m_updateTimerGeneration != generation) {
-      return;
-    }
-    m_updateTimer.startRepeating(interval, [this, generation] {
-      if (m_updateTimerGeneration == generation) {
-        handleUpdateTimer();
-      }
-    });
-  });
-}
-
-void PluginWidget::handleUpdateTimer() {
-  if (shouldDeferUpdate()) {
-    scheduleDeferredUpdate();
-    return;
-  }
-  runScriptUpdate();
-}
-
-void PluginWidget::scheduleDeferredUpdate() {
-  m_updateDeferred = true;
-  if (m_deferredUpdateTimer.active()) {
-    return;
-  }
-  armDeferredUpdate(m_updateTimerGeneration);
-}
-
-void PluginWidget::armDeferredUpdate(std::uint64_t generation) {
-  m_deferredUpdateTimer.start(kDeferredUpdateRetry, [this, generation] {
-    if (m_updateTimerGeneration != generation || !m_updateDeferred) {
-      return;
-    }
-    if (shouldDeferUpdate()) {
-      armDeferredUpdate(generation);
-      return;
-    }
-
-    m_updateDeferred = false;
-    runScriptUpdate();
-    if (m_updateTimerGeneration == generation) {
-      startUpdateTimer();
-    }
-  });
-}
-
-std::chrono::milliseconds PluginWidget::initialUpdateDelay(std::chrono::milliseconds interval) const noexcept {
-  if (interval <= std::chrono::milliseconds(1)) {
-    return interval;
-  }
-
-  const auto maxPhase = std::min({interval / 2, kTimerMaxPhase, interval - std::chrono::milliseconds(1)});
-  const auto maxPhaseMs = maxPhase.count();
-  if (maxPhaseMs <= 0) {
-    return interval;
-  }
-
-  const auto phaseMs = (static_cast<std::int64_t>(m_timerPhase) * kTimerPhaseStep.count()) % (maxPhaseMs + 1);
-  return interval + std::chrono::milliseconds(phaseMs);
-}
-
 void PluginWidget::runScriptUpdate() {
   if (m_runtime) {
     (void)m_runtime->enqueueUpdate(makeScriptSnapshot());
@@ -680,7 +600,6 @@ void PluginWidget::handleScriptResult(const scripting::ScriptResult& result) {
 
   if (result.unhealthy) {
     m_updateTimer.stop();
-    m_deferredUpdateTimer.stop();
     kLog.warn("plugin widget '{}' disabled after repeated timeouts", m_entryId);
   }
 
@@ -864,8 +783,6 @@ void PluginWidget::scheduleImageReloadRetry() {
   });
 }
 
-bool PluginWidget::shouldDeferUpdate() const { return m_updateDeferralCallback && m_updateDeferralCallback(); }
-
 void PluginWidget::setupScriptWatch() {
   m_scriptWatcher.start(m_fileWatcher, m_sourcePath, [this] { reloadScript(); });
 }
@@ -891,7 +808,7 @@ void PluginWidget::reloadScript() {
   m_imageHeight = 0.0F;
   m_textColor = {};
   m_glyphColor = {};
-  m_updateIntervalMs = 250;
+  m_updateTimer.setInterval(kInitialUpdateMs);
   m_imageWatch = false;
   m_imageDirty = true;
   m_imageForceReload = false;
@@ -918,7 +835,7 @@ void PluginWidget::reloadScript() {
   m_hasOnIpcKnown = false;
 
   m_runtime->reload(m_sourcePath.string(), std::move(source), makeScriptSnapshot());
-  startUpdateTimer();
+  m_updateTimer.start();
   requestRedraw();
   kLog.info("hot reload: reloaded '{}'", name);
   notify::info("Noctalia", i18n::tr("bar.widgets.scripted.reloaded"), name);

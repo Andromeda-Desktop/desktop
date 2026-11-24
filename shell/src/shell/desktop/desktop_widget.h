@@ -76,6 +76,8 @@ public:
   // Font family for the widget's text (empty = inherit the shell font). Stored here and applied to
   // labels during layout() so it survives widget rebuilds, not just live setting changes.
   void setFontFamily(const std::string& family) { m_fontFamily = family; }
+  // Shown: the host surface presence is Shown.
+  virtual void setShown(bool shown) { (void)shown; }
   // Desktop widget editor keeps widgets visible for layout even when runtime idle-hide applies.
   virtual void setEditorPreview(bool enabled) noexcept { (void)enabled; }
   void setBackgroundStyle(const ColorSpec& color, float radius, float padding);

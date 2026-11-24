@@ -5,6 +5,7 @@
 #include "scripting/plugin_ipc.h"
 #include "scripting/plugin_runtime_context.h"
 #include "scripting/plugin_script_watcher.h"
+#include "scripting/plugin_update_timer.h"
 #include "scripting/script_runtime.h"
 #include "shell/bar/widget.h"
 #include "ui/palette.h"
@@ -58,6 +59,8 @@ public:
   void luaSetVisible(bool visible);
   void luaSetUpdateInterval(float ms);
   void setUpdateDeferralCallback(std::function<bool()> callback);
+  // Shown: the bar surface presence is Shown; updates pause otherwise.
+  void setShown(bool shown) { m_updateTimer.setShown(shown); }
   [[nodiscard]] bool isVertical() const { return m_isVertical; }
   void setBarHoverTint(bool enabled) noexcept { m_barHoverTint = enabled; }
   [[nodiscard]] bool wantsBarHoverTint() const noexcept override { return m_barHoverTint; }
@@ -104,13 +107,7 @@ private:
   void scheduleImageReloadRetry();
   void setupScriptWatch();
   void teardownScriptWatch();
-  void startUpdateTimer();
-  void armDeferredUpdate(std::uint64_t generation);
-  void handleUpdateTimer();
-  [[nodiscard]] std::chrono::milliseconds initialUpdateDelay(std::chrono::milliseconds interval) const noexcept;
   void runScriptUpdate();
-  void scheduleDeferredUpdate();
-  [[nodiscard]] bool shouldDeferUpdate() const;
 
   // Audio-reactive widgets (e.g. bongocat): subscribe to the PipeWire spectrum and
   // forward each frame to the script's onAudioSpectrum(values, state) callback.
@@ -138,10 +135,8 @@ private:
   int m_audioSpectrumBands = 16;
   bool m_audioSpectrumEnabled = false;
   scripting::PluginScriptWatcher m_scriptWatcher;
-  Timer m_updateTimer;
-  Timer m_deferredUpdateTimer;
+  PluginUpdateTimer m_updateTimer{[this] { runScriptUpdate(); }, PluginUpdatePhase::Spread};
   Timer m_imageReloadRetryTimer;
-  std::function<bool()> m_updateDeferralCallback;
   InputArea* m_area = nullptr;
   Flex* m_flex = nullptr;
   Glyph* m_glyph = nullptr;
@@ -160,12 +155,8 @@ private:
   std::string m_imagePath;
   float m_imageWidth = 0.0F;
   float m_imageHeight = 0.0F;
-  int m_updateIntervalMs = 250;
-  std::uint32_t m_timerPhase = 0;
-  std::uint64_t m_updateTimerGeneration = 0;
   int m_imageReloadRetries = 0;
   bool m_dirty = false;
-  bool m_updateDeferred = false;
   bool m_isVertical = false;
   bool m_enableScroll = true;
   bool m_barHoverTint = true;

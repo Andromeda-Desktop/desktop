@@ -40,6 +40,7 @@ public:
   [[nodiscard]] bool wantsSecondTicks() const override { return m_wantsSecondTicks; }
   [[nodiscard]] bool needsFrameTick() const override { return m_needsFrameTick; }
   void onFrameTick(float deltaMs, Renderer& renderer) override;
+  void setShown(bool shown) override { m_updateTimer.setShown(shown); }
 
   // PluginIpcEndpoint
   [[nodiscard]] std::string_view ipcEntryId() const override { return m_entryId; }

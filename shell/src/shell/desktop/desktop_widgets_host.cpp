@@ -393,6 +393,11 @@ void DesktopWidgetsHost::createInstance(const DesktopWidgetState& state, const W
     }
   });
 
+  instance->surface->setPresenceChangedCallback([rawInstance](SurfacePresence presence) {
+    if (rawInstance->widget != nullptr) {
+      rawInstance->widget->setShown(presence == SurfacePresence::Shown);
+    }
+  });
   instance->surface->setConfigureCallback([rawInstance](std::uint32_t /*width*/, std::uint32_t /*height*/) {
     rawInstance->surface->requestLayout();
   });

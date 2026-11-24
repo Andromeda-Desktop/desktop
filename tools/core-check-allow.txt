@@ -131,7 +131,6 @@ shell-string compositor/src/server/greeter_mode.cpp 1
 shell-string compositor/src/server/server.cpp 2
 shell-string portal/src/dbus/request.cpp 1
 shell-string shell/src/scripting/luau_host.cpp 2
-shell-timer shell/src/shell/bar/widgets/plugin_widget.cpp 1
 shell-timer shell/src/shell/live_activity/live_activity_island.cpp 2
 shell-timer shell/src/shell/panel/plugin_panel.cpp 1
 shell-timer shell/src/shell/settings/printers_model.cpp 1

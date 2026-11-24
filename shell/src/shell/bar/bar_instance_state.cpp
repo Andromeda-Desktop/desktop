@@ -292,6 +292,15 @@ void Bar::createInstance(const WaylandOutput& output, std::size_t barIndex, cons
     }
   });
 
+  instance->surface->setPresenceChangedCallback([inst](SurfacePresence presence) {
+    for (const auto* widgets : {&inst->startWidgets, &inst->centerWidgets, &inst->endWidgets}) {
+      for (const auto& widget : *widgets) {
+        if (auto* plugin = dynamic_cast<PluginWidget*>(widget.get()); plugin != nullptr) {
+          plugin->setShown(presence == SurfacePresence::Shown);
+        }
+      }
+    }
+  });
   instance->surface->setAnimationManager(&instance->animations);
   populateWidgets(*instance);
 
