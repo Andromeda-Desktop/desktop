@@ -42,6 +42,16 @@ void main() {
 }
 )";
 
+  // GL rows start at the bottom; row 0 of the buffer gets the top row, as the shell reads images. Alpha stays.
+  constexpr char kCopyFragment[] = R"(
+precision highp float;
+uniform vec3 iResolution;
+uniform sampler2D iChannel0;
+void main() {
+  gl_FragColor = texture2D(iChannel0, vec2(gl_FragCoord.x, iResolution.y - gl_FragCoord.y) / iResolution.xy);
+}
+)";
+
   constexpr std::array<GLfloat, 12> kQuad = {0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1};
 
   GLuint compile(GLenum type, const std::string& source) {
@@ -62,18 +72,45 @@ void main() {
 
 } // namespace
 
-LockShader::LockShader(GlSharedContext& shared, const std::string& source, std::uint32_t width, std::uint32_t height)
-    : m_display(shared.display()), m_width(width), m_height(height) {
+LockGlContext::LockGlContext(GlSharedContext& shared) : m_display(shared.display()) {
   m_context = shared.createContext(shared.rootContext(), "lock shader");
-  if (m_context == EGL_NO_CONTEXT
-      || eglMakeCurrent(m_display, EGL_NO_SURFACE, EGL_NO_SURFACE, m_context) != EGL_TRUE) {
-    release();
+  if (m_context == EGL_NO_CONTEXT) {
+    throw std::runtime_error("no GL context for the shaders");
+  }
+}
+
+LockGlContext::~LockGlContext() {
+  if (eglGetCurrentContext() == m_context) {
+    eglMakeCurrent(m_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+  }
+  eglDestroyContext(m_display, m_context);
+}
+
+bool LockGlContext::makeCurrent() const {
+  return eglMakeCurrent(m_display, EGL_NO_SURFACE, EGL_NO_SURFACE, m_context) == EGL_TRUE;
+}
+
+std::unique_ptr<LockShader> LockShader::shadertoy(LockGlContext& gl, const std::string& source, std::uint32_t width,
+                                                  std::uint32_t height) {
+  return std::unique_ptr<LockShader>(
+      new LockShader(gl, std::string(kFragmentPrefix) + source + kFragmentSuffix, width, height)
+  );
+}
+
+std::unique_ptr<LockShader> LockShader::copy(LockGlContext& gl, std::uint32_t width, std::uint32_t height) {
+  return std::unique_ptr<LockShader>(new LockShader(gl, kCopyFragment, width, height));
+}
+
+LockShader::LockShader(LockGlContext& gl, const std::string& fragmentSource, std::uint32_t width, std::uint32_t height)
+    : m_gl(gl), m_width(width), m_height(height) {
+  if (!m_gl.makeCurrent()) {
     throw std::runtime_error("no GL context for the shader");
   }
   try {
     glGenTextures(2, m_textures.data());
     glGenFramebuffers(2, m_framebuffers.data());
     glGenTextures(1, &m_channel);
+    m_sampled = m_channel;
     glBindTexture(GL_TEXTURE_2D, m_channel);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -96,7 +133,7 @@ LockShader::LockShader(GlSharedContext& shared, const std::string& source, std::
     const GLuint vertex = compile(GL_VERTEX_SHADER, kVertexShader);
     GLuint fragment = 0;
     try {
-      fragment = compile(GL_FRAGMENT_SHADER, std::string(kFragmentPrefix) + source + kFragmentSuffix);
+      fragment = compile(GL_FRAGMENT_SHADER, fragmentSource);
     } catch (...) {
       glDeleteShader(vertex);
       throw;
@@ -128,10 +165,6 @@ LockShader::LockShader(GlSharedContext& shared, const std::string& source, std::
 
 LockShader::~LockShader() { release(); }
 
-bool LockShader::makeCurrent() {
-  return eglMakeCurrent(m_display, EGL_NO_SURFACE, EGL_NO_SURFACE, m_context) == EGL_TRUE;
-}
-
 void LockShader::exportDmabufs() {
   const auto createImage = reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(eglGetProcAddress("eglCreateImageKHR"));
   const auto destroyImage = reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
@@ -145,7 +178,7 @@ void LockShader::exportDmabufs() {
   }
   for (const GLuint texture : m_textures) {
     const EGLImageKHR image = createImage(
-        m_display, m_context, EGL_GL_TEXTURE_2D_KHR, reinterpret_cast<EGLClientBuffer>(std::uintptr_t{texture}),
+        m_gl.display(), m_gl.context(), EGL_GL_TEXTURE_2D_KHR, reinterpret_cast<EGLClientBuffer>(std::uintptr_t{texture}),
         nullptr
     );
     int fourcc = 0;
@@ -155,11 +188,11 @@ void LockShader::exportDmabufs() {
     EGLint stride = 0;
     EGLint offset = 0;
     const bool exported = image != EGL_NO_IMAGE_KHR
-        && query(m_display, image, &fourcc, &planes, &modifier) == EGL_TRUE
+        && query(m_gl.display(), image, &fourcc, &planes, &modifier) == EGL_TRUE
         && planes == 1
-        && exportImage(m_display, image, &fd, &stride, &offset) == EGL_TRUE;
+        && exportImage(m_gl.display(), image, &fd, &stride, &offset) == EGL_TRUE;
     if (image != EGL_NO_IMAGE_KHR) {
-      destroyImage(m_display, image);
+      destroyImage(m_gl.display(), image);
     }
     if (!exported) {
       // Both buffers or none: the memfd path covers the rest.
@@ -186,7 +219,7 @@ bool LockShader::setChannel0Dmabuf(const PixelStreamServer::Dmabuf& buffer) {
   const auto targetTexture = reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(
       eglGetProcAddress("glEGLImageTargetTexture2DOES")
   );
-  if (createImage == nullptr || targetTexture == nullptr || !makeCurrent()) {
+  if (createImage == nullptr || targetTexture == nullptr || !m_gl.makeCurrent()) {
     return false;
   }
   const std::array<EGLint, 17> attributes = {
@@ -210,10 +243,11 @@ bool LockShader::setChannel0Dmabuf(const PixelStreamServer::Dmabuf& buffer) {
   };
   while (glGetError() != GL_NO_ERROR) {
   }
-  const EGLImageKHR image = createImage(m_display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, nullptr, attributes.data());
+  const EGLImageKHR image = createImage(m_gl.display(), EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, nullptr, attributes.data());
   if (image == EGL_NO_IMAGE_KHR) {
     return false;
   }
+  m_sampled = m_channel;
   glBindTexture(GL_TEXTURE_2D, m_channel);
   targetTexture(GL_TEXTURE_2D, image);
   releaseChannelImage();
@@ -224,12 +258,13 @@ bool LockShader::setChannel0Dmabuf(const PixelStreamServer::Dmabuf& buffer) {
 }
 
 bool LockShader::setChannel0Pixels(std::span<const std::uint8_t> rgba, std::uint32_t width, std::uint32_t height) {
-  if (rgba.size() < std::size_t{width} * 4 * height || !makeCurrent()) {
+  if (rgba.size() < std::size_t{width} * 4 * height || !m_gl.makeCurrent()) {
     return false;
   }
   while (glGetError() != GL_NO_ERROR) {
   }
   releaseChannelImage();
+  m_sampled = m_channel;
   glBindTexture(GL_TEXTURE_2D, m_channel);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
   if (width == m_channelWidth && height == m_channelHeight) {
@@ -254,7 +289,7 @@ void LockShader::releaseChannelImage() noexcept {
   }
   const auto destroyImage = reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
   if (destroyImage != nullptr) {
-    destroyImage(m_display, m_channelImage);
+    destroyImage(m_gl.display(), m_channelImage);
   }
   m_channelImage = EGL_NO_IMAGE;
   // A texture that held an EGLImage gets fresh storage on the next upload.
@@ -263,7 +298,7 @@ void LockShader::releaseChannelImage() noexcept {
 }
 
 bool LockShader::draw(std::size_t index) {
-  if (index >= m_framebuffers.size() || !makeCurrent()) {
+  if (index >= m_framebuffers.size() || !m_gl.makeCurrent()) {
     return false;
   }
   const auto now = std::chrono::steady_clock::now();
@@ -276,7 +311,7 @@ bool LockShader::draw(std::size_t index) {
   glUniform1f(m_timeDelta, std::chrono::duration<float>(now - m_last).count());
   glUniform1i(m_frame, m_frameCount++);
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_channel);
+  glBindTexture(GL_TEXTURE_2D, m_sampled);
   glUniform1i(m_channel0, 0);
   glUniform3f(m_channelResolution, static_cast<GLfloat>(m_channelWidth), static_cast<GLfloat>(m_channelHeight), 1.0F);
   m_last = now;
@@ -290,7 +325,7 @@ bool LockShader::draw(std::size_t index) {
 }
 
 bool LockShader::read(std::size_t index, std::span<std::uint8_t> rgba) {
-  if (index >= m_framebuffers.size() || rgba.size() < std::size_t{m_width} * 4 * m_height || !makeCurrent()) {
+  if (index >= m_framebuffers.size() || rgba.size() < std::size_t{m_width} * 4 * m_height || !m_gl.makeCurrent()) {
     return false;
   }
   glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffers[index]);
@@ -300,25 +335,19 @@ bool LockShader::read(std::size_t index, std::span<std::uint8_t> rgba) {
 }
 
 void LockShader::release() noexcept {
-  if (m_context != EGL_NO_CONTEXT
-      && eglMakeCurrent(m_display, EGL_NO_SURFACE, EGL_NO_SURFACE, m_context) == EGL_TRUE) {
+  if (m_gl.makeCurrent()) {
     if (m_program != 0) {
       glDeleteProgram(m_program);
     }
     glDeleteFramebuffers(2, m_framebuffers.data());
     glDeleteTextures(2, m_textures.data());
     glDeleteTextures(1, &m_channel);
-    eglMakeCurrent(m_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
   }
   releaseChannelImage();
-  if (m_context != EGL_NO_CONTEXT) {
-    eglDestroyContext(m_display, m_context);
-  }
   for (const auto& dmabuf : m_dmabufs) {
     ::close(dmabuf.fd);
   }
   m_dmabufs.clear();
-  m_context = EGL_NO_CONTEXT;
   m_program = 0;
   m_channel = 0;
   m_framebuffers = {};

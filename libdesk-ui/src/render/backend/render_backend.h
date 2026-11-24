@@ -159,6 +159,9 @@ public:
   // Copies an offscreen target's last frame as top-down RGBA8 rows, premultiplied alpha;
   // `rgba` holds bufferWidth * bufferHeight * 4 bytes. False when the target has no frame.
   virtual bool readPixels(RenderTarget& target, std::span<std::uint8_t> rgba) = 0;
+  // The colour texture of an offscreen target's last frame (bottom row first, premultiplied alpha) once the GPU has
+  // drawn it, so another context of the share group may sample it. Empty when the target has no frame.
+  [[nodiscard]] virtual TextureId finishedOffscreenTexture(RenderTarget& target) = 0;
   [[nodiscard]] virtual std::unique_ptr<RenderFramebuffer>
   createFramebuffer(std::uint32_t width, std::uint32_t height) = 0;
   virtual void bindFramebuffer(const RenderFramebuffer& framebuffer) = 0;

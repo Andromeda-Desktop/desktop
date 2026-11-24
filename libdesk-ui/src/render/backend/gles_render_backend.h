@@ -53,6 +53,7 @@ public:
   [[nodiscard]] std::unique_ptr<RenderSurfaceTarget> createSurfaceTarget(std::unique_ptr<NativeEglWindow> window) override;
   [[nodiscard]] std::unique_ptr<RenderSurfaceTarget> createOffscreenTarget() override;
   bool readPixels(RenderTarget& target, std::span<std::uint8_t> rgba) override;
+  [[nodiscard]] TextureId finishedOffscreenTexture(RenderTarget& target) override;
   [[nodiscard]] std::unique_ptr<RenderFramebuffer>
   createFramebuffer(std::uint32_t width, std::uint32_t height) override;
   void bindFramebuffer(const RenderFramebuffer& framebuffer) override;

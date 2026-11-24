@@ -415,6 +415,10 @@ bool RenderContext::readPixels(RenderTarget& target, std::span<std::uint8_t> rgb
   return m_backend != nullptr && !m_graphicsResetPending && m_backend->readPixels(target, rgba);
 }
 
+TextureId RenderContext::finishedOffscreenTexture(RenderTarget& target) {
+  return m_backend != nullptr && !m_graphicsResetPending ? m_backend->finishedOffscreenTexture(target) : TextureId{};
+}
+
 void RenderContext::setTextFontFamily(std::string family) {
   if (family.empty()) {
     family = "sans-serif";

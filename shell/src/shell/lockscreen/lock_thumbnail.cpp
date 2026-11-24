@@ -177,7 +177,9 @@ namespace lock_thumbnail {
         std::ifstream stream(in);
         source.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
       }
-      LockShader shader(shared, source, kWidth, kHeight);
+      LockGlContext gl(shared);
+      const auto drawn = LockShader::shadertoy(gl, source, kWidth, kHeight);
+      LockShader& shader = *drawn;
       if (video != nullptr && !firstFrame(*video, shader)) {
         kLog.warn("'{}': no first frame", in);
         return 1;

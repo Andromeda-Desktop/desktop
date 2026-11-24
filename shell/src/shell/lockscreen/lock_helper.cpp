@@ -28,6 +28,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <iterator>
 #include <memory>
 #include <poll.h>
@@ -57,6 +58,8 @@ namespace {
     std::unique_ptr<LockShader> shader;
     // Set with shader for a `video` slot: the shader draws its frames.
     std::unique_ptr<LockVideo> video;
+    // A widget slot sending dmabufs: copies each renderer frame into the buffer the shell does not show.
+    std::unique_ptr<LockShader> copy;
     std::chrono::steady_clock::time_point lastShaderFrame;
     bool dmabufsAttached = false;
     // Index of the shader buffer the shell shows; the next frame goes into the other one.
@@ -93,7 +96,61 @@ namespace {
     return settings;
   }
 
-  void render(RenderContext& context, Slot& slot, float deltaMs) {
+  [[nodiscard]] bool usesDmabufs(const Slot& slot, const LockShader& shader) {
+    return slot.server.dmabufAllowed() && shader.dmabufs().size() == 2;
+  }
+
+  // Draws `shader` into the buffer the shell does not show and sends it. Needs usesDmabufs.
+  bool sendDmabuf(Slot& slot, LockShader& shader) {
+    const auto& dmabufs = shader.dmabufs();
+    if (!slot.dmabufsAttached) {
+      // Buffer ids 1 and 2 are the shader's two dmabufs; id 0 stays the memfd buffer.
+      slot.dmabufsAttached = slot.server.attachDmabuf(1, dmabufs[0]) && slot.server.attachDmabuf(2, dmabufs[1]);
+      if (!slot.dmabufsAttached) {
+        return false;
+      }
+      kLog.info("slot sends dmabufs");
+    }
+    const std::size_t next = 1 - slot.shownBuffer;
+    if (!shader.draw(next) || !slot.server.sendDmabufFrame(static_cast<std::uint32_t>(next) + 1)) {
+      return false;
+    }
+    slot.shownBuffer = next;
+    return true;
+  }
+
+  // Sends the renderer frame of a widget slot as a dmabuf (a GPU copy, no readback); false to send it by memfd.
+  bool sendWidgetDmabuf(RenderContext& context, Slot& slot, LockGlContext* gl) {
+    if (gl == nullptr || !slot.server.dmabufAllowed()) {
+      slot.copy.reset();
+      return false;
+    }
+    const TextureId frame = context.finishedOffscreenTexture(slot.target);
+    if (!frame) {
+      return false;
+    }
+    const std::uint32_t width = slot.target.bufferWidth();
+    const std::uint32_t height = slot.target.bufferHeight();
+    if (slot.copy == nullptr || slot.copy->width() != width || slot.copy->height() != height) {
+      slot.copy.reset();
+      slot.dmabufsAttached = false;
+      slot.shownBuffer = 1;
+      try {
+        slot.copy = LockShader::copy(*gl, width, height);
+      } catch (const std::exception& e) {
+        kLog.warn("widget dmabuf copy: {}", e.what());
+      }
+    }
+    bool sent = false;
+    if (slot.copy != nullptr && usesDmabufs(slot, *slot.copy)) {
+      slot.copy->setChannel0Texture(static_cast<GLuint>(frame.value()));
+      sent = sendDmabuf(slot, *slot.copy);
+    }
+    (void)context.backend().makeCurrentNoSurface();
+    return sent;
+  }
+
+  void render(RenderContext& context, Slot& slot, float deltaMs, LockGlContext* gl) {
     if (slot.shader != nullptr) {
       LockShader& shader = *slot.shader;
       if (slot.video != nullptr) {
@@ -109,21 +166,9 @@ namespace {
         }
       }
       slot.dirty = false;
-      const auto& dmabufs = shader.dmabufs();
       bool sent = false;
-      if (slot.server.dmabufAllowed() && dmabufs.size() == 2) {
-        // Buffer ids 1 and 2 are the shader's two dmabufs; id 0 stays the memfd buffer.
-        if (!slot.dmabufsAttached) {
-          slot.dmabufsAttached = slot.server.attachDmabuf(1, dmabufs[0]) && slot.server.attachDmabuf(2, dmabufs[1]);
-          if (slot.dmabufsAttached) {
-            kLog.info("shader slot sends dmabufs");
-          }
-        }
-        const std::size_t next = 1 - slot.shownBuffer;
-        if (slot.dmabufsAttached && shader.draw(next) && slot.server.sendDmabufFrame(static_cast<std::uint32_t>(next) + 1)) {
-          slot.shownBuffer = next;
-          sent = true;
-        }
+      if (usesDmabufs(slot, shader)) {
+        sent = sendDmabuf(slot, shader);
       } else {
         const auto pixels = slot.server.frameBuffer(shader.width(), shader.height());
         sent = !pixels.empty() && shader.draw(0) && shader.read(0, pixels) && slot.server.sendFrame();
@@ -153,6 +198,10 @@ namespace {
       slot.widget->layout(renderer);
     }
     (void)context.renderScene(slot.target, &slot.root);
+    if (sendWidgetDmabuf(context, slot, gl)) {
+      slot.dirty = false;
+      return;
+    }
     const auto pixels = slot.server.frameBuffer(slot.target.bufferWidth(), slot.target.bufferHeight());
     if (!pixels.empty() && context.readPixels(slot.target, pixels)) {
       slot.server.sendFrame();
@@ -203,6 +252,14 @@ int runLockHelper(int argc, char* argv[]) {
     kLog.error("no GPU context: {}", e.what());
     return 1;
   }
+  // Empty when the driver gives no second context: shader slots stay blank, widget slots send memfd frames.
+  std::unique_ptr<LockGlContext> gl;
+  try {
+    gl = std::make_unique<LockGlContext>(shared);
+  } catch (const std::exception& e) {
+    kLog.warn("{}", e.what());
+  }
+  (void)context.backend().makeCurrentNoSurface();
 
   // Lock screen data only: clipboard, calendar and every action hook stay unset (DESIGN.md L5b detail).
   scripting::ScriptApiContext scriptApi;
@@ -256,8 +313,11 @@ int runLockHelper(int argc, char* argv[]) {
             : path != nullptr            ? readFileText(FileUtils::expandUserPath(*path))
                                          : "";
         try {
-          slot->shader = std::make_unique<LockShader>(
-              shared, source, static_cast<std::uint32_t>(std::lround(width * scale)),
+          if (gl == nullptr) {
+            throw std::runtime_error("no GL context for the shaders");
+          }
+          slot->shader = LockShader::shadertoy(
+              *gl, source, static_cast<std::uint32_t>(std::lround(width * scale)),
               static_cast<std::uint32_t>(std::lround(height * scale))
           );
           if (video) {
@@ -329,7 +389,7 @@ int runLockHelper(int argc, char* argv[]) {
       const bool shaderDue = slot->shader == nullptr || now - slot->lastShaderFrame >= std::chrono::milliseconds(kFrameIntervalMs);
       const bool wants = slot->server.requested() && !slot->server.paused() && (slot->dirty || animating(*slot));
       if (wants && shaderDue) {
-        render(context, *slot, deltaMs);
+        render(context, *slot, deltaMs, gl.get());
         rendered = true;
       }
       // A frame held back by the pacing (a video frame) needs a wake when it is due.

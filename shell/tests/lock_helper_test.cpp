@@ -1,5 +1,11 @@
 #include "ipc/pixel_stream_client.h"
+#include "render/gl_shared_context.h"
 #include "tests/test_check.h"
+
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 
 #include <array>
 #include <chrono>
@@ -8,11 +14,13 @@
 #include <fcntl.h>
 #include <format>
 #include <poll.h>
+#include <print>
 #include <string>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -53,6 +61,63 @@ namespace {
   const std::uint8_t* pixel(const PixelStreamClient& client, std::uint32_t x, std::uint32_t y) {
     const auto frame = client.frame();
     return frame.has_value() && frame->pixels != nullptr ? frame->pixels + (y * frame->width + x) * 4 : nullptr;
+  }
+
+  // The rows of a dmabuf frame as stored (row 0 first), read back through a GL import.
+  std::vector<std::uint8_t> dmabufPixels(const PixelStreamClient::Frame& frame) {
+    static GlSharedContext gl;
+    static const bool ready = (gl.initializeSurfaceless(), true);
+    (void)ready;
+    TEST_CHECK(eglMakeCurrent(gl.display(), EGL_NO_SURFACE, EGL_NO_SURFACE, gl.rootContext()) == EGL_TRUE);
+    const std::array<EGLint, 17> attributes = {
+        EGL_WIDTH, frame.width, EGL_HEIGHT, frame.height, EGL_LINUX_DRM_FOURCC_EXT, static_cast<EGLint>(frame.fourcc),
+        EGL_DMA_BUF_PLANE0_FD_EXT, frame.dmabufFd, EGL_DMA_BUF_PLANE0_OFFSET_EXT, static_cast<EGLint>(frame.offset),
+        EGL_DMA_BUF_PLANE0_PITCH_EXT, static_cast<EGLint>(frame.stride), EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT,
+        static_cast<EGLint>(frame.modifier & 0xffffffffU), EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT,
+        static_cast<EGLint>(frame.modifier >> 32U), EGL_NONE,
+    };
+    const auto createImage = reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(eglGetProcAddress("eglCreateImageKHR"));
+    const auto destroyImage = reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
+    const auto targetTexture =
+        reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(eglGetProcAddress("glEGLImageTargetTexture2DOES"));
+    const EGLImageKHR image = createImage(gl.display(), EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, nullptr, attributes.data());
+    TEST_CHECK(image != EGL_NO_IMAGE_KHR);
+    GLuint texture = 0;
+    GLuint framebuffer = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    targetTexture(GL_TEXTURE_2D, image);
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+    TEST_CHECK(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+    std::vector<std::uint8_t> rgba(static_cast<std::size_t>(frame.width) * frame.height * 4);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, frame.width, frame.height, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    glDeleteFramebuffers(1, &framebuffer);
+    glDeleteTextures(1, &texture);
+    destroyImage(gl.display(), image);
+    return rgba;
+  }
+
+  // A slot that sends dmabufs: its dmabuf frame must equal the memfd frame it sends once the client refuses
+  // dmabufs (same rows, same order, same alpha). Leaves the slot on memfd frames.
+  void checkDmabufMatchesMemfd(std::array<PixelStreamClient, kSlots>& clients, int slot, Clock::time_point deadline) {
+    const auto frame = clients[slot].frame();
+    TEST_CHECK(frame.has_value());
+    if (frame->dmabufFd < 0) {
+      std::println("lock_helper_test: slot {} sends memfd frames (no dmabuf export)", slot);
+      return;
+    }
+    const std::vector<std::uint8_t> viaDmabuf = dmabufPixels(*frame);
+    clients[slot].refuseDmabuf();
+    clients[slot].releaseFrame();
+    pump(clients, deadline, [&] { return centre(clients[slot]) != nullptr; });
+    const auto memfd = clients[slot].frame();
+    TEST_CHECK(memfd.has_value() && memfd->pixels != nullptr);
+    TEST_CHECK(memfd->width == frame->width && memfd->height == frame->height);
+    const std::vector<std::uint8_t> viaMemfd(memfd->pixels, memfd->pixels + viaDmabuf.size());
+    TEST_CHECK(viaDmabuf == viaMemfd);
   }
 
 } // namespace
@@ -115,20 +180,17 @@ int main(int argc, char* argv[]) {
     clients[i].adopt(pairs[i][0]);
   }
   const auto deadline = Clock::now() + std::chrono::seconds(20);
-  pump(clients, deadline, [&] { return centre(clients[0]) != nullptr && clients[1].frame().has_value(); });
+  pump(clients, deadline, [&] { return clients[0].frame().has_value() && clients[1].frame().has_value(); });
+  checkDmabufMatchesMemfd(clients, 0, deadline);
 
   const std::uint8_t* box = centre(clients[0]);
   TEST_CHECK(box != nullptr && box[0] > 200 && box[3] > 200);
   // The shader slot renders at its buffer size (logical size x scale), as a dmabuf where the driver exports one.
   const auto shaderFrame = clients[1].frame();
   TEST_CHECK(shaderFrame.has_value() && shaderFrame->width == 64 && shaderFrame->height == 32);
-  if (shaderFrame->dmabufFd >= 0) {
-    TEST_CHECK(shaderFrame->stride >= 64 * 4);
-    // A shell that cannot import it gets memfd frames from then on.
-    clients[1].refuseDmabuf();
-    clients[1].releaseFrame();
-    pump(clients, deadline, [&] { return centre(clients[1]) != nullptr; });
-  }
+  TEST_CHECK(shaderFrame->dmabufFd < 0 || shaderFrame->stride >= 64 * 4);
+  // A shell that cannot import it gets memfd frames from then on.
+  checkDmabufMatchesMemfd(clients, 1, deadline);
   const std::uint8_t* shader = centre(clients[1]);
   TEST_CHECK(shader != nullptr);
   TEST_CHECK(shader[0] < 30 && shader[1] > 220 && shader[3] == 255);

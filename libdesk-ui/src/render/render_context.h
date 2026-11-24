@@ -57,6 +57,8 @@ public:
   bool makeCurrent(RenderTarget& target);
   // See RenderBackend::readPixels.
   bool readPixels(RenderTarget& target, std::span<std::uint8_t> rgba);
+  // See RenderBackend::finishedOffscreenTexture.
+  [[nodiscard]] TextureId finishedOffscreenTexture(RenderTarget& target);
   void setTextFontFamily(std::string family);
   void setTextScale(float scale);
   void setTextBaseDirection(bool rtl);

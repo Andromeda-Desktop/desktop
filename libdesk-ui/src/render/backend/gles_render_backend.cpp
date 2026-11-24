@@ -282,6 +282,7 @@ void main() {
     [[nodiscard]] int age() const noexcept { return m_hasFrame ? 1 : 0; }
     void markFrame() noexcept { m_hasFrame = true; }
     [[nodiscard]] bool hasFrame() const noexcept { return m_hasFrame; }
+    [[nodiscard]] TextureId colorTexture() const noexcept { return m_framebuffer.colorTexture(); }
 
   private:
     TextureManager& m_textures;
@@ -704,6 +705,16 @@ std::unique_ptr<RenderSurfaceTarget> GlesRenderBackend::createSurfaceTarget(std:
 
 std::unique_ptr<RenderSurfaceTarget> GlesRenderBackend::createOffscreenTarget() {
   return std::make_unique<GlesOffscreenTarget>(m_textureManager);
+}
+
+TextureId GlesRenderBackend::finishedOffscreenTexture(RenderTarget& target) {
+  flushBatches();
+  auto* offscreen = glesOffscreenTarget(target);
+  if (offscreen == nullptr || !offscreen->hasFrame() || !makeCurrent(target)) {
+    return {};
+  }
+  glFinish();
+  return offscreen->colorTexture();
 }
 
 bool GlesRenderBackend::readPixels(RenderTarget& target, std::span<std::uint8_t> rgba) {
