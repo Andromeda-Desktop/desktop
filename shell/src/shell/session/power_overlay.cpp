@@ -16,6 +16,7 @@
 #include "shell/session/session_action_meta.h"
 #include "shell/session/session_action_runner.h"
 #include "shell/session/session_guard.h"
+#include "ui/controls/alert.h"
 #include "ui/builders.h"
 #include "compositors/andromeda/andromeda_runtime.h"
 #include "compositors/compositor_platform.h"
@@ -925,15 +926,6 @@ std::string PowerOverlay::endText(const char* kind) const {
 
 namespace {
 
-  std::unique_ptr<Flex> alertCard(float s, float width) {
-    auto card = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
-                            .padding = Tokens::componentDialogPadding * s,
-                            .fill = colorSpecFromRole(ColorRole::Popover), .radius = Style::scaledRadius(Tokens::componentDialogRadius, s),
-                            .width = width * s});
-    card->setBorder(colorSpecFromRole(ColorRole::Stroke), 0.5F * s);
-    return card;
-  }
-
   std::unique_ptr<Flex> alertIcon(float s, const char* glyph, ColorRole role) {
     return ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center,
                     .fill = colorSpecFromRole(role, 0.24F), .radius = kIcon * 0.5F * s, .width = kIcon * s,
@@ -964,11 +956,11 @@ namespace {
 } // namespace
 
 void PowerOverlay::buildCountdown(Node& root, float s) {
-  auto card = alertCard(s, Tokens::componentDialogAlertWidth);
+  auto card = ui::alertFrame(s, Tokens::componentDialogAlertWidth);
   const char* glyph = session_action::defaultGlyph(m_endAction);
   card->addChild(ui::row({.align = FlexAlign::Start}, alertIcon(s, glyph, ColorRole::Accent)));
-  card->addChild(alertText(i18n::tr(endText("title").c_str()), Tokens::typeHeadline, s, ColorRole::Label1));
-  auto body = alertText(i18n::tr(endText("body").c_str(), "seconds", std::to_string(m_secondsLeft)), Tokens::typeFootnote,
+  card->addChild(alertText(i18n::tr(endText("title").c_str()), Tokens::typeTitle3, s, ColorRole::Label1));
+  auto body = alertText(i18n::tr(endText("body").c_str(), "seconds", std::to_string(m_secondsLeft)), Tokens::typeParagraph,
                         s, ColorRole::Label2);
   m_countLabel = body.get();
   card->addChild(std::move(body));
@@ -992,6 +984,7 @@ void PowerOverlay::buildCountdown(Node& root, float s) {
                  .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2, .flexGrow = 1.0F})
   ));
   auto buttons = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+  buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F); // 24 above the buttons with the card gap 8
   buttons->addChild(alertButton(i18n::tr("control-center.power-menu.cancel"), ButtonVariant::Default, s,
                                 [this] { DeferredCall::callLater([this] { hide(); }); }));
   auto primary = alertButton(i18n::tr(endText("button").c_str()), ButtonVariant::Primary, s,
@@ -1008,7 +1001,7 @@ void PowerOverlay::buildCountdown(Node& root, float s) {
 }
 
 void PowerOverlay::buildBlockers(Node& root, float s) {
-  auto card = alertCard(s, Tokens::componentDialogWidth);
+  auto card = ui::alertFrame(s, Tokens::componentDialogAlertListWidth);
   card->addChild(ui::row({.align = FlexAlign::Start}, alertIcon(s, session_action::defaultGlyph(m_endAction), ColorRole::Accent)));
   // An app's logout inhibitor gives its window's reason; an app without a window gets a row of its own.
   const auto reasonFor = [this](const std::string& appId) -> const std::string* {
@@ -1025,8 +1018,8 @@ void PowerOverlay::buildBlockers(Node& root, float s) {
   }
   card->addChild(alertText(i18n::tr(endText("blockers").c_str(), "count",
                                     std::to_string(m_blockers.size() + windowless.size())),
-                           Tokens::typeHeadline, s, ColorRole::Label1));
-  card->addChild(alertText(i18n::tr(endText("blockers-body").c_str()), Tokens::typeFootnote, s, ColorRole::Label2));
+                           Tokens::typeTitle3, s, ColorRole::Label1));
+  card->addChild(alertText(i18n::tr(endText("blockers-body").c_str()), Tokens::typeParagraph, s, ColorRole::Label2));
   auto list = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s, .padding = Tokens::spaceP8 * s,
                           .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Style::scaledRadius(Tokens::componentTileRadius, s)});
   for (const ToplevelInfo& window : m_blockers) {
@@ -1081,6 +1074,7 @@ void PowerOverlay::buildBlockers(Node& root, float s) {
   }
   card->addChild(std::move(list));
   auto buttons = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+  buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F); // 24 above the buttons with the card gap 8
   buttons->addChild(alertButton(i18n::tr("control-center.power-menu.cancel"), ButtonVariant::Default, s,
                                 [this] { DeferredCall::callLater([this] { hide(); }); }));
   buttons->addChild(alertButton(i18n::tr(endText("anyway").c_str()), ButtonVariant::Destructive, s,

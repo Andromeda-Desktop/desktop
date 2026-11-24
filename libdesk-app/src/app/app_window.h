@@ -21,6 +21,10 @@
 #include <variant>
 #include <vector>
 
+namespace ui {
+  struct AlertProps;
+}
+
 class AppLoop;
 class Button;
 class ContextMenuPopup;
@@ -166,11 +170,19 @@ public:
   // A window-modal sheet (rulebook 9.10): a scrim over the window and the card centred on it. The builder runs on
   // each scene build; Escape, or a new sheet that replaces it, calls onCancel. Window keys and commands wait while it
   // shows.
-  void presentSheet(std::function<std::unique_ptr<Node>(float scale)> builder, std::function<void()> onCancel);
+  void presentSheet(std::function<std::unique_ptr<Node>(float scale)> builder, std::function<void()> onCancel) {
+    presentSheetOf(SheetKind::Dialog, std::move(builder), std::move(onCancel));
+  }
+  // A 9.10 alert sheet (ui::alertCard); its default button has keyboard focus. Buttons dismiss it themselves.
+  void presentAlert(const ui::AlertProps& alert, std::function<void()> onCancel);
   // The owner's next sheet in place of its own shown one: that one's onCancel does not run, as its question goes on.
   void replaceSheet(std::function<std::unique_ptr<Node>(float scale)> builder, std::function<void()> onCancel) {
     m_sheetCancel = {};
     presentSheet(std::move(builder), std::move(onCancel));
+  }
+  void replaceAlert(const ui::AlertProps& alert, std::function<void()> onCancel) {
+    m_sheetCancel = {};
+    presentAlert(alert, std::move(onCancel));
   }
   void dismissSheet();
   // Collapses or restores the sidebar on spring.page (the Files Gallery is full-bleed); the header stays in place.
@@ -313,6 +325,11 @@ private:
   std::function<bool(const KeyboardEvent&)> m_keyHandler;
   std::function<bool(const KeyboardEvent&)> m_firstKeyHandler;
   std::function<void(bool)> m_onActive;
+  enum class SheetKind : std::uint8_t { Dialog, Alert }; // Dialog: the window wraps the builder's node in its card
+  void presentSheetOf(SheetKind kind, std::function<std::unique_ptr<Node>(float)> builder, std::function<void()> onCancel);
+  SheetKind m_sheetKind = SheetKind::Dialog;
+  Button* m_sheetDefault = nullptr; // set by the alert builder in attachSheet, taken by focusSheetDefault
+  void focusSheetDefault();
   std::function<std::unique_ptr<Node>(float)> m_sheetBuilder;
   std::function<void()> m_sheetCancel;
   Node* m_sheetCard = nullptr;

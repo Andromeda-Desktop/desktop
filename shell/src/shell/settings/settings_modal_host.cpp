@@ -177,7 +177,7 @@ namespace settings {
       }
 
       [[nodiscard]] float m_radius() const noexcept {
-        return Style::scaledRadius(Tokens::componentDialogRadius, m_scale());
+        return Style::scaledRadius(m_request.radius, m_scale());
       }
 
       SettingsModalRequest m_request;

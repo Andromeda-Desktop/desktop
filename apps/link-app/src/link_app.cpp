@@ -8,6 +8,7 @@
 #include "core/log.h"
 #include "core/text_clipboard.h"
 #include "core/input/key_modifiers.h"
+#include "ui/controls/alert.h"
 #include "ui/controls/input.h"
 #include "ui/controls/image.h"
 #include "ui/builders.h"
@@ -825,24 +826,15 @@ namespace linkapp {
     const std::string body = entry.folder
                                  ? i18n::tr("link.files.delete-folder-body", "phone", phone)
                                  : i18n::tr("link.files.delete-file-body", "phone", phone);
-    m_window->presentSheet(
-        [this, name = entry.name, body, path](float s) -> std::unique_ptr<Node> {
-          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP24 * s,
-                                 .width = Tokens::componentDialogAlertWidth * s});
-          box->addChild(text(i18n::tr("link.files.delete-title", "name", name), Tokens::typeTitle3, ColorRole::Label1, s, 2));
-          box->addChild(text(body, Tokens::typeParagraph, ColorRole::Label2, s, 4));
-          auto buttons = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
-          buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F);
-          buttons->addChild(ui::button({.text = i18n::tr("link.files.delete"), .variant = ButtonVariant::Destructive,
-                                        .onClick = [this, path] {
-                                          m_window->dismissSheet();
-                                          m_client->deleteFile(path);
-                                        }}));
-          buttons->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Tonal,
-                                        .onClick = [this] { m_window->dismissSheet(); }}));
-          box->addChild(std::move(buttons));
-          return box;
-        },
+    m_window->presentAlert(
+        {.title = i18n::tr("link.files.delete-title", "name", entry.name),
+         .body = body,
+         .buttons = {{.text = i18n::tr("common.actions.cancel"), .onClick = [this] { m_window->dismissSheet(); }},
+                     {.text = i18n::tr("link.files.delete"), .variant = ButtonVariant::Destructive,
+                      .onClick = [this, path] {
+                        m_window->dismissSheet();
+                        m_client->deleteFile(path);
+                      }}}},
         [this] { m_window->dismissSheet(); });
   }
 
@@ -1151,26 +1143,15 @@ namespace linkapp {
     m_hotspotSheet = std::move(shown);
     const Presence presence = m_client->presence();
     const std::string phone = presence.phone.id == ask->deviceId ? presence.phone.name : i18n::tr("link.hotspot.your-phone");
-    const std::string ssid = ask->ssid;
-    // Rulebook §9.10 alert: title-3, body 13 / 20 label_2, 24 above 3 buttons stacked full width.
-    (m_window->*(replacing ? &AppWindow::replaceSheet : &AppWindow::presentSheet))(
-        [this, phone, ssid](float s) -> std::unique_ptr<Node> {
-          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP24 * s,
-                                 .width = Tokens::componentDialogAlertWidth * s});
-          box->addChild(text(i18n::tr("link.hotspot.title", "phone", phone), Tokens::typeTitle3, ColorRole::Label1, s, 2));
-          box->addChild(text(i18n::tr("link.hotspot.body", "ssid", ssid),
-                             Tokens::typeParagraph, ColorRole::Label2, s, 4));
-          auto buttons = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
-          buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F);
-          buttons->addChild(ui::button({.text = i18n::tr("link.hotspot.use"), .variant = ButtonVariant::Primary,
-                                        .onClick = [this] { m_client->answerHotspot(true); }}));
-          buttons->addChild(ui::button({.text = i18n::tr("link.hotspot.always"), .variant = ButtonVariant::Tonal,
-                                        .onClick = [this] { m_client->answerHotspot(true, true); }}));
-          buttons->addChild(ui::button({.text = i18n::tr("link.hotspot.not-now"), .variant = ButtonVariant::Tonal,
-                                        .onClick = [this] { m_client->answerHotspot(false); }}));
-          box->addChild(std::move(buttons));
-          return box;
-        },
+    (m_window->*(replacing ? &AppWindow::replaceAlert : &AppWindow::presentAlert))(
+        {.title = i18n::tr("link.hotspot.title", "phone", phone),
+         .body = i18n::tr("link.hotspot.body", "ssid", ask->ssid),
+         .buttons = {{.text = i18n::tr("link.hotspot.use"), .variant = ButtonVariant::Primary,
+                      .onClick = [this] { m_client->answerHotspot(true); }},
+                     {.text = i18n::tr("link.hotspot.always"), .variant = ButtonVariant::Tonal,
+                      .onClick = [this] { m_client->answerHotspot(true, true); }},
+                     {.text = i18n::tr("link.hotspot.not-now"), .variant = ButtonVariant::Tonal,
+                      .onClick = [this] { m_client->answerHotspot(false); }}}},
         [this] { m_client->answerHotspot(false); });
   }
 
@@ -2153,25 +2134,16 @@ namespace linkapp {
   }
 
   void LinkApp::confirmLock() {
-    const std::string phone = m_client->presence().phone.name;
-    m_window->presentSheet(
-        [this, phone](float s) -> std::unique_ptr<Node> {
-          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP24 * s,
-                                 .width = Tokens::componentDialogAlertWidth * s});
-          box->addChild(text(i18n::tr("link.mirror.lock-title", "phone", phone), Tokens::typeTitle3, ColorRole::Label1, s, 2));
-          box->addChild(text(i18n::tr("link.mirror.lock-body"),
-                             Tokens::typeParagraph, ColorRole::Label2, s, 4));
-          auto buttons = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
-          buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F);
-          buttons->addChild(ui::button({.text = i18n::tr("link.mirror.lock"), .variant = ButtonVariant::Primary, .onClick = [this] {
-                                          m_window->dismissSheet();
-                                          m_client->mirrorKey(kAndroidPower);
-                                        }}));
-          buttons->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Tonal,
-                                        .onClick = [this] { m_window->dismissSheet(); }}));
-          box->addChild(std::move(buttons));
-          return box;
-        },
+    m_window->presentAlert(
+        {.title = i18n::tr("link.mirror.lock-title", "phone", m_client->presence().phone.name),
+         .body = i18n::tr("link.mirror.lock-body"),
+         .buttons = {{.text = i18n::tr("common.actions.cancel"), .onClick = [this] { m_window->dismissSheet(); }},
+                     {.text = i18n::tr("link.mirror.lock"), .variant = ButtonVariant::Primary,
+                      .onClick = [this] {
+                        m_window->dismissSheet();
+                        m_client->mirrorKey(kAndroidPower);
+                      }}},
+         .defaultIndex = 1},
         [this] { m_window->dismissSheet(); });
   }
 

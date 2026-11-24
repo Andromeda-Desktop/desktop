@@ -688,6 +688,9 @@ offset = 8.0
 
 [component.dialog]  # 9.10
 alert_width = 320.0
+alert_padding = 24.0
+alert_radius = 24.0
+alert_list_width = 440.0  # an alert that lists items (session-end blockers)
 width = 480.0
 radius = 28.0  # sheet radius (rulebook 9.10, user 2026-11-18)
 padding = 12.0

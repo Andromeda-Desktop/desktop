@@ -9,6 +9,7 @@
 #include "share/share_menu.h"
 #include "core/text_clipboard.h"
 #include "core/input/cursor_shape.h"
+#include "ui/controls/alert.h"
 #include "ui/controls/input.h"
 #include "core/deferred_call.h"
 #include "core/files/directory_scanner.h"
@@ -2473,34 +2474,21 @@ namespace viewer {
   }
 
   void ViewerWindow::askSaveBeforeClose(std::function<void()> close) {
-    m_window.presentSheet(
-        [this, close](float s) {
-          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
-                                 .padding = Tokens::componentDialogPadding * s,
-                                 .width = Tokens::componentDialogAlertWidth * s});
-          box->addChild(ui::label({.text = i18n::tr("viewer.save.title", "name", m_path.filename().string()),
-                                   .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
-                                   .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2,
-                                   .ellipsize = TextEllipsize::Middle}));
-          box->addChild(ui::label({.text = i18n::tr("viewer.save.body"),
-                                   .fontSize = Tokens::typeBody.size * s, .color = colorSpecFromRole(ColorRole::Label2),
-                                   .maxLines = 3}));
-          auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
-          buttons->addChild(ui::button({.text = i18n::tr("viewer.save.discard"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Destructive, .onClick = [this, close] {
-                                          m_window.dismissSheet();
-                                          close();
-                                        }}));
-          buttons->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
-          buttons->addChild(ui::button({.text = i18n::tr("viewer.commands.save"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Primary, .onClick = [this, close] {
-                                          m_window.dismissSheet();
-                                          saveThen(close);
-                                        }}));
-          box->addChild(std::move(buttons));
-          return box;
-        },
+    m_window.presentAlert(
+        {.title = i18n::tr("viewer.save.title", "name", m_path.filename().string()),
+         .titleEllipsize = TextEllipsize::Middle,
+         .body = i18n::tr("viewer.save.body"),
+         .buttons = {{.text = i18n::tr("viewer.commands.save"), .variant = ButtonVariant::Primary,
+                      .onClick = [this, close] {
+                        m_window.dismissSheet();
+                        saveThen(close);
+                      }},
+                     {.text = i18n::tr("viewer.save.discard"), .variant = ButtonVariant::Destructive,
+                      .onClick = [this, close] {
+                        m_window.dismissSheet();
+                        close();
+                      }},
+                     {.text = i18n::tr("common.actions.cancel"), .onClick = [this] { m_window.dismissSheet(); }}}},
         [this] { m_window.dismissSheet(); });
   }
 

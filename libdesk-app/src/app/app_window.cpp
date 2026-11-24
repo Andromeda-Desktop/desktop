@@ -23,6 +23,7 @@
 #include "ui/builders.h"
 #include "ui/controls/glyph.h"
 #include "ui/controls/spinner.h"
+#include "ui/controls/alert.h"
 #include "ui/controls/box.h"
 #include "core/input/key_chord.h"
 #include "ui/controls/button.h"
@@ -1256,6 +1257,7 @@ void AppWindow::prepareFrame(bool needsLayout) {
     const auto margin = static_cast<float>(m_surface->margin());
     m_input.setFocus(nullptr); // the sheet takes the keys, as after a rebuild
     attachSheet(renderer, width - 2.0F * margin, height - 2.0F * margin, margin); // the card lays itself out
+    focusSheetDefault();
     m_input.syncPointerHover(); // the scrim is under the pointer now, not the view
     m_surface->requestRedraw();
     return;
@@ -1814,6 +1816,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   m_input.setSceneRoot(m_root.get());
   if (m_input.focusedArea() == nullptr)
     m_input.restoreTabFocus(std::move(focus));
+  focusSheetDefault();
   m_surface->setSceneRoot(m_root.get());
   if (m_onLayout) {
     const auto hookStart = std::chrono::steady_clock::now();
@@ -2076,9 +2079,16 @@ void AppWindow::attachSheet(Renderer& renderer, float width, float height, float
   shade->setOpacity(m_sheetMix); // the dim fades in with the card
   m_sheetShade = shade.get();
   scrim->addChild(std::move(shade));
-  auto card = ui::column({.align = FlexAlign::Stretch, .fill = colorSpecFromRole(ColorRole::Popover),
-                          .radius = Style::scaledRadius(Tokens::componentDialogRadius, s), .clipChildren = true});
-  card->addChild(m_sheetBuilder(s));
+  m_sheetDefault = nullptr;
+  std::unique_ptr<Node> card;
+  if (m_sheetKind == SheetKind::Alert) {
+    card = m_sheetBuilder(s);
+  } else {
+    auto dialog = ui::column({.align = FlexAlign::Stretch, .fill = colorSpecFromRole(ColorRole::Popover),
+                              .radius = Style::scaledRadius(Tokens::componentDialogRadius, s), .clipChildren = true});
+    dialog->addChild(m_sheetBuilder(s));
+    card = std::move(dialog);
+  }
   card->layout(renderer);
   card->setPosition(std::round((width - card->width()) / 2.0F), std::round((height - card->height()) / 2.0F));
   card->setTransformOrigin(card->width() / 2.0F, card->height() / 2.0F);
@@ -2091,6 +2101,13 @@ void AppWindow::attachSheet(Renderer& renderer, float width, float height, float
     child->setExcludeSubtreeFromTabOrder(true);
   }
   m_root->addChild(std::move(scrim));
+}
+
+void AppWindow::focusSheetDefault() {
+  Button* button = std::exchange(m_sheetDefault, nullptr);
+  if (button != nullptr && m_input.focusedArea() == nullptr) {
+    m_input.setFocus(button->inputArea()); // rulebook 9.10: Enter answers with the default button
+  }
 }
 
 void AppWindow::detachSheet() {
@@ -2109,12 +2126,27 @@ void AppWindow::detachSheet() {
   m_surface->requestRedraw();
 }
 
-void AppWindow::presentSheet(std::function<std::unique_ptr<Node>(float)> builder, std::function<void()> onCancel) {
+void AppWindow::presentAlert(const ui::AlertProps& alert, std::function<void()> onCancel) {
+  presentSheetOf(
+      SheetKind::Alert,
+      [this, alert](float s) -> std::unique_ptr<Node> {
+        ui::AlertProps props = alert;
+        props.scale = s;
+        props.defaultButton = &m_sheetDefault;
+        return ui::alertCard(props);
+      },
+      std::move(onCancel)
+  );
+}
+
+void AppWindow::presentSheetOf(SheetKind kind, std::function<std::unique_ptr<Node>(float)> builder,
+                               std::function<void()> onCancel) {
   // A sheet that another replaces is cancelled, so its owner never waits for an answer that cannot come.
   if (auto replaced = std::exchange(m_sheetCancel, {}); replaced && m_sheetBuilder) {
     replaced();
   }
   const bool replacing = static_cast<bool>(m_sheetBuilder);
+  m_sheetKind = kind;
   m_sheetBuilder = std::move(builder);
   m_sheetCancel = std::move(onCancel);
   if ((std::exchange(m_sheetHandoff, false) || replacing) && m_sheetAnim == 0) {

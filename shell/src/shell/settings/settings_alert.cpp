@@ -4,6 +4,7 @@
 #include "design_tokens.h"
 #include "render/core/renderer.h"
 #include "ui/builders.h"
+#include "ui/controls/alert.h"
 #include "ui/controls/flex.h"
 #include "ui/palette.h"
 #include "ui/style.h"
@@ -25,75 +26,39 @@ namespace settings {
       bool answered = false;
     };
 
-    std::unique_ptr<Node> alertButton(SettingsModalHost& host, const std::shared_ptr<AlertState>& state, std::size_t index) {
-      const SettingsAlertButton& spec = state->request.buttons[index];
-      const float scale = state->request.scale;
-      const float height = Tokens::sizeControlM * scale;
-      const bool capsule = spec.variant == ButtonVariant::Primary || spec.variant == ButtonVariant::Destructive;
-      return ui::button({
-          .out = index == state->request.defaultIndex ? &state->defaultButton : nullptr,
-          .text = spec.text,
-          .fontSize = Style::fontSizeBody * scale,
-          .variant = spec.variant,
-          .minHeight = height,
-          .paddingV = 0.0F,
-          .paddingH = Style::spaceMd * scale,
-          .radius = capsule ? height * 0.5F : Style::scaledRadiusMd(scale),
-          .flexGrow = 1.0F,
-          .onClick =
-              [&host, weak = std::weak_ptr<AlertState>(state), index] {
-                // Deferred: popping destroys this button while its click is still dispatching.
-                DeferredCall::callLater([&host, weak, index] {
-                  const auto alive = weak.lock();
-                  if (alive == nullptr || !alive->id.has_value()) {
-                    return;
-                  }
-                  auto action = alive->request.buttons[index].onClick;
-                  alive->answered = true;
-                  (void)host.pop(*alive->id);
-                  if (action) {
-                    action();
-                  }
-                });
-              },
-      });
-    }
-
     std::unique_ptr<Node> build(SettingsModalHost& host, const std::shared_ptr<AlertState>& state) {
       const SettingsAlertRequest& request = state->request;
-      const float scale = request.scale;
       state->defaultButton = nullptr;
-
-      auto text = ui::column(
-          {.align = FlexAlign::Stretch, .gap = Style::spaceSm * scale},
-          ui::label({
-              .text = request.title,
-              .fontSize = Tokens::typeTitle3.size * scale,
-              .fontWeight = FontWeight::SemiBold,
-              .color = colorSpecFromRole(ColorRole::Label1),
-              .maxLines = 3,
-          })
-      );
-      if (!request.body.empty()) {
-        text->addChild(ui::label({
-            .text = request.body,
-            .fontSize = Style::fontSizeBody * scale,
-            .color = colorSpecFromRole(ColorRole::Label2),
-            .maxLines = 8,
-        }));
+      ui::AlertProps alert{
+          .title = request.title,
+          .body = request.body,
+          .defaultIndex = request.defaultIndex,
+          .defaultButton = &state->defaultButton,
+          .scale = request.scale,
+      };
+      for (std::size_t index = 0; index < request.buttons.size(); ++index) {
+        alert.buttons.push_back({
+            .text = request.buttons[index].text,
+            .variant = request.buttons[index].variant,
+            .onClick =
+                [&host, weak = std::weak_ptr<AlertState>(state), index] {
+                  // Deferred: popping destroys this button while its click is still dispatching.
+                  DeferredCall::callLater([&host, weak, index] {
+                    const auto alive = weak.lock();
+                    if (alive == nullptr || !alive->id.has_value()) {
+                      return;
+                    }
+                    auto action = alive->request.buttons[index].onClick;
+                    alive->answered = true;
+                    (void)host.pop(*alive->id);
+                    if (action) {
+                      action();
+                    }
+                  });
+                },
+        });
       }
-
-      // Two buttons sit side by side at equal widths; three or more stack at full width.
-      auto buttons = request.buttons.size() <= 2
-          ? ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * scale, .fillWidth = true})
-          : ui::column({.align = FlexAlign::Stretch, .gap = Style::spaceSm * scale});
-      for (std::size_t i = 0; i < request.buttons.size(); ++i) {
-        buttons->addChild(alertButton(host, state, i));
-      }
-
-      auto root = ui::column(
-          {.align = FlexAlign::Stretch, .gap = Tokens::componentDialogPadding * scale}, std::move(text), std::move(buttons)
-      );
+      auto root = ui::alertContent(alert);
       state->root = root.get();
       return root;
     }
@@ -111,7 +76,7 @@ namespace settings {
             .measure =
                 [state, scale](Renderer& renderer, const SettingsModalLayoutSpace& space) {
                   const float width = std::min(
-                      (Tokens::componentDialogAlertWidth - 2.0F * Tokens::componentDialogPadding) * scale,
+                      (Tokens::componentDialogAlertWidth - 2.0F * Tokens::componentDialogAlertPadding) * scale,
                       space.maxContentWidth
                   );
                   if (state->root == nullptr) {
@@ -138,7 +103,8 @@ namespace settings {
                     state->request.onDismissed();
                   }
                 },
-            .contentPadding = Tokens::componentDialogPadding * scale,
+            .contentPadding = Tokens::componentDialogAlertPadding * scale,
+            .radius = Tokens::componentDialogAlertRadius,
             .windowMargin = Tokens::componentDialogPadding * scale,
             .scale = scale,
         }

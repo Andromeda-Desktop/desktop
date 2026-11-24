@@ -33,6 +33,7 @@ namespace settings {
     std::function<void()> requestClose;
     std::function<void()> onClosed;
     float contentPadding = Tokens::spaceP24; // rulebook 9.10
+    float radius = Tokens::componentDialogRadius; // unscaled
     float windowMargin = 24.0F;
     float scale = 1.0F;
   };
