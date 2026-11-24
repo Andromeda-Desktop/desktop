@@ -16,6 +16,7 @@
 #include "core/log.h"
 #include "render/core/texture_manager.h"
 #include "render/scene/input_area.h"
+#include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "ui/controls/context_menu.h"
 #include "ui/controls/box.h"
@@ -284,7 +285,7 @@ namespace viewer {
       loadFolder();
       openImage();
     } else {
-      fail("This file type cannot be shown");
+      fail(i18n::tr("viewer.errors.unsupported"));
     }
     rebuild();
   }
@@ -299,7 +300,7 @@ namespace viewer {
     m_mode = Mode::Loading;
     m_helper = preview::HelperClient::start(preview::HelperKind::Pdf, m_path.string());
     if (!m_helper) {
-      fail("This file cannot be opened.");
+      fail(i18n::tr("viewer.errors.file-open"));
       return;
     }
     m_loop.addSource(m_helper.get());
@@ -313,7 +314,7 @@ namespace viewer {
             dropHelper();
           }
         });
-        fail("This file cannot be opened.");
+        fail(i18n::tr("viewer.errors.file-open"));
         return;
       }
       m_model.reset(std::min<std::uint32_t>(reply.msg.b, 100000), static_cast<float>(reply.msg.c) / 100.0F,
@@ -350,7 +351,7 @@ namespace viewer {
         return;
       }
       if (pixels.width == 0) {
-        fail("This image cannot be opened.");
+        fail(i18n::tr("viewer.errors.image-open"));
         return;
       }
       m_image = std::move(pixels);
@@ -1076,7 +1077,7 @@ namespace viewer {
             showCurrentHit();
           }
           if (m_model.searchDone()) {
-            kLog.info("search \"{}\" {}", m_searchText, m_model.countText());
+            kLog.info("search \"{}\" {}", m_searchText, countText());
           }
           scanNext();
           refreshMarks();
@@ -1203,7 +1204,7 @@ namespace viewer {
     std::vector<std::string> ids;
     ContextMenuControlEntry share = share::menuEntry(link, ids);
     ids.push_back("file.copy-path");
-    share.children.push_back({.id = static_cast<std::int32_t>(ids.size()), .label = "Copy Path"});
+    share.children.push_back({.id = static_cast<std::int32_t>(ids.size()), .label = i18n::tr("viewer.commands.copy-path")});
     float x = 0.0F;
     float y = 0.0F;
     if (m_shareButton != nullptr) {
@@ -1465,7 +1466,7 @@ namespace viewer {
     auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
     switch (m_mode) {
     case Mode::Empty:
-      root->addChild(buildMessage("Open a document or image", "or drop a file here"));
+      root->addChild(buildMessage(i18n::tr("viewer.empty.title"), i18n::tr("viewer.empty.caption")));
       break;
     case Mode::Loading:
       root->addChild(ui::node({.flexGrow = 1.0F}));
@@ -1512,7 +1513,7 @@ namespace viewer {
     }
     const auto addShare = [&] {
       bar->addChild(ui::button({.out = &m_shareButton, .glyph = std::string("share"), .glyphSize = Tokens::sizeSymbol * s,
-                                .variant = ButtonVariant::Ghost, .tooltip = std::string("Share"),
+                                .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("desk.share.title"),
                                 .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = Tokens::sizeControlM * s,
                                 .height = Tokens::sizeControlM * s,
                                 .onClick = [this] { m_window.commands().run("file.share"); }}));
@@ -1546,33 +1547,33 @@ namespace viewer {
     const float small = Tokens::sizeControlS * s;
     auto zoom = ui::row({.align = FlexAlign::Center, .fill = colorSpecFromRole(ColorRole::Fill1),
                          .radius = Style::scaledRadius(Tokens::radiusR8, s)});
-    const auto zoomButton = [&](const char* glyph, const char* tip, void (ViewerWindow::*run)()) {
+    const auto zoomButton = [&](const char* glyph, const std::string& tip, void (ViewerWindow::*run)()) {
       zoom->addChild(ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbolInline * s,
                                  .variant = ButtonVariant::Ghost, .tooltip = std::string(tip),
                                  .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = small, .height = small,
                                  .onClick = [this, run] { (this->*run)(); }}));
     };
-    zoomButton("minus", "Zoom Out", &ViewerWindow::zoomOut);
+    zoomButton("minus", i18n::tr("viewer.commands.zoom-out"), &ViewerWindow::zoomOut);
     zoom->addChild(ui::button({.out = &m_zoomLabel, .text = std::format("{}%", std::lround(m_model.zoom() * 100.0F)),
-                               .variant = ButtonVariant::Ghost, .tooltip = std::string("Fit Width"),
+                               .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("viewer.commands.zoom-fit"),
                                .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = small,
                                .onClick = [this] { zoomFit(); }}));
-    zoomButton("plus", "Zoom In", &ViewerWindow::zoomIn);
+    zoomButton("plus", i18n::tr("viewer.commands.zoom-in"), &ViewerWindow::zoomIn);
     bar->addChild(std::move(zoom));
     bar->addChild(ui::row({.flexGrow = 1.0F}));
     static constexpr std::array<std::pair<const char*, const char*>, 5> kTools{
-        {{"cursor-text", "Select Text"}, {"highlight", "Highlight"}, {"note", "Note"}, {"pencil", "Draw"}, {"signature", "Sign"}}};
+        {{"cursor-text", "viewer.tools.select-text"}, {"highlight", "viewer.tools.highlight"}, {"note", "viewer.tools.note"}, {"pencil", "viewer.tools.draw"}, {"signature", "viewer.tools.sign"}}};
     // A split pane has room for one tool button: it shows the current tool and opens the others as a menu.
     if (m_window.contentCards()) {
       Button* tool = nullptr;
       bar->addChild(ui::button({.out = &tool, .glyph = std::string(kTools[static_cast<std::size_t>(m_tool)].first),
                                 .glyphSize = Tokens::sizeSymbolInline * s, .variant = ButtonVariant::Ghost,
-                                .tooltip = std::string(kTools[static_cast<std::size_t>(m_tool)].second),
+                                .tooltip = i18n::tr(kTools[static_cast<std::size_t>(m_tool)].second),
                                 .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = small, .height = small}));
       tool->setOnClick([this, tool] {
         std::vector<ContextMenuControlEntry> entries;
         for (std::size_t i = 0; i < kTools.size(); ++i) {
-          entries.push_back({.id = static_cast<std::int32_t>(i), .label = kTools[i].second, .radio = true,
+          entries.push_back({.id = static_cast<std::int32_t>(i), .label = i18n::tr(kTools[i].second), .radio = true,
                              .toggleState = i == static_cast<std::size_t>(m_tool) ? 1 : 0});
         }
         float x = 0.0F;
@@ -1584,7 +1585,7 @@ namespace viewer {
     } else {
       std::vector<ui::SegmentedOption> options;
       for (const auto& [glyph, tip] : kTools) {
-        options.push_back({.glyph = glyph, .tooltip = tip});
+        options.push_back({.glyph = glyph, .tooltip = i18n::tr(tip)});
       }
       bar->addChild(ui::segmented({.options = std::move(options),
                                    .selectedIndex = static_cast<std::size_t>(m_tool),
@@ -1594,7 +1595,7 @@ namespace viewer {
     addShare();
     if (!m_window.sidebarVisible()) {
       bar->addChild(ui::button({.glyph = std::string("search"), .glyphSize = Tokens::sizeSymbol * s,
-                                .variant = ButtonVariant::Ghost, .tooltip = std::string("Find"),
+                                .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("viewer.commands.find"),
                                 .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = Tokens::sizeControlM * s,
                                 .height = Tokens::sizeControlM * s, .onClick = [this] { focusSearch(); }}));
     }
@@ -1611,7 +1612,7 @@ namespace viewer {
                             .radius = Style::scaledRadius(Tokens::radiusR12, s), .width = w});
     card->setBorder(colorSpecFromRole(ColorRole::Stroke), 0.5F * s);
     auto note = ui::input({
-        .placeholder = std::string("Note"),
+        .placeholder = i18n::tr("viewer.tools.note"),
         .width = w - 2.0F * pad,
         .onSubmit =
             [this, page, at](const std::string& text) {
@@ -1624,7 +1625,7 @@ namespace viewer {
     });
     m_noteInput = note.get();
     card->addChild(std::move(note));
-    card->addChild(ui::label({.text = "Return adds · Esc cancels", .fontSize = Tokens::typeFootnote.size * s,
+    card->addChild(ui::label({.text = i18n::tr("viewer.note.hint"), .fontSize = Tokens::typeFootnote.size * s,
                               .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1}));
     card->setParticipatesInLayout(false);
     const float zoom = m_model.zoom();
@@ -1771,14 +1772,14 @@ namespace viewer {
       for (const bool forward : {false, true}) {
         arrows.push_back(ui::button({.glyph = std::string(forward ? "chevron-down" : "chevron-up"),
                                      .glyphSize = Tokens::sizeSymbolInline * s, .variant = ButtonVariant::Ghost,
-                                     .tooltip = std::string(forward ? "Next Result" : "Previous Result"),
+                                     .tooltip = i18n::tr(forward ? "viewer.search.next" : "viewer.search.previous"),
                                      .radius = Tokens::sizeControlS * s / 2.0F, .width = Tokens::sizeControlS * s,
                                      .height = Tokens::sizeControlS * s, .onClick = [this, forward] { moveHit(forward); }}));
       }
     }
     auto capsule = ui::searchCapsule({
         .out = &m_searchInput,
-        .placeholder = "Search",
+        .placeholder = i18n::tr("viewer.search.placeholder"),
         .height = Tokens::sizeControlL,
         .scale = m_window.uiScale(),
         .value = m_searchText,
@@ -1825,7 +1826,7 @@ namespace viewer {
     if (views.size() > 1) {
       std::vector<ui::SegmentedOption> options;
       for (const SidebarView v : views) {
-        options.push_back({.label = v == SidebarView::Pages ? "Pages" : v == SidebarView::Outline ? "Outline" : "Results"});
+        options.push_back({.label = i18n::tr(v == SidebarView::Pages ? "viewer.sidebar.pages" : v == SidebarView::Outline ? "viewer.sidebar.outline" : "viewer.sidebar.results")});
       }
       column->addChild(ui::segmented({.options = std::move(options),
                                       .selectedIndex = static_cast<std::size_t>(std::ranges::find(views, m_sidebarView) - views.begin()),
@@ -1847,7 +1848,7 @@ namespace viewer {
     auto scroll = ui::scrollView({.viewportPaddingH = 0.0F, .viewportPaddingV = 0.0F});
     scroll->content()->setGap(Tokens::spaceP4 * s);
     scroll->content()->setAlign(FlexAlign::Stretch);
-    auto count = ui::label({.out = &m_resultCount, .text = m_model.countText(), .fontSize = Tokens::typeFootnote.size * s,
+    auto count = ui::label({.out = &m_resultCount, .text = countText(), .fontSize = Tokens::typeFootnote.size * s,
                             .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2),
                             .maxLines = 1});
     auto head = ui::row({.align = FlexAlign::Center});
@@ -1860,10 +1861,21 @@ namespace viewer {
     return scroll;
   }
 
+  std::string ViewerWindow::countText() const {
+    if (m_searchText.empty() || (m_model.hitCount() == 0 && !m_model.searchDone())) {
+      return {};
+    }
+    if (m_model.hitCount() == 0) {
+      return i18n::tr("viewer.search.no-results");
+    }
+    return i18n::tr(m_model.searchDone() ? "viewer.search.count" : "viewer.search.count-partial", "current", m_model.currentOrdinal(),
+                    "total", m_model.hitCount());
+  }
+
   // Rows follow the scan (pages in order) in place; the current hit is a raised lens row.
   void ViewerWindow::refreshResults() {
     if (m_resultCount != nullptr) {
-      (void)m_resultCount->setText(m_model.countText());
+      (void)m_resultCount->setText(countText());
     }
     if (m_resultList == nullptr || m_searchText.empty()) {
       return;
@@ -1893,7 +1905,7 @@ namespace viewer {
         if (snippet != m_snippets.end()) {
           (void)text->setText(hitMarkup(snippet->second, m_searchText, isCurrentRow(page, index)));
         }
-        row->addChild(ui::label({.text = std::format("Page {}", page + 1), .fontSize = Tokens::typeFootnote.size * s,
+        row->addChild(ui::label({.text = i18n::tr("viewer.sidebar.page", "number", page + 1), .fontSize = Tokens::typeFootnote.size * s,
                                  .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2),
                                  .maxLines = 1}));
         m_resultRows.push_back({.page = page, .index = index, .row = row.get(), .snippet = text});
@@ -2466,22 +2478,22 @@ namespace viewer {
           auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
                                  .padding = Tokens::componentDialogPadding * s,
                                  .width = Tokens::componentDialogAlertWidth * s});
-          box->addChild(ui::label({.text = std::format("Save changes to “{}”?", m_path.filename().string()),
+          box->addChild(ui::label({.text = i18n::tr("viewer.save.title", "name", m_path.filename().string()),
                                    .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
                                    .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2,
                                    .ellipsize = TextEllipsize::Middle}));
-          box->addChild(ui::label({.text = std::string("Your annotations are lost if you close without saving."),
+          box->addChild(ui::label({.text = i18n::tr("viewer.save.body"),
                                    .fontSize = Tokens::typeBody.size * s, .color = colorSpecFromRole(ColorRole::Label2),
                                    .maxLines = 3}));
           auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
-          buttons->addChild(ui::button({.text = std::string("Don’t Save"), .fontSize = Tokens::typeBody.size * s,
+          buttons->addChild(ui::button({.text = i18n::tr("viewer.save.discard"), .fontSize = Tokens::typeBody.size * s,
                                         .variant = ButtonVariant::Destructive, .onClick = [this, close] {
                                           m_window.dismissSheet();
                                           close();
                                         }}));
-          buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Tokens::typeBody.size * s,
+          buttons->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .fontSize = Tokens::typeBody.size * s,
                                         .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
-          buttons->addChild(ui::button({.text = std::string("Save"), .fontSize = Tokens::typeBody.size * s,
+          buttons->addChild(ui::button({.text = i18n::tr("viewer.commands.save"), .fontSize = Tokens::typeBody.size * s,
                                         .variant = ButtonVariant::Primary, .onClick = [this, close] {
                                           m_window.dismissSheet();
                                           saveThen(close);
@@ -2498,7 +2510,7 @@ namespace viewer {
     constexpr float kPadHeight = 200.0F;
     auto sheet = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Style::spaceMd * s,
                              .flexGrow = 1.0F});
-    sheet->addChild(ui::label({.text = std::string("Draw your signature"), .fontSize = Style::fontSizeBody * s,
+    sheet->addChild(ui::label({.text = i18n::tr("viewer.signature.title"), .fontSize = Style::fontSizeBody * s,
                                .color = colorSpecFromRole(ColorRole::Label1)}));
     auto pad = ui::inputArea({.cursorShape = ::CursorShape::Crosshair, .width = kPadWidth * s, .height = kPadHeight * s});
     pad->setClipChildren(true);
@@ -2534,16 +2546,16 @@ namespace viewer {
     });
     sheet->addChild(std::move(pad));
     auto buttons = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * s});
-    buttons->addChild(ui::button({.text = std::string("Clear"), .variant = ButtonVariant::Ghost, .onClick = [this] {
+    buttons->addChild(ui::button({.text = i18n::tr("viewer.signature.clear"), .variant = ButtonVariant::Ghost, .onClick = [this] {
       m_padStrokes.clear();
       rebuild();
     }}));
-    buttons->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Ghost, .onClick = [this] {
+    buttons->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Ghost, .onClick = [this] {
       m_signing = false;
       m_pendingSign.reset();
       rebuild();
     }}));
-    buttons->addChild(ui::button({.text = std::string("Save"), .enabled = !m_padStrokes.empty(),
+    buttons->addChild(ui::button({.text = i18n::tr("viewer.commands.save"), .enabled = !m_padStrokes.empty(),
                                   .variant = ButtonVariant::Primary, .onClick = [this, kPadWidth, kPadHeight] {
       m_signing = false;
       if (annot::saveSignature(m_padStrokes, static_cast<std::uint32_t>(kPadWidth), static_cast<std::uint32_t>(kPadHeight))
@@ -2577,7 +2589,7 @@ namespace viewer {
     body->setLineHeight(Tokens::typeParagraph.line * s);
     column->addChild(std::move(body));
     column->addChild(ui::node({.height = Tokens::spaceP16 * s}));
-    column->addChild(ui::button({.text = std::string("Open…"), .onClick = [this] { m_window.commands().run("file.open"); }}));
+    column->addChild(ui::button({.text = i18n::tr("viewer.commands.open"), .onClick = [this] { m_window.commands().run("file.open"); }}));
     box->addChild(std::move(column));
     return box;
   }

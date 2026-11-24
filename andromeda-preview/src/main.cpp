@@ -4,6 +4,7 @@
 #include "dbus/session_bus.h"
 #include "dbus/session_bus_poll_source.h"
 #include "files/file_ops_client.h"
+#include "i18n/i18n.h"
 #include "preview_service.h"
 #include "preview_window.h"
 
@@ -27,6 +28,8 @@ namespace {
 } // namespace
 
 int main(int argc, char* argv[]) {
+  i18n::Service::instance().setLanguage({});
+  i18n::Service::instance().addDomain("preview", ANDROMEDA_TRANSLATIONS_DIR);
   AppLoop loop;
   if (!loop.initialize(true)) {
     kLog.error("no Wayland compositor");

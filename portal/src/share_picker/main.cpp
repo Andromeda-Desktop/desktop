@@ -7,6 +7,7 @@
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "design_tokens.h"
+#include "i18n/i18n.h"
 #include "render/core/texture_manager.h"
 #include "share_picker/thumbnails.h"
 #include "ui/app_icon.h"
@@ -132,7 +133,7 @@ namespace {
     }
 
     [[nodiscard]] std::string title() const {
-      return m_name.empty() ? std::string("Choose what to share") : "Choose what " + m_name + " can see";
+      return m_name.empty() ? i18n::tr("share-picker.title") : i18n::tr("share-picker.title-app", "app", m_name);
     }
 
     std::unique_ptr<Node> build(Renderer& renderer, float scale) {
@@ -326,22 +327,22 @@ namespace {
                                 .color = colorSpecFromRole(ColorRole::Label1),
                                 .maxLines = 1,
                                 .ellipsize = TextEllipsize::End}));
-      text->addChild(ui::label({.text = std::string("It sees only what you pick, until you stop."),
+      text->addChild(ui::label({.text = i18n::tr("share-picker.subtitle"),
                                 .fontSize = Tokens::typeBody.size * scale,
                                 .color = colorSpecFromRole(ColorRole::Label2)}));
       row->addChild(std::move(text));
       std::vector<ui::SegmentedOption> tabs;
       std::vector<Tab> order;
       if (m_request.windows) {
-        tabs.push_back({.label = "Window"});
+        tabs.push_back({.label = i18n::tr("share-picker.tabs.window")});
         order.push_back(Tab::Window);
         if (m_request.multiple) {
-          tabs.push_back({.label = "App"});
+          tabs.push_back({.label = i18n::tr("share-picker.tabs.app")});
           order.push_back(Tab::App);
         }
       }
       if (m_request.monitors) {
-        tabs.push_back({.label = "Screen"});
+        tabs.push_back({.label = i18n::tr("share-picker.tabs.screen")});
         order.push_back(Tab::Screen);
       }
       if (tabs.size() > 1) {
@@ -379,7 +380,7 @@ namespace {
         thumb->addChild(ui::glyph({.glyph = std::string("lock"),
                                    .glyphSize = Tokens::spaceP16 * scale,
                                    .color = colorSpecFromRole(ColorRole::Label2)}));
-        thumb->addChild(ui::label({.text = std::string("Blocks capture"),
+        thumb->addChild(ui::label({.text = i18n::tr("share-picker.blocked"),
                                    .fontSize = Tokens::typeCaption.size * scale,
                                    .fontWeight = FontWeight::Medium,
                                    .color = colorSpecFromRole(ColorRole::Label2)}));
@@ -441,7 +442,7 @@ namespace {
       rows->setAlign(FlexAlign::Start);
       const auto list = visible();
       if (list.empty()) {
-        rows->addChild(ui::label({.text = std::string(m_tab == Tab::Screen ? "No screens to share" : "No windows to share"),
+        rows->addChild(ui::label({.text = i18n::tr(m_tab == Tab::Screen ? "share-picker.empty.screens" : "share-picker.empty.windows"),
                                   .fontSize = Tokens::typeBody.size * scale,
                                   .color = colorSpecFromRole(ColorRole::Label2)}));
       }
@@ -490,11 +491,11 @@ namespace {
     std::unique_ptr<Node> options(float scale) {
       auto row = ui::row({.gap = Tokens::spaceP24 * scale});
       if (m_request.cursorOption) {
-        row->addChild(switchRow("Show Pointer", {}, m_showPointer, [this](bool on) { m_showPointer = on; }, scale));
+        row->addChild(switchRow(i18n::tr("share-picker.options.pointer"), {}, m_showPointer, [this](bool on) { m_showPointer = on; }, scale));
       }
       if (m_request.canRemember) {
-        row->addChild(switchRow(m_name.empty() ? std::string("Remember for this app") : "Remember for " + m_name,
-                                "Next time it starts sharing at once", m_remember,
+        row->addChild(switchRow(m_name.empty() ? i18n::tr("share-picker.options.remember") : i18n::tr("share-picker.options.remember-app", "app", m_name),
+                                i18n::tr("share-picker.options.remember-detail"), m_remember,
                                 [this](bool on) { m_remember = on; }, scale));
       }
       return row;
@@ -505,13 +506,13 @@ namespace {
       row->addChild(ui::spacer());
       // System dialog footers: both buttons are capsules (rulebook 9.5).
       const float height = Style::controlHeight * scale;
-      row->addChild(ui::button({.text = std::string("Cancel"),
+      row->addChild(ui::button({.text = i18n::tr("common.actions.cancel"),
                                 .fontSize = Style::fontSizeBody * scale,
                                 .paddingH = Tokens::spaceP16 * scale,
                                 .radius = height / 2.0F,
                                 .height = height,
                                 .onClick = [this] { finish(false); }}));
-      row->addChild(ui::button({.text = std::string("Share"),
+      row->addChild(ui::button({.text = i18n::tr("desk.share.title"),
                                 .fontSize = Style::fontSizeBody * scale,
                                 .enabled = canShare(),
                                 .variant = ButtonVariant::Primary,
@@ -547,7 +548,9 @@ namespace {
   public:
     explicit SharePickerApp(Request request)
         : DeskApp({.id = "dev.andromeda.SharePicker", .name = "Share", .singleInstance = false}),
-          m_parentWindow(request.parentWindow), m_picker(std::move(request), loop()) {}
+          m_parentWindow(request.parentWindow), m_picker(std::move(request), loop()) {
+      i18n::Service::instance().addDomain("share-picker", ANDROMEDA_TRANSLATIONS_DIR);
+    }
     ~SharePickerApp() override { destroyWindows(); }
     SharePickerApp(const SharePickerApp&) = delete;
     SharePickerApp& operator=(const SharePickerApp&) = delete;

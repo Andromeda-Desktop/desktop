@@ -165,6 +165,8 @@ namespace viewer {
     void requestSnippet();
     [[nodiscard]] bool isCurrentRow(std::size_t page, std::size_t index) const; // the row shown as the current hit
     void refreshResults();
+    // "3 of 17", "No results" or "" (nothing searched yet, or still scanning with no hits).
+    [[nodiscard]] std::string countText() const;
     void requestOutline();
     // The outline entry the current page belongs to: the last one that starts at or before it.
     [[nodiscard]] std::optional<std::size_t> currentEntry() const;

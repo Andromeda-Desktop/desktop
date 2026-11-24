@@ -36,11 +36,12 @@ executable('andromeda-viewer',
   'src/viewer_window.cpp',
   link_with: _model,
   dependencies: [_desk_app_dep, _preview_dep, dependency('wayland-client')],
-  cpp_args: _warnings,
+  cpp_args: _warnings + ['-DANDROMEDA_TRANSLATIONS_DIR="' + meson.current_source_dir() / 'translations' + '"'],
   install: true,
 )
 
 install_data('data/dev.andromeda.Viewer.desktop', install_dir: get_option('datadir') / 'applications')
+install_data('translations/en.json', install_dir: get_option('datadir') / 'andromeda' / 'translations' / 'viewer')
 # DBusActivatable=true in the .desktop file: the bus starts the app by its id, then calls Activate or Open.
 configure_file(
   input: 'data/dev.andromeda.Viewer.service.in',

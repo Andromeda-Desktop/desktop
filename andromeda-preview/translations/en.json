@@ -1,0 +1,39 @@
+{
+  "open-with": "Open With {app}",
+  "nav": {
+    "close": "Close (Space)",
+    "previous": "Previous file (←)",
+    "next": "Next file (→)",
+    "hint": "← → next file · Space closes"
+  },
+  "media": {
+    "play": "Play (K)",
+    "pause": "Pause (K)"
+  },
+  "pdf": {
+    "page-of": "Page {current} of {total}",
+    "page": "Page {number}"
+  },
+  "text": {
+    "lines": "{count} line",
+    "lines-plural": "{count} lines",
+    "lines-truncated": "{count} line+",
+    "lines-truncated-plural": "{count} lines+"
+  },
+  "folder": {
+    "summary": "{count} item · {size}",
+    "summary-plural": "{count} items · {size}",
+    "summary-at-least": "{count} item · at least {size}",
+    "summary-at-least-plural": "{count} items · at least {size}"
+  },
+  "archive": {
+    "more": "and {count} more",
+    "empty": "This archive is empty"
+  },
+  "state": {
+    "no-app": "No app is set to open this kind of file",
+    "failed": "This file cannot be previewed",
+    "video": "Video",
+    "no-preview": "No preview for “{name}”"
+  }
+}

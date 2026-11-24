@@ -2,6 +2,7 @@
 
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "i18n/i18n.h"
 #include "ui/style.h"
 #include "viewer_tabs.h"
 #include "viewer_window.h"
@@ -28,7 +29,9 @@ namespace viewer {
     }
   } // namespace
 
-  ViewerApp::ViewerApp() : DeskApp({.id = kAppId, .name = "Viewer"}) {}
+  ViewerApp::ViewerApp() : DeskApp({.id = kAppId, .name = "Viewer"}) {
+    i18n::Service::instance().addDomain("viewer", ANDROMEDA_TRANSLATIONS_DIR);
+  }
 
   ViewerApp::~ViewerApp() = default;
 
@@ -40,7 +43,7 @@ namespace viewer {
   }
 
   void ViewerApp::addCommands() {
-    const auto add = [this](const char* id, const char* label, const char* group, std::uint32_t sym,
+    const auto add = [this](const char* id, const std::string& label, const char* group, std::uint32_t sym,
                             std::uint32_t mods, void (ViewerWindow::*run)(), std::uint32_t altSym = 0) {
       commands().add({.id = id, .label = label, .group = group,
                       .shortcut = sym != 0 ? std::optional<KeyChord>(KeyChord{sym, mods}) : std::nullopt,
@@ -52,27 +55,27 @@ namespace viewer {
                       },
                       .alternate = altSym != 0 ? std::optional<KeyChord>(KeyChord{altSym, mods}) : std::nullopt});
     };
-    add("edit.find", "Find", "Edit", XKB_KEY_f, KeyMod::Ctrl, &ViewerWindow::focusSearch);
-    add("edit.copy", "Copy", "Edit", XKB_KEY_c, KeyMod::Ctrl, &ViewerWindow::copySelection);
-    add("file.copy-path", "Copy Path", "File", XKB_KEY_c, KeyMod::Ctrl | KeyMod::Alt, &ViewerWindow::copyPath);
-    commands().add({.id = "file.share", .label = "Share…", .group = "File",
+    add("edit.find", i18n::tr("viewer.commands.find"), "Edit", XKB_KEY_f, KeyMod::Ctrl, &ViewerWindow::focusSearch);
+    add("edit.copy", i18n::tr("desk.edit.copy"), "Edit", XKB_KEY_c, KeyMod::Ctrl, &ViewerWindow::copySelection);
+    add("file.copy-path", i18n::tr("viewer.commands.copy-path"), "File", XKB_KEY_c, KeyMod::Ctrl | KeyMod::Alt, &ViewerWindow::copyPath);
+    commands().add({.id = "file.share", .label = i18n::tr("viewer.commands.share"), .group = "File",
                     .enabled = [this] { return active() != nullptr && !active()->path().empty(); },
                     .run = [this] {
                       if (ViewerWindow* w = active(); w != nullptr) {
                         w->showShareMenu(m_linkShare.get());
                       }
                     }});
-    add("edit.select-all", "Select All", "Edit", XKB_KEY_a, KeyMod::Ctrl, &ViewerWindow::selectAll);
-    add("view.zoom-in", "Zoom In", "View", XKB_KEY_plus, KeyMod::Ctrl, &ViewerWindow::zoomIn, XKB_KEY_equal);
-    add("view.zoom-out", "Zoom Out", "View", XKB_KEY_minus, KeyMod::Ctrl, &ViewerWindow::zoomOut);
-    add("view.zoom-fit", "Fit Width", "View", XKB_KEY_0, KeyMod::Ctrl, &ViewerWindow::zoomFit);
-    add("view.zoom-actual", "Actual Size", "View", XKB_KEY_1, KeyMod::Ctrl, &ViewerWindow::zoomActual);
-    add("view.zoom-page", "Fit Page", "View", XKB_KEY_2, KeyMod::Ctrl, &ViewerWindow::zoomFitPage);
-    add("edit.undo", "Undo", "Edit", XKB_KEY_z, KeyMod::Ctrl, &ViewerWindow::undo);
-    add("edit.redo", "Redo", "Edit", XKB_KEY_z, KeyMod::Ctrl | KeyMod::Shift, &ViewerWindow::redo);
-    add("file.save", "Save", "File", XKB_KEY_s, KeyMod::Ctrl, &ViewerWindow::save);
-    add("view.toggle-sidebar", "Show Sidebar", "View", XKB_KEY_F9, 0, &ViewerWindow::toggleSidebar);
-    const auto tabs = [this](const char* id, const char* label, std::optional<KeyChord> key, void (ViewerTabs::*run)(),
+    add("edit.select-all", i18n::tr("desk.edit.select-all"), "Edit", XKB_KEY_a, KeyMod::Ctrl, &ViewerWindow::selectAll);
+    add("view.zoom-in", i18n::tr("viewer.commands.zoom-in"), "View", XKB_KEY_plus, KeyMod::Ctrl, &ViewerWindow::zoomIn, XKB_KEY_equal);
+    add("view.zoom-out", i18n::tr("viewer.commands.zoom-out"), "View", XKB_KEY_minus, KeyMod::Ctrl, &ViewerWindow::zoomOut);
+    add("view.zoom-fit", i18n::tr("viewer.commands.zoom-fit"), "View", XKB_KEY_0, KeyMod::Ctrl, &ViewerWindow::zoomFit);
+    add("view.zoom-actual", i18n::tr("viewer.commands.zoom-actual"), "View", XKB_KEY_1, KeyMod::Ctrl, &ViewerWindow::zoomActual);
+    add("view.zoom-page", i18n::tr("viewer.commands.zoom-page"), "View", XKB_KEY_2, KeyMod::Ctrl, &ViewerWindow::zoomFitPage);
+    add("edit.undo", i18n::tr("viewer.commands.undo"), "Edit", XKB_KEY_z, KeyMod::Ctrl, &ViewerWindow::undo);
+    add("edit.redo", i18n::tr("viewer.commands.redo"), "Edit", XKB_KEY_z, KeyMod::Ctrl | KeyMod::Shift, &ViewerWindow::redo);
+    add("file.save", i18n::tr("viewer.commands.save"), "File", XKB_KEY_s, KeyMod::Ctrl, &ViewerWindow::save);
+    add("view.toggle-sidebar", i18n::tr("viewer.commands.toggle-sidebar"), "View", XKB_KEY_F9, 0, &ViewerWindow::toggleSidebar);
+    const auto tabs = [this](const char* id, const std::string& label, std::optional<KeyChord> key, void (ViewerTabs::*run)(),
                              std::optional<KeyChord> alternate = std::nullopt) {
       commands().add({.id = id, .label = label, .group = "Window", .shortcut = key,
                       .enabled = [this] { return activeTabs() != nullptr; },
@@ -85,26 +88,26 @@ namespace viewer {
     };
     // Ctrl+W closes the tab, the window only with its last tab; Close Window gives up Ctrl+W first: a held shortcut
     // cannot be taken.
-    commands().add({.id = "window.close", .label = "Close Window", .group = "Window", .run = [this] {
+    commands().add({.id = "window.close", .label = i18n::tr("desk.window.close"), .group = "Window", .run = [this] {
                       if (AppWindow* window = activeWindow()) {
                         closeWindow(*window);
                       }
                     }});
-    tabs("window.close-tab", "Close Tab", KeyChord{XKB_KEY_w, KeyMod::Ctrl}, &ViewerTabs::closeActive);
-    tabs("view.next-tab", "Next Tab", KeyChord{XKB_KEY_Tab, KeyMod::Ctrl}, &ViewerTabs::next);
-    tabs("view.previous-tab", "Previous Tab", KeyChord{XKB_KEY_ISO_Left_Tab, KeyMod::Ctrl | KeyMod::Shift},
+    tabs("window.close-tab", i18n::tr("viewer.commands.close-tab"), KeyChord{XKB_KEY_w, KeyMod::Ctrl}, &ViewerTabs::closeActive);
+    tabs("view.next-tab", i18n::tr("viewer.commands.next-tab"), KeyChord{XKB_KEY_Tab, KeyMod::Ctrl}, &ViewerTabs::next);
+    tabs("view.previous-tab", i18n::tr("viewer.commands.previous-tab"), KeyChord{XKB_KEY_ISO_Left_Tab, KeyMod::Ctrl | KeyMod::Shift},
          &ViewerTabs::previous, KeyChord{XKB_KEY_Tab, KeyMod::Ctrl | KeyMod::Shift});
     struct PaneKey {
       const char* id;
-      const char* label;
+      std::string label;
       std::uint32_t sym;
       float dx;
       float dy;
     };
-    for (const PaneKey& key : {PaneKey{"view.focus-left", "Focus Pane Left", XKB_KEY_Left, -1.0F, 0.0F},
-                               PaneKey{"view.focus-right", "Focus Pane Right", XKB_KEY_Right, 1.0F, 0.0F},
-                               PaneKey{"view.focus-up", "Focus Pane Up", XKB_KEY_Up, 0.0F, -1.0F},
-                               PaneKey{"view.focus-down", "Focus Pane Down", XKB_KEY_Down, 0.0F, 1.0F}}) {
+    for (const PaneKey& key : {PaneKey{"view.focus-left", i18n::tr("viewer.commands.focus-left"), XKB_KEY_Left, -1.0F, 0.0F},
+                               PaneKey{"view.focus-right", i18n::tr("viewer.commands.focus-right"), XKB_KEY_Right, 1.0F, 0.0F},
+                               PaneKey{"view.focus-up", i18n::tr("viewer.commands.focus-up"), XKB_KEY_Up, 0.0F, -1.0F},
+                               PaneKey{"view.focus-down", i18n::tr("viewer.commands.focus-down"), XKB_KEY_Down, 0.0F, 1.0F}}) {
       commands().add({.id = key.id, .label = key.label, .group = "Window",
                       .shortcut = KeyChord{key.sym, KeyMod::Ctrl | KeyMod::Alt},
                       .enabled = [this] { return activeTabs() != nullptr; },
@@ -114,21 +117,21 @@ namespace viewer {
                         }
                       }});
     }
-    const auto open = [this](const char* id, const char* label, std::uint32_t sym) {
+    const auto open = [this](const char* id, const std::string& label, std::uint32_t sym) {
       commands().add({.id = id, .label = label, .group = "File", .shortcut = KeyChord{sym, KeyMod::Ctrl},
                       .run = [this] { chooseFile(); }});
     };
-    open("file.open", "Open…", XKB_KEY_o);
-    open("file.new-tab", "New Tab", XKB_KEY_t);
+    open("file.open", i18n::tr("viewer.commands.open"), XKB_KEY_o);
+    open("file.new-tab", i18n::tr("viewer.commands.new-tab"), XKB_KEY_t);
     // F11 belongs to the shared window.fullscreen command.
-    commands().add({.id = "view.fullscreen", .label = "Full Screen", .group = "View",
+    commands().add({.id = "view.fullscreen", .label = i18n::tr("desk.window.full-screen"), .group = "View",
                     .enabled = [this] { return activeWindow() != nullptr; },
                     .run = [this] {
                       if (AppWindow* w = activeWindow(); w != nullptr) {
                         w->toggleFullscreen();
                       }
                     }});
-    commands().add({.id = "view.leave-fullscreen", .label = "Leave Full Screen", .group = "View",
+    commands().add({.id = "view.leave-fullscreen", .label = i18n::tr("viewer.commands.leave-fullscreen"), .group = "View",
                     .shortcut = KeyChord{.sym = XKB_KEY_Escape, .modifiers = 0},
                     .enabled = [this] { return activeWindow() != nullptr && activeWindow()->fullscreen(); },
                     .run = [this] { activeWindow()->toggleFullscreen(); }});
@@ -154,7 +157,7 @@ namespace viewer {
       m_chooser = std::make_unique<desk::FileChooser>(bus());
     }
     window->exportHandle([this, window](const std::string& parent) {
-      m_chooser->openFile(parent, "Open", [this, window](std::optional<std::filesystem::path> path) {
+      m_chooser->openFile(parent, i18n::tr("viewer.commands.open-title"), [this, window](std::optional<std::filesystem::path> path) {
         // The window may have closed while the dialog showed.
         if (const auto it = m_windows.find(window); path && it != m_windows.end()) {
           it->second->add(*path);

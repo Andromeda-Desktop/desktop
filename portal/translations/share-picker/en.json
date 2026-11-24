@@ -1,0 +1,21 @@
+{
+  "title": "Choose what to share",
+  "title-app": "Choose what {app} can see",
+  "subtitle": "It sees only what you pick, until you stop.",
+  "tabs": {
+    "window": "Window",
+    "app": "App",
+    "screen": "Screen"
+  },
+  "blocked": "Blocks capture",
+  "empty": {
+    "screens": "No screens to share",
+    "windows": "No windows to share"
+  },
+  "options": {
+    "pointer": "Show Pointer",
+    "remember": "Remember for this app",
+    "remember-app": "Remember for {app}",
+    "remember-detail": "Next time it starts sharing at once"
+  }
+}

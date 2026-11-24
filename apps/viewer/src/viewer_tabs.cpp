@@ -7,6 +7,7 @@
 #include "core/input/cursor_shape.h"
 #include "render/scene/accessible.h"
 #include "render/scene/input_area.h"
+#include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/context_menu.h"
@@ -378,9 +379,9 @@ namespace viewer {
 
   void ViewerTabs::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {
     enum : std::int32_t { kSplit = 1, kLeave };
-    std::vector<ContextMenuControlEntry> entries{{.id = kSplit, .label = "Split with current", .enabled = canJoin(id)}};
+    std::vector<ContextMenuControlEntry> entries{{.id = kSplit, .label = i18n::tr("viewer.tabs.split"), .enabled = canJoin(id)}};
     if (m_set.splitOf(id) != nullptr) {
-      entries.push_back({.id = kLeave, .label = "Leave split"});
+      entries.push_back({.id = kLeave, .label = i18n::tr("viewer.tabs.leave-split")});
     }
     m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id](std::int32_t item) {
       if (item == kSplit && canJoin(id)) {
@@ -420,12 +421,12 @@ namespace viewer {
   void ViewerTabs::updateTitle() {
     if (const ViewerWindow* tab = active()) {
       m_window.setTitle(tab->title());
-      m_window.setCaption({.state = tab->unsaved() ? "Edited" : ""});
+      m_window.setCaption({.state = tab->unsaved() ? i18n::tr("viewer.tabs.edited") : ""});
     }
     bool texts = false;
     for (const std::uint64_t id : m_set.visible()) {
       const ViewerWindow& doc = *m_docs.at(id);
-      texts = m_split.setCaption(id, doc.title(), doc.unsaved() ? "Edited" : "", colorSpecFromRole(ColorRole::Label2)) ||
+      texts = m_split.setCaption(id, doc.title(), doc.unsaved() ? i18n::tr("viewer.tabs.edited") : "", colorSpecFromRole(ColorRole::Label2)) ||
               texts;
     }
     if (texts) {
@@ -467,7 +468,7 @@ namespace viewer {
     if (m_split.split()) {
       for (const std::uint64_t id : m_set.visible()) {
         const ViewerWindow& doc = *m_docs.at(id);
-        m_split.setCaption(id, doc.title(), doc.unsaved() ? "Edited" : "", colorSpecFromRole(ColorRole::Label2));
+        m_split.setCaption(id, doc.title(), doc.unsaved() ? i18n::tr("viewer.tabs.edited") : "", colorSpecFromRole(ColorRole::Label2));
       }
       m_split.fitCaptions(renderer);
     }
@@ -506,7 +507,7 @@ namespace viewer {
     auto head = ui::row({.align = FlexAlign::Center});
     head->setPadding(0.0F, Tokens::spaceP8 * s);
     const ColorSpec footnote = colorSpecFromRole(ColorRole::Label2);
-    head->addChild(ui::label({.text = "Documents", .fontSize = Tokens::typeFootnote.size * s,
+    head->addChild(ui::label({.text = i18n::tr("viewer.tabs.documents"), .fontSize = Tokens::typeFootnote.size * s,
                               .fontWeight = FontWeight::SemiBold, .color = footnote, .flexGrow = 1.0F}));
     head->addChild(ui::label({.text = std::to_string(tabs.size()), .fontSize = Tokens::typeFootnote.size * s,
                               .fontWeight = FontWeight::Medium, .color = footnote}));
@@ -591,7 +592,7 @@ namespace viewer {
       row("file", title, id == m_set.focused(), ColorRole::Label1, [id](ViewerTabs& t) { t.clickRow(id); }, title, id);
     }
     if (tabs.size() > kShown + 1) {
-      const std::string text = cut ? std::format("{} more", tabs.size() - rows.size()) : std::string("Show fewer");
+      const std::string text = cut ? i18n::tr("viewer.tabs.more", "count", tabs.size() - rows.size()) : i18n::tr("viewer.tabs.show-fewer");
       row("dots", text, false, ColorRole::Label2, [](ViewerTabs& t) {
         t.m_allDocuments = !t.m_allDocuments;
         t.m_window.requestRebuild();

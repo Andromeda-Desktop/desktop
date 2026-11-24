@@ -87,8 +87,10 @@ executable('andromeda-preview',
   _dmabuf_c, _dmabuf_h,
   link_with: [_core, _images],
   dependencies: [desk_app_dep, glycin_dep, gio_dep, wayland_client_dep, dependency('gstreamer-1.0')],
+  cpp_args: ['-DANDROMEDA_TRANSLATIONS_DIR="' + meson.current_source_dir() / 'translations' + '"'],
   install: true,
 )
+install_data('translations/en.json', install_dir: get_option('datadir') / 'andromeda' / 'translations' / 'preview')
 
 configure_file(
   input: 'data/org.gnome.NautilusPreviewer.service.in',

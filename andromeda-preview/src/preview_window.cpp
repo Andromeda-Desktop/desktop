@@ -6,6 +6,7 @@
 #include "core/log.h"
 #include "preview_service.h"
 #include "render/core/texture_manager.h"
+#include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "core/files/file_info.h"
 #include "ui/controls/image.h"
@@ -763,7 +764,7 @@ namespace preview {
   std::unique_ptr<Node> PreviewWindow::buildMediaBar() {
     auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8, .height = Tokens::spaceP24});
     bar->addChild(ui::button({.glyph = std::string(m_paused ? "player-play" : "player-pause"), .glyphSize = 12.0F,
-                              .variant = ButtonVariant::Ghost, .tooltip = std::string(m_paused ? "Play (K)" : "Pause (K)"),
+                              .variant = ButtonVariant::Ghost, .tooltip = i18n::tr(m_paused ? "preview.media.play" : "preview.media.pause"),
                               .radius = Tokens::spaceP24 / 2.0F, .width = Tokens::spaceP24, .height = Tokens::spaceP24,
                               .onClick = [this] { togglePlayback(); }}));
     bar->addChild(ui::progressBar({.out = &m_progress, .fill = colorSpecFromRole(ColorRole::Accent),
@@ -1303,7 +1304,7 @@ namespace preview {
                                 .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1),
                                 .maxLines = 1, .ellipsize = TextEllipsize::Middle, .flexGrow = 1.0F}));
     if ((m_kind == FileKind::Pdf || m_kind == FileKind::Office) && !m_pages.empty()) {
-      header->addChild(ui::label({.out = &m_pageLabel, .text = std::format("Page {} of {}", m_currentPage + 1, m_pages.size()),
+      header->addChild(ui::label({.out = &m_pageLabel, .text = i18n::tr("preview.pdf.page-of", "current", m_currentPage + 1, "total", m_pages.size()),
                                   .fontSize = Style::fontSizeCaption, .fontWeight = FontWeight::Medium,
                                   .color = colorSpecFromRole(ColorRole::Label2)}));
     }
@@ -1311,7 +1312,7 @@ namespace preview {
     std::string detail;
     if (m_kind == FileKind::Text && !m_loading && !m_failed && syntaxFor(m_path).has_value()) {
       const auto lines = std::ranges::count(m_text, '\n') + (m_text.empty() || m_text.ends_with('\n') ? 0 : 1);
-      detail = std::format("{} lines{}", lines, m_textTruncated ? "+" : "");
+      detail = i18n::trp(m_textTruncated ? "preview.text.lines-truncated" : "preview.text.lines", lines);
     } else if (m_audioOnly && m_durationMs > 0) {
       detail = std::format("{}:{:02}", m_durationMs / 60000, (m_durationMs / 1000) % 60);
     }
@@ -1320,12 +1321,12 @@ namespace preview {
                                   .color = colorSpecFromRole(ColorRole::Label2)}));
     }
     if (!m_openWith.empty()) {
-      header->addChild(ui::button({.text = "Open With " + m_openWith, .fontSize = Style::fontSizeBody,
+      header->addChild(ui::button({.text = i18n::tr("preview.open-with", "app", m_openWith), .fontSize = Style::fontSizeBody,
                                    .variant = ButtonVariant::Default, .radius = Tokens::radiusR8,
                                    .height = Tokens::sizeControlM, .onClick = [this] { openInDefaultApp(); }}));
     }
     header->addChild(ui::button({.glyph = std::string("x"), .glyphSize = Tokens::sizeSymbol,
-                                 .variant = ButtonVariant::Ghost, .tooltip = std::string("Close (Space)"),
+                                 .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("preview.nav.close"),
                                  .radius = Tokens::sizeControlM / 2.0F, .width = Tokens::sizeControlM,
                                  .height = Tokens::sizeControlM,
                                  .onClick = [this] { DeferredCall::callLater([this] { close(); }); }}));
@@ -1350,14 +1351,14 @@ namespace preview {
                            .height = kHeaderHeight});
     const ColorSpec hint = colorSpecFromRole(ColorRole::Label2);
     footer->addChild(ui::button({.glyph = std::string("chevron-left"), .glyphSize = Tokens::sizeSymbol,
-                                 .variant = ButtonVariant::Ghost, .tooltip = std::string("Previous file (←)"),
+                                 .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("preview.nav.previous"),
                                  .radius = Tokens::sizeControlS / 2.0F, .width = Tokens::sizeControlS,
                                  .height = Tokens::sizeControlS,
                                  .onClick = [this] { m_callbacks.selection(direction::Left); }}));
-    footer->addChild(ui::label({.text = std::string("← → next file · Space closes"), .fontSize = Style::fontSizeCaption,
+    footer->addChild(ui::label({.text = i18n::tr("preview.nav.hint"), .fontSize = Style::fontSizeCaption,
                                 .fontWeight = FontWeight::Medium, .color = hint}));
     footer->addChild(ui::button({.glyph = std::string("chevron-right"), .glyphSize = Tokens::sizeSymbol,
-                                 .variant = ButtonVariant::Ghost, .tooltip = std::string("Next file (→)"),
+                                 .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("preview.nav.next"),
                                  .radius = Tokens::sizeControlS / 2.0F, .width = Tokens::sizeControlS,
                                  .height = Tokens::sizeControlS,
                                  .onClick = [this] { m_callbacks.selection(direction::Right); }}));
@@ -1397,7 +1398,7 @@ namespace preview {
       }
     }
     if (m_pageLabel != nullptr && current != m_currentPage) {
-      m_pageLabel->setText(std::format("Page {} of {}", current + 1, m_pages.size()));
+      m_pageLabel->setText(i18n::tr("preview.pdf.page-of", "current", current + 1, "total", m_pages.size()));
       m_surface->requestLayout();
     }
     m_currentPage = current;
@@ -1427,10 +1428,10 @@ namespace preview {
                                .color = colorSpecFromRole(ColorRole::Label2), .maxWidth = width - 2 * Tokens::spaceP16,
                                .maxLines = 2, .textAlign = TextAlign::Center}));
       if (m_openWith.empty()) {
-        box->addChild(ui::label({.text = std::string("No app is set to open this kind of file"),
+        box->addChild(ui::label({.text = i18n::tr("preview.state.no-app"),
                                  .fontSize = Style::fontSizeCaption, .color = colorSpecFromRole(ColorRole::Label2)}));
       } else {
-        box->addChild(ui::button({.text = "Open With " + m_openWith, .fontSize = Style::fontSizeBody,
+        box->addChild(ui::button({.text = i18n::tr("preview.open-with", "app", m_openWith), .fontSize = Style::fontSizeBody,
                                   .variant = ButtonVariant::Default, .radius = Tokens::radiusR8,
                                   .height = Tokens::sizeControlM, .onClick = [this] { openInDefaultApp(); }}));
       }
@@ -1448,7 +1449,7 @@ namespace preview {
       return box;
     }
     if (m_failed) {
-      return state("This file cannot be previewed");
+      return state(i18n::tr("preview.state.failed"));
     }
     // An Office file shows its converted PDF pages; without LibreOffice it has none and shows the file card.
     switch (m_kind == FileKind::Office && !m_pages.empty() ? FileKind::Pdf : m_kind) {
@@ -1482,7 +1483,7 @@ namespace preview {
                                 .participatesInLayout = false});
         m_stripFrames.push_back(ring.get());
         frame->addChild(std::move(ring));
-        auto hit = ui::inputArea({.tooltip = std::format("Page {}", i + 1), .width = thumbWidth,
+        auto hit = ui::inputArea({.tooltip = i18n::tr("preview.pdf.page", "number", i + 1), .width = thumbWidth,
                                   .height = kStripPageHeight,
                                   .onClick = [this, i](const InputArea::PointerData&) {
                                     if (m_scroll != nullptr) {
@@ -1552,8 +1553,8 @@ namespace preview {
       // Mockup §15 folder card: "12 items · 48 MB", then the newest items as their icons.
       auto box = ui::column({.align = FlexAlign::Start, .gap = Tokens::spaceP12, .padding = Tokens::spaceP24,
                              .flexGrow = 1.0F});
-      box->addChild(ui::label({.text = std::format("{} {} · {}{}", m_folderItems, m_folderItems == 1 ? "item" : "items",
-                                                   m_folderCut ? "at least " : "", formatFileSize(m_folderBytes)),
+      box->addChild(ui::label({.text = i18n::trp(m_folderCut ? "preview.folder.summary-at-least" : "preview.folder.summary",
+                                                  static_cast<long>(m_folderItems), "size", formatFileSize(m_folderBytes)),
                                .fontSize = Style::fontSizeBody, .color = colorSpecFromRole(ColorRole::Label2)}));
       auto icons = ui::row({.align = FlexAlign::Start, .gap = Tokens::spaceP12});
       for (const std::string& item : m_folderPeek) {
@@ -1600,11 +1601,11 @@ namespace preview {
         scroll->content()->addChild(std::move(row));
       }
       if (m_archiveTotal > m_archive.size()) {
-        scroll->content()->addChild(ui::label({.text = std::format("and {} more", m_archiveTotal - m_archive.size()),
+        scroll->content()->addChild(ui::label({.text = i18n::tr("preview.archive.more", "count", m_archiveTotal - m_archive.size()),
                                                .fontSize = Style::fontSizeCaption,
                                                .color = colorSpecFromRole(ColorRole::Label2)}));
       } else if (m_archive.empty()) {
-        scroll->content()->addChild(ui::label({.text = std::string("This archive is empty"),
+        scroll->content()->addChild(ui::label({.text = i18n::tr("preview.archive.empty"),
                                                .fontSize = Style::fontSizeCaption,
                                                .color = colorSpecFromRole(ColorRole::Label2)}));
       }
@@ -1644,9 +1645,9 @@ namespace preview {
         column->addChild(std::move(bar));
         return column;
       }
-      return message("Video");
+      return message(i18n::tr("preview.state.video"));
     default:
-      return state("No preview for “" + baseName(m_path) + "”");
+      return state(i18n::tr("preview.state.no-preview", "name", baseName(m_path)));
     }
   }
 

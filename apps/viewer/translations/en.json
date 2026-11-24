@@ -1,0 +1,77 @@
+{
+  "commands": {
+    "find": "Find",
+    "copy-path": "Copy Path",
+    "share": "Share…",
+    "zoom-in": "Zoom In",
+    "zoom-out": "Zoom Out",
+    "zoom-fit": "Fit Width",
+    "zoom-actual": "Actual Size",
+    "zoom-page": "Fit Page",
+    "undo": "Undo",
+    "redo": "Redo",
+    "save": "Save",
+    "toggle-sidebar": "Show Sidebar",
+    "close-tab": "Close Tab",
+    "next-tab": "Next Tab",
+    "previous-tab": "Previous Tab",
+    "focus-left": "Focus Pane Left",
+    "focus-right": "Focus Pane Right",
+    "focus-up": "Focus Pane Up",
+    "focus-down": "Focus Pane Down",
+    "open": "Open…",
+    "open-title": "Open",
+    "new-tab": "New Tab",
+    "leave-fullscreen": "Leave Full Screen"
+  },
+  "tabs": {
+    "split": "Split with current",
+    "leave-split": "Leave split",
+    "edited": "Edited",
+    "documents": "Documents",
+    "more": "{count} more",
+    "show-fewer": "Show fewer"
+  },
+  "errors": {
+    "unsupported": "This file type cannot be shown",
+    "file-open": "This file cannot be opened.",
+    "image-open": "This image cannot be opened."
+  },
+  "empty": {
+    "title": "Open a document or image",
+    "caption": "or drop a file here"
+  },
+  "tools": {
+    "select-text": "Select Text",
+    "highlight": "Highlight",
+    "note": "Note",
+    "draw": "Draw",
+    "sign": "Sign"
+  },
+  "note": {
+    "hint": "Return adds · Esc cancels"
+  },
+  "search": {
+    "placeholder": "Search",
+    "next": "Next Result",
+    "previous": "Previous Result",
+    "no-results": "No results",
+    "count": "{current} of {total}",
+    "count-partial": "{current} of {total}+"
+  },
+  "sidebar": {
+    "pages": "Pages",
+    "outline": "Outline",
+    "results": "Results",
+    "page": "Page {number}"
+  },
+  "save": {
+    "title": "Save changes to “{name}”?",
+    "body": "Your annotations are lost if you close without saving.",
+    "discard": "Don’t Save"
+  },
+  "signature": {
+    "title": "Draw your signature",
+    "clear": "Clear"
+  }
+}

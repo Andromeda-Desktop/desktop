@@ -69,8 +69,6 @@ namespace viewer {
     // Moves to the next (or previous) hit at or after `fromPage` on the first call; false when there is none.
     bool nextHit(std::size_t fromPage);
     bool previousHit(std::size_t fromPage);
-    // "3 of 17", "No results" or "" (nothing searched yet / still scanning with no hits).
-    [[nodiscard]] std::string countText() const;
 
   private:
     [[nodiscard]] float pageWidthPx(std::size_t page) const;

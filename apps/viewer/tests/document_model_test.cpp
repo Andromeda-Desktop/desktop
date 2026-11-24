@@ -24,14 +24,12 @@ int main() {
     DocumentModel model;
     model.reset(4, 600.0F, 800.0F);
     model.startSearch("word");
-    expect(model.countText().empty(), "no count before the first hit while scanning");
     for (std::size_t page : {0UZ, 1UZ, 2UZ, 3UZ}) {
       expect(model.nextPageToScan() == page, "pages scan in order");
       model.setHits(page, hits(page == 1 ? 2 : page == 3 ? 1 : 0));
     }
     expect(model.searchDone() && model.hitCount() == 3, "three hits after the scan");
     expect(model.nextHit(0) && model.currentOrdinal() == 1 && model.currentHit()->page == 1, "first hit on page 2");
-    expect(model.countText() == "1 of 3", "count text: " + model.countText());
     expect(model.nextHit(0) && model.currentOrdinal() == 2, "second hit on the same page");
     expect(model.nextHit(0) && model.currentHit()->page == 3, "third hit on page 4");
     expect(model.nextHit(0) && model.currentOrdinal() == 1, "next after the last wraps to the first");
@@ -49,7 +47,7 @@ int main() {
     expect(model.nextHit(2) && model.currentHit()->page == 2, "next from the page in view");
   }
 
-  // A reply for a page out of order (an older search) is ignored; no hits ends as "No results".
+  // A reply for a page out of order (an older search) is ignored; no hits ends with none.
   {
     DocumentModel model;
     model.reset(2, 600.0F, 800.0F);
@@ -58,7 +56,7 @@ int main() {
     expect(model.hitCount() == 0, "out-of-order page ignored");
     model.setHits(0, {});
     model.setHits(1, {});
-    expect(model.countText() == "No results", "no results: " + model.countText());
+    expect(model.searchDone() && model.hitCount() == 0, "no hits ends the search");
     expect(!model.nextHit(0), "no hit to move to");
   }
 

@@ -160,9 +160,12 @@ executable(
     dependency('gio-unix-2.0'),
     dependency('xkbcommon'),
   ],
+  cpp_args: ['-DANDROMEDA_TRANSLATIONS_DIR="' + meson.current_source_dir() / 'translations' / 'share-picker' + '"'],
   install: true,
   install_dir: get_option('libexecdir'),
 )
+install_data('translations/share-picker/en.json',
+  install_dir: get_option('datadir') / 'andromeda' / 'translations' / 'share-picker')
 
 # --- data files --------------------------------------------------------------
 

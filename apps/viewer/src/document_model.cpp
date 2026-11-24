@@ -191,14 +191,4 @@ namespace viewer {
     return false;
   }
 
-  std::string DocumentModel::countText() const {
-    if (m_query.empty()) {
-      return {};
-    }
-    if (m_hitCount == 0) {
-      return searchDone() ? "No results" : "";
-    }
-    return std::format("{} of {}{}", currentOrdinal(), m_hitCount, searchDone() ? "" : "+");
-  }
-
 } // namespace viewer
