@@ -19,7 +19,10 @@ apt_install() {
     || { echo "The downloaded key is not the Andromeda release key." >&2; exit 1; }
   echo "deb [signed-by=/etc/apt/keyrings/andromeda.asc] $1 ./" | sudo tee /etc/apt/sources.list.d/andromeda.list > /dev/null
   sudo apt-get update
-  sudo apt-get install -y andromeda
+  # Link needs scrcpy's server binary, which scrcpy's package downloads only when this question is answered yes.
+  echo 'scrcpy scrcpy/update_server boolean true' | sudo debconf-set-selections
+  # Under curl | bash, stdin is the script: debconf must read answers to its questions from the terminal.
+  sudo apt-get install -y andromeda < /dev/tty
 }
 
 case $ID in
