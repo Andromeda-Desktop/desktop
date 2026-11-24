@@ -1,6 +1,8 @@
 #include "launcher/files_provider.h"
 
 #include "clipboard/clipboard_service.h"
+#include "core/blocking_pool.h"
+#include "core/freedesktop_thumbnails.h"
 #include "core/log.h"
 #include "dbus/session_bus.h"
 #include "i18n/i18n.h"
@@ -42,27 +44,6 @@ namespace {
     return std::ranges::any_of(kImages, [&](std::string_view ext) { return lower.ends_with(ext); });
   }
 
-  // The freedesktop thumbnail of a file ($XDG_CACHE_HOME/thumbnails/{x-large,large,normal}/<md5 of uri>.png), or empty.
-  std::string cachedThumbnail(const std::string& path) {
-    const std::string fileUri = uri::fileUri(path);
-    gchar* md5 = g_compute_checksum_for_string(G_CHECKSUM_MD5, fileUri.c_str(), -1);
-    const std::string name = std::string(md5) + ".png";
-    g_free(md5);
-    const char* cache = std::getenv("XDG_CACHE_HOME");
-    const char* home = std::getenv("HOME");
-    const std::filesystem::path base = cache != nullptr && cache[0] != '\0'
-        ? std::filesystem::path(cache)
-        : std::filesystem::path(home != nullptr ? home : "") / ".cache";
-    std::error_code ec;
-    for (const char* size : {"x-large", "large", "normal"}) {
-      const auto file = base / "thumbnails" / size / name;
-      if (std::filesystem::exists(file, ec)) {
-        return file.string();
-      }
-    }
-    return {};
-  }
-
   // The folder as the user reads it: the home folder as "~".
   std::string displayFolder(const std::string& path) {
     std::string folder = std::filesystem::path(path).parent_path().string();
@@ -79,7 +60,7 @@ namespace {
     return folder;
   }
 
-  // One row for a path: name, "~/folder", a file or folder glyph, and the picture or thumbnail when there is one.
+  // One row for a path: name, "~/folder", a file or folder glyph, and the picture when it is one (thumbnails come later).
   LauncherResult fileResult(const std::string& path, bool folder) {
     LauncherResult r;
     r.id = path;
@@ -87,12 +68,9 @@ namespace {
     r.subtitle = displayFolder(path);
     r.glyphName = folder ? "folder" : "file";
     r.presentation = folder ? "folder" : "file";
-    // Images preview themselves; other files use a thumbnail a file manager already made, if any.
-    if (!folder) {
-      r.iconPath = isImage(path) ? path : cachedThumbnail(path);
-      if (!r.iconPath.empty()) {
-        r.presentation = "file-image";
-      }
+    if (!folder && isImage(path)) {
+      r.iconPath = path;
+      r.presentation = "file-image";
     }
     return r;
   }
@@ -170,8 +148,52 @@ void FilesProvider::disconnect() const {
   m_debounce.stop();
 }
 
+void FilesProvider::withThumbnails(std::vector<LauncherResult>& results) const {
+  std::vector<std::string> missing;
+  for (LauncherResult& r : results) {
+    if (r.presentation != "file") {
+      continue;
+    }
+    const auto [it, added] = m_thumbnails.try_emplace(r.id);
+    if (added) {
+      missing.push_back(r.id);
+    } else if (it->second.has_value() && !it->second->empty()) {
+      r.iconPath = *it->second;
+      r.presentation = "file-image";
+    }
+  }
+  if (missing.empty()) {
+    return;
+  }
+  using Found = std::vector<std::pair<std::string, std::string>>;
+  BlockingPool::instance().run<Found>(
+      m_alive,
+      [missing = std::move(missing)] {
+        Found found;
+        for (const std::string& path : missing) {
+          const auto thumb = freedesktop_thumbnails::lookup(path, kThumbnailPx);
+          found.emplace_back(path, thumb ? thumb->string() : std::string());
+        }
+        return found;
+      },
+      [this](Found found) {
+        kLog.debug("thumbnails: {} of {} files have one", std::ranges::count_if(found, [](const auto& f) {
+          return !f.second.empty();
+        }), found.size());
+        for (auto& [path, thumb] : found) {
+          m_thumbnails[path] = std::move(thumb);
+        }
+        withThumbnails(m_results);
+        if (m_onResultsChanged) {
+          m_onResultsChanged();
+        }
+      }
+  );
+}
+
 void FilesProvider::reset() {
   m_debounce.stop();
+  m_thumbnails.clear();
   m_requested.reset();
   m_answered.reset();
   m_results.clear();
@@ -247,6 +269,7 @@ std::vector<LauncherResult> FilesProvider::recentFiles() const {
     r.category = i18n::tr("launcher.pill.recent");
     out.push_back(std::move(r));
   }
+  withThumbnails(out);
   return out;
 }
 
@@ -361,6 +384,7 @@ void FilesProvider::onAnswer(const Request& request, const std::string& body) co
     all.score = std::numeric_limits<double>::lowest();
     m_results.push_back(std::move(all));
   }
+  withThumbnails(m_results);
   m_answered = text;
   m_answeredScope = scope;
   m_requested.reset();

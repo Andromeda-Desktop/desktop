@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -69,6 +70,9 @@ protected:
 
 private:
   [[nodiscard]] std::vector<LauncherResult> recentFiles() const;
+  // Sets the freedesktop thumbnail on file rows that have one; unknown paths are looked up on the blocking pool and
+  // the rows change when the answer arrives.
+  void withThumbnails(std::vector<LauncherResult>& results) const;
   [[nodiscard]] bool connect() const;
   void disconnect() const;
   // A request is the asked text plus its scope: nullopt = the general search, else the Files scope's kind word.
@@ -96,4 +100,8 @@ private:
   mutable bool m_loading = false;
   mutable Timer m_debounce;
   mutable FileManager1 m_fileManager;
+  static constexpr int kThumbnailPx = 128;
+  // path -> its thumbnail, empty when it has none; nullopt while the lookup runs. Cleared on reset.
+  mutable std::unordered_map<std::string, std::optional<std::string>> m_thumbnails;
+  std::shared_ptr<char> m_alive = std::make_shared<char>();
 };
