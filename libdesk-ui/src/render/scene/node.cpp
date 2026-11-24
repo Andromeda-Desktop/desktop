@@ -92,13 +92,23 @@ namespace {
   }
 } // namespace
 
+namespace {
+  std::uint64_t g_accessibleGeneration = 0;
+} // namespace
+
+std::uint64_t Node::accessibleGeneration() noexcept { return g_accessibleGeneration; }
+
+void Node::bumpAccessibleGeneration() noexcept { ++g_accessibleGeneration; }
+
 void Node::setAccessible(const Accessible& accessible) {
+  bumpAccessibleGeneration();
   const std::uint64_t serial = m_accessible != nullptr ? m_accessible->serial : nextAccessibleSerial();
   m_accessible = std::make_unique<Accessible>(accessible);
   m_accessible->serial = serial;
 }
 
 Accessible& Node::accessibleState() {
+  bumpAccessibleGeneration();
   if (m_accessible == nullptr) {
     m_accessible = std::make_unique<Accessible>();
     m_accessible->serial = nextAccessibleSerial();
@@ -232,6 +242,7 @@ void Node::setPosition(float x, float y) {
   }
   m_x = x;
   m_y = y;
+  bumpAccessibleGeneration();
   markPaintDirty();
 }
 
@@ -244,6 +255,7 @@ void Node::setSize(float width, float height) {
   }
   m_width = width;
   m_height = height;
+  bumpAccessibleGeneration();
   markLayoutDirty();
 }
 
@@ -256,6 +268,7 @@ void Node::setFrameSize(float width, float height) {
   }
   m_width = width;
   m_height = height;
+  bumpAccessibleGeneration();
   markPaintDirty();
 }
 
@@ -292,6 +305,9 @@ void Node::setOpacity(float opacity) {
   if (m_opacity == opacity) {
     return;
   }
+  if ((m_opacity > 0.0F) != (opacity > 0.0F)) {
+    bumpAccessibleGeneration();
+  }
   m_opacity = opacity;
   markPaintDirty();
 }
@@ -317,6 +333,7 @@ void Node::setVisible(bool visible) {
     return;
   }
   m_visible = visible;
+  bumpAccessibleGeneration();
   markLayoutDirty();
   markPaintDirty();
 }
@@ -531,6 +548,7 @@ void Node::notifyInkLift() {
 
 Node* Node::addChild(std::unique_ptr<Node> child) {
   uiAssertSceneMutationAllowed("Node::addChild");
+  bumpAccessibleGeneration();
   auto* raw = child.get();
   attachChild(raw);
   m_children.push_back(std::move(child));
@@ -541,6 +559,7 @@ Node* Node::addChild(std::unique_ptr<Node> child) {
 
 Node* Node::insertChildAt(std::size_t index, std::unique_ptr<Node> child) {
   uiAssertSceneMutationAllowed("Node::insertChildAt");
+  bumpAccessibleGeneration();
   auto* raw = child.get();
   attachChild(raw);
   if (index >= m_children.size()) {
@@ -561,6 +580,7 @@ std::unique_ptr<Node> Node::removeChild(Node* child) {
     return nullptr;
   }
 
+  bumpAccessibleGeneration();
   auto removed = std::move(*it);
   Node* root = this;
   while (root->m_parent != nullptr) {

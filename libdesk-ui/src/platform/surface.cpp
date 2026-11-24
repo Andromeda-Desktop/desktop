@@ -1104,7 +1104,8 @@ void Surface::render() {
   if (m_sceneRoot != nullptr) {
     m_sceneRoot->clearDirty();
   }
-  if (presented) {
+  if (const std::uint64_t generation = Node::accessibleGeneration(); generation != m_accessibleGeneration) {
+    m_accessibleGeneration = generation;
     a11y::markDirty();
   }
   m_redrawRequested = false;

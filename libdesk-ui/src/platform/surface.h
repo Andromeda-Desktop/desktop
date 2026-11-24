@@ -277,6 +277,7 @@ private:
   bool m_updateRequested = false;
   bool m_layoutRequested = false;
   bool m_redrawRequested = false;
+  std::uint64_t m_accessibleGeneration = 0; // Node::accessibleGeneration() at the last AT-SPI mark
   bool m_renderHeld = false;
   bool m_running = false;
   float m_resolutionScale = 1.0F;

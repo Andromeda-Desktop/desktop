@@ -142,6 +142,10 @@ public:
   [[nodiscard]] const Accessible* accessible() const noexcept { return m_accessible.get(); }
   // Creates the record on first use; controls update name, value and state through it.
   Accessible& accessibleState();
+  // Moves on every scene change assistive technology reads: structure, records, focus, showing, position, size.
+  // Paint-only changes (content, transforms, opacity above zero) leave it.
+  [[nodiscard]] static std::uint64_t accessibleGeneration() noexcept;
+  static void bumpAccessibleGeneration() noexcept;
 
   void setPosition(float x, float y);
   // An offset on top of the position that layout never writes: motion a mid-animation layout pass must not undo.

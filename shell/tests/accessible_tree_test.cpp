@@ -46,5 +46,20 @@ int main() {
 
   const std::vector<const Node*> missing = unnamedAccessibles(tree);
   TEST_CHECK(missing.size() == 1 && missing.front() == unnamed);
+  // What AT-SPI reads moves the generation; a paint-only change does not, so a spinner or video rebuilds no tree.
+  const auto moves = [](auto&& change) {
+    const auto before = Node::accessibleGeneration();
+    change();
+    return Node::accessibleGeneration() != before;
+  };
+  TEST_CHECK(!moves([&] { box->setRotation(0.5F); }));
+  TEST_CHECK(!moves([&] { box->setOpacity(0.5F); }));
+  TEST_CHECK(!moves([&] { box->markPaintDirty(); }));
+  TEST_CHECK(moves([&] { box->setOpacity(0.0F); }));
+  TEST_CHECK(moves([&] { box->setOpacity(1.0F); }));
+  TEST_CHECK(moves([&] { box->setPosition(11.0F, 20.0F); }));
+  TEST_CHECK(moves([&] { row->accessibleState().name = "Files"; }));
+  TEST_CHECK(moves([&] { list->addChild(std::make_unique<Node>()); }));
+  TEST_CHECK(moves([&] { area->setFocusable(false); }));
   return 0;
 }

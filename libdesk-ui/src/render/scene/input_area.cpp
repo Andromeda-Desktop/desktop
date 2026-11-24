@@ -206,7 +206,12 @@ void InputArea::notifyTooltipChanged() {
     m_tooltipChangedCallback(this);
   }
 }
-void InputArea::setFocusable(bool focusable) { m_focusable = focusable; }
+void InputArea::setFocusable(bool focusable) {
+  if (m_focusable != focusable) {
+    bumpAccessibleGeneration();
+  }
+  m_focusable = focusable;
+}
 
 void InputArea::setTabStop(bool tabStop) { m_tabStop = tabStop; }
 void InputArea::setTabFocusKey(std::string key) { m_tabFocusKey = std::move(key); }
@@ -416,6 +421,7 @@ void InputArea::dispatchKey(
 
 void InputArea::dispatchFocusGain() {
   m_focused = true;
+  bumpAccessibleGeneration();
   if (m_onFocusGain) {
     m_onFocusGain();
   }
@@ -423,6 +429,7 @@ void InputArea::dispatchFocusGain() {
 
 void InputArea::dispatchFocusLoss() {
   m_focused = false;
+  bumpAccessibleGeneration();
   if (m_onFocusLoss) {
     m_onFocusLoss();
   }
