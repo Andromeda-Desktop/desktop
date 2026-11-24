@@ -137,7 +137,7 @@ namespace andromeda {
     if (m_inputCapture != nullptr) {
       m_inputCapture->suspend();
     }
-    if (m_pendingCaptureId != 0) {
+    if (std::holds_alternative<ConsentCapture>(m_consent)) {
       dismissConfirmation();
     }
     if (m_sessionLock != nullptr) {

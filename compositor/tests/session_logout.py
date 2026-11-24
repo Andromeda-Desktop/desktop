@@ -1,6 +1,7 @@
 """A log-out keeps the window list in session.json (docs/resilience.md R6). The compositor runs in a delegated cgroup
 named andromeda.service, so session-quit takes the real path: it starts andromeda-shutdown.target (a stub here), the
-user manager stops the apps first, and only then sends SIGTERM to the compositor."""
+user manager stops the apps first, and only then sends SIGTERM to the compositor.
+With "hang", systemctl never answers: the compositor must stop by itself after the request deadline."""
 
 import json
 import os
@@ -12,11 +13,13 @@ import tempfile
 import time
 
 HELPER = r'''#!PYTHON
-import os, sys
+import os, sys, time
 from pathlib import Path
 name = Path(sys.argv[0]).name
 if name == "systemctl" and "andromeda-shutdown.target" in sys.argv:
     (Path(os.environ["LOGOUT_ROOT"]) / "shutdown").touch()
+    if os.environ.get("LOGOUT_HANG"):
+        time.sleep(30)
 if name == "systemd-run":
     sys.exit(1)
 '''
@@ -33,7 +36,7 @@ def wait_for(predicate, message, timeout=5):
         time.sleep(0.05)
 
 
-def main(binary):
+def main(binary, hang=False):
     with tempfile.TemporaryDirectory(prefix="um-logout.") as directory:
         root = Path(directory)
         (root / "bin").mkdir()
@@ -57,6 +60,7 @@ def main(binary):
             SYSTEMD_BUS_ADDRESS="unix:path=" + str(root / "no-manager-bus"),
             DBUS_SYSTEM_BUS_ADDRESS="unix:path=" + str(root / "no-system-bus"),
             LOGOUT_ROOT=str(root),
+            LOGOUT_HANG="1" if hang else "",
             WLR_BACKENDS="headless",
             WLR_HEADLESS_OUTPUTS="1",
             WLR_LIBINPUT_NO_DEVICES="1",
@@ -92,6 +96,17 @@ def main(binary):
                                                        stdout=out, stderr=out)
                 wait_for(lambda: saved_ids() == ["logout.a", "logout.b"], "the mapped windows never reached session.json")
 
+                if hang:
+                    ipc("msg", "session-quit:skip-confirmation")
+                    wait_for(lambda: (root / "shutdown").exists(), "session-quit never started andromeda-shutdown.target")
+                    started = time.monotonic()
+                    compositor.wait(timeout=15)
+                    took = time.monotonic() - started
+                    log.seek(0)
+                    assert "did not answer the session shutdown request" in log.read(), "no deadline stop in the log"
+                    print(f"a shutdown request that systemctl never answers stops the compositor after {took:.1f} s")
+                    return
+
                 # The control: a window the user closes while the session runs leaves session.json.
                 clients.pop("logout.a").kill()
                 wait_for(lambda: saved_ids() == ["logout.b"], "a closed window stayed in session.json")
@@ -121,4 +136,4 @@ def main(binary):
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]).resolve())
+    main(Path(sys.argv[1]).resolve(), len(sys.argv) > 2 and sys.argv[2] == "hang")

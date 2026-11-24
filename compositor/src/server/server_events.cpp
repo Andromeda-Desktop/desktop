@@ -985,7 +985,7 @@ namespace andromeda {
     if (m_stopping || m_sessionSavePending) {
       return;
     }
-    if ((!m_lockFileManaged || m_sessionExitRequested) && (m_xdgSessions == nullptr || !m_xdgSessions->wantsFlush())) {
+    if ((!m_lockFileManaged || m_sessionExit != SessionExit::Idle) && (m_xdgSessions == nullptr || !m_xdgSessions->wantsFlush())) {
       return;
     }
     if (m_sessionSaveTimer == nullptr) {
@@ -1012,7 +1012,7 @@ namespace andromeda {
     if (m_xdgSessions != nullptr) {
       m_xdgSessions->flush();
     }
-    if (!m_lockFileManaged || m_sessionExitRequested) {
+    if (!m_lockFileManaged || m_sessionExit != SessionExit::Idle) {
       return;
     }
     const char* state = std::getenv("XDG_STATE_HOME");

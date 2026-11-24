@@ -4,6 +4,7 @@
 
 #include <array>
 #include <optional>
+#include <variant>
 #include <vector>
 
 struct wlr_box;
@@ -179,18 +180,27 @@ namespace andromeda {
     // Whether that rest came from the centering policy rather than from a column-center the user asked for.
     bool m_policyCenteredRest = false;
     // Column the last activation focused, so CenterFocusedColumn::OnOverflow knows which side focus came from.
-    int m_lastFocusedColumn = -1;
+    std::optional<int> m_lastFocusedColumn;
     // Side that activation came from, so a later width change judges the pair the focus move was judged by.
     FocusSide m_focusSide = FocusSide::None;
-    // Set when the focused column itself left the strip, so the survivor is judged once the removal has settled.
-    bool m_pendingRemovalReevaluate = false;
-    // Column the pending removal took, kept to tell which side the survivor inherits.
-    int m_removedFocusedColumn = -1;
+    // The focused column leaving the strip: Noted before it goes, Settling once it went, so the survivor is judged
+    // once, on the side the removed column was on.
+    struct RemovalNoted {
+      int column;
+    };
+    struct RemovalSettling {
+      int column;
+    };
+    std::variant<std::monostate, RemovalNoted, RemovalSettling> m_focusedRemoval;
     int m_lastViewportPrimary = 0;
-    const LayoutSnapshot* m_pendingViewportSnapshot = nullptr;
-    View* m_pendingViewportAnchor = nullptr;
-    double m_pendingViewportCenterFraction = 0.5;
-    bool m_pendingViewportComplete = false;
+    // A restored snapshot whose viewport waits for the first arrange with a known viewport size.
+    struct PendingViewport {
+      const LayoutSnapshot* snapshot;
+      View* anchor; // the restored column nearest the old viewport centre; null when no column came back
+      double centerFraction;
+      bool complete; // every member came back
+    };
+    std::optional<PendingViewport> m_pendingViewport;
     // Cross extent available during the last arrange, used to preserve existing
     // pixel sizes when a drop converts an outer gap into another stacked view.
     int m_lastAvailableCross = 0;

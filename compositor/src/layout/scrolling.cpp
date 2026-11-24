@@ -292,9 +292,7 @@ namespace andromeda {
   }
 
   bool ScrollingLayout::restoreState(const LayoutSnapshot& base, std::span<const LayoutMember> members) {
-    m_pendingViewportSnapshot = nullptr;
-    m_pendingViewportAnchor = nullptr;
-    m_pendingViewportComplete = false;
+    m_pendingViewport.reset();
     const auto* snapshot = dynamic_cast<const ScrollingSnapshot*>(&base);
     if (snapshot == nullptr || !m_columns.empty()) {
       return false;
@@ -304,10 +302,8 @@ namespace andromeda {
       return false;
     }
 
-    m_pendingViewportSnapshot = base.mode() == LayoutMode::Scrolling ? &base : nullptr;
-    m_pendingViewportAnchor = nullptr;
-    m_pendingViewportCenterFraction = 0.5;
-    m_pendingViewportComplete = members.size() == snapshot->memberCount();
+    PendingViewport pending{
+        .snapshot = &base, .anchor = nullptr, .centerFraction = 0.5, .complete = members.size() == snapshot->memberCount()};
     double bestCenterDistance = 0.0;
     for (const ScrollingSnapshot::SavedColumn& saved : snapshot->columns) {
       Column column{
@@ -333,26 +329,28 @@ namespace andromeda {
       }
       if (!column.views.empty()) {
         const double centerDistance = std::abs(saved.viewportCenterFraction - 0.5);
-        if (m_pendingViewportAnchor == nullptr || centerDistance < bestCenterDistance) {
-          m_pendingViewportAnchor = column.views.front();
-          m_pendingViewportCenterFraction = saved.viewportCenterFraction;
+        if (pending.anchor == nullptr || centerDistance < bestCenterDistance) {
+          pending.anchor = column.views.front();
+          pending.centerFraction = saved.viewportCenterFraction;
           bestCenterDistance = centerDistance;
         }
         m_columns.push_back(std::move(column));
       }
     }
     m_targets.clear();
-    if (m_pendingViewportComplete) {
+    if (pending.complete) {
       m_scroll = snapshot->scroll;
       m_centeredRest = snapshot->centeredRest;
     } else {
       m_scroll = 0.0;
       m_centeredRest = false;
     }
-    m_lastFocusedColumn = -1;
+    if (base.mode() == LayoutMode::Scrolling) {
+      m_pendingViewport = pending;
+    }
+    m_lastFocusedColumn.reset();
     m_focusSide = FocusSide::None;
-    m_removedFocusedColumn = -1;
-    m_pendingRemovalReevaluate = false;
+    m_focusedRemoval = {};
     m_policyCenteredRest = false;
     m_lastAvailableCross = 0;
     return true;
@@ -361,12 +359,13 @@ namespace andromeda {
   void
   ScrollingLayout::restoreSnapshotViewport(const LayoutSnapshot& base, int viewportPrimary, bool geometryUnchanged) {
     const auto* snapshot = dynamic_cast<const ScrollingSnapshot*>(&base);
-    if (snapshot == nullptr || m_pendingViewportSnapshot != &base) {
+    if (snapshot == nullptr || !m_pendingViewport.has_value() || m_pendingViewport->snapshot != &base) {
       return;
     }
+    const PendingViewport pending = *std::exchange(m_pendingViewport, std::nullopt);
 
     viewportPrimary = std::max(1, viewportPrimary);
-    const int anchorColumn = columnOf(m_pendingViewportAnchor);
+    const int anchorColumn = columnOf(pending.anchor);
     bool columnGeometryMatches = m_columns.size() == snapshot->columns.size();
     if (columnGeometryMatches && snapshot->viewportPrimary == viewportPrimary) {
       for (size_t index = 0; index < m_columns.size(); ++index) {
@@ -380,7 +379,7 @@ namespace andromeda {
       }
     }
     const bool exact = geometryUnchanged
-        && m_pendingViewportComplete
+        && pending.complete
         && snapshot->exactViewportRestorable
         && snapshot->viewportPrimary == viewportPrimary
         && columnGeometryMatches;
@@ -395,14 +394,11 @@ namespace andromeda {
     } else {
       const double center = static_cast<double>(columnX(anchorColumn, viewportPrimary))
           + static_cast<double>(columnWidth(anchorColumn, viewportPrimary)) / 2.0;
-      const double restored = center - m_pendingViewportCenterFraction * static_cast<double>(viewportPrimary);
+      const double restored = center - pending.centerFraction * static_cast<double>(viewportPrimary);
       m_scroll = std::clamp(restored, 0.0, static_cast<double>(maxScroll(viewportPrimary)));
       m_centeredRest = false;
     }
     m_policyCenteredRest = false;
-    m_pendingViewportSnapshot = nullptr;
-    m_pendingViewportAnchor = nullptr;
-    m_pendingViewportComplete = false;
   }
 
   int ScrollingLayout::columnWidth(int columnIndex, int viewportPrimary) const {
@@ -843,14 +839,13 @@ namespace andromeda {
     }
     Column& column = m_columns[static_cast<size_t>(columnIndex)];
     eraseRow(column, static_cast<size_t>(rowOf(view)));
-    if (column.views.empty()) {
+    const bool columnGone = column.views.empty();
+    if (columnGone) {
       m_columns.erase(m_columns.begin() + columnIndex);
-      if (m_removedFocusedColumn == columnIndex) {
-        m_pendingRemovalReevaluate = true;
-      }
-    } else if (m_removedFocusedColumn == columnIndex) {
-      // A row left a stacked column standing, so no survivor inherits the side and the strip keeps its resting place.
-      m_removedFocusedColumn = -1;
+    }
+    if (const auto* noted = std::get_if<RemovalNoted>(&m_focusedRemoval); noted != nullptr && noted->column == columnIndex) {
+      // A row that leaves a stacked column standing passes no side on: the strip keeps its resting place.
+      m_focusedRemoval = columnGone ? decltype(m_focusedRemoval){RemovalSettling{columnIndex}} : decltype(m_focusedRemoval){};
     }
     std::erase_if(m_targets, [view](const Target& target) { return target.view == view; });
   }
@@ -861,18 +856,19 @@ namespace andromeda {
     if (columnIndex < 0) {
       return;
     }
-    m_removedFocusedColumn = columnIndex;
+    m_focusedRemoval = RemovalNoted{columnIndex};
     m_focusSide = FocusSide::None;
-    m_lastFocusedColumn = -1;
+    m_lastFocusedColumn.reset();
   }
 
   void ScrollingLayout::reevaluateAfterRemoval(int columnIndex, int viewportPrimary) {
-    if (!m_pendingRemovalReevaluate) {
+    const auto* settling = std::get_if<RemovalSettling>(&m_focusedRemoval);
+    if (settling == nullptr) {
       return;
     }
     // One-shot even when focus passed to a floating survivor, so a later unrelated removal cannot replay it.
-    m_pendingRemovalReevaluate = false;
-    const int removed = std::exchange(m_removedFocusedColumn, -1);
+    const int removed = settling->column;
+    m_focusedRemoval = {};
     if (columnIndex < 0) {
       return;
     }
@@ -976,12 +972,12 @@ namespace andromeda {
   }
 
   ScrollingLayout::FocusSide ScrollingLayout::focusSideFrom(int columnIndex) const {
-    if (m_lastFocusedColumn < 0
-        || m_lastFocusedColumn >= static_cast<int>(m_columns.size())
-        || m_lastFocusedColumn == columnIndex) {
+    if (!m_lastFocusedColumn.has_value()
+        || *m_lastFocusedColumn >= static_cast<int>(m_columns.size())
+        || *m_lastFocusedColumn == columnIndex) {
       return FocusSide::None;
     }
-    return m_lastFocusedColumn > columnIndex ? FocusSide::FromRight : FocusSide::FromLeft;
+    return *m_lastFocusedColumn > columnIndex ? FocusSide::FromRight : FocusSide::FromLeft;
   }
 
   // Centers the column focus is moving to when it and the column on the side focus came from cannot share the

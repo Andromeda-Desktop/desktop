@@ -682,7 +682,14 @@ namespace andromeda {
     void inputCaptureStateChanged(bool active);
     static void onSessionActive(wl_listener* listener, void* data);
     static void onSceneBufferVisibility(wl_listener* listener, void* data);
-    static int onLogoutHandoffTimer(void* data);
+    // Logout phases, forward only. Handoff: greetd's greeter takes the VT before the shutdown target runs. Requested:
+    // systemctl answers on the result pipe. Started: the shutdown target stops the compositor. Each has a deadline,
+    // after which the compositor goes on (Handoff) or stops itself.
+    enum class SessionExit : uint8_t { Idle, Handoff, Requested, Started };
+    static int onSessionExitDeadline(void* data);
+    // False when the deadline timer could not be made.
+    bool enterSessionExit(SessionExit next);
+    void closeSessionExitResult();
     void startSessionShutdown();
     friend class Output;
 
@@ -1135,10 +1142,9 @@ namespace andromeda {
     bool m_stopping = false;
     bool m_applicationScopesRequired = false;
     bool m_sessionShutdownAvailable = false;
-    bool m_sessionExitRequested = false;
+    SessionExit m_sessionExit = SessionExit::Idle;
+    wl_event_source* m_sessionExitDeadline = nullptr;
     int m_sessionExitResultFd = -1;
-    // Logout hand-off: waits for greetd's greeter to take the VT before the shutdown target runs.
-    wl_event_source* m_logoutHandoffTimer = nullptr;
     wl_event_source* m_sessionExitResultSource = nullptr;
     // $XDG_RUNTIME_DIR/<socket name><suffix>.
     [[nodiscard]] std::string waylandSocketPath(std::string_view suffix) const;
@@ -1154,10 +1160,16 @@ namespace andromeda {
     uint64_t m_nextApplicationScopeId = 1;
 
     std::unique_ptr<InputCapture> m_inputCapture;
-    uint64_t m_pendingCaptureId = 0;
     uint32_t m_inputCaptureCapabilities = 0;
-    uint64_t m_pendingInputId = 0;
-    std::string m_pendingInputName;
+    // The request the consent panel asks about; dismissConfirmation answers it.
+    struct ConsentInput {
+      uint64_t id;
+      std::string name;
+    };
+    struct ConsentCapture {
+      uint64_t id;
+    };
+    std::variant<std::monostate, ConsentInput, ConsentCapture> m_consent;
     std::unordered_set<std::string> m_allowedInputNames;
     std::unordered_set<std::string> m_deniedInputNames;
     // Layer-shell answers for sandboxed apps in this session, keyed "sandbox_engine/app_id".

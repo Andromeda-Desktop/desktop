@@ -107,11 +107,14 @@ namespace andromeda {
     wl_listener m_key{};
     wl_listener m_destroy{};
 
-    wl_event_source* m_repeatTimer = nullptr;
-    Keybind m_repeatBind{};
-    uint32_t m_repeatKeycode = 0;
-    int m_repeatIntervalMs = 0;
-    bool m_repeatArmed = false;
+    // A held repeat bind runs again every interval until its key is released; set only while the timer exists.
+    struct KeyRepeat {
+      Keybind bind;
+      uint32_t keycode = 0;
+      int intervalMs = 0;
+    };
+    std::optional<KeyRepeat> m_repeat;
+    wl_event_source* m_repeatTimer = nullptr; // made in the constructor, removed in the destructor; null: no repeat
     // Keycodes whose press a keybind consumed, so the release is withheld from the focused client too.
     std::unordered_set<uint32_t> m_consumedKeycodes;
     // Release actions of binds whose key is still down, by keycode.

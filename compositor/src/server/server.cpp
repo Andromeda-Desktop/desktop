@@ -460,17 +460,15 @@ namespace andromeda {
   }
 
   void Server::dismissConfirmation() {
-    if (m_pendingCaptureId != 0 && m_inputCapture != nullptr) {
-      const auto id = std::exchange(m_pendingCaptureId, 0);
-      m_inputCapture->authorizeSession(id, false);
+    const auto consent = std::exchange(m_consent, {});
+    if (const auto* capture = std::get_if<ConsentCapture>(&consent); capture != nullptr && m_inputCapture != nullptr) {
+      m_inputCapture->authorizeSession(capture->id, false);
     }
-    if (m_pendingInputId != 0) {
-      const auto id = std::exchange(m_pendingInputId, 0);
-      m_deniedInputNames.insert(m_pendingInputName);
-      kLog.info("input permission denied id={} app='{}'", id, m_pendingInputName);
-      m_pendingInputName.clear();
+    if (const auto* input = std::get_if<ConsentInput>(&consent)) {
+      m_deniedInputNames.insert(input->name);
+      kLog.info("input permission denied id={} app='{}'", input->id, input->name);
       if (m_eisInput != nullptr) {
-        m_eisInput->authorizeClient(id, false);
+        m_eisInput->authorizeClient(input->id, false);
       }
     }
     if (m_quitConfirm != nullptr
@@ -595,8 +593,7 @@ namespace andromeda {
       m_eisInput->authorizeClient(id, false);
       return;
     }
-    m_pendingInputId = id;
-    m_pendingInputName = application;
+    m_consent = ConsentInput{.id = id, .name = application};
     std::string displayName;
     for (const unsigned char character : application) {
       displayName += character >= 32 && character < 127 ? static_cast<char>(character) : '?';
@@ -606,24 +603,24 @@ namespace andromeda {
   }
 
   void Server::confirmInputEmulation() {
-    if (m_pendingInputId == 0 || m_eisInput == nullptr || sessionLocked()) {
+    const auto* pending = std::get_if<ConsentInput>(&m_consent);
+    if (pending == nullptr || m_eisInput == nullptr || sessionLocked()) {
       dismissConfirmation();
       return;
     }
-    const auto id = std::exchange(m_pendingInputId, 0);
-    m_allowedInputNames.insert(m_pendingInputName);
-    kLog.info("input permission granted id={} app='{}'", id, m_pendingInputName);
-    m_pendingInputName.clear();
+    const ConsentInput input = *pending;
+    m_consent = {};
+    m_allowedInputNames.insert(input.name);
+    kLog.info("input permission granted id={} app='{}'", input.id, input.name);
     m_quitConfirm->hide();
-    m_eisInput->authorizeClient(id, true);
+    m_eisInput->authorizeClient(input.id, true);
   }
 
   void Server::cancelInputEmulation(uint64_t id) {
-    if (id != m_pendingInputId) {
+    if (const auto* input = std::get_if<ConsentInput>(&m_consent); input == nullptr || input->id != id) {
       return;
     }
-    m_pendingInputId = 0;
-    m_pendingInputName.clear();
+    m_consent = {};
     if (m_quitConfirm != nullptr && m_quitConfirm->kind() == QuitConfirm::Kind::InputEmulation) {
       m_quitConfirm->hide();
     }
@@ -657,7 +654,7 @@ namespace andromeda {
       m_inputCapture->authorizeSession(id, false);
       return;
     }
-    m_pendingCaptureId = id;
+    m_consent = ConsentCapture{.id = id};
     std::string label;
     for (const unsigned char character : name) {
       label += character >= 32 && character < 127 ? static_cast<char>(character) : '?';
@@ -669,7 +666,8 @@ namespace andromeda {
   }
 
   void Server::confirmInputCapture(bool remember) {
-    if (m_pendingCaptureId == 0
+    const auto* pending = std::get_if<ConsentCapture>(&m_consent);
+    if (pending == nullptr
         || m_inputCapture == nullptr
         || m_sessionLock != nullptr
         || sessionLocked()
@@ -678,16 +676,17 @@ namespace andromeda {
       dismissConfirmation();
       return;
     }
-    const auto id = std::exchange(m_pendingCaptureId, 0);
+    const uint64_t id = pending->id;
+    m_consent = {};
     m_quitConfirm->hide();
     m_inputCapture->authorizeSession(id, true, remember);
   }
 
   void Server::cancelInputCapture(uint64_t id) {
-    if (m_pendingCaptureId != id) {
+    if (const auto* capture = std::get_if<ConsentCapture>(&m_consent); capture == nullptr || capture->id != id) {
       return;
     }
-    m_pendingCaptureId = 0;
+    m_consent = {};
     if (m_quitConfirm != nullptr && m_quitConfirm->kind() == QuitConfirm::Kind::InputCapture) {
       m_quitConfirm->hide();
     }
@@ -741,8 +740,7 @@ namespace andromeda {
   void Server::onSessionActive(wl_listener* listener, void* /*data*/) {
     Server* self;
     self = wl_container_of(listener, self, m_sessionActive);
-    if (!self->m_session->active && self->m_logoutHandoffTimer != nullptr) {
-      wl_event_source_remove(std::exchange(self->m_logoutHandoffTimer, nullptr));
+    if (!self->m_session->active && self->m_sessionExit == SessionExit::Handoff) {
       kLog.info("the greeter took the display; ending the session");
       self->startSessionShutdown();
     }
@@ -762,7 +760,7 @@ namespace andromeda {
       if (self->m_inputCapture != nullptr) {
         self->m_inputCapture->suspend();
       }
-      if (self->m_pendingCaptureId != 0) {
+      if (std::holds_alternative<ConsentCapture>(self->m_consent)) {
         self->dismissConfirmation();
       }
     }
@@ -1308,8 +1306,8 @@ namespace andromeda {
     if (m_sessionExitResultSource != nullptr) {
       wl_event_source_remove(m_sessionExitResultSource);
     }
-    if (m_logoutHandoffTimer != nullptr) {
-      wl_event_source_remove(m_logoutHandoffTimer);
+    if (m_sessionExitDeadline != nullptr) {
+      wl_event_source_remove(m_sessionExitDeadline);
     }
     if (m_sessionExitResultFd >= 0) {
       close(m_sessionExitResultFd);
@@ -2368,7 +2366,7 @@ namespace andromeda {
   }
 
   void Server::requestSessionExit() {
-    if (m_stopping || m_sessionExitRequested) {
+    if (m_stopping || m_sessionExit != SessionExit::Idle) {
       return;
     }
     if (!m_sessionShutdownAvailable) {
@@ -2379,28 +2377,71 @@ namespace andromeda {
       wl_event_source_timer_update(m_sessionSaveTimer, 0);
       saveSession();
     }
-    m_sessionExitRequested = true;
     // Logout hand-off (session/greetd patches): greetd starts the greeter in the background, and it takes the VT from
     // this session in one logind step. The desktop stays on screen until then; the shutdown runs while inactive.
-    if (m_session != nullptr && m_session->active && scanout_keeper::requestLogout()) {
-      m_logoutHandoffTimer = wl_event_loop_add_timer(wl_display_get_event_loop(m_display), onLogoutHandoffTimer, this);
-      if (m_logoutHandoffTimer != nullptr) {
-        wl_event_source_timer_update(m_logoutHandoffTimer, 10'000);
-        return;
-      }
+    if (m_session != nullptr && m_session->active && scanout_keeper::requestLogout()
+        && enterSessionExit(SessionExit::Handoff)) {
+      return;
     }
     startSessionShutdown();
   }
 
-  int Server::onLogoutHandoffTimer(void* data) {
+  bool Server::enterSessionExit(SessionExit next) {
+    if (next <= m_sessionExit) {
+      kLog.error("session exit cannot go back from phase {} to {}", std::to_underlying(m_sessionExit),
+                 std::to_underlying(next));
+      return false;
+    }
+    m_sessionExit = next;
+    if (m_sessionExitDeadline == nullptr) {
+      m_sessionExitDeadline = wl_event_loop_add_timer(wl_display_get_event_loop(m_display), onSessionExitDeadline, this);
+      if (m_sessionExitDeadline == nullptr) {
+        return false;
+      }
+    }
+    // Handoff: the greeter starts in about a second; Requested: systemctl --no-block returns at once; Started: the
+    // target stops the session units first.
+    const int ms = next == SessionExit::Handoff ? 10'000 : next == SessionExit::Requested ? 5'000 : 30'000;
+    wl_event_source_timer_update(m_sessionExitDeadline, ms);
+    return true;
+  }
+
+  int Server::onSessionExitDeadline(void* data) {
     auto* self = static_cast<Server*>(data);
-    wl_event_source_remove(std::exchange(self->m_logoutHandoffTimer, nullptr));
-    kLog.warn("the greeter did not take the display in 10 s; ending the session");
-    self->startSessionShutdown();
+    switch (self->m_sessionExit) {
+    case SessionExit::Idle:
+      break;
+    case SessionExit::Handoff:
+      kLog.warn("the greeter did not take the display in 10 s; ending the session");
+      self->startSessionShutdown();
+      break;
+    case SessionExit::Requested:
+      kLog.error("systemctl did not answer the session shutdown request in 5 s; stopping the compositor directly");
+      self->closeSessionExitResult();
+      self->stop();
+      break;
+    case SessionExit::Started:
+      kLog.error("the shutdown target did not stop the compositor in 30 s; stopping it directly");
+      self->stop();
+      break;
+    }
     return 0;
   }
 
+  void Server::closeSessionExitResult() {
+    if (m_sessionExitResultSource != nullptr) {
+      wl_event_source_remove(std::exchange(m_sessionExitResultSource, nullptr));
+    }
+    if (m_sessionExitResultFd >= 0) {
+      close(std::exchange(m_sessionExitResultFd, -1));
+    }
+  }
+
   void Server::startSessionShutdown() {
+    if (!enterSessionExit(SessionExit::Requested)) {
+      stop();
+      return;
+    }
     int resultPipe[2]{-1, -1};
     if (pipe2(resultPipe, O_CLOEXEC | O_NONBLOCK) != 0) {
       kLog.error("cannot create session shutdown pipe: {}", std::strerror(errno));
@@ -2419,11 +2460,8 @@ namespace andromeda {
           if (size < 0 && errno == EAGAIN && (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) == 0) {
             return 0;
           }
-          wl_event_source_remove(server->m_sessionExitResultSource);
-          server->m_sessionExitResultSource = nullptr;
-          close(fd);
-          server->m_sessionExitResultFd = -1;
-          if (size != 1 || result != 'x') {
+          server->closeSessionExitResult();
+          if (size != 1 || result != 'x' || !server->enterSessionExit(SessionExit::Started)) {
             kLog.error("session shutdown request failed; stopping the compositor directly");
             server->stop();
           }

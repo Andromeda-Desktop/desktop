@@ -38,7 +38,8 @@ namespace andromeda {
             wlr_input_device_get_virtual_keyboard(device) != nullptr
             || (server.eisInput() != nullptr && server.eisInput()->ownsDevice(device))
         ),
-        m_deviceName(device->name != nullptr ? device->name : "") {
+        m_deviceName(device->name != nullptr ? device->name : ""),
+        m_repeatTimer(wl_event_loop_add_timer(wl_display_get_event_loop(server.display()), onRepeatTimer, this)) {
     if (m_virtual) {
       m_server->inputMethodRelay()->canonicalizeOwnedKeyboardKeymap(m_keyboard);
     }
@@ -680,7 +681,7 @@ namespace andromeda {
         m_server->forgetConsumedKeycodes();
       }
     } else if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED) {
-      if (m_repeatArmed && event->keycode == m_repeatKeycode) {
+      if (m_repeat.has_value() && event->keycode == m_repeat->keycode) {
         cancelRepeat();
       }
       modifierTap = m_server->releaseModifierTap(this, event->keycode);
@@ -726,10 +727,7 @@ namespace andromeda {
   }
 
   void Keyboard::handleDestroy() {
-    if (m_repeatTimer != nullptr) {
-      wl_event_source_remove(m_repeatTimer);
-      m_repeatTimer = nullptr;
-    }
+    cancelRepeat();
     wl_list_remove(&m_modifiers.link);
     wl_list_remove(&m_key.link);
     wl_list_remove(&m_destroy.link);
@@ -773,47 +771,41 @@ namespace andromeda {
         && bind.action != KeybindAction::ScratchpadFocusNext
         && bind.action != KeybindAction::ScratchpadWindowShowNext
         && bind.action != KeybindAction::ScratchpadWindowShowPrevious;
-    if (!bind.repeat || !repeatable || rate <= 0 || delay <= 0) {
+    if (!bind.repeat || !repeatable || rate <= 0 || delay <= 0 || m_repeatTimer == nullptr) {
       cancelRepeat();
       return;
     }
-    m_repeatBind = bind;
-    m_repeatKeycode = keycode;
-    m_repeatIntervalMs = std::max(1, 1000 / rate);
-    if (m_repeatTimer == nullptr) {
-      wl_event_loop* loop = wl_display_get_event_loop(m_server->display());
-      m_repeatTimer = wl_event_loop_add_timer(loop, onRepeatTimer, this);
-      if (m_repeatTimer == nullptr) {
-        return;
-      }
-    }
+    m_repeat = KeyRepeat{.bind = bind, .keycode = keycode, .intervalMs = std::max(1, 1000 / rate)};
     wl_event_source_timer_update(m_repeatTimer, delay);
-    m_repeatArmed = true;
   }
 
   void Keyboard::cancelRepeat() {
-    if (m_repeatArmed) {
+    if (m_repeat.has_value()) {
+      m_repeat.reset();
       wl_event_source_timer_update(m_repeatTimer, 0);
-      m_repeatArmed = false;
     }
   }
 
   int Keyboard::onRepeatTimer(void* data) {
     auto* self = static_cast<Keyboard*>(data);
-    if (!self->m_repeatArmed) {
+    if (!self->m_repeat.has_value()) {
       return 0;
     }
-    if (self->m_server->sessionLocked() && !self->m_repeatBind.allowWhenLocked) {
+    const KeyRepeat repeat = *self->m_repeat;
+    if (self->m_server->sessionLocked() && !repeat.bind.allowWhenLocked) {
       self->cancelRepeat();
       return 0;
     }
-    if (self->m_server->keyboardShortcutsInhibited() && !self->m_repeatBind.allowWhenInhibited) {
+    if (self->m_server->keyboardShortcutsInhibited() && !repeat.bind.allowWhenInhibited) {
       self->cancelRepeat();
       return 0;
     }
     self->m_server->notifyIdleActivity();
-    self->m_server->executeKeybindAction(self->m_repeatBind);
-    wl_event_source_timer_update(self->m_repeatTimer, self->m_repeatIntervalMs);
+    self->m_server->executeKeybindAction(repeat.bind);
+    // The action may have cancelled the repeat (a lock, a config reload).
+    if (self->m_repeat.has_value()) {
+      wl_event_source_timer_update(self->m_repeatTimer, repeat.intervalMs);
+    }
     return 0;
   }
 
