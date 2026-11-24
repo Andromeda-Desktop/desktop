@@ -30,6 +30,9 @@ namespace process {
     // options.cancel turns true). False on any spawn failure, matching runAsync.
     [[nodiscard]] bool start(std::vector<std::string> args, RunCallbacks callbacks, RunOptions options);
 
+    // Reaps `child` once it exits; nothing reads its output or exit status.
+    void adopt(::process::Child child);
+
     [[nodiscard]] int pollTimeoutMs() const;
     void addPollFds(std::vector<pollfd>& fds);
     void dispatch(const std::vector<pollfd>& fds, std::size_t startIdx);

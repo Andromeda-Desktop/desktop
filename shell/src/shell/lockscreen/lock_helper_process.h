@@ -1,8 +1,10 @@
 #pragma once
 
 #include "config/widget_setting_value.h"
+#include "core/process/process.h"
 
 #include <string>
+#include <optional>
 #include <sys/types.h>
 #include <unordered_map>
 #include <vector>
@@ -41,8 +43,6 @@ public:
   void stop();
 
 private:
-  pid_t m_pid = -1;
+  std::optional<process::Child> m_child;
   int m_alive = -1;
-  // Killed helpers not reaped yet; retried on every start and stop.
-  std::vector<pid_t> m_unreaped;
 };

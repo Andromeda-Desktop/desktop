@@ -1146,6 +1146,16 @@ namespace process {
     return true;
   }
 
+  void AsyncProcessManager::adopt(::process::Child child) {
+    auto entry = std::make_unique<Child>();
+    entry->pid = child.pid;
+    entry->pidfd = child.pidfd.release();
+    std::scoped_lock lock(m_mutex);
+    m_children.push_back(std::move(entry));
+  }
+
+  void reapWhenExited(Child child) { AsyncProcessManager::instance().adopt(std::move(child)); }
+
   int AsyncProcessManager::pollTimeoutMs() const {
     std::scoped_lock lock(m_mutex);
     if (m_children.empty()) {

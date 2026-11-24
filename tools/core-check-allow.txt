@@ -6,7 +6,6 @@ exit-poll apps/terminal/src/agent_host.cpp 1
 exit-poll compositor/src/core/process.cpp 1
 exit-poll libdesk-term/src/pty_session.cpp 1
 exit-poll portal/src/dbus/request.cpp 2
-exit-poll shell/src/shell/lockscreen/lock_helper_process.cpp 1
 raw-spawn apps/terminal/src/agent_host.cpp 1
 raw-spawn compositor/src/cli/debug.cpp 1
 raw-spawn compositor/src/cli/update.cpp 2

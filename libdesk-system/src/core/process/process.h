@@ -77,6 +77,8 @@ namespace process {
   };
   // Starts spec with default signal handling; nothing on failure, errno says why (also a failed exec).
   [[nodiscard]] std::optional<Child> spawn(const SpawnSpec& spec);
+  // Hands a child nobody waits for to the async manager, which reaps it once its pidfd turns readable.
+  void reapWhenExited(Child child);
 
   // The one shell entry, for user command strings (config, hooks, scripts, dmenu entries): /bin/sh -c command, with
   // args as $1, $2, ... Fixed commands pass argv. No -l: the session start already sourced the login profile.

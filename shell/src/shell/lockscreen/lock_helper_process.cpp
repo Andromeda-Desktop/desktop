@@ -12,7 +12,6 @@
 #include <sstream>
 #include <sys/mman.h>
 #include <sys/socket.h>
-#include <sys/wait.h>
 #include <type_traits>
 #include <unistd.h>
 #include <variant>
@@ -153,7 +152,7 @@ std::vector<int> LockHelperProcess::start(const std::vector<Slot>& slots, const 
     }
     return {};
   }
-  m_pid = pid;
+  m_child = std::move(child);
   m_alive = alive[1];
   kLog.info("started lock helper pid {} with {} slot(s)", pid, slots.size());
   return shellEnds;
@@ -164,12 +163,11 @@ void LockHelperProcess::stop() {
     ::close(m_alive);
     m_alive = -1;
   }
-  if (m_pid > 0) {
-    // The helper may hang in a plugin script, so EOF on stdin is not enough.
-    ::kill(m_pid, SIGKILL);
-    m_unreaped.push_back(m_pid);
-    m_pid = -1;
+  if (m_child) {
+    // The helper may hang in a plugin script, so EOF on stdin is not enough. Never block on its exit: a helper in
+    // uninterruptible I/O dies only when that I/O returns.
+    ::kill(m_child->pid, SIGKILL);
+    process::reapWhenExited(std::move(*m_child));
+    m_child.reset();
   }
-  // Never block: a helper in uninterruptible I/O dies only when that I/O returns.
-  std::erase_if(m_unreaped, [](pid_t pid) { return ::waitpid(pid, nullptr, WNOHANG) != 0; });
 }
