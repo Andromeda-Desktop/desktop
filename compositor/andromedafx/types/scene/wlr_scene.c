@@ -188,6 +188,10 @@ static void scene_node_note_update(struct wlr_scene_node* node) {
   blur_sources_note(scene, changed);
 }
 
+// Rendered frames a cache's pending region waits without growing before it re-renders whole (~0.5 s at 60 Hz). A video
+// under a source grows it every few frames, so it stays deferred.
+#define OPTIMIZED_BLUR_PENDING_FRAMES 30
+
 // One tree an optimized blur samples.
 struct optimized_blur_source {
   struct wl_list link; // wlr_scene.blur_sources
@@ -3214,6 +3218,7 @@ void wlr_scene_optimized_blur_mark_dirty_box(struct wlr_scene_optimized_blur* bl
   pixman_region32_init_rect(&grown, box->x - reach, box->y - reach, box->width + 2 * reach, box->height + 2 * reach);
   pixman_region32_intersect_rect(&grown, &grown, x, y, blur_node->width, blur_node->height);
   pixman_region32_union(&blur_node->pending, &blur_node->pending, &grown);
+  blur_node->pending_age = 0;
   if (blur_cache_debug()) {
     wlr_log(WLR_INFO, "blur cache mark box %dx%d at %d,%d", box->width, box->height, box->x, box->y);
   }
@@ -4533,11 +4538,15 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     }
     // A valid cache whose content or blur parameters changed (wallpaper, backdrop, scheme) needs a new blur only
     // where blur nodes sample it; a whole-output re-blur costs about 10 ms on a low-end GPU. The rest waits in pending.
-    if (scene_blur->dirty && fx_pass->has_blur && fx_render_pass_optimized_blur_reusable(fx_pass)) {
+    // Pending that waited OPTIMIZED_BLUR_PENDING_FRAMES re-renders whole once: else each glass animation over it re-renders
+    // a sliver per frame, and every partial render makes the strength blurs miss.
+    if (scene_blur->dirty && scene_blur->pending_age < OPTIMIZED_BLUR_PENDING_FRAMES && fx_pass->has_blur
+        && fx_render_pass_optimized_blur_reusable(fx_pass)) {
       int blur_x, blur_y;
       if (wlr_scene_node_coords(node, &blur_x, &blur_y)) {
         pixman_region32_union_rect(&scene_blur->pending, &scene_blur->pending, blur_x, blur_y, scene_blur->width,
                                    scene_blur->height);
+        scene_blur->pending_age = 0;
         scene_blur->dirty = false;
         // The whole-node mark un-culled the nodes below; only the sampled part of pending needs them now.
         struct wlr_scene* stale_root = scene_node_get_root(node);
@@ -4547,6 +4556,9 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
           wlr_log(WLR_INFO, "blur cache whole mark kept as pending (cache reusable)");
         }
       }
+    }
+    if (!scene_blur->dirty && pixman_region32_not_empty(&scene_blur->pending)) {
+      scene_blur->pending_age++;
     }
     // Re-render the optimized blur buffer when needed. Retry rendering
     // until there's a visible blur_node. A stale cache waits for a dirty mark.
@@ -4643,9 +4655,13 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         if (result && whole) {
           scene_blur->dirty = false;
           pixman_region32_clear(&scene_blur->pending);
+          scene_blur->pending_age = 0;
           pixman_region32_union(&scene_root->blur_visibility_stale, &scene_root->blur_visibility_stale, &work);
         } else if (result) {
           pixman_region32_subtract(&scene_blur->pending, &scene_blur->pending, &rendered);
+          if (!pixman_region32_not_empty(&scene_blur->pending)) {
+            scene_blur->pending_age = 0;
+          }
           pixman_region32_union(&scene_root->blur_visibility_stale, &scene_root->blur_visibility_stale, &rendered);
         }
         pixman_region32_fini(&rendered);
@@ -4658,6 +4674,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         struct wlr_scene* stale_root = scene_node_get_root(node);
         pixman_region32_union(&stale_root->blur_visibility_stale, &stale_root->blur_visibility_stale, &work);
         pixman_region32_clear(&scene_blur->pending);
+        scene_blur->pending_age = 0;
       }
     }
     pixman_region32_fini(&work);
@@ -7929,6 +7946,13 @@ static bool scene_output_build_state(
     pixman_region32_clear(&stale_scene->blur_visibility_stale);
     scene_update_region(stale_scene, &stale);
     pixman_region32_fini(&stale);
+  }
+  struct optimized_blur_source* blur_source;
+  wl_list_for_each(blur_source, &stale_scene->blur_sources, link) {
+    struct wlr_scene_optimized_blur* cache = blur_source->blur;
+    if (!cache->dirty && cache->pending_age >= OPTIMIZED_BLUR_PENDING_FRAMES) {
+      wlr_scene_optimized_blur_mark_dirty(cache);
+    }
   }
 
   struct wlr_output* output = scene_output->output;

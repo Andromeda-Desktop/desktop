@@ -2879,6 +2879,41 @@ static bool test_blur_source_model(struct fixture* fixture) {
   return ok;
 }
 
+// A whole mark over a valid cache waits in pending where no blur node samples it. Once it has waited 30 rendered frames
+// without growing, the cache renders it whole, so a glass node that then moves there renders no cache part.
+static bool test_blur_pending_flush(struct fixture* fixture) {
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
+  wlr_scene_set_blur_data(scene, 1, 1, 0, 1, 1, 1);
+  struct wlr_scene_tree* source = wlr_scene_tree_create(&scene->tree);
+  const float base[4] = {0.2f, 0.6f, 0.3f, 1}, on[4] = {1, 1, 1, 1}, off[4] = {0, 0, 0, 1};
+  wlr_scene_rect_create(source, TEST_WIDTH, TEST_HEIGHT, base);
+  struct wlr_scene_optimized_blur* cache = wlr_scene_optimized_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT);
+  wlr_scene_optimized_blur_add_source(cache, &source->node);
+  struct wlr_scene_blur* glass = wlr_scene_blur_create(&scene->tree, 4, 4);
+  wlr_scene_blur_set_should_only_blur_bottom_layer(glass, true);
+  // A rect outside the source that changes each frame, so every frame renders.
+  struct wlr_scene_rect* ticker = wlr_scene_rect_create(&scene->tree, 1, 1, on);
+  wlr_scene_node_set_position(&ticker->node, TEST_WIDTH - 1, TEST_HEIGHT - 1);
+  uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4];
+  bool ok = blur_model_render(fixture, output, pixels) && blur_model_render(fixture, output, pixels);
+  wlr_scene_optimized_blur_mark_dirty(cache);
+  for (int f = 0; ok && f < 40; f++) {
+    wlr_scene_rect_set_color(ticker, f % 2 ? on : off);
+    ok = blur_model_render(fixture, output, pixels);
+  }
+  const uint64_t before = fx_output_optimized_blur_pixels_for_test(fixture->output);
+  wlr_scene_node_set_position(&glass->node, 10, 10);
+  ok = ok && blur_model_render(fixture, output, pixels);
+  const uint64_t after = fx_output_optimized_blur_pixels_for_test(fixture->output);
+  if (ok && after != before) {
+    fprintf(stderr, "  the move re-rendered %llu cache px\n", (unsigned long long)(after - before));
+  }
+  ok &= check(after == before, "a glass node over pending that waited 30 frames renders no cache part");
+  wlr_scene_node_destroy(&scene->tree.node);
+  return ok;
+}
+
 // Two glass nodes at one strength over a still backdrop share one whole-output blur. A small backdrop change far from
 // one node, then a move of that node, blurs only what the change touched: not the whole output again.
 static bool test_blur_strength_partial(struct fixture* fixture) {
@@ -3578,6 +3613,8 @@ int main(int argc, char* argv[]) {
     ok = test_blur_tint_fold(&fixture);
   } else if (strcmp(argv[1], "blur-source-model") == 0) {
     ok = test_blur_source_model(&fixture);
+  } else if (strcmp(argv[1], "blur-pending-flush") == 0) {
+    ok = test_blur_pending_flush(&fixture);
   } else if (strcmp(argv[1], "blur-strength-partial") == 0) {
     ok = test_blur_strength_partial(&fixture);
   } else if (strcmp(argv[1], "blur-fade-source") == 0) {

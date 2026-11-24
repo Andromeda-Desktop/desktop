@@ -310,6 +310,8 @@ struct wlr_scene_optimized_blur {
   bool dirty;
   // Layout coordinates. Stale parts of the cache that no blur node samples yet.
   pixman_region32_t pending;
+  // Frames the cache rendered while pending stayed the same; 0 when pending grew or emptied.
+  unsigned pending_age;
   // Visible parts of the blur nodes that sample the cache, as of scene update_serial.
   pixman_region32_t consumers;
   uint64_t consumers_serial;

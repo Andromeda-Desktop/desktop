@@ -348,6 +348,7 @@ if build_tests
     'blur-fade-source',
     'blur-source-model',
     'blur-strength-partial',
+    'blur-pending-flush',
     'corner-split',
     'glass-split',
     'glass-split-full-corners',
