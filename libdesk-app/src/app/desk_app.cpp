@@ -39,7 +39,7 @@ namespace {
 
   class SignalSource final : public PollSource {
   public:
-    explicit SignalSource(AppLoop& loop) : m_loop(loop) {
+    explicit SignalSource(std::function<void()> quit) : m_quit(std::move(quit)) {
       if (g_signalPipe[0] < 0) {
         if (::pipe(g_signalPipe) != 0) {
           return;
@@ -67,7 +67,7 @@ namespace {
       unsigned char sig = 0;
       while (::read(g_signalPipe[0], &sig, 1) == 1) {
         kLog.info("signal {}; quitting", static_cast<int>(sig));
-        m_loop.quit(0);
+        m_quit();
       }
     }
 
@@ -78,7 +78,7 @@ namespace {
       }
     }
 
-    AppLoop& m_loop;
+    std::function<void()> m_quit;
   };
 
   std::string toUri(const std::string& arg) {
@@ -202,7 +202,7 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
                   w->setSceneHeld(m_services->holdMotion());
                 }
               },
-          .sessionLost = [this] { m_loop.quit(0); },
+          .sessionLost = [this] { quit(0); },
       }
   );
   if (!m_services->claim(uris, startAction)) {
@@ -218,7 +218,7 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   m_loop.setDisconnectHandler([this] { return reconnect(); });
   m_loop.gl().setGraphicsResetCallback([this](RenderGraphicsResetStatus /*status*/) { m_graphicsRecovery.onReset(); });
   m_services->attach(m_loop);
-  m_signals = std::make_unique<SignalSource>(m_loop);
+  m_signals = std::make_unique<SignalSource>([this] { quit(0); });
   m_loop.addSource(m_signals.get());
   m_glib = std::make_unique<GlibSource>();
   m_loop.addSource(m_glib.get());
@@ -258,8 +258,8 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   unsetenv("XDG_ACTIVATION_TOKEN");
   if (serviceStart && uris.empty()) {
     m_serviceQuit.start(std::chrono::seconds(30), [this] {
-      if (m_windows.empty() && quitWithLastWindow()) {
-        m_loop.quit(0);
+      if (quitWithLastWindow()) {
+        quitWhenIdle();
       }
     });
   } else if (!startAction.empty()) {
@@ -369,12 +369,36 @@ void DeskApp::reapClosed() {
   }
 }
 
+void DeskApp::quit(int code) {
+  if (m_lifecycle != Lifecycle::Quitting) {
+    m_exitCode = code;
+  }
+  onLifecycle(LifecycleEvent::Quit);
+}
+
+DeskApp::Lease DeskApp::lease() {
+  ++m_leases;
+  return Lease(m_self);
+}
+
+void DeskApp::releaseLease() {
+  --m_leases;
+  onLifecycle(LifecycleEvent::LeaseReleased);
+}
+
 void DeskApp::onLifecycle(LifecycleEvent event) {
-  switch (lifecycleStep(m_lifecycle, event, hideWhenClosed())) {
+  const LifecycleStep step = lifecycleStep(
+      m_lifecycle, event, {.hideWhenClosed = hideWhenClosed(), .windowOpen = !m_windows.empty(), .leases = m_leases}
+  );
+  const Lifecycle from = m_lifecycle;
+  m_lifecycle = lifecycleAfter(step, from);
+  if (from == Lifecycle::Hidden && step != LifecycleStep::Ignore) {
+    m_hiddenQuit.stop();
+  }
+  switch (step) {
   case LifecycleStep::Ignore:
     return;
   case LifecycleStep::Hide:
-    m_lifecycle = Lifecycle::Hidden;
     kLog.info("hidden");
     m_loop.renderContext().releaseUnusedCaches();
     sys::releaseFreeHeap();
@@ -386,15 +410,16 @@ void DeskApp::onLifecycle(LifecycleEvent event) {
     m_loop.addSource(m_hiddenPressure.get());
     return;
   case LifecycleStep::Show:
-    m_lifecycle = Lifecycle::Active;
-    m_hiddenQuit.stop();
+    kLog.info("shown");
     m_loop.removeSource(m_hiddenPressure.get());
     m_hiddenPressure.reset();
     return;
+  case LifecycleStep::Wait:
+    // The pressure source may be the caller: it stays until a Show or the destructor.
+    kLog.info("waiting for {} lease(s) to end", m_leases);
+    return;
   case LifecycleStep::Quit:
-    // The pressure source may be the caller: it lives on until the destructor.
-    m_hiddenQuit.stop();
-    m_loop.quit(0);
+    m_loop.quit(m_exitCode);
     return;
   }
 }
@@ -507,7 +532,7 @@ void DeskApp::addStandardCommands() {
             DeferredCall::callLater([this] {
               // A window that refuses asks its user first (for example to save); Quit again after that.
               if (std::ranges::all_of(m_windows, [](const auto& w) { return w->closeAllowed(); })) {
-                m_loop.quit(0);
+                quit(0);
               }
             });
           },

@@ -54,7 +54,6 @@ public:
   // 1 on a Wayland error.
   int run();
   void quit(int code = 0);
-  [[nodiscard]] bool quitting() const noexcept { return m_quit; }
 
 private:
   [[nodiscard]] std::vector<PollSource*> sources();

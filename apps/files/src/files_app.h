@@ -166,4 +166,5 @@ private:
   Timer m_drivesStart;
   GUnixMountMonitor* m_mounts = nullptr; // mounts-changed refreshes the sidebar drives
   std::set<std::string> m_movesApplied; // jobs whose moves the starred and pinned paths already followed
+  std::map<std::string, Lease> m_jobLeases; // a running job keeps a hidden Files alive until it ends
 };

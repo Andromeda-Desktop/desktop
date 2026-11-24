@@ -198,11 +198,7 @@ void FilesApp::startup() {
         });
   }
   if (m_service) {
-    m_idleQuit.start(std::chrono::minutes(2), [this] {
-      if (windows().empty()) {
-        quit();
-      }
-    });
+    m_idleQuit.start(std::chrono::minutes(2), [this] { quitWhenIdle(); });
   }
 }
 
@@ -212,7 +208,7 @@ void FilesApp::scheduleIdleQuit() {
     if (windows().empty() && m_portal->idle() && m_chooserPortal->idle() && m_systemPortals->idle() && m_emailPortal->idle()
         && m_printPortal->idle()
         && m_pendingTags.empty()) {
-      quit(0);
+      quitWhenIdle();
     } else {
       scheduleIdleQuit();
     }
@@ -846,6 +842,11 @@ void FilesApp::onJobChanged(const FileOpsClient::Job& job) {
   if (job.finished() && !job.moves.empty() && m_movesApplied.insert(job.path).second) {
     starred().moved(job.moves);
     pins().moved(job.moves);
+  }
+  if (job.finished()) {
+    m_jobLeases.erase(job.path);
+  } else if (!m_jobLeases.contains(job.path)) {
+    m_jobLeases.emplace(job.path, lease());
   }
   for (auto& [appWindow, window] : m_windows) {
     window->onJobChanged(job);

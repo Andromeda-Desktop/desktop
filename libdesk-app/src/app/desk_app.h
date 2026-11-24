@@ -48,7 +48,40 @@ public:
   // child, with the argv of its request; the caller continues its normal main path with it.
   // The font pairs each app recorded at its last exit, one file per app id; andromeda-appd preloads them all.
   static std::filesystem::path fontWarmupDir();
-  void quit(int code = 0) { m_loop.quit(code); }
+  // Ends the app now, whatever windows or leases it holds.
+  void quit(int code = 0);
+  // Quits once no window is open and no lease is held; a window open ignores it.
+  void quitWhenIdle() { onLifecycle(LifecycleEvent::Expired); }
+
+  // Work that outlives the windows (a file copy): while one is held, a hidden or windowless app does not quit on
+  // expiry, but waits for the last one to end. Safe to destroy after the app.
+  class Lease {
+  public:
+    Lease() = default;
+    Lease(Lease&& other) noexcept = default;
+    Lease& operator=(Lease&& other) noexcept {
+      if (this != &other) {
+        release();
+        m_app = std::move(other.m_app);
+      }
+      return *this;
+    }
+    Lease(const Lease&) = delete;
+    Lease& operator=(const Lease&) = delete;
+    ~Lease() { release(); }
+
+  private:
+    friend class DeskApp;
+    explicit Lease(std::weak_ptr<DeskApp*> app) : m_app(std::move(app)) {}
+    void release() {
+      if (const auto app = m_app.lock()) {
+        m_app.reset();
+        (*app)->releaseLease();
+      }
+    }
+    std::weak_ptr<DeskApp*> m_app;
+  };
+  [[nodiscard]] Lease lease();
 
   [[nodiscard]] const Info& info() const noexcept { return m_info; }
   [[nodiscard]] AppLoop& loop() noexcept { return m_loop; }
@@ -86,7 +119,7 @@ protected:
   // False for a service process that outlives its windows (the file picker); it then calls quit() itself.
   [[nodiscard]] virtual bool quitWithLastWindow() const { return true; }
   // True: when the last window closes, the app stays alive and hidden, so a reopen skips the process start. It quits
-  // after an hour hidden or when the system runs short of memory.
+  // after an hour hidden or when the system runs short of memory, once no lease is held.
   [[nodiscard]] virtual bool hideWhenClosed() const { return false; }
   // For a subclass destructor whose members the windows' content uses: destroys them first, with no windowClosed.
   void destroyWindows() { m_windows.clear(); }
@@ -100,6 +133,7 @@ private:
   [[nodiscard]] AppWindow* windowFor(const Surface* surface) const;
   void reapClosed();
   void onLifecycle(LifecycleEvent event);
+  void releaseLease();
   // Reopens every window on the compositor that took over the socket; false when none did.
   bool reconnect();
   // Rebuilds GL after a context reset and every window's scene, so textures upload again.
@@ -120,5 +154,9 @@ private:
   Lifecycle m_lifecycle = Lifecycle::Active;
   Timer m_hiddenQuit;
   std::unique_ptr<MemoryPressurePollSource> m_hiddenPressure; // armed while Hidden; kept until the loop ends after it
+  int m_leases = 0;
+  int m_exitCode = 0;
   Surface* m_pointerSurface = nullptr;
+  // Last member: destroyed first, so a lease released while members die does not reach the app.
+  std::shared_ptr<DeskApp*> m_self = std::make_shared<DeskApp*>(this);
 };
