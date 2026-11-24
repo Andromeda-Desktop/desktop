@@ -12,14 +12,10 @@
 #include "util/string_utils.h"
 
 #include <glib.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -31,11 +27,6 @@ namespace {
   constexpr Logger kLog("files");
   // docs/search.md debounce for async providers: longer than key repeat (25/s = 40 ms), short enough to feel instant.
   constexpr auto kTypingDebounce = std::chrono::milliseconds(60);
-
-  std::string socketPath() {
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    return runtime == nullptr || runtime[0] == '\0' ? std::string() : std::string(runtime) + "/andromeda-index.sock";
-  }
 
   bool isImage(std::string_view path) {
     constexpr std::array<std::string_view, 9> kImages = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg", ".jxl", ".avif"};
@@ -112,36 +103,8 @@ FilesProvider::~FilesProvider() { disconnect(); }
 
 std::string FilesProvider::displayName() const { return i18n::tr("launcher.files.title"); }
 
-bool FilesProvider::connect() const {
-  if (m_fd >= 0) {
-    return true;
-  }
-  const std::string path = socketPath();
-  sockaddr_un addr{};
-  addr.sun_family = AF_UNIX;
-  if (path.empty() || path.size() >= sizeof(addr.sun_path)) {
-    return false;
-  }
-  std::memcpy(addr.sun_path, path.c_str(), path.size() + 1);
-  const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-  if (fd < 0) {
-    return false;
-  }
-  if (::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0) {
-    kLog.debug("andromeda-index not reachable: {}", std::strerror(errno));
-    close(fd);
-    return false;
-  }
-  m_fd = fd;
-  return true;
-}
-
 void FilesProvider::disconnect() const {
-  if (m_fd >= 0) {
-    close(m_fd);
-  }
-  m_fd = -1;
-  m_received.clear();
+  m_client.close();
   m_pending.clear();
   m_requested.reset();
   m_loading = false;
@@ -238,11 +201,13 @@ std::vector<LauncherResult> FilesProvider::request(std::string_view text, bool s
   if (m_requested == key) {
     return m_results;
   }
-  const std::string kind = scoped && !m_scopeKind.empty() ? "kind:" + m_scopeKind + " " : std::string();
-  const std::string line = "query " + std::to_string(scoped ? kScopedLimit : kLimit) + " " + kind + needle + "\n";
+  const std::string kind = scoped ? m_scopeKind : std::string();
+  const int limit = scoped ? kScopedLimit : kLimit;
   m_requested = key;
   m_loading = true;
-  m_debounce.start(needle.empty() ? std::chrono::milliseconds(0) : kTypingDebounce, [this, key, line] { send(key, line); });
+  m_debounce.start(needle.empty() ? std::chrono::milliseconds(0) : kTypingDebounce, [this, key, limit, kind] {
+    send(key, limit, kind);
+  });
   return m_results;
 }
 
@@ -273,9 +238,9 @@ std::vector<LauncherResult> FilesProvider::recentFiles() const {
   return out;
 }
 
-void FilesProvider::send(const Request& request, const std::string& line) const {
+void FilesProvider::send(const Request& request, int limit, const std::string& kind) const {
   // Without the daemon there is no Files section; the next query tries to connect again.
-  if (!connect() || ::send(m_fd, line.data(), line.size(), MSG_NOSIGNAL) != static_cast<ssize_t>(line.size())) {
+  if (!m_client.query(limit, request.first, kind)) {
     disconnect();
     m_answered = request.first;
     m_answeredScope = request.second;
@@ -289,64 +254,41 @@ void FilesProvider::send(const Request& request, const std::string& line) const 
 }
 
 void FilesProvider::doAddPollFds(std::vector<pollfd>& fds) {
-  if (m_fd >= 0) {
-    fds.push_back({.fd = m_fd, .events = POLLIN, .revents = 0});
+  if (m_client.fd() >= 0) {
+    fds.push_back({.fd = m_client.fd(), .events = m_client.pollEvents(), .revents = 0});
   }
 }
 
 void FilesProvider::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) {
-  if (m_fd < 0 || startIdx >= fds.size() || fds[startIdx].revents == 0) {
+  if (m_client.fd() < 0 || startIdx >= fds.size() || fds[startIdx].fd != m_client.fd()) {
     return;
   }
-  std::array<char, 16384> buffer{};
-  while (true) {
-    const ssize_t n = read(m_fd, buffer.data(), buffer.size());
-    if (n > 0) {
-      m_received.append(buffer.data(), static_cast<std::size_t>(n));
-      continue;
-    }
-    if (n == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
-      // The daemon went away: the open query is answered with nothing, so the section stops loading.
-      const std::optional<Request> open = m_requested;
-      disconnect();
-      if (open.has_value()) {
-        onAnswer(*open, {});
-      }
+  const bool open = m_client.dispatch(fds[startIdx].revents, [this](std::vector<std::string> rows) {
+    if (m_pending.empty()) {
       return;
     }
-    break;
-  }
-  // Each answer ends with an empty line; an answer with no rows is that empty line alone.
-  while (!m_received.empty() && !m_pending.empty()) {
-    std::size_t bodyEnd = 0;
-    std::size_t consumed = 0;
-    if (m_received.front() == '\n') {
-      consumed = 1;
-    } else if (const std::size_t end = m_received.find("\n\n"); end != std::string::npos) {
-      bodyEnd = end + 1;
-      consumed = end + 2;
-    } else {
-      break;
-    }
-    const std::string body = m_received.substr(0, bodyEnd);
-    m_received.erase(0, consumed);
     const Request request = std::move(m_pending.front());
     m_pending.pop_front();
     if (request == m_requested) {
-      onAnswer(request, body);
+      onAnswer(request, rows);
+    }
+  });
+  if (!open) {
+    // The daemon went away: the open query is answered with nothing, so the section stops loading.
+    const std::optional<Request> requested = m_requested;
+    disconnect();
+    if (requested.has_value()) {
+      onAnswer(*requested, {});
     }
   }
 }
 
-void FilesProvider::onAnswer(const Request& request, const std::string& body) const {
+void FilesProvider::onAnswer(const Request& request, const std::vector<std::string>& rows) const {
   const auto& [text, scope] = request;
   const bool scoped = scope.has_value();
   m_results.clear();
   std::vector<std::int64_t> mtimes;
-  std::size_t start = 0;
-  for (std::size_t end = body.find('\n'); end != std::string::npos; end = body.find('\n', start)) {
-    const std::string_view row = std::string_view(body).substr(start, end - start);
-    start = end + 1;
+  for (const std::string_view row : rows) {
     // path \t mtime_ns \t size \t f|d \t n|c (name or text match)
     const std::size_t tab = row.find('\t');
     if (tab == std::string_view::npos || row.size() < 4 || row[row.size() - 2] != '\t') {

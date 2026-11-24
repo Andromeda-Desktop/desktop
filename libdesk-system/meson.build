@@ -72,6 +72,7 @@ _sources = files(
   'src/dbus/bluetooth/bluetooth_agent.cpp',
   'src/dbus/bluetooth/bluetooth_service.cpp',
   'src/dbus/bluetooth/bluetooth_uuid_names.cpp',
+  'src/system/index_client.cpp',
   'src/system/rfkill_helper.cpp',
   'src/dbus/service_notice.cpp',
   'src/core/process/process.cpp',

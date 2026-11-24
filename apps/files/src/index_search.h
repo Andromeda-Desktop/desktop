@@ -2,6 +2,7 @@
 
 #include "core/poll_source.h"
 #include "core/timer_manager.h"
+#include "system/index_client.h"
 
 #include <cstdint>
 #include <deque>
@@ -40,9 +41,7 @@ protected:
   void doAddPollFds(std::vector<pollfd>& fds) override;
 
 private:
-  bool connect();
   void disconnect();
-  void flush();
 
   struct Asked {
     std::string text;
@@ -56,13 +55,10 @@ private:
   void answered(Asked asked, std::vector<std::string> paths);
   void deliver(std::uint64_t answer, Rows rows);
 
-  int m_fd = -1;
+  IndexClient m_client;
   std::deque<Asked> m_asked; // the unanswered requests, oldest first
   Timer m_debounce;
   std::uint64_t m_searches = 0; // searches sent
-  std::string m_out;
-  std::string m_in;
-  std::vector<std::string> m_paths; // the answer being read
   std::uint64_t m_answers = 0;      // answers read
   std::uint64_t m_delivered = 0;    // answers delivered; the next one to deliver has this number
   std::map<std::uint64_t, Asked> m_statting;

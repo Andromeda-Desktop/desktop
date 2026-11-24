@@ -24,6 +24,7 @@
 #include "system/default_apps.h"
 #include "system/desktop_entry.h"
 #include "system/display_manager.h"
+#include "system/index_client.h"
 #include "system/xkb_layout_catalog.h"
 #include "ui/builders.h"
 #include "ui/dialogs/file_dialog.h"
@@ -47,8 +48,6 @@
 #include <sdbus-c++/Types.h>
 #include <sstream>
 #include <string>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -230,28 +229,6 @@ namespace {
 
   std::string spacedCode(const std::string& code) {
     return code.size() == 6 ? code.substr(0, 3) + " " + code.substr(3) : code;
-  }
-
-
-  bool indexerReachable() {
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    if (runtime == nullptr || runtime[0] == '\0') {
-      return false;
-    }
-    const std::string path = std::string(runtime) + "/andromeda-index.sock";
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    if (path.size() >= sizeof(addr.sun_path)) {
-      return false;
-    }
-    std::memcpy(addr.sun_path, path.c_str(), path.size() + 1);
-    const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    if (fd < 0) {
-      return false;
-    }
-    const bool ok = ::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == 0;
-    close(fd);
-    return ok;
   }
 
 } // namespace
@@ -1588,7 +1565,7 @@ void SetupWizardPanel::switchLogin() {
 
 void SetupWizardPanel::probeSearch() {
   if (!m_preview) {
-    m_searchState = indexerReachable() ? SearchState::NoProgress : SearchState::NotRunning;
+    m_searchState = IndexClient::reachable() ? SearchState::NoProgress : SearchState::NotRunning;
   }
 }
 

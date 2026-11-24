@@ -4,6 +4,7 @@
 #include "core/timer_manager.h"
 #include "dbus/file_manager1.h"
 #include "launcher/launcher_provider.h"
+#include "system/index_client.h"
 
 #include <deque>
 #include <filesystem>
@@ -73,21 +74,19 @@ private:
   // Sets the freedesktop thumbnail on file rows that have one; unknown paths are looked up on the blocking pool and
   // the rows change when the answer arrives.
   void withThumbnails(std::vector<LauncherResult>& results) const;
-  [[nodiscard]] bool connect() const;
   void disconnect() const;
   // A request is the asked text plus its scope: nullopt = the general search, else the Files scope's kind word.
   using Request = std::pair<std::string, std::optional<std::string>>;
 
   [[nodiscard]] std::vector<LauncherResult> request(std::string_view text, bool scoped) const;
-  void onAnswer(const Request& request, const std::string& body) const;
-  void send(const Request& request, const std::string& line) const;
+  void onAnswer(const Request& request, const std::vector<std::string>& rows) const;
+  void send(const Request& request, int limit, const std::string& kind) const;
 
   ClipboardService* m_clipboard = nullptr;
   SessionBus* m_bus = nullptr;
   mutable std::unique_ptr<QuickLookClient> m_quickLook;
   std::function<void()> m_onResultsChanged;
-  mutable int m_fd = -1;
-  mutable std::string m_received;
+  mutable IndexClient m_client;
   mutable std::deque<Request> m_pending; // queries sent, oldest first
   mutable std::optional<Request> m_requested;
   mutable std::optional<std::string> m_answered;
