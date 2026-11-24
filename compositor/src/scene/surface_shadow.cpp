@@ -171,6 +171,52 @@ namespace andromeda {
     }
   }
 
+  bool mirrorShadow(
+      wlr_scene_shadow*& copy, wlr_scene_tree* parent, const wlr_scene_shadow& source, double sx, double sy, double zoom,
+      float alpha
+  ) {
+    if (copy == nullptr) {
+      copy = wlr_scene_shadow_create(parent, 0, 0, 0, 0.0F, source.color);
+      if (copy == nullptr) {
+        return false;
+      }
+    }
+    const auto edgeX = [sx](int value) { return static_cast<int>(std::lround(value * sx)); };
+    const auto edgeY = [sy](int value) { return static_cast<int>(std::lround(value * sy)); };
+    // Signed: a negative radius is a concave flare (fx_corner_radii).
+    const auto corner = [zoom](int16_t value) { return static_cast<int16_t>(std::lround(value * zoom)); };
+    const int left = edgeX(source.node.x);
+    const int top = edgeY(source.node.y);
+    wlr_scene_node_set_position(&copy->node, left, top);
+    wlr_scene_shadow_set_size(
+        copy, std::max(0, edgeX(source.node.x + source.width) - left), std::max(0, edgeY(source.node.y + source.height) - top)
+    );
+    wlr_scene_shadow_set_blur_sigma(copy, static_cast<float>(source.blur_sigma * zoom));
+    wlr_scene_shadow_set_corner_radius(copy, static_cast<int>(std::lround(source.corner_radius * zoom)));
+    const float color[4] = {source.color[0], source.color[1], source.color[2], source.color[3] * alpha};
+    wlr_scene_shadow_set_color(copy, color);
+    const clipped_region& hole = source.clipped_region;
+    wlr_scene_shadow_set_clipped_region(
+        copy,
+        clipped_region{
+            .area =
+                {
+                    .x = edgeX(source.node.x + hole.area.x) - left,
+                    .y = edgeY(source.node.y + hole.area.y) - top,
+                    .width = edgeX(source.node.x + hole.area.x + hole.area.width) - edgeX(source.node.x + hole.area.x),
+                    .height = edgeY(source.node.y + hole.area.y + hole.area.height) - edgeY(source.node.y + hole.area.y),
+                },
+            .corners = {
+                .top_left = corner(hole.corners.top_left),
+                .top_right = corner(hole.corners.top_right),
+                .bottom_right = corner(hole.corners.bottom_right),
+                .bottom_left = corner(hole.corners.bottom_left),
+            },
+        }
+    );
+    return true;
+  }
+
   ShadowSnapshot SurfaceShadow::snapshot(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const {
     if (m_node == nullptr || !m_node->node.enabled) {
       return {};

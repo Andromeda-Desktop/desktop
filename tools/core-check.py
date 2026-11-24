@@ -26,8 +26,9 @@ RULES = {
     "fade-draw": ("fade and slide alpha come from scene/effect_draw.h (C2)", ("compositor/src/",), CPP,
                   r"std::sqrt\(\w*[Aa]lpha|m_perBufferFade\s*&&|\blifecycleEffect\([^)]*\)\s*!=\s*nullptr\s*\)?\s*[?;]",
                   ("compositor/src/scene/effect_draw.h",)),
-    "shadow-create": ("shadows come from SurfaceShadow (C3)", ("compositor/src/",), CPP,
-                      r"\bwlr_scene_shadow_create\(", ("compositor/src/scene/surface_shadow.cpp",)),
+    "shadow-create": ("shadow nodes come from SurfaceShadow and mirrorShadow; HintRect owns the accent glow (C3)",
+                      ("compositor/src/",), CPP, r"\bwlr_scene_shadow_create\(",
+                      ("compositor/src/scene/surface_shadow.cpp", "compositor/src/scene/hint_rect.cpp")),
     "comp-bus": ("the compositor talks D-Bus through bus::Client, one async connection per bus on the loop (AR3); "
                  "scanout_keeper is the capped sync hand-off, cli/ runs in its own process", ("compositor/src/",), CPP,
                  r"\bsd_bus_(open\w*|new|default\w*)\s*\(",

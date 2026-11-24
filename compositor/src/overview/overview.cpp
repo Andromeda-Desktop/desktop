@@ -412,11 +412,6 @@ namespace andromeda {
       if (card.shadowTree == nullptr) {
         return;
       }
-      card.shadow = wlr_scene_shadow_create(card.shadowTree, 0, 0, 0, 0.0F, source->color);
-      if (card.shadow == nullptr) {
-        destroyCardShadow(card);
-        return;
-      }
     } else if (card.shadowTree->node.parent != parent) {
       wlr_scene_node_reparent(&card.shadowTree->node, parent);
     }
@@ -430,48 +425,14 @@ namespace andromeda {
     }
     wlr_scene_node_set_enabled(&card.shadowTree->node, true);
 
-    const auto scaled = [zoom](int value) { return static_cast<int>(std::lround(value * zoom)); };
-    // Signed: a negative radius is a concave flare (fx_corner_radii).
-    const auto scaledCorner = [zoom](int16_t value) { return static_cast<int16_t>(std::lround(value * zoom)); };
     // Edges map onto the card's snapped content box, so the hole meets the content exactly: sizes rounded on their
     // own leave a 1 px unshadowed seam on some frames.
     const wlr_box& world = card.view->presentedBox();
     const double sx = world.width > 0 ? static_cast<double>(card.box.width) / world.width : zoom;
     const double sy = world.height > 0 ? static_cast<double>(card.box.height) / world.height : zoom;
-    const auto edgeX = [sx](int value) { return static_cast<int>(std::lround(value * sx)); };
-    const auto edgeY = [sy](int value) { return static_cast<int>(std::lround(value * sy)); };
-    const int left = edgeX(source->node.x);
-    const int top = edgeY(source->node.y);
-    wlr_scene_node_set_position(&card.shadow->node, left, top);
-    wlr_scene_shadow_set_size(
-        card.shadow, std::max(0, edgeX(source->node.x + source->width) - left),
-        std::max(0, edgeY(source->node.y + source->height) - top)
-    );
-    wlr_scene_shadow_set_blur_sigma(card.shadow, static_cast<float>(source->blur_sigma * zoom));
-    wlr_scene_shadow_set_corner_radius(card.shadow, scaled(source->corner_radius));
-    const float color[4] = {source->color[0], source->color[1], source->color[2], source->color[3] * alpha};
-    wlr_scene_shadow_set_color(card.shadow, color);
-    const clipped_region& hole = source->clipped_region;
-    wlr_scene_shadow_set_clipped_region(
-        card.shadow,
-        clipped_region{
-            .area =
-                {
-                    .x = edgeX(source->node.x + hole.area.x) - left,
-                    .y = edgeY(source->node.y + hole.area.y) - top,
-                    .width = edgeX(source->node.x + hole.area.x + hole.area.width)
-                        - edgeX(source->node.x + hole.area.x),
-                    .height = edgeY(source->node.y + hole.area.y + hole.area.height)
-                        - edgeY(source->node.y + hole.area.y),
-                },
-            .corners = {
-                .top_left = scaledCorner(hole.corners.top_left),
-                .top_right = scaledCorner(hole.corners.top_right),
-                .bottom_right = scaledCorner(hole.corners.bottom_right),
-                .bottom_left = scaledCorner(hole.corners.bottom_left),
-            },
-        }
-    );
+    if (!mirrorShadow(card.shadow, card.shadowTree, *source, sx, sy, zoom, alpha)) {
+      destroyCardShadow(card);
+    }
   }
 
   void Overview::destroyCardShadow(Card& card) {

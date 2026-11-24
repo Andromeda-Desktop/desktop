@@ -18,8 +18,6 @@ raw-spawn libdesk-ui/src/core/sys/sys_macos.cpp 1
 raw-spawn libdesk-ui/src/core/sys/sys_posix.cpp 2
 raw-spawn portal/src/dbus/request.cpp 1
 raw-spawn shell/src/app/shell_main.cpp 1
-shadow-create compositor/src/overview/overview.cpp 1
-shadow-create compositor/src/scene/hint_rect.cpp 1
 shell-string apps/terminal/src/terminal_window.cpp 1
 shell-string portal/src/dbus/request.cpp 1
 shell-timer shell/src/shell/live_activity/live_activity_island.cpp 1

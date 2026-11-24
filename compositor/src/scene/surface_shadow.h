@@ -38,6 +38,13 @@ namespace andromeda {
   // One elevation token as a style: softness is the token's CSS blur radius (the shader halves it into a sigma).
   [[nodiscard]] ShadowStyle shadowStyle(const Tokens::Elevation& elevation);
 
+  // A scaled copy of `source` in `parent`: edges and the clipped hole map by (sx, sy), blur and corners by `zoom`, the
+  // colour alpha by `alpha`. Creates `copy` when null; false when it cannot.
+  bool mirrorShadow(
+      wlr_scene_shadow*& copy, wlr_scene_tree* parent, const wlr_scene_shadow& source, double sx, double sy, double zoom,
+      float alpha
+  );
+
   // Owns the desired-state logic for one SceneFX drop-shadow node. The node is a
   // child of the owner's scene tree and freed by scene-tree teardown (no destructor).
   class SurfaceShadow {
