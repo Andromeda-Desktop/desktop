@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/poll_schedule.h"
 #include "core/poll_source.h"
 #include "render/gl_shared_context.h"
 #include "render/render_context.h"
@@ -14,7 +15,6 @@ class WaylandConnection;
 #include <chrono>
 #include <functional>
 #include <future>
-#include <unordered_map>
 #include <vector>
 
 // The run loop of a standalone libdesk-ui app: one Wayland connection, one GL context, one render context, and
@@ -65,7 +65,7 @@ private:
   std::future<void> m_egl; // declared after m_gl and m_display: its destructor waits for the worker that uses them
   KeyRepeatPollSource m_keyRepeat;
   std::vector<PollSource*> m_sources;
-  std::unordered_map<PollSource*, std::chrono::steady_clock::time_point> m_deadlines;
+  PollSchedule m_schedule;
   std::function<bool()> m_onDisconnect;
   bool m_sharedGl = true;
   bool m_quit = false;

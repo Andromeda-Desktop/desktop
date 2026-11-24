@@ -11,7 +11,6 @@
 #include <cerrno>
 #include <chrono>
 #include <exception>
-#include <limits>
 #include <optional>
 #include <thread>
 #include <poll.h>
@@ -105,7 +104,7 @@ void AppLoop::addSource(PollSource* source) {
 
 void AppLoop::removeSource(PollSource* source) {
   std::erase(m_sources, source);
-  m_deadlines.erase(source);
+  m_schedule.forget(source);
 }
 
 void AppLoop::quit(int code) {
@@ -216,27 +215,7 @@ int AppLoop::run() {
 
     const std::vector<PollSource*> list = sources();
     std::vector<pollfd> fds{{.fd = display.pollFd(), .events = prep.events, .revents = 0}};
-    std::vector<std::pair<std::size_t, std::size_t>> ranges;
-    ranges.reserve(list.size());
-    int timeoutMs = -1;
-    const auto before = std::chrono::steady_clock::now();
-    for (PollSource* source : list) {
-      const std::size_t start = source->addPollFds(fds);
-      ranges.emplace_back(start, fds.size() - start);
-      const int t = source->pollTimeoutMs();
-      if (t < 0) {
-        m_deadlines.erase(source);
-        continue;
-      }
-      const auto wanted = before + std::chrono::milliseconds(t);
-      auto [it, inserted] = m_deadlines.try_emplace(source, wanted);
-      if (!inserted) {
-        it->second = std::min(it->second, wanted);
-      }
-      const auto left = std::chrono::ceil<std::chrono::milliseconds>(it->second - before).count();
-      const int leftMs = left < 0 ? 0 : static_cast<int>(std::min<std::int64_t>(left, std::numeric_limits<int>::max()));
-      timeoutMs = timeoutMs < 0 ? leftMs : std::min(timeoutMs, leftMs);
-    }
+    int timeoutMs = m_schedule.prepare(list, fds, PollSchedule::Clock::now());
     if (Surface::hasPendingFrameWork() || Surface::hasPendingRenders()) {
       timeoutMs = 0;
     }
@@ -260,26 +239,9 @@ int AppLoop::run() {
       continue;
     }
 
-    const auto after = std::chrono::steady_clock::now();
-    for (std::size_t i = 0; i < list.size(); ++i) {
-      PollSource* source = list[i];
-      const auto [start, count] = ranges[i];
-      const bool ready = std::any_of(
-          fds.begin() + static_cast<std::ptrdiff_t>(start), fds.begin() + static_cast<std::ptrdiff_t>(start + count),
-          [](const pollfd& p) { return p.revents != 0; }
-      );
-      const auto deadline = m_deadlines.find(source);
-      const bool due = deadline != m_deadlines.end() && after >= deadline->second;
-      if (!ready && !due) {
-        continue;
-      }
-      // An earlier source may have removed this one in the same pass.
-      if (i >= 3 && !std::ranges::contains(m_sources, source)) {
-        continue;
-      }
-      m_deadlines.erase(source);
-      source->dispatch(fds, start);
-    }
+    m_schedule.dispatch(fds, PollSchedule::Clock::now(), [&fds](PollSource& source, std::size_t start, PollSchedule::Wake) {
+      source.dispatch(fds, start);
+    });
 
     Surface::drainPendingFrameWork();
     Surface::drainPendingRenders();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/poll_schedule.h"
 #include <chrono>
 #include <functional>
 #include <unordered_map>
@@ -26,7 +27,5 @@ private:
   PollSourcesProvider m_sourcesProvider;
   std::function<void()> m_closeSurfaces;
 
-  // Absolute deadline by which each source must next be dispatched, armed from
-  // the timeout it advertised and retained across iterations until it fires.
-  std::unordered_map<PollSource*, std::chrono::steady_clock::time_point> m_sourceDeadlines;
+  PollSchedule m_schedule;
 };
