@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <fcntl.h>
 #include <poll.h>
-#include <spawn.h>
 #include <span>
 #include <string_view>
 #include <sys/ioctl.h>
@@ -35,6 +34,7 @@ namespace term::agent {
     // A process the agent started can hold its pipes open after it exits: the I/O threads end on these instead.
     sys::WakeFd stop;
     int exitFd = -1;
+    bool reaped = false; // set by the reader; read after it joined
     ~Shared() {
       if (exitFd >= 0) {
         ::close(exitFd);
@@ -141,15 +141,11 @@ namespace term::agent {
       }
     }
     // The reader stopped without reaping: the pool gives the agent kTermGraceMs to obey SIGTERM, then kills its group.
-    if (m_pid > 0 && ::waitpid(m_pid, nullptr, WNOHANG) == 0) {
-      BlockingPool::instance().run([pid = m_pid] {
-        const int exitFd = sys::childExitFd(pid);
-        pollfd exited{exitFd, POLLIN, 0};
-        if (exitFd < 0 || ::poll(&exited, 1, kTermGraceMs) != 1) {
+    if (m_pid > 0 && m_shared && !m_shared->reaped) {
+      BlockingPool::instance().run([pid = m_pid, shared = m_shared] {
+        pollfd exited{shared->exitFd, POLLIN, 0};
+        if (shared->exitFd < 0 || ::poll(&exited, 1, kTermGraceMs) != 1) {
           ::kill(-pid, SIGKILL);
-        }
-        if (exitFd >= 0) {
-          ::close(exitFd);
         }
         while (::waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {
         }
@@ -234,17 +230,7 @@ namespace term::agent {
       onExit(127, "Could not create pipes for the agent.");
       return false;
     }
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, in[0], STDIN_FILENO);
-    posix_spawn_file_actions_adddup2(&actions, out[1], STDOUT_FILENO);
-    posix_spawn_file_actions_adddup2(&actions, err[1], STDERR_FILENO);
-    std::vector<std::string> args = command(m_kind);
-    std::vector<char*> argv;
-    for (std::string& arg : args) {
-      argv.push_back(arg.data());
-    }
-    argv.push_back(nullptr);
+    const std::vector<std::string> args = command(m_kind);
     // The agent and the tools it runs search the user's PATH, which a macOS app started from Finder lacks.
     const std::string program = resolve(m_kind);
     std::vector<std::string> env{"PATH=" + sys::userPath()};
@@ -252,24 +238,11 @@ namespace term::agent {
       if (std::string_view(*e).starts_with("PATH=")) continue;
       env.emplace_back(*e);
     }
-    std::vector<char*> envp;
-    for (std::string& entry : env) {
-      envp.push_back(entry.data());
-    }
-    envp.push_back(nullptr);
-    posix_spawnattr_t attr;
-    posix_spawnattr_init(&attr);
-    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
-    posix_spawnattr_setpgroup(&attr, 0);
-    sys::resetChildSignals(&attr);
-    pid_t pid = -1;
-    const int rc = program.empty() ? ENOENT : posix_spawn(&pid, program.c_str(), &actions, &attr, argv.data(), envp.data());
-    posix_spawnattr_destroy(&attr);
-    posix_spawn_file_actions_destroy(&actions);
+    const int pid = program.empty() ? -ENOENT : sys::spawnInGroup(program, args, env, {in[0], out[1], err[1]});
     ::close(in[0]);
     ::close(out[1]);
     ::close(err[1]);
-    if (rc != 0) {
+    if (pid < 0) {
       ::close(in[1]);
       ::close(out[0]);
       ::close(err[0]);
@@ -347,6 +320,7 @@ namespace term::agent {
       int status = 0;
       while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {
       }
+      shared->reaped = true;
       const int code = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
       std::string text;
       {

@@ -7,6 +7,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <iterator>
+
 namespace sys {
 
   void resetChildSignals() {
@@ -36,6 +39,38 @@ namespace sys {
   }
 
   void ignoreSigpipe() { ::signal(SIGPIPE, SIG_IGN); }
+
+  int spawnInGroup(const std::string& program, const std::vector<std::string>& argv,
+                   const std::vector<std::string>& env, std::array<int, 3> stdio) {
+    std::vector<char*> args;
+    for (const std::string& arg : argv) args.push_back(const_cast<char*>(arg.c_str()));
+    args.push_back(nullptr);
+    std::vector<char*> envp;
+    for (const std::string& entry : env) envp.push_back(const_cast<char*>(entry.c_str()));
+    envp.push_back(nullptr);
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    for (int fd = 0; fd < 3; ++fd) posix_spawn_file_actions_adddup2(&actions, stdio[fd], fd);
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
+    posix_spawnattr_setpgroup(&attr, 0);
+    resetChildSignals(&attr);
+    pid_t pid = -1;
+    const int rc = ::posix_spawn(&pid, program.c_str(), &actions, &attr, args.data(), envp.data());
+    posix_spawnattr_destroy(&attr);
+    posix_spawn_file_actions_destroy(&actions);
+    return rc == 0 ? pid : -rc;
+  }
+
+  std::vector<std::string> shellArgv(std::string command, std::vector<std::string> args) {
+    std::vector<std::string> argv{"/bin/sh", "-c", std::move(command)};
+    if (!args.empty()) {
+      argv.emplace_back("sh");
+      std::ranges::move(args, std::back_inserter(argv));
+    }
+    return argv;
+  }
 
   bool spawnDetached(const std::string& program, const std::vector<std::string>& args) {
     std::vector<char*> argv{const_cast<char*>(program.c_str())};

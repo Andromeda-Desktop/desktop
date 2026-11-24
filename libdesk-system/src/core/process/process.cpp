@@ -1319,12 +1319,7 @@ namespace process {
   }
 
   std::vector<std::string> shellArgv(std::string command, std::vector<std::string> args) {
-    std::vector<std::string> argv{"/bin/sh", "-c", std::move(command)};
-    if (!args.empty()) {
-      argv.emplace_back("sh");
-      std::ranges::move(args, std::back_inserter(argv));
-    }
-    return argv;
+    return sys::shellArgv(std::move(command), std::move(args));
   }
 
   std::optional<Child> spawn(const SpawnSpec& spec) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -80,6 +81,11 @@ namespace sys {
   // Starts program in a new session with stdio on /dev/null so it outlives the caller. A double fork makes it no
   // child of the caller, so nothing reaps it here. False when the exec fails.
   [[nodiscard]] bool spawnDetached(const std::string& program, const std::vector<std::string>& args);
+  // posix_spawn in a new process group with default signals; stdio[i] becomes fd i. Returns the pid or -errno.
+  [[nodiscard]] int spawnInGroup(const std::string& program, const std::vector<std::string>& argv,
+                                 const std::vector<std::string>& env, std::array<int, 3> stdio);
+  // {"/bin/sh", "-c", command, "sh", args...}: args become $1, $2, ...
+  [[nodiscard]] std::vector<std::string> shellArgv(std::string command, std::vector<std::string> args = {});
   // Between fork and exec: every signal back to SIG_DFL and an empty mask, so the parent's ignored (SIGPIPE) and
   // blocked signals never reach the program. Async-signal-safe.
   void resetChildSignals();

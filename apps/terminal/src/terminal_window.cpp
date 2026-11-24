@@ -2,6 +2,7 @@
 
 #include "agent_host.h"
 
+#include "core/sys/sys.h"
 #include "app/app_loop.h"
 #include "protocols/uri.h"
 #include "app/app_notifier.h"
@@ -1349,7 +1350,7 @@ namespace term {
     ::close(fd);
     // The shell removes the copy when the pager quits or the session closes (SIGHUP).
     openSession(NewShell{.cwd = view->cwd(),
-                         .argv = {"sh", "-c", "trap 'rm -f \"$1\"' EXIT HUP TERM; ${PAGER:-less +G} \"$1\"", "sh", path}});
+                         .argv = sys::shellArgv("trap 'rm -f \"$1\"' EXIT HUP TERM; ${PAGER:-less +G} \"$1\"", {path})});
   }
 
   void TerminalWindow::saveScrollback(std::uint64_t id) {

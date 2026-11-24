@@ -68,10 +68,11 @@ RULES = {
                          "callback controls on live state use ui:: directly", ("shell/src/shell/settings/",), CPP,
                          r"\bui::(?:toggle|slider)\(\{(?:(?!\}\);)[\s\S]){0,1200}?\bsetOverride\b",
                          ("shell/src/shell/settings/settings_control_factory.cpp",)),
-    "shell-string": ("command strings run only through process::shellArgv/runShell (libdesk-system) or execShell "
-                     "(compositor core/process) or portal AsyncProcess; fixed commands pass argv (C12)", CPP_DIRS, CPP,
+    "shell-string": ("command strings run only through sys::shellArgv (libdesk-ui core/sys; process::shellArgv and "
+                     "runShell in libdesk-system) or execShell (compositor core/process) or portal AsyncProcess; fixed "
+                     "commands pass argv (C12)", CPP_DIRS, CPP,
                      r"\"(/bin/)?sh\"\s*,\s*\"-l?c\"",
-                     ("libdesk-system/src/core/process/process.cpp", "compositor/src/core/process.cpp",
+                     ("libdesk-ui/src/core/sys/sys_posix.cpp", "compositor/src/core/process.cpp",
                       "portal/src/dbus/request.cpp")),
     "raw-spawn": ("child processes via libdesk-system process; owners in binaries without it: compositor core/process "
                   "(forkChild, spawnProgram), portable libdesk-ui code core/sys, portal AsyncProcess, indexer Extractor "

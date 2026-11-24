@@ -103,14 +103,9 @@ PtySession::~PtySession() {
       // Closing the master hangs up the whole foreground job: a shell that traps SIGHUP still waits for it.
       ::close(std::exchange(m_master, -1));
       ::kill(local->pid, SIGHUP);
-      const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
-      while (::waitpid(local->pid, nullptr, WNOHANG) == 0) {
-        if (std::chrono::steady_clock::now() >= deadline) {
-          ::kill(local->pid, SIGKILL);
-          ::waitpid(local->pid, nullptr, 0);
-          break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      pollfd exited{local->exitFd, POLLIN, 0};
+      if (local->exitFd < 0 || ::poll(&exited, 1, 500) != 1) ::kill(local->pid, SIGKILL);
+      while (::waitpid(local->pid, nullptr, 0) < 0 && errno == EINTR) {
       }
     }
     hangUpSession(local->pid);
