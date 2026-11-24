@@ -204,6 +204,8 @@ private:
   void initServices();
   // A fullscreen window shows on `output` (any output when null): exact on Andromeda, else from the toplevel list.
   [[nodiscard]] bool fullscreenShown(wl_output* output = nullptr) const;
+  // The app id of a fullscreen window on an output's active workspace (compositor fact), else nullopt.
+  [[nodiscard]] std::optional<std::string> fullscreenApp() const;
   void syncFullscreenOutputs();
   // Sub-phases of initServices(), called in order.
   void initStyleThemeAndWayland();

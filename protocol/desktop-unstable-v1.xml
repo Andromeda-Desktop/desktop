@@ -77,7 +77,9 @@
         "power_saver"), else empty; it is also sent when the cap
         changes. The read-only key "fullscreen" is "1" while the output's
         active workspace shows a fullscreen window,
-        else empty; it is also sent when that changes.
+        else empty; it is also sent when that changes. The read-only key
+        "fullscreen_app" is that window's app id, else empty; it is sent
+        with "fullscreen".
       </description>
       <arg name="target" type="string"/>
       <arg name="key" type="string"/>

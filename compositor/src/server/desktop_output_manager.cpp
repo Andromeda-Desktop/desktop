@@ -299,6 +299,9 @@ namespace andromeda {
         : std::string();
     dsk_output_manager_v1_send_property(resource, output.wlr()->name, "refresh_cap", cap.c_str());
     dsk_output_manager_v1_send_property(resource, output.wlr()->name, "fullscreen", output.fullscreenShown() ? "1" : "");
+    dsk_output_manager_v1_send_property(
+        resource, output.wlr()->name, "fullscreen_app", output.fullscreenApp().value_or("").c_str()
+    );
   }
 
   void DesktopOutputManager::outputPropertiesChanged(const Output& output) {

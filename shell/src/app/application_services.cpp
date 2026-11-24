@@ -1277,6 +1277,7 @@ void Application::initWaylandCallbacks() {
   if (const auto [outputGlobal, outputVersion] = m_wayland.desktopOutputGlobal(); outputGlobal != 0) {
     m_outputState = std::make_unique<MirrorControl>(m_wayland.registry(), outputGlobal, outputVersion, [this] {
       syncFullscreenOutputs();
+      applyFocusTriggers();
     });
   }
   m_compositorPlatform.setToplevelChangeCallback([this] {
@@ -2104,7 +2105,7 @@ void Application::applyFocusTriggers() {
   focus::TriggerInputs in{
       .weekday = local.tm_wday,
       .minute = local.tm_hour * 60 + local.tm_min,
-      .fullscreenApp = m_wayland.fullscreenAppId(),
+      .fullscreenApp = fullscreenApp(),
       .screencast = screencast,
   };
   for (const auto& output : m_wayland.outputs()) {
@@ -2650,6 +2651,18 @@ bool Application::fullscreenShown(wl_output* output) const {
     return (output == nullptr || entry.output == output)
         && m_outputState->property(entry.connectorName, "fullscreen") == "1";
   });
+}
+
+std::optional<std::string> Application::fullscreenApp() const {
+  if (m_outputState == nullptr || !m_outputState->ready()) {
+    return m_wayland.fullscreenAppId();
+  }
+  for (const auto& entry : m_wayland.outputs()) {
+    if (m_outputState->property(entry.connectorName, "fullscreen") == "1") {
+      return m_outputState->property(entry.connectorName, "fullscreen_app");
+    }
+  }
+  return std::nullopt;
 }
 
 void Application::syncFullscreenOutputs() {

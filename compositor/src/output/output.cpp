@@ -164,11 +164,20 @@ namespace andromeda {
       return mode;
     }
 
-    // Whether the workspace holds a mapped window in layout or client fullscreen, other than `ignored`.
+    // The workspace's first mapped window in layout or client fullscreen, other than `ignored`.
+    const View* fullscreenViewOf(const Workspace* workspace, const View* ignored = nullptr) {
+      if (workspace == nullptr) {
+        return nullptr;
+      }
+      const auto& views = workspace->allViews();
+      const auto it = std::ranges::find_if(views, [ignored](const View* view) {
+        return view != ignored && view->mapped() && (view->layoutFullscreen() || view->currentFullscreen());
+      });
+      return it != views.end() ? *it : nullptr;
+    }
+
     bool holdsFullscreenView(const Workspace* workspace, const View* ignored = nullptr) {
-      return workspace != nullptr && std::ranges::any_of(workspace->allViews(), [ignored](const View* view) {
-               return view != ignored && view->mapped() && (view->layoutFullscreen() || view->currentFullscreen());
-             });
+      return fullscreenViewOf(workspace, ignored) != nullptr;
     }
 
 #ifdef TRACY_ENABLE
@@ -1399,8 +1408,13 @@ namespace andromeda {
   }
 
   void Output::updateHdr() {
-    if (const bool shown = hasFullscreenView(); shown != m_fullscreenShown) {
-      m_fullscreenShown = shown;
+    std::optional<std::string> app;
+    if (const View* view = fullscreenViewOf(m_workspaceGroup != nullptr ? m_workspaceGroup->active() : nullptr)) {
+      const char* id = view->appId();
+      app = id != nullptr ? id : "";
+    }
+    if (app != m_fullscreenApp) {
+      m_fullscreenApp = std::move(app);
       if (DesktopOutputManager* manager = m_server->desktopOutputManager()) {
         manager->outputPropertiesChanged(*this);
       }

@@ -101,8 +101,10 @@ namespace andromeda {
     [[nodiscard]] bool hasFullscreenView(const View* ignored = nullptr) const;
     // Like hasFullscreenView, but across every workspace of this output, active or not.
     [[nodiscard]] bool hasFullscreenViewOnAnyWorkspace() const;
-    // hasFullscreenView() as last published to dsk_output_manager_v1 clients.
-    [[nodiscard]] bool fullscreenShown() const { return m_fullscreenShown; }
+    // The app id of the active workspace's fullscreen window (empty when it has none), as last published to
+    // dsk_output_manager_v1 clients; nullopt: no fullscreen window.
+    [[nodiscard]] const std::optional<std::string>& fullscreenApp() const { return m_fullscreenApp; }
+    [[nodiscard]] bool fullscreenShown() const { return m_fullscreenApp.has_value(); }
 
     void arrangeLayers();
     // Runs a layer arrange a mode change recorded for the next frame now, so the usable area matches the mode.
@@ -480,7 +482,7 @@ namespace andromeda {
     // VRR value the backend refused even with a modeset; not retried until the wanted value changes.
     std::optional<bool> m_vrrRejected;
     bool m_vrrPending = false; // a VRR change waiting for the next frame commit
-    bool m_fullscreenShown = false;
+    std::optional<std::string> m_fullscreenApp;
     bool m_lastCommitTearing = false;
     bool m_trackingPresentation = false;
     // Cadence of the last presented frame, which places this output's animation samples on its vblanks. 0 while
