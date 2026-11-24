@@ -13,12 +13,15 @@ struct AppNotice {
   std::string body;
   std::uint8_t urgency = 1; // 0 low, 1 normal, 2 critical
   std::vector<std::string> buttons;
+  std::string icon; // empty: the app's icon
+  bool progress = false; // stays until replaced or closed, and leaves no history entry
 };
 
 // The app's desktop notifications: org.freedesktop.Notifications on Linux (app_notifier_dbus.cpp),
 // UNUserNotificationCenter on macOS (app_notifier_macos.mm). A click runs onAction with the xdg-activation token the
 // server sent (empty on macOS) and the button (0: the body, n: AppNotice::buttons[n - 1]). A non-empty key replaces or
-// closes an earlier notification with the same key. A notice still being sent holds a DeskApp lease.
+// closes an earlier notification with the same key; while one Notify for a key is out, the newest notice for it waits
+// and replaces it. A notice still being sent holds a DeskApp lease.
 class AppNotifier {
 public:
   explicit AppNotifier(DeskApp& app);

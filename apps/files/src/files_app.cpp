@@ -175,7 +175,7 @@ void FilesApp::startup() {
     });
     m_emailPortal = std::make_unique<EmailPortal>(*bus());
     m_printPortal = std::make_unique<PrintPortal>(
-        *bus(),
+        *bus(), *m_notifier,
         PrintPortal::Handlers{
             .open = [this](std::uint64_t id, const PrintPortal::PrintRequest& r) { openPrint(id, r); },
             .closed =

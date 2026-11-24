@@ -18,19 +18,23 @@ namespace {
 struct AppNotifier::Impl {
   explicit Impl(DeskApp& app);
   ~Impl();
-  void notify(const AppNotice& notice, const std::string& key, ActionFn onAction, std::function<void()> onClosed);
-  void close(const std::string& key);
-  void sendClose(std::uint32_t id);
-
   struct Entry {
     std::string key;
     ActionFn onAction;
     std::function<void()> onClosed;
   };
+
+  void notify(const AppNotice& notice, const std::string& key, ActionFn onAction, std::function<void()> onClosed);
+  void send(const AppNotice& notice, std::uint32_t replaces, Entry entry);
+  void sendWaiting(const std::string& key, std::optional<NoticeKeys::Request> next);
+  void close(const std::string& key);
+  void sendClose(std::uint32_t id);
+
   DeskApp& m_app;
   std::unique_ptr<sdbus::IProxy> m_proxy;
   std::map<std::uint32_t, Entry> m_entries;      // by notification id
   NoticeKeys m_keys;
+  std::map<std::string, std::pair<AppNotice, Entry>> m_waiting; // by key, while its Notify is out
   std::map<std::uint32_t, std::string> m_tokens; // ActivationToken before ActionInvoked
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
@@ -94,49 +98,78 @@ void AppNotifier::Impl::notify(const AppNotice& notice, const std::string& key, 
   if (m_proxy == nullptr) {
     return;
   }
+  Entry entry{.key = key, .onAction = std::move(onAction), .onClosed = std::move(onClosed)};
+  if (key.empty()) {
+    send(notice, 0, std::move(entry));
+  } else if (const auto request = m_keys.notify(key)) {
+    send(notice, request->replaces, std::move(entry));
+  } else {
+    m_waiting.insert_or_assign(key, std::pair{notice, std::move(entry)});
+  }
+}
+
+void AppNotifier::Impl::send(const AppNotice& notice, std::uint32_t replaces, Entry entry) {
   std::vector<std::string> actions{"default", "Show"};
   for (std::size_t i = 0; i < notice.buttons.size(); ++i) {
     actions.insert(actions.end(), {std::to_string(i + 1), notice.buttons[i]});
   }
-  const std::map<std::string, sdbus::Variant> hints{
+  std::map<std::string, sdbus::Variant> hints{
       {"desktop-entry", sdbus::Variant{m_app.info().id}},
       {"urgency", sdbus::Variant{notice.urgency}}};
-  const NoticeKeys::Request request = key.empty() ? NoticeKeys::Request{.gen = 0, .replaces = 0} : m_keys.notify(key);
+  if (notice.progress) {
+    hints.emplace("transient", sdbus::Variant{true});
+  }
+  const std::string key = entry.key;
   try {
     m_proxy->callMethodAsync("Notify")
         .onInterface(kInterface)
-        .withArguments(m_app.info().name, request.replaces, m_app.info().id,
+        .withArguments(m_app.info().name, replaces, notice.icon.empty() ? m_app.info().id : notice.icon,
                        notice.title.empty() ? m_app.info().name : notice.title, notice.body, actions, hints,
-                       std::int32_t{notice.urgency == 2 ? 0 : -1})
-        .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), key, gen = request.gen, onAction = std::move(onAction),
-                          onClosed = std::move(onClosed), sending = std::make_shared<DeskApp::Lease>(m_app.lease())](
-                             std::optional<sdbus::Error> error, std::uint32_t id) {
+                       std::int32_t{notice.urgency == 2 || notice.progress ? 0 : -1})
+        .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), entry = std::move(entry),
+                          sending = std::make_shared<DeskApp::Lease>(m_app.lease())](std::optional<sdbus::Error> error,
+                                                                                    std::uint32_t id) {
           if (alive.expired()) {
             return;
           }
           if (error) {
             kLog.warn("notify: {}", error->what());
-            if (!key.empty()) {
-              m_keys.failed(key, gen);
+            if (!entry.key.empty()) {
+              sendWaiting(entry.key, m_keys.failed(entry.key));
             }
             return;
           }
-          if (!key.empty() && m_keys.replied(key, gen, id) == NoticeKeys::Reply::Close) {
-            m_entries.erase(id);
-            sendClose(id);
+          if (entry.key.empty()) {
+            m_entries[id] = entry;
             return;
           }
-          m_entries[id] = Entry{.key = key, .onAction = onAction, .onClosed = onClosed};
+          const NoticeKeys::Answer answer = m_keys.replied(entry.key, id);
+          if (answer.keep) {
+            m_entries[id] = entry;
+          } else {
+            m_entries.erase(id);
+            sendClose(id);
+          }
+          sendWaiting(entry.key, answer.next);
         });
   } catch (const sdbus::Error& e) {
     kLog.warn("notify: {}", e.what());
     if (!key.empty()) {
-      m_keys.failed(key, request.gen);
+      sendWaiting(key, m_keys.failed(key));
     }
   }
 }
 
+void AppNotifier::Impl::sendWaiting(const std::string& key, std::optional<NoticeKeys::Request> next) {
+  if (!next) {
+    return;
+  }
+  auto waiting = m_waiting.extract(key);
+  send(waiting.mapped().first, next->replaces, std::move(waiting.mapped().second));
+}
+
 void AppNotifier::Impl::close(const std::string& key) {
+  m_waiting.erase(key);
   if (const auto shown = m_keys.close(key)) {
     sendClose(*shown);
   }

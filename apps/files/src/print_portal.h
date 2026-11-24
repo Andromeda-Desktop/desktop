@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 
+class AppNotifier;
 class SessionBus;
 
 namespace sdbus {
@@ -35,7 +36,7 @@ public:
     std::function<void(std::uint64_t id)> closed; // the caller gave up: close the sheet
   };
 
-  PrintPortal(SessionBus& bus, Handlers handlers, std::filesystem::path stateFile);
+  PrintPortal(SessionBus& bus, AppNotifier& notifier, Handlers handlers, std::filesystem::path stateFile);
   ~PrintPortal();
   PrintPortal(const PrintPortal&) = delete;
   PrintPortal& operator=(const PrintPortal&) = delete;

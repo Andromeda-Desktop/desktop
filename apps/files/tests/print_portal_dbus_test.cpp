@@ -1,5 +1,7 @@
 // Print portal contract over a private session bus (meson runs it under dbus-run-session). No printer is needed:
 // the sheet is stood in by the open/closed handlers.
+#include "app/app_notifier.h"
+#include "app/desk_app.h"
 #include "core/deferred_call.h"
 #include "dbus/session_bus.h"
 #include "print_portal.h"
@@ -19,6 +21,11 @@
 #include <vector>
 
 namespace {
+  // No session bus of its own: its notifier sends nothing.
+  struct NoWindowApp : DeskApp {
+    using DeskApp::DeskApp;
+    AppWindow& createWindow() override { std::abort(); }
+  };
   int g_failures = 0;
 
   void expect(bool ok, const std::string& what) {
@@ -64,10 +71,12 @@ int main() {
                             "copies=3\nnumber-up=2\n";
   }
   SessionBus bus;
+  NoWindowApp app({.id = "org.example.PrintTest", .name = "Print test"});
+  AppNotifier notifier(app);
   std::vector<std::pair<std::uint64_t, PrintPortal::PrintRequest>> opened;
   std::vector<std::uint64_t> closed;
   PrintPortal portal(
-      bus,
+      bus, notifier,
       {.open = [&](std::uint64_t id, const PrintPortal::PrintRequest& r) { opened.emplace_back(id, r); },
        .closed = [&](std::uint64_t id) { closed.push_back(id); }},
       state);

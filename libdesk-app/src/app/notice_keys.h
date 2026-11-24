@@ -6,52 +6,62 @@
 #include <string>
 #include <utility>
 
-// Keyed notifications against an async server: per key, the id on screen and the newest Notify still out. Only that
-// newest call may stay on screen; an older reply, or one whose key was closed while it was out, is closed on arrival.
+// Keyed notifications against an async server: per key, the id on screen and at most one Notify out. A notify while
+// one is out waits and goes with the reply's id, so an update replaces the notice instead of adding a second one. A
+// close drops the waiting notice; a Notify still out when its key closed is closed on arrival.
 class NoticeKeys {
 public:
   struct Request {
-    std::uint64_t gen;
     std::uint32_t replaces; // 0: none
   };
-  enum class Reply : std::uint8_t { Keep, Close };
+  struct Answer {
+    bool keep;                    // false: close the id that answered
+    std::optional<Request> next;  // send the waiting notice now
+  };
 
-  Request notify(const std::string& key) {
+  // nullopt: a Notify for the key is out; the notice waits for its answer.
+  std::optional<Request> notify(const std::string& key) {
     Key& k = m_keys[key];
-    k.pending = Pending{.gen = ++m_gen, .closed = false};
-    return {k.pending->gen, k.shown.value_or(0)};
+    switch (k.out) {
+    case Out::None:
+      k.out = Out::Sent;
+      return Request{k.shown.value_or(0)};
+    case Out::Sent:
+    case Out::SentWaiting:
+      k.out = Out::SentWaiting;
+      return std::nullopt;
+    case Out::Closed:
+    case Out::ClosedWaiting:
+      k.out = Out::ClosedWaiting;
+      return std::nullopt;
+    }
+    return std::nullopt;
   }
 
   // The id to close now, if one is shown; a Notify still out is closed when it answers.
   std::optional<std::uint32_t> close(const std::string& key) {
     const auto it = m_keys.find(key);
     if (it == m_keys.end()) return std::nullopt;
-    if (it->second.pending) it->second.pending->closed = true;
+    if (it->second.out != Out::None) it->second.out = Out::Closed;
     const auto shown = std::exchange(it->second.shown, std::nullopt);
     prune(it);
     return shown;
   }
 
-  Reply replied(const std::string& key, std::uint64_t gen, std::uint32_t id) {
+  Answer replied(const std::string& key, std::uint32_t id) {
     const auto it = m_keys.find(key);
-    if (it == m_keys.end()) return Reply::Close;
-    const bool newest = it->second.pending && it->second.pending->gen == gen;
-    if (newest && !it->second.pending->closed) {
-      it->second.pending.reset();
-      it->second.shown = id;
-      return Reply::Keep;
-    }
-    if (newest) it->second.pending.reset();
-    if (it->second.shown == id) it->second.shown.reset(); // it replaced the shown one, which goes with it
-    prune(it);
-    return Reply::Close;
+    if (it == m_keys.end()) return {.keep = false, .next = std::nullopt};
+    Key& k = it->second;
+    const bool keep = k.out == Out::Sent || k.out == Out::SentWaiting;
+    if (keep) k.shown = id;
+    return {.keep = keep, .next = settle(it)};
   }
 
-  void failed(const std::string& key, std::uint64_t gen) {
+  // The notice on screen before the failed Notify stays.
+  std::optional<Request> failed(const std::string& key) {
     const auto it = m_keys.find(key);
-    if (it == m_keys.end() || !it->second.pending || it->second.pending->gen != gen) return;
-    it->second.pending.reset();
-    prune(it);
+    if (it == m_keys.end()) return std::nullopt;
+    return settle(it);
   }
 
   void closedByServer(const std::string& key, std::uint32_t id) {
@@ -64,19 +74,27 @@ public:
   [[nodiscard]] bool empty() const { return m_keys.empty(); }
 
 private:
-  struct Pending {
-    std::uint64_t gen;
-    bool closed; // close(key) came after this Notify was sent
-  };
+  // Closed: close(key) came after the Notify out. Waiting: a newer notice waits for its answer.
+  enum class Out : std::uint8_t { None, Sent, SentWaiting, Closed, ClosedWaiting };
   struct Key {
     std::optional<std::uint32_t> shown;
-    std::optional<Pending> pending;
+    Out out = Out::None;
   };
+
+  std::optional<Request> settle(std::map<std::string, Key>::iterator it) {
+    Key& k = it->second;
+    if (k.out == Out::SentWaiting || k.out == Out::ClosedWaiting) {
+      k.out = Out::Sent;
+      return Request{k.shown.value_or(0)};
+    }
+    k.out = Out::None;
+    prune(it);
+    return std::nullopt;
+  }
+
   void prune(std::map<std::string, Key>::iterator it) {
-    if (!it->second.shown && !it->second.pending) m_keys.erase(it);
+    if (!it->second.shown && it->second.out == Out::None) m_keys.erase(it);
   }
 
   std::map<std::string, Key> m_keys;
-  std::uint64_t m_gen = 0;
 };
-

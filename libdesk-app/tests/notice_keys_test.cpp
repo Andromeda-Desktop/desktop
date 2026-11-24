@@ -1,5 +1,6 @@
 // Random notify, close, reply, failure and server-close sequences through NoticeKeys and a fake notification server:
-// once every reply is in, a key shows at most one notification, none after a close, and the newest after a notify.
+// a key never shows two notifications, and once every reply is in it shows none after a close and the newest after a
+// notify.
 #include "app/notice_keys.h"
 
 #include <cstdio>
@@ -18,7 +19,6 @@ unsigned seed = 0;
 
 struct Call {
   std::string key;
-  std::uint64_t gen;
   std::uint32_t replaces;
   int body;
 };
@@ -27,6 +27,7 @@ struct Sim {
   NoticeKeys keys;
   std::map<std::uint32_t, std::pair<std::string, int>> shown; // server: id -> key, body
   std::deque<Call> calls;                                      // Notify calls out, answered in order
+  std::map<std::string, int> waiting;                          // key -> body held back while its call is out
   std::map<std::string, std::optional<int>> want;              // key -> newest body, nullopt after close
   std::uint32_t nextId = 1;
   int nextBody = 1;
@@ -38,14 +39,28 @@ struct Sim {
 
   void notify() {
     const std::string key = pickKey();
-    const NoticeKeys::Request r = keys.notify(key);
-    calls.push_back({key, r.gen, r.replaces, nextBody});
+    if (const auto r = keys.notify(key)) {
+      send(key, *r, nextBody);
+    } else {
+      waiting[key] = nextBody;
+    }
     want[key] = nextBody++;
+  }
+
+  void send(const std::string& key, NoticeKeys::Request r, int body) {
+    for (const Call& c : calls) CHECK(c.key != key);
+    calls.push_back({key, r.replaces, body});
+  }
+
+  void sendWaiting(const std::string& key, std::optional<NoticeKeys::Request> next) {
+    CHECK(next.has_value() == waiting.contains(key));
+    if (next) send(key, *next, waiting.extract(key).mapped());
   }
 
   void close() {
     const std::string key = pickKey();
     if (const auto id = keys.close(key)) shown.erase(*id);
+    waiting.erase(key);
     want[key] = std::nullopt;
   }
 
@@ -54,7 +69,7 @@ struct Sim {
     const Call c = calls.front();
     calls.pop_front();
     if (fail) {
-      keys.failed(c.key, c.gen);
+      sendWaiting(c.key, keys.failed(c.key));
       if (want[c.key] == c.body) { // the newest notice never showed; the one it was to replace stays
         want[c.key] = std::nullopt;
         for (const auto& [id, notice] : shown) {
@@ -65,7 +80,9 @@ struct Sim {
     }
     const std::uint32_t id = c.replaces != 0 && shown.contains(c.replaces) ? c.replaces : nextId++;
     shown[id] = {c.key, c.body};
-    if (keys.replied(c.key, c.gen, id) == NoticeKeys::Reply::Close) shown.erase(id);
+    const NoticeKeys::Answer a = keys.replied(c.key, id);
+    if (!a.keep) shown.erase(id);
+    sendWaiting(c.key, a.next);
   }
 
   // The user dismisses a notice on screen.
@@ -87,6 +104,8 @@ struct Sim {
     case 5: dismiss(); break;
     default: answer(false); break;
     }
+    std::map<std::string, int> count;
+    for (const auto& [id, notice] : shown) CHECK(++count[notice.first] <= 1);
   }
 
   void settleAndCheck() {

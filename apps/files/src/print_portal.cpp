@@ -152,8 +152,8 @@ struct PrintPortal::Pending {
   }
 };
 
-PrintPortal::PrintPortal(SessionBus& bus, Handlers handlers, std::filesystem::path stateFile)
-    : m_bus(bus), m_handlers(std::move(handlers)), m_stateFile(std::move(stateFile)), m_jobs(bus) {
+PrintPortal::PrintPortal(SessionBus& bus, AppNotifier& notifier, Handlers handlers, std::filesystem::path stateFile)
+    : m_bus(bus), m_handlers(std::move(handlers)), m_stateFile(std::move(stateFile)), m_jobs(notifier) {
   m_object = sdbus::createObject(m_bus.connection(), kObjectPath);
   m_object
       ->addVTable(

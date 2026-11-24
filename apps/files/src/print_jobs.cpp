@@ -1,14 +1,12 @@
 #include "print_jobs.h"
 
+#include "app/app_notifier.h"
 #include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
-#include "dbus/session_bus.h"
-#include "dbus/reply_log.h"
 #include "i18n/i18n.h"
 
 #include <glib.h>
-#include <sdbus-c++/sdbus-c++.h>
 
 #include <chrono>
 #include <format>
@@ -18,8 +16,9 @@
 
 namespace {
   constexpr Logger kLog("print-jobs");
-  constexpr auto kInterface = "org.freedesktop.Notifications";
   constexpr auto kPollInterval = std::chrono::milliseconds(1000);
+
+  std::string noticeKey(int jobId) { return "print-" + std::to_string(jobId); }
 } // namespace
 
 void openPrinterSettings(const std::string& printer) {
@@ -33,43 +32,9 @@ void openPrinterSettings(const std::string& printer) {
     }
 }
 
-PrintJobs::PrintJobs(SessionBus& bus) {
-  if (!bus.connected())
-    return;
-  try {
-    m_proxy = sdbus::createProxy(bus.connection(), sdbus::ServiceName{kInterface},
-                                 sdbus::ObjectPath{"/org/freedesktop/Notifications"});
-    m_proxy->uponSignal("ActionInvoked").onInterface(kInterface).call([this](std::uint32_t note, const std::string& key) {
-      const auto it = m_byNote.find(note);
-      if (it == m_byNote.end())
-        return;
-      const auto job = m_jobs.find(it->second);
-      if (job == m_jobs.end())
-        return;
-      if (key == "cancel") {
-        BlockingPool::instance().run([printer = job->second.printer, id = job->first] { cancelJob(printer, id); });
-        close(note);
-        m_byNote.erase(it);
-        m_jobs.erase(job);
-      } else if (key == "queue") {
-        openPrinterSettings(job->second.printer);
-      }
-    });
-    m_proxy->uponSignal("NotificationClosed").onInterface(kInterface).call([this](std::uint32_t note, std::uint32_t) {
-      const auto it = m_byNote.find(note);
-      if (it == m_byNote.end())
-        return;
-      if (const auto job = m_jobs.find(it->second); job != m_jobs.end())
-        job->second.note = 0;
-      m_byNote.erase(it);
-    });
-  } catch (const sdbus::Error& e) {
-    kLog.warn("notifications unavailable: {}", e.what());
-    m_proxy.reset();
-  }
-}
+PrintJobs::PrintJobs(AppNotifier& notifier) : m_notifier(notifier) {}
 
-PrintJobs::~PrintJobs() { *m_alive = false; }
+PrintJobs::~PrintJobs() { m_alive.reset(); }
 
 void PrintJobs::track(int jobId, std::string printer, std::string printerLabel, std::string title, int pages) {
   m_jobs[jobId] = Job{.printer = std::move(printer), .label = std::move(printerLabel), .title = std::move(title),
@@ -80,23 +45,7 @@ void PrintJobs::track(int jobId, std::string printer, std::string printerLabel, 
 }
 
 void PrintJobs::failed(const std::string& summary, const std::string& body) {
-  if (!m_proxy)
-    return;
-  const std::map<std::string, sdbus::Variant> hints{
-      {"desktop-entry", sdbus::Variant{std::string{"dev.andromeda.Files"}}},
-      {"urgency", sdbus::Variant{std::uint8_t{2}}}};
-  try {
-    m_proxy->callMethodAsync("Notify")
-        .onInterface(kInterface)
-        .withArguments(std::string{"Files"}, std::uint32_t{0}, std::string{"dialog-warning"}, summary, body,
-                       std::vector<std::string>{}, hints, std::int32_t{-1})
-        .uponReplyInvoke([](std::optional<sdbus::Error> error, std::uint32_t) {
-          if (error)
-            kLog.warn("notify: {}", error->what());
-        });
-  } catch (const sdbus::Error& e) {
-    kLog.warn("notify: {}", e.what());
-  }
+  m_notifier.notify({.title = summary, .body = body, .urgency = 2, .icon = "dialog-warning"}, {}, {});
 }
 
 void PrintJobs::poll() {
@@ -153,11 +102,7 @@ void PrintJobs::apply(int jobId, const JobStatus& status) {
     if (status.state == JobState::Failed)
       failed(i18n::tr("files.printing.failed-title", "title", job.title),
              i18n::tr("files.printing.failed", "printer", job.label, "reason", status.reason.empty() ? i18n::tr("files.printing.failed-reason") : status.reason));
-    // A Notify still in flight closes its notification in the reply, as the job is gone.
-    if (job.note != 0) {
-      m_byNote.erase(job.note);
-      close(job.note);
-    }
+    m_notifier.close(noticeKey(jobId));
     m_jobs.erase(it);
     break;
   }
@@ -166,74 +111,38 @@ void PrintJobs::apply(int jobId, const JobStatus& status) {
 void PrintJobs::show(int jobId, Shown kind, const std::string& summary, const std::string& body) {
   Job& job = m_jobs.at(jobId);
   // A notification the user closed comes back only when the job's state changes kind.
-  if (kind == job.shown && ((job.note == 0 && job.sending == Sending::Idle) || body == job.body))
+  if (kind == job.shown && (job.dismissed || body == job.body))
     return;
+  if (kind != job.shown)
+    job.dismissed = false;
   job.shown = kind;
-  job.summary = summary;
   job.body = body;
-  if (job.sending != Sending::Idle) {
-    job.sending = Sending::Stale;
-    return;
-  }
-  send(jobId);
-}
-
-void PrintJobs::send(int jobId) {
-  Job& job = m_jobs.at(jobId);
-  if (!m_proxy)
-    return;
-  const bool problem = job.shown == Shown::Problem;
-  const std::vector<std::string> actions =
-      problem ? std::vector<std::string>{"cancel", i18n::tr("files.printing.cancel"), "queue", i18n::tr("files.printing.queue")} : std::vector<std::string>{};
-  const std::map<std::string, sdbus::Variant> hints{
-      {"desktop-entry", sdbus::Variant{std::string{"dev.andromeda.Files"}}},
-      {"urgency", sdbus::Variant{static_cast<std::uint8_t>(problem ? 2 : 1)}},
-      {"transient", sdbus::Variant{!problem}}};
-  try {
-    // One Notify in flight per job, so each update replaces the notification instead of adding a second one.
-    job.sending = Sending::InFlight;
-    m_proxy->callMethodAsync("Notify")
-        .onInterface(kInterface)
-        .withArguments(std::string{"Files"}, job.note, std::string{problem ? "dialog-warning" : "printer"}, job.summary,
-                       job.body, actions, hints, std::int32_t{0})
-        .uponReplyInvoke([this, jobId, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
-                                                                             std::uint32_t note) {
-          if (alive.expired())
-            return;
-          const auto it = m_jobs.find(jobId);
-          if (it == m_jobs.end()) {
-            close(note);
-            return;
-          }
-          Job& job = it->second;
-          const bool stale = job.sending == Sending::Stale;
-          job.sending = Sending::Idle;
-          if (error) {
-            kLog.warn("notify: {}", error->what());
-            return;
-          }
-          if (job.note != note)
-            m_byNote.erase(job.note);
-          job.note = note;
-          m_byNote[note] = jobId;
-          if (stale)
-            send(jobId);
-        });
-  } catch (const sdbus::Error& e) {
-    job.sending = Sending::Idle;
-    kLog.warn("notify: {}", e.what());
-  }
-}
-
-void PrintJobs::close(std::uint32_t note) {
-  if (!m_proxy || note == 0)
-    return;
-  try {
-    m_proxy->callMethodAsync("CloseNotification")
-        .onInterface(kInterface)
-        .withArguments(note)
-        .uponReplyInvoke(logReply(kLog, "CloseNotification", ReplyFailure::Debug));
-  } catch (const sdbus::Error& e) {
-    kLog.warn("close notification: {}", e.what());
-  }
+  const bool problem = kind == Shown::Problem;
+  AppNotice notice{.title = summary, .body = body, .urgency = static_cast<std::uint8_t>(problem ? 2 : 1),
+                   .icon = problem ? "dialog-warning" : "printer", .progress = !problem};
+  if (problem)
+    notice.buttons = {i18n::tr("files.printing.cancel"), i18n::tr("files.printing.queue")};
+  const auto alive = std::weak_ptr<bool>(m_alive);
+  m_notifier.notify(
+      notice, noticeKey(jobId),
+      [this, alive, jobId](const std::string& /*token*/, int button) {
+        if (alive.expired())
+          return;
+        const auto it = m_jobs.find(jobId);
+        if (it == m_jobs.end())
+          return;
+        if (button == 1) {
+          BlockingPool::instance().run([printer = it->second.printer, jobId] { cancelJob(printer, jobId); });
+          m_notifier.close(noticeKey(jobId));
+          m_jobs.erase(it);
+        } else {
+          openPrinterSettings(it->second.printer);
+        }
+      },
+      [this, alive, jobId, kind] {
+        if (alive.expired())
+          return;
+        if (const auto it = m_jobs.find(jobId); it != m_jobs.end() && it->second.shown == kind)
+          it->second.dismissed = true;
+      });
 }

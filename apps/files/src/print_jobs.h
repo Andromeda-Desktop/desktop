@@ -3,25 +3,20 @@
 #include "printing/cups_printers.h"
 #include "core/timer_manager.h"
 
-#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 
-class SessionBus;
+class AppNotifier;
 
 // Opens Settings › Printers, or one printer's queue when `printer` (a CUPS queue name) is set.
 void openPrinterSettings(const std::string& printer = {});
-
-namespace sdbus {
-  class IProxy;
-}
 
 // Follows the jobs the Print sheet sent and shows them as notifications (handoff print `notifications`):
 // "Printing “<title>”" with the page, and "“<title>” did not print" with the reason, Cancel Job and Show Queue.
 class PrintJobs {
 public:
-  explicit PrintJobs(SessionBus& bus);
+  explicit PrintJobs(AppNotifier& notifier);
   ~PrintJobs();
   PrintJobs(const PrintJobs&) = delete;
   PrintJobs& operator=(const PrintJobs&) = delete;
@@ -34,30 +29,23 @@ public:
 private:
   enum class Poll { Idle, Running };
   enum class Shown { Nothing, Progress, Problem };
-  // Stale: the job changed while a Notify was in flight; the reply sends the latest.
-  enum class Sending { Idle, InFlight, Stale };
 
   struct Job {
     std::string printer;
     std::string label;
     std::string title;
     int pages = 0;
-    std::uint32_t note = 0; // notification id, 0 before the first Notify reply
     Shown shown = Shown::Nothing;
-    Sending sending = Sending::Idle;
-    std::string summary;
+    bool dismissed = false; // the user closed the notice of this kind
     std::string body;
   };
 
   void poll();
   void apply(int jobId, const JobStatus& status);
   void show(int jobId, Shown kind, const std::string& summary, const std::string& body);
-  void send(int jobId);
-  void close(std::uint32_t note);
 
-  std::unique_ptr<sdbus::IProxy> m_proxy;
+  AppNotifier& m_notifier;
   std::map<int, Job> m_jobs; // by CUPS job id
-  std::map<std::uint32_t, int> m_byNote;
   Poll m_poll = Poll::Idle;
   Timer m_timer;
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
