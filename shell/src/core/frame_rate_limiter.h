@@ -2,7 +2,9 @@
 
 #include "core/timer_manager.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 
 // Caps animation-driven repaints to a fixed rate regardless of the compositor's
@@ -18,36 +20,42 @@
 // by requestRedraw(), so a skipped frame that issues no redraw stops it).
 class FrameRateLimiter {
 public:
+  // Open: the next shouldStep may step. Reviving: a step was refused inside the interval and the revive timer is
+  // armed; it returns to Open when the timer fires or on reset().
+  enum class Mode : std::uint8_t { Open, Reviving };
+
   explicit FrameRateLimiter(std::chrono::milliseconds interval = std::chrono::milliseconds{33})
       : m_interval(interval) {}
 
-  // Call from a per-frame tick. Returns true when enough time has elapsed to run
-  // another step; otherwise arms reviveCb to fire near the interval edge and
-  // returns false so the caller skips this frame's update + redraw.
   bool shouldStep(std::function<void()> reviveCb) {
     const auto now = std::chrono::steady_clock::now();
     const auto since = now - m_lastStepAt;
-    if (since < m_interval) {
-      if (!m_revive.active()) {
-        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(m_interval - since);
-        m_revive.start(
-            remaining < std::chrono::milliseconds{1} ? std::chrono::milliseconds{1} : remaining, std::move(reviveCb)
-        );
-      }
-      return false;
+    if (since >= m_interval) {
+      m_lastStepAt = now;
+      return true;
     }
-    m_lastStepAt = now;
-    return true;
+    if (m_mode == Mode::Open) {
+      const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(m_interval - since);
+      m_mode = Mode::Reviving;
+      m_revive.start(std::max(remaining, std::chrono::milliseconds{1}), [this, cb = std::move(reviveCb)] {
+        m_mode = Mode::Open;
+        cb();
+      });
+    }
+    return false;
   }
 
-  // Cancels any pending revive and lets the next shouldStep() run immediately.
   void reset() {
     m_lastStepAt = {};
+    m_mode = Mode::Open;
     m_revive.stop();
   }
+
+  [[nodiscard]] Mode mode() const noexcept { return m_mode; }
 
 private:
   std::chrono::milliseconds m_interval;
   std::chrono::steady_clock::time_point m_lastStepAt;
+  Mode m_mode = Mode::Open;
   Timer m_revive;
 };
