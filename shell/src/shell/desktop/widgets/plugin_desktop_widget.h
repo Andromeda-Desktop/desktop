@@ -4,6 +4,7 @@
 #include "core/timer_manager.h"
 #include "scripting/plugin_ipc.h"
 #include "scripting/plugin_script_watcher.h"
+#include "scripting/plugin_update_timer.h"
 #include "scripting/script_runtime.h"
 #include "shell/desktop/desktop_widget.h"
 #include "ui/ui_tree.h"
@@ -54,7 +55,6 @@ private:
   void handleScriptResult(const scripting::ScriptResult& result);
   [[nodiscard]] scripting::ScriptSnapshot makeScriptSnapshot() const;
   [[nodiscard]] std::string resolvePluginPath(const std::string& path) const;
-  void startUpdateTimer();
   void setupScriptWatch();
   void teardownScriptWatch();
   void reloadScript();
@@ -71,13 +71,16 @@ private:
   HttpClient* m_httpClient = nullptr;
   ClipboardService* m_clipboard = nullptr;
   scripting::PluginScriptWatcher m_scriptWatcher;
-  Timer m_updateTimer;
+  PluginUpdateTimer m_updateTimer{[this] {
+    if (m_runtime != nullptr) {
+      (void)m_runtime->enqueueUpdate(makeScriptSnapshot());
+    }
+  }};
 
   Flex* m_flex = nullptr;
   ui::UiTreeReconciler m_reconciler;
   std::optional<ui::UiTreeNode> m_tree;
   bool m_treeDirty = false;
-  int m_updateIntervalMs = 1000;
   bool m_wantsSecondTicks = false;
   bool m_needsFrameTick = false;
   bool m_hasOnIpc = false;

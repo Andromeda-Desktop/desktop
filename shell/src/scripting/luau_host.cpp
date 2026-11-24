@@ -3052,7 +3052,7 @@ std::string LuauHost::translate(std::string_view key, const std::unordered_map<s
 
 void LuauHost::scriptSetUpdateInterval(int ms) {
   if (m_scriptContext != nullptr) {
-    m_scriptContext->patch.updateIntervalMs = std::max(16, ms);
+    m_scriptContext->patch.updateIntervalMs = ms;
   }
 }
 

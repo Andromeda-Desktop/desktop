@@ -3,6 +3,7 @@
 #include "core/timer_manager.h"
 #include "scripting/plugin_ipc.h"
 #include "scripting/plugin_script_watcher.h"
+#include "scripting/plugin_update_timer.h"
 #include "scripting/script_runtime.h"
 
 #include <filesystem>
@@ -64,8 +65,11 @@ namespace scripting {
       std::shared_ptr<ScriptRuntime> runtime;
       ScriptRuntime::SubscriberId subscription = 0;
       PluginScriptWatcher scriptWatcher;
-      Timer updateTimer;
-      int updateIntervalMs = 1000;
+      PluginUpdateTimer updateTimer{[this] {
+        if (runtime != nullptr) {
+          (void)runtime->enqueueUpdate({});
+        }
+      }};
       ScriptSettings lastSeededSettings;
       std::shared_ptr<bool> alive = std::make_shared<bool>(true);
 
@@ -76,7 +80,6 @@ namespace scripting {
       dispatchIpc(std::string_view event, std::string_view payload, const ScriptSnapshot& snapshot) override;
     };
 
-    void armTimer(Service& service);
     void setupScriptWatch(Service& service);
     void teardownScriptWatch(Service& service);
     void reloadService(Service& service);

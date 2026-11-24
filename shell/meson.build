@@ -1227,6 +1227,7 @@ if build_tests
     'child_signals',
     'blocking_pool',
     'gpu_cache_release',
+    'plugin_update_timer',
     'clipboard_persistence_model',
     'clipboard_service',
     'clipboard_storage_permissions',

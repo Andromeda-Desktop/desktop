@@ -3,6 +3,7 @@
 #include "config/config_types.h"
 #include "core/timer_manager.h"
 #include "scripting/plugin_script_watcher.h"
+#include "scripting/plugin_update_timer.h"
 #include "scripting/script_runtime.h"
 #include "shell/control_center/shortcut_registry.h"
 
@@ -55,7 +56,6 @@ private:
   [[nodiscard]] bool sourceChangedSinceLoad() const;
   void resetPresentation();
   void handleResult(const scripting::ScriptResult& result);
-  void armTimer();
   [[nodiscard]] scripting::ScriptSnapshot makeScriptSnapshot() const;
   [[nodiscard]] std::string focusedOutputName() const;
 
@@ -76,8 +76,12 @@ private:
   std::string m_iconOff = "circle";
   bool m_active = false;
   bool m_enabled = true;
-  Timer m_updateTimer;
-  int m_updateIntervalMs = 1000;
+  // Shown while the control center panel is open.
+  PluginUpdateTimer m_updateTimer{[this] {
+    if (m_runtime != nullptr) {
+      (void)m_runtime->enqueueUpdate(makeScriptSnapshot());
+    }
+  }};
   std::filesystem::file_time_type m_loadedSourceMtime;
   std::unordered_map<std::filesystem::path, std::filesystem::file_time_type> m_loadedModuleMtimes;
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);

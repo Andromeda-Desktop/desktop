@@ -408,6 +408,7 @@ void WaylandSurface::clearBlurRegion() {
 DskSurfaceClient* WaylandSurface::dsk() {
   if (m_dsk == nullptr && m_surface != nullptr && m_connection.dskSurfaceManager() != nullptr) {
     m_dsk = std::make_unique<DskSurfaceClient>(m_connection.dskSurfaceManager(), m_surface);
+    m_dsk->setOnPresence([this](std::uint32_t presence) { setPresence(static_cast<SurfacePresence>(presence)); });
   }
   return m_dsk.get();
 }

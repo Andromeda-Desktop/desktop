@@ -27,7 +27,6 @@
 namespace {
 
   constexpr Logger kLog("plugin-layer");
-  constexpr int kDefaultUpdateIntervalMs = 1000;
 
   using scripting::PluginLayerAnchor::Bottom;
   using scripting::PluginLayerAnchor::Left;
@@ -174,11 +173,16 @@ bool PluginLayer::initialize(const scripting::PluginLayerConfig& config) {
     m_surface->requestRedraw();
   });
 
+  m_surface->setPresenceChangedCallback([this](SurfacePresence presence) {
+    m_updateTimer.setShown(presence == SurfacePresence::Shown);
+  });
   if (!m_surface->initialize(m_output)) {
     kLog.warn("failed to initialize layer '{}' on {}", m_entryId, m_outputName);
     m_surface.reset();
     return false;
   }
+  // Presence arrives on the surface's dsk object.
+  (void)m_surface->dsk();
   m_surface->setClickThrough(config.clickThrough);
 
   startScript();
@@ -405,7 +409,7 @@ void PluginLayer::startScript() {
     handleScriptResult(result);
   });
   m_runtime->start(m_sourcePath.string(), std::move(source), makeScriptSnapshot());
-  startUpdateTimer();
+  m_updateTimer.start();
 }
 
 void PluginLayer::reloadScript() {
@@ -418,21 +422,13 @@ void PluginLayer::reloadScript() {
   }
   // Tick opt-ins and interval reset to defaults; the reloaded script re-declares them.
   m_needsFrameTick = false;
-  m_updateIntervalMs = kDefaultUpdateIntervalMs;
+  m_updateTimer.setInterval(PluginUpdateTimer::kDefaultMs);
   m_hasOnIpc = false;
   m_hasOnIpcKnown = false;
   m_runtime->reload(m_sourcePath.string(), std::move(source), makeScriptSnapshot());
-  startUpdateTimer();
+  m_updateTimer.start();
   kLog.info("hot reload: reloaded '{}'", name);
   notify::info("Noctalia", i18n::tr("bar.widgets.scripted.reloaded"), name);
-}
-
-void PluginLayer::startUpdateTimer() {
-  m_updateTimer.startRepeating(std::chrono::milliseconds(m_updateIntervalMs), [this] {
-    if (m_runtime != nullptr) {
-      (void)m_runtime->enqueueUpdate(makeScriptSnapshot());
-    }
-  });
 }
 
 void PluginLayer::handleScriptResult(const scripting::ScriptResult& result) {
@@ -455,8 +451,7 @@ void PluginLayer::handleScriptResult(const scripting::ScriptResult& result) {
     }
   }
   if (patch.updateIntervalMs.has_value()) {
-    m_updateIntervalMs = std::max(16, *patch.updateIntervalMs);
-    startUpdateTimer();
+    m_updateTimer.setInterval(*patch.updateIntervalMs);
   }
   if (patch.uiTree.has_value() && (!m_tree.has_value() || *patch.uiTree != *m_tree)) {
     m_tree = *patch.uiTree;

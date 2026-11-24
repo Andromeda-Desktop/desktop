@@ -6,6 +6,7 @@
 #include "scripting/plugin_ipc.h"
 #include "scripting/plugin_layer_config.h"
 #include "scripting/plugin_script_watcher.h"
+#include "scripting/plugin_update_timer.h"
 #include "scripting/script_runtime.h"
 #include "ui/ui_tree.h"
 #include "scripting/ui_tree_reconciler.h"
@@ -79,7 +80,6 @@ private:
   void syncAfterInput();
   void startScript();
   void reloadScript();
-  void startUpdateTimer();
   void handleScriptResult(const scripting::ScriptResult& result);
   [[nodiscard]] scripting::ScriptSnapshot makeScriptSnapshot() const;
   [[nodiscard]] std::string resolvePluginPath(const std::string& path) const;
@@ -104,8 +104,11 @@ private:
   std::shared_ptr<scripting::ScriptRuntime> m_runtime;
   scripting::ScriptRuntime::SubscriberId m_runtimeSubscription = 0;
   scripting::PluginScriptWatcher m_scriptWatcher;
-  Timer m_updateTimer;
-  int m_updateIntervalMs = 1000;
+  PluginUpdateTimer m_updateTimer{[this] {
+    if (m_runtime != nullptr) {
+      (void)m_runtime->enqueueUpdate(makeScriptSnapshot());
+    }
+  }};
   bool m_needsFrameTick = false;
   bool m_hasOnIpc = false;
   bool m_hasOnIpcKnown = false;

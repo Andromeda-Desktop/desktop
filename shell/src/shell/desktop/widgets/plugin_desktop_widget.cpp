@@ -16,7 +16,6 @@
 namespace {
 
   constexpr Logger kLog("plugin-desktop-widget");
-  constexpr int kDefaultUpdateIntervalMs = 1000;
 
   std::string readFile(const std::filesystem::path& path) {
     std::ifstream f(path);
@@ -94,7 +93,7 @@ void PluginDesktopWidget::create() {
   });
 
   m_runtime->start(m_sourcePath.string(), std::move(source), makeScriptSnapshot());
-  startUpdateTimer();
+  m_updateTimer.start();
   setupScriptWatch();
 }
 
@@ -171,8 +170,7 @@ void PluginDesktopWidget::handleScriptResult(const scripting::ScriptResult& resu
     }
   }
   if (patch.updateIntervalMs.has_value()) {
-    m_updateIntervalMs = std::max(16, *patch.updateIntervalMs);
-    startUpdateTimer();
+    m_updateTimer.setInterval(*patch.updateIntervalMs);
   }
   if (patch.uiTree.has_value() && (!m_tree.has_value() || *patch.uiTree != *m_tree)) {
     m_tree = *patch.uiTree;
@@ -207,14 +205,6 @@ std::string PluginDesktopWidget::resolvePluginPath(const std::string& path) cons
   return (m_pluginDir / path).string();
 }
 
-void PluginDesktopWidget::startUpdateTimer() {
-  m_updateTimer.startRepeating(std::chrono::milliseconds(m_updateIntervalMs), [this] {
-    if (m_runtime != nullptr) {
-      (void)m_runtime->enqueueUpdate(makeScriptSnapshot());
-    }
-  });
-}
-
 void PluginDesktopWidget::setupScriptWatch() {
   m_scriptWatcher.start(m_fileWatcher, m_sourcePath, [this] { reloadScript(); });
 }
@@ -234,12 +224,12 @@ void PluginDesktopWidget::reloadScript() {
   // them. The current tree stays visible until the new render() lands.
   m_wantsSecondTicks = false;
   m_needsFrameTick = false;
-  m_updateIntervalMs = kDefaultUpdateIntervalMs;
+  m_updateTimer.setInterval(PluginUpdateTimer::kDefaultMs);
   m_hasOnIpc = false;
   m_hasOnIpcKnown = false;
 
   m_runtime->reload(m_sourcePath.string(), std::move(source), makeScriptSnapshot());
-  startUpdateTimer();
+  m_updateTimer.start();
   requestRedraw();
   kLog.info("hot reload: reloaded '{}'", name);
   notify::info("Noctalia", i18n::tr("bar.widgets.scripted.reloaded"), name);

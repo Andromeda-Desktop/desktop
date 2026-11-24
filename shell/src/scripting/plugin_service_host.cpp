@@ -81,14 +81,10 @@ namespace scripting {
         svc->scriptWatcher.setModulePaths(result.modulePaths);
       }
       if (result.patch.updateIntervalMs.has_value()) {
-        const int next = std::max(16, *result.patch.updateIntervalMs);
-        if (next != svc->updateIntervalMs) {
-          svc->updateIntervalMs = next;
-          armTimer(*svc);
-        }
+        svc->updateTimer.setInterval(*result.patch.updateIntervalMs);
       }
     });
-    armTimer(service);
+    service.updateTimer.start();
   }
 
   std::unique_ptr<PluginServiceHost::Service> PluginServiceHost::makeService(
@@ -270,23 +266,11 @@ namespace scripting {
     }
 
     service.updateTimer.stop();
-    service.updateIntervalMs = 1000;
+    service.updateTimer.setInterval(PluginUpdateTimer::kDefaultMs);
     service.runtime->reload(service.sourcePath.string(), std::move(code), {});
-    armTimer(service);
+    service.updateTimer.start();
     kLog.info("hot reload: reloaded service '{}'", service.entryId);
     notify::info("Noctalia", i18n::tr("bar.widgets.scripted.reloaded"), name);
-  }
-
-  void PluginServiceHost::armTimer(Service& service) {
-    service.updateTimer.stop();
-    Service* svc = &service;
-    std::weak_ptr<bool> alive = service.alive;
-    service.updateTimer.startRepeating(std::chrono::milliseconds(service.updateIntervalMs), [svc, alive] {
-      auto token = alive.lock();
-      if (token != nullptr && *token && svc->runtime != nullptr) {
-        (void)svc->runtime->enqueueUpdate({});
-      }
-    });
   }
 
 } // namespace scripting

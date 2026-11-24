@@ -54,11 +54,12 @@ public:
   // Null for null or a non-Wayland Surface.
   [[nodiscard]] static wl_surface* wlOf(const Surface* surface);
   void onPreferredFractionalScale(std::uint32_t numerator);
+  // The one dsk_surface_v1 of this surface (a second is a protocol error), made on first use; it feeds presence().
+  // Null without our compositor or before createWlSurface.
+  DskSurfaceClient* dsk();
 
 protected:
   virtual bool createWlSurface();
-  // m_dsk, made on first use; null without our compositor or before createWlSurface.
-  DskSurfaceClient* dsk();
   bool prepareBlurEffect();
   void destroySurface();
 

@@ -73,7 +73,7 @@ void PluginShortcut::start() {
 
   m_runtime->start(m_sourcePath.string(), std::move(code), makeScriptSnapshot());
   recordLoadedSourceMtime();
-  armTimer();
+  m_updateTimer.start();
   setupScriptWatch();
 }
 
@@ -84,7 +84,7 @@ void PluginShortcut::setupScriptWatch() {
 void PluginShortcut::teardownScriptWatch() { m_scriptWatcher.stop(); }
 
 void PluginShortcut::onPanelClose() {
-  m_updateTimer.stop();
+  m_updateTimer.setShown(false);
   teardownScriptWatch();
 }
 
@@ -94,9 +94,8 @@ void PluginShortcut::onPanelOpen() {
   }
   if (sourceChangedSinceLoad()) {
     reloadScript(false);
-  } else {
-    armTimer();
   }
+  m_updateTimer.setShown(true);
   setupScriptWatch();
 }
 
@@ -155,7 +154,7 @@ void PluginShortcut::resetPresentation() {
   m_iconOff = "circle";
   m_active = false;
   m_enabled = true;
-  m_updateIntervalMs = 1000;
+  m_updateTimer.setInterval(PluginUpdateTimer::kDefaultMs);
 }
 
 void PluginShortcut::reloadScript(bool notifyUser) {
@@ -180,7 +179,7 @@ void PluginShortcut::reloadScript(bool notifyUser) {
   resetPresentation();
   m_runtime->reload(m_sourcePath.string(), std::move(code), makeScriptSnapshot());
   recordLoadedSourceMtime();
-  armTimer();
+  m_updateTimer.start();
   PanelManager::instance().refresh();
   kLog.info("hot reload: reloaded shortcut '{}'", m_entryId);
   if (notifyUser) {
@@ -212,27 +211,12 @@ void PluginShortcut::handleResult(const scripting::ScriptResult& result) {
     changed = true;
   }
   if (patch.updateIntervalMs.has_value()) {
-    const int next = std::max(16, *patch.updateIntervalMs);
-    if (next != m_updateIntervalMs) {
-      m_updateIntervalMs = next;
-      armTimer();
-    }
+    m_updateTimer.setInterval(*patch.updateIntervalMs);
   }
   if (changed) {
     // The control center polls our state each update pass; kick one.
     PanelManager::instance().refresh();
   }
-}
-
-void PluginShortcut::armTimer() {
-  m_updateTimer.stop();
-  auto alive = std::weak_ptr<bool>(m_alive);
-  m_updateTimer.startRepeating(std::chrono::milliseconds(m_updateIntervalMs), [this, alive] {
-    auto token = alive.lock();
-    if (token != nullptr && *token && m_runtime != nullptr) {
-      (void)m_runtime->enqueueUpdate(makeScriptSnapshot());
-    }
-  });
 }
 
 void PluginShortcut::onClick() {
