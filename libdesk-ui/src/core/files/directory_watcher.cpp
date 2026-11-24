@@ -158,7 +158,7 @@ void DirectoryWatcher::processEvents() {
       if ((ev->mask & IN_MOVED_TO) != 0) {
         const auto from = std::ranges::find_if(m_pendingMoves, [&](const PendingMove& m) { return m.cookie == ev->cookie; });
         if (from == m_pendingMoves.end()) {
-          deliver(ev->wd, Event::Created, name);
+          deliver(ev->wd, Event::MovedIn, name);
           continue;
         }
         const PendingMove move = *from;
@@ -167,7 +167,7 @@ void DirectoryWatcher::processEvents() {
           deliver(ev->wd, Event::Renamed, move.name, name);
         } else {
           deliver(move.wd, Event::Deleted, move.name);
-          deliver(ev->wd, Event::Created, name);
+          deliver(ev->wd, Event::MovedIn, name);
         }
         continue;
       }
@@ -175,7 +175,9 @@ void DirectoryWatcher::processEvents() {
         deliver(ev->wd, Event::Created, name);
       } else if ((ev->mask & IN_DELETE) != 0) {
         deliver(ev->wd, Event::Deleted, name);
-      } else if ((ev->mask & (IN_MODIFY | IN_ATTRIB | IN_CLOSE_WRITE)) != 0) {
+      } else if ((ev->mask & IN_CLOSE_WRITE) != 0) {
+        deliver(ev->wd, Event::Written, name);
+      } else if ((ev->mask & (IN_MODIFY | IN_ATTRIB)) != 0) {
         deliver(ev->wd, Event::Changed, name);
       }
     }

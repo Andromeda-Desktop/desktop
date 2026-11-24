@@ -11,13 +11,15 @@
 #include <vector>
 
 // inotify on directories, one fd per process (a PollSource on the app loop). A rename inside one watched directory
-// arrives as Renamed; a move out of or into it as Deleted or Created. On macOS (kqueue) every change is Overflow.
+// arrives as Renamed; a move out of or into it as Deleted or MovedIn. On macOS (kqueue) every change is Overflow.
 class DirectoryWatcher final : public PollSource {
 public:
   enum class Event : std::uint8_t {
-    Created,
+    Created,  // a new name (IN_CREATE): its content may still be on the way
+    MovedIn,  // moved in from outside the directory, content complete
     Deleted,
     Changed,  // content or attributes
+    Written,  // a writer closed it
     Renamed,  // name -> newName
     Gone,     // the watched directory itself was deleted or moved away
     Overflow, // the kernel dropped events: rescan

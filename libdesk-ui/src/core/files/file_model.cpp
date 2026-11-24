@@ -421,7 +421,9 @@ const FileInfo* FileModel::find(std::string_view name) const {
 void FileModel::onWatch(DirectoryWatcher::Event event, const std::string& name, const std::string& newName) {
   switch (event) {
   case DirectoryWatcher::Event::Created:
+  case DirectoryWatcher::Event::MovedIn:
   case DirectoryWatcher::Event::Changed:
+  case DirectoryWatcher::Event::Written:
   case DirectoryWatcher::Event::Deleted:
   case DirectoryWatcher::Event::Renamed:
     m_pending.insert(name);
