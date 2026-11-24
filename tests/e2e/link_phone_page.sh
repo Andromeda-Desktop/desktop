@@ -70,7 +70,7 @@ PY
   sleep 1 # real time: the card repaints
   grim "$OUT/phone-card.png"
 
-  # Keyboard: Down from the first tile reaches the volume pill, then the phone card; Right moves to its chevron and
+  # Keyboard: Down from the first tile passes the shown pills (none headless) to the phone card; Right moves to its chevron and
   # Enter opens the phone page. One held virtual keyboard keeps the shell bound to it, so no key is lost.
   "$POINTER" 1280 720 keyboard-only mod none pause 120000 > /dev/null 2>&1 &
   holder=$!

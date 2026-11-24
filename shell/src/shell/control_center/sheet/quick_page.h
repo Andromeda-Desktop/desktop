@@ -106,8 +106,16 @@ private:
   void fadeIn(Node& node, float delayMs = 0.0F);
   void startStagger();
   bool focusSlider(Slider* slider);
-  // Left/Right/Up/Down on a focused slider; false when no slider holds focus.
+  // The column below the tiles, top to bottom; Up and Down skip hidden steps.
+  enum class ColumnStep { Tiles, Brightness, Volume, Cards };
+  static constexpr std::size_t kCardRows = 2; // media, phone
+  bool focusColumn(ColumnStep from, int direction);
+  std::array<Button*, 3>& cardRow(std::size_t row);
+  // Focuses the enabled button nearest to `column` in a shown card row; false when it has none.
+  bool focusCardButton(std::size_t row, std::size_t column);
+  // Left and Right move along a card row, Up and Down between rows and out to the column.
   bool handleCardKey(std::uint32_t sym, const InputArea* focused);
+  // Left/Right/Up/Down on a focused slider; false when no slider holds focus.
   bool handleSliderKey(std::uint32_t sym, std::uint32_t modifiers, const InputArea* focused);
   void buildEditParts(Flex& root);
   void rebuildEdit();

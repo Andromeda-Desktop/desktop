@@ -1998,16 +1998,9 @@ bool QuickPage::handleSliderKey(std::uint32_t sym, std::uint32_t modifiers, cons
     slider->setValue(slider->value() + step);
     return true;
   case XKB_KEY_Down:
-    if (slider == m_brightnessSlider) {
-      return focusSlider(m_volumeSlider);
-    }
-    (void)handleCardKey(sym, focused);
-    return true;
+    return focusColumn(slider == m_brightnessSlider ? ColumnStep::Brightness : ColumnStep::Volume, 1);
   case XKB_KEY_Up:
-    if (slider == m_volumeSlider && m_brightnessPill->visible()) {
-      return focusSlider(m_brightnessSlider);
-    }
-    return moveFocus(tileToward(-1, 0, -1), true);
+    return focusColumn(slider == m_brightnessSlider ? ColumnStep::Brightness : ColumnStep::Volume, -1);
   default:
     return false;
   }
@@ -2090,37 +2083,61 @@ int QuickPage::tileToward(int from, int dx, int dy) const {
   return best;
 }
 
-// The media and phone cards are rows of buttons below the volume pill: Down reaches them, Left and Right move along a row.
-bool QuickPage::handleCardKey(std::uint32_t sym, const InputArea* focused) {
-  const std::array<std::array<Button*, 3>*, 2> rows{&m_mediaKeys, &m_phoneKeys};
-  const std::array<const Node*, 2> cards{m_mediaCard, m_phoneCard};
-  const auto shown = [&](std::size_t row) { return cards[row] != nullptr && cards[row]->visible(); };
-  // Focuses the enabled button nearest to `column` in the row, none when the row has none.
-  const auto focusRow = [&](std::size_t row, std::size_t column) {
-    Button* best = nullptr;
-    std::size_t bestDistance = rows[row]->size();
-    for (std::size_t i = 0; i < rows[row]->size(); ++i) {
-      Button* candidate = (*rows[row])[i];
-      const std::size_t distance = i > column ? i - column : column - i;
-      if (candidate != nullptr && candidate->enabled() && candidate->inputArea() != nullptr && distance < bestDistance) {
-        best = candidate;
-        bestDistance = distance;
+bool QuickPage::focusColumn(ColumnStep from, int direction) {
+  const auto focusStep = [this](ColumnStep step) {
+    switch (step) {
+    case ColumnStep::Tiles:
+      return moveFocus(tileToward(-1, 0, -1), true);
+    case ColumnStep::Brightness:
+      return m_brightnessPill->visible() && focusSlider(m_brightnessSlider);
+    case ColumnStep::Volume:
+      return m_volumePill->visible() && focusSlider(m_volumeSlider);
+    case ColumnStep::Cards:
+      for (std::size_t row = 0; row < kCardRows; ++row) {
+        if (focusCardButton(row, 0)) {
+          return true;
+        }
       }
-    }
-    if (best == nullptr) {
       return false;
     }
-    PanelManager::instance().inputDispatcher().setKeyboardFocus(best->inputArea());
-    return true;
+    return false;
   };
-  if (m_volumeSlider != nullptr && focused == m_volumeSlider->inputArea() && sym == XKB_KEY_Down) {
-    for (std::size_t row = 0; row < rows.size(); ++row) {
-      if (shown(row) && focusRow(row, 0)) {
-        return true;
-      }
+  for (int step = static_cast<int>(from) + direction;
+       step >= 0 && step <= static_cast<int>(ColumnStep::Cards); step += direction) {
+    if (focusStep(static_cast<ColumnStep>(step))) {
+      return true;
     }
+  }
+  return true;
+}
+
+std::array<Button*, 3>& QuickPage::cardRow(std::size_t row) { return row == 0 ? m_mediaKeys : m_phoneKeys; }
+
+bool QuickPage::focusCardButton(std::size_t row, std::size_t column) {
+  const Node* card = row == 0 ? m_mediaCard : m_phoneCard;
+  if (card == nullptr || !card->visible()) {
     return false;
   }
+  Button* best = nullptr;
+  std::size_t bestDistance = cardRow(row).size();
+  for (std::size_t i = 0; i < cardRow(row).size(); ++i) {
+    Button* candidate = cardRow(row)[i];
+    const std::size_t distance = i > column ? i - column : column - i;
+    if (candidate != nullptr && candidate->enabled() && candidate->inputArea() != nullptr && distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  if (best == nullptr) {
+    return false;
+  }
+  PanelManager::instance().inputDispatcher().setKeyboardFocus(best->inputArea());
+  return true;
+}
+
+bool QuickPage::handleCardKey(std::uint32_t sym, const InputArea* focused) {
+  const std::array<std::array<Button*, 3>*, kCardRows> rows{&cardRow(0), &cardRow(1)};
+  const auto focusRow = [this](std::size_t row, std::size_t column) { return focusCardButton(row, column); };
   for (std::size_t row = 0; row < rows.size(); ++row) {
     for (std::size_t column = 0; column < rows[row]->size(); ++column) {
       Button* button = (*rows[row])[column];
@@ -2146,18 +2163,18 @@ bool QuickPage::handleCardKey(std::uint32_t sym, const InputArea* focused) {
         return true;
       case XKB_KEY_Down:
         for (std::size_t next = row + 1; next < rows.size(); ++next) {
-          if (shown(next) && focusRow(next, column)) {
+          if (focusRow(next, column)) {
             return true;
           }
         }
         return true;
       case XKB_KEY_Up:
         for (std::size_t previous = row; previous-- > 0;) {
-          if (shown(previous) && focusRow(previous, column)) {
+          if (focusRow(previous, column)) {
             return true;
           }
         }
-        return focusSlider(m_volumeSlider);
+        return focusColumn(ColumnStep::Cards, -1);
       default:
         return false;
       }
@@ -2203,10 +2220,7 @@ bool QuickPage::handleKey(std::uint32_t sym, std::uint32_t modifiers, bool press
       if (const int below = tileToward(at, 0, 1); below >= 0) {
         return moveFocus(below, true);
       }
-      if (m_brightnessPill->visible()) {
-        return focusSlider(m_brightnessSlider);
-      }
-      return m_volumePill->visible() ? focusSlider(m_volumeSlider) : true;
+      return focusColumn(ColumnStep::Tiles, 1);
     case XKB_KEY_space:
       if (m_extras[index].shortcut != nullptr) {
         m_extras[index].shortcut->onClick();
