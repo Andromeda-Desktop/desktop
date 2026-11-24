@@ -1,5 +1,6 @@
 #include "browse_view.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/files/directory_watcher.h"
 #include "core/files/file_model.h"
@@ -501,7 +502,7 @@ namespace term {
     }
     m_textPath = path;
     m_text.reset();
-    std::thread([path, alive = std::weak_ptr<bool>(m_alive), this] {
+    BlockingPool::instance().run([path, alive = std::weak_ptr<bool>(m_alive), this] {
       std::optional<std::string> text = readHead(path);
       DeferredCall::callLater([path, alive, this, text = std::move(text)]() mutable {
         const auto live = alive.lock();
@@ -511,7 +512,7 @@ namespace term {
         m_text = std::move(text);
         refresh();
       });
-    }).detach();
+    });
   }
 
   void BrowseView::fillPreview() {

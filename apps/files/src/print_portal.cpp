@@ -1,5 +1,6 @@
 #include "print_portal.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "printing/cups_printers.h"
@@ -233,7 +234,7 @@ void PrintPortal::print(std::uint64_t id, const PrintOptions& options, const std
     return;
   Pending& p = *m_pending.at(id);
   saveRemembered(m_stateFile, p.appId, options);
-  std::thread([this, id, fd = ::dup(p.fd), options, printerLabel, pages, title = p.title,
+  BlockingPool::instance().run([this, id, fd = ::dup(p.fd), options, printerLabel, pages, title = p.title,
                alive = std::weak_ptr<bool>(m_alive)] {
     auto outcome = submitJob(title, fd, options);
     ::close(fd);
@@ -249,14 +250,14 @@ void PrintPortal::print(std::uint64_t id, const PrintOptions& options, const std
       m_jobs.track(std::get<int>(outcome), options.printer, printerLabel, title, pages);
       apply(id, PrintEvent::JobSent);
     });
-  }).detach();
+  });
 }
 
 void PrintPortal::savePdf(std::uint64_t id, const std::filesystem::path& path) {
   if (!apply(id, PrintEvent::UserPrint))
     return;
   const Pending& p = *m_pending.at(id);
-  std::thread([this, id, fd = ::dup(p.fd), path, title = p.title, alive = std::weak_ptr<bool>(m_alive)] {
+  BlockingPool::instance().run([this, id, fd = ::dup(p.fd), path, title = p.title, alive = std::weak_ptr<bool>(m_alive)] {
     std::error_code ec;
     const std::filesystem::path tmp = path.string() + ".part";
     bool ok = false;
@@ -293,5 +294,5 @@ void PrintPortal::savePdf(std::uint64_t id, const std::filesystem::path& path) {
       }
       apply(id, saved ? PrintEvent::JobSent : PrintEvent::JobFailed);
     });
-  }).detach();
+  });
 }

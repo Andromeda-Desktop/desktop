@@ -33,6 +33,9 @@ RULES = {
                  ("compositor/src/core/loop_bus.cpp", "compositor/src/core/scanout_keeper.cpp", "compositor/src/cli/")),
     "bus-floating": ("a bus callback with a floating slot outlives its owner: use bus::Client keep() or call() (AR3)",
                      ("compositor/src/",), CPP, r"\bsd_bus_\w+_async\(\s*[^,()]+,\s*nullptr\s*,", ()),
+    "thread-detach": ("blocking work runs on BlockingPool (libdesk-ui core/blocking_pool.h): capped, counted, joined (AR3); "
+                      "app_loop ends the process on its GL-init timeout", CPP_DIRS, CPP,
+                      r"^\s*\}\)\.detach\(\);|std::thread\(.*\)\.detach\(\)", ("libdesk-app/src/app/app_loop.cpp",)),
     "clipboard-wait": ("clipboard file I/O runs as SharedWorker jobs; only the destructor drain waits (AR3 C9)",
                        ("shell/src/clipboard/",), CPP, r"\.wait(_for|_until)?\(", ()),
     "schedule-frame": ("redraws go through the Output frame owner (C8)", ("compositor/src/",), CPP,

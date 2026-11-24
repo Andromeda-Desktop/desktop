@@ -1,5 +1,6 @@
 #include "phone_page.h"
 
+#include "core/blocking_pool.h"
 #include "state_file.h"
 #include "core/input/cursor_shape.h"
 
@@ -221,7 +222,7 @@ void PhonePage::listFolders() {
     return;
   }
   m_foldersState = Folders::Listing;
-  std::thread([weak = weak_from_this(), root = fs::path(g_get_home_dir()) / "Phone" / d->name] {
+  BlockingPool::instance().run([weak = weak_from_this(), root = fs::path(g_get_home_dir()) / "Phone" / d->name] {
     std::vector<fs::path> dirs;
     std::error_code ec;
     const bool shown = fs::is_directory(root, ec);
@@ -243,7 +244,7 @@ void PhonePage::listFolders() {
       self->m_folders = std::move(dirs);
       self->m_actions.rebuild();
     });
-  }).detach();
+  });
 }
 
 std::vector<fs::path> PhonePage::received(const std::string& deviceId, std::size_t limit) {

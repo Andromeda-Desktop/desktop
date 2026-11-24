@@ -1,5 +1,6 @@
 #include "print_jobs.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -44,7 +45,7 @@ PrintJobs::PrintJobs(SessionBus& bus) {
       if (job == m_jobs.end())
         return;
       if (key == "cancel") {
-        std::thread([printer = job->second.printer, id = job->first] { cancelJob(printer, id); }).detach();
+        BlockingPool::instance().run([printer = job->second.printer, id = job->first] { cancelJob(printer, id); });
         close(note);
         m_byNote.erase(it);
         m_jobs.erase(job);
@@ -110,7 +111,7 @@ void PrintJobs::poll() {
     ids.push_back(id);
     printers[id] = job.printer;
   }
-  std::thread([this, ids = std::move(ids), printers = std::move(printers), alive = std::weak_ptr<bool>(m_alive)] {
+  BlockingPool::instance().run([this, ids = std::move(ids), printers = std::move(printers), alive = std::weak_ptr<bool>(m_alive)] {
     std::vector<std::pair<int, JobStatus>> statuses;
     for (const int id : ids)
       statuses.emplace_back(id, jobStatus(printers.at(id), id));
@@ -121,7 +122,7 @@ void PrintJobs::poll() {
       for (const auto& [id, status] : statuses)
         apply(id, status);
     });
-  }).detach();
+  });
 }
 
 void PrintJobs::apply(int jobId, const JobStatus& status) {

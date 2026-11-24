@@ -1,5 +1,6 @@
 #include "wayland/pipe_io.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 
 #include <cerrno>
@@ -53,7 +54,7 @@ ReadResult readPipe(int fd, std::size_t maxBytes,
 
 void readPipeAsync(int fd, std::size_t maxBytes, std::weak_ptr<void> alive,
                    std::function<void(ReadResult)> done) {
-  std::thread([fd, maxBytes, alive = std::move(alive),
+  BlockingPool::instance().run([fd, maxBytes, alive = std::move(alive),
                done = std::move(done)]() mutable {
     DeferredCall::callLater(
         [alive, done, result = readPipe(fd, maxBytes)]() mutable {
@@ -61,7 +62,7 @@ void readPipeAsync(int fd, std::size_t maxBytes, std::weak_ptr<void> alive,
             done(std::move(result));
           }
         });
-  }).detach();
+  });
 }
 
 void writeAll(int fd, const std::string &bytes) {

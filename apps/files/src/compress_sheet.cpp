@@ -1,5 +1,6 @@
 #include "compress_sheet.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "ui/builders.h"
@@ -113,7 +114,7 @@ CompressSheet::CompressSheet(std::vector<fs::path> sources, Compress compress, s
                              std::function<void()> rebuild)
     : m_sources(std::move(sources)), m_compress(std::move(compress)), m_close(std::move(close)),
       m_rebuild(std::move(rebuild)), m_name(defaultName(m_sources)) {
-  std::thread([sources = m_sources, alive = std::weak_ptr<bool>(m_alive), this] {
+  BlockingPool::instance().run([sources = m_sources, alive = std::weak_ptr<bool>(m_alive), this] {
     Totals totals = measure(sources);
     DeferredCall::callLater([alive, totals, this] {
       if (alive.expired()) {
@@ -122,7 +123,7 @@ CompressSheet::CompressSheet(std::vector<fs::path> sources, Compress compress, s
       m_totals = totals;
       update();
     });
-  }).detach();
+  });
 }
 
 std::string CompressSheet::estimate() const {

@@ -1,5 +1,6 @@
 #include "shell/settings/printers_model.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 
 #include <algorithm>
@@ -109,14 +110,14 @@ const std::string* PrintersModel::error(const std::string& printer) const {
 }
 
 void PrintersModel::runDetached(std::function<std::function<void()>()> work) {
-  std::thread([alive = std::weak_ptr<void>(m_alive), work = std::move(work)] {
+  BlockingPool::instance().run([alive = std::weak_ptr<void>(m_alive), work = std::move(work)] {
     auto done = work();
     DeferredCall::callLater([alive, done = std::move(done)] {
       if (!alive.expired()) {
         done();
       }
     });
-  }).detach();
+  });
 }
 
 void PrintersModel::discover() {

@@ -1,4 +1,5 @@
 #include "scripting/plugin_file_cache.h"
+#include "core/blocking_pool.h"
 #include "util/thread_name.h"
 
 #include "config/config_types.h"
@@ -101,7 +102,7 @@ namespace scripting {
     }
 
     const auto repoRoot = plugin_paths::gitRepoRoot(source);
-    std::thread([alive = std::weak_ptr<void>(m_aliveGuard), this, pluginId, key, repoPath = *subdir + "/" + filename,
+    BlockingPool::instance().run([alive = std::weak_ptr<void>(m_aliveGuard), this, pluginId, key, repoPath = *subdir + "/" + filename,
                  repoRoot, cached, filename] {
       nameThisThread("dsk-plugin-file");
       const auto result = plugin_git::showFile(repoRoot, repoPath);
@@ -134,7 +135,7 @@ namespace scripting {
           m_onReady(pluginId, filename, resolvedPath);
         }
       });
-    }).detach();
+    });
 
     return {};
   }

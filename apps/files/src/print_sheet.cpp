@@ -1,5 +1,6 @@
 #include "print_sheet.h"
 
+#include "core/blocking_pool.h"
 #include "app/app_loop.h"
 #include "core/deferred_call.h"
 #include "core/input/keybind_matcher.h"
@@ -176,7 +177,7 @@ PrintSheet::PrintSheet(AppLoop& loop, PrintPortal::PrintRequest request, Callbac
     : m_loop(loop), m_request(std::move(request)), m_cb(std::move(callbacks)), m_options(m_request.remembered),
       m_appMedia(m_request.remembered.media) {
   m_options.ranges.reset();
-  std::thread([alive = std::weak_ptr<bool>(m_alive), this] {
+  BlockingPool::instance().run([alive = std::weak_ptr<bool>(m_alive), this] {
     auto printers = listPrinters();
     DeferredCall::callLater([alive, this, printers = std::move(printers)]() mutable {
       if (alive.expired())
@@ -192,7 +193,7 @@ PrintSheet::PrintSheet(AppLoop& loop, PrintPortal::PrintRequest request, Callbac
       if (m_cb.rebuild)
         m_cb.rebuild();
     });
-  }).detach();
+  });
   startPreview();
 }
 

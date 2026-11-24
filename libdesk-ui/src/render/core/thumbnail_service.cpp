@@ -1,5 +1,6 @@
 #include "render/core/thumbnail_service.h"
 
+#include "core/blocking_pool.h"
 #include "core/log.h"
 #include "render/core/texture_manager.h"
 #include "render/core/thumbnail_pipeline.h"
@@ -60,7 +61,7 @@ ThumbnailService::ThumbnailService(Resolver resolver, std::size_t workers)
         return thumbnail_pipeline::resolve(path, targetPx, thumbnail_pipeline::generate);
       }) {
   static std::once_flag pruned;
-  std::call_once(pruned, [] { std::thread([] { thumbnail_pipeline::pruneCache(); }).detach(); });
+  std::call_once(pruned, [] { BlockingPool::instance().run([] { thumbnail_pipeline::pruneCache(); }); });
   if (!m_wake.valid()) {
     kLog.warn("failed to create the wake fd; thumbnail wakeups will be disabled");
   }

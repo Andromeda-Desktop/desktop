@@ -1,5 +1,6 @@
 #include "ui/files/file_browser.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/files/media_info.h"
 #include "core/input/key_modifiers.h"
@@ -3135,7 +3136,7 @@ void FileBrowser::readFreeSpace() {
     return;
   }
   m_freePending = true;
-  std::thread([this, dir = m_location, alive = std::weak_ptr<bool>(m_alive)] {
+  BlockingPool::instance().run([this, dir = m_location, alive = std::weak_ptr<bool>(m_alive)] {
     const auto free = freeBytes(dir);
     DeferredCall::callLater([this, dir, free, alive] {
       if (alive.expired()) {
@@ -3150,7 +3151,7 @@ void FileBrowser::readFreeSpace() {
         refreshChrome();
       }
     });
-  }).detach();
+  });
 }
 
 void FileBrowser::setStatusSuffix(std::string suffix) {
@@ -3571,7 +3572,7 @@ void FileBrowser::startMediaWorker() {
     return;
   }
   m_mediaRunning = true;
-  std::thread([this, paths = std::exchange(m_mediaWanted, {}), alive = std::weak_ptr<bool>(m_alive)] {
+  BlockingPool::instance().run([this, paths = std::exchange(m_mediaWanted, {}), alive = std::weak_ptr<bool>(m_alive)] {
     std::vector<std::pair<std::string, MediaText>> out;
     out.reserve(paths.size());
     for (const std::string& path : paths) {
@@ -3607,7 +3608,7 @@ void FileBrowser::startMediaWorker() {
       rebindPages();
       startMediaWorker();
     });
-  }).detach();
+  });
 }
 
 const Node* FileBrowser::viewOptionsAnchor() const { return m_ui->sortButton; }

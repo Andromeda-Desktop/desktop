@@ -1,4 +1,5 @@
 #include "ui/files/file_icon.h"
+#include "core/blocking_pool.h"
 #include "core/sys/sys.h"
 
 #include "core/deferred_call.h"
@@ -245,7 +246,7 @@ namespace {
     q->jobs.push_back(std::move(job));
     if (!q->started) {
       q->started = true;
-      std::thread([] {
+      BlockingPool::instance().run([] {
         while (true) {
           std::function<void()> next;
           {
@@ -256,7 +257,7 @@ namespace {
           }
           next();
         }
-      }).detach();
+      });
     }
     q->wake.notify_one();
   }

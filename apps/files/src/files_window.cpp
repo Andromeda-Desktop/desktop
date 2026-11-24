@@ -1,4 +1,5 @@
 #include "files_window.h"
+#include "core/blocking_pool.h"
 #include "server_url.h"
 #include "app_chooser_sheet.h"
 #include "conflict_sheet.h"
@@ -1430,17 +1431,17 @@ void FilesWindow::makePane(std::size_t index) {
     }
   };
   host.galleryMotionVideo = [](const fs::path& photo, std::function<void(fs::path)> done) {
-    std::thread([photo, done = std::move(done)]() mutable {
+    BlockingPool::instance().run([photo, done = std::move(done)]() mutable {
       fs::path video = cutMotionVideo(photo);
       DeferredCall::callLater([done = std::move(done), video = std::move(video)]() mutable { done(std::move(video)); });
-    }).detach();
+    });
   };
   host.galleryInfo = [this](const fs::path& path, int mapW, int mapH, std::function<void(FileGallery::PhotoInfo)> done) {
-    std::thread([path, mapW, mapH, scale = m_window.uiScale(), tags = m_app.tags().tagsOf(path),
+    BlockingPool::instance().run([path, mapW, mapH, scale = m_window.uiScale(), tags = m_app.tags().tagsOf(path),
                  done = std::move(done)]() mutable {
       auto info = readPhotoInfo(path, mapW, mapH, scale, tags);
       DeferredCall::callLater([done = std::move(done), info = std::move(info)]() mutable { done(std::move(info)); });
-    }).detach();
+    });
   };
   host.contextMenu = [this](std::vector<ContextMenuControlEntry> entries, float x, float y,
                             std::function<void(std::int32_t)> activated) {
@@ -1601,7 +1602,7 @@ void FilesWindow::loadTrash(std::function<void()> then) {
     m_trashThen.push_back(std::move(then));
   }
   const std::uint64_t generation = ++m_trashGeneration;
-  std::thread([this, dirs = trashDirs(), generation, alive = std::weak_ptr<bool>(m_alive)] {
+  BlockingPool::instance().run([this, dirs = trashDirs(), generation, alive = std::weak_ptr<bool>(m_alive)] {
     std::vector<TrashItem> items;
     std::vector<std::shared_ptr<const FileInfo>> rows;
     for (const fs::path& dir : dirs) {
@@ -1649,7 +1650,7 @@ void FilesWindow::loadTrash(std::function<void()> then) {
         call();
       }
     });
-  }).detach();
+  });
 }
 
 void FilesWindow::buildPlaces() {
@@ -2541,7 +2542,7 @@ void FilesWindow::refreshCompare() {
   }
   m_comparedDirs = {m_panes[0]->location(), m_panes[1]->location()};
   // Nested folders are walked to the bottom: on a worker, the marks land when it is done.
-  std::thread([left = m_comparedDirs.first, right = m_comparedDirs.second, hidden = m_browser->showHidden(),
+  BlockingPool::instance().run([left = m_comparedDirs.first, right = m_comparedDirs.second, hidden = m_browser->showHidden(),
                run = m_compareRun, alive = std::weak_ptr<bool>(m_alive), this, marksOf] {
     auto r = folder_compare::compare(left, right, hidden);
     DeferredCall::callLater([this, alive, run, marksOf, r = std::move(r)]() mutable {
@@ -2555,7 +2556,7 @@ void FilesWindow::refreshCompare() {
       m_compare = std::move(r);
       m_window.invalidate();
     });
-  }).detach();
+  });
 }
 
 void FilesWindow::sendToOtherPane(bool move) {
@@ -3427,14 +3428,14 @@ void FilesWindow::importPhotos() {
     return;
   }
   // A card of thousands of photos takes a while to walk, and a slow card longer: the scan runs on a worker.
-  std::thread([this, dcim, imports = m_app.imports(), alive = std::weak_ptr<bool>(m_alive)] {
+  BlockingPool::instance().run([this, dcim, imports = m_app.imports(), alive = std::weak_ptr<bool>(m_alive)] {
     std::vector<fs::path> files = imports.pending(dcim);
     DeferredCall::callLater([this, dcim, files = std::move(files), alive]() mutable {
       if (!alive.expired()) {
         importFiles(dcim, std::move(files));
       }
     });
-  }).detach();
+  });
 }
 
 void FilesWindow::importFiles(const fs::path& dcim, std::vector<fs::path> files) {
@@ -3455,7 +3456,7 @@ void FilesWindow::importFiles(const fs::path& dcim, std::vector<fs::path> files)
           }
           // A conflict the user skipped copied nothing: only a photo that is now in the destination counts as
           // imported (same name and size), so a skipped one is offered again next time.
-          std::thread([this, files, dest, alive = std::weak_ptr<bool>(m_alive)] {
+          BlockingPool::instance().run([this, files, dest, alive = std::weak_ptr<bool>(m_alive)] {
             std::vector<fs::path> done;
             for (const fs::path& f : files) {
               std::error_code a;
@@ -3471,7 +3472,7 @@ void FilesWindow::importFiles(const fs::path& dcim, std::vector<fs::path> files)
                 kLog.debug("imported {} files to {}", done.size(), dest.string());
               }
             });
-          }).detach();
+          });
         };
       });
 }
@@ -3807,7 +3808,7 @@ std::vector<std::string> FilesWindow::pathMatches() const {
   // One listing per folder typed: a folder on a hung mount blocks only its own worker, never the next folder.
   if (dir != m_pathListDir && dir != m_pathListAsked) {
     m_pathListAsked = dir;
-    std::thread([this, dir, alive = std::weak_ptr<bool>(m_alive)] {
+    BlockingPool::instance().run([this, dir, alive = std::weak_ptr<bool>(m_alive)] {
       std::vector<std::string> names;
       std::error_code ec;
       std::size_t read = 0;
@@ -3826,7 +3827,7 @@ std::vector<std::string> FilesWindow::pathMatches() const {
         m_pathListNames = std::move(names);
         m_window.requestRebuild();
       });
-    }).detach();
+    });
   }
   std::vector<std::string> out;
   if (dir != m_pathListDir) {

@@ -1,4 +1,5 @@
 #include "scripting/luau_host.h"
+#include "core/blocking_pool.h"
 #include "util/thread_name.h"
 
 #include "compositors/compositor_platform.h"
@@ -2456,7 +2457,7 @@ bool LuauHost::startAsyncProcessMatch(std::vector<std::string> needles, int call
   }
 
   try {
-    std::thread([hostId = m_hostId, callbackRef, needles = std::move(needles), handler = std::move(handler)] mutable {
+    BlockingPool::instance().run([hostId = m_hostId, callbackRef, needles = std::move(needles), handler = std::move(handler)] mutable {
       nameThisThread("dsk-procmatch");
       bool matched = false;
       // A thread entry: nothing may escape it. A failed /proc read counts as no match.
@@ -2467,7 +2468,7 @@ bool LuauHost::startAsyncProcessMatch(std::vector<std::string> needles, int call
       }
       inFlightAsyncProcessMatches().fetch_sub(1, std::memory_order_relaxed);
       handler(hostId, callbackRef, matched);
-    }).detach();
+    });
   } catch (const std::system_error&) {
     m_asyncProcessMatchCallbackRefs.erase(callbackRef);
     globalInFlight.fetch_sub(1, std::memory_order_relaxed);

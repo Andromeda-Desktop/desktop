@@ -1,5 +1,6 @@
 #include "cloud.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/sys/sys.h"
@@ -311,7 +312,7 @@ void Cloud::keep(const std::vector<fs::path>& paths, std::function<void(std::siz
     m_pins.insert(p.string());
   }
   savePins();
-  std::thread([paths, done = std::move(done), alive = std::weak_ptr<bool>(m_alive)] {
+  BlockingPool::instance().run([paths, done = std::move(done), alive = std::weak_ptr<bool>(m_alive)] {
     std::size_t count = 0;
     std::string error;
     std::vector<char> buf(1 << 20);
@@ -331,7 +332,7 @@ void Cloud::keep(const std::vector<fs::path>& paths, std::function<void(std::siz
         done(count, error);
       }
     });
-  }).detach();
+  });
 }
 
 void Cloud::freeUp(const std::vector<fs::path>& paths, std::function<void(std::size_t)> done) {

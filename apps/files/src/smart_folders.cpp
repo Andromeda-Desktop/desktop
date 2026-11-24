@@ -1,5 +1,6 @@
 #include "smart_folders.h"
 
+#include "core/blocking_pool.h"
 #include "state_file.h"
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
@@ -148,7 +149,7 @@ namespace smart_folders {
     }
     const char* home = std::getenv("HOME");
     const fs::path root = folder.folder.empty() ? fs::path(home != nullptr ? home : "/") : folder.folder;
-    std::thread([folder, root, cutoff, alive, done = std::move(done)] {
+    BlockingPool::instance().run([folder, root, cutoff, alive, done = std::move(done)] {
       Rows rows;
       std::error_code ec;
       std::size_t seen = 0;
@@ -177,7 +178,7 @@ namespace smart_folders {
           done(std::move(rows));
         }
       });
-    }).detach();
+    });
   }
 
 } // namespace smart_folders

@@ -1,4 +1,5 @@
 #include "core/files/file_model.h"
+#include "core/blocking_pool.h"
 #include "core/sys/sys.h"
 
 #include "core/deferred_call.h"
@@ -86,7 +87,7 @@ struct FileModel::StatJob {
     const std::size_t most = std::clamp<std::size_t>(std::thread::hardware_concurrency(), 1, kMaxStatWorkers);
     const std::size_t want = mode == Mode::Walk ? most : std::min(most, priority.size());
     for (; running < want && !finished; ++running) {
-      std::thread([self] { run(self); }).detach();
+      BlockingPool::instance().run([self] { run(self); });
     }
   }
 
@@ -300,7 +301,7 @@ void FileModel::reload() {
     startWatch();
   }
   std::weak_ptr<FileModel> weak = weak_from_this();
-  std::thread([weak, generation, dir = m_dir] {
+  BlockingPool::instance().run([weak, generation, dir = m_dir] {
     auto listing = std::make_shared<Listing>(listNames(dir));
     std::shared_ptr<StatJob> job;
     if (listing->statFd >= 0) {
@@ -325,7 +326,7 @@ void FileModel::reload() {
       // A change that raced the listing may be in it already; a flush stats each name again, so it is idempotent.
       self->flushWatch();
     });
-  }).detach();
+  });
 }
 
 std::shared_ptr<void> FileModel::needAllStats() {

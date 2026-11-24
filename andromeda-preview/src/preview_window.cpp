@@ -1,5 +1,6 @@
 #include "preview_window.h"
 
+#include "core/blocking_pool.h"
 #include "app/app_loop.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -443,7 +444,7 @@ namespace preview {
       break;
     case FileKind::Folder:
       // Names and sizes only (no file contents), off the main thread; the result comes back on the main loop.
-      std::thread([this, generation, path, live = m_live] {
+      BlockingPool::instance().run([this, generation, path, live = m_live] {
         namespace fs = std::filesystem;
         constexpr std::size_t kMaxWalk = 200000;
         std::size_t items = 0;
@@ -495,7 +496,7 @@ namespace preview {
           m_shownNote = std::format("shown folder {} items", items);
           invalidate();
         });
-      }).detach();
+      });
       break;
     case FileKind::Font:
       // The specimen is requested at the first build, once the body width is known (requestFont).
@@ -565,7 +566,7 @@ namespace preview {
       return;
     }
     const auto generation = m_generation;
-    std::thread([this, generation, source = m_path, dir, key, pdf, program = std::string(soffice)] {
+    BlockingPool::instance().run([this, generation, source = m_path, dir, key, pdf, program = std::string(soffice)] {
       std::error_code err;
       const fs::path work = dir / (key + ".d");
       fs::create_directories(work, err);
@@ -596,7 +597,7 @@ namespace preview {
         }
         loadPdf(pdf.string());
       });
-    }).detach();
+    });
     g_free(soffice);
   }
 

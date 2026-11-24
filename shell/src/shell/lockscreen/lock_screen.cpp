@@ -1,4 +1,5 @@
 #include "shell/lockscreen/lock_screen.h"
+#include "core/blocking_pool.h"
 #include "shell/lockscreen/lock_client.h"
 #include "util/thread_name.h"
 
@@ -1804,7 +1805,7 @@ void LockScreen::tryAuthenticate() {
   const std::string pamStartFailure = i18n::tr("auth.pam.start-failed");
   // The thread never touches `this`; the result hops back to the main loop and is dropped if the lock screen is gone.
   const std::weak_ptr<void> guard = m_aliveGuard;
-  std::thread([this, guard, generation, password = std::move(password), authenticator, pamService, pamLanguage,
+  BlockingPool::instance().run([this, guard, generation, password = std::move(password), authenticator, pamService, pamLanguage,
                pamStartFailure] mutable {
     nameThisThread("dsk-pam");
     const auto result = authenticator.authenticateCurrentUser(password, pamService, pamLanguage, pamStartFailure);
@@ -1814,7 +1815,7 @@ void LockScreen::tryAuthenticate() {
         handleAuthResult(generation, result);
       }
     });
-  }).detach();
+  });
 }
 
 void LockScreen::handleAuthResult(std::uint64_t generation, const PamAuthenticator::Result& result) {

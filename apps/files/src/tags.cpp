@@ -1,5 +1,6 @@
 #include "tags.h"
 
+#include "core/blocking_pool.h"
 #include "state_file.h"
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
@@ -173,7 +174,7 @@ std::vector<std::string> TagIndex::unlisted(const std::vector<TagDef>& config) c
 void TagIndex::walk() {
   m_walking = true;
   const std::uint64_t walkNumber = ++m_walks;
-  std::thread([weak = weak_from_this(), root = m_root, stop = m_stop, walkNumber] {
+  BlockingPool::instance().run([weak = weak_from_this(), root = m_root, stop = m_stop, walkNumber] {
     std::map<std::string, std::vector<fs::path>> found;
     std::error_code ec;
     // One file system only: a network or removable mount under home could hang the walk or take hours. Mount points
@@ -234,7 +235,7 @@ void TagIndex::walk() {
         }
       }
     });
-  }).detach();
+  });
 }
 
 void TagIndex::reread(const std::vector<fs::path>& paths) {

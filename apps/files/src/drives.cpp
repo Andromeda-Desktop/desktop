@@ -1,5 +1,6 @@
 #include "drives.h"
 
+#include "core/blocking_pool.h"
 #include "state_file.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -368,7 +369,7 @@ void Drives::format(const std::string& device, const std::string& type, const st
   kLog.debug("drive format {} as {} \"{}\"", device, type, label);
   // Sync D-Bus calls on a worker. Unmount and lock come first, done here: udisks's tear-down option also edits
   // fstab/crypttab and so asks for the admin password (modify-system-configuration).
-  std::thread([device, type, label, done = std::move(done)] {
+  BlockingPool::instance().run([device, type, label, done = std::move(done)] {
     std::string error;
     GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, nullptr);
     const auto call = [&](const std::string& object, const char* iface, const char* method, GVariant* args) {
@@ -425,7 +426,7 @@ void Drives::format(const std::string& device, const std::string& type, const st
       kLog.debug("drive format {}", error.empty() ? std::string("done") : "failed: " + error);
       done(error);
     });
-  }).detach();
+  });
 }
 
 PhotoImport::PhotoImport(std::string file) : m_file(std::move(file)) {

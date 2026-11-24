@@ -1,5 +1,6 @@
 #include "details_pane.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
 #include "core/files/media_info.h"
@@ -149,7 +150,7 @@ void DetailsPane::read() {
     return;
   }
   m_reading = true;
-  std::thread([this, folder = m_folder, selection = m_selection, alive = std::weak_ptr<bool>(m_alive)] {
+  BlockingPool::instance().run([this, folder = m_folder, selection = m_selection, alive = std::weak_ptr<bool>(m_alive)] {
     auto facts = std::make_shared<const Facts>(Facts::read(folder, selection));
     DeferredCall::callLater([this, facts = std::move(facts), alive] {
       if (alive.expired()) {
@@ -166,7 +167,7 @@ void DetailsPane::read() {
         m_actions.changed();
       }
     });
-  }).detach();
+  });
 }
 
 void DetailsPane::fill() {

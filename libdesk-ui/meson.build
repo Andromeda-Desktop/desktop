@@ -200,6 +200,7 @@ endif
 
 # ── Library ───────────────────────────────────────────────────────────────────
 _desk_ui_sources = files(
+  'src/core/blocking_pool.cpp',
   'src/core/deferred_call.cpp',
   'src/core/files/directory_scanner.cpp',
   'src/core/files/file_info.cpp',

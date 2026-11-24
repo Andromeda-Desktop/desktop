@@ -1,4 +1,5 @@
 #include "shell/session/session_action_runner.h"
+#include "core/blocking_pool.h"
 #include "util/thread_name.h"
 
 #include "compositors/compositor_detect.h"
@@ -357,7 +358,7 @@ void SessionActionRunner::runQueued(
       m_hooks.onBeforePlainSuspend();
     }
     // The call may block on D-Bus or a command; its result returns to the main loop.
-    std::thread([this, guard, call = power.call, plainSuspend = power.plainSuspend, action, failed] {
+    BlockingPool::instance().run([this, guard, call = power.call, plainSuspend = power.plainSuspend, action, failed] {
       nameThisThread("dsk-action");
       const bool ok = call();
       DeferredCall::callLater([this, guard, ok, plainSuspend, action, failed] {
@@ -376,7 +377,7 @@ void SessionActionRunner::runQueued(
           failed();
         }
       });
-    }).detach();
+    });
   };
   if (!hook) {
     start();

@@ -1,5 +1,6 @@
 #include "index_search.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
 #include "core/log.h"
@@ -166,7 +167,7 @@ void IndexSearch::answered(Asked asked, std::vector<std::string> paths) {
     deliver(answer, {});
     return;
   }
-  std::thread([this, alive = std::weak_ptr<bool>(m_alive), answer, paths = std::move(paths)] {
+  BlockingPool::instance().run([this, alive = std::weak_ptr<bool>(m_alive), answer, paths = std::move(paths)] {
     Rows rows;
     for (const std::string& path : paths) {
       if (auto info = statFile(std::filesystem::path(path))) {
@@ -179,7 +180,7 @@ void IndexSearch::answered(Asked asked, std::vector<std::string> paths) {
         deliver(answer, std::move(rows));
       }
     });
-  }).detach();
+  });
 }
 
 void IndexSearch::deliver(std::uint64_t answer, Rows rows) {

@@ -1,5 +1,6 @@
 #include "get_info_sheet.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
 #include "core/log.h"
@@ -187,7 +188,7 @@ void GetInfoSheet::startCount() {
     return;
   }
   // Each file once (hard links share an inode) and this file system only (a mount inside is not part of the folder).
-  std::thread([this, count = m_count, dirs = std::move(dirs), alive = std::weak_ptr<bool>(m_alive)] {
+  BlockingPool::instance().run([this, count = m_count, dirs = std::move(dirs), alive = std::weak_ptr<bool>(m_alive)] {
     const auto post = [&] {
       if (!count->posted.exchange(true)) {
         DeferredCall::callLater([this, count, alive] {
@@ -226,7 +227,7 @@ void GetInfoSheet::startCount() {
     }
     count->done = true;
     post();
-  }).detach();
+  });
 }
 
 std::string GetInfoSheet::sizeText() const {

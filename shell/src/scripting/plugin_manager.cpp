@@ -1,4 +1,5 @@
 #include "scripting/plugin_manager.h"
+#include "core/blocking_pool.h"
 #include "util/thread_name.h"
 
 #include "config/config_service.h"
@@ -449,7 +450,7 @@ namespace scripting {
   ) const {
     // The worker never touches `this`; the registry rescan and bar rebuild marshal back
     // to the main thread via DeferredCall, guarded by the alive token.
-    std::thread([alive = std::weak_ptr<void>(m_aliveGuard), this, source = std::move(source), repoRoot = std::move(repoRoot),
+    BlockingPool::instance().run([alive = std::weak_ptr<void>(m_aliveGuard), this, source = std::move(source), repoRoot = std::move(repoRoot),
                  enabled = std::move(enabled)] mutable {
       nameThisThread("dsk-plugin-git");
       auto sourceLock = plugin_source_locks::acquire(source.name);
@@ -474,7 +475,7 @@ namespace scripting {
           m_onChanged(); // rebuild bar + reconcile services
         }
       });
-    }).detach();
+    });
   }
 
   void PluginManager::refresh() {
@@ -525,7 +526,7 @@ namespace scripting {
     }
 
     auto sources = m_config.config().plugins.sources;
-    std::thread([alive = std::weak_ptr<void>(m_aliveGuard), this, id, subdir = *subdir, sources = std::move(sources)] mutable {
+    BlockingPool::instance().run([alive = std::weak_ptr<void>(m_aliveGuard), this, id, subdir = *subdir, sources = std::move(sources)] mutable {
       nameThisThread("dsk-plugin-scan");
       const auto started = std::chrono::steady_clock::now();
       // Highest precedence wins; skip disabled sources — the registry never scans them.
@@ -633,7 +634,7 @@ namespace scripting {
           m_onEnablingChanged();
         }
       });
-    }).detach();
+    });
     return {.ok = true, .error = {}};
   }
 
@@ -836,7 +837,7 @@ namespace scripting {
     // The whole git sequence runs off-thread; only the final registry rescan marshals
     // back to the main thread, guarded by the alive token; the worker never touches `this`.
     const std::string sourceName = source.name;
-    std::thread([alive = std::weak_ptr<void>(m_aliveGuard), this, source, repoRoot, sourceName, enabled = std::move(enabled)] mutable {
+    BlockingPool::instance().run([alive = std::weak_ptr<void>(m_aliveGuard), this, source, repoRoot, sourceName, enabled = std::move(enabled)] mutable {
       nameThisThread("dsk-plugin-upd");
       auto sourceLock = plugin_source_locks::acquire(source.name);
       if (const auto prepared = plugin_git::ensureRepo(repoRoot, source.location); !prepared) {
@@ -988,7 +989,7 @@ namespace scripting {
           }
         }
       });
-    }).detach();
+    });
   }
 
   std::vector<PluginSourceConfig> PluginManager::claimStaleCatalogFetches(const PluginsConfig& plugins) {

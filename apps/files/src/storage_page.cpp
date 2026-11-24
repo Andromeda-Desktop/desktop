@@ -1,5 +1,6 @@
 #include "storage_page.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "files/file_ops_client.h"
@@ -108,7 +109,7 @@ void StoragePage::scan(bool fresh) {
   m_scanning = true;
   m_error.clear();
   std::weak_ptr<StoragePage> weak = weak_from_this();
-  std::thread([weak, root = m_root] {
+  BlockingPool::instance().run([weak, root = m_root] {
     struct statvfs fsInfo{};
     std::string usage;
     if (::statvfs(root.c_str(), &fsInfo) == 0) {
@@ -122,7 +123,7 @@ void StoragePage::scan(bool fresh) {
         self->m_actions.rebuild();
       }
     });
-  }).detach();
+  });
   const auto start = std::chrono::steady_clock::now();
   m_ops->storageScan(m_root, fresh, {}, [weak, start, fresh](const std::string& json, const std::string& error) {
     auto self = weak.lock();
