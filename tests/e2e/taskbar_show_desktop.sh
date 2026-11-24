@@ -42,16 +42,6 @@ CONFIG
 
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
-  # The theme change fades; a shot is taken once two grabs 0.2 s apart are identical.
-  stable_grim() {
-    local g=()
-    [[ $1 == -g ]] && { g=(-g "$2"); shift 2; }
-    for _ in $(seq 25); do
-      grim "${g[@]}" "$1.prev"; sleep 0.2; grim "${g[@]}" "$1"
-      cmp -s "$1.prev" "$1" && { rm -f "$1.prev"; return 0; }
-    done
-    fail "the screen did not settle for $1"
-  }
   minimized() { "$ANDROMEDA" windows --json | jq -r ".[] | select(.title == \"desk-a\") | .minimized"; }
   wait_minimized() { for _ in $(seq 60); do [[ $(minimized) == "$1" ]] && return 0; sleep 0.05; done; return 1; }
   APP_ID=desk-a FILL_COLOR=0xFF3060C0 "'"$UNMAP"'" desk-a 600 400 > "$OUT/client.log" 2>&1 &

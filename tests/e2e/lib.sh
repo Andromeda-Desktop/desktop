@@ -63,6 +63,19 @@ run() {
     XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY=wayland-0 ANDROMEDA_SOCKET="$RUNTIME/andromeda-wayland-0.sock" "$@"
 }
 
+# stable_grim [-g GEOMETRY] FILE: shoot once two grabs 0.2 s apart are identical (fades settle). Exported into with_noctalia.
+stable_grim() {
+  local g=()
+  [[ $1 == -g ]] && { g=(-g "$2"); shift 2; }
+  for _ in $(seq 25); do
+    grim "${g[@]}" "$1.prev"; sleep 0.2; grim "${g[@]}" "$1"
+    cmp -s "$1.prev" "$1" && { rm -f "$1.prev"; return 0; }
+  done
+  echo "FAIL: the screen did not settle for $1"
+  exit 1
+}
+export -f stable_grim
+
 # with_noctalia SCRIPT: run a bash script while Noctalia runs on the session's private bus, used as both session and
 # system bus so the test shell never reaches the real BlueZ, NetworkManager, or logind. The script sees $NOCTALIA, $OUT,
 # $ANDROMEDA, $DESKTOP_CLIENT, and $RUNTIME, and Noctalia is answering IPC when it starts. $BEFORE_NOCTALIA runs on

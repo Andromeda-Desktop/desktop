@@ -42,16 +42,6 @@ CONFIG
 export UNMAP POINTER
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
-  # The theme change fades; a shot is taken once two grabs 0.2 s apart are identical.
-  stable_grim() {
-    local g=()
-    [[ $1 == -g ]] && { g=(-g "$2"); shift 2; }
-    for _ in $(seq 25); do
-      grim "${g[@]}" "$1.prev"; sleep 0.2; grim "${g[@]}" "$1"
-      cmp -s "$1.prev" "$1" && { rm -f "$1.prev"; return 0; }
-    done
-    fail "the screen did not settle for $1"
-  }
   window() { "$ANDROMEDA" windows --json | jq -c ".[] | select(.title == \"$1\")"; }
   settings_up() { [[ -n $("$ANDROMEDA" windows --json | jq -r ".[] | select(.app_id == \"dev.noctalia.Noctalia\") | .id") ]]; }
 
