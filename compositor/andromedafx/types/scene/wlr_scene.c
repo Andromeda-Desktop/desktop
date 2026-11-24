@@ -6401,19 +6401,6 @@ struct wlr_scene_buffer* wlr_scene_output_direct_scanout_buffer(const struct wlr
   return scene_output->direct_scanout_buffer;
 }
 
-void wlr_scene_output_set_sdr_white_level(struct wlr_scene_output* scene_output, float nits) {
-  assert(isfinite(nits) && nits >= 0.0f);
-  if (scene_output->sdr_white_level == nits) {
-    return;
-  }
-
-  scene_output->sdr_white_level = nits;
-  scene_output->color_transform_dirty = true;
-  scene_output_damage_whole(scene_output);
-  // The cache holds SDR content at the old white level.
-  mark_all_optimized_blur_nodes_dirty(&scene_output->scene->tree.node);
-}
-
 static void scene_output_dirty_optimized_blur(struct wlr_scene_output* output, struct wlr_scene_node* node) {
   if (node->type == WLR_SCENE_NODE_OPTIMIZED_BLUR) {
     struct wlr_scene_optimized_blur* blur = wlr_scene_optimized_blur_from_node(node);
@@ -6429,6 +6416,19 @@ static void scene_output_dirty_optimized_blur(struct wlr_scene_output* output, s
     struct wlr_scene_tree* tree = wlr_scene_tree_from_node(node);
     wl_list_for_each(child, &tree->children, link) { scene_output_dirty_optimized_blur(output, child); }
   }
+}
+
+void wlr_scene_output_set_sdr_white_level(struct wlr_scene_output* scene_output, float nits) {
+  assert(isfinite(nits) && nits >= 0.0f);
+  if (scene_output->sdr_white_level == nits) {
+    return;
+  }
+
+  scene_output->sdr_white_level = nits;
+  scene_output->color_transform_dirty = true;
+  scene_output_damage_whole(scene_output);
+  // Caches on this output hold SDR content at the old white level.
+  scene_output_dirty_optimized_blur(scene_output, &scene_output->scene->tree.node);
 }
 
 bool wlr_scene_output_set_sdr_transfer_function(
