@@ -6,7 +6,7 @@
 
 // A glass piece's own fill when the compositor draws no tint: the island glass, opaque under Reduce Transparency.
 inline ColorSpec glassPieceFill(float opacity) {
-  return colorSpecFromRole(materialRole(), Style::glassMaterial(glass::Kind::Shape).tint * opacity);
+  return colorSpecFromRole(materialRole(), Style::islandGlass().tint * opacity);
 }
 
 // Makes the node one glass piece of a panel that usesGlassPieces(): the compositor draws its glass; without a

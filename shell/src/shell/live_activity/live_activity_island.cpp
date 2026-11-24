@@ -916,7 +916,7 @@ DskSurfaceClient::Value LiveActivityIsland::islandTint(const Instance& inst, Fac
   if (!inst.compositorTint) {
     return glassTintValue(materialRole(), 0.0F, inst.material);
   }
-  const float tint = Style::glassMaterial(glass::Kind::Shape, glassTone(glass::Kind::Shape)).tint;
+  const float tint = Style::islandGlass().tint;
   return glassTintValue(materialRole(), tint, face == Face::Rest ? inst.material : inst.tint);
 }
 
@@ -1349,7 +1349,7 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
   material->setClipChildren(true);
   auto tint = ui::box({
       .out = &inst.tint,
-      .fill = colorSpecFromRole(materialRole(), Style::glassMaterial(glass::Kind::Shape).tint),
+      .fill = colorSpecFromRole(materialRole(), Style::islandGlass().tint),
   });
   tint->setClipChildren(true);
 
@@ -1911,16 +1911,13 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   // A small shape: liquid glass with the launcher pill's clear tint.
   // The resting pill is a shape; the other faces sit on the sheet tint, a sibling, so it takes its own tone.
   const bool liquid = inst.dsk != nullptr && inst.dsk->hasLiquidProperty() && !Style::reduceTransparency();
-  const PaletteTone shapeTone = glassTone(glass::Kind::Shape);
-  const PaletteTone sheetTone = glassTone(glass::Kind::Shape);
-  inst.material->setPaletteTone(shapeTone);
-  inst.tint->setPaletteTone(sheetTone);
+  applyIslandTone(*inst.material);
+  applyIslandTone(*inst.tint);
   const auto setTint = [](auto& target, const DskSurfaceClient::Value& value) {
     target.set(DskSurfaceClient::Property::Tint, value);
   };
   if (inst.dsk != nullptr && inst.dsk->hasLiquidProperty()) {
-    const glass::Material material = Style::glassMaterial(glass::Kind::Shape, shapeTone);
-    setGlassMaterial(*inst.dsk, *inst.dsk, liquid ? &material : nullptr);
+    sendIslandGlass(*inst.dsk, *inst.dsk, liquid);
     inst.compositorTint = liquid && inst.dsk->hasTintProperty() && Style::compositorDrawsTint();
     if (inst.dsk->hasTintProperty()) {
       setTint(*inst.dsk, islandTint(inst, inst.morph.shown()));
@@ -1929,7 +1926,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
       for (DskShapeClient* shape :
            {inst.peekShapes[0].get(), inst.peekShapes[1].get(), inst.pillShape.get(), inst.cardShape.get()}) {
         if (shape != nullptr) {
-          setGlassMaterial(*shape, *inst.dsk, liquid ? &material : nullptr);
+          sendIslandGlass(*shape, *inst.dsk, liquid);
         }
       }
       if (inst.dsk->hasTintProperty()) {
@@ -1946,12 +1943,12 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   inst.material->setFill(
       inst.compositorTint ? colorSpecFromRole(materialRole(), 0.0F)
                           : colorSpecFromRole(
-                                materialRole(), liquid ? Style::glassMaterial(glass::Kind::Shape, shapeTone).tint
+                                materialRole(), liquid ? Style::islandGlass().tint
                                                        : Style::glassTint(glass::Kind::Shape, inst.space.backgroundOpacity)
                             )
   );
   inst.tint->setFill(colorSpecFromRole(
-      materialRole(), inst.compositorTint ? 0.0F : Style::glassMaterial(glass::Kind::Shape, sheetTone).tint
+      materialRole(), inst.compositorTint ? 0.0F : Style::islandGlass().tint
   ));
   inst.ring->setBorder(inst.space.border, islandStrokeWidth(inst.space.borderWidth));
 

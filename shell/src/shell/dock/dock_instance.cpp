@@ -554,11 +554,7 @@ namespace shell::dock {
       if (inst->surface)
         inst->surface->requestRedraw();
     });
-    instance.glassConn = Style::glassChanged().connect([inst = &instance] {
-      if (inst->sceneRoot != nullptr) {
-        inst->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-      }
-    });
+    instance.glassConn = bindIslandTone(instance.sceneRoot);
 
     if (callbacks.updateVisuals) {
       callbacks.updateVisuals(instance);
@@ -569,32 +565,27 @@ namespace shell::dock {
   void applyPanelPalette(DockInstance& instance, const DockConfig& cfg) {
     if (instance.panel == nullptr)
       return;
-    const PaletteTone tone = glassTone(glass::Kind::Shape);
     if (instance.sceneRoot != nullptr) {
-      instance.sceneRoot->setPaletteTone(tone);
+      applyIslandTone(*instance.sceneRoot);
     }
     // A small shape: liquid glass with the launcher pill's clear tint.
     const bool liquid = instance.dsk != nullptr && instance.dsk->hasLiquidProperty() && !Style::reduceTransparency();
     bool compositorTint = false;
     if (instance.shape != nullptr) {
       // A surface with shapes draws no surface glass: the material goes on the shape.
-      const glass::Material material = Style::glassMaterial(glass::Kind::Shape, tone);
       compositorTint = liquid && cfg.compositorBlur && Style::compositorDrawsTint();
-      setGlassMaterial(*instance.shape, *instance.dsk, liquid ? &material : nullptr);
-      const auto tint = glassTintValue(materialRole(), compositorTint ? material.tint : 0.0F, instance.sceneRoot.get());
-      instance.shape->set(DskSurfaceClient::Property::Tint, tint);
+      sendIslandGlass(*instance.shape, *instance.dsk, liquid);
+      instance.shape->set(DskSurfaceClient::Property::Tint, islandGlassTint(compositorTint, instance.sceneRoot.get()));
     } else if (instance.dsk != nullptr && instance.dsk->hasLiquidProperty()) {
-      const glass::Material material = Style::glassMaterial(glass::Kind::Shape, tone);
-      setGlassMaterial(*instance.dsk, *instance.dsk, liquid ? &material : nullptr);
+      sendIslandGlass(*instance.dsk, *instance.dsk, liquid);
       if (instance.dsk->hasTintProperty()) {
         compositorTint = liquid && cfg.compositorBlur && Style::compositorDrawsTint();
-        const auto tint = glassTintValue(materialRole(), compositorTint ? material.tint : 0.0F, instance.sceneRoot.get());
-        instance.dsk->set(DskSurfaceClient::Property::Tint, tint);
+        instance.dsk->set(DskSurfaceClient::Property::Tint, islandGlassTint(compositorTint, instance.sceneRoot.get()));
       }
     }
     // The compositor draws the tint (dsk v9): the dock paints no material fill.
     const float opacity = compositorTint ? 0.0F
-        : liquid                         ? Style::glassMaterial(glass::Kind::Shape, tone).tint
+        : liquid                         ? Style::islandGlass().tint
                                          : Style::glassTint(glass::Kind::Shape, cfg.backgroundOpacity);
     instance.panel->setFill(colorSpecFromRole(materialRole(), opacity));
     instance.panel->setBorder(cfg.border, cfg.borderWidth);

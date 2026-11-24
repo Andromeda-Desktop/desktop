@@ -45,8 +45,9 @@ RULES = {
                        r"\bwlr_output_schedule_frame\(", ("compositor/src/output/",)),
     "output-at": ("output under a point via Server::outputAt (C11)", ("compositor/src/",), CPP,
                   r"\bwlr_output_layout_output_at\(", ()),
-    "glass-raw": ("island glass via GlassSurface (C6)", ("shell/src/",), CPP,
-                  r"\bsetGlassMaterial\(|\bsetPaletteTone\(", ()),
+    "glass-raw": ("island glass via glass_surface.h (sendIslandGlass, islandGlassTint, applyIslandTone) and "
+                  "Style::islandGlass (C6)", ("shell/src/",), CPP,
+                  r"\bsetGlassMaterial\(|\bsetPaletteTone\(|\bglassMaterial\(", ()),
     "shell-timer": ("shell repeats under 1 s or of unknown interval go through the frame host (C5)",
                     ("shell/src/shell/",), CPP, r"\bstartRepeating\((?!\s*std::chrono::(seconds|minutes|hours)\b)", ()),
     "const-frame-tick": ("needsFrameTick states a fact, never a constant true (C5)", ("shell/src/",), CPP,

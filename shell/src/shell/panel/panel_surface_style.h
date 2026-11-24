@@ -44,7 +44,7 @@ namespace shell::panel_surface {
   }
 
   // The one island glass tint (rulebook: every shell surface uses the island glass).
-  [[nodiscard]] inline float backgroundOpacity() noexcept { return Style::glassMaterial(glass::Kind::Shape).tint; }
+  [[nodiscard]] inline float backgroundOpacity() noexcept { return Style::islandGlass().tint; }
 
   [[nodiscard]] inline ColorSpec
   borderColor(const ConfigService* configService, float panelBackgroundOpacity) noexcept {

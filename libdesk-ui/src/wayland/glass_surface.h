@@ -6,6 +6,7 @@
 #include "wayland/dsk_surface_client.h"
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -49,6 +50,39 @@ void animateGlassMaterial(
 glassTintValue(ColorRole role, float alpha, const Node* node = nullptr) noexcept {
   const Color& c = colorForRole(role, node);
   return {c.r, c.g, c.b, Style::reduceTransparency() ? 0.0 : alpha};
+}
+
+// Sends the island glass to `target` (`surface` or one of its shapes); none while `on` is false or with reduce
+// transparency.
+template <typename Target>
+void sendIslandGlass(Target& target, const DskSurfaceClient& surface, bool on) {
+  const glass::Material material = Style::islandGlass();
+  setGlassMaterial(target, surface, on && !Style::reduceTransparency() ? &material : nullptr);
+}
+
+// The island glass tint value: the material tint where the compositor draws it (`compositorTint`), else 0.
+[[nodiscard]] inline DskSurfaceClient::Value islandGlassTint(bool compositorTint, const Node* node) noexcept {
+  return glassTintValue(materialRole(), compositorTint ? Style::islandGlass().tint : 0.0F, node);
+}
+
+// Sets the island tone on `node`, the root of a surface that carries the island glass.
+template <typename N> void applyIslandTone(N& node) { node.setPaletteTone(glassTone(glass::Kind::Shape)); }
+
+// Sets the island tone on the node in `root` now and after each glass change, then runs `then` after each change. A
+// node put in the slot later takes the tone at the next change; the slot must outlive the connection.
+template <typename Ptr>
+[[nodiscard]] Signal<>::ScopedConnection bindIslandTone(const Ptr& root, std::function<void()> then = {}) {
+  if (root != nullptr) {
+    applyIslandTone(*root);
+  }
+  return Style::glassChanged().connect([&root, then = std::move(then)] {
+    if (root != nullptr) {
+      applyIslandTone(*root);
+    }
+    if (then) {
+      then();
+    }
+  });
 }
 
 // Sends a surface's glass::Material to the compositor and sends it again when the slider or the theme changes. For

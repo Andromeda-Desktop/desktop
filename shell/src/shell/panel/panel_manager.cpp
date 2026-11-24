@@ -453,14 +453,12 @@ void PanelManager::initialize(CompositorPlatform& platform, ConfigService* confi
     if (isOpen()) {
       updateGlassDensity();
       if (m_dsk != nullptr && m_dsk->hasLiquidProperty()) {
-        const glass::Material material = sheetGlass();
-        setGlassMaterial(*m_dsk, *m_dsk, &material);
+        sendIslandGlass(*m_dsk, *m_dsk, true);
       }
       sendSheetTint();
     }
   });
-  m_glassToneConn = Style::glassChanged().connect([this] {
-    syncPanelTone();
+  m_glassToneConn = bindIslandTone(m_sceneRoot, [this] {
     if (isOpen()) {
       updateGlassDensity();
       sendSheetTint();
@@ -2794,8 +2792,6 @@ void PanelManager::syncGlassPieces(bool material) {
   m_pieceShapes.resize(pieces.size());
   m_pieceClips.resize(pieces.size());
   m_pieceOpacity.resize(pieces.size(), -1.0F);
-  const glass::Material glassShape = Style::glassMaterial(glass::Kind::Shape);
-  const bool want = !Style::reduceTransparency();
   for (std::size_t i = 0; i < pieces.size(); ++i) {
     DskShapeClient& shape = *m_pieceShapes[i];
     if (pieces[i].clip != m_pieceClips[i]) {
@@ -2814,19 +2810,10 @@ void PanelManager::syncGlassPieces(bool material) {
       if (m_dsk->hasSoloProperty()) {
         shape.set(DskSurfaceClient::Property::Solo, {1.0, 0.0, 0.0, 0.0});
       }
-      setGlassMaterial(shape, *m_dsk, want ? &glassShape : nullptr);
       // Every piece is the island's material (tint_regular), the launcher results card too.
-      shape.set(
-          DskSurfaceClient::Property::Tint,
-          glassTintValue(materialRole(), compositorTint() ? glassShape.tint : 0.0F, m_sceneRoot.get())
-      );
+      sendIslandGlass(shape, *m_dsk, true);
+      shape.set(DskSurfaceClient::Property::Tint, islandGlassTint(compositorTint(), m_sceneRoot.get()));
     }
-  }
-}
-
-void PanelManager::syncPanelTone() {
-  if (m_sceneRoot != nullptr) {
-    m_sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
   }
 }
 
@@ -2843,8 +2830,7 @@ void PanelManager::bindBackdrop() {
   });
   // One glass system: every sheet, detached or bar-attached, carries the slider's material.
   if (m_dsk->hasLiquidProperty()) {
-    const glass::Material material = sheetGlass();
-    setGlassMaterial(*m_dsk, *m_dsk, &material);
+    sendIslandGlass(*m_dsk, *m_dsk, true);
   }
   sendSheetTint();
 }
@@ -2859,7 +2845,7 @@ float PanelManager::sheetTintAlpha() const {
   if (Style::reduceTransparency()) {
     return glass::thickOpacity(m_attachedToBar ? m_attachedBackgroundOpacity : detachedBackgroundOpacity());
   }
-  return Style::glassMaterial(glass::Kind::Shape).tint;
+  return Style::islandGlass().tint;
 }
 
 void PanelManager::sendSheetTint(bool animate) {
@@ -2875,10 +2861,6 @@ void PanelManager::sendSheetTint(bool animate) {
   } else {
     m_dsk->set(DskSurfaceClient::Property::Tint, tint);
   }
-}
-
-glass::Material PanelManager::sheetGlass() {
-  return Style::glassMaterial(glass::Kind::Shape);
 }
 
 float PanelManager::densityCardOpacity(float opacity) const {
@@ -4039,7 +4021,7 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
 
   if (m_sceneRoot == nullptr) {
     m_sceneRoot = ui::node({});
-    m_sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
+    applyIslandTone(*m_sceneRoot);
     m_sceneRoot->setAnimationManager(&m_animations);
     if (m_layerSurface != nullptr && m_renderContext != nullptr) {
       m_selectPopup = std::make_unique<SelectDropdownPopup>(m_platform->wayland(), *m_renderContext);

@@ -141,6 +141,8 @@ namespace Style {
   [[nodiscard]] glass::Material glassMaterial(glass::Kind kind) noexcept;
   // Glass of a surface in `tone` (app windows: PaletteTone::Scheme).
   [[nodiscard]] glass::Material glassMaterial(glass::Kind kind, PaletteTone tone) noexcept;
+  // The one island glass of every shell surface: Kind::Shape in the island tone.
+  [[nodiscard]] glass::Material islandGlass() noexcept;
   // Shell popover glass (glass::popover) in the island tone.
   [[nodiscard]] glass::Material popoverMaterial() noexcept;
   // Tint alpha for a configured `opacity` relative to glass::referenceOpacity (1 = solid).

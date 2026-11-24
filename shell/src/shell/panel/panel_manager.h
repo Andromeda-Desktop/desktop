@@ -318,8 +318,6 @@ private:
   // The detached fill: the material role; the compositor draws the tint and its density.
   [[nodiscard]] ColorSpec detachedFill() const;
   [[nodiscard]] ColorSpec detachedBorder(float backgroundOpacity) const;
-  // Every sheet, detached or bar-attached, is the island glass (Kind::Shape, tint_regular).
-  [[nodiscard]] static glass::Material sheetGlass();
   // Adaptive glass: listens for dsk_surface_v1.backdrop on the current m_dsk.
   void bindBackdrop();
   // Fades m_glassDark to the compositor's density (cards follow it); instant skips the cross-fade.
@@ -331,7 +329,6 @@ private:
   // Sends the sheet tint to the compositor; `animate` runs it on the open spring.
   void sendSheetTint(bool animate = false);
   // The sheet and its content take the sheet's glass::tone.
-  void syncPanelTone();
   [[nodiscard]] bool piecesActive() const;
   void syncGlassPieces(bool material);
   [[nodiscard]] float densityCardOpacity(float opacity) const;

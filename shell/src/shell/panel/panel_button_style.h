@@ -20,7 +20,7 @@ namespace panel_button_style {
 
   // A 40 round icon button on a glass sheet (CC detail back): the island glass tint over the sheet, with the glass rim.
   inline void configureGlassIconButton(Button& button, float scale) {
-    const float tint = Style::glassMaterial(glass::Kind::Shape).tint;
+    const float tint = Style::islandGlass().tint;
     const ColorSpec rim = colorSpecFromRole(ColorRole::LensEdge);
     const ColorSpec ink = colorSpecFromRole(ColorRole::Label1);
     button.setCustomPalette({

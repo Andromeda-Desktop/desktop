@@ -1920,12 +1920,7 @@ void WindowSwitcher::buildScene(Instance& instance, std::uint32_t width, std::ui
 
   Renderer& renderer = instance.surface->renderTarget().renderer();
   instance.sceneRoot = ui::node({});
-  instance.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-  instance.glassConn = Style::glassChanged().connect([inst = &instance] {
-    if (inst->sceneRoot != nullptr) {
-      inst->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-    }
-  });
+  instance.glassConn = bindIslandTone(instance.sceneRoot);
   instance.sceneRoot->setAnimationManager(&instance.animations);
   instance.sceneRoot->setSize(w, h);
 

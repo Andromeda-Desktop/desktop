@@ -16,6 +16,7 @@
 #include "ui/controls/box.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "wayland/glass_surface.h"
 
 #include <algorithm>
 #include <cmath>
@@ -323,12 +324,7 @@ void PersistentPanelHost::buildScene(Instance& instance, std::uint32_t width, st
 
   const bool hasDecoration = instance.panel->hasDecoration();
   instance.sceneRoot = ui::node({});
-  instance.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-  instance.glassConn = Style::glassChanged().connect([inst = &instance] {
-    if (inst->sceneRoot != nullptr) {
-      inst->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-    }
-  });
+  instance.glassConn = bindIslandTone(instance.sceneRoot);
   instance.sceneRoot->setAnimationManager(&instance.animations);
   instance.sceneRoot->setSize(static_cast<float>(width), static_cast<float>(height));
 
@@ -344,7 +340,7 @@ void PersistentPanelHost::buildScene(Instance& instance, std::uint32_t width, st
   if (hasDecoration) {
     auto bg = ui::box({});
     bg->setPanelStyle(m_config->config().shell.panel.borders);
-    bg->setFill(colorSpecFromRole(materialRole(), Style::glassMaterial(glass::Kind::Shape).tint));
+    bg->setFill(colorSpecFromRole(materialRole(), Style::islandGlass().tint));
     if (m_config->config().shell.panel.borders) {
       bg->setBorder(
           shell::panel_surface::borderColor(m_config, backgroundOpacity), shell::panel_surface::borderWidth(m_config)
@@ -627,7 +623,7 @@ void PersistentPanelHost::onConfigReloaded() {
     instance->panel->setPanelCardOpacity(shell::panel_surface::cardOpacity(m_config, backgroundOpacity));
     if (instance->bgNode != nullptr) {
       instance->bgNode->setPanelStyle(m_config->config().shell.panel.borders);
-      instance->bgNode->setFill(colorSpecFromRole(materialRole(), Style::glassMaterial(glass::Kind::Shape).tint));
+      instance->bgNode->setFill(colorSpecFromRole(materialRole(), Style::islandGlass().tint));
       if (m_config->config().shell.panel.borders) {
         instance->bgNode->setBorder(
             shell::panel_surface::borderColor(m_config, backgroundOpacity), shell::panel_surface::borderWidth(m_config)

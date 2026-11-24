@@ -429,13 +429,9 @@ void DesktopWidgetsHost::createInstance(const DesktopWidgetState& state, const W
 void DesktopWidgetsHost::buildScene(DesktopWidgetInstance& instance) {
   if (instance.sceneRoot == nullptr) {
     instance.sceneRoot = ui::node({});
-    instance.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-    instance.glassConn = Style::glassChanged().connect([inst = &instance] {
-      if (inst->sceneRoot != nullptr) {
-        inst->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-        if (inst->surface != nullptr) {
-          inst->surface->requestLayout();
-        }
+    instance.glassConn = bindIslandTone(instance.sceneRoot, [inst = &instance] {
+      if (inst->surface != nullptr) {
+        inst->surface->requestLayout();
       }
     });
     instance.sceneRoot->setAnimationManager(&instance.animations);

@@ -323,13 +323,11 @@ bool Bar::syncIslandLiquid(BarInstance& instance) {
   if (instance.dsk == nullptr || !instance.dsk->hasLiquidProperty()) {
     return false;
   }
-  const glass::Material material = Style::glassMaterial(glass::Kind::Shape, glassTone(glass::Kind::Shape));
-  setGlassMaterial(*instance.dsk, *instance.dsk, want ? &material : nullptr);
+  sendIslandGlass(*instance.dsk, *instance.dsk, want);
   if (instance.dsk->hasTintProperty()) {
     instance.compositorTint = want && instance.barConfig.compositorBlur && Style::compositorDrawsTint();
     instance.dsk->set(
-        DskSurfaceClient::Property::Tint,
-        glassTintValue(materialRole(), instance.compositorTint ? material.tint : 0.0F, instance.sceneRoot.get())
+        DskSurfaceClient::Property::Tint, islandGlassTint(instance.compositorTint, instance.sceneRoot.get())
     );
   }
   syncIslandShapes(instance, true);
@@ -380,8 +378,6 @@ bool Bar::syncIslandShapes(BarInstance& instance, bool material) const {
     instance.islandBlurStrips.clear();
   }
   const bool shown = barContentVisuallyShown(instance);
-  const glass::Material shapeGlass = Style::glassMaterial(glass::Kind::Shape, glassTone(glass::Kind::Shape));
-  const bool want = !Style::reduceTransparency();
   while (instance.islandShapes.size() < instance.islands.size()) {
     instance.islandShapes.push_back(std::make_unique<DskShapeClient>(*instance.dsk));
     instance.islandShapeClips.push_back({});
@@ -413,10 +409,8 @@ bool Bar::syncIslandShapes(BarInstance& instance, bool material) const {
           DskSurfaceClient::Property::Elevation,
           {instance.islandShadowStyle.has_value() ? 1.0 : 0.0, 0.0, 0.0, 0.0}
       );
-      setGlassMaterial(shape, *instance.dsk, want ? &shapeGlass : nullptr);
-      const auto tint =
-          glassTintValue(materialRole(), instance.compositorTint ? shapeGlass.tint : 0.0F, instance.sceneRoot.get());
-      shape.set(DskSurfaceClient::Property::Tint, tint);
+      sendIslandGlass(shape, *instance.dsk, true);
+      shape.set(DskSurfaceClient::Property::Tint, islandGlassTint(instance.compositorTint, instance.sceneRoot.get()));
     }
   }
   syncContentRegion(instance);
@@ -429,13 +423,13 @@ void Bar::applyBackgroundPalette(BarInstance& instance) {
   }
   const Node* tone = instance.sceneRoot.get();
   if (instance.sceneRoot != nullptr) {
-    instance.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
+    applyIslandTone(*instance.sceneRoot);
   }
   const Color material = colorForRole(materialRole(), barBodyTint(instance.barConfig), tone);
   // Islands are small shapes: liquid glass with the launcher pill's clear tint.
   const bool liquid = syncIslandLiquid(instance);
   const Color islandMaterial = instance.compositorTint ? rgba(0.0F, 0.0F, 0.0F, 0.0F)
-      : liquid                                        ? colorForRole(materialRole(), Style::glassMaterial(glass::Kind::Shape, glassTone(glass::Kind::Shape)).tint, tone)
+      : liquid                                        ? colorForRole(materialRole(), Style::islandGlass().tint, tone)
                                                       : material;
   const auto applyMaterial = [&](Box* box, bool painted) {
     auto style = box->style();

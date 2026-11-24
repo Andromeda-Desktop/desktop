@@ -17,6 +17,7 @@
 #include "ui/controls/scroll_view.h"
 #include "ui/popup_chrome.h"
 #include "ui/style.h"
+#include "wayland/glass_surface.h"
 #include "wayland/layer_surface.h"
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_seat.h"
@@ -885,12 +886,7 @@ void TrayMenu::buildScene(MenuInstance& inst, uint32_t width, uint32_t height) {
   const auto h = static_cast<float>(height);
 
   inst.sceneRoot = ui::node({});
-  inst.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-  inst.glassConn = Style::glassChanged().connect([instPtr = &inst] {
-    if (instPtr->sceneRoot != nullptr) {
-      instPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-    }
-  });
+  inst.glassConn = bindIslandTone(inst.sceneRoot);
   inst.sceneRoot->setSize(w, h);
   if (Style::popupShadowsEnabled()) {
     (void)popup_chrome::addShadow(
@@ -1249,12 +1245,7 @@ void TrayMenu::buildSubmenuScene(std::size_t levelIndex, MenuInstance& inst, uin
   const auto h = static_cast<float>(height);
 
   inst.sceneRoot = ui::node({});
-  inst.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-  inst.glassConn = Style::glassChanged().connect([instPtr = &inst] {
-    if (instPtr->sceneRoot != nullptr) {
-      instPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-    }
-  });
+  inst.glassConn = bindIslandTone(inst.sceneRoot);
   inst.sceneRoot->setSize(w, h);
   if (Style::popupShadowsEnabled()) {
     (void)popup_chrome::addShadow(

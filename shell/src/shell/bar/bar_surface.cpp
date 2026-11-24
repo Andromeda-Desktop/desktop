@@ -26,6 +26,7 @@
 #include "shell/bar/widgets/window_menu_widget.h"
 #include "shell/panel/panel_manager.h"
 #include "wayland/dsk_surface_client.h"
+#include "wayland/glass_surface.h"
 #include "ui/surface_shadow.h"
 #include "shell/tooltip/tooltip_manager.h"
 #include "ui/builders.h"
@@ -1251,13 +1252,7 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
       inst->surface->requestRedraw();
     }
   });
-  instance.glassConn = Style::glassChanged().connect([inst = &instance] {
-    if (inst->sceneRoot != nullptr) {
-      inst->sceneRoot->setPaletteTone(
-          glassTone(glass::Kind::Shape)
-      );
-    }
-  });
+  instance.glassConn = bindIslandTone(instance.sceneRoot);
   applyBackgroundPalette(instance);
   if (instance.contentClip != nullptr) {
     instance.contentClip->setPosition(barAreaX, barAreaY);

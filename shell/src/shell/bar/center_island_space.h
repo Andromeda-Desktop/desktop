@@ -14,7 +14,7 @@ inline constexpr float kIslandStrokeWidth = 0.5F;
   if (configured > 0.0F) {
     return configured;
   }
-  const bool rim = Style::glassMaterial(glass::Kind::Shape).rim > 0.0F;
+  const bool rim = Style::islandGlass().rim > 0.0F;
   return !rim && isResolvedLightTheme() ? kIslandStrokeWidth : 0.0F;
 }
 
