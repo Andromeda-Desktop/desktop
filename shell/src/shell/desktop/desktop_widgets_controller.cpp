@@ -101,13 +101,12 @@ void DesktopWidgetsController::initialize(const DesktopWidgetsControllerServices
   m_editor->initialize(services.widgets);
   m_editor->setExitRequestedCallback([this] { exitEdit(); });
   loadSnapshotFromConfig();
-  const bool placementChanged = m_placementMapper.remapForOutputChange(m_wayland->outputs(), m_snapshot.widgets);
+  // A remap is derived from the config and the outputs, never saved: a save copies config.toml's widgets into the
+  // overrides, which then hide the user's later config.toml edits.
+  (void)m_placementMapper.remapForOutputChange(m_wayland->outputs(), m_snapshot.widgets);
   m_initialized = true;
   if (m_config != nullptr) {
     m_lastEnabled = m_config->config().desktopWidgets.enabled;
-  }
-  if (placementChanged) {
-    saveSnapshotToConfig();
   }
   applyVisibility();
 
@@ -259,12 +258,9 @@ void DesktopWidgetsController::onOutputChange() {
   if (!m_initialized) {
     return;
   }
-  bool placementChanged = m_placementMapper.remapForOutputChange(m_wayland->outputs(), m_snapshot.widgets);
+  (void)m_placementMapper.remapForOutputChange(m_wayland->outputs(), m_snapshot.widgets);
   normalizeSnapshot();
-  placementChanged |= m_placementMapper.remapForOutputChange(m_wayland->outputs(), m_snapshot.widgets);
-  if (placementChanged) {
-    saveSnapshotToConfig();
-  }
+  (void)m_placementMapper.remapForOutputChange(m_wayland->outputs(), m_snapshot.widgets);
   pruneWallpaperMasks();
   if (isEditing()) {
     m_editor->onOutputChange();
