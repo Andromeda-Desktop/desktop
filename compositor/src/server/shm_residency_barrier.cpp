@@ -1,17 +1,12 @@
 #include "server/shm_residency_barrier.h"
 
 #include "core/log.h"
+#include "core/main_loop_worker.h"
 #include "wlr.h"
 
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
-#include <deque>
-#include <mutex>
-#include <pthread.h>
-#include <sys/eventfd.h>
 #include <sys/mman.h>
-#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -26,8 +21,8 @@ namespace andromeda {
 
     struct SurfaceWatch;
 
-    // One held commit. The worker reads only `start`, `length` and writes `timedOut`; the buffer lock keeps the
-    // mapping alive while it runs.
+    // One held commit. The worker job gets only `start` and `length`; the buffer lock keeps the mapping alive while
+    // it runs.
     struct Hold {
       SurfaceWatch* watch = nullptr; // null once the surface is gone
       wlr_buffer* buffer = nullptr;
@@ -90,35 +85,9 @@ namespace andromeda {
   } // namespace
 
   struct ShmResidencyBarrier::Impl {
-    std::mutex mutex;
-    std::condition_variable wake;
-    std::deque<Hold*> queued; // guarded by mutex
-    std::vector<Hold*> done;  // guarded by mutex
-    bool stopping = false;    // guarded by mutex
-    int eventFd = -1;
-    wl_event_source* doneSource = nullptr;
+    std::vector<Hold*> inFlight; // released by the worker result, or by the destructor when that result is dropped
     wl_listener newSurface{};
-    std::thread worker;
-
-    void run() {
-      pthread_setname_np(pthread_self(), "andro-residency");
-      std::unique_lock lock(mutex);
-      while (true) {
-        wake.wait(lock, [this] { return stopping || !queued.empty(); });
-        if (stopping) {
-          return;
-        }
-        Hold* hold = queued.front();
-        queued.pop_front();
-        lock.unlock();
-        const bool paged = pageIn(hold->start, hold->length);
-        lock.lock();
-        hold->timedOut = !paged;
-        done.push_back(hold);
-        const uint64_t one = 1;
-        (void)!write(eventFd, &one, sizeof(one));
-      }
-    }
+    std::unique_ptr<MainLoopWorker> worker;
 
     static void release(Hold* hold) {
       if (hold->timedOut) {
@@ -131,21 +100,6 @@ namespace andromeda {
         wlr_surface_unlock_cached(watch->surface, hold->seq);
       }
       delete hold;
-    }
-
-    static int onDone(int fd, uint32_t /*mask*/, void* data) {
-      auto* self = static_cast<Impl*>(data);
-      uint64_t count = 0;
-      (void)!read(fd, &count, sizeof(count));
-      std::vector<Hold*> finished;
-      {
-        const std::scoped_lock lock(self->mutex);
-        finished.swap(self->done);
-      }
-      for (Hold* hold : finished) {
-        release(hold);
-      }
-      return 0;
     }
 
     void hold(SurfaceWatch* watch, wlr_buffer* buffer) {
@@ -166,11 +120,12 @@ namespace andromeda {
       auto* held = new Hold{.watch = watch, .buffer = wlr_buffer_lock(buffer), .start = start, .length = length};
       held->seq = wlr_surface_lock_pending(watch->surface);
       watch->holds.push_back(held);
-      {
-        const std::scoped_lock lock(mutex);
-        queued.push_back(held);
-      }
-      wake.notify_one();
+      inFlight.push_back(held);
+      worker->post<bool>([start, length] { return pageIn(start, length); }, [this, held](bool paged) {
+        held->timedOut = !paged;
+        std::erase(inFlight, held);
+        release(held);
+      });
     }
 
     static void onClientCommit(wl_listener* listener, void* /*data*/) {
@@ -210,29 +165,17 @@ namespace andromeda {
   };
 
   ShmResidencyBarrier::ShmResidencyBarrier(wl_display* display, wlr_compositor* compositor) : m_impl(std::make_unique<Impl>()) {
-    m_impl->eventFd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-    wl_event_loop* loop = wl_display_get_event_loop(display);
-    m_impl->doneSource = wl_event_loop_add_fd(loop, m_impl->eventFd, WL_EVENT_READABLE, Impl::onDone, m_impl.get());
-    m_impl->worker = std::thread([impl = m_impl.get()] { impl->run(); });
+    m_impl->worker = std::make_unique<MainLoopWorker>(wl_display_get_event_loop(display), "andro-residency");
     m_impl->newSurface.notify = Impl::onNewSurface;
     wl_signal_add(&compositor->events.new_surface, &m_impl->newSurface);
   }
 
   ShmResidencyBarrier::~ShmResidencyBarrier() {
     wl_list_remove(&m_impl->newSurface.link);
-    {
-      const std::scoped_lock lock(m_impl->mutex);
-      m_impl->stopping = true;
-    }
-    m_impl->wake.notify_one();
-    m_impl->worker.join();
-    std::vector<Hold*> left(m_impl->queued.begin(), m_impl->queued.end());
-    left.insert(left.end(), m_impl->done.begin(), m_impl->done.end());
-    for (Hold* hold : left) {
+    m_impl->worker.reset();
+    for (Hold* hold : m_impl->inFlight) {
       Impl::release(hold);
     }
-    wl_event_source_remove(m_impl->doneSource);
-    close(m_impl->eventFd);
   }
 
 } // namespace andromeda

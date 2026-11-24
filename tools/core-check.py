@@ -36,6 +36,9 @@ RULES = {
     "thread-detach": ("blocking work runs on BlockingPool (libdesk-ui core/blocking_pool.h): capped, counted, joined (AR3); "
                       "app_loop ends the process on its GL-init timeout", CPP_DIRS, CPP,
                       r"^\s*\}\)\.detach\(\);|std::thread\(.*\)\.detach\(\)", ("libdesk-app/src/app/app_loop.cpp",)),
+    "wake-fd": ("a thread wakes a loop through sys::WakeFd (libdesk-ui core/sys/sys.h) or DeferredCall; in the compositor "
+                "through MainLoopWorker (core/main_loop_worker.h) (AR3)", CPP_DIRS, CPP, r"\beventfd\s*\(",
+                ("libdesk-ui/src/core/sys/sys_linux.cpp", "compositor/src/core/main_loop_worker.cpp")),
     "clipboard-wait": ("clipboard file I/O runs as SharedWorker jobs; only the destructor drain waits (AR3 C9)",
                        ("shell/src/clipboard/",), CPP, r"\.wait(_for|_until)?\(", ()),
     "schedule-frame": ("redraws go through the Output frame owner (C8)", ("compositor/src/",), CPP,

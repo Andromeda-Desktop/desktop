@@ -18,7 +18,8 @@ namespace andromeda {
   // loop. Jobs run in order; jobs and results still pending when the worker is destroyed are dropped.
   class MainLoopWorker {
   public:
-    explicit MainLoopWorker(wl_event_loop* loop);
+    // `name` is the thread name (15 bytes at most), static storage.
+    explicit MainLoopWorker(wl_event_loop* loop, const char* name = "andro-worker");
     ~MainLoopWorker();
 
     // Finishes the running job and ends the thread; queued jobs and results are dropped. For an owner that writes
@@ -48,6 +49,7 @@ namespace andromeda {
     std::condition_variable_any m_wake;
     std::deque<Job> m_jobs;
     std::deque<std::function<void()>> m_results;
+    const char* m_name;
     // Last member: joined before the queues it reads go away.
     std::jthread m_thread;
   };

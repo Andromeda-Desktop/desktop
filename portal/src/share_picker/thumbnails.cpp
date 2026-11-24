@@ -1,5 +1,6 @@
 #include "share_picker/thumbnails.h"
 
+#include "core/sys/sys.h"
 #include "loop/loop.h"
 #include "share_picker/live_state.h"
 #include "wayland/capture_transform.h"
@@ -14,7 +15,6 @@
 #include <mutex>
 #include <set>
 #include <sys/epoll.h>
-#include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
@@ -208,7 +208,7 @@ namespace xdpu {
   struct Thumbnails::Impl {
     const std::vector<ThumbnailSource> sources;
     const ReadyCallback onReady;
-    const int wake = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    const sys::WakeFd wake;
     std::mutex mutex;
     std::set<std::size_t> wanted;
     std::vector<Thumbnail> results;
@@ -222,17 +222,9 @@ namespace xdpu {
       stopping = true;
       signal();
       worker.join();
-      if (wake >= 0) {
-        close(wake);
-      }
     }
 
-    void signal() const {
-      const uint64_t one = 1;
-      if (wake >= 0) {
-        (void)!write(wake, &one, sizeof(one));
-      }
-    }
+    void signal() const { wake.signal(); }
 
     void publish(Thumbnail thumbnail) {
       {
@@ -244,7 +236,7 @@ namespace xdpu {
     }
 
     void run() {
-      if (wake < 0) {
+      if (!wake.valid()) {
         return;
       }
       try {
@@ -253,8 +245,7 @@ namespace xdpu {
         std::unique_ptr<WaylandContext> wayland;
         std::map<std::size_t, std::unique_ptr<Live>> live;
         auto reconcile = [&] {
-          uint64_t count = 0;
-          (void)!read(wake, &count, sizeof(count));
+          wake.drain();
           if (stopping) {
             loop.quit();
             return;
@@ -279,7 +270,7 @@ namespace xdpu {
           }
           wayland->flush();
         };
-        loop.addFd(wake, EPOLLIN, [&](uint32_t) { reconcile(); });
+        loop.addFd(wake.pollFd(), EPOLLIN, [&](uint32_t) { reconcile(); });
         loop.run();
         live.clear();
       } catch (const std::exception& error) {

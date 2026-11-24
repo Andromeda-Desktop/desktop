@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "core/sys/sys.h"
 #include "protocols/crash_capture.h"
 #include "util/secure_wipe.h"
 #include "util/thread_name.h"
@@ -25,7 +26,6 @@
 #include <poll.h>
 #include <sdbus-c++/sdbus-c++.h>
 #include <string_view>
-#include <sys/eventfd.h>
 #include <thread>
 #include <unistd.h>
 #include <utility>
@@ -306,26 +306,13 @@ namespace security {
     }
 
     // Owned by the cancel callback too: SecretStoreCancellation::cancel() may run a copy after clearCancelCallback().
-    class CancelEvent {
-    public:
-      CancelEvent() : m_fd(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)) {
-        if (m_fd < 0) {
-          throw sdbus::createError(errno, "eventfd");
-        }
+    std::shared_ptr<const sys::WakeFd> makeCancelEvent() {
+      auto event = std::make_shared<const sys::WakeFd>();
+      if (!event->valid()) {
+        throw sdbus::createError(errno, "eventfd");
       }
-      ~CancelEvent() { close(m_fd); }
-      CancelEvent(const CancelEvent&) = delete;
-      CancelEvent& operator=(const CancelEvent&) = delete;
-
-      void signal() const {
-        const std::uint64_t one = 1;
-        [[maybe_unused]] const auto written = write(m_fd, &one, sizeof(one));
-      }
-      [[nodiscard]] int fd() const { return m_fd; }
-
-    private:
-      int m_fd;
-    };
+      return event;
+    }
 
     // A private session-bus connection with one Secret Service session, used only on the worker thread. Every call
     // waits in poll() on the bus and the cancel event, so a cancel ends a pending call or an open prompt at once.
@@ -671,15 +658,15 @@ namespace security {
         }
         SecretStoreBackendResult result;
         try {
-          const auto cancelEvent = std::make_shared<CancelEvent>();
+          const auto cancelEvent = makeCancelEvent();
           cancellation.setCancelCallback([cancelEvent] { cancelEvent->signal(); });
           try {
             for (bool kept = m_service != nullptr;; kept = false) {
               try {
                 if (m_service == nullptr) {
-                  m_service = std::make_unique<SecretService>(cancelEvent->fd());
+                  m_service = std::make_unique<SecretService>(cancelEvent->pollFd());
                 }
-                m_service->setCancelFd(cancelEvent->fd());
+                m_service->setCancelFd(cancelEvent->pollFd());
                 result = function(*m_service);
                 break;
               } catch (const sdbus::Error& error) {
@@ -690,7 +677,7 @@ namespace security {
                 result = resultFromError(error);
                 if (errorState == ErrorState::WithDefaultCollection) {
                   try {
-                    SecretService fresh(cancelEvent->fd());
+                    SecretService fresh(cancelEvent->pollFd());
                     result.defaultCollectionState = fresh.inspectDefaultCollection();
                   } catch (const sdbus::Error&) {
                   }

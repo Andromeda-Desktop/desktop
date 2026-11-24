@@ -10,7 +10,7 @@
 
 namespace andromeda {
 
-  MainLoopWorker::MainLoopWorker(wl_event_loop* loop) {
+  MainLoopWorker::MainLoopWorker(wl_event_loop* loop, const char* name) : m_name(name) {
     m_eventFd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
     if (m_eventFd >= 0 && loop != nullptr) {
       m_source = wl_event_loop_add_fd(loop, m_eventFd, WL_EVENT_READABLE, onReady, this);
@@ -48,7 +48,7 @@ namespace andromeda {
   }
 
   void MainLoopWorker::run(const std::stop_token& stop) {
-    pthread_setname_np(pthread_self(), "andro-worker");
+    pthread_setname_np(pthread_self(), m_name);
     andromeda::crash::installThreadStack();
     std::unique_lock lock(m_mutex);
     while (m_wake.wait(lock, stop, [this] { return !m_jobs.empty(); })) {
