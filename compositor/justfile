@@ -209,16 +209,16 @@ format-code:
 _docs_formatter:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ ! tools/remark/node_modules/.package-lock.json -nt tools/remark/package-lock.json ]]; then
-        npm ci --prefix tools/remark --no-audit --no-fund --loglevel=error
+    if [[ ! ../tools/remark/node_modules/.package-lock.json -nt ../tools/remark/package-lock.json ]]; then
+        npm ci --prefix ../tools/remark --no-audit --no-fund --loglevel=error
     fi
 
 # Tracked Markdown and MDX files, parsed with the docs site's remark plugins.
 format-docs: _docs_formatter
-    git ls-files -z '*.md' '*.mdx' | xargs -0 -r node tools/remark/format.mjs
+    git ls-files -z '*.md' '*.mdx' | xargs -0 -r node ../tools/remark/format.mjs
 
 format-docs-check: _docs_formatter
-    git ls-files -z '*.md' '*.mdx' | xargs -0 -r node tools/remark/format.mjs --check
+    git ls-files -z '*.md' '*.mdx' | xargs -0 -r node ../tools/remark/format.mjs --check
 
 # clang-tidy over src and tests, or only the given files: `just lint`, `just lint src/core/animation.cpp`. Headers are
 # checked through the sources that include them. Another build directory is `mode=`, as in `just mode=asan lint`.

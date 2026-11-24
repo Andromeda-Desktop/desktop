@@ -5,3 +5,4 @@ artifacts/
 __pycache__/
 .wraplock
 libdesk-term/libghostty-vt/
+/tools/remark/node_modules/

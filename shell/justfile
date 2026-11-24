@@ -101,15 +101,15 @@ format-code-check: _check_formatter
 _docs_formatter:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ ! tools/remark/node_modules/.package-lock.json -nt tools/remark/package-lock.json ]]; then
-        npm ci --prefix tools/remark --no-audit --no-fund --loglevel=error
+    if [[ ! ../tools/remark/node_modules/.package-lock.json -nt ../tools/remark/package-lock.json ]]; then
+        npm ci --prefix ../tools/remark --no-audit --no-fund --loglevel=error
     fi
 
 format-docs: _docs_formatter
-    git ls-files -z '*.md' '*.mdx' ':!third_party' | xargs -0 -r node tools/remark/format.mjs
+    git ls-files -z '*.md' '*.mdx' ':!third_party' | xargs -0 -r node ../tools/remark/format.mjs
 
 format-docs-check: _docs_formatter
-    git ls-files -z '*.md' '*.mdx' ':!third_party' | xargs -0 -r node tools/remark/format.mjs --check
+    git ls-files -z '*.md' '*.mdx' ':!third_party' | xargs -0 -r node ../tools/remark/format.mjs --check
 
 _clang_tidy m=mode *args:
     #!/usr/bin/env bash
