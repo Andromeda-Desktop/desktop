@@ -5,14 +5,18 @@ use std::path::{Path, PathBuf};
 use andromeda_agentd::Broker;
 use anyhow::{Context, bail};
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> anyhow::Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+fn main() -> anyhow::Result<()> {
+    andromeda_rt::init_log();
     let dir = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").context("XDG_RUNTIME_DIR is not set")?);
     let listener = listener(&dir)?;
     listener.set_nonblocking(true)?;
-    Broker::default().run(tokio::net::UnixListener::from_std(listener)?, dir).await?;
-    Ok(())
+    andromeda_rt::run(andromeda_rt::BLOCKING_THREADS, |shutdown| async move {
+        let listener = tokio::net::UnixListener::from_std(listener)?;
+        tokio::select! {
+            result = Broker::default().run(listener, dir) => Ok(result?),
+            () = shutdown.cancelled() => Ok(()),
+        }
+    })
 }
 
 fn listener(dir: &Path) -> anyhow::Result<UnixListener> {

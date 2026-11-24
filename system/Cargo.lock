@@ -65,8 +65,8 @@ dependencies = [
 name = "andromeda-agentd"
 version = "0.1.0"
 dependencies = [
+ "andromeda-rt",
  "anyhow",
- "env_logger",
  "log",
  "rustix",
  "serde",
@@ -83,10 +83,10 @@ version = "0.1.0"
 name = "andromeda-fileops"
 version = "0.1.0"
 dependencies = [
+ "andromeda-rt",
  "anyhow",
  "bzip2",
  "chrono",
- "env_logger",
  "flate2",
  "log",
  "lzma-rust2",
@@ -103,6 +103,16 @@ dependencies = [
  "tokio",
  "zbus",
  "zip",
+]
+
+[[package]]
+name = "andromeda-rt"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "env_logger",
+ "log",
+ "tokio",
 ]
 
 [[package]]
@@ -123,6 +133,7 @@ dependencies = [
 name = "andromeda-system"
 version = "0.1.0"
 dependencies = [
+ "andromeda-rt",
  "anyhow",
  "env_logger",
  "futures-util",
@@ -142,9 +153,9 @@ dependencies = [
 name = "andromeda-update"
 version = "0.1.0"
 dependencies = [
+ "andromeda-rt",
  "anyhow",
  "chrono",
- "env_logger",
  "log",
  "quick-xml",
  "tokio",
@@ -158,9 +169,9 @@ version = "0.1.0"
 dependencies = [
  "alpm",
  "alpm-utils",
+ "andromeda-rt",
  "andromeda-update",
  "anyhow",
- "env_logger",
  "log",
  "pacmanconf",
  "rustix",

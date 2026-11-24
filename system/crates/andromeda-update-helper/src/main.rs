@@ -20,24 +20,29 @@ use anyhow::Result;
 const NAME: &str = "org.andromeda.UpdateHelper1";
 const IDLE_EXIT: Duration = Duration::from_secs(300);
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+fn main() -> Result<()> {
+    andromeda_rt::init_log();
     // systemd sets STATE_DIRECTORY from StateDirectory=.
     let state_dir: std::path::PathBuf =
         std::env::var_os("STATE_DIRECTORY").map_or_else(|| "/var/lib/andromeda-update".into(), Into::into);
     // The package's install script and pacman hook.
     let migrations_dir = std::path::Path::new(migrations::DIR);
     match std::env::args().nth(1).as_deref() {
-        Some("--seed-migrations") => return migrations::seed(migrations_dir, &state_dir, true),
-        Some("--run-migrations") => return migrations::run(migrations_dir, &state_dir, true).map(|_| ()),
-        // andromeda-update-recover.service at boot. The SIGTERM handler stays installed and ignores it: a stop waits.
+        Some("--seed-migrations") => migrations::seed(migrations_dir, &state_dir, true),
+        Some("--run-migrations") => migrations::run(migrations_dir, &state_dir, true).map(|_| ()),
+        // andromeda-update-recover.service at boot. SIGTERM only cancels the token, which recover ignores: a stop
+        // waits.
         Some("--recover") => {
-            let _ = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-            return tokio::task::spawn_blocking(move || guard::recover(&state_dir)).await?;
+            andromeda_rt::run(
+                1,
+                |_| async move { tokio::task::spawn_blocking(move || guard::recover(&state_dir)).await? },
+            )
         }
-        _ => {}
+        _ => andromeda_rt::run(andromeda_rt::BLOCKING_THREADS, |shutdown| serve(shutdown, state_dir)),
     }
+}
+
+async fn serve(shutdown: andromeda_rt::Shutdown, state_dir: std::path::PathBuf) -> Result<()> {
     let running = Arc::new(AtomicBool::new(false));
     let last_call = Arc::new(AtomicU64::new(0));
     let started = Instant::now();
@@ -46,13 +51,12 @@ async fn main() -> Result<()> {
     log::info!("serving {NAME}");
     // A stop (shutdown, package upgrade) waits for a running commit: KillMode=mixed leaves its children alone and
     // TimeoutStopSec covers the longest commit.
-    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let mut stopping = false;
     let mut tick = tokio::time::interval(Duration::from_secs(30));
     loop {
         tokio::select! {
             _ = tick.tick() => {}
-            _ = term.recv() => {
+            () = shutdown.cancelled(), if !stopping => {
                 log::info!("stop requested: exits once no update runs");
                 stopping = true;
             }

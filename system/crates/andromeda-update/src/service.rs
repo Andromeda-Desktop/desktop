@@ -2,7 +2,7 @@
 //! properties, and the Arch news read token. Scheduling (daily, on AC, unmetered) belongs to the shell's client.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -111,8 +111,8 @@ impl Update {
         self.state_dir.join("news-read")
     }
 
-    fn read_token(&self) -> i64 {
-        std::fs::read_to_string(self.token_file()).ok().and_then(|t| t.trim().parse().ok()).unwrap_or(0)
+    async fn read_token(&self) -> i64 {
+        read_number(&self.token_file()).await
     }
 
     async fn emit_all(iface: &InterfaceRef<Self>) {
@@ -183,7 +183,7 @@ impl Update {
             }
             Err(e) => errors.push(format!("firmware: {e:#}")),
         }
-        let token = self.read_token();
+        let token = self.read_token().await;
         let (scheduled, count) = {
             let mut state = self.lock();
             match feed {
@@ -213,7 +213,7 @@ impl Update {
     async fn notify(&self, conn: &Connection, count: usize) {
         // At most one a day: 20 h apart, so the daily timer's random delay never skips a day.
         let file = self.state_dir.join("notified-at");
-        let last = std::fs::read_to_string(&file).ok().and_then(|t| t.trim().parse::<i64>().ok()).unwrap_or(0);
+        let last = read_number(&file).await;
         if now() - last < 20 * 3600 {
             return;
         }
@@ -241,8 +241,9 @@ impl Update {
             .await;
         match reply {
             Ok(_) => {
-                let _ = std::fs::create_dir_all(&self.state_dir);
-                let _ = std::fs::write(&file, now().to_string());
+                if let Err(e) = write_number(&self.state_dir, &file, now()).await {
+                    log::warn!("notify: cannot record the time: {e}");
+                }
             }
             Err(e) => log::warn!("notify: {e}"),
         }
@@ -324,14 +325,28 @@ impl Update {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> zbus::fdo::Result<()> {
         let newest = self.lock().unread.iter().map(|i| i.published).max().unwrap_or(0);
-        let token = until.min(newest).max(self.read_token());
-        std::fs::create_dir_all(&self.state_dir).map_err(|e| zbus::fdo::Error::IOError(e.to_string()))?;
-        std::fs::write(self.token_file(), token.to_string()).map_err(|e| zbus::fdo::Error::IOError(e.to_string()))?;
+        let token = until.min(newest).max(self.read_token().await);
+        write_number(&self.state_dir, &self.token_file(), token)
+            .await
+            .map_err(|e| zbus::fdo::Error::IOError(e.to_string()))?;
         self.lock().unread.retain(|i| i.published > token);
         let _ = self.news_changed(&emitter).await;
         let _ = self.news_blocks_system_changed(&emitter).await;
         Ok(())
     }
+}
+
+/// The number in a state file; 0 when it is missing or not a number.
+async fn read_number(file: &Path) -> i64 {
+    match tokio::fs::read_to_string(file).await {
+        Ok(text) => text.trim().parse().unwrap_or(0),
+        Err(_) => 0,
+    }
+}
+
+async fn write_number(dir: &Path, file: &Path, value: i64) -> std::io::Result<()> {
+    tokio::fs::create_dir_all(dir).await?;
+    tokio::fs::write(file, value.to_string()).await
 }
 
 #[cfg(test)]

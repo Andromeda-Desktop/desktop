@@ -68,6 +68,9 @@ RULES = {
                                           "compositor/src/server/sleep_watch.cpp")),
     "rust-drop": ("D-Bus and job errors are logged, not dropped (C13)", ("system/", "apps/", "andromeda-preview/"),
                   (".rs",), r"let _ = [^;]*\.await|\.await\.ok\(\)", ()),
+    "std-fs-async": ("no blocking file I/O on a daemon's runtime thread: tokio::fs or spawn_blocking (AR3 5e)",
+                     ("system/", "apps/", "andromeda-preview/"), (".rs",),
+                     r"\bstd::fs::\w+\s*\(|\bPath::new\([^;]*\)\.exists\(\)", ()),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
                        ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
 }
@@ -76,6 +79,28 @@ RULES = {
 def tracked():
     out = subprocess.run(["git", "-C", ROOT, "ls-files", "--cached", "--others", "--exclude-standard"], capture_output=True, text=True, check=True).stdout
     return [p for p in out.splitlines() if not SKIP.search(p) and os.path.isfile(os.path.join(ROOT, p))]
+
+
+def _span_end(text, start, open_ch, close_ch):
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == open_ch:
+            depth += 1
+        elif text[i] == close_ch:
+            depth -= 1
+            if depth == 0:
+                return i
+    return len(text)
+
+
+def async_hits(text, rx):
+    """Matches inside async fn bodies and async blocks, outside spawn_blocking arguments."""
+    inside = [(m.end() - 1, _span_end(text, m.end() - 1, "{", "}"))
+              for m in re.finditer(r"\basync\s+(?:fn\b[^{;]*|move\s*)?\{", text)]
+    blocking = [(m.end() - 1, _span_end(text, m.end() - 1, "(", ")"))
+                for m in re.finditer(r"\bspawn_blocking\s*\(", text)]
+    return [m.group(0) for m in rx.finditer(text)
+            if any(a <= m.start() <= b for a, b in inside) and not any(a <= m.start() <= b for a, b in blocking)]
 
 
 def scan():
@@ -87,8 +112,11 @@ def scan():
             if not path.startswith(dirs) or not path.endswith(suffixes) or path.startswith(owners):
                 continue
             text = open(os.path.join(ROOT, path), encoding="utf-8", errors="replace").read()
-            hits = rx.findall(text) if rule != "app-executable" else [
-                m.group(1) for m in rx.finditer(text) if f"shared_library('{m.group(1)}'" not in text]
+            if rule == "std-fs-async":
+                hits = async_hits(text, rx)
+            else:
+                hits = rx.findall(text) if rule != "app-executable" else [
+                    m.group(1) for m in rx.finditer(text) if f"shared_library('{m.group(1)}'" not in text]
             if hits:
                 found[(rule, path)] = len(hits)
     return found

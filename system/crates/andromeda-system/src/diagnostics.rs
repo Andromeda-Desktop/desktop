@@ -83,8 +83,9 @@ impl Diagnostics {
     ) -> zbus::fdo::Result<String> {
         let (uid, _) = login::caller(conn, &header).await?;
         polkit::check_with(conn, &header, "org.andromeda.system.diagnostics", false).await?;
-        let owner =
-            std::fs::metadata(format!("/proc/{pid}")).map_err(|e| zbus::fdo::Error::InvalidArgs(e.to_string()))?;
+        let owner = tokio::fs::metadata(format!("/proc/{pid}"))
+            .await
+            .map_err(|e| zbus::fdo::Error::InvalidArgs(e.to_string()))?;
         if owner.uid() != uid {
             return Err(zbus::fdo::Error::AccessDenied(format!("process {pid} is not the caller's")));
         }

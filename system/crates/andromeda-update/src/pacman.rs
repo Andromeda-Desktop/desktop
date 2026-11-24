@@ -50,7 +50,7 @@ pub fn parse_sizes(text: &str) -> HashMap<String, (u64, String)> {
 
 /// Lists upgrades with `checkupdates` (pacman-contrib), which syncs a private copy of the databases in `db`.
 pub async fn check(db: &Path) -> Result<(Vec<Update>, Vec<Update>)> {
-    std::fs::create_dir_all(db)?;
+    tokio::fs::create_dir_all(db).await?;
     let out = Command::new("checkupdates")
         .arg("--nocolor")
         .env("CHECKUPDATES_DB", db)

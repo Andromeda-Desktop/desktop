@@ -81,7 +81,7 @@ impl LowMemoryMonitor {
 
 /// Takes low-memory-monitor's name when that service is not installed (docs/system-health.md §9).
 pub async fn serve_low_memory_monitor(conn: &Connection) -> zbus::Result<bool> {
-    if std::path::Path::new(LMM_ACTIVATABLE).exists() {
+    if tokio::fs::try_exists(LMM_ACTIVATABLE).await.unwrap_or(false) {
         return Ok(false);
     }
     if conn.request_name_with_flags(LMM_NAME, RequestNameFlags::DO_NOT_QUEUE).await? != RequestNameReply::PrimaryOwner {
@@ -219,7 +219,7 @@ async fn follow(conn: &Connection) -> Result<()> {
         } else {
             "normal"
         };
-        let (some_avg10, full_avg10) = parse_psi(&std::fs::read_to_string(PSI).unwrap_or_default());
+        let (some_avg10, full_avg10) = parse_psi(&tokio::fs::read_to_string(PSI).await.unwrap_or_default());
         update(
             conn,
             MemoryData { level: level.to_owned(), some_avg10, full_avg10, available_bytes: available_bytes() },

@@ -7,6 +7,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+andromeda-rt = { path = "../andromeda-rt" }
 anyhow.workspace = true
 env_logger.workspace = true
 futures-util.workspace = true

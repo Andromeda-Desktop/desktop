@@ -1,0 +1,17 @@
+[package]
+name = "andromeda-rt"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+rust-version = "1.89"
+publish = false
+
+# Explicit fields, no workspace inheritance: daemons outside this workspace (thumbnailer, terminal agentd) use it by path.
+[dependencies]
+anyhow = "1"
+env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
+log = "0.4"
+tokio = { version = "1", features = ["rt", "macros", "time", "sync", "signal"] }
+
+[lints]
+workspace = true

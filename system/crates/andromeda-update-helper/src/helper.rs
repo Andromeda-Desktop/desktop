@@ -3,7 +3,7 @@
 //! commands from the caller.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -225,8 +225,16 @@ impl Helper {
     }
 
     /// When the user scheduled tonight's run (unix seconds), if they did.
-    fn tonight_token(&self) -> Option<i64> {
-        std::fs::read_to_string(self.tonight_file()).ok().and_then(|t| t.trim().parse().ok())
+    async fn tonight_token(&self) -> Option<i64> {
+        read_number(&self.tonight_file()).await
+    }
+
+    async fn remove_tonight(&self) {
+        if let Err(e) = tokio::fs::remove_file(self.tonight_file()).await
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            log::warn!("cannot remove the tonight token: {e}");
+        }
     }
 
     fn touch(&self) {
@@ -237,18 +245,24 @@ impl Helper {
         self.state_dir.join("news-read")
     }
 
-    fn read_token(&self) -> i64 {
-        std::fs::read_to_string(self.token_file()).ok().and_then(|t| t.trim().parse().ok()).unwrap_or(0)
+    async fn read_token(&self) -> i64 {
+        read_number(&self.token_file()).await.unwrap_or(0)
     }
 
     /// Replaced whole: a crash mid-write would leave an empty token, which reads as 0 and refuses upgrades.
-    fn write_token(&self, token: i64) -> std::io::Result<()> {
-        let tmp = self.state_dir.join("news-read.new");
-        let mut file = std::fs::File::create(&tmp)?;
-        std::io::Write::write_all(&mut file, token.to_string().as_bytes())?;
-        file.sync_all()?;
-        std::fs::rename(&tmp, self.token_file())?;
-        std::fs::File::open(&self.state_dir)?.sync_all()
+    async fn write_token(&self, token: i64) -> std::io::Result<()> {
+        let (dir, path) = (self.state_dir.clone(), self.token_file());
+        tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(&dir)?;
+            let tmp = dir.join("news-read.new");
+            let mut file = std::fs::File::create(&tmp)?;
+            std::io::Write::write_all(&mut file, token.to_string().as_bytes())?;
+            file.sync_all()?;
+            std::fs::rename(&tmp, path)?;
+            std::fs::File::open(&dir)?.sync_all()
+        })
+        .await
+        .map_err(std::io::Error::other)?
     }
 
     /// Unread news blocks an upgrade; so does a feed that cannot be read.
@@ -260,7 +274,7 @@ impl Helper {
             .await
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?
             .map_err(|e| zbus::fdo::Error::Failed(format!("Arch news could not be read: {e:#}")))?;
-        let unread = news::unread(&items, self.read_token());
+        let unread = news::unread(&items, self.read_token().await);
         if let Some(item) = unread.first() {
             return Err(zbus::fdo::Error::Failed(format!("unread Arch news: {}", item.title)));
         }
@@ -339,11 +353,12 @@ impl Helper {
         // Cancelling someone's scheduled update needs the same right as scheduling it.
         authorize(conn, &header, "org.andromeda.update.upgrade").await?;
         if enable {
-            std::fs::create_dir_all(&self.state_dir).map_err(|e| zbus::fdo::Error::IOError(e.to_string()))?;
-            std::fs::write(self.tonight_file(), now_secs().to_string())
+            tokio::fs::create_dir_all(&self.state_dir).await.map_err(|e| zbus::fdo::Error::IOError(e.to_string()))?;
+            tokio::fs::write(self.tonight_file(), now_secs().to_string())
+                .await
                 .map_err(|e| zbus::fdo::Error::IOError(e.to_string()))?;
         } else {
-            let _ = std::fs::remove_file(self.tonight_file());
+            self.remove_tonight().await;
         }
         set_tonight_timer(conn, enable).await;
         let _ = self.tonight_changed(&emitter).await;
@@ -357,8 +372,8 @@ impl Helper {
     }
 
     #[zbus(property)]
-    fn tonight(&self) -> bool {
-        self.tonight_token().is_some_and(|t| now_secs() - t <= TONIGHT_MAX_AGE)
+    async fn tonight(&self) -> bool {
+        self.tonight_token().await.is_some_and(|t| now_secs() - t <= TONIGHT_MAX_AGE)
     }
 
     /// Called by andromeda-update-tonight.service (root, on AC). Consumes the token; runs only while every graphical
@@ -375,8 +390,8 @@ impl Helper {
         if uid != 0 {
             return Err(zbus::fdo::Error::AccessDenied("RunTonight is for the timer".into()));
         }
-        let Some(scheduled) = self.tonight_token() else { return Ok(()) };
-        let _ = std::fs::remove_file(self.tonight_file());
+        let Some(scheduled) = self.tonight_token().await else { return Ok(()) };
+        self.remove_tonight().await;
         set_tonight_timer(conn, false).await;
         let _ = self.tonight_changed(&emitter).await;
         // A token older than a day was for a night that passed (machine off or on battery then).
@@ -411,9 +426,8 @@ impl Helper {
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?
             .map_err(|e| zbus::fdo::Error::Failed(format!("{e:#}")))?;
         let newest = items.iter().map(|i| i.published).max().unwrap_or(0);
-        let token = until.min(newest).max(self.read_token());
-        std::fs::create_dir_all(&self.state_dir).map_err(|e| zbus::fdo::Error::IOError(e.to_string()))?;
-        self.write_token(token).map_err(|e| zbus::fdo::Error::IOError(e.to_string()))
+        let token = until.min(newest).max(self.read_token().await);
+        self.write_token(token).await.map_err(|e| zbus::fdo::Error::IOError(e.to_string()))
     }
 
     #[zbus(signal)]
@@ -431,6 +445,14 @@ impl Helper {
         questions: Vec<String>,
         andromeda: bool,
     ) -> zbus::Result<()>;
+}
+
+/// The number in a state file; `None` when it is missing or not a number.
+async fn read_number(file: &Path) -> Option<i64> {
+    match tokio::fs::read_to_string(file).await {
+        Ok(text) => text.trim().parse().ok(),
+        Err(_) => None,
+    }
 }
 
 #[cfg(test)]

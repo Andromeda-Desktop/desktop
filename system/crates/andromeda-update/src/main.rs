@@ -15,7 +15,6 @@ mod snap;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use tokio::signal::unix::{SignalKind, signal};
 
 const NAME: &str = "org.andromeda.Update1";
 
@@ -27,9 +26,12 @@ fn xdg(var: &str, fallback: &str) -> Result<PathBuf> {
         .context("no HOME")
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+fn main() -> Result<()> {
+    andromeda_rt::init_log();
+    andromeda_rt::run(andromeda_rt::BLOCKING_THREADS, serve)
+}
+
+async fn serve(shutdown: andromeda_rt::Shutdown) -> Result<()> {
     let cache = xdg("XDG_CACHE_HOME", ".cache")?.join("andromeda/update");
     let state = xdg("XDG_STATE_HOME", ".local/state")?.join("andromeda/update");
     let _conn = zbus::connection::Builder::session()
@@ -38,11 +40,6 @@ async fn main() -> Result<()> {
         .build()
         .await?;
     log::info!("serving {NAME}");
-    let mut term = signal(SignalKind::terminate())?;
-    let mut int = signal(SignalKind::interrupt())?;
-    tokio::select! {
-        _ = term.recv() => {}
-        _ = int.recv() => {}
-    }
+    shutdown.cancelled().await;
     Ok(())
 }

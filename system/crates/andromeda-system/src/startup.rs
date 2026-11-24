@@ -119,7 +119,8 @@ pub async fn measure(system: &Connection, session: &Connection) -> zbus::Result<
         }
         Err(_) => 0,
     };
-    let boot_id = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap_or_default().trim().to_owned();
+    let boot_id =
+        tokio::fs::read_to_string("/proc/sys/kernel/random/boot_id").await.unwrap_or_default().trim().to_owned();
     Ok(Record {
         boot_id,
         session: id,

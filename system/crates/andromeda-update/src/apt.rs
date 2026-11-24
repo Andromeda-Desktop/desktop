@@ -102,8 +102,8 @@ async fn apt_get(db: &Path, args: &[&str]) -> Result<std::process::Output> {
 
 /// Lists upgrades after a refresh of the private lists in `db`, and the held-back packages (size 0).
 pub async fn check(db: &Path) -> Result<(Vec<Update>, Vec<Update>)> {
-    std::fs::create_dir_all(db.join("lists/partial"))?;
-    std::fs::create_dir_all(db.join("cache/archives/partial"))?;
+    tokio::fs::create_dir_all(db.join("lists/partial")).await?;
+    tokio::fs::create_dir_all(db.join("cache/archives/partial")).await?;
     let update = apt_get(db, &["-qq", "update"]).await?;
     if !update.status.success() {
         bail!("apt-get update: {}", String::from_utf8_lossy(&update.stderr).trim());

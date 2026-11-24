@@ -39,17 +39,25 @@ mod wifi;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use tokio::signal::unix::{SignalKind, signal};
 
 pub const NAME: &str = "org.andromeda.System1";
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let session = std::env::args().nth(1).as_deref() == Some("--session");
     crash::init(if session { "andromeda-system-session" } else { "andromeda-system" });
-    if session {
-        return Box::pin(session::run()).await;
-    }
+    andromeda_rt::run(andromeda_rt::BLOCKING_THREADS, |shutdown| async move {
+        if session {
+            tokio::select! {
+                result = Box::pin(session::run()) => result,
+                () = shutdown.cancelled() => Ok(()),
+            }
+        } else {
+            serve(shutdown).await
+        }
+    })
+}
+
+async fn serve(shutdown: andromeda_rt::Shutdown) -> Result<()> {
     // systemd sets STATE_DIRECTORY from StateDirectory=; tests point it at a temp dir.
     let state = std::env::var_os("STATE_DIRECTORY").map_or_else(|| "/var/lib/andromeda-system".into(), PathBuf::from);
     let policy = policy::new(state.join("explain.jsonl"));
@@ -102,12 +110,6 @@ async fn main() -> Result<()> {
         });
     }
     log::info!("serving {NAME}");
-
-    let mut term = signal(SignalKind::terminate())?;
-    let mut int = signal(SignalKind::interrupt())?;
-    tokio::select! {
-        _ = term.recv() => {}
-        _ = int.recv() => {}
-    }
+    shutdown.cancelled().await;
     Ok(())
 }

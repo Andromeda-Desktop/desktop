@@ -62,9 +62,6 @@ pub const PATH: &str = "/org/andromeda/FileOps1";
 const EMIT_INTERVAL: Duration = Duration::from_millis(100);
 const ANSWER_POLL: Duration = Duration::from_millis(250);
 
-/// Set on SIGTERM: every job stops at its next check, also one that waits for a conflict answer.
-pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum State {
     Running,
@@ -120,6 +117,8 @@ struct Shared {
     conflict_index: AtomicU64,
     conflict_total: AtomicU64,
     cancel: AtomicBool,
+    /// The daemon's shutdown flag: every job stops at its next check, also one that waits for a conflict answer.
+    shutdown: Arc<AtomicBool>,
     answer: Mutex<Option<mpsc::Sender<Answer>>>,
     changed: Notify,
 }
@@ -157,12 +156,12 @@ impl Shared {
 
 impl Control for Shared {
     fn cancelled(&self) -> bool {
-        self.cancel.load(Ordering::Relaxed) || SHUTDOWN.load(Ordering::Relaxed)
+        self.cancel.load(Ordering::Relaxed) || self.shutdown.load(Ordering::Relaxed)
     }
 
     fn pause_point(&self) {
         let mut status = lock(&self.status);
-        // A timeout as well: SIGTERM sets SHUTDOWN without the condvar.
+        // A timeout as well: shutdown sets its flag without the condvar.
         while self.paused.load(Ordering::Relaxed) && !self.cancelled() {
             status = self.resumed.wait_timeout(status, ANSWER_POLL).unwrap_or_else(PoisonError::into_inner).0;
         }
@@ -342,6 +341,7 @@ pub struct Manager {
     jobs: Vec<(OwnedObjectPath, Arc<Shared>)>,
     next: AtomicU32,
     activity: Activity,
+    shutdown: Arc<AtomicBool>,
 }
 
 enum Request {
@@ -486,9 +486,34 @@ async fn publish(conn: Connection, path: OwnedObjectPath, shared: Arc<Shared>, a
     }
 }
 
+/// Files, bytes and name conflicts a request touches. Walks the sources: call it off the runtime thread.
+fn totals(request: &Request) -> (u64, u64, u64) {
+    let (files, bytes) = match request {
+        Request::Copy(sources, _)
+        | Request::Move(sources, _)
+        | Request::Trash(sources)
+        | Request::Delete(sources)
+        | Request::Compress(sources, ..) => ops::measure(sources),
+        Request::Undo(steps, _) => (steps.len() as u64, 0),
+        Request::Link(sources, _) => (sources.len() as u64, 0),
+        Request::Rename(..) | Request::NewFolder(..) => (1, 0),
+        Request::RenameMany(items) => (items.len() as u64, 0),
+        Request::Extract(..) | Request::StorageScan(..) => (0, 0),
+        Request::SetPermissions(paths, ..) | Request::SetOwner(paths, ..) | Request::SetTags(paths, ..) => {
+            (paths.len() as u64, 0)
+        }
+        Request::Checksum(path, _) => (1, std::fs::metadata(path).map_or(0, |m| m.len())),
+    };
+    let conflicts = match request {
+        Request::Copy(sources, dir) | Request::Move(sources, dir) => ops::count_conflicts(sources, dir).unwrap_or(0),
+        _ => 0,
+    };
+    (files, bytes, conflicts)
+}
+
 impl Manager {
-    pub fn new(activity: Activity) -> Self {
-        Self { jobs: Vec::new(), next: AtomicU32::new(0), activity }
+    pub fn new(activity: Activity, shutdown: Arc<AtomicBool>) -> Self {
+        Self { jobs: Vec::new(), next: AtomicU32::new(0), activity, shutdown }
     }
 
     async fn start(
@@ -497,28 +522,6 @@ impl Manager {
         kind: &'static str,
         request: Request,
     ) -> zbus::fdo::Result<OwnedObjectPath> {
-        let (total_files, total_bytes) = match &request {
-            Request::Copy(sources, _)
-            | Request::Move(sources, _)
-            | Request::Trash(sources)
-            | Request::Delete(sources) => ops::measure(sources),
-            Request::Undo(steps, _) => (steps.len() as u64, 0),
-            Request::Link(sources, _) => (sources.len() as u64, 0),
-            Request::Rename(..) | Request::NewFolder(..) => (1, 0),
-            Request::RenameMany(items) => (items.len() as u64, 0),
-            Request::Extract(..) => (0, 0),
-            Request::Compress(sources, ..) => ops::measure(sources),
-            Request::SetPermissions(paths, ..) | Request::SetOwner(paths, ..) => (paths.len() as u64, 0),
-            Request::Checksum(path, _) => (1, std::fs::metadata(path).map_or(0, |m| m.len())),
-            Request::StorageScan(..) => (0, 0),
-            Request::SetTags(paths, ..) => (paths.len() as u64, 0),
-        };
-        let conflict_total = match &request {
-            Request::Copy(sources, dir) | Request::Move(sources, dir) => {
-                ops::count_conflicts(sources, dir).unwrap_or(0)
-            }
-            _ => 0,
-        };
         let destination = match &request {
             Request::Copy(_, dir) | Request::Move(_, dir) | Request::Link(_, dir) | Request::Extract(_, _, dir, _) => {
                 dir.clone()
@@ -528,8 +531,8 @@ impl Manager {
         let shared = Arc::new(Shared {
             kind,
             destination,
-            total_files: AtomicU64::new(total_files),
-            total_bytes: AtomicU64::new(total_bytes),
+            total_files: AtomicU64::new(0),
+            total_bytes: AtomicU64::new(0),
             status: Mutex::new(Status {
                 state: State::Running,
                 done_files: 0,
@@ -544,8 +547,9 @@ impl Manager {
             resumed: Condvar::new(),
             paused: AtomicBool::new(false),
             conflict_index: AtomicU64::new(0),
-            conflict_total: AtomicU64::new(conflict_total),
+            conflict_total: AtomicU64::new(0),
             cancel: AtomicBool::new(false),
+            shutdown: self.shutdown.clone(),
             answer: Mutex::new(None),
             changed: Notify::new(),
         });
@@ -558,7 +562,15 @@ impl Manager {
         let worker = shared.clone();
         tokio::task::spawn_blocking(move || {
             // A panic must end the job as failed: else it stays "running" and the app waits for good.
-            if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(request, &worker))) {
+            let work = || {
+                let (files, bytes, conflicts) = totals(&request);
+                worker.total_files.store(files, Ordering::Relaxed);
+                worker.total_bytes.store(bytes, Ordering::Relaxed);
+                worker.conflict_total.store(conflicts, Ordering::Relaxed);
+                worker.changed.notify_one();
+                run(request, &worker);
+            };
+            if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)) {
                 let message = panic
                     .downcast_ref::<String>()
                     .cloned()
@@ -965,6 +977,7 @@ mod tests {
             conflict_index: AtomicU64::new(0),
             conflict_total: AtomicU64::new(total),
             cancel: AtomicBool::new(false),
+            shutdown: Arc::new(AtomicBool::new(false)),
             answer: Mutex::new(None),
             changed: Notify::new(),
         })
