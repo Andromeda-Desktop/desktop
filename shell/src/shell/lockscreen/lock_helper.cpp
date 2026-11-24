@@ -101,7 +101,7 @@ namespace {
   }
 
   // Draws `shader` into the buffer the shell does not show and sends it. Needs usesDmabufs.
-  bool sendDmabuf(Slot& slot, LockShader& shader) {
+  bool sendDmabuf(Slot& slot, LockShader& shader, std::string_view kind) {
     const auto& dmabufs = shader.dmabufs();
     if (!slot.dmabufsAttached) {
       // Buffer ids 1 and 2 are the shader's two dmabufs; id 0 stays the memfd buffer.
@@ -109,7 +109,7 @@ namespace {
       if (!slot.dmabufsAttached) {
         return false;
       }
-      kLog.info("slot sends dmabufs");
+      kLog.info("{} slot sends dmabufs", kind);
     }
     const std::size_t next = 1 - slot.shownBuffer;
     if (!shader.draw(next) || !slot.server.sendDmabufFrame(static_cast<std::uint32_t>(next) + 1)) {
@@ -144,7 +144,7 @@ namespace {
     bool sent = false;
     if (slot.copy != nullptr && usesDmabufs(slot, *slot.copy)) {
       slot.copy->setChannel0Texture(static_cast<GLuint>(frame.value()));
-      sent = sendDmabuf(slot, *slot.copy);
+      sent = sendDmabuf(slot, *slot.copy, "widget");
     }
     (void)context.backend().makeCurrentNoSurface();
     return sent;
@@ -168,7 +168,7 @@ namespace {
       slot.dirty = false;
       bool sent = false;
       if (usesDmabufs(slot, shader)) {
-        sent = sendDmabuf(slot, shader);
+        sent = sendDmabuf(slot, shader, "shader");
       } else {
         const auto pixels = slot.server.frameBuffer(shader.width(), shader.height());
         sent = !pixels.empty() && shader.draw(0) && shader.read(0, pixels) && slot.server.sendFrame();
