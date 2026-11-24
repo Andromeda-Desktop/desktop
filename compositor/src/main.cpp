@@ -7,6 +7,7 @@
 #include "core/build_info.h"
 #include "core/fdlimit.h"
 #include "core/log.h"
+#include "core/log_wlr.h"
 #include "core/process.h"
 #include "core/scanout_keeper.h"
 #include "protocols/heap.h"
@@ -460,7 +461,10 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
-  initLogFile();
+#ifndef NDEBUG
+  setLogLevel(LogLevel::Debug);
+#endif
+  initLogFile("andromeda.log", TtyStdio::Redirect);
   andromeda::crash::install(
       "andromeda", std::format("{} ({})", andromeda::build_info::version(), andromeda::build_info::revision())
   );

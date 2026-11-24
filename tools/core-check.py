@@ -88,6 +88,8 @@ RULES = {
                      "PrepareForSleep, the compositor only as the fallback without System1", CPP_DIRS, CPP + (".rs",),
                      r"\"PrepareForSleep\"|receive_prepare_for_sleep", ("system/crates/andromeda-system/src/login.rs",
                                           "compositor/src/server/sleep_watch.cpp")),
+    "log-owner": ("one logger: protocol/log.{h,cpp}; binaries supply only log_platform hooks (the compositor also its "
+                  "wlr bridge)", CPP_DIRS, CPP, r"\bvoid\s+logMessage\s*\(\s*LogLevel[^;]*\)\s*\{", ()),
     "notify-client": ("apps send notifications through AppNotifier (libdesk-app), system crates through "
                       "andromeda_rt::notify; the shell serves them", CPP_DIRS, CPP + (".rs",),
                       r"callMethod(Async)?\(\"(Notify|CloseNotification)\"\)|\"(Notify|CloseNotification)\",",

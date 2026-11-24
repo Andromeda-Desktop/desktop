@@ -9,9 +9,9 @@ source "$(dirname "$0")/lib.sh"
 boot_headless 1
 
 SRC=$ROOT/shell
-g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-system/src" -I"$ROOT/libdesk-ui/src" -o "$RUNTIME/locale-set" \
+g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-system/src" -I"$ROOT/libdesk-ui/src" -I"$ROOT/libdesk-ui" -o "$RUNTIME/locale-set" \
   "$(dirname "$0")/locale_set.cpp" "$ROOT/libdesk-system/src/dbus/locale/locale_service.cpp" "$ROOT/libdesk-system/src/dbus/system_bus.cpp" \
-  "$ROOT/libdesk-ui/src/core/log.cpp" -lsdbus-c++
+  "$ROOT/libdesk-system/src/dbus/name_owner_watch.cpp" "$ROOT/protocol/log.cpp" "$ROOT/tests/e2e/log_platform_none.cpp" -lsdbus-c++ -lsystemd
 
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_locale1.py"
 with_noctalia '

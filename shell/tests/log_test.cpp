@@ -67,7 +67,7 @@ namespace {
       return false;
     }
 
-    initLogFile();
+    initLogFile("shell/noctalia.log");
     logWarn("{}", std::string(10'000, 'x'));
     flushLogs();
 
@@ -107,7 +107,7 @@ namespace {
       out.write(tail.data(), static_cast<std::streamsize>(tail.size()));
     }
 
-    initLogFile();
+    initLogFile("shell/noctalia.log");
     logWarn("rotate-now");
     flushLogs();
 
@@ -125,6 +125,33 @@ namespace {
     return ok;
   }
 
+  // A run of one message writes it once, then the count when a different message ends the run.
+  bool collapsesRepeats() {
+    const auto cacheRoot = makeTempRoot("noctalia-log-repeat");
+    if (!expect(useCacheHome(cacheRoot), "failed to set XDG_CACHE_HOME")) {
+      return false;
+    }
+
+    initLogFile("shell/noctalia.log");
+    for (int i = 0; i < 5; ++i) {
+      logWarn("same fault");
+    }
+    logWarn("other fault");
+    flushLogs();
+
+    const std::string log = readFile(cacheRoot / "andromeda" / "shell" / "noctalia.log");
+    std::size_t copies = 0;
+    for (std::size_t at = log.find("same fault"); at != std::string::npos; at = log.find("same fault", at + 1)) {
+      ++copies;
+    }
+    bool ok = expect(copies == 1, "a repeated message was written more than once");
+    ok = expect(log.contains("last message repeated 4 times"), "missing repeat count") && ok;
+    ok = expect(log.find("repeated 4 times") < log.find("other fault"), "repeat count after the next message") && ok;
+
+    std::filesystem::remove_all(cacheRoot);
+    return ok;
+  }
+
 } // namespace
 
 int main() {
@@ -135,5 +162,6 @@ int main() {
   ok = readsLogLevelEnvironment() && ok;
   ok = writesCappedLogLines() && ok;
   ok = rotatesWhileRunning() && ok;
+  ok = collapsesRepeats() && ok;
   return ok ? 0 : 1;
 }

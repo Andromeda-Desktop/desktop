@@ -339,7 +339,7 @@ Application::~Application() {
 }
 
 void Application::run(const std::function<void()>& startupReadyCallback) {
-  initLogFile();
+  initLogFile("shell/noctalia.log");
   andromeda::crash::install("andromeda-shell", noctalia::build_info::displayVersion());
   initLogLevelFromEnvironment();
   kLog.info("noctalia {}", noctalia::build_info::displayVersion());

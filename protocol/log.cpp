@@ -1,21 +1,18 @@
-#include "core/log.h"
-
-#include "protocols/crash_capture.h"
+#include "log.h"
 
 #include <algorithm>
-#include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
-#include <cstdarg>
+#include <format>
 #include <cstdint>
-#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <csignal>
 #include <fcntl.h>
 #include <filesystem>
-#include <format>
 #include <mutex>
 #include <poll.h>
 #include <pthread.h>
@@ -24,21 +21,18 @@
 #include <thread>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <utility>
 
 namespace {
 
-#ifdef NDEBUG
   LogLevel gMinLevel = LogLevel::Info;
-#else
-  LogLevel gMinLevel = LogLevel::Debug;
-#endif
-
   FILE* gLogFile = nullptr;
-  // gLogMutex: the log file (writer thread, init). gStateMutex: the callers' repeat state; the main thread never
-  // takes gLogMutex, so a writer blocked in I/O cannot block it.
+  // gLogMutex: the level, console switch and repeat state (callers). gFileMutex: the log file (writer thread, init).
+  // Callers never take gFileMutex, so a writer blocked in I/O cannot block them.
   std::mutex gLogMutex;
-  std::mutex gStateMutex;
-  bool gFileEnabled = false;
+  std::mutex gFileMutex;
+  std::atomic<bool> gFileEnabled{false};
+  std::atomic<LogSink> gLogSink{nullptr};
   std::string gLogPath;
   std::string gBackupLogPath;
   std::uintmax_t gLogSizeBytes = 0;
@@ -51,14 +45,20 @@ namespace {
   constexpr std::size_t kMaxLogLineBytes = 8 * 1024;    // 8 KiB
   constexpr std::size_t kBufferedFileLogFlushLines = 64;
   constexpr auto kBufferedFileLogFlushInterval = std::chrono::milliseconds(500);
+  constexpr const char* kLogLevelEnv = "ANDROMEDA_LOG_LEVEL";
 
-  // Collapse runs of an identical message and report the count once the run ends: a per-frame failure can emit
-  // thousands of lines per second, and synchronous VT writes at that rate stall the main loop.
+  // A run of one message collapses into a count, reported when the run ends; one copy passes per window, so a
+  // persistent fault stays visible. A per-frame failure can log thousands of lines a second.
   constexpr auto kRepeatWindow = std::chrono::seconds(1);
+  std::string gLastMessage;
+  const char* gLastSection = nullptr;
+  LogLevel gLastLevel = LogLevel::Debug;
+  std::size_t gSuppressedRepeats = 0;
+  std::chrono::steady_clock::time_point gRepeatWindowStart{};
 
   // Every write runs on one writer thread: a write to the journal or the log file can block for seconds under disk
-  // writeback throttling or a busy journald, and on the main thread that froze the frame loop and the cursor. The
-  // main thread only queues lines; past this budget it drops them and the writer reports the count.
+  // writeback throttling or a busy journald, and on the main thread that froze the UI. Callers only queue lines;
+  // past this budget they drop them and the writer reports the count.
   constexpr std::size_t kMaxQueuedBytes = 4 * 1024 * 1024;
 
   struct QueuedLine {
@@ -69,22 +69,19 @@ namespace {
 
   std::mutex gQueueMutex;
   std::condition_variable gQueueReady;
+  std::condition_variable gQueueDrained;
+  bool gWriterBusy = false;
   std::deque<QueuedLine> gQueue;
   std::size_t gQueuedBytes = 0;
   std::size_t gDroppedLines = 0;
+  std::size_t gSkippedConsoleLines = 0;
   bool gWriterStop = false;
   bool gWriterRunning = false;
   // Set by the exit join: later lines (static destructors, other threads) are written in place.
   bool gWriterShutDown = false;
-  // A forked child has no writer thread; it writes in place, as it did before the writer existed.
+  // A forked child has no writer thread; it writes in place.
   bool gInForkedChild = false;
   std::thread gWriter;
-
-  std::string gLastMessage;
-  const char* gLastSection = nullptr;
-  LogLevel gLastLevel = LogLevel::Debug;
-  std::size_t gSuppressedRepeats = 0;
-  std::chrono::steady_clock::time_point gRepeatWindowStart{};
 
   struct CappedLogMessage {
     std::string storage;
@@ -175,11 +172,38 @@ namespace {
     return std::min(static_cast<std::size_t>(length), bufferSize - 1);
   }
 
-  std::string consolePrefix(const std::tm& tm, long msec, LogLevel level, const char* section) {
+  // The sd-daemon level prefix when stderr is the journal stream ($JOURNAL_STREAM is its "dev:inode"), so journald
+  // stores the line's real priority instead of 6.
+  const char* journalLevelPrefix(LogLevel level) {
+    static const bool toJournal = [] {
+      const char* stream = std::getenv("JOURNAL_STREAM");
+      struct stat st{};
+      return stream != nullptr && fstat(STDERR_FILENO, &st) == 0
+          && std::format("{}:{}", st.st_dev, st.st_ino) == stream;
+    }();
+    if (!toJournal) {
+      return "";
+    }
+    switch (level) {
+    case LogLevel::Debug:
+      return "<7>";
+    case LogLevel::Info:
+      return "<6>";
+    case LogLevel::Warn:
+      return "<4>";
+    case LogLevel::Error:
+      return "<3>";
+    }
+    return "";
+  }
+
+  std::string consolePrefix(const std::tm& tm, const std::timespec& ts, LogLevel level, const char* section) {
     char buffer[96];
     const int length = std::snprintf(
-        buffer, sizeof(buffer), "%02d:%02d:%02d.%03ld [%s]", tm.tm_hour, tm.tm_min, tm.tm_sec, msec, levelTagAnsi(level)
+        buffer, sizeof(buffer), "%02d:%02d:%02d.%03ld [%s]", tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec / 1'000'000,
+        levelTagAnsi(level)
     );
+
     std::string prefix(buffer, formattedPrefixLength(length, sizeof(buffer)));
     if (section != nullptr && section[0] != '\0') {
       prefix += " [\033[34m";
@@ -190,12 +214,13 @@ namespace {
     return prefix;
   }
 
-  std::string filePrefix(const std::tm& tm, long msec, LogLevel level, const char* section) {
+  std::string filePrefix(const std::tm& tm, const std::timespec& ts, LogLevel level, const char* section) {
     char buffer[128];
     const int length = std::snprintf(
         buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d.%03ld [%s]", tm.tm_year + 1900, tm.tm_mon + 1,
-        tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, msec, levelTagPlain(level)
+        tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec / 1'000'000, levelTagPlain(level)
     );
+
     std::string prefix(buffer, formattedPrefixLength(length, sizeof(buffer)));
     if (section != nullptr && section[0] != '\0') {
       prefix += " [";
@@ -219,14 +244,6 @@ namespace {
     std::fflush(gLogFile);
     gBufferedFileLogLines = 0;
     gLastFileFlushAt = std::chrono::steady_clock::now();
-  }
-
-  void stopWriter();
-
-  void flushLogFileAtExit() {
-    stopWriter();
-    std::scoped_lock lock(gLogMutex);
-    flushLogFileUnlocked();
   }
 
   void closeLogFileUnlocked() {
@@ -274,60 +291,6 @@ namespace {
     openLogFileUnlocked();
   }
 
-  void writeQueuedLine(const QueuedLine& line);
-  void queueLine(QueuedLine line);
-
-  // The sd-daemon level prefix when stderr is the journal stream ($JOURNAL_STREAM is its "dev:inode"), so journald
-  // stores the line's real priority instead of 6.
-  const char* journalLevelPrefix(LogLevel level) {
-    static const bool toJournal = [] {
-      const char* stream = std::getenv("JOURNAL_STREAM");
-      struct stat st{};
-      return stream != nullptr && fstat(STDERR_FILENO, &st) == 0
-          && std::format("{}:{}", st.st_dev, st.st_ino) == stream;
-    }();
-    if (!toJournal) {
-      return "";
-    }
-    switch (level) {
-    case LogLevel::Debug:
-      return "<7>";
-    case LogLevel::Info:
-      return "<6>";
-    case LogLevel::Warn:
-      return "<4>";
-    case LogLevel::Error:
-      return "<3>";
-    }
-    return "";
-  }
-
-  void emitUnlocked(LogLevel level, const char* section, std::string_view msg, const std::tm& tm, long msec) {
-    QueuedLine line;
-    // Console: respects gMinLevel, ANSI colours, time only
-    if (gConsoleEnabled && level >= gMinLevel) {
-      const std::string prefix = consolePrefix(tm, msec, level, section);
-      const CappedLogMessage capped = capMessageForLine(msg, prefix.size());
-      line.console = journalLevelPrefix(level);
-      line.console += prefix;
-      line.console += capped.text();
-      line.console += '\n';
-    }
-
-    // File: always unfiltered, no ANSI, full date for context
-    if (gFileEnabled) {
-      const std::string prefix = filePrefix(tm, msec, level, section);
-      const CappedLogMessage capped = capMessageForLine(msg, prefix.size());
-      line.file = prefix;
-      line.file += capped.text();
-      line.file += '\n';
-      line.flush = level >= LogLevel::Warn;
-    }
-    queueLine(std::move(line));
-  }
-
-  std::size_t gSkippedConsoleLines = 0;
-
   // The console is the journal stream or a pipe: when it is full, skip the line rather than wait, so the log file
   // (written first) keeps going. A child shares stderr's file description, so it cannot be set O_NONBLOCK.
   void writeConsole(const std::string& line) {
@@ -347,10 +310,10 @@ namespace {
     (void)!::write(STDERR_FILENO, line.data(), line.size());
   }
 
-  // Runs on the writer thread, or in place in a forked child; gLogMutex guards the file state.
+  // Runs on the writer thread, or in place in a forked child.
   void writeQueuedLine(const QueuedLine& line) {
     if (!line.file.empty()) {
-      std::scoped_lock lock(gLogMutex);
+      std::scoped_lock lock(gFileMutex);
       if (gLogFile != nullptr) {
         if (gLogSizeBytes > 0 && gLogSizeBytes + line.file.size() > kMaxLogBytes) {
           rotateLogFileUnlocked();
@@ -372,8 +335,7 @@ namespace {
   }
 
   void writerMain() {
-    pthread_setname_np(pthread_self(), "andro-log");
-    andromeda::crash::installThreadStack();
+    log_platform::writerThreadStarted();
     std::unique_lock lock(gQueueMutex);
     while (true) {
       gQueueReady.wait(lock, [] { return gWriterStop || !gQueue.empty(); });
@@ -384,6 +346,7 @@ namespace {
       gQueue.pop_front();
       gQueuedBytes -= line.console.size() + line.file.size();
       const std::size_t dropped = std::exchange(gDroppedLines, 0);
+      gWriterBusy = true;
       lock.unlock();
       if (dropped > 0) {
         const std::string note = std::format("[log] {} lines dropped: the log writer fell behind\n", dropped);
@@ -391,7 +354,27 @@ namespace {
       }
       writeQueuedLine(line);
       lock.lock();
+      gWriterBusy = false;
+      if (gQueue.empty()) {
+        gQueueDrained.notify_all();
+      }
     }
+  }
+
+  void stopWriter() {
+    {
+      std::scoped_lock lock(gQueueMutex);
+      if (!gWriterRunning) {
+        return;
+      }
+      gWriterStop = true;
+    }
+    gQueueReady.notify_one();
+    gWriter.join();
+    std::scoped_lock lock(gQueueMutex);
+    gWriterRunning = false;
+    gWriterStop = false;
+    gWriterShutDown = true;
   }
 
   void queueLine(QueuedLine line) {
@@ -429,79 +412,42 @@ namespace {
     gQueueReady.notify_one();
   }
 
-  void stopWriter() {
-    {
-      std::scoped_lock lock(gQueueMutex);
-      if (!gWriterRunning) {
-        return;
-      }
-      gWriterStop = true;
-    }
-    gQueueReady.notify_one();
-    gWriter.join();
-    std::scoped_lock lock(gQueueMutex);
-    gWriterRunning = false;
-    gWriterStop = false;
-    gWriterShutDown = true;
+  void flushLogFileAtExit() {
+    stopWriter();
+    std::scoped_lock lock(gFileMutex);
+    flushLogFileUnlocked();
   }
 
-  // gLogMutex is not taken: the writer holds it during disk I/O, and fork() must not wait for that. The child may
+  // gFileMutex is not taken: the writer holds it during disk I/O, and fork() must not wait for that. The child may
   // inherit it locked, so it never touches the file: it logs to the console only.
   void prepareFork() {
-    gStateMutex.lock();
+    gLogMutex.lock();
     gQueueMutex.lock();
   }
 
   void afterForkParent() {
     gQueueMutex.unlock();
-    gStateMutex.unlock();
+    gLogMutex.unlock();
   }
 
   void afterForkChild() {
     gQueueMutex.unlock();
-    gStateMutex.unlock();
+    gLogMutex.unlock();
     gInForkedChild = true;
-    gFileEnabled = false;
+    gFileEnabled.store(false, std::memory_order_relaxed);
   }
 
   [[maybe_unused]] const bool gForkHandlers = pthread_atfork(prepareFork, afterForkParent, afterForkChild) == 0;
 
-  // Emits the pending "repeated N times" summary, if any.
-  void flushRepeatsUnlocked(const std::tm& tm, long msec) {
-    if (gSuppressedRepeats == 0) {
-      return;
-    }
-    const std::size_t count = gSuppressedRepeats;
-    gSuppressedRepeats = 0;
-    emitUnlocked(gLastLevel, gLastSection, std::format("last message repeated {} times", count), tm, msec);
-  }
-
-  [[nodiscard]] std::string resolveCacheDir() {
-    const char* cacheHome = std::getenv("XDG_CACHE_HOME");
-    const char* home = std::getenv("HOME");
-    if (cacheHome != nullptr && cacheHome[0] != '\0') {
-      return std::string(cacheHome) + "/andromeda";
-    }
-    if (home != nullptr && home[0] != '\0') {
-      return std::string(home) + "/.cache/andromeda";
-    }
-    return {};
-  }
-
-  // If fd 1 or fd 2 points at a TTY (greetd wires them to /dev/tty1), replace them with an append-mode file inside
-  // `cacheDir` (or /dev/null if `cacheDir` is empty): synchronous VT writes on the main thread can turn a per-frame
-  // wlroots error into a hard livelock.
-  void redirectStdioIfTty(const std::string& cacheDir) {
+  void redirectStdioIfTty(const std::filesystem::path& dir) {
     const bool stdoutIsTty = isatty(STDOUT_FILENO) != 0;
     const bool stderrIsTty = isatty(STDERR_FILENO) != 0;
     if (!stdoutIsTty && !stderrIsTty) {
       return;
     }
-
     int fd = -1;
-    if (!cacheDir.empty()) {
-      const std::string path = cacheDir + "/andromeda-stderr.log";
-      fd = ::open(path.c_str(), O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0644);
+    if (!dir.empty()) {
+      fd = ::open((dir / "andromeda-stderr.log").c_str(), O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0644);
     }
     if (fd < 0) {
       fd = ::open("/dev/null", O_WRONLY | O_CLOEXEC);
@@ -509,9 +455,7 @@ namespace {
     if (fd < 0) {
       return;
     }
-
-    // dup2 leaves the target fd without O_CLOEXEC, which is what we want:
-    // spawned children inherit the redirected stderr instead of /dev/tty1.
+    // dup2 clears O_CLOEXEC on the target, so spawned children inherit the redirect instead of the TTY.
     if (stdoutIsTty) {
       (void)::dup2(fd, STDOUT_FILENO);
     }
@@ -521,84 +465,40 @@ namespace {
     ::close(fd);
   }
 
-} // namespace
-
-void initLogFile() {
-  std::error_code ec;
-  const std::string dir = resolveCacheDir();
-  if (!dir.empty()) {
-    std::filesystem::create_directories(dir, ec);
-    if (ec) {
-      // Directory unavailable; still redirect fd 1/2 so raw writes don't hit the VT. redirectStdioIfTty falls back to
-      // /dev/null when its path is empty.
-      redirectStdioIfTty({});
+  void emit(LogLevel level, const char* section, std::string_view msg, const std::tm& tm, const std::timespec& ts,
+            LogLevel minLevel, bool console) {
+    log_platform::breadcrumb("DIWE"[static_cast<int>(level)], section, msg);
+    if (LogSink sink = gLogSink.load(std::memory_order_acquire); sink != nullptr) {
+      if (level >= minLevel) {
+        sink(level, section, msg);
+      }
       return;
     }
-  }
-
-  redirectStdioIfTty(dir);
-
-  if (dir.empty()) {
-    return;
-  }
-
-  const std::string logPath = dir + "/andromeda.log";
-  const std::string backupPath = dir + "/andromeda.log.1";
-
-  std::scoped_lock lock(gLogMutex);
-  closeLogFileUnlocked();
-  gLogPath = logPath;
-  gBackupLogPath = backupPath;
-
-  const auto size = std::filesystem::file_size(gLogPath, ec);
-  if (!ec && size > kMaxLogBytes) {
-    rotateLogFileUnlocked();
-  } else {
-    openLogFileUnlocked();
-  }
-
-  if (gLogFile != nullptr && !gRegisteredExitFlush) {
-    (void)std::atexit(flushLogFileAtExit);
-    gRegisteredExitFlush = true;
-  }
-  std::scoped_lock stateLock(gStateMutex);
-  gFileEnabled = gLogFile != nullptr;
-}
-
-namespace detail {
-
-  void logMessage(LogLevel level, const char* section, std::string_view msg) {
-    std::timespec ts{};
-    std::timespec_get(&ts, TIME_UTC);
-    std::tm tm{};
-    localtime_r(&ts.tv_sec, &tm);
-    const long msec = ts.tv_nsec / 1'000'000;
-
-    std::scoped_lock lock(gStateMutex);
-
-    const auto now = std::chrono::steady_clock::now();
-    if (msg == gLastMessage && section == gLastSection && level == gLastLevel) {
-      // Identical to the previous line: swallow it, but let one through per
-      // window so a persistent fault stays visible without stalling the caller.
-      if (now - gRepeatWindowStart < kRepeatWindow) {
-        ++gSuppressedRepeats;
-        return;
-      }
-      flushRepeatsUnlocked(tm, msec);
-      gRepeatWindowStart = now;
-    } else {
-      flushRepeatsUnlocked(tm, msec);
-      gLastMessage.assign(msg);
-      gLastSection = section;
-      gLastLevel = level;
-      gRepeatWindowStart = now;
+    QueuedLine line;
+    // Console: respects the level, ANSI colours, time only
+    if (console && level >= minLevel) {
+      const std::string prefix = consolePrefix(tm, ts, level, section);
+      const CappedLogMessage capped = capMessageForLine(msg, prefix.size());
+      line.console = journalLevelPrefix(level);
+      line.console += prefix;
+      line.console += capped.text();
+      line.console += '\n';
     }
-
-    andromeda::crash::record("DIWE"[static_cast<int>(level)], section, msg);
-    emitUnlocked(level, section, msg, tm, msec);
+    // File: every level, no ANSI, full date
+    if (gFileEnabled.load(std::memory_order_acquire)) {
+      const std::string prefix = filePrefix(tm, ts, level, section);
+      const CappedLogMessage capped = capMessageForLine(msg, prefix.size());
+      line.file = prefix;
+      line.file += capped.text();
+      line.file += '\n';
+      line.flush = level >= LogLevel::Warn;
+    }
+    if (!line.console.empty() || !line.file.empty()) {
+      queueLine(std::move(line));
+    }
   }
 
-} // namespace detail
+} // namespace
 
 std::string_view logLevelName(LogLevel level) {
   switch (level) {
@@ -615,79 +515,145 @@ std::string_view logLevelName(LogLevel level) {
 }
 
 std::optional<LogLevel> parseLogLevel(std::string_view value) {
-  for (const LogLevel level : {LogLevel::Debug, LogLevel::Info, LogLevel::Warn, LogLevel::Error}) {
-    if (value == logLevelName(level)) {
-      return level;
-    }
+  if (value == "debug") {
+    return LogLevel::Debug;
+  }
+  if (value == "info") {
+    return LogLevel::Info;
+  }
+  if (value == "warn") {
+    return LogLevel::Warn;
+  }
+  if (value == "error") {
+    return LogLevel::Error;
   }
   return std::nullopt;
 }
 
+void initLogFile(std::string_view name, TtyStdio stdio) {
+  const char* cacheHome = std::getenv("XDG_CACHE_HOME");
+  const char* home = std::getenv("HOME");
+  std::filesystem::path logPath;
+  if (cacheHome != nullptr && cacheHome[0] != '\0') {
+    logPath = std::filesystem::path(cacheHome) / "andromeda" / name;
+  } else if (home != nullptr && home[0] != '\0') {
+    logPath = std::filesystem::path(home) / ".cache/andromeda" / name;
+  }
+  std::error_code ec;
+  if (!logPath.empty()) {
+    std::filesystem::create_directories(logPath.parent_path(), ec);
+  }
+  const bool haveDir = !logPath.empty() && !ec;
+  if (stdio == TtyStdio::Redirect) {
+    redirectStdioIfTty(haveDir ? logPath.parent_path() : std::filesystem::path());
+  }
+  if (!haveDir) {
+    return;
+  }
+  const std::string backupPath = logPath.string() + ".1";
+
+  std::scoped_lock lock(gFileMutex);
+  closeLogFileUnlocked();
+  gLogPath = logPath.string();
+  gBackupLogPath = backupPath;
+
+  const auto size = std::filesystem::file_size(gLogPath, ec);
+  if (!ec && size > kMaxLogBytes) {
+    rotateLogFileUnlocked();
+  } else {
+    openLogFileUnlocked();
+  }
+
+  if (gLogFile != nullptr && !gRegisteredExitFlush) {
+    (void)std::atexit(flushLogFileAtExit);
+    gRegisteredExitFlush = true;
+  }
+  gFileEnabled.store(gLogFile != nullptr, std::memory_order_release);
+}
+
+void flushLogs() {
+  {
+    std::unique_lock lock(gQueueMutex);
+    gQueueDrained.wait(lock, [] { return !gWriterRunning || (gQueue.empty() && !gWriterBusy); });
+  }
+  std::scoped_lock lock(gFileMutex);
+  flushLogFileUnlocked();
+}
+
+namespace detail {
+
+  void logMessage(LogLevel level, const char* section, std::string_view msg) {
+    std::timespec ts{};
+    std::timespec_get(&ts, TIME_UTC);
+    std::tm tm{};
+    localtime_r(&ts.tv_sec, &tm);
+
+    struct Repeats {
+      LogLevel level;
+      const char* section;
+      std::size_t count;
+    };
+    std::optional<Repeats> repeats;
+    LogLevel minLevel = LogLevel::Info;
+    bool console = true;
+    {
+      std::scoped_lock lock(gLogMutex);
+      minLevel = gMinLevel;
+      console = gConsoleEnabled;
+      const auto now = std::chrono::steady_clock::now();
+      const bool same = msg == gLastMessage && section == gLastSection && level == gLastLevel;
+      if (same && now - gRepeatWindowStart < kRepeatWindow) {
+        ++gSuppressedRepeats;
+        return;
+      }
+      if (gSuppressedRepeats > 0) {
+        repeats = Repeats{gLastLevel, gLastSection, std::exchange(gSuppressedRepeats, 0)};
+      }
+      if (!same) {
+        gLastMessage.assign(msg);
+        gLastSection = section;
+        gLastLevel = level;
+      }
+      gRepeatWindowStart = now;
+    }
+    if (repeats) {
+      emit(repeats->level, repeats->section, std::format("last message repeated {} times", repeats->count), tm, ts,
+           minLevel, console);
+    }
+    emit(level, section, msg, tm, ts, minLevel, console);
+  }
+
+} // namespace detail
+
+void setLogSink(LogSink sink) { gLogSink.store(sink, std::memory_order_release); }
+
+void setConsoleLogging(bool enabled) {
+  std::scoped_lock lock(gLogMutex);
+  gConsoleEnabled = enabled;
+}
+
 LogLevel currentLogLevel() {
-  std::scoped_lock lock(gStateMutex);
+  std::scoped_lock lock(gLogMutex);
   return gMinLevel;
 }
 
 void setLogLevel(LogLevel level) {
-  std::scoped_lock lock(gStateMutex);
+  std::scoped_lock lock(gLogMutex);
   gMinLevel = level;
 }
 
 void initLogLevelFromEnvironment() {
-  const char* value = std::getenv("ANDROMEDA_LOG_LEVEL");
+  const char* value = std::getenv(kLogLevelEnv);
   if (value == nullptr) {
     return;
   }
+
   const auto level = parseLogLevel(value);
   if (!level.has_value()) {
-    logWarn("invalid ANDROMEDA_LOG_LEVEL '{}'; expected debug, info, warn, or error", value);
+    logWarn("invalid {} '{}'; expected debug, info, warn, or error", kLogLevelEnv, value);
     return;
   }
+
   setLogLevel(*level);
   logInfo("log level set to {}", logLevelName(*level));
-}
-
-void setConsoleLogging(bool enabled) {
-  std::scoped_lock lock(gStateMutex);
-  gConsoleEnabled = enabled;
-}
-
-void wlrLogHandler(enum wlr_log_importance importance, const char* fmt, va_list args) {
-  // wlroots only applies the wlr_log_init verbosity in its default stderr
-  // logger; a custom callback receives every message, WLR_DEBUG included.
-  if (importance > wlr_log_get_verbosity()) {
-    return;
-  }
-  LogLevel level = LogLevel::Debug;
-  switch (importance) {
-  case WLR_ERROR:
-    level = LogLevel::Error;
-    break;
-  case WLR_INFO:
-    level = LogLevel::Info;
-    break;
-  default:
-    level = LogLevel::Debug;
-    break;
-  }
-
-  // wlroots hands us a printf format plus varargs; render once into a fixed
-  // buffer (truncation is fine, the logger caps line length anyway).
-  std::array<char, 1024> buffer{};
-  va_list copy;
-  va_copy(copy, args);
-  const int written = std::vsnprintf(buffer.data(), buffer.size(), fmt, copy);
-  va_end(copy);
-  if (written < 0) {
-    return;
-  }
-
-  const auto length = std::min(static_cast<std::size_t>(written), buffer.size() - 1);
-  const std::string_view message(buffer.data(), length);
-  // EBUSY: xe completes an unused plane's previous commit just after the page-flip event, and libliftoff puts every
-  // plane in each commit. Output::commitState retries it and logs a summary when a retry gives up.
-  if (level == LogLevel::Error && message.ends_with("Atomic commit failed: Device or resource busy")) {
-    level = LogLevel::Debug;
-  }
-  detail::logMessage(level, "wlr", message);
 }
