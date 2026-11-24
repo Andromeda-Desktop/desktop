@@ -72,7 +72,7 @@ namespace {
     bg->setVisible(true);
     bg->setPosition(rect.x, rect.y);
     bg->setSize(rect.w, rect.h);
-    bg->setStyle(RoundedRectStyle{.fill = kRegular, .border = kStroke, .radius = Tokens::radiusR16 * s, .borderWidth = 0.5F * s});
+    bg->setStyle(RoundedRectStyle{.fill = kRegular, .border = kStroke, .radius = Style::scaledRadius(Tokens::radiusR16, s), .borderWidth = 0.5F * s});
   }
 
   // "now" within a minute, else the local hour and minute.
@@ -392,11 +392,11 @@ void LockCards::layoutMediaCard(Renderer& renderer, Card& card, const AuthRect& 
   if (showArt) {
     card.image->setPosition(rect.x + pad, artY);
     card.image->setSize(art, art);
-    card.image->setRadius(Tokens::radiusR8 * s);
+    card.image->setRadius(Style::scaledRadius(Tokens::radiusR8, s));
   } else {
     card.tile->setPosition(rect.x + pad, artY);
     card.tile->setSize(art, art);
-    card.tile->setStyle(RoundedRectStyle{.fill = kFill2, .radius = Tokens::radiusR8 * s});
+    card.tile->setStyle(RoundedRectStyle{.fill = kFill2, .radius = Style::scaledRadius(Tokens::radiusR8, s)});
     card.glyph->setGlyph("music");
     card.glyph->setGlyphSize(20.0F * s);
     card.glyph->setColor(kLabel2);

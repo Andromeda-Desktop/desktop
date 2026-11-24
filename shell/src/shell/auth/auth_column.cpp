@@ -415,7 +415,7 @@ void AuthColumn::layout(Renderer& renderer, const AuthPlacement& place, float sw
     const float cardY = snap(avatarY - 32.0F * s - cardH);
     m_card->setPosition(cardX, cardY);
     m_card->setSize(cardW, cardH);
-    m_card->setStyle(RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Tokens::radiusR24 * s, .borderWidth = 0.5F * s});
+    m_card->setStyle(RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Style::scaledRadius(Tokens::radiusR24, s), .borderWidth = 0.5F * s});
     m_cardGlyph->setGlyph("device-mobile");
     m_cardGlyph->setGlyphSize(24.0F * s);
     m_cardGlyph->setColor(kLabel1);
@@ -779,7 +779,7 @@ void AuthColumn::applySheet() {
   m_columnGroup->setTransformOrigin(sheet.x + sheet.w * 0.5F, sheet.y + sheet.h * 0.5F);
   m_columnGroup->setScale(k);
   const float s = sheet.w / 360.0F;
-  m_sheet->setStyle(RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Tokens::radiusR28 * s, .borderWidth = 0.5F * s});
+  m_sheet->setStyle(RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Style::scaledRadius(Tokens::radiusR28, s), .borderWidth = 0.5F * s});
   m_columnGroup->setOpacity(t);
   m_columnGroup->setVisible(t > 0.0F);
   m_glanceGroup->setOpacity(1.0F - 0.6F * t);
@@ -874,7 +874,7 @@ void AuthColumn::layoutAccounts(Renderer& renderer, float cx, float bottom, floa
     item.fill->setPosition(snap(x), y);
     item.fill->setSize(snap(w), snap(itemH));
     item.fill->setStyle(RoundedRectStyle{.fill = rgba(1.0F, 1.0F, 1.0F, on ? Tokens::componentLockRowSelected : 0.0F),
-                                         .radius = Tokens::radiusR20 * s});
+                                         .radius = Style::scaledRadius(Tokens::radiusR20, s)});
     const float ax = snap(mid - avatar * 0.5F);
     const float ay = snap(y + pad);
     item.avatar->setPosition(ax, ay);

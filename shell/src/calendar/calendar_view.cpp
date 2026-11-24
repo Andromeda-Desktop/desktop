@@ -448,7 +448,7 @@ namespace calendar_view {
            .justify = FlexJustify::Start,
            .gap = Style::spaceSm * scale,
            .paddingV = Style::spaceXs * scale,
-           .radius = Tokens::radiusR8 * scale},
+           .radius = Style::scaledRadius(Tokens::radiusR8, scale)},
           ui::glyph({
               .out = &glyph,
               .glyph = expanded ? "chevron-up" : "chevron-down",
@@ -628,7 +628,7 @@ namespace calendar_view {
           area->setTooltip(link);
 
           Flex* row = eventRow;
-          row->setRadius(Tokens::radiusR8 * options.scale);
+          row->setRadius(Style::scaledRadius(Tokens::radiusR8, options.scale));
           const auto setHovered = [row, titleLabel, timeLabel, linkGlyph, eventAlpha,
                                    requestRedraw = options.requestRedraw](bool hovered) {
             if (hovered) {

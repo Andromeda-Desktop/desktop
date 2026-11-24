@@ -286,8 +286,8 @@ std::unique_ptr<Flex> QuickPage::makeCard(bool badged) {
   } else {
     card->setFill(Color{0.0F, 0.0F, 0.0F, 0.0F});
   }
-  card->setRadius(Tokens::componentTileRadius * s);
-  card->setGlassPiece(Tokens::componentTileRadius * s);
+  card->setRadius(Style::scaledRadius(Tokens::componentTileRadius, s));
+  card->setGlassPiece(Style::scaledRadius(Tokens::componentTileRadius, s));
   card->setPadding(Tokens::componentTilePadding * s);
   card->setGap(Tokens::componentTileGap * s);
   card->setJustify(FlexJustify::Center);
@@ -299,7 +299,7 @@ void QuickPage::addSingleRow(Flex& card, std::unique_ptr<Button> row) {
   const float s = contentScale();
   card.setPadding(0.0F);
   row->setPadding(Tokens::componentTilePadding * s);
-  row->setRadius(Tokens::componentTileRadius * s);
+  row->setRadius(Style::scaledRadius(Tokens::componentTileRadius, s));
   row->setFlexGrow(1.0F);
   card.addChild(std::move(row));
 }
@@ -512,8 +512,8 @@ std::unique_ptr<Flex> QuickPage::makePill(
   pill->setGap(Tokens::componentSliderInset * s);
   pill->setPadding(0.0F, Tokens::componentSliderInset * s, 0.0F, Tokens::componentSliderInset * s);
   pill->setMinHeight(kPillHeight * s);
-  pill->setRadius(Tokens::componentSliderRadius * s);
-  pill->setGlassPiece(Tokens::componentSliderRadius * s);
+  pill->setRadius(Style::scaledRadius(Tokens::componentSliderRadius, s));
+  pill->setGlassPiece(Style::scaledRadius(Tokens::componentSliderRadius, s));
   if (!Style::compositorDrawsTint()) {
     pill->setFill(colorSpecFromRole(ColorRole::SliderTrack));
   }
@@ -523,7 +523,7 @@ std::unique_ptr<Flex> QuickPage::makePill(
   bar->setStep(0.01);
   bar->setControlHeight(kPillHeight * s);
   bar->setFilled(true);
-  bar->setTrackRadius(Tokens::componentSliderRadius * s);
+  bar->setTrackRadius(Style::scaledRadius(Tokens::componentSliderRadius, s));
   bar->setParticipatesInLayout(false);
   slider = bar.get();
   pill->slider = slider;
@@ -737,12 +737,12 @@ std::unique_ptr<Flex> QuickPage::create() {
   const float art = Tokens::componentMediaArt * s;
   auto artBox = std::make_unique<Flex>();
   artBox->setFill(colorSpecFromRole(ColorRole::Fill3));
-  artBox->setRadius(Tokens::componentMediaArtRadius * s);
+  artBox->setRadius(Style::scaledRadius(Tokens::componentMediaArtRadius, s));
   artBox->setMinWidth(art);
   artBox->setMinHeight(art);
   auto artImage = std::make_unique<Image>();
   artImage->setFit(ImageFit::Cover);
-  artImage->setRadius(Tokens::componentMediaArtRadius * s);
+  artImage->setRadius(Style::scaledRadius(Tokens::componentMediaArtRadius, s));
   artImage->setSize(art, art);
   artImage->setParticipatesInLayout(false);
   m_mediaArt = artImage.get();
@@ -1704,7 +1704,7 @@ void QuickPage::syncLiftShadow() {
   const float w = card->width() * scale;
   const float h = card->height() * scale;
   m_liftShadow->setVisible(true);
-  m_liftShadow->setRadius(Tokens::componentTileRadius * s * scale);
+  m_liftShadow->setRadius(Style::scaledRadius(Tokens::componentTileRadius, s) * scale);
   m_liftShadow->setPosition(
       offsetIn(card, m_editGrid, false) + (card->width() - w) * 0.5F,
       offsetIn(card, m_editGrid, true) + (card->height() - h) * 0.5F + Tokens::elevationE3.keyY * s

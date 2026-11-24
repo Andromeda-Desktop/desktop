@@ -25,6 +25,7 @@
 #include "ui/contrast.h"
 #include "ui/palette.h"
 #include "time/time_format.h"
+#include "motion/desk_motion.h"
 #include "ui/style.h"
 #include "util/string_utils.h"
 #include "platform/text_input_service.h"
@@ -789,7 +790,7 @@ namespace term {
         const float ring = Tokens::componentTerminalFindRing * m_uiScale;
         m_findRing->setStyle(RoundedRectStyle{.fill = Color{0.0F, 0.0F, 0.0F, 0.0F},
                                               .border = colorForRole(ColorRole::TermFindRing),
-                                              .radius = Radii(Tokens::componentTerminalFindHitRadius * m_uiScale + ring),
+                                              .radius = Radii(Style::scaledRadius(Tokens::componentTerminalFindHitRadius, m_uiScale) + ring),
                                               .borderWidth = ring});
         m_findRing->setPosition(static_cast<float>(cur->start.x) * cw - ring, static_cast<float>(cur->start.y) * ch - ring);
         m_findRing->setFrameSize(static_cast<float>(cur->end.x - cur->start.x + 1) * cw + 2.0F * ring, ch + 2.0F * ring);
@@ -2412,8 +2413,8 @@ namespace term {
       return;
     }
     const float v = fingerVelocity();
-    constexpr float kDeceleration = 0.998F;
-    animateScroll(m_scrollPx + v * kDeceleration / (1.0F - kDeceleration) / 1000.0F, Tokens::springPage, v, true);
+    const auto travel = static_cast<float>(desk::motion::projectedDistance(v / 1000.0F, Tokens::motionProjectionDecay));
+    animateScroll(m_scrollPx + travel, Tokens::springPage, v, true);
   }
 
   // px/s: least squares over the samples of the last 100 ms.

@@ -286,7 +286,7 @@ void LockEditorBar::layoutPanel(Renderer& renderer, float sw, float s) {
           RoundedRectStyle{
               .fill = hover ? kFill2 : kFill1,
               .border = ring ? kAccentText : kClear,
-              .radius = Tokens::radiusR16 * s,
+              .radius = Style::scaledRadius(Tokens::radiusR16, s),
               .borderWidth = ring ? (focused(Target::LayoutCard, i) && !selected ? 1.5F : 2.0F) * s : 0.0F,
           });
     // Thumbnail: where the clock and the date sit in this layout (mock section 2 Layout panel).
@@ -311,7 +311,7 @@ void LockEditorBar::layoutPanel(Renderer& renderer, float sw, float s) {
       clockY = cy + 40.0F * s;
     }
     place(card.clock, std::round(clockX), std::round(clockY), clockW, clockH,
-          RoundedRectStyle{.fill = kLabel2, .radius = Tokens::radiusR4 * s});
+          RoundedRectStyle{.fill = kLabel2, .radius = Style::scaledRadius(Tokens::radiusR4, s)});
     const float lineW = i == 3 ? 0.0F : 96.0F * s;
     card.line->setVisible(lineW > 0.0F);
     const float lineX = i == 0 ? cx + (cardW - lineW) * 0.5F : clockX;
@@ -362,7 +362,7 @@ void LockEditorBar::layoutPanel(Renderer& renderer, float sw, float s) {
 
   m_panelRect = {x, y, w, cy - y};
   place(m_panelBg, x, y, w, cy - y,
-        RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Tokens::radiusR28 * s, .borderWidth = 0.5F * s});
+        RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Style::scaledRadius(Tokens::radiusR28, s), .borderWidth = 0.5F * s});
 }
 
 LockEditorBar::Hit LockEditorBar::hitTest(float x, float y) const {

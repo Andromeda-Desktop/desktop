@@ -708,7 +708,7 @@ namespace andromeda {
       const wlr_box& full = view.box;
       // A thumb keeps the desktop's corners scaled; a frame rounds from square to r20 as the desktop zooms out.
       const int backgroundRadius =
-          static_cast<int>(std::lround(thumb ? config().appearance.cornerRadius * z : Tokens::radiusR20 * p));
+          thumb ? windowCornerRadius(z) : static_cast<int>(std::lround(Tokens::radiusR20 * p));
       const float alpha = (thumb ? thumbAlpha : static_cast<float>(m_progress)) * view.opacity;
       layoutMirrored(
           background, full, z, backgroundRadius,

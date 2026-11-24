@@ -277,7 +277,7 @@ void FileColumns::rebuildColumns() {
                              .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP24 * s,
                              .minWidth = Tokens::componentFilesPreviewWidth * s, .flexGrow = 1.0F, .visible = false});
   preview->addChild(ui::row({.out = &m_previewArt, .align = FlexAlign::Center, .justify = FlexJustify::Center,
-                             .radius = Tokens::radiusR12 * s, .clipChildren = true,
+                             .radius = Style::scaledRadius(Tokens::radiusR12, s), .clipChildren = true,
                              .width = Tokens::componentFilesPreviewArt * s, .height = Tokens::componentFilesPreviewArt * s}));
   preview->addChild(ui::label({.out = &m_previewName, .fontSize = Style::fontSizeBody * s, .fontWeight = FontWeight::SemiBold,
                                .color = colorSpecFromRole(ColorRole::Label1), .maxWidth = Tokens::componentFilesPreviewWidth * s,

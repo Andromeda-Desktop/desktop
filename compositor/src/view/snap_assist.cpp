@@ -214,7 +214,7 @@ namespace andromeda {
     moveLens(false);
     if (config().animation.enabled) {
       m_fade.snap(0.0);
-      m_fade.settleSpring(1.0, {.damping = Tokens::springFade.damping, .stiffness = Tokens::springFade.stiffness});
+      m_fade.settleSpring(1.0, motionSpring(Tokens::springFade));
       if (m_output != nullptr) {
         Output::requestFrameOn(m_output);
       }
@@ -442,8 +442,8 @@ namespace andromeda {
     // Rulebook 7.6 P1: the edge facing the target leads on snap and the far edge trails, so the lens stretches toward
     // the target and settles. Reduced motion (7.8): the lens jumps.
     const bool travel = animate && anim.enabled && !config().appearance.reduceMotion;
-    const SpringConfig snap{.damping = Tokens::springSnap.damping, .stiffness = Tokens::springSnap.stiffness};
-    const SpringConfig trail{.damping = Tokens::springTrail.damping, .stiffness = Tokens::springTrail.stiffness};
+    const SpringConfig snap = motionSpring(Tokens::springSnap);
+    const SpringConfig trail = motionSpring(Tokens::springTrail);
     for (size_t axis = 0; axis < 2; ++axis) {
       AnimatedValue& low = m_lensBox[axis];
       AnimatedValue& high = m_lensBox[axis + 2];
@@ -518,7 +518,7 @@ namespace andromeda {
         card->commit.disconnect();
       }
       m_fade.settleSpring(
-          0.0, {.damping = Tokens::springFadeOut.damping, .stiffness = Tokens::springFadeOut.stiffness}
+          0.0, motionSpring(Tokens::springFadeOut)
       );
       if (m_output != nullptr) {
         Output::requestFrameOn(m_output);

@@ -2646,7 +2646,7 @@ void PanelManager::applyDetachedReveal(float progress) {
 
 float PanelManager::panelRadius() const {
   const float scale = m_activePanel != nullptr ? m_activePanel->contentScale() : 1.0F;
-  return m_attachedToBar ? Style::scaledRadiusXl(scale) : Tokens::componentSheetRadius * scale;
+  return m_attachedToBar ? Style::scaledRadiusXl(scale) : Style::scaledRadius(Tokens::componentSheetRadius, scale);
 }
 
 float PanelManager::detachedBackgroundOpacity() const {

@@ -237,7 +237,7 @@ std::unique_ptr<Node> TagManagerSheet::buildRow(std::size_t index, float s) {
   auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingH = Tokens::spaceP12 * s,
                       .fill = selected ? colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F)
                                        : clearColorSpec(),
-                      .radius = Tokens::radiusR4 * s, .width = kRowWidth * s, .height = kRow * s});
+                      .radius = Style::scaledRadius(Tokens::radiusR4, s), .width = kRowWidth * s, .height = kRow * s});
   row->addChild(ui::checkbox({.checked = tag.sidebar, .scale = s,
                               .onChange = [this, name = tag.name](bool on) { setSidebar(name, on); }}));
   row->addChild(ui::box({.fill = rgbSpec(tag.rgb), .radius = kDot / 2.0F * s, .width = kDot * s, .height = kDot * s}));
@@ -357,7 +357,7 @@ std::unique_ptr<Node> TagManagerSheet::build(float scale) {
   auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
                           .paddingH = Tokens::componentDialogPadding * s});
   auto card = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s,
-                          .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Tokens::radiusR8 * s,
+                          .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Style::scaledRadius(Tokens::radiusR8, s),
                           .border = colorSpecFromRole(ColorRole::GlassCardEdge), .borderWidth = std::max(1.0F, 0.5F * s)});
   if (m_tags.empty()) {
     card->addChild(ui::label({.text = std::string("No tags yet. New Tag adds one."), .fontSize = Style::fontSizeBody * s,

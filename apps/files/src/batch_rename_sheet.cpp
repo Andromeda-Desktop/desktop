@@ -203,7 +203,7 @@ void BatchRenameSheet::updatePreview() {
       // labels ellipsize at their unstretched width.
       auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s,
                           .fill = bad ? colorSpecFromRole(ColorRole::Warning, 0.14F) : clearColorSpec(),
-                          .radius = Tokens::radiusR8 * s, .height = Tokens::sizeRowCompact * s});
+                          .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = Tokens::sizeRowCompact * s});
       row->addChild(ui::label({.text = m_items[i].name, .fontSize = Style::fontSizeCaption * s,
                                .color = colorSpecFromRole(ColorRole::Label2), .width = kNameColumn * s, .maxLines = 1,
                                .ellipsize = TextEllipsize::Middle}));

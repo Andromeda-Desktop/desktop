@@ -67,6 +67,22 @@ namespace desk::motion {
     bool operator==(const AnimationCurve&) const = default;
   };
 
+  // Rulebook 7.7: content dragged `excess` past a limit shows this far past it, approaching `dimension` without
+  // reaching it; `coefficient` is motion.rubber_band.
+  [[nodiscard]] constexpr double rubberBand(double excess, double dimension, double coefficient) {
+    return (1.0 - 1.0 / (excess * coefficient / dimension + 1.0)) * dimension;
+  }
+  // The slope of rubberBand at `excess`: the share of finger travel past the limit that still moves the content.
+  [[nodiscard]] constexpr double rubberBandSlope(double excess, double dimension, double coefficient) {
+    const double denominator = excess * coefficient / dimension + 1.0;
+    return coefficient / (denominator * denominator);
+  }
+  // Rulebook 7.7: how far a release at `velocityPerMs` travels before it stops at deceleration `rate` per ms
+  // (motion.projection_decay; motion.projection_decay_stepped for stepped pagers).
+  [[nodiscard]] constexpr double projectedDistance(double velocityPerMs, double rate) {
+    return velocityPerMs * rate / (1.0 - rate);
+  }
+
   // Standalone math and evaluation functions
   [[nodiscard]] double solveCubicBezier(double x1, double y1, double x2, double y2, double x);
   // Wall-clock length of a spring curve: the time a unit step from rest needs to settle within

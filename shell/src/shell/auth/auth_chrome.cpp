@@ -165,7 +165,7 @@ void AuthChrome::layoutMenu(Renderer& renderer, float /*sw*/, float /*sh*/, floa
   m_menuRect = {x, y, w, h};
   m_menuBg->setPosition(x, y);
   m_menuBg->setSize(w, h);
-  m_menuBg->setStyle(RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Tokens::componentMenuRadius * s, .borderWidth = 0.5F * s});
+  m_menuBg->setStyle(RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Style::scaledRadius(Tokens::componentMenuRadius, s), .borderWidth = 0.5F * s});
 
   for (std::size_t i = 0; i < m_state.items.size(); ++i) {
     const Item& item = m_state.items[i];
@@ -179,7 +179,7 @@ void AuthChrome::layoutMenu(Renderer& renderer, float /*sw*/, float /*sh*/, floa
     row.bg->setVisible(lit);
     row.bg->setPosition(rx, ry);
     row.bg->setSize(rw, rh);
-    row.bg->setStyle(RoundedRectStyle{.fill = kFill2, .radius = Tokens::radiusR8 * s});
+    row.bg->setStyle(RoundedRectStyle{.fill = kFill2, .radius = Style::scaledRadius(Tokens::radiusR8, s)});
 
     float textX = rx + Tokens::spaceP8 * s;
     const bool avatar = !item.initial.empty();

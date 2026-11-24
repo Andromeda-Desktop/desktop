@@ -228,7 +228,7 @@ namespace settings {
         {.align = FlexAlign::Center,
          .justify = FlexJustify::Center,
          .fill = colorSpecFromRole(ColorRole::Fill1),
-         .radius = Tokens::radiusR8 * scale,
+         .radius = Style::scaledRadius(Tokens::radiusR8, scale),
          .width = kTile * scale,
          .height = kTile * scale},
         symbol(prop("Chassis") == "desktop" ? "device-desktop" : "device-laptop", kTileGlyph * scale, ColorRole::Label2)

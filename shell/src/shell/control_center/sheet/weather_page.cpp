@@ -10,6 +10,7 @@
 #include "ui/controls/label.h"
 #include "ui/controls/scroll_view.h"
 #include "ui/palette.h"
+#include "ui/style.h"
 
 #include <algorithm>
 #include <array>
@@ -115,7 +116,7 @@ std::unique_ptr<Flex> WeatherPage::create() {
           .tooltip = i18n::tr("control-center.weather.back"),
           .minHeight = Tokens::sizeControlM * scale,
           .paddingH = Tokens::spaceP8 * scale,
-          .radius = Tokens::radiusR8 * scale,
+          .radius = Style::scaledRadius(Tokens::radiusR8, scale),
           .onClick =
               [] { PanelManager::instance().openPanel("control-center", PanelOpenRequest{.context = "calendar"}); },
       }),
@@ -232,7 +233,7 @@ std::unique_ptr<Flex> WeatherPage::makeCard(float gap) const {
       .gap = gap,
       .padding = Tokens::componentTilePadding * scale,
       .fill = colorSpecFromRole(ColorRole::GlassCard),
-      .radius = Tokens::componentTileRadius * scale,
+      .radius = Style::scaledRadius(Tokens::componentTileRadius, scale),
   });
   card->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * scale);
   return card;
@@ -264,7 +265,7 @@ void WeatherPage::buildMessage(
         .variant = ButtonVariant::Default,
         .minHeight = Tokens::sizeControlS * scale,
         .paddingH = Tokens::spaceP8 * scale,
-        .radius = Tokens::radiusR8 * scale,
+        .radius = Style::scaledRadius(Tokens::radiusR8, scale),
         .onClick = [] { PanelManager::instance().openSettingsWindow("location"); },
     }));
   }

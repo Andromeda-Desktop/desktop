@@ -96,7 +96,7 @@ namespace job_pill {
   std::unique_ptr<Node> pill(const std::vector<FileOpsClient::Job>& jobs, float s, std::function<void()> onClick,
                              Node** out, CountdownRing** accent) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP8 * s,
-                        .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Tokens::radiusR8 * s,
+                        .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Style::scaledRadius(Tokens::radiusR8, s),
                         .height = Tokens::sizeControlM * s});
     row->addChild(ring(combined(jobs), s, accent));
     row->addChild(ui::label({.text = std::to_string(jobs.size()), .fontSize = Style::fontSizeBody * s,

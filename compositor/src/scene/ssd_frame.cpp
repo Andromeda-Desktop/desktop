@@ -222,7 +222,7 @@ namespace andromeda {
     const double target = part != SsdFramePart::None ? 1.0 : 0.0;
     if (animate && m_hoverLevel.current() != target) {
       const auto& spring = target > 0.0 ? Tokens::springFadeOut : Tokens::springFade;
-      m_hoverLevel.settleSpring(target, {.damping = spring.damping, .stiffness = spring.stiffness});
+      m_hoverLevel.settleSpring(target, motionSpring(spring));
       startHoverFade(this);
       g_titleBarMotion->scheduleFrames();
     } else {

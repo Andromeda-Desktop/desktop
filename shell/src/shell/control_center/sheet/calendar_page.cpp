@@ -105,7 +105,7 @@ std::unique_ptr<Flex> CalendarPage::create() {
           .variant = ButtonVariant::Default,
           .minHeight = Tokens::sizeControlS * scale,
           .paddingH = Tokens::spaceP8 * scale,
-          .radius = Tokens::radiusR8 * scale,
+          .radius = Style::scaledRadius(Tokens::radiusR8, scale),
           .onClick =
               [this] {
                 focusToday();
@@ -144,10 +144,10 @@ std::unique_ptr<Flex> CalendarPage::create() {
       .gap = (pieces ? Tokens::spaceP8 : Tokens::spaceP4) * scale,
       .padding = Tokens::componentTilePadding * scale,
       .fill = colorSpecFromRole(ColorRole::GlassCard),
-      .radius = Tokens::componentTileRadius * scale,
+      .radius = Style::scaledRadius(Tokens::componentTileRadius, scale),
   });
   if (pieces) {
-    styleGlassPiece(*calendarCard, Tokens::componentSheetRadius * scale, scale, panelCardOpacity());
+    styleGlassPiece(*calendarCard, Style::scaledRadius(Tokens::componentSheetRadius, scale), scale, panelCardOpacity());
   } else {
     calendarCard->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * scale);
   }
@@ -223,7 +223,7 @@ std::unique_ptr<Flex> CalendarPage::create() {
       {.out = &m_eventsCard,
        .padding = Tokens::spaceP12 * scale,
        .fill = colorSpecFromRole(ColorRole::GlassCard),
-       .radius = Tokens::componentTileRadius * scale,
+       .radius = Style::scaledRadius(Tokens::componentTileRadius, scale),
        .visible = m_showEventsCard},
       ui::scrollView({
           .out = &m_eventsScroll,
@@ -241,7 +241,7 @@ std::unique_ptr<Flex> CalendarPage::create() {
     // proto .o-sec padding 4 0 8: with the card gap 4, the title sits 12 in and 8 above the first row.
     eventsHeader->setPadding(Tokens::spaceP4 * scale, 0.0F, Tokens::spaceP4 * scale, 0.0F);
     eventsCard->insertChildAt(0, std::move(eventsHeader));
-    styleGlassPiece(*eventsCard, Tokens::radiusR24 * scale, scale, panelCardOpacity());
+    styleGlassPiece(*eventsCard, Style::scaledRadius(Tokens::radiusR24, scale), scale, panelCardOpacity());
   } else {
     eventsCard->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * scale);
   }
@@ -257,7 +257,7 @@ std::unique_ptr<Flex> CalendarPage::create() {
        .gap = Tokens::componentTileGap * scale,
        .paddingH = Tokens::componentTilePadding * scale,
        .fill = colorSpecFromRole(ColorRole::GlassCard),
-       .radius = Tokens::componentTileRadius * scale,
+       .radius = Style::scaledRadius(Tokens::componentTileRadius, scale),
        .height = Tokens::componentTileHeight * scale,
        .visible = false},
       ui::row(
@@ -876,7 +876,7 @@ void CalendarPage::addEventsEmptyState(float scale) {
             .variant = ButtonVariant::Default,
             .minHeight = Tokens::sizeControlS * scale,
             .paddingH = Tokens::spaceP8 * scale,
-            .radius = Tokens::radiusR8 * scale,
+            .radius = Style::scaledRadius(Tokens::radiusR8, scale),
             .onClick = [] { PanelManager::instance().openSettingsWindow("date-time"); },
         })
     ));

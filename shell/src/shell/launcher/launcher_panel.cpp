@@ -525,7 +525,7 @@ void LauncherPanel::create() {
         std::move(input)
     );
     capsule->setFlexGrow(1.0F);
-    styleGlassPiece(*capsule, Tokens::componentLauncherSearchRadius * scale, scale, panelCardOpacity());
+    styleGlassPiece(*capsule, Style::scaledRadius(Tokens::componentLauncherSearchRadius, scale), scale, panelCardOpacity());
     auto searchRow = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * scale, .fillWidth = true});
     searchRow->addChild(std::move(capsule));
     constexpr std::array<std::string_view, 4> kDropGlyphs{"layout-grid", "folder", "clipboard", "mood-smile"};
@@ -563,7 +563,7 @@ void LauncherPanel::create() {
         .visible = false,
         .participatesInLayout = false,
     });
-    styleGlassPiece(*results, Tokens::componentLauncherResultsRadius * scale, scale, panelCardOpacity());
+    styleGlassPiece(*results, Style::scaledRadius(Tokens::componentLauncherResultsRadius, scale), scale, panelCardOpacity());
     results->setFlexGrow(1.0F);
     results->addChild(ui::row({
         .out = &m_modeTabs,
@@ -605,7 +605,7 @@ void LauncherPanel::create() {
         .visible = false,
         .participatesInLayout = false,
     });
-    styleGlassPiece(*preview, Tokens::componentLauncherResultsRadius * scale, scale, panelCardOpacity());
+    styleGlassPiece(*preview, Style::scaledRadius(Tokens::componentLauncherResultsRadius, scale), scale, panelCardOpacity());
     const float previewIcon = Tokens::componentLauncherIcon * scale;
     preview->addChild(ui::image({.out = &m_previewImage, .width = previewIcon, .height = previewIcon, .visible = false}));
     preview->addChild(ui::glyph({
@@ -647,7 +647,7 @@ void LauncherPanel::create() {
         .participatesInLayout = false,
         .configure = [scale](Image& image) {
           image.setFit(ImageFit::Contain);
-          image.setRadius(Tokens::radiusR12 * scale);
+          image.setRadius(Style::scaledRadius(Tokens::radiusR12, scale));
         },
     }));
     // Clipboard text: monospace in a fill_1 box (.agent/mockups/launcher-media.html clipboard).
@@ -657,7 +657,7 @@ void LauncherPanel::create() {
             .align = FlexAlign::Start,
             .padding = Tokens::spaceP12 * scale,
             .fill = colorSpecFromRole(ColorRole::Fill1),
-            .radius = Tokens::radiusR8 * scale,
+            .radius = Style::scaledRadius(Tokens::radiusR8, scale),
             .minHeight = Tokens::componentLauncherPreviewMedia * 0.75F * scale,
             .fillWidth = true,
             .visible = false,
@@ -685,7 +685,7 @@ void LauncherPanel::create() {
       auto cell = ui::row({
           .align = FlexAlign::Center,
           .justify = FlexJustify::Center,
-          .radius = Tokens::radiusR8 * scale,
+          .radius = Style::scaledRadius(Tokens::radiusR8, scale),
           .minWidth = Tokens::sizeControlM * scale,
           .minHeight = Tokens::sizeControlM * scale,
       });
@@ -772,7 +772,7 @@ void LauncherPanel::create() {
               {.align = FlexAlign::Center,
                .paddingH = Tokens::spaceP4 * scale,
                .fill = colorSpecFromRole(ColorRole::Fill1),
-               .radius = Tokens::radiusR4 * scale},
+               .radius = Style::scaledRadius(Tokens::radiusR4, scale)},
               ui::label({.text = std::move(key), .fontSize = Style::fontSizeCaption * scale, .color = colorSpecFromRole(ColorRole::Label2)})
           )
       );

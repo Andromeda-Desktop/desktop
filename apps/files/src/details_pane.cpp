@@ -196,11 +196,11 @@ void DetailsPane::fill() {
   const auto preview = [&](const fs::path& path, const std::optional<FileInfo>& info) {
     const bool image = info && info->contentType.starts_with("image/");
     if (image) {
-      m_root->addChild(pictureNode(path.string(), previewW, kPreviewHeight * s, Tokens::radiusR12 * s)); // mockup .info .prev
+      m_root->addChild(pictureNode(path.string(), previewW, kPreviewHeight * s, Style::scaledRadius(Tokens::radiusR12, s))); // mockup .info .prev
       return;
     }
     auto card = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center,
-                            .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Tokens::radiusR12 * s,
+                            .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Style::scaledRadius(Tokens::radiusR12, s),
                             .height = kPreviewHeight * s});
     if (info) {
       card->addChild(std::make_unique<IconNode>(*info, path, m_thumbnails, kPreviewIcon * s));
@@ -278,7 +278,7 @@ void DetailsPane::fill() {
       Button::ButtonPalette palette = Button::defaultPalette(variant);
       palette.borderWidth = 0.0F;
       return ui::button({.text = std::string(label), .fontSize = Style::fontSizeBody * s, .variant = variant,
-                         .customPalette = palette, .paddingH = Tokens::spaceP12 * s, .radius = Tokens::radiusR8 * s,
+                         .customPalette = palette, .paddingH = Tokens::spaceP12 * s, .radius = Style::scaledRadius(Tokens::radiusR8, s),
                          .height = Tokens::sizeControlM * s, .onClick = std::move(onClick)});
     };
     buttons->addChild(button("Open", ButtonVariant::Primary, [this] { m_actions.open(); }));
@@ -291,7 +291,7 @@ void DetailsPane::fill() {
       Button* share = nullptr;
       buttons->addChild(ui::button({.out = &share, .glyph = std::string("share"), .glyphSize = Tokens::sizeSymbol * s,
                                     .variant = ButtonVariant::Default, .customPalette = palette,
-                                    .paddingH = Tokens::spaceP12 * s, .radius = Tokens::radiusR8 * s, // mockup .btn
+                                    .paddingH = Tokens::spaceP12 * s, .radius = Style::scaledRadius(Tokens::radiusR8, s), // mockup .btn
                                     .height = Tokens::sizeControlM * s}));
       share->setOnClick([this, share] {
         float x = 0.0F;

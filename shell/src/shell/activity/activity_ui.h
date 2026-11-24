@@ -117,7 +117,7 @@ namespace activity_ui {
         .paddingH = Style::spaceLg * scale,
         .fill = glass ? colorSpecFromRole(ColorRole::SolidThin, 0.5F)
                       : fixedColorSpec(rgbaHex(isResolvedLightTheme() ? Tokens::schemeLight.card : Tokens::schemeDark.card)),
-        .radius = Tokens::radiusR8 * scale,
+        .radius = Style::scaledRadius(Tokens::radiusR8, scale),
         .border = colorSpecFromRole(glass ? ColorRole::LensEdge : ColorRole::Stroke),
         .borderWidth = 0.5F * scale,
     });

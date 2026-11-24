@@ -128,7 +128,7 @@ std::unique_ptr<Node> PortalSheet::build(float s) {
       caption(m_request.reason, ColorRole::Label2);
     }
     auto card = ui::column({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .padding = Tokens::spaceP12 * s,
-                            .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Tokens::radiusR8 * s,
+                            .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Style::scaledRadius(Tokens::radiusR8, s),
                             .fillWidth = true});
     card->addChild(ui::label({.text = m_user.name, .fontSize = Style::fontSizeBody * s, .fontWeight = FontWeight::Medium,
                               .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1}));
@@ -140,7 +140,7 @@ std::unique_ptr<Node> PortalSheet::build(float s) {
   }
   case Kind::Wallpaper: {
     box->addChild(pictureNode(m_request.path, Tokens::spaceP64 * 5.0F * s, Tokens::spaceP64 * 2.75F * s,
-                              Tokens::radiusR8 * s));
+                              Style::scaledRadius(Tokens::radiusR8, s)));
     headline(std::format("Set this picture from “{}” as your wallpaper?", app));
     caption(m_request.setOn == "background" ? "Desktop" : "Desktop and Lock Screen", ColorRole::Label2);
     action = "Set Wallpaper";
@@ -148,7 +148,7 @@ std::unique_ptr<Node> PortalSheet::build(float s) {
   }
   case Kind::Launcher: {
     box->addChild(pictureNode(iconFileFor(m_request.path), Tokens::spaceP64 * s, Tokens::spaceP64 * s,
-                              Tokens::radiusR12 * s));
+                              Style::scaledRadius(Tokens::radiusR12, s)));
     headline(std::format("Add “{}” to your apps?", m_name.empty() ? m_request.name : m_name));
     if (m_request.editableName) {
       box->addChild(ui::input({.value = m_name, .placeholder = std::string("Name"), .fontSize = Style::fontSizeBody * s,

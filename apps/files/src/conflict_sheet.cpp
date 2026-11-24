@@ -176,7 +176,7 @@ std::unique_ptr<Node> ConflictSheet::buildMerge(float s) {
   auto counts = ui::row({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
   const auto count = [&](std::uint64_t n, const char* what, bool warn) {
     auto c = ui::column({.align = FlexAlign::Start, .paddingV = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s,
-                         .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Tokens::radiusR12 * s, .flexGrow = 1.0F});
+                         .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Style::scaledRadius(Tokens::radiusR12, s), .flexGrow = 1.0F});
     c->addChild(ui::label({.text = std::to_string(n), .fontSize = Tokens::typeTitle2.size * s,
                            .fontWeight = FontWeight::SemiBold,
                            .color = colorSpecFromRole(warn && n > 0 ? ColorRole::Warning : ColorRole::Label1)}));
@@ -190,7 +190,7 @@ std::unique_ptr<Node> ConflictSheet::buildMerge(float s) {
   box->addChild(std::move(counts));
   if (!clash.different.empty()) {
     auto list = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s,
-                            .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Tokens::radiusR8 * s});
+                            .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Style::scaledRadius(Tokens::radiusR8, s)});
     for (const auto& [path, hint] : clash.different) {
       // Mockup .trow: 32 high r8, padding 0 8, a 20 icon slot, 400 13 name.
       auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP8 * s,
@@ -263,17 +263,17 @@ std::unique_ptr<Node> ConflictSheet::build(float s) {
     auto c = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP8 * s,
                          .fill = on ? colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F)
                                     : colorSpecFromRole(ColorRole::GlassCard),
-                         .radius = Tokens::radiusR8 * 2.0F * s,
+                         .radius = Style::scaledRadius(Tokens::radiusR8, 2.0F) * s,
                          .border = on ? colorSpecFromRole(ColorRole::Accent) : colorSpecFromRole(ColorRole::GlassCardEdge),
                          .borderWidth = on ? 2.0F * s : std::max(1.0F, 0.5F * s)});
     const bool image = info && info->contentType.starts_with("image/");
     const bool media = info && (image || info->contentType.starts_with("video/") || info->contentType.starts_with("audio/"));
     const MediaInfo mediaInfo = media ? readMediaInfo(path) : MediaInfo{};
     if (image) {
-      c->addChild(pictureNode(path.string(), 0.0F, kPreviewHeight * s, Tokens::radiusR8 * s));
+      c->addChild(pictureNode(path.string(), 0.0F, kPreviewHeight * s, Style::scaledRadius(Tokens::radiusR8, s)));
     } else {
       auto pv = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center,
-                            .fill = colorSpecFromRole(ColorRole::Fill2), .radius = Tokens::radiusR8 * s,
+                            .fill = colorSpecFromRole(ColorRole::Fill2), .radius = Style::scaledRadius(Tokens::radiusR8, s),
                             .clipChildren = true, .height = kPreviewHeight * s});
       if (info) {
         // Videos and documents show their thumbnail as large as the preview allows.
@@ -285,7 +285,7 @@ std::unique_ptr<Node> ConflictSheet::build(float s) {
         pinned->addChild(std::move(pv));
         auto dur = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::spaceP4 * s,
                             .fill = ColorSpec{.role = std::nullopt, .fixed = rgbHex(0x000000), .alpha = 0.55F},
-                            .radius = Tokens::radiusR4 * s});
+                            .radius = Style::scaledRadius(Tokens::radiusR4, s)});
         dur->setPadding(Tokens::spaceP2 * s, Tokens::spaceP4 * s);
         dur->addChild(ui::label({.text = formatDuration(*mediaInfo.seconds), .fontSize = Style::fontSizeMini * s,
                                  .fontWeight = FontWeight::SemiBold,

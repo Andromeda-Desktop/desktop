@@ -368,7 +368,7 @@ namespace control_center {
       joinButton->setVariant(ButtonVariant::Primary);
       joinButton->setText(tr("control-center.network.join"));
       joinButton->setControlHeight(Tokens::componentFieldHeight * s);
-      joinButton->setRadius(Tokens::componentButtonRadius * s);
+      joinButton->setRadius(Style::scaledRadius(Tokens::componentButtonRadius, s));
       joinButton->setPadding(0.0F, Tokens::componentButtonInsetM * s, 0.0F, Tokens::componentButtonInsetM * s);
       joinButton->setOnClick([this, join] {
         if (m_password != nullptr) {
@@ -561,7 +561,7 @@ namespace control_center {
       b->setVariant(primary ? ButtonVariant::Primary : ButtonVariant::Default);
       b->setText(text);
       b->setControlHeight(Tokens::componentButtonHeightM * s);
-      b->setRadius(Tokens::componentButtonRadius * s);
+      b->setRadius(Style::scaledRadius(Tokens::componentButtonRadius, s));
       b->setOnClick(std::move(onClick));
       return b;
     };
@@ -1311,7 +1311,7 @@ namespace control_center {
       b->setGlyph(glyphName);
       b->setText(text);
       b->setControlHeight(Tokens::componentButtonHeightM * s);
-      b->setRadius(Tokens::componentButtonRadius * s);
+      b->setRadius(Style::scaledRadius(Tokens::componentButtonRadius, s));
       b->setFlexGrow(1.0F);
       b->setEnabled(enabled);
       b->setOnClick(std::move(onClick));
@@ -1510,7 +1510,7 @@ namespace control_center {
     sendButton->setVariant(ButtonVariant::Primary);
     sendButton->setText(tr("control-center.detail.phone.send"));
     sendButton->setControlHeight(Tokens::componentButtonHeightS * s);
-    sendButton->setRadius(Tokens::componentButtonRadius * s);
+    sendButton->setRadius(Style::scaledRadius(Tokens::componentButtonRadius, s));
     sendButton->setPadding(0.0F, Tokens::componentButtonInsetS * s, 0.0F, Tokens::componentButtonInsetS * s);
     sendButton->setOnClick([this, send] {
       if (m_reply != nullptr) {
@@ -1653,13 +1653,13 @@ namespace control_center {
         auto tile = std::make_unique<Button>();
         tile->setVariant(ButtonVariant::Default);
         tile->setPadding(0.0F);
-        tile->setRadius(Tokens::componentButtonRadius * s);
+        tile->setRadius(Style::scaledRadius(Tokens::componentButtonRadius, s));
         tile->setMinHeight(Tokens::spaceP64 * s);
         tile->setFlexGrow(1.0F);
         auto image = std::make_unique<Image>();
         image->setFit(ImageFit::Cover);
         image->setSize(Tokens::spaceP64 * 1.2F * s, Tokens::spaceP64 * s);
-        image->setRadius(Tokens::componentButtonRadius * s);
+        image->setRadius(Style::scaledRadius(Tokens::componentButtonRadius, s));
         image->setParticipatesInLayout(false);
         if (auto thumb = m_link->photoThumbnail(id, photo.path, kThumbnailSize); thumb != nullptr) {
           bindImage(image.get(), {}, static_cast<int>(kThumbnailSize), std::move(thumb));

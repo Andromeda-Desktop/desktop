@@ -32,7 +32,6 @@ namespace andromeda {
 
     static constexpr int32_t kHistoryLimitMsec = 100;
     // Stepped pagers use 0.997, not rulebook 7.7's 0.998, so a moderate swipe advances one step.
-    static constexpr double kDeceleration = 0.997; // per millisecond
 
     void trimHistory(uint32_t nowMsec);
 

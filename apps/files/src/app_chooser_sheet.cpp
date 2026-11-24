@@ -186,7 +186,7 @@ std::unique_ptr<Node> AppChooserSheet::build(float s) {
   // Mockup .gcard: glass card r8 (set B), padding 4, hairline edge.
   const auto frame = [&] {
     return ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s,
-                       .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Tokens::radiusR8 * s,
+                       .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Style::scaledRadius(Tokens::radiusR8, s),
                        .border = colorSpecFromRole(ColorRole::GlassCardEdge),
                        .borderWidth = std::max(1.0F, 0.5F * s), .fillWidth = true});
   };
@@ -196,10 +196,10 @@ std::unique_ptr<Node> AppChooserSheet::build(float s) {
       const bool selected = app.id == m_selected;
       auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingH = Tokens::spaceP12 * s,
                           .fill = selected ? colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F) : ColorSpec{},
-                          .radius = Tokens::radiusR4 * s, .height = rowH});
+                          .radius = Style::scaledRadius(Tokens::radiusR4, s), .height = rowH});
       if (app.icon.empty()) { // no art in hicolor or pixmaps: a neutral app tile
         auto tile = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center,
-                                .fill = colorSpecFromRole(ColorRole::Fill2), .radius = Tokens::radiusR4 * s,
+                                .fill = colorSpecFromRole(ColorRole::Fill2), .radius = Style::scaledRadius(Tokens::radiusR4, s),
                                 .width = Tokens::spaceP24 * s, .height = Tokens::spaceP24 * s});
         tile->addChild(ui::glyph({.glyph = std::string("app-window"), .glyphSize = Tokens::sizeSymbolInline * s,
                                   .color = colorSpecFromRole(ColorRole::Label2)}));

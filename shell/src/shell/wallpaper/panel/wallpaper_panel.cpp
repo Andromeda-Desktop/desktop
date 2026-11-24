@@ -399,7 +399,7 @@ void WallpaperPanel::create() {
         .minWidth = control,
         .minHeight = control,
         .padding = Tokens::spaceP8 * scale,
-        .radius = Tokens::componentButtonRadius * scale,
+        .radius = Style::scaledRadius(Tokens::componentButtonRadius, scale),
         .onClick = std::move(onClick),
     });
   };
@@ -431,20 +431,20 @@ void WallpaperPanel::create() {
   // Preview card: the focused wallpaper (or the current one) with its display and fill choices.
   auto card = ui::row({.out = &m_favoritesOptionsColumn, .align = FlexAlign::Center, .gap = Tokens::spaceP16 * scale, .fillWidth = true});
   card->setPadding(Tokens::spaceP12 * scale);
-  card->setRadius(Tokens::radiusR12 * scale);
+  card->setRadius(Style::scaledRadius(Tokens::radiusR12, scale));
   card->setFill(colorSpecFromRole(ColorRole::GlassCard, panelCardOpacity()));
   card->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * scale);
   card->addChild(ui::box({
       .out = &m_previewFrame,
       .fill = colorSpecFromRole(ColorRole::Fill1),
-      .radius = Tokens::radiusR8 * scale,
+      .radius = Style::scaledRadius(Tokens::radiusR8, scale),
       .configure = [](Box& box) { box.setClipChildren(true); },
   }));
   m_previewFrame->setFrameSize(kPreviewWidth * scale, kPreviewHeight * scale);
   m_previewFrame->addChild(ui::image({
       .out = &m_previewImage,
       .fit = ImageFit::Cover,
-      .radius = Tokens::radiusR8 * scale,
+      .radius = Style::scaledRadius(Tokens::radiusR8, scale),
       .participatesInLayout = false,
   }));
   m_previewImage->setFrameSize(kPreviewWidth * scale, kPreviewHeight * scale);
@@ -523,7 +523,7 @@ void WallpaperPanel::create() {
       .controlHeight = control,
       .variant = ButtonVariant::Default,
       .paddingH = Tokens::componentButtonInsetM * scale,
-      .radius = Tokens::componentButtonRadius * scale,
+      .radius = Style::scaledRadius(Tokens::componentButtonRadius, scale),
       .onClick = [this] { toggleFavoriteForPath(previewWallpaperPath()); },
   }));
   info->addChild(std::move(choices));
@@ -598,7 +598,7 @@ void WallpaperPanel::create() {
       .minWidth = control,
       .minHeight = control,
       .padding = Tokens::spaceP8 * scale,
-      .radius = Tokens::componentButtonRadius * scale,
+      .radius = Style::scaledRadius(Tokens::componentButtonRadius, scale),
       .onClick =
           [this] {
             m_flatten = !m_flatten;
@@ -742,7 +742,7 @@ void WallpaperPanel::create() {
           .controlHeight = control,
           .variant = ButtonVariant::Default,
           .paddingH = Tokens::componentButtonInsetM * scale,
-          .radius = Tokens::componentButtonRadius * scale,
+          .radius = Style::scaledRadius(Tokens::componentButtonRadius, scale),
           .visible = false,
       })
   ));

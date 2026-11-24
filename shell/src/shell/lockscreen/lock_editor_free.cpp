@@ -182,7 +182,7 @@ void LockEditorFree::layout(
           RoundedRectStyle{
               .fill = kNoFill,
               .border = kZoneEdge,
-              .radius = Tokens::radiusR16 * s,
+              .radius = Style::scaledRadius(Tokens::radiusR16, s),
               .borderWidth = 1.0F * s,
               .borderDash = auth ? 0.0F : 6.0F * s,
               .borderGap = 4.0F * s,
@@ -234,12 +234,12 @@ void LockEditorFree::layout(
     box.rect = item.box;
     const Hit hit{Target::Item, static_cast<int>(i)};
     const bool ring = static_cast<int>(i) == state.selected || state.focus == hit;
-    place(box.bg, box.rect, RoundedRectStyle{.fill = kRegular, .radius = Tokens::radiusR16 * s});
+    place(box.bg, box.rect, RoundedRectStyle{.fill = kRegular, .radius = Style::scaledRadius(Tokens::radiusR16, s)});
     place(box.ring, box.rect,
           RoundedRectStyle{
               .fill = kNoFill,
               .border = ring ? kAccentText : kStroke,
-              .radius = Tokens::radiusR16 * s,
+              .radius = Style::scaledRadius(Tokens::radiusR16, s),
               .borderWidth = (ring ? 2.0F : 0.5F) * s,
           });
     if (static_cast<int>(i) == state.selected) {
@@ -287,7 +287,7 @@ void LockEditorFree::layout(
   const float x = std::round((sw - w) * 0.5F);
   const float y = std::round(sh - 24.0F * s - h);
   m_toolbarRect = {x, y, w, h};
-  place(m_toolbarBg, {x, y, w, h}, RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Tokens::radiusR28 * s, .borderWidth = 0.5F * s});
+  place(m_toolbarBg, {x, y, w, h}, RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Style::scaledRadius(Tokens::radiusR28, s), .borderWidth = 0.5F * s});
   float cx = x + pad;
   for (std::size_t i = 0; i < m_add.size(); ++i) {
     const Hit hit{Target::Add, static_cast<int>(i)};

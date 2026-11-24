@@ -8,6 +8,7 @@
 #include "ui/controls/scrollbar.h"
 #include "ui/palette.h"
 #include "ui/scroll_into_view.h"
+#include "motion/desk_motion.h"
 #include "ui/style.h"
 
 #include <algorithm>
@@ -22,7 +23,6 @@ namespace {
   constexpr float kDefaultWidth = 260.0F;
   constexpr float kMinFlingVelocity = 0.12F;
   constexpr float kFlingDeceleration = 0.003F;
-  constexpr float kRubberBandResistance = 0.5F;
   constexpr float kPageFlickVelocity = 0.3F; // px/ms
   constexpr float kPageProjectionMs = 120.0F;
 
@@ -227,7 +227,11 @@ void ScrollView::dragMove(float position) {
   if (m_pageStep > 0.0F) {
     const float limit = target < 0.0F ? 0.0F : m_maxScrollOffset;
     if (target < 0.0F || target > m_maxScrollOffset) {
-      target = limit + (target - limit) * kRubberBandResistance;
+      // One page is the dimension the overscroll approaches.
+      target = limit + std::copysign(
+                           static_cast<float>(desk::motion::rubberBand(std::abs(target - limit), m_pageStep, Tokens::motionRubberBand)),
+                           target - limit
+                       );
     }
   }
   applyScrollOffsetValue(target, true);

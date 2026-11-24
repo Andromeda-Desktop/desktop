@@ -68,7 +68,7 @@ namespace {
         .variant = variant,
         .minHeight = Style::controlHeight * scale,
         .paddingH = Style::spaceMd * scale,
-        .radius = Tokens::radiusR8 * scale,
+        .radius = Style::scaledRadius(Tokens::radiusR8, scale),
         .onClick = std::move(onClick),
     });
   }
@@ -267,7 +267,7 @@ void ActivityWindow::addOverview(Flex& details, const ActivityRow& row, float sc
          .gap = Style::spaceSm * scale,
          .padding = Style::spaceMd * scale,
          .fill = colorSpecFromRole(ColorRole::Warning, 0.14F),
-         .radius = Tokens::radiusR8 * scale},
+         .radius = Style::scaledRadius(Tokens::radiusR8, scale)},
         ui::glyph({
             .glyph = "alert-triangle",
             .glyphSize = Tokens::sizeSymbol * scale,
@@ -653,7 +653,7 @@ void ActivityWindow::addContainerCards(Flex& list, float scale) {
           .paddingV = 0.0F,
           .paddingH = Style::spaceSm * scale,
           .gap = Style::spaceSm * scale,
-          .radius = Tokens::radiusR4 * scale,
+          .radius = Style::scaledRadius(Tokens::radiusR4, scale),
           .onClick =
               [this, key] {
                 m_selectedKey = key;

@@ -1,6 +1,8 @@
 #pragma once
 
+#include "design_tokens.h"
 #include "input/swipe_tracker.h"
+#include "motion/desk_motion.h"
 
 #include <algorithm>
 #include <cmath>
@@ -18,7 +20,6 @@ namespace andromeda {
     // Past either end of a step the fingers keep moving while the content lags further and further behind: the extra
     // travel approaches `limit` steps without ever reaching it, and the derivative of that curve is how much of the
     // visible speed a release still carries.
-    static constexpr double kOverscrollStiffness = 0.5;
     static constexpr double kOverscrollLimit = 0.05;
 
     // Damped position: unchanged inside [minimum, maximum], approaching `limit` steps past either end outside it.
@@ -34,8 +35,7 @@ namespace andromeda {
         return 1.0;
       }
       const double excess = std::abs(position - std::clamp(position, minimum, maximum));
-      const double denominator = 1.0 + kOverscrollStiffness * excess / limit;
-      return kOverscrollStiffness / (denominator * denominator);
+      return desk::motion::rubberBandSlope(excess, limit, Tokens::motionRubberBand);
     }
 
     // The step a release lands on: where the projection comes to rest, clamped to the steps that exist, then rounded
@@ -92,7 +92,7 @@ namespace andromeda {
   private:
     // Extra steps a position ends up outside its range, for `excess` steps of finger travel past the end.
     [[nodiscard]] static double overscroll(double excess, double limit) {
-      return limit * (1.0 - 1.0 / (1.0 + kOverscrollStiffness * excess / limit));
+      return desk::motion::rubberBand(excess, limit, Tokens::motionRubberBand);
     }
   };
 

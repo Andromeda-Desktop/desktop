@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <map>
@@ -1425,6 +1426,11 @@ namespace andromeda {
   void applyLiveAppearance(Config& config);
   // Divides every event duration by animation.speed and speeds up every spring curve by the same factor.
   void applyAnimationSpeed(Config::Animation& animation);
+  // A window's corner radius: appearance.corner_radius at appearance.corner_scale, times `zoom` for a scaled copy.
+  [[nodiscard]] inline int windowCornerRadius(double zoom = 1.0) {
+    const auto& appearance = config().appearance;
+    return static_cast<int>(std::lround(appearance.cornerRadius * appearance.cornerScale * zoom));
+  }
   // A rulebook spring (docs/design/rulebook.md 7.2) at animation.speed, scaled the way applyAnimationSpeed scales one.
   [[nodiscard]] inline SpringConfig motionSpring(const Tokens::Spring& token) {
     const double speed = config().animation.speed;

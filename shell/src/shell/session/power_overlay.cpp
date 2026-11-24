@@ -928,7 +928,7 @@ namespace {
   std::unique_ptr<Flex> alertCard(float s, float width) {
     auto card = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
                             .padding = Tokens::componentDialogPadding * s,
-                            .fill = colorSpecFromRole(ColorRole::Popover), .radius = Tokens::componentDialogRadius * s,
+                            .fill = colorSpecFromRole(ColorRole::Popover), .radius = Style::scaledRadius(Tokens::componentDialogRadius, s),
                             .width = width * s});
     card->setBorder(colorSpecFromRole(ColorRole::Stroke), 0.5F * s);
     return card;
@@ -1028,7 +1028,7 @@ void PowerOverlay::buildBlockers(Node& root, float s) {
                            Tokens::typeHeadline, s, ColorRole::Label1));
   card->addChild(alertText(i18n::tr(endText("blockers-body").c_str()), Tokens::typeFootnote, s, ColorRole::Label2));
   auto list = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s, .padding = Tokens::spaceP8 * s,
-                          .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Tokens::componentTileRadius * s});
+                          .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Style::scaledRadius(Tokens::componentTileRadius, s)});
   for (const ToplevelInfo& window : m_blockers) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP4 * s,
                         .paddingH = Tokens::spaceP4 * s});

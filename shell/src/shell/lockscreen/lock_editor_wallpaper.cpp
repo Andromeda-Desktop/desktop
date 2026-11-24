@@ -321,7 +321,7 @@ void LockEditorWallpaper::layout(
   const float y = std::round(sh - height - 24.0F * s);
   m_panelRect = {x, y, width, height};
   place(m_panelBg, x, y, width, height,
-        RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Tokens::radiusR28 * s, .borderWidth = 1.0F});
+        RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Style::scaledRadius(Tokens::radiusR28, s), .borderWidth = 1.0F});
 
   float cx = x + pad;
   for (int i = 0; i < kTabs; ++i) {

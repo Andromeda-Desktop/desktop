@@ -894,7 +894,7 @@ namespace term {
     const float size = static_cast<float>(now.fontSize) * s;
     const ThemePalette colors = themePalette(theme);
     const bool scene = hasScene(theme);
-    const float radius = Tokens::componentWindowCardRadius * s;
+    const float radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s);
     // The card stands for the main pane: the theme's scene under its tint, or the grid's glass alpha.
     auto box = ui::column({.align = FlexAlign::Stretch,
                            .fill = fixedColorSpec(withAlpha(colors.view, scene ? Tokens::componentTerminalSceneTint
@@ -950,7 +950,7 @@ namespace term {
                         .gap = Tokens::spaceP4 * s,
                         .paddingH = Tokens::spaceP8 * s,
                         .fill = fixedColorSpec(lerpColor(colors.view, colors.label1, 0.04F)),
-                        .radius = Tokens::radiusR8 * s,
+                        .radius = Style::scaledRadius(Tokens::radiusR8, s),
                         .minHeight = h});
       };
       if (!first) {

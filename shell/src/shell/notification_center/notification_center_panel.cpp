@@ -40,7 +40,7 @@ namespace {
   // Cards and the back cards of a stack: fill_2 with a hairline edge, so stacked cards read as separate cards on glass.
   void styleCard(Flex& card, float scale) {
     card.setFill(colorSpecFromRole(ColorRole::Fill2));
-    card.setRadius(Tokens::radiusR16 * scale);
+    card.setRadius(Style::scaledRadius(Tokens::radiusR16, scale));
     card.setBorder(colorSpecFromRole(ColorRole::Separator), scale);
   }
 
@@ -375,12 +375,12 @@ std::unique_ptr<Flex> NotificationCenterPanel::makeCard(const Notification& n) {
 
   IconSlot slot;
   auto frame = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .fill = colorSpecFromRole(ColorRole::Fill1),
-                        .radius = Tokens::radiusR8 * scale, .minWidth = tile, .minHeight = tile});
+                        .radius = Style::scaledRadius(Tokens::radiusR8, scale), .minWidth = tile, .minHeight = tile});
   frame->setMaxWidth(tile);
   auto image = std::make_unique<Image>();
   image->setFit(ImageFit::Cover);
   image->setSize(tile, tile);
-  image->setRadius(Tokens::radiusR8 * scale);
+  image->setRadius(Style::scaledRadius(Tokens::radiusR8, scale));
   image->setParticipatesInLayout(false);
   image->setVisible(false);
   slot.image = image.get();

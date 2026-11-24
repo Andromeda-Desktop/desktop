@@ -9,6 +9,7 @@
 #include "ui/controls/label.h"
 #include "time/time_format.h"
 #include "ui/palette.h"
+#include "ui/style.h"
 
 #include <algorithm>
 #include <format>
@@ -35,7 +36,7 @@ namespace {
   ) {
     auto pill = [&] {
       return ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP8 * s,
-                      .fill = colorSpecFromRole(ColorRole::TermCommandBand), .radius = Tokens::radiusR8 * s,
+                      .fill = colorSpecFromRole(ColorRole::TermCommandBand), .radius = Style::scaledRadius(Tokens::radiusR8, s),
                       .height = h});
     };
     // Over a scene each pill backs its labels as the grid backs its text runs.
@@ -43,7 +44,7 @@ namespace {
       if (!backing) {
         return node;
       }
-      auto back = ui::row({.fill = fixedColorSpec(*backing), .radius = Tokens::radiusR8 * s, .height = h});
+      auto back = ui::row({.fill = fixedColorSpec(*backing), .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = h});
       back->addChild(std::move(node));
       return back;
     };

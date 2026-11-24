@@ -353,7 +353,7 @@ void LockEditorGallery::layout(Renderer& renderer, const State& state, Rect slot
           RoundedRectStyle{
               .fill = state.hover == Hit{Target::ClockSlot, -1} ? kFill1 : kClear,
               .border = slotOn ? kAccentText : kSlotEdge,
-              .radius = Tokens::radiusR16 * s,
+              .radius = Style::scaledRadius(Tokens::radiusR16, s),
               .borderWidth = (slotOn ? 2.0F : 1.5F) * s,
               .borderDash = slotOn ? 0.0F : 6.0F * s,
               .borderGap = 4.0F * s,
@@ -445,7 +445,7 @@ void LockEditorGallery::layout(Renderer& renderer, const State& state, Rect slot
   const float y = std::round(sh - 24.0F * s - h);
   m_panelRect = {x, y, w, h};
   place(m_panelBg, x, y, w, h,
-        RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Tokens::radiusR28 * s, .borderWidth = 0.5F * s});
+        RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Style::scaledRadius(Tokens::radiusR28, s), .borderWidth = 0.5F * s});
 
   // Header: title, then the filter chips.
   const float chipY = y + pad;
@@ -485,7 +485,7 @@ void LockEditorGallery::layout(Renderer& renderer, const State& state, Rect slot
           RoundedRectStyle{
               .fill = on || state.hover == hit ? kFill2 : kFill1,
               .border = ring ? kAccentText : kClear,
-              .radius = Tokens::radiusR16 * s,
+              .radius = Style::scaledRadius(Tokens::radiusR16, s),
               .borderWidth = ring ? 1.5F * s : 0.0F,
           });
     tile.sample->setText(sampleText(style));

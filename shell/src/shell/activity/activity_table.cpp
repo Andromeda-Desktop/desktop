@@ -308,7 +308,7 @@ std::unique_ptr<Flex> ActivityWindow::buildToolbar(float scale) {
          .gap = Style::spaceSm * scale,
          .paddingH = Tokens::spaceP8 * scale,
          .fill = colorSpecFromRole(ColorRole::Fill1),
-         .radius = Tokens::radiusR8 * scale,
+         .radius = Style::scaledRadius(Tokens::radiusR8, scale),
          .width = kSearchWidth * scale,
          .height = Style::controlHeight * scale},
         ui::glyph({
@@ -417,7 +417,7 @@ std::unique_ptr<Flex> ActivityWindow::buildProblemCard(float scale) {
       .paddingH = Style::spaceLg * scale,
       .fill = m_glass ? colorSpecFromRole(ColorRole::SolidThin, 0.5F)
                       : fixedColorSpec(rgbaHex(isResolvedLightTheme() ? Tokens::schemeLight.card : Tokens::schemeDark.card)),
-      .radius = Tokens::radiusR8 * scale,
+      .radius = Style::scaledRadius(Tokens::radiusR8, scale),
       .border = colorSpecFromRole(m_glass ? ColorRole::LensEdge : ColorRole::Stroke),
       .borderWidth = 0.5F * scale,
   });
@@ -453,7 +453,7 @@ std::unique_ptr<Flex> ActivityWindow::buildProblemCard(float scale) {
       .variant = ButtonVariant::Default,
       .minHeight = Style::controlHeight * scale,
       .paddingH = Style::spaceMd * scale,
-      .radius = Tokens::radiusR8 * scale,
+      .radius = Style::scaledRadius(Tokens::radiusR8, scale),
       .onClick = [this, key, kind] {
         select(key);
         if (kind == Problem::Memory) {
@@ -481,7 +481,7 @@ float ActivityWindow::TableAdapter::measureItem(Renderer& /*renderer*/, std::siz
 }
 
 std::unique_ptr<Node> ActivityWindow::TableAdapter::createItem() {
-  auto root = ui::row({.align = FlexAlign::Center, .radius = Tokens::radiusR4 * m_window.uiScale()});
+  auto root = ui::row({.align = FlexAlign::Center, .radius = Style::scaledRadius(Tokens::radiusR4, m_window.uiScale())});
   m_window.m_tableSlots[root.get()].root = root.get();
   return root;
 }
@@ -781,9 +781,9 @@ std::unique_ptr<Flex> ActivityWindow::buildTable(Renderer& /*renderer*/, float w
            .gap = Style::spaceSm * scale,
            .paddingH = Style::spaceMd * scale,
            .height = kRowHeight * scale},
-          ui::box({.fill = colorSpecFromRole(ColorRole::Fill2), .radius = Tokens::radiusR4 * scale,
+          ui::box({.fill = colorSpecFromRole(ColorRole::Fill2), .radius = Style::scaledRadius(Tokens::radiusR4, scale),
                    .width = Tokens::sizeSymbol * scale, .height = Tokens::sizeSymbol * scale}),
-          ui::box({.fill = colorSpecFromRole(ColorRole::Fill1), .radius = Tokens::radiusR4 * scale,
+          ui::box({.fill = colorSpecFromRole(ColorRole::Fill1), .radius = Style::scaledRadius(Tokens::radiusR4, scale),
                    .width = nameWidth / static_cast<float>(2 + i % 3), .height = Tokens::spaceP12 * scale})
       ));
     }
@@ -814,7 +814,7 @@ std::unique_ptr<Flex> ActivityWindow::buildTable(Renderer& /*renderer*/, float w
               .variant = ButtonVariant::Default,
               .minHeight = Style::controlHeight * scale,
               .paddingH = Style::spaceMd * scale,
-              .radius = Tokens::radiusR8 * scale,
+              .radius = Style::scaledRadius(Tokens::radiusR8, scale),
               .onClick = [this] {
                 m_query.clear();
                 if (m_searchInput != nullptr) {

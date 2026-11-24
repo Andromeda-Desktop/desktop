@@ -1,5 +1,6 @@
 #include "server/tracker_motion.h"
 
+#include "config/config.h"
 #include "design_tokens.h"
 #include "input/gesture_physics.h"
 
@@ -11,7 +12,7 @@ namespace andromeda {
 
   namespace {
     desk::motion::SpringConfig releaseSpring() {
-      return {.damping = Tokens::springSnap.damping, .stiffness = Tokens::springSnap.stiffness};
+      return motionSpring(Tokens::springSnap);
     }
   } // namespace
 

@@ -328,7 +328,7 @@ namespace launcher_detail {
            .gap = gap,
            .paddingV = paddingV,
            .paddingH = (m_style.pill ? Tokens::spaceP12 : Style::spaceSm) * m_style.scale,
-           .radius = m_style.pill ? Tokens::componentLauncherRowRadius * m_style.scale : Style::scaledRadiusMd(m_style.scale)}
+           .radius = m_style.pill ? Style::scaledRadius(Tokens::componentLauncherRowRadius, m_style.scale) : Style::scaledRadiusMd(m_style.scale)}
       );
       addChild(std::move(row));
       m_focusRing.attach(*this);
@@ -460,7 +460,7 @@ namespace launcher_detail {
       m_fallbackGlyph = result.glyphName.empty() ? "app-window" : result.glyphName;
       m_thumbnail = result.presentation == "clipboard-image";
       m_image->setFit(m_thumbnail ? ImageFit::Cover : ImageFit::Contain);
-      m_image->setRadius(m_thumbnail ? Tokens::radiusR8 * m_style.scale : 0.0F);
+      m_image->setRadius(m_thumbnail ? Style::scaledRadius(Tokens::radiusR8, m_style.scale) : 0.0F);
       const float iconSize = leadingSize();
       m_iconTargetSize = static_cast<int>(std::round(iconSize));
       m_badgeVisible = !result.badge.empty();
@@ -962,7 +962,7 @@ namespace launcher_detail {
           .out = &m_row,
           .align = FlexAlign::Center,
           .gap = Tokens::spaceP16 * scale,
-          .radius = Tokens::componentLauncherRowRadius * scale,
+          .radius = Style::scaledRadius(Tokens::componentLauncherRowRadius, scale),
       });
       m_row->setPadding(Tokens::spaceP8 * scale, Tokens::spaceP12 * scale, Tokens::spaceP8 * scale, Tokens::spaceP8 * scale);
       const float icon = Tokens::componentLauncherTopHitIcon * scale;
@@ -970,7 +970,7 @@ namespace launcher_detail {
           .out = &m_image,
           .width = icon,
           .height = icon,
-          .configure = [scale](Image& image) { image.setRadius(Tokens::componentLauncherTopHitIconRadius * scale); },
+          .configure = [scale](Image& image) { image.setRadius(Style::scaledRadius(Tokens::componentLauncherTopHitIconRadius, scale)); },
       }));
       row->addChild(ui::glyph({
           .out = &m_glyph,
@@ -1166,7 +1166,7 @@ namespace launcher_detail {
             .out = &m_emojiCells[slot],
             .align = FlexAlign::Center,
             .justify = FlexJustify::Center,
-            .radius = Tokens::radiusR16 * m_style.scale,
+            .radius = Style::scaledRadius(Tokens::radiusR16, m_style.scale),
             .visible = false,
         });
         emojiCell->addChild(ui::label({
@@ -1179,7 +1179,7 @@ namespace launcher_detail {
             .out = &m_cellImages[slot],
             .visible = false,
             .participatesInLayout = false,
-            .configure = [this](Image& image) { image.setRadius(Tokens::radiusR8 * m_style.scale); },
+            .configure = [this](Image& image) { image.setRadius(Style::scaledRadius(Tokens::radiusR8, m_style.scale)); },
         }));
         area->addChild(std::move(emojiCell));
         area->addChild(std::move(listRow));

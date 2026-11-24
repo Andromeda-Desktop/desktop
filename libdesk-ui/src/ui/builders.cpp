@@ -1104,7 +1104,7 @@ namespace ui {
   std::unique_ptr<Flex> keycap(const KeycapProps& props) {
     const float s = props.scale;
     const float h = Tokens::sizeKeycap * s;
-    auto cap = row({.align = FlexAlign::Center, .paddingH = Tokens::spaceP4 * s, .radius = Tokens::radiusR4 * s,
+    auto cap = row({.align = FlexAlign::Center, .paddingH = Tokens::spaceP4 * s, .radius = Style::scaledRadius(Tokens::radiusR4, s),
                     .border = colorSpecFromRole(ColorRole::Separator), .borderWidth = Style::borderWidth,
                     .minHeight = h, .maxHeight = h});
     cap->addChild(label({.text = props.text, .fontSize = Tokens::typeCaption.size * s, .fontWeight = FontWeight::Medium,

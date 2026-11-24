@@ -1,3 +1,4 @@
+#include "config/config.h"
 #include "design_tokens.h"
 #include "overview/overview_internal.h"
 
@@ -204,7 +205,7 @@ namespace andromeda {
       }
       m_dropHint->show(
           target->owner->output, target->box,
-          static_cast<int>(std::lround(config().appearance.cornerRadius * target->scale)), HintLook::Ring
+          windowCornerRadius(target->scale), HintLook::Ring
       );
       wlr_scene_node_raise_to_top(&card->tree->node);
       scheduleFrames();
@@ -313,8 +314,8 @@ namespace andromeda {
     // Into a thumb or a new workspace, and a cancel: Return on `close`. Anywhere else: Return on `page`, carrying the
     // release velocity.
     const bool intoWorkspace = thumb != nullptr || insertionGroup != nullptr;
-    const SpringConfig closeSpring{.damping = Tokens::springClose.damping, .stiffness = Tokens::springClose.stiffness};
-    const SpringConfig pageSpring{.damping = Tokens::springPage.damping, .stiffness = Tokens::springPage.stiffness};
+    const SpringConfig closeSpring = motionSpring(Tokens::springClose);
+    const SpringConfig pageSpring = motionSpring(Tokens::springPage);
     const bool page = drop && !intoWorkspace;
     startDropReturn(*view, released, page ? pageSpring : closeSpring, page ? vx : 0.0, page ? vy : 0.0);
 
@@ -600,7 +601,7 @@ namespace andromeda {
       m_dropHint = std::make_unique<HintRect>(*m_server, m_tree);
     }
     m_dropHint->show(
-        output, visibleBox, static_cast<int>(std::lround(config().appearance.cornerRadius * z)), HintLook::Ring
+        output, visibleBox, windowCornerRadius(z), HintLook::Ring
     );
     if (dragCard() != nullptr && dragCard()->tree != nullptr) {
       wlr_scene_node_raise_to_top(&dragCard()->tree->node);

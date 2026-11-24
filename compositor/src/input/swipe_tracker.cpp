@@ -1,5 +1,8 @@
 #include "input/swipe_tracker.h"
 
+#include "design_tokens.h"
+#include "motion/desk_motion.h"
+
 namespace andromeda {
 
   void SwipeTracker::push(double delta, uint32_t timeMsec) {
@@ -49,7 +52,7 @@ namespace andromeda {
   }
 
   double SwipeTracker::projectedEndPos() const {
-    return m_pos + velocity() * kDeceleration / (1.0 - kDeceleration) / 1000.0;
+    return m_pos + desk::motion::projectedDistance(velocity() / 1000.0, Tokens::motionProjectionDecayStepped);
   }
 
   void SwipeTracker::trimHistory(uint32_t nowMsec) {

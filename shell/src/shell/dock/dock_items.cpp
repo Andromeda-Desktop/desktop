@@ -455,7 +455,7 @@ namespace shell::dock {
         instance.lensActiveIndex = i;
         instance.lens.moveTo(
             main - inset, main + iSize + inset, cross - inset, iSize + 2.0F * inset,
-            Tokens::componentDockLensRadius * k, animate
+            Style::scaledRadius(Tokens::componentDockLensRadius, k), animate
         );
         return;
       }
@@ -1655,7 +1655,7 @@ namespace shell::dock {
         const float restInset = Tokens::componentDockLensInset * k;
         instance.lens.moveTo(
             mainStart - inset, mainStart + drawn + inset, lensItem.restCrossPos - restInset, iSize + 2.0F * restInset,
-            Tokens::componentDockLensRadius * k, false
+            Style::scaledRadius(Tokens::componentDockLensRadius, k), false
         );
       }
     }

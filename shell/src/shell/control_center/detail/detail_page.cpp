@@ -118,7 +118,7 @@ namespace control_center {
       button->setText(item.text);
       button->setFontSize(Tokens::typeFootnote.size * s);
       button->setControlHeight(Tokens::componentButtonHeightS * s);
-      button->setRadius(Tokens::componentButtonRadius * s);
+      button->setRadius(Style::scaledRadius(Tokens::componentButtonRadius, s));
       button->setPadding(0.0F, Tokens::componentButtonInsetS * s, 0.0F, Tokens::componentButtonInsetS * s);
       button->setOnClick(std::move(item.onClick));
       footer->addChild(std::move(button));
@@ -285,7 +285,7 @@ namespace control_center {
     card->setDirection(FlexDirection::Vertical);
     card->setAlign(FlexAlign::Stretch);
     card->setPadding(Tokens::componentListCardPadding * s);
-    card->setRadius(Tokens::componentListCardRadius * s);
+    card->setRadius(Style::scaledRadius(Tokens::componentListCardRadius, s));
     Flex* raw = card.get();
     section->addChild(std::move(card));
     m_content->addChild(std::move(section));
@@ -336,7 +336,7 @@ namespace control_center {
     auto cell = std::make_unique<Flex>();
     cell->setDirection(FlexDirection::Horizontal);
     cell->setAlign(FlexAlign::Stretch);
-    cell->setRadius(Tokens::componentListRowRadius * s);
+    cell->setRadius(Style::scaledRadius(Tokens::componentListRowRadius, s));
     cell->setFill(baseFill);
     Flex* cellPtr = cell.get();
 
@@ -349,7 +349,7 @@ namespace control_center {
     button->setMinHeight((twoLine ? Tokens::sizeRowTwo : Tokens::sizeRow) * s);
     button->setPadding(0.0F, Tokens::componentListRowInset * s, 0.0F, Tokens::componentListRowInset * s);
     button->setGap(Tokens::spaceP8 * s);
-    button->setRadius(Tokens::componentListRowRadius * s);
+    button->setRadius(Style::scaledRadius(Tokens::componentListRowRadius, s));
     button->setFlexGrow(1.0F);
     button->setEnabled(row.enabled && static_cast<bool>(row.onClick));
     if (row.onClick) {
@@ -421,7 +421,7 @@ namespace control_center {
       action->setText(row.action);
       action->setFontSize(Tokens::typeFootnote.size * s);
       action->setControlHeight(Tokens::sizeControlS * s);
-      action->setRadius(Tokens::radiusR8 * s);
+      action->setRadius(Style::scaledRadius(Tokens::radiusR8, s));
       action->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s);
       action->setOnClick(row.onAction);
       // App-given labels have any length: the button caps and ellipsizes, and the title reserves the cap plus inset.
@@ -593,7 +593,7 @@ namespace control_center {
     again->setText(i18n::tr("control-center.detail.try-again"));
     again->setFontSize(Tokens::typeFootnote.size * s);
     again->setControlHeight(Tokens::componentButtonHeightS * s);
-    again->setRadius(Tokens::componentButtonRadius * s);
+    again->setRadius(Style::scaledRadius(Tokens::componentButtonRadius, s));
     again->setPadding(0.0F, Tokens::componentButtonInsetS * s, 0.0F, Tokens::componentButtonInsetS * s);
     again->setOnClick(std::move(retry));
     row->addChild(std::move(again));

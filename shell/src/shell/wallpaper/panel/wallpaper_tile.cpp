@@ -41,7 +41,7 @@ namespace {
 
   // The ring sits focusRingGap outside the thumbnail, so the tile padding must hold ring + gap.
   [[nodiscard]] float tilePadding(float contentScale) { return Tokens::spaceP4 * contentScale; }
-  [[nodiscard]] float thumbRadius(float contentScale) { return Tokens::radiusR12 * contentScale; }
+  [[nodiscard]] float thumbRadius(float contentScale) { return Style::scaledRadius(Tokens::radiusR12, contentScale); }
   constexpr const float& kCheckBadge = Tokens::spaceP20;
   constexpr const float& kCheckInset = Tokens::spaceP8;
 

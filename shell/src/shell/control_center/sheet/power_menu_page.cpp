@@ -129,7 +129,7 @@ std::unique_ptr<Flex> PowerMenuPage::makeUpdateTile() {
   const float s = contentScale();
   auto button = std::make_unique<Button>();
   button->setVariant(ButtonVariant::Primary);
-  button->setRadius(Tokens::componentTileRadius * s);
+  button->setRadius(Style::scaledRadius(Tokens::componentTileRadius, s));
   button->setControlHeight(kRowTile * s);
   button->setGap(Tokens::spaceP8 * s);
   button->setContentAlign(ButtonContentAlign::Center);
@@ -169,7 +169,7 @@ std::unique_ptr<Flex> PowerMenuPage::makeBlockerRow() {
   return ui::row(
       {.out = &m_blockerRow, .align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingV = Tokens::spaceP8 * s,
        .paddingH = Tokens::componentTilePadding * s,
-       .fill = colorSpecFromRole(ColorRole::GlassCard, panelCardOpacity()), .radius = Tokens::componentTileRadius * s},
+       .fill = colorSpecFromRole(ColorRole::GlassCard, panelCardOpacity()), .radius = Style::scaledRadius(Tokens::componentTileRadius, s)},
       ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center,
                .fill = colorSpecFromRole(ColorRole::Fill2), .radius = iconSize * 0.5F, .width = iconSize,
                .height = iconSize},
@@ -247,7 +247,7 @@ std::unique_ptr<Flex> PowerMenuPage::makeTile(std::string_view glyph, const std:
   colors.pressed.bg = colorSpecFromRole(ColorRole::Fill3, opacity);
   colors.disabled = colors.normal;
   button->setCustomPalette(colors);
-  button->setRadius(Tokens::componentTileRadius * s);
+  button->setRadius(Style::scaledRadius(Tokens::componentTileRadius, s));
   button->setControlHeight(height * s);
   button->setPadding(0.0F, Tokens::componentTilePadding * s);
   button->setGap(Tokens::spaceP12 * s);

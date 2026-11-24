@@ -95,8 +95,8 @@ namespace andromeda {
     m_scale.snap(anim.enabled && !reduced ? 0.92 : 1.0);
     m_opacity.snap(anim.enabled ? 0.0 : 1.0);
     if (anim.enabled) {
-      m_scale.settleSpring(1.0, {.damping = Tokens::springOpen.damping, .stiffness = Tokens::springOpen.stiffness});
-      m_opacity.settleSpring(1.0, {.damping = Tokens::springFade.damping, .stiffness = Tokens::springFade.stiffness});
+      m_scale.settleSpring(1.0, motionSpring(Tokens::springOpen));
+      m_opacity.settleSpring(1.0, motionSpring(Tokens::springFade));
     }
     retargetZones(false);
     wlr_scene_node_raise_to_top(&m_tree->node);
@@ -122,10 +122,10 @@ namespace andromeda {
       return;
     }
     if (!config().appearance.reduceMotion) {
-      m_scale.settleSpring(0.96, {.damping = Tokens::springClose.damping, .stiffness = Tokens::springClose.stiffness});
+      m_scale.settleSpring(0.96, motionSpring(Tokens::springClose));
     }
     m_opacity.settleSpring(
-        0.0, {.damping = Tokens::springFadeOut.damping, .stiffness = Tokens::springFadeOut.stiffness}
+        0.0, motionSpring(Tokens::springFadeOut)
     );
     scheduleFrame();
   }
@@ -162,7 +162,7 @@ namespace andromeda {
         const auto& spring = rising ? Tokens::springFadeOut : Tokens::springFade;
         for (size_t channel = 0; channel < fill.size(); ++channel) {
           if (springs) {
-            fill[channel].settleSpring(color[channel], {.damping = spring.damping, .stiffness = spring.stiffness});
+            fill[channel].settleSpring(color[channel], motionSpring(spring));
           } else {
             fill[channel].snap(color[channel]);
           }

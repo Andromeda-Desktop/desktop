@@ -255,7 +255,7 @@ void ReorderController::lift(bool lifted) {
     }
   }
   if (lifted && m_shadow == nullptr) {
-    const float radius = Tokens::componentListRowRadius * m_scale * Style::cornerRadiusScale();
+    const float radius = Style::scaledRadius(Tokens::componentListRowRadius, m_scale);
     m_shadow = static_cast<Box*>(m_list->addChild(ui::box({
         .fill = colorSpecFromRole(
             ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE3.keyLight : Tokens::elevationE3.keyDark

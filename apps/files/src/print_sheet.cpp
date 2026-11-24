@@ -475,7 +475,7 @@ std::unique_ptr<Node> PrintSheet::buildPreview(Renderer& renderer, float s, floa
   const float caption = Style::fontSizeCaption * s;
   auto pv = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP12 * s,
                         .padding = Tokens::spaceP16 * s, .fill = colorSpecFromRole(ColorRole::Fill1),
-                        .radius = Tokens::radiusR16 * s, .flexGrow = 1.0F});
+                        .radius = Style::scaledRadius(Tokens::radiusR16, s), .flexGrow = 1.0F});
   const auto note = [&](std::string text) {
     return ui::label({.text = std::move(text), .fontSize = caption, .fontWeight = FontWeight::Medium,
                       .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 2,
@@ -556,7 +556,7 @@ namespace {
 
     std::unique_ptr<Flex> card() const {
       return ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s,
-                         .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Tokens::radiusR16 * s,
+                         .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Style::scaledRadius(Tokens::radiusR16, s),
                          .border = colorSpecFromRole(ColorRole::GlassCardEdge),
                          .borderWidth = std::max(1.0F, 0.5F * s), .fillWidth = true});
     }
@@ -783,7 +783,7 @@ void PrintSheet::buildMain(Node& col, float s) {
                                       auto ring = std::make_unique<Flex>();
                                       ring->setParticipatesInLayout(false);
                                       ring->setBorder(focusRingColorSpec(), Style::focusRingWidth);
-                                      ring->setRadius(Tokens::radiusR16 * s + Style::focusRingGap + Style::focusRingWidth);
+                                      ring->setRadius(Style::scaledRadius(Tokens::radiusR16, s) + Style::focusRingGap + Style::focusRingWidth);
                                       ring->setPosition(-out, -out);
                                       ring->setSize(rowW + 2.0F * out, a.height() + 2.0F * out);
                                       ring->setVisible(false);
@@ -908,7 +908,7 @@ std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width
   if (!pdf && m_printersState == Printers::Loaded)
     buttons->addChild(ui::button({.text = std::string("Save as PDF…"), .fontSize = body,
                                   .variant = ButtonVariant::Default, .customPalette = plain,
-                                  .paddingH = Tokens::spaceP12 * s, .radius = Tokens::radiusR8 * s, .height = ctlH,
+                                  .paddingH = Tokens::spaceP12 * s, .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = ctlH,
                                   .onClick = [this] {
                                     if (m_cb.savePdf)
                                       m_cb.savePdf();
@@ -916,14 +916,14 @@ std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width
   buttons->addChild(ui::row({.flexGrow = 1.0F}));
   buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = body, .variant = ButtonVariant::Default,
                                 .customPalette = plain, .paddingH = Tokens::spaceP12 * s,
-                                .radius = Tokens::radiusR8 * s, .height = ctlH, .onClick = [this] {
+                                .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = ctlH, .onClick = [this] {
                                   if (m_cb.cancel)
                                     m_cb.cancel();
                                 }}));
   buttons->addChild(ui::button({.out = &m_printButton, .text = std::string(pdf ? "Save…" : "Print"), .fontSize = body,
                                 .enabled = !m_sent && (pdf || (printer() != nullptr && rangeValid())),
                                 .variant = ButtonVariant::Primary, .paddingH = Tokens::spaceP12 * s,
-                                .radius = Tokens::radiusR8 * s, .height = ctlH, .onClick = [this] { submit(); }}));
+                                .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = ctlH, .onClick = [this] { submit(); }}));
   tagFocus(*buttons, "print.buttons");
   col->addChild(std::move(buttons));
   sheet->addChild(std::move(col));

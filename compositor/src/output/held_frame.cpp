@@ -1,5 +1,6 @@
 #include "output/held_frame.h"
 
+#include "config/config.h"
 #include "core/log.h"
 #include "wlr.h"
 
@@ -31,10 +32,6 @@ namespace andromeda {
   namespace {
 
     constexpr Logger kLog("held-frame");
-
-    // Rulebook 7.2: close (d 0.28, b 0) and fade_out (d 0.10, b 0) as stiffness k = (2 pi / d)^2, damping ratio 1.
-    constexpr desk::motion::SpringConfig kClose{.damping = 1.0, .stiffness = 504.0, .mass = 1.0};
-    constexpr desk::motion::SpringConfig kFadeOut{.damping = 1.0, .stiffness = 3948.0, .mass = 1.0};
 
     struct HeldBuffer {
       wlr_buffer base;
@@ -352,7 +349,7 @@ namespace andromeda {
       return;
     }
     m_released = true;
-    m_progress = desk::motion::Spring(0.0, 1.0, reducedMotion ? kFadeOut : kClose);
+    m_progress = desk::motion::Spring(0.0, 1.0, motionSpring(reducedMotion ? Tokens::springFadeOut : Tokens::springClose));
     m_progress.setThreshold(1.0 / 256.0);
   }
 

@@ -4559,7 +4559,7 @@ void FilesWindow::openViewOptions(const Node* anchor) {
     box->addChild(std::move(shows));
     box->addChild(ui::button({.text = std::string("Use as Defaults"), .fontSize = Style::fontSizeBody * s,
                               .variant = ButtonVariant::Default, .customPalette = plain, .paddingH = Tokens::spaceP12 * s,
-                              .radius = Tokens::radiusR8 * s, .height = Tokens::sizeControlM * s, .onClick = [this] {
+                              .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = Tokens::sizeControlM * s, .onClick = [this] {
                                 view_store::writeDefault(view_store::encode(m_browser->viewState()));
                                 kLog.debug("view default {}", view_store::encode(m_browser->viewState()));
                                 m_window.closePopover();

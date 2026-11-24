@@ -1,5 +1,8 @@
 #pragma once
 
+#include "design_tokens.h"
+#include "motion/desk_motion.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -25,10 +28,10 @@ inline constexpr float kBannerSwipeSlop = 8.0F;
   return limit < 0.0F ? std::max(offset, limit) : std::min(offset, limit);
 }
 
-// Release: the end projected with deceleration 0.998 (velocity in px/ms) snaps to the nearer of rest and `limit`; a flick
+// Release: the end projected with motion.projection_decay (velocity in px/ms) snaps to the nearer of rest and `limit`; a flick
 // faster than 300 px/s toward `limit` dismisses too.
-[[nodiscard]] constexpr bool bannerSwipeDismisses(float offset, float velocity, float limit) noexcept {
+[[nodiscard]] inline bool bannerSwipeDismisses(float offset, float velocity, float limit) noexcept {
   const float direction = limit < 0.0F ? -1.0F : 1.0F;
-  const float projected = offset + velocity * 0.998F / (1.0F - 0.998F);
+  const auto projected = static_cast<float>(offset + desk::motion::projectedDistance(velocity, Tokens::motionProjectionDecay));
   return projected * direction > std::abs(limit) * 0.5F || velocity * direction > 0.3F;
 }
