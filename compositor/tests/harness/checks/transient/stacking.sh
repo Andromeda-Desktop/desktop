@@ -17,13 +17,11 @@ field_of() {
   windows | jq -r --arg id "$id" --arg field "$field" '.[] | select(.id == $id) | .[$field]'
 }
 
-wait_for_field() {
-  local id=$1 field=$2 want=$3
-  for _ in $(seq 60); do
-    [[ $(field_of "$id" "$field") == "$want" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $id $field=$want, got: $(windows)"
+field_is() { [[ $(field_of "$1" "$2") == "$3" ]]; }
+
+expect_field() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" field_is "$1" "$2" "$3" && return 0
+  echo "expected $1 $2=$3, got: $(windows)"
   return 1
 }
 
@@ -43,7 +41,7 @@ wait_for_fullscreen() {
 focus_at() {
   local x=$1 y=$2 id=$3 context=$4
   "$POINTER" 1280 720 move "$x" "$y"
-  if ! wait_for_field "$id" focused true; then
+  if ! expect_field "$id" focused true; then
     echo "$context: $(windows)"
     exit 1
   fi
@@ -79,20 +77,20 @@ if [[ -z $parent_id || -z $child_id ]]; then
   echo "could not resolve transient-suite windows: $snapshot"
   exit 1
 fi
-wait_for_field "$parent_id" x 100
-wait_for_field "$parent_id" y 110
-wait_for_field "$child_id" x 500
-wait_for_field "$child_id" y 110
+expect_field "$parent_id" x 100
+expect_field "$parent_id" y 110
+expect_field "$child_id" x 500
+expect_field "$child_id" y 110
 
 # The first point is only inside the parent. The second is inside both windows.
 # Every assertion observes a focus transition caused by real scene hit-testing.
 focus_at 200 360 "$parent_id" "could not focus the exposed parent"
-wait_for_field "$child_id" focused false
+expect_field "$child_id" focused false
 focus_at 600 360 "$child_id" "focusing the floating parent buried its transient"
 
 focus_at 200 360 "$parent_id" "could not refocus the parent before pinning"
 "$ANDROMEDA" msg window-toggle-pinned > /dev/null
-wait_for_field "$child_id" focused false
+expect_field "$child_id" focused false
 focus_at 600 360 "$child_id" "the pinned parent covered its transient"
 
 focus_at 200 360 "$parent_id" "could not refocus the pinned parent"
@@ -100,7 +98,7 @@ focus_at 200 360 "$parent_id" "could not refocus the pinned parent"
 "$ANDROMEDA" msg window-toggle-fullscreen > /dev/null
 wait_for_fullscreen "$parent_id" true
 wait_for_fullscreen "$child_id" false
-wait_for_field "$child_id" focused false
+expect_field "$child_id" focused false
 focus_at 600 360 "$child_id" "the fullscreen parent covered its transient"
 
 echo "transient dialogs stay above floating, pinned, and fullscreen parents"

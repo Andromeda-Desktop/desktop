@@ -199,7 +199,7 @@ recreate_home() {
   fi
 }
 
-wait_for_workspace_homes() {
+expect_workspace_homes() {
   local title
   for title in "$@"; do
     wait_for_home "$title" "HEADLESS-1/${workspace_of[$title]}"
@@ -301,7 +301,7 @@ for layout in "${layouts[@]}"; do
     move_to_workspace "$title" "${workspace_of[$title]}"
   done
 done
-wait_for_workspace_homes "${titles[@]}"
+expect_workspace_homes "${titles[@]}"
 
 # Ordinary floating views retain exact geometry and stay outside every layout.
 for title in "${probes[@]}"; do
@@ -316,7 +316,7 @@ for title in "${probes[@]}"; do
   await_field "$title" floating true
 done
 recreate_home
-wait_for_workspace_homes "${titles[@]}"
+expect_workspace_homes "${titles[@]}"
 wait_for_snapshot all "$floating_before"
 for title in "${probes[@]}"; do
   focus_window "$title"
@@ -339,7 +339,7 @@ for title in "${probes[@]}"; do
   await_field "$title" floating true
 done
 recreate_home
-wait_for_workspace_homes "${titles[@]}"
+expect_workspace_homes "${titles[@]}"
 wait_for_snapshot all "$pinned_before"
 for title in "${probes[@]}"; do
   focus_window "$title"
@@ -391,7 +391,7 @@ wait_for_home legit-scratch ''
 
 write_matrix_config true true
 "$ANDROMEDA" msg config-reload > /dev/null
-wait_for_workspace_homes "${titles[@]}"
+expect_workspace_homes "${titles[@]}"
 for title in "${probes[@]}"; do
   await_field "$title" floating true
 done
@@ -438,7 +438,7 @@ scratchpad_phase() {
   assert_visible_scratchpad_cycle HEADLESS-2
 
   recreate_home
-  wait_for_workspace_homes "${anchors[@]}"
+  expect_workspace_homes "${anchors[@]}"
   for title in "${probes[@]}"; do
     wait_for_home "$title" ''
   done
@@ -467,5 +467,5 @@ scratchpad_phase() {
 scratchpad_phase false
 scratchpad_phase true
 
-wait_for_workspace_homes "${titles[@]}"
+expect_workspace_homes "${titles[@]}"
 echo "floating, pinned, and scratchpad state survived output loss in scrolling, dwindle, and master layouts"

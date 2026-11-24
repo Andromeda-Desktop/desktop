@@ -4,6 +4,8 @@
 # focus or identity, so no other rule refresh can produce the effect.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_SUBSURFACE_CLIENT:-./build-debug/tests/subsurface-client}"
 readonly SCREENSHOT="$ANDROMEDA_RUNTIME_DIR/rule-state-transitions.png"
 
@@ -40,16 +42,6 @@ field_of() {
   "$ANDROMEDA" windows --json | jq -r --arg field "$1" '.[] | select(.title == "state-rules") | .[$field]'
 }
 
-wait_for_field() {
-  local field=$1 expected=$2 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected window field '$field' to be '$expected', got '$actual'"
-  exit 1
-}
 
 # The client's blue child surface covers the window centre. Opaque it encodes as
 # blue 255; at rule opacity 0.5 the green backdrop shows through and drops it to
@@ -81,23 +73,23 @@ expect_state() {
 }
 
 "$CLIENT" state-rules 640 480 > "$ANDROMEDA_RUNTIME_DIR/state-rules.log" 2>&1 &
-wait_for_field floating false
+await_field state-rules floating false
 tiled=$(expect_state "tiled" absent)
 
 "$ANDROMEDA" msg window-toggle-floating > /dev/null
-wait_for_field floating true
+await_field state-rules floating true
 floated=$(expect_state "floating" applied)
 
 "$ANDROMEDA" msg window-toggle-floating > /dev/null
-wait_for_field floating false
+await_field state-rules floating false
 retiled=$(expect_state "re-tiled" absent)
 
 "$ANDROMEDA" msg window-toggle-pinned > /dev/null
-wait_for_field floating true
+await_field state-rules floating true
 pinned=$(expect_state "pinned" applied)
 
 "$ANDROMEDA" msg window-toggle-pinned > /dev/null
-wait_for_field floating false
+await_field state-rules floating false
 unpinned=$(expect_state "unpinned" absent)
 
 echo "float and pin transitions re-apply state rules: $tiled, $floated, $retiled, $pinned, $unpinned"

@@ -53,11 +53,10 @@ window_of() {
   "$ANDROMEDA" windows --json | jq -c --arg a "$1" '.[] | select(.app_id == $a)'
 }
 
-wait_mapped() {
-  for _ in $(seq 80); do
-    [[ -n $(window_of "$1") ]] && return 0
-    sleep 0.1
-  done
+window_mapped() { [[ -n $(window_of "$1") ]]; }
+
+expect_mapped() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" window_mapped "$1" && return 0
   echo "window '$1' never mapped"
   exit 1
 }
@@ -66,7 +65,7 @@ start_client() {
   foot --config=/dev/null --app-id="$1" --override=colors.background=000000 sh -c 'sleep 120' \
     > /dev/null 2>&1 &
   client_pid=$!
-  wait_mapped "$1"
+  expect_mapped "$1"
 }
 
 # The frame pixel two pixels left of the window's content, at mid height, as RRGGBB.

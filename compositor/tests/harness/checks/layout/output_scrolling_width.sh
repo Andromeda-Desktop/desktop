@@ -4,6 +4,8 @@
 # reload updates the default for future columns without resizing existing ones.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_SUBSURFACE_CLIENT:-./build-debug/tests/subsurface-client}"
 
 window_state() {
@@ -12,20 +14,14 @@ window_state() {
     | jq -c --arg title "$title" '[.[] | select(.title == $title)]'
 }
 
-wait_for_window() {
-  local title=$1 expected_width=$2 expected_output=$3 matches=
-  for _ in $(seq 80); do
-    matches=$(window_state "$title")
-    if jq -e \
-      --arg output "$expected_output:" \
-      --argjson width "$expected_width" \
-      'length == 1 and .[0].w == $width and (.[0].workspace | startswith($output))' \
-      <<< "$matches" > /dev/null; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected '$title' at width $expected_width on $expected_output, got: $matches"
+window_at() {
+  window_state "$1" | jq -e --arg output "$3:" --argjson width "$2" \
+    'length == 1 and .[0].w == $width and (.[0].workspace | startswith($output))' > /dev/null
+}
+
+expect_window_at() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" window_at "$1" "$2" "$3" && return 0
+  echo "expected '$1' at width $2 on $3, got: $(window_state "$1")"
   return 1
 }
 
@@ -72,9 +68,9 @@ EOF
 # Both headless outputs are 1280 logical pixels wide. With zero gap and border,
 # their 0.25 and 0.75 defaults produce exact 320 and 960 pixel columns.
 spawn_client output-width-left
-wait_for_window output-width-left 320 HEADLESS-1
+expect_window_at output-width-left 320 HEADLESS-1
 spawn_client output-width-right-old
-wait_for_window output-width-right-old 960 HEADLESS-2
+expect_window_at output-width-right-old 960 HEADLESS-2
 
 # Updating HEADLESS-2 to 0.625 must refresh the existing workspace's resolved
 # config. The old column retains its owned width, while the next one starts at
@@ -85,8 +81,8 @@ sed -i \
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client output-width-right-new
-wait_for_window output-width-right-new 800 HEADLESS-2
-wait_for_window output-width-right-old 960 HEADLESS-2
-wait_for_window output-width-left 320 HEADLESS-1
+expect_window_at output-width-right-new 800 HEADLESS-2
+expect_window_at output-width-right-old 960 HEADLESS-2
+expect_window_at output-width-left 320 HEADLESS-1
 
 echo "per-output scrolling defaults sized new columns at 320, 960, then 800 after reload without resizing existing columns"

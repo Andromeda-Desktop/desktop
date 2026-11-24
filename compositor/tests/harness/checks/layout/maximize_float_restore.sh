@@ -3,6 +3,8 @@
 # Repeated round trips must also preserve the separate floating restore box.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -29,16 +31,6 @@ field() {
     '[.[] | select(.title == $title)] | if length == 0 then "<absent>" else .[0][$key] end'
 }
 
-wait_field() {
-  local actual=
-  for _ in $(seq 80); do
-    actual=$(field "$1")
-    [[ $actual == "$2" ]] && return 0
-    sleep 0.05
-  done
-  echo "$TITLE: expected $1=$2, got $actual: $("$ANDROMEDA" windows --json)"
-  return 1
-}
 
 for mode in column edges remembered-column remembered-edges; do
   if [[ $mode == remembered-column ]]; then
@@ -48,7 +40,7 @@ for mode in column edges remembered-column remembered-edges; do
   TITLE="maximize-float-$mode"
   "$CLIENT" "$TITLE" > "$ANDROMEDA_RUNTIME_DIR/$TITLE.log" 2>&1 &
   client_pid=$!
-  wait_field title "$TITLE"
+  await_field "$TITLE" title "$TITLE"
   window_id=$(field id)
   "$ANDROMEDA" msg "window-focus:$window_id" > /dev/null
   float_action=window-toggle-floating
@@ -56,14 +48,14 @@ for mode in column edges remembered-column remembered-edges; do
     float_action="window-toggle-floating:$window_id"
   fi
   if [[ $mode == remembered-* ]]; then
-    wait_field floating true
-    wait_field w 420
-    wait_field h 270
-    wait_field x 160
-    wait_field y 120
+    await_field "$TITLE" floating true
+    await_field "$TITLE" w 420
+    await_field "$TITLE" h 270
+    await_field "$TITLE" x 160
+    await_field "$TITLE" y 120
     "$ANDROMEDA" msg "$float_action" > /dev/null
   fi
-  wait_field floating false
+  await_field "$TITLE" floating false
   "$ANDROMEDA" settle > /dev/null
   tile_width=$(field w)
   tile_height=$(field h)
@@ -81,7 +73,7 @@ for mode in column edges remembered-column remembered-edges; do
   fi
 
   "$ANDROMEDA" msg "$action" > /dev/null
-  wait_field maximized true
+  await_field "$TITLE" maximized true
   "$ANDROMEDA" settle > /dev/null
   max_width=$(field w)
   max_height=$(field h)
@@ -91,72 +83,72 @@ for mode in column edges remembered-column remembered-edges; do
   fi
 
   "$ANDROMEDA" msg "$float_action" > /dev/null
-  wait_field floating true
-  wait_field maximized true
-  wait_field maximized_to_edges "$edges"
-  wait_field w "$max_width"
+  await_field "$TITLE" floating true
+  await_field "$TITLE" maximized true
+  await_field "$TITLE" maximized_to_edges "$edges"
+  await_field "$TITLE" w "$max_width"
 
   # Unfloating must not restore the normal size automatically. Only the following maximize binding should do that.
   "$ANDROMEDA" msg "$float_action" > /dev/null
-  wait_field floating false
-  wait_field maximized true
-  wait_field maximized_to_edges "$edges"
+  await_field "$TITLE" floating false
+  await_field "$TITLE" maximized true
+  await_field "$TITLE" maximized_to_edges "$edges"
   "$ANDROMEDA" settle > /dev/null
-  wait_field w "$max_width"
-  wait_field h "$max_height"
+  await_field "$TITLE" w "$max_width"
+  await_field "$TITLE" h "$max_height"
 
   # Keep the same restore extent through another full float/unfloat cycle while still maximized.
   "$ANDROMEDA" msg "$float_action" > /dev/null
-  wait_field floating true
-  wait_field maximized true
+  await_field "$TITLE" floating true
+  await_field "$TITLE" maximized true
   "$ANDROMEDA" msg "$float_action" > /dev/null
-  wait_field floating false
-  wait_field maximized true
+  await_field "$TITLE" floating false
+  await_field "$TITLE" maximized true
   "$ANDROMEDA" settle > /dev/null
-  wait_field w "$max_width"
-  wait_field h "$max_height"
+  await_field "$TITLE" w "$max_width"
+  await_field "$TITLE" h "$max_height"
 
   "$ANDROMEDA" msg "$action" > /dev/null
-  wait_field maximized false
-  wait_field w "$tile_width"
-  wait_field h "$tile_height"
+  await_field "$TITLE" maximized false
+  await_field "$TITLE" w "$tile_width"
+  await_field "$TITLE" h "$tile_height"
 
   # The maximized floating geometry must not overwrite the remembered normal floating size or position.
   "$ANDROMEDA" msg "$float_action" > /dev/null
-  wait_field floating true
-  wait_field maximized false
-  wait_field w "$restore_width"
-  wait_field h "$restore_height"
+  await_field "$TITLE" floating true
+  await_field "$TITLE" maximized false
+  await_field "$TITLE" w "$restore_width"
+  await_field "$TITLE" h "$restore_height"
   if [[ $mode == remembered-* ]]; then
-    wait_field x 160
-    wait_field y 120
+    await_field "$TITLE" x 160
+    await_field "$TITLE" y 120
   fi
 
   # A second cycle must capture the restored size, not a stale maximized configure.
   "$ANDROMEDA" msg "$action" > /dev/null
-  wait_field maximized true
-  wait_field w "$max_width"
+  await_field "$TITLE" maximized true
+  await_field "$TITLE" w "$max_width"
   "$ANDROMEDA" msg "$action" > /dev/null
-  wait_field maximized false
-  wait_field w "$restore_width"
-  wait_field h "$restore_height"
+  await_field "$TITLE" maximized false
+  await_field "$TITLE" w "$restore_width"
+  await_field "$TITLE" h "$restore_height"
 
   "$ANDROMEDA" msg "$float_action" > /dev/null
-  wait_field floating false
-  wait_field w "$tile_width"
-  wait_field h "$tile_height"
+  await_field "$TITLE" floating false
+  await_field "$TITLE" w "$tile_width"
+  await_field "$TITLE" h "$tile_height"
   kill -TERM "$client_pid"
   wait "$client_pid" 2>/dev/null || true
-  wait_field title "<absent>"
+  await_field "$TITLE" title "<absent>"
 done
 
 for mode in floating-column floating-edges; do
   TITLE="maximize-float-$mode"
   "$CLIENT" "$TITLE" > "$ANDROMEDA_RUNTIME_DIR/$TITLE.log" 2>&1 &
   client_pid=$!
-  wait_field floating true
-  wait_field w 420
-  wait_field h 270
+  await_field "$TITLE" floating true
+  await_field "$TITLE" w 420
+  await_field "$TITLE" h 270
   "$ANDROMEDA" msg "window-focus:$(field id)" > /dev/null
   action=window-toggle-maximize
   max_width=1264
@@ -165,19 +157,19 @@ for mode in floating-column floating-edges; do
     max_width=1280
   fi
   "$ANDROMEDA" msg "$action" > /dev/null
-  wait_field maximized true
+  await_field "$TITLE" maximized true
   "$ANDROMEDA" settle > /dev/null
-  wait_field w "$max_width"
+  await_field "$TITLE" w "$max_width"
   "$ANDROMEDA" msg window-toggle-floating > /dev/null
-  wait_field floating false
-  wait_field maximized true
-  wait_field w "$max_width"
+  await_field "$TITLE" floating false
+  await_field "$TITLE" maximized true
+  await_field "$TITLE" w "$max_width"
   "$ANDROMEDA" msg "$action" > /dev/null
-  wait_field maximized false
-  wait_field w 420
+  await_field "$TITLE" maximized false
+  await_field "$TITLE" w 420
   kill -TERM "$client_pid"
   wait "$client_pid" 2>/dev/null || true
-  wait_field title "<absent>"
+  await_field "$TITLE" title "<absent>"
 done
 
 echo "maximize, float, and unfloat preserved maximization until the binding restored the original tile extent"

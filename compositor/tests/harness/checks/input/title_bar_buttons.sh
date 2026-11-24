@@ -35,16 +35,6 @@ readonly IMAGE=$ANDROMEDA_RUNTIME_DIR/title-bar-buttons.png
 
 window() { "$ANDROMEDA" windows --json | jq -c --arg title "$TITLE" '.[] | select(.title == $title)'; }
 
-wait_field() {
-  local field=$1 expected=$2 actual=
-  for _ in $(seq 80); do
-    actual=$(window | jq -r --arg field "$field" '.[$field]')
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $field=$expected, got $actual: $(window)"
-  return 1
-}
 
 # The color at the button slot `offset` pixels left of the bar's right edge: blue, yellow, green, or bar.
 slot() {
@@ -79,8 +69,8 @@ expect_slots() {
 }
 
 env XDG_DECORATION=server "$ANDROMEDA_FRACTIONAL_CLIENT" "$TITLE" 480 300 > "$ANDROMEDA_RUNTIME_DIR/window.log" 2>&1 &
-wait_field floating true
-wait_field title_bar true
+await_field "$TITLE" floating true
+await_field "$TITLE" title_bar true
 id=$(window | jq -r .id)
 
 # Default buttons from the title outward: minimize, maximize, close.
@@ -88,13 +78,13 @@ expect_slots 18=green 38=yellow 58=blue
 
 # Clicking minimize hides the window; naming it brings it back.
 "$ANDROMEDA_POINTER_CLIENT" 1280 720 move 595 95 click 272
-wait_field minimized true
+await_field "$TITLE" minimized true
 "$ANDROMEDA" msg "window-focus:$id" > /dev/null
-wait_field minimized false
+await_field "$TITLE" minimized false
 
 # A tiled window can minimize too, so its bar keeps the minimize button.
 "$ANDROMEDA" msg window-toggle-floating > /dev/null
-wait_field floating false
+await_field "$TITLE" floating false
 expect_slots 18=green 38=yellow 58=blue
 
 # A rule keeping only close replaces the configured buttons on reload.

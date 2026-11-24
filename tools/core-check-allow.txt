@@ -1,23 +1,5 @@
 # core-check allowlist: rule path count. Counts only fall; tools/core-check.py --update after a fix.
 exit-poll apps/terminal/src/agent_host.cpp 1
 exit-poll libdesk-term/src/pty_session.cpp 1
-harness-wait compositor/tests/harness/checks/input/title_bar_buttons.sh 1
-harness-wait compositor/tests/harness/checks/layout/maximize_float_restore.sh 1
-harness-wait compositor/tests/harness/checks/layout/output_scrolling_width.sh 1
-harness-wait compositor/tests/harness/checks/layout/tab_scroll_drag_focus.sh 1
-harness-wait compositor/tests/harness/checks/layout/title_change_width.sh 1
-harness-wait compositor/tests/harness/checks/output/auto_scale.sh 1
-harness-wait compositor/tests/harness/checks/output/auxiliary_restore.sh 1
-harness-wait compositor/tests/harness/checks/output/scratchpad_reposition.sh 1
-harness-wait compositor/tests/harness/checks/output/scratchpad_restore.sh 1
-harness-wait compositor/tests/harness/checks/overview/hides_scratchpads.sh 1
-harness-wait compositor/tests/harness/checks/overview/keybind_actions.sh 2
-harness-wait compositor/tests/harness/checks/rule/cast_target.sh 1
-harness-wait compositor/tests/harness/checks/rule/only_window.sh 1
-harness-wait compositor/tests/harness/checks/rule/state_transitions.sh 1
-harness-wait compositor/tests/harness/checks/scratchpad/action_isolation.sh 1
-harness-wait compositor/tests/harness/checks/scratchpad/default_rule.sh 1
-harness-wait compositor/tests/harness/checks/transient/stacking.sh 1
-harness-wait compositor/tests/harness/checks/workspace/window_move_silent.sh 1
 raw-spawn apps/terminal/src/agent_host.cpp 1
 shell-string apps/terminal/src/terminal_window.cpp 1

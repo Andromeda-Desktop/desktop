@@ -8,6 +8,8 @@
 # float and not the new tile column.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly SCREENSHOT="$ANDROMEDA_RUNTIME_DIR/rule-only-window.png"
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -55,13 +57,11 @@ field_of() {
   "$ANDROMEDA" windows --json | jq -r --arg a "$1" --arg f "$2" '.[] | select(.app_id == $a) | .[$f]'
 }
 
-wait_mapped() {
-  local app=$1
-  for _ in $(seq 80); do
-    [[ -n $(field_of "$app" w) ]] && return 0
-    sleep 0.1
-  done
-  echo "window '$app' never mapped"
+window_mapped() { [[ -n $(field_of "$1" w) ]]; }
+
+expect_mapped() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" window_mapped "$1" && return 0
+  echo "window '$1' never mapped"
   exit 1
 }
 
@@ -116,7 +116,7 @@ start_client() {
   foot --config=/dev/null --app-id="$1" --override=colors-dark.background=000000 sh -c 'sleep 120' \
     > /dev/null 2>&1 &
   client_pid=$!
-  wait_mapped "$1"
+  expect_mapped "$1"
 }
 
 start_client only-a

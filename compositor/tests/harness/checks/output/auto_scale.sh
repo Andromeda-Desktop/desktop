@@ -43,19 +43,16 @@ wait_for_output() {
   return 1
 }
 
-wait_for_windows() {
-  local windows=
-  for _ in $(seq 60); do
-    windows=$("$ANDROMEDA" windows --json)
-    if jq -e '
-      any(.[]; .title == "auto-scale-left" and (.workspace | startswith("HEADLESS-1:")))
-      and any(.[]; .title == "auto-scale-right" and (.workspace | startswith("HEADLESS-2:")))
-    ' <<< "$windows" > /dev/null; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "clients did not map on their configured outputs: $windows"
+clients_mapped() {
+  "$ANDROMEDA" windows --json | jq -e '
+    any(.[]; .title == "auto-scale-left" and (.workspace | startswith("HEADLESS-1:")))
+    and any(.[]; .title == "auto-scale-right" and (.workspace | startswith("HEADLESS-2:")))
+  ' > /dev/null
+}
+
+expect_clients_mapped() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" clients_mapped && return 0
+  echo "clients did not map on their configured outputs: $("$ANDROMEDA" windows --json)"
   return 1
 }
 
@@ -66,7 +63,7 @@ wait_for_output HEADLESS-2 1024 1.000000
 
 foot --title=auto-scale-left sh -c 'sleep 120' > /dev/null 2>&1 &
 foot --title=auto-scale-right sh -c 'sleep 120' > /dev/null 2>&1 &
-wait_for_windows
+expect_clients_mapped
 "$POINTER" 2304 720 move 100 100 move 1100 100
 await_active auto-scale-right
 

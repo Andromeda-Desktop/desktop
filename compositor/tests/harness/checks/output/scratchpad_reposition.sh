@@ -36,30 +36,21 @@ field_of() {
   windows | jq -r --arg title "$TITLE" --arg field "$1" '.[] | select(.title == $title) | .[$field]'
 }
 
-wait_for_field() {
-  local field=$1 expected=$2 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$TITLE' field '$field' to be '$expected', got '$actual': $(windows)"
-  return 1
-}
 
 output_origin() {
   "$ANDROMEDA" outputs \
     | awk -v name="$1" '$1 == name { found = 1; next } found && /Position:/ { split($2, p, ","); print p[1], p[2]; exit }'
 }
 
-wait_for_output_origin() {
-  local name=$1 expected_x=$2 expected_y=$3 actual_x= actual_y=
-  for _ in $(seq 80); do
-    read -r actual_x actual_y < <(output_origin "$name")
-    [[ $actual_x == "$expected_x" && $actual_y == "$expected_y" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $name at $expected_x,$expected_y, got $actual_x,$actual_y"
+output_origin_is() {
+  local actual_x actual_y
+  read -r actual_x actual_y < <(output_origin "$1")
+  [[ $actual_x == "$2" && $actual_y == "$3" ]]
+}
+
+expect_output_origin() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" output_origin_is "$1" "$2" "$3" && return 0
+  echo "expected $1 at $2,$3, got $(output_origin "$1")"
   "$ANDROMEDA" outputs
   return 1
 }
@@ -108,8 +99,8 @@ assert_bright() {
 
 write_config 0 1280
 "$ANDROMEDA" msg config-reload > /dev/null
-wait_for_output_origin HEADLESS-1 0 0
-wait_for_output_origin HEADLESS-2 1280 0
+expect_output_origin HEADLESS-1 0 0
+expect_output_origin HEADLESS-2 1280 0
 "$POINTER" 2560 720 move 1920 360
 
 "$CLIENT" "$TITLE" > "$ANDROMEDA_RUNTIME_DIR/$TITLE.log" 2>&1 &
@@ -117,13 +108,13 @@ await_count 1
 "$ANDROMEDA" msg "window-focus:$(field_of id)" > /dev/null
 "$ANDROMEDA" msg "window-move-to-scratchpad:$NAME" > /dev/null
 "$ANDROMEDA" msg "scratchpad-toggle:$NAME" > /dev/null
-wait_for_field scratchpad "$NAME"
-wait_for_field workspace ""
-wait_for_field x 1520
-wait_for_field y 180
-wait_for_field w 360
-wait_for_field h 220
-wait_for_field active true
+await_field "$TITLE" scratchpad "$NAME"
+await_field "$TITLE" workspace ""
+await_field "$TITLE" x 1520
+await_field "$TITLE" y 180
+await_field "$TITLE" w 360
+await_field "$TITLE" h 220
+await_field "$TITLE" active true
 
 grim -o HEADLESS-2 "$FIRST_SHOT"
 assert_content "HEADLESS-2 before the layout change" "$FIRST_SHOT"
@@ -133,23 +124,23 @@ assert_dimmed "HEADLESS-2 before the layout change" "$FIRST_SHOT"
 # scratchpad instead of selecting or clearing the workspace focus beneath it.
 write_config 0 1280 1280x720 1.25
 "$ANDROMEDA" msg config-reload > /dev/null
-wait_for_output_origin HEADLESS-2 1280 0
-wait_for_field x 1472
-wait_for_field y 144
-wait_for_field active true
+expect_output_origin HEADLESS-2 1280 0
+await_field "$TITLE" x 1472
+await_field "$TITLE" y 144
+await_field "$TITLE" active true
 
 # Swap the live outputs without touching the scratchpad. The same Output object
 # remains its owner, so its output-local geometry must stay at 240,180.
 write_config 1280 0
 "$ANDROMEDA" msg config-reload > /dev/null
-wait_for_output_origin HEADLESS-1 1280 0
-wait_for_output_origin HEADLESS-2 0 0
-wait_for_field scratchpad "$NAME"
-wait_for_field workspace ""
-wait_for_field x 240
-wait_for_field y 180
-wait_for_field w 360
-wait_for_field h 220
+expect_output_origin HEADLESS-1 1280 0
+expect_output_origin HEADLESS-2 0 0
+await_field "$TITLE" scratchpad "$NAME"
+await_field "$TITLE" workspace ""
+await_field "$TITLE" x 240
+await_field "$TITLE" y 180
+await_field "$TITLE" w 360
+await_field "$TITLE" h 220
 
 grim -o HEADLESS-1 "$FIRST_SHOT"
 grim -o HEADLESS-2 "$SECOND_SHOT"
@@ -159,33 +150,33 @@ assert_content "HEADLESS-2 after the layout change" "$SECOND_SHOT"
 assert_dimmed "HEADLESS-2 after the layout change" "$SECOND_SHOT"
 
 "$ANDROMEDA" msg "scratchpad-focus-next:$NAME" > /dev/null
-wait_for_field active true
+await_field "$TITLE" active true
 
 # A maximized scratchpad tracks a live mode change, while its saved floating
 # box retains the same proportional output-local position.
 "$ANDROMEDA" msg window-toggle-maximize-to-edges > /dev/null
-wait_for_field x 0
-wait_for_field y 0
-wait_for_field w 1280
-wait_for_field h 720
+await_field "$TITLE" x 0
+await_field "$TITLE" y 0
+await_field "$TITLE" w 1280
+await_field "$TITLE" h 720
 write_config 960 0 960x540
 "$ANDROMEDA" msg config-reload > /dev/null
-wait_for_output_origin HEADLESS-1 960 0
-wait_for_output_origin HEADLESS-2 0 0
-wait_for_field x 0
-wait_for_field y 0
-wait_for_field w 960
-wait_for_field h 540
+expect_output_origin HEADLESS-1 960 0
+expect_output_origin HEADLESS-2 0 0
+await_field "$TITLE" x 0
+await_field "$TITLE" y 0
+await_field "$TITLE" w 960
+await_field "$TITLE" h 540
 "$ANDROMEDA" msg "scratchpad-focus-next:$NAME" > /dev/null
-wait_for_field active true
+await_field "$TITLE" active true
 "$ANDROMEDA" msg window-toggle-maximize-to-edges > /dev/null
-wait_for_field x 180
-wait_for_field y 135
-wait_for_field w 360
-wait_for_field h 220
+await_field "$TITLE" x 180
+await_field "$TITLE" y 135
+await_field "$TITLE" w 360
+await_field "$TITLE" h 220
 
 "$ANDROMEDA" msg "window-restore-from-scratchpad:$NAME" > /dev/null
-wait_for_field scratchpad ""
+await_field "$TITLE" scratchpad ""
 for _ in $(seq 80); do
   workspace=$(field_of workspace)
   [[ $workspace == HEADLESS-2:* ]] && break

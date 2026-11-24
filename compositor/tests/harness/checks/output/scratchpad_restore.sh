@@ -59,16 +59,6 @@ field_of() {
     | jq -r --arg field "$1" '.[] | select(.title == "scratch-restore") | .[$field]'
 }
 
-wait_for_field() {
-  local field=$1 expected=$2 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected scratch-restore field '$field' to be '$expected', got '$actual': $("$ANDROMEDA" windows --json)"
-  return 1
-}
 
 start_panel() {
   local log=$1
@@ -183,22 +173,22 @@ panel_log="$ANDROMEDA_RUNTIME_DIR/scratchpad-restore-panel.log"
 start_panel "$panel_log"
 move_pointer_to_output HEADLESS-2
 "$ANDROMEDA" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
-wait_for_field active true
+await_field scratch-restore active true
 "$ANDROMEDA" msg window-toggle-maximize-to-edges > /dev/null
-wait_for_field x 1280
-wait_for_field y "$PANEL_HEIGHT"
-wait_for_field w 1280
-wait_for_field h "$((720 - PANEL_HEIGHT))"
+await_field scratch-restore x 1280
+await_field scratch-restore y "$PANEL_HEIGHT"
+await_field scratch-restore w 1280
+await_field scratch-restore h "$((720 - PANEL_HEIGHT))"
 
 "$ANDROMEDA" output-destroy HEADLESS-2 > /dev/null
 if ! wait "$PANEL_PID"; then
   echo "exclusive-zone panel failed while HEADLESS-2 closed: $(< "$panel_log")"
   exit 1
 fi
-wait_for_field x 0
-wait_for_field y 0
-wait_for_field w 1280
-wait_for_field h 720
+await_field scratch-restore x 0
+await_field scratch-restore y 0
+await_field scratch-restore w 1280
+await_field scratch-restore h 720
 
 write_config '[output.HEADLESS-2]
 mode = "960x540"
@@ -209,10 +199,10 @@ if [[ $created != HEADLESS-2 ]]; then
   echo "expected recreated output HEADLESS-2, got '$created'"
   exit 1
 fi
-wait_for_field x 1280
-wait_for_field y 0
-wait_for_field w 960
-wait_for_field h 540
+await_field scratch-restore x 1280
+await_field scratch-restore y 0
+await_field scratch-restore w 960
+await_field scratch-restore h 540
 
 "$ANDROMEDA" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
 if ! shows_scratchpad HEADLESS-2; then

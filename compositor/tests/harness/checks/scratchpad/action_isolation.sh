@@ -87,14 +87,11 @@ active_workspace() {
   "$ANDROMEDA" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-1" and .active) | .name'
 }
 
-wait_for_workspace() {
-  local expected=$1 actual=
-  for _ in $(seq 80); do
-    actual=$(active_workspace)
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected workspace '$expected' to be active, got '$actual'"
+workspace_active_is() { [[ $(active_workspace) == "$1" ]]; }
+
+expect_active_workspace() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" workspace_active_is "$1" && return 0
+  echo "expected workspace '$1' to be active, got '$(active_workspace)'"
   return 1
 }
 
@@ -301,7 +298,7 @@ assert_isolated window-toggle-floating
 # background has a downward neighbor, so selecting TWO proves that it did not
 # navigate that stale stack first.
 accepts window-focus-or-workspace-down
-wait_for_workspace TWO
+expect_active_workspace TWO
 if [[ $(background_geometry) != "$baseline_geometry" ]]; then
   echo "workspace fallback changed the background layout: $(windows)"
   exit 1

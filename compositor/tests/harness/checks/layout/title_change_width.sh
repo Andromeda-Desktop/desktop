@@ -2,6 +2,8 @@
 # A title change after map must not reapply an unchanged default_scrolling_extent rule.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly TITLE_FIFO="$ANDROMEDA_RUNTIME_DIR/title-width.fifo"
 
 window_field() {
@@ -19,14 +21,11 @@ wait_for_title() {
   return 1
 }
 
-wait_for_field() {
-  local field=$1 expected=$2 actual=
-  for _ in $(seq 60); do
-    actual=$(window_field "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected helium field '$field' to be '$expected', got '$actual': $("$ANDROMEDA" windows --json)"
+helium_field_is() { [[ $(window_field "$1") == "$2" ]]; }
+
+expect_helium_field() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" helium_field_is "$1" "$2" && return 0
+  echo "expected helium field '$1' to be '$2', got '$(window_field "$1")': $("$ANDROMEDA" windows --json)"
   return 1
 }
 
@@ -85,9 +84,9 @@ fi
 # The late floating geometry stays symbolic while tiled. Its anchor must be evaluated against the saved 300x200 size,
 # not the current tiled geometry.
 "$ANDROMEDA" msg window-toggle-floating > /dev/null
-wait_for_field floating true
-wait_for_field w 300
-wait_for_field h 200
+expect_helium_field floating true
+expect_helium_field w 300
+expect_helium_field h 200
 right_gap=$((1280 - $(window_field x) - $(window_field w)))
 bottom_gap=$((720 - $(window_field y) - $(window_field h)))
 if ((right_gap != 20 || bottom_gap != 20)); then

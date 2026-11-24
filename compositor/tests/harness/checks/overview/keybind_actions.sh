@@ -42,23 +42,19 @@ overview_open_count() {
   jq -s '[.[] | select(.event == "overview" and .data.open == true)] | length' "$OVERVIEW_EVENTS"
 }
 
-wait_for_focus() {
-  local expected=$1
-  for _ in $(seq 60); do
-    [[ $(selected_title) == "$expected" ]] && return 0
-    sleep 0.05
-  done
-  echo "expected focus on '$expected', got: $($ANDROMEDA windows --json)"
+focus_is() { [[ $(selected_title) == "$1" ]]; }
+
+expect_focus() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" focus_is "$1" && return 0
+  echo "expected focus on '$1', got: $($ANDROMEDA windows --json)"
   return 1
 }
 
-wait_for_workspace() {
-  local expected=$1
-  for _ in $(seq 60); do
-    [[ $(active_workspace) == "$expected" ]] && return 0
-    sleep 0.05
-  done
-  echo "expected workspace '$expected', got: $($ANDROMEDA workspaces --json)"
+workspace_is() { [[ $(active_workspace) == "$1" ]]; }
+
+expect_workspace() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" workspace_is "$1" && return 0
+  echo "expected workspace '$1', got: $($ANDROMEDA workspaces --json)"
   return 1
 }
 
@@ -133,7 +129,7 @@ read -r top_id top_title bottom_id bottom_title <<< "$("$ANDROMEDA" windows --js
   '[.[] | select(.title == "overview-vim-first" or .title == "overview-vim-second")] | sort_by(.y)
    | "\(.[0].id) \(.[0].title) \(.[1].id) \(.[1].title)"')"
 "$ANDROMEDA" msg "window-focus:$top_id" > /dev/null
-wait_for_focus "$top_title"
+expect_focus "$top_title"
 "$ANDROMEDA" settle
 
 read -r top_x top_y bottom_y <<< "$("$ANDROMEDA" windows --json | jq -r --arg top "$top_id" --arg bottom "$bottom_id" \
@@ -148,22 +144,22 @@ pointer move "$((top_x + 100))" "$(((top_y + bottom_y) / 2))"
 
 # Vim-style custom bindings and the built-in arrow fallback share horizontal card navigation.
 chord 38 # L
-wait_for_focus overview-vim-right
+expect_focus overview-vim-right
 chord 35 # H
-wait_for_focus "$top_title"
+expect_focus "$top_title"
 pointer tap 106 # Right
-wait_for_focus overview-vim-right
+expect_focus overview-vim-right
 pointer tap 105 # Left
-wait_for_focus "$top_title"
+expect_focus "$top_title"
 
 # Composite vertical actions keep their normal local-first semantics instead of becoming aliases for overview rows.
 chord 49 # N
-wait_for_focus "$bottom_title"
-wait_for_workspace 1
+expect_focus "$bottom_title"
+expect_workspace 1
 chord 25 # P
-wait_for_focus "$top_title"
+expect_focus "$top_title"
 "$ANDROMEDA" msg window-focus-or-output-right > /dev/null
-wait_for_focus overview-vim-right
+expect_focus overview-vim-right
 if output_error=$("$ANDROMEDA" msg window-focus-or-output-right 2>&1); then
   echo "expected window-focus-or-output-right at the card edge to reach its output fallback"
   exit 1
@@ -178,42 +174,42 @@ fi
 "$ANDROMEDA" msg overview-close > /dev/null
 "$ANDROMEDA" settle
 "$ANDROMEDA" msg "window-focus:$top_id" > /dev/null
-wait_for_focus "$top_title"
+expect_focus "$top_title"
 pointer click "$BTN_LEFT"
-wait_for_focus "$top_title"
+expect_focus "$top_title"
 
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle
 
 # A normal action operates on the selected overview card and leaves the overview interactive.
 chord 38 # L
-wait_for_focus overview-vim-right
+expect_focus overview-vim-right
 chord 45 # X
 await_count 3
-wait_for_focus "$top_title"
+expect_focus "$top_title"
 
 # Direct vertical focus follows stacked cards within the selected workspace. This transition also proves the close
 # above did not close overview.
 chord 36 # J
-wait_for_focus "$bottom_title"
-wait_for_workspace 1
+expect_focus "$bottom_title"
+expect_workspace 1
 chord 37 # K
-wait_for_focus "$top_title"
-wait_for_workspace 1
+expect_focus "$top_title"
+expect_workspace 1
 
 # Unbound vertical arrows follow the same local-first rule as the composite actions: a stacked card first, a
 # workspace row only once the column has no card in that direction.
 pointer tap 108 # Down
-wait_for_focus "$bottom_title"
-wait_for_workspace 1
+expect_focus "$bottom_title"
+expect_workspace 1
 pointer tap 108 # Down
-wait_for_workspace 2
-wait_for_focus overview-vim-row
+expect_workspace 2
+expect_focus overview-vim-row
 pointer tap 103 # Up
-wait_for_workspace 1
+expect_workspace 1
 pointer tap 103 # Up
-wait_for_focus "$top_title"
-wait_for_workspace 1
+expect_focus "$top_title"
+expect_workspace 1
 
 # Enter closes toward the selected card. Configured binds remain effective
 # during that close, and row retargeting must not restart the zoom timeline: on a frozen clock the 500 ms zoom has
@@ -223,10 +219,10 @@ entered_before=$(keyboard_enters overview-vim-row)
 pointer tap 28 # Enter
 "$ANDROMEDA" clock-advance 150
 chord 49 # N, focus the lower card
-wait_for_focus "$bottom_title"
+expect_focus "$bottom_title"
 "$ANDROMEDA" clock-advance 150
 chord 49 # N, switch to workspace 2
-wait_for_workspace 2
+expect_workspace 2
 "$ANDROMEDA" clock-advance 250
 for _ in $(seq 20); do
   (( $(keyboard_enters overview-vim-row) > entered_before )) && break
@@ -237,8 +233,8 @@ if (( $(keyboard_enters overview-vim-row) <= entered_before )); then
   echo "workspace binds extended the overview closing timeline"
   exit 1
 fi
-wait_for_focus overview-vim-row
-wait_for_workspace 2
+expect_focus overview-vim-row
+expect_workspace 2
 
 # The same rules follow the output's workspace axis. With workspaces arranged along X the roles swap: Left and Right
 # run along the workspace axis, and Up and Down traverse the vertically scrolling lanes.
@@ -249,7 +245,7 @@ workspace_axis = "horizontal"
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 "$ANDROMEDA" msg workspace-switch:1 > /dev/null
-wait_for_workspace 1
+expect_workspace 1
 
 # The stacked pair keeps its column, which now lays its members out along X.
 transposed=false
@@ -297,44 +293,44 @@ else
 fi
 
 "$ANDROMEDA" msg "window-focus:$left_id" > /dev/null
-wait_for_focus "$left_title"
+expect_focus "$left_title"
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle
 
 # Along the workspace axis: the stacked neighbour first, the next workspace only once the lane has no card that way.
 pointer tap 106 # Right
-wait_for_focus "$right_title"
-wait_for_workspace 1
+expect_focus "$right_title"
+expect_workspace 1
 pointer tap 106 # Right
-wait_for_workspace 2
-wait_for_focus overview-vim-row
+expect_workspace 2
+expect_focus overview-vim-row
 pointer tap 105 # Left
-wait_for_workspace 1
-wait_for_focus "$right_title"
+expect_workspace 1
+expect_focus "$right_title"
 pointer tap 105 # Left
-wait_for_focus "$left_title"
-wait_for_workspace 1
+expect_focus "$left_title"
+expect_workspace 1
 
 # Perpendicular to it, the arrows walk the vertically scrolling lanes and never reach a workspace.
 pointer tap "$toward"
-wait_for_focus overview-vim-lane
-wait_for_workspace 1
+expect_focus overview-vim-lane
+expect_workspace 1
 pointer tap "$toward"
 "$ANDROMEDA" settle
-wait_for_focus overview-vim-lane
-wait_for_workspace 1
+expect_focus overview-vim-lane
+expect_workspace 1
 pointer tap "$back"
-wait_for_focus "$left_title"
-wait_for_workspace 1
+expect_focus "$left_title"
+expect_workspace 1
 
 # A configured directional action keeps its physical meaning: it moves the focus and stops at the lane's edge.
 chord 38 # L
-wait_for_focus "$right_title"
-wait_for_workspace 1
+expect_focus "$right_title"
+expect_workspace 1
 chord 38 # L again, with nothing to the right
 "$ANDROMEDA" settle
-wait_for_focus "$right_title"
-wait_for_workspace 1
+expect_focus "$right_title"
+expect_workspace 1
 
 # Retargeting the close with a configured bind must land the focus without revealing the overview a second time. The
 # 500 ms zoom has landed 550 ms after Enter on a frozen clock, while a restart at the bind would still be running.
@@ -344,7 +340,7 @@ opened_before=$(overview_open_count)
 pointer tap 28 # Enter
 "$ANDROMEDA" clock-advance 150
 chord 35 # H, focus the card to the left during the closing zoom
-wait_for_focus "$left_title"
+expect_focus "$left_title"
 "$ANDROMEDA" clock-advance 400
 for _ in $(seq 20); do
   (( $(keyboard_enters "$left_title") > entered_before )) && break
@@ -359,7 +355,7 @@ if (( $(overview_open_count) != opened_before )); then
   echo "focusing during the close revealed the overview again"
   exit 1
 fi
-wait_for_focus "$left_title"
-wait_for_workspace 1
+expect_focus "$left_title"
+expect_workspace 1
 
 echo "overview arrows navigate cards and workspaces along each output's axis while configured binds keep their physical meaning through the closing zoom"

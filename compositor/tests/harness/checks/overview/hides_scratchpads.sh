@@ -21,14 +21,14 @@ readonly SECOND_SCRATCHPAD=overview-second
 readonly FIRST_LOG="$ANDROMEDA_RUNTIME_DIR/overview-scratch-first.log"
 readonly SECOND_LOG="$ANDROMEDA_RUNTIME_DIR/overview-scratch-second.log"
 
-wait_for_workspace() {
-  local title=$1 output=$2 workspace=
-  for _ in $(seq 60); do
-    workspace=$("$ANDROMEDA" windows --json | jq -r --arg title "$title" '.[] | select(.title == $title) | .workspace')
-    [[ $workspace == "$output":* ]] && return 0
-    sleep 0.1
-  done
-  echo "window '$title' did not map on $output: $("$ANDROMEDA" windows --json)"
+window_on_output() {
+  "$ANDROMEDA" windows --json | jq -e --arg title "$1" --arg prefix "$2:" \
+    'any(.[]; .title == $title and (.workspace | startswith($prefix)))' > /dev/null
+}
+
+expect_window_on_output() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" window_on_output "$1" "$2" && return 0
+  echo "window '$1' did not map on $2: $("$ANDROMEDA" windows --json)"
   return 1
 }
 
@@ -166,14 +166,14 @@ EOF
 
 "$CLIENT" "$FIRST_TITLE" 420 260 > "$FIRST_LOG" 2>&1 &
 await_count 1
-wait_for_workspace "$FIRST_TITLE" "$FIRST_OUTPUT"
+expect_window_on_output "$FIRST_TITLE" "$FIRST_OUTPUT"
 move_pointer_to_output "$FIRST_OUTPUT"
 "$ANDROMEDA" msg "window-move-to-scratchpad:$FIRST_SCRATCHPAD" > /dev/null
 wait_for_empty_workspace "$FIRST_TITLE"
 
 "$CLIENT" "$SECOND_TITLE" 420 260 > "$SECOND_LOG" 2>&1 &
 await_count 2
-wait_for_workspace "$SECOND_TITLE" "$SECOND_OUTPUT"
+expect_window_on_output "$SECOND_TITLE" "$SECOND_OUTPUT"
 move_pointer_to_output "$SECOND_OUTPUT"
 "$ANDROMEDA" msg "window-move-to-scratchpad:$SECOND_SCRATCHPAD" > /dev/null
 wait_for_empty_workspace "$SECOND_TITLE"

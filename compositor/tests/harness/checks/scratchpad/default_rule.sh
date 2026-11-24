@@ -9,6 +9,8 @@
 # hid the pending launch first.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly CLIENT_APP_ID=scratchpad-terminal
 readonly TITLE=default-scratchpad-rule
@@ -61,21 +63,15 @@ wait_for_geometry() {
   return 1
 }
 
-wait_for_window() {
-  local title=$1 scratchpad=$2 active=$3 state=
-  for _ in $(seq 80); do
-    state=$(windows)
-    if jq -e --arg title "$title" --arg scratchpad "$scratchpad" --argjson active "$active" '
-      any(.[];
-        .title == $title
-        and .scratchpad == $scratchpad
-        and .active == $active)
-    ' <<< "$state" > /dev/null; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected '$title' in scratchpad '$scratchpad' with active=$active: $state"
+scratchpad_state_is() {
+  windows | jq -e --arg title "$1" --arg scratchpad "$2" --argjson active "$3" '
+    any(.[]; .title == $title and .scratchpad == $scratchpad and .active == $active)
+  ' > /dev/null
+}
+
+expect_scratchpad_state() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" scratchpad_state_is "$1" "$2" "$3" && return 0
+  echo "expected '$1' in scratchpad '$2' with active=$3: $(windows)"
   return 1
 }
 
@@ -137,13 +133,13 @@ wait_for_state true
 wait_for_geometry 400 8 480 300
 
 "$ANDROMEDA" msg scratchpad-toggle:spawned > /dev/null
-wait_for_window scratchpad-spawned spawned true
+expect_scratchpad_state scratchpad-spawned spawned true
 
 "$ANDROMEDA" msg scratchpad-toggle:spawned > /dev/null
-wait_for_window scratchpad-spawned spawned false
+expect_scratchpad_state scratchpad-spawned spawned false
 
 "$ANDROMEDA" msg scratchpad-toggle:spawned > /dev/null
-wait_for_window scratchpad-spawned spawned true
+expect_scratchpad_state scratchpad-spawned spawned true
 if [[ $(windows | jq '[.[] | select(.title == "scratchpad-spawned")] | length') != 1 ]]; then
   echo "toggling a populated scratchpad ran spawn_when_empty again: $(windows)"
   exit 1
@@ -152,22 +148,22 @@ fi
 "$ANDROMEDA" msg scratchpad-toggle:late > /dev/null
 "$ANDROMEDA" msg scratchpad-toggle:late > /dev/null
 touch "$ANDROMEDA_RUNTIME_DIR/late-release"
-wait_for_window scratchpad-late late false
+expect_scratchpad_state scratchpad-late late false
 
 "$ANDROMEDA" msg scratchpad-toggle:late > /dev/null
-wait_for_window scratchpad-late late true
+expect_scratchpad_state scratchpad-late late true
 
 "$CLIENT" scratchpad-summoned 480 300 > "$ANDROMEDA_RUNTIME_DIR/scratchpad-summoned.log" 2>&1 &
-wait_for_window scratchpad-summoned summoned true
+expect_scratchpad_state scratchpad-summoned summoned true
 
 readonly RETITLE_FIFO="$ANDROMEDA_RUNTIME_DIR/retitle.fifo"
 mkfifo "$RETITLE_FIFO"
 exec {retitle_fd}<>"$RETITLE_FIFO"
 TITLE_AFTER_MAP=scratchpad-retitled "$CLIENT" scratchpad-placeholder 480 300 <&"$retitle_fd" \
   > "$ANDROMEDA_RUNTIME_DIR/scratchpad-retitled.log" 2>&1 &
-wait_for_window scratchpad-placeholder "" true
+expect_scratchpad_state scratchpad-placeholder "" true
 printf 'u' >&"$retitle_fd"
-wait_for_window scratchpad-retitled retitled true
+expect_scratchpad_state scratchpad-retitled retitled true
 
 echo "default scratchpad rule and spawn_when_empty verified"
 

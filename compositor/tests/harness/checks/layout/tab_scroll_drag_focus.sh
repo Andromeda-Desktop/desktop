@@ -41,14 +41,11 @@ focused() {
   "$ANDROMEDA" windows --json | jq -r '.[] | select(.focused) | .title'
 }
 
-wait_for_focus() {
-  local expected=$1 actual=
-  for _ in $(seq 50); do
-    actual=$(focused)
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$expected' to be focused, got '$actual': $("$ANDROMEDA" windows --json)"
+focused_is() { [[ $(focused) == "$1" ]]; }
+
+expect_focused() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" focused_is "$1" && return 0
+  echo "expected '$1' to be focused, got '$(focused)': $("$ANDROMEDA" windows --json)"
   return 1
 }
 
@@ -59,10 +56,10 @@ spawn_client tab-b
 await_count 2
 "$ANDROMEDA" msg window-consume-left > /dev/null
 "$ANDROMEDA" msg column-toggle-tabbed > /dev/null
-wait_for_focus tab-b
+expect_focused tab-b
 spawn_client tab-c
 await_count 3
-wait_for_focus tab-c
+expect_focused tab-c
 "$ANDROMEDA" settle
 
 # Pan back to the group: the drag moves the strip right, revealing the column on the left.
@@ -74,7 +71,7 @@ pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
 held_x=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "tab-b") | .x')
 pointer_release
 "$ANDROMEDA" settle
-wait_for_focus tab-b
+expect_focused tab-b
 released_x=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "tab-b") | .x')
 if ((released_x >= held_x)); then
   echo "gesture release did not arrange tab-b at its left snap: x $held_x -> $released_x"
@@ -89,10 +86,10 @@ fi
 # gesture-selected tab with C under the release point, nor arm that replacement for the next tiny motion. A real
 # crossing into C still follows focus.
 pointer move 1199 360
-wait_for_focus tab-b
+expect_focused tab-b
 pointer move 200 360
-wait_for_focus tab-b
+expect_focused tab-b
 pointer move 1200 360
-wait_for_focus tab-c
+expect_focused tab-c
 
 echo "panning selected the shown tab and preserved it until a real pointer crossing"
