@@ -33,6 +33,7 @@ namespace {
   constexpr auto kLiquidTint = "liquid-tint";
   constexpr auto kLiquidBlur = "liquid-blur";
   constexpr auto kTextScale = "text-scale";
+  constexpr auto kCornerRadiusScale = "corner-radius-scale";
   constexpr auto kWmPreferences = "org.gnome.desktop.wm.preferences";
   constexpr auto kButtonLayout = "button-layout";
   constexpr std::uint32_t kVersion = 2;
@@ -70,6 +71,7 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                 if (wanted(namespaces, kAndromeda)) {
                   all[kAndromeda][kUiScale] = sdbus::Variant{m_uiScale};
                   all[kAndromeda][kTextScale] = sdbus::Variant{m_textScale};
+                  all[kAndromeda][kCornerRadiusScale] = sdbus::Variant{m_cornerRadiusScale};
                   all[kAndromeda][kGlass] = sdbus::Variant{m_glass};
                   all[kAndromeda][kFrost] = sdbus::Variant{m_frost};
                   all[kAndromeda][kLiquid] = sdbus::Variant{m_liquid};
@@ -106,6 +108,9 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                 }
                 if (ns == kAndromeda && key == kTextScale) {
                   return sdbus::Variant{m_textScale};
+                }
+                if (ns == kAndromeda && key == kCornerRadiusScale) {
+                  return sdbus::Variant{m_cornerRadiusScale};
                 }
                 if (ns == kAndromeda && key == kGlass) {
                   return sdbus::Variant{m_glass};
@@ -203,7 +208,7 @@ void SettingsPortal::setButtonsLeft(bool left) {
   emitChanged(kWmPreferences, kButtonLayout, sdbus::Variant{m_buttonLayout});
 }
 
-void SettingsPortal::setScales(double uiScale, double textScale) {
+void SettingsPortal::setScales(double uiScale, double textScale, double cornerRadiusScale) {
   if (uiScale != m_uiScale) {
     m_uiScale = uiScale;
     emitChanged(kAndromeda, kUiScale, sdbus::Variant{uiScale});
@@ -211,6 +216,10 @@ void SettingsPortal::setScales(double uiScale, double textScale) {
   if (textScale != m_textScale) {
     m_textScale = textScale;
     emitChanged(kAndromeda, kTextScale, sdbus::Variant{textScale});
+  }
+  if (cornerRadiusScale != m_cornerRadiusScale) {
+    m_cornerRadiusScale = cornerRadiusScale;
+    emitChanged(kAndromeda, kCornerRadiusScale, sdbus::Variant{cornerRadiusScale});
   }
 }
 

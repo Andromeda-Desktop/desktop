@@ -136,7 +136,6 @@
 #include <filesystem>
 #include <format>
 #include <gio/gio.h>
-#include <limits>
 #include <malloc.h>
 #include <optional>
 #include <stdexcept>
@@ -834,10 +833,10 @@ void Application::initStyleThemeAndWayland() {
   std::signal(SIGTERM, signal_handler);
   std::signal(SIGINT, signal_handler);
 
-  auto applyStyleConfig = [this, lastCornerRadiusScale = std::numeric_limits<float>::quiet_NaN()] mutable {
+  auto applyStyleConfig = [this, lastCornerRadiusScale = std::optional<float>{}] mutable {
     const float corner = m_configService.config().shell.cornerRadiusScale;
     const bool cornerChanged =
-        std::isfinite(lastCornerRadiusScale) && std::abs(corner - lastCornerRadiusScale) > 1.0e-4F;
+        lastCornerRadiusScale.has_value() && std::abs(corner - *lastCornerRadiusScale) > 1.0e-4F;
     Style::setCornerRadiusScale(corner);
     m_liveAppearance.setCornerScale(corner);
     m_liveAppearance.setUiScale(m_configService.uiScale());
@@ -1063,8 +1062,8 @@ void Application::initStyleThemeAndWayland() {
     const Color accent = colorForRole(ColorRole::Accent, 1.0F);
     m_settingsPortal->setAccent(accent.r, accent.g, accent.b);
     const auto publishScales = [this] {
-      const auto& a11y = m_configService.config().accessibility;
-      m_settingsPortal->setScales(a11y.uiScale, a11y.textScale);
+      const auto& config = m_configService.config();
+      m_settingsPortal->setScales(config.accessibility.uiScale, config.accessibility.textScale, config.shell.cornerRadiusScale);
     };
     publishScales();
     m_configService.addReloadCallback(publishScales);

@@ -76,7 +76,7 @@ void Appearance::read(bool backend) {
   sdbus::IProxy* proxy = backend ? m_backend.get() : m_portal.get();
   const std::pair<const char*, const char*> keys[] = {
       {kNamespace, "color-scheme"}, {kNamespace, "accent-color"}, {kNamespace, "reduced-motion"},
-      {kAndromeda, "ui-scale"},     {kAndromeda, "text-scale"},     {kAndromeda, "glass"},
+      {kAndromeda, "ui-scale"},     {kAndromeda, "text-scale"},     {kAndromeda, "corner-radius-scale"}, {kAndromeda, "glass"},
       {kAndromeda, "frost"},        {kAndromeda, "liquid"},       {kAndromeda, "reduce-transparency"}, {kAndromeda, "compositor-blur"},
       {kAndromeda, "glass-style"},  {kAndromeda, "edge-reflection"}, {kAndromeda, "liquid-tint"},     {kAndromeda, "liquid-blur"},
   };
@@ -141,6 +141,10 @@ bool Appearance::take(const std::string& ns, const std::string& key, const sdbus
       return false;
     }
     const double scale = value.get<double>();
+    if (key == "corner-radius-scale") {
+      m_cornerRadiusScale = std::clamp(scale, 0.0, 2.0);
+      return true;
+    }
     if (scale < 0.5 || scale > 4.0) {
       return false;
     }
@@ -186,10 +190,11 @@ void Appearance::apply() {
   setPalette(paletteFor(m_light));
   MotionService::instance().setReduced(m_reducedMotion);
   Style::setGlass(m_glass, m_compositorBlur);
+  Style::setCornerRadiusScale(static_cast<float>(m_cornerRadiusScale));
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
   const Applied now{
       m_light,   m_hasAccent, m_reducedMotion, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
-      m_uiScale, m_textScale, m_glass,         m_compositorBlur
+      m_uiScale, m_textScale, m_cornerRadiusScale, m_glass, m_compositorBlur
   };
   if (now == m_applied) {
     return;

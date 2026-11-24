@@ -155,6 +155,11 @@ test('single_instance', _dbus_run_session,
     cpp_args: _warnings)],
   timeout: 30,
 )
+test('appearance_portal', _dbus_run_session,
+  args: ['--config-file=' + meson.current_source_dir() / 'tests/isolated-bus.conf', '--', executable('appearance_portal_test', 'tests/appearance_portal_test.cpp', dependencies: desk_app_dep,
+    cpp_args: _warnings)],
+  timeout: 30,
+)
 test('file_ops_client', _dbus_run_session,
   args: ['--', executable('file_ops_client_test', 'tests/file_ops_client_test.cpp', dependencies: desk_app_dep,
     cpp_args: _warnings)],

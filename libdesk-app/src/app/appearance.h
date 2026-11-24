@@ -48,6 +48,7 @@ private:
   double m_accent[3] = {0.0, 0.0, 0.0};
   double m_uiScale = 1.0;
   double m_textScale = 1.0;
+  double m_cornerRadiusScale = 1.0;
   // Style::setGlass inputs; the defaults match Style's.
   glass::Settings m_glass;
   bool m_compositorBlur = false;
@@ -59,6 +60,7 @@ private:
     std::array<double, 3> accent{};
     double uiScale = 1.0;
     double textScale = 1.0;
+    double cornerRadiusScale = 1.0;
     glass::Settings glass;
     bool compositorBlur = false;
     bool operator==(const Applied&) const = default;
