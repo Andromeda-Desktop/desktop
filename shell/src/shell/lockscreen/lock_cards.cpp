@@ -565,7 +565,7 @@ LockCards::Data collectLockCards(
   LockCards::Data data;
   if (mpris != nullptr) {
     if (const auto active = mpris->activePlayer(); active.has_value() && !active->title.empty()) {
-      const std::string artists = mpris::joinArtists(active->artists);
+      const std::string artists = joinedArtists(active->artists);
       const std::string app = active->identity;
       data.media = LockCards::Media{
           .busName = active->busName,

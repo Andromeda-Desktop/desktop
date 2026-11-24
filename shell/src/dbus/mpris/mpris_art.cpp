@@ -200,15 +200,4 @@ namespace mpris {
     return cacheDir / (std::to_string(hash) + ".img");
   }
 
-  std::string joinArtists(const std::vector<std::string>& artists) {
-    if (artists.empty())
-      return {};
-    std::string joined = artists.front();
-    for (std::size_t i = 1; i < artists.size(); ++i) {
-      joined += ", ";
-      joined += artists[i];
-    }
-    return joined;
-  }
-
 } // namespace mpris

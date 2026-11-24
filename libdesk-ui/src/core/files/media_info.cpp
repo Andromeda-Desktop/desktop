@@ -1,11 +1,12 @@
 #include "core/files/media_info.h"
 
+#include "time/time_format.h"
+
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
 #include <cstring>
-#include <format>
 #include <fstream>
 #include <span>
 #include <string_view>
@@ -432,10 +433,4 @@ MediaInfo readMediaInfo(const fs::path& file) {
   return info;
 }
 
-std::string formatDuration(double seconds) {
-  const auto total = static_cast<long long>(std::llround(std::max(0.0, seconds)));
-  const long long h = total / 3600;
-  const long long m = (total / 60) % 60;
-  const long long s = total % 60;
-  return h > 0 ? std::format("{}:{:02}:{:02}", h, m, s) : std::format("{}:{:02}", m, s);
-}
+std::string formatDuration(double seconds) { return formatClockTime(std::llround(std::max(0.0, seconds))); }

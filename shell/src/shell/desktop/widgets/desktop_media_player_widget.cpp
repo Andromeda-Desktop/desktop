@@ -606,7 +606,7 @@ void DesktopMediaPlayerWidget::sync(Renderer& renderer) {
 
   if (active.has_value()) {
     title = active->title;
-    artist = joinArtists(active->artists);
+    artist = joinedArtists(active->artists);
     artUrl = effectiveArtUrl(*active);
     playbackStatus = active->playbackStatus;
     canGoPrevious = active->canGoPrevious;

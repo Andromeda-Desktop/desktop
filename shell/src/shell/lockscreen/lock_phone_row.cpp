@@ -1,7 +1,6 @@
 #include "shell/lockscreen/lock_phone_row.h"
 
 #include "dbus/link/link_phone_state.h"
-#include "dbus/mpris/mpris_art.h"
 #include "dbus/mpris/mpris_service.h"
 #include "i18n/i18n.h"
 #include "render/core/renderer.h"
@@ -87,7 +86,7 @@ void LockPhoneRow::sync(const MprisService* mpris) {
     const auto& players = mpris->players();
     if (const auto it = players.find(std::string(kPhonePlayerPrefix) + phone->id);
         it != players.end() && !it->second.title.empty()) {
-      const std::string artists = mpris::joinArtists(it->second.artists);
+      const std::string artists = joinedArtists(it->second.artists);
       playing = artists.empty() ? it->second.title : it->second.title + " — " + artists;
     }
   }

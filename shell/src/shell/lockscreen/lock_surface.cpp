@@ -2369,7 +2369,7 @@ void LockSurface::syncRegularExtras(Renderer& renderer) {
     std::string artUrl;
     if (active.has_value()) {
       title = active->title;
-      artist = mpris::joinArtists(active->artists);
+      artist = joinedArtists(active->artists);
       artUrl = mpris::effectiveArtUrl(*active);
     }
     if (title.empty()) {

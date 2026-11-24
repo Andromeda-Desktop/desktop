@@ -8,6 +8,7 @@
 #include "net/uri.h"
 #include "util/parse_number.h"
 #include "util/string_utils.h"
+#include "time/time_format.h"
 #include "system/app_identity.h"
 #include "system/brightness_service.h"
 #include "system/desktop_entry.h"
@@ -2015,10 +2016,7 @@ namespace control_center {
   // ---- Media ----
 
   namespace {
-    std::string clockText(std::int64_t us) {
-      const std::int64_t secs = std::max<std::int64_t>(0, us / 1'000'000);
-      return std::format("{}:{:02}", secs / 60, secs % 60);
-    }
+    std::string clockText(std::int64_t us) { return formatClockTime(us / 1'000'000); }
 
     std::unique_ptr<Button> mediaButton(std::string_view glyphName, float box, float s, bool enabled,
                                         std::function<void()> onClick, bool filled = false) {
@@ -2085,7 +2083,7 @@ namespace control_center {
     }
     head->addChild(std::move(image));
     auto text = ui::column({.align = FlexAlign::Start, .flexGrow = 1.0F});
-    const std::string artist = mpris::joinArtists(player->artists);
+    const std::string artist = joinedArtists(player->artists);
     text->addChild(ui::label({.text = player->title.empty() ? player->identity : player->title, .fontSize = Tokens::typeTitle3.size * s,
                               .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1,
                               .ellipsize = TextEllipsize::End}));
