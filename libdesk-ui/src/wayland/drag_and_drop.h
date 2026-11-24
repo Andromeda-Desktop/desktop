@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/drop_target.h"
+#include "protocols/uri.h"
 
 #include <cstdint>
 #include <functional>
@@ -108,7 +109,7 @@ private:
   float m_x = 0.0F;
   float m_y = 0.0F;
   std::string m_mime;
-  std::vector<std::string> m_accepted{"text/uri-list"};
+  std::vector<std::string> m_accepted{uri::kUriListMime};
   std::map<wl_surface*, Target> m_targets;
   wl_data_source* m_selectionSource = nullptr;
   Selection m_selection;

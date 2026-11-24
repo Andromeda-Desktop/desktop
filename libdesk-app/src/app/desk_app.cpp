@@ -8,6 +8,7 @@
 #include "core/process/process_phase.h"
 #include "core/sys/sys.h"
 #include "platform/surface.h"
+#include "protocols/uri.h"
 #include "render/text/cairo_text_renderer.h"
 #include "ui/controls/input.h"
 #include "ui/tooltip/tooltip_manager.h"
@@ -87,7 +88,7 @@ namespace {
     }
     std::error_code ec;
     const auto abs = std::filesystem::absolute(arg, ec);
-    return "file://" + (ec ? arg : abs.lexically_normal().string());
+    return uri::fileUri(ec ? arg : abs.lexically_normal().string());
   }
   struct LaunchArgs {
     std::vector<std::string> uris;

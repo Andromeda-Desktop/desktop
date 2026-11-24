@@ -1,5 +1,6 @@
 #include "scripting/luau_host.h"
 #include "core/blocking_pool.h"
+#include "net/uri.h"
 #include "util/thread_name.h"
 
 #include "compositors/compositor_platform.h"
@@ -2026,7 +2027,7 @@ namespace {
   int luau_string_urlEncode(lua_State* L) {
     size_t len = 0;
     const char* str = luaL_checklstring(L, 1, &len);
-    const std::string out = StringUtils::urlEncode(std::string_view(str, len));
+    const std::string out = uri::encodeComponent(std::string_view(str, len));
     lua_pushlstring(L, out.data(), out.size());
     return 1;
   }
@@ -2034,7 +2035,7 @@ namespace {
   int luau_string_urlDecode(lua_State* L) {
     size_t len = 0;
     const char* str = luaL_checklstring(L, 1, &len);
-    const std::string out = StringUtils::urlDecode(std::string_view(str, len));
+    const std::string out = uri::decodeComponent(std::string_view(str, len), uri::Plus::Space);
     lua_pushlstring(L, out.data(), out.size());
     return 1;
   }

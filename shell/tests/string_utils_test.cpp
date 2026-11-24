@@ -50,14 +50,6 @@ namespace {
 
 int main() {
   bool ok = true;
-  ok = expectEqual(StringUtils::urlEncode("abc-_.~09AZaz"), "abc-_.~09AZaz", "keeps unreserved characters") && ok;
-  ok = expectEqual(StringUtils::urlEncode("hello world"), "hello%20world", "encodes spaces as percent escapes") && ok;
-  ok = expectEqual(
-           StringUtils::urlEncode("dir/file?x=1&y=%"), "dir%2Ffile%3Fx%3D1%26y%3D%25", "encodes reserved URL characters"
-       )
-      && ok;
-  ok = expectEqual(StringUtils::urlEncode("\xC3\xA9"), "%C3%A9", "encodes non-ASCII bytes") && ok;
-
   ok = expectCompare(
            StringUtils::naturalCaseInsensitiveCompare("image(2)", "image(10)"), -1, "natural: image(2) < image(10)"
        )

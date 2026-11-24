@@ -1,6 +1,7 @@
 #include "core/freedesktop_thumbnails.h"
 
 #include "core/log.h"
+#include "protocols/uri.h"
 
 #include <gio/gio.h>
 #include <poll.h>
@@ -54,14 +55,10 @@ namespace freedesktop_thumbnails {
       if (ec || stat(absolute.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
         return std::nullopt;
       }
-      char* uri = g_filename_to_uri(absolute.c_str(), nullptr, nullptr);
-      if (uri == nullptr) {
-        return std::nullopt;
-      }
-      char* md5 = g_compute_checksum_for_string(G_CHECKSUM_MD5, uri, -1);
-      Identity id{uri, md5, static_cast<long long>(st.st_mtim.tv_sec)};
+      std::string fileUri = uri::fileUri(absolute.native());
+      char* md5 = g_compute_checksum_for_string(G_CHECKSUM_MD5, fileUri.c_str(), -1);
+      Identity id{std::move(fileUri), md5, static_cast<long long>(st.st_mtim.tv_sec)};
       g_free(md5);
-      g_free(uri);
       return id;
     }
 

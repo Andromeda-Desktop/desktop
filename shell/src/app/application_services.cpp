@@ -1,4 +1,5 @@
 #include "app/main_loop.h"
+#include "net/uri.h"
 #include "protocols/bus_names.h"
 #include "config/app_icon_settings.h"
 #include "application.h"
@@ -1652,7 +1653,7 @@ void Application::initSystemBusServices() {
           const auto [blockPath, mountPoint] = it->second;
           m_driveNotifications.erase(it);
           if (actionKey == "default") {
-            (void)net::openInBrowser("file://" + mountPoint, activationToken);
+            (void)net::openInBrowser(uri::fileUri(mountPoint), activationToken);
           } else if (actionKey == "eject" && m_udisksService != nullptr) {
             m_udisksService->eject(blockPath);
           }

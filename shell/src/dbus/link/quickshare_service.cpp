@@ -5,6 +5,7 @@
 #include "dbus/session_bus.h"
 #include "i18n/i18n.h"
 #include "ipc/ipc_service.h"
+#include "net/uri.h"
 #include "net/url_open.h"
 #include "notification/notification_manager.h"
 #include "util/string_utils.h"
@@ -14,7 +15,6 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <format>
-#include <glib.h>
 #include <sdbus-c++/IProxy.h>
 #include <sdbus-c++/Types.h>
 #include <utility>
@@ -43,16 +43,6 @@ namespace {
       ++unit;
     }
     return unit == 0 ? std::format("{} B", bytes) : std::format("{:.1f} {}", value, kUnits[unit]);
-  }
-
-  std::string fileUri(const std::string& path) {
-    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-    if (uri == nullptr) {
-      return {};
-    }
-    std::string out = uri;
-    g_free(uri);
-    return out;
   }
 
 } // namespace
@@ -345,18 +335,18 @@ void QuickShareService::onAction(
       std::vector<std::string> uris;
       uris.reserve(result.files.size());
       for (const auto& path : result.files) {
-        uris.push_back(fileUri(path));
+        uris.push_back(uri::fileUri(path));
       }
       m_fileManager->callMethodAsync("ShowItems")
           .onInterface("org.freedesktop.FileManager1")
           .withArguments(uris, activationToken)
           .uponReplyInvoke([dir = std::filesystem::path(result.files.front()).parent_path().string(),
                             activationToken](std::optional<sdbus::Error> error) {
-            if (error.has_value() && !net::openInBrowser(fileUri(dir), activationToken)) {
+            if (error.has_value() && !net::openInBrowser(uri::fileUri(dir), activationToken)) {
               kLog.warn("showing received files failed: {}", error->what());
             }
           });
-    } else if (!net::openInBrowser(fileUri(result.files.front()), activationToken)) {
+    } else if (!net::openInBrowser(uri::fileUri(result.files.front()), activationToken)) {
       kLog.warn("opening a received file failed");
     }
     return;

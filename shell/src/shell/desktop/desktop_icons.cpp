@@ -6,6 +6,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "i18n/i18n.h"
+#include "net/uri.h"
 #include "net/url_open.h"
 #include "render/render_context.h"
 #include "render/scene/input_area.h"
@@ -37,7 +38,6 @@
 #include <format>
 #include <fstream>
 #include <set>
-#include <sstream>
 #include <nlohmann/json.hpp>
 #include <sdbus-c++/sdbus-c++.h>
 #include <gio/gio.h>
@@ -92,16 +92,6 @@ namespace {
     OpenWithFirst = 100, // + index into the app list of the menu
   };
   constexpr std::size_t kOpenWithMax = 4;
-
-  std::string fileUri(const std::filesystem::path& path) {
-    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-    if (uri == nullptr) {
-      return {};
-    }
-    std::string out = uri;
-    g_free(uri);
-    return out;
-  }
 
   // Freedesktop icon names for a MIME type: "image/png" -> "image-png", then the "image-x-generic" family icon.
   std::vector<std::string> mimeIconNames(const FileInfo& info) {
@@ -346,7 +336,7 @@ void DesktopIcons::startSystemDrag() {
   std::string uris;
   std::string text;
   for (const auto& path : paths) {
-    uris += fileUri(path) + "\r\n";
+    uris += uri::fileUri(path.native()) + "\r\n";
     text += (text.empty() ? "" : "\n") + path.string();
   }
   // Drag image: the pressed icon at icon size.
@@ -413,8 +403,8 @@ void DesktopIcons::startSystemDrag() {
   m_input.cancelPointerCapture();
   m_systemDrag = dnd->startDrag(
       m_surface->wlSurface(), m_pressSerial,
-      {.mimeTypes = {"text/uri-list", "text/plain;charset=utf-8", "text/plain"},
-       .data = [uris, text](const std::string& mime) { return mime == "text/uri-list" ? uris : text; },
+      {.mimeTypes = {uri::kUriListMime, "text/plain;charset=utf-8", "text/plain"},
+       .data = [uris, text](const std::string& mime) { return mime == uri::kUriListMime ? uris : text; },
        .actions = DragAndDrop::Copy | DragAndDrop::Move | DragAndDrop::Ask,
        .icon = m_dragIcon != nullptr ? m_dragIcon->wlSurface() : nullptr,
        .finished =
@@ -457,17 +447,9 @@ void DesktopIcons::endSystemDrag(bool droppedHere) {
 
 std::vector<std::filesystem::path> DesktopIcons::urisToPaths(const std::string& uriList) {
   std::vector<std::filesystem::path> out;
-  std::istringstream lines(uriList);
-  for (std::string line; std::getline(lines, line);) {
-    if (!line.empty() && line.back() == '\r') {
-      line.pop_back();
-    }
-    if (line.empty() || line.front() == '#') {
-      continue;
-    }
-    if (gchar* file = g_filename_from_uri(line.c_str(), nullptr, nullptr); file != nullptr) {
-      out.emplace_back(file);
-      g_free(file);
+  for (const std::string& item : uri::parseUriList(uriList)) {
+    if (auto path = uri::pathFromFileUri(item)) {
+      out.emplace_back(std::move(*path));
     }
   }
   return out;
@@ -505,7 +487,7 @@ bool DesktopIcons::canPaste() const {
     return !m_clipboard.empty();
   }
   return std::ranges::any_of(dnd->selectionTypes(), [](const std::string& type) {
-    return type == "x-special/gnome-copied-files" || type == "text/uri-list";
+    return type == "x-special/gnome-copied-files" || type == uri::kUriListMime;
   });
 }
 
@@ -517,19 +499,19 @@ void DesktopIcons::copyToClipboard(const std::vector<std::filesystem::path>& pat
   std::string uris;
   std::string text;
   for (const auto& path : paths) {
-    uris += fileUri(path) + "\r\n";
+    uris += uri::fileUri(path.native()) + "\r\n";
     text += (text.empty() ? "" : "\n") + path.string();
   }
   // GNOME's copied-files type carries cut or copy; Files and Nautilus read it, others take the uri-list.
   std::string gnome = cut ? "cut" : "copy";
   for (const auto& path : paths) {
-    gnome += "\n" + fileUri(path);
+    gnome += "\n" + uri::fileUri(path.native());
   }
   const bool set = dnd->setSelection(
       m_wayland->lastInputSerial(),
-      {.mimeTypes = {"x-special/gnome-copied-files", "text/uri-list", "text/plain;charset=utf-8", "text/plain"},
+      {.mimeTypes = {"x-special/gnome-copied-files", uri::kUriListMime, "text/plain;charset=utf-8", "text/plain"},
        .data = [gnome, uris, text](const std::string& mime) {
-         return mime == "x-special/gnome-copied-files" ? gnome : mime == "text/uri-list" ? uris : text;
+         return mime == "x-special/gnome-copied-files" ? gnome : mime == uri::kUriListMime ? uris : text;
        }}
   );
   if (set) {
@@ -555,7 +537,7 @@ void DesktopIcons::paste(const std::filesystem::path& dir, std::optional<std::pa
     return;
   }
   dnd->readSelection(
-      {"x-special/gnome-copied-files", "text/uri-list"},
+      {"x-special/gnome-copied-files", uri::kUriListMime},
       [this, alive = std::weak_ptr<bool>(m_alive), dir, at](const std::string& mime, std::string bytes) {
         if (alive.expired() || bytes.empty()) {
           return;
@@ -593,7 +575,7 @@ void DesktopIcons::showProperties(const std::vector<std::filesystem::path>& path
   }
   std::vector<std::string> uris;
   for (const auto& path : paths) {
-    uris.push_back(fileUri(path));
+    uris.push_back(uri::fileUri(path.native()));
   }
   // Files answers org.freedesktop.FileManager1 (D-Bus activated) with its Get Info window.
   try {
@@ -1580,7 +1562,7 @@ void DesktopIcons::activate(const std::vector<std::filesystem::path>& paths) {
         continue;
       }
     }
-    if (!net::openInBrowser(fileUri(path))) {
+    if (!net::openInBrowser(uri::fileUri(path.native()))) {
       kLog.warn("opening {} failed", path.string());
     }
   }

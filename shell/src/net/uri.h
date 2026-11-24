@@ -1,15 +1,14 @@
 #pragma once
 
+#include "protocols/uri.h"
+
 #include <string>
 #include <string_view>
 
 namespace uri {
 
-  [[nodiscard]] std::string decodeComponent(std::string_view text);
-  // Percent-encodes a string for use as a URL path segment or query value, leaving only the RFC 3986
-  // unreserved set (A-Z a-z 0-9 - _ . ~) intact.
-  [[nodiscard]] std::string encodeComponent(std::string_view text);
   [[nodiscard]] bool isRemoteUrl(std::string_view url);
+  // The local path of a file URI, or `url` itself when it has no scheme; empty for a remote URL or a remote host.
   [[nodiscard]] std::string normalizeFileUrl(std::string_view url);
 
 } // namespace uri

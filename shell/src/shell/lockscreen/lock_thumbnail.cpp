@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "core/process/process.h"
+#include "net/uri.h"
 #include "render/gl_shared_context.h"
 #include "shell/lockscreen/lock_screen.h"
 #include "shell/lockscreen/lock_shader.h"
@@ -31,13 +32,6 @@ namespace lock_thumbnail {
     constexpr std::uint32_t kWidth = 320;
     constexpr std::uint32_t kHeight = 180;
     constexpr int kFirstFrameTimeoutMs = 5000;
-
-    std::string fileUri(const std::string& file) {
-      gchar* uri = g_filename_to_uri(file.c_str(), nullptr, nullptr);
-      std::string text = uri != nullptr ? uri : "";
-      g_free(uri);
-      return text;
-    }
 
     std::string md5(const std::string& text) {
       gchar* sum = g_compute_checksum_for_string(G_CHECKSUM_MD5, text.c_str(), static_cast<gssize>(text.size()));
@@ -104,11 +98,11 @@ namespace lock_thumbnail {
     std::error_code error;
     const auto mtime = std::filesystem::last_write_time(file, error);
     const auto stamp = error ? 0 : mtime.time_since_epoch().count();
-    return cacheHome() / "andromeda" / "lock-thumbs" / (md5(fileUri(file) + ":" + std::to_string(stamp)) + ".png");
+    return cacheHome() / "andromeda" / "lock-thumbs" / (md5(uri::fileUri(file) + ":" + std::to_string(stamp)) + ".png");
   }
 
   std::string find(const std::string& file) {
-    const std::string name = md5(fileUri(file)) + ".png";
+    const std::string name = md5(uri::fileUri(file)) + ".png";
     for (const char* size : {"x-large", "large", "normal"}) {
       const std::filesystem::path path = cacheHome() / "thumbnails" / size / name;
       if (std::filesystem::exists(path)) {

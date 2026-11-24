@@ -1,38 +1,18 @@
 #include "shell/dock/dock_drop.h"
 
+#include "net/uri.h"
 #include "render/scene/input_area.h"
 #include "render/scene/node.h"
 #include "shell/dock/dock_instance.h"
 #include "system/desktop_entry.h"
 
-#include <sstream>
 #include <vector>
 
-#include <glib.h>
 
 namespace shell::dock {
 
   namespace {
-    std::vector<std::string> uris(const std::string& uriList) {
-      std::vector<std::string> out;
-      std::istringstream lines(uriList);
-      for (std::string line; std::getline(lines, line);) {
-        if (!line.empty() && line.back() == '\r') {
-          line.pop_back();
-        }
-        if (!line.empty() && line.front() != '#') {
-          out.push_back(line);
-        }
-      }
-      return out;
-    }
-
-    std::string pathOf(const std::string& uri) {
-      gchar* path = g_filename_from_uri(uri.c_str(), nullptr, nullptr);
-      std::string out = path != nullptr ? path : "";
-      g_free(path);
-      return out;
-    }
+    std::string pathOf(const std::string& item) { return uri::pathFromFileUri(item).value_or(std::string{}); }
 
     // One value for an Exec line: single quotes for the tokenizer, "\\" for the desktop-string decode and "%%" for
     // the field-code pass that run on it after us (desktop_entry_launch).
@@ -99,7 +79,7 @@ namespace shell::dock {
 
   std::vector<std::filesystem::path> localPaths(const std::string& uriList) {
     std::vector<std::filesystem::path> out;
-    for (const std::string& uri : uris(uriList)) {
+    for (const std::string& uri : uri::parseUriList(uriList)) {
       if (std::string path = pathOf(uri); !path.empty()) {
         out.emplace_back(std::move(path));
       }
@@ -117,7 +97,7 @@ namespace shell::dock {
   }
 
   std::vector<std::string> execLines(const std::string& exec, const std::string& uriList) {
-    const std::vector<std::string> all = uris(uriList);
+    const std::vector<std::string> all = uri::parseUriList(uriList);
     // %f/%F take local files only; %u/%U also take other URIs.
     std::vector<std::string> files;
     for (const std::string& uri : all) {

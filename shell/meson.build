@@ -1419,6 +1419,7 @@ if build_tests
     'upower_charge_limit',
     'upower_device_catalog',
     'uri',
+    'uri_codec',
     'vdir_reader',
     'virtual_grid_view_gesture',
     'wallpaper_scan_symlink',

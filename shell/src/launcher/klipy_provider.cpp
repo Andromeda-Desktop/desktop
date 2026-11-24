@@ -4,6 +4,7 @@
 #include "config/config_service.h"
 #include "i18n/i18n.h"
 #include "net/http_client.h"
+#include "net/uri.h"
 #include "shell/panel/panel_manager.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"
@@ -155,8 +156,8 @@ std::vector<LauncherResult> KlipyProvider::query(std::string_view text) const {
 
 void KlipyProvider::fetch(const std::string& text) const {
   const std::string kind = m_kind == Kind::Gifs ? "gifs" : "stickers";
-  std::string url = "https://api.klipy.com/api/v1/" + StringUtils::urlEncode(m_config->config().shell.launcher.gifApiKey)
-      + "/" + kind + (text.empty() ? "/trending?" : "/search?q=" + StringUtils::urlEncode(text) + "&")
+  std::string url = "https://api.klipy.com/api/v1/" + uri::encodeComponent(m_config->config().shell.launcher.gifApiKey)
+      + "/" + kind + (text.empty() ? "/trending?" : "/search?q=" + uri::encodeComponent(text) + "&")
       + "page=1&per_page=24&customer_id=" + customerId();
   m_http->request(HttpRequest{.url = std::move(url)}, [this, alive = m_alive, text](const HttpResponse& response) {
     if (!*alive || m_requested != text) {
@@ -307,12 +308,7 @@ std::vector<LauncherResult> KlipyProvider::fluentResults(const std::string& need
       r.iconPath = local.string();
     } else if (!m_fluentDownloads.contains(file)) {
       m_fluentDownloads.insert(file);
-      std::string url(kFluentRawUrl);
-      for (std::size_t start = 0; start < sticker.path.size();) {
-        const std::size_t end = std::min(sticker.path.find('/', start), sticker.path.size());
-        url += (start == 0 ? "" : "/") + StringUtils::urlEncode(std::string_view(sticker.path).substr(start, end - start));
-        start = end + 1;
-      }
+      const std::string url = std::string(kFluentRawUrl) + uri::encodeComponent(sticker.path, "/");
       m_http->download(url, local, [this, alive = m_alive, file](bool ok) {
         if (*alive) {
           m_fluentDownloads.erase(file);

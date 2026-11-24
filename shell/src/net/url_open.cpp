@@ -1,6 +1,7 @@
 #include "net/url_open.h"
 
 #include "core/log.h"
+#include "net/uri.h"
 
 #include <gio/gio.h>
 
@@ -29,14 +30,11 @@ namespace net {
   }
 
   bool openFile(const std::string& path, const std::string& activationToken) {
-    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-    if (uri == nullptr) {
+    if (!path.starts_with('/')) {
       kLog.warn("failed to open '{}': not an absolute path", path);
       return false;
     }
-    const bool opened = openInBrowser(uri, activationToken);
-    g_free(uri);
-    return opened;
+    return openInBrowser(uri::fileUri(path), activationToken);
   }
 
 } // namespace net

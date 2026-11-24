@@ -1,5 +1,6 @@
 #include "shell/launcher/launcher_panel.h"
 
+#include "net/uri.h"
 #include "shell/launcher/launcher_adapters.h"
 #include "shell/launcher/launcher_panel_detail.h"
 #include "core/deferred_call.h"
@@ -15,7 +16,6 @@
 
 #include <cmath>
 
-#include <glib.h>
 #include <linux/input-event-codes.h>
 
 
@@ -544,12 +544,7 @@ void LauncherPanel::startAppDrag(const LauncherResult& result) {
   if (dnd == nullptr || rc == nullptr || origin == nullptr) {
     return;
   }
-  gchar* uri = g_filename_to_uri(result.desktopEntryPath.c_str(), nullptr, nullptr);
-  if (uri == nullptr) {
-    return;
-  }
-  const std::string uris = std::string(uri) + "\r\n";
-  g_free(uri);
+  const std::string uris = uri::joinUriList({uri::fileUri(result.desktopEntryPath)});
   // Drag image: the app icon at the 64 desktop icon size.
   constexpr int kIcon = 64;
   m_dragIcon.reset();
@@ -581,8 +576,8 @@ void LauncherPanel::startAppDrag(const LauncherResult& result) {
   PanelManager::instance().dropClickShield();
   const bool started = dnd->startDrag(
       origin, m_dragSerial,
-      {.mimeTypes = {"text/uri-list", "text/plain;charset=utf-8", "text/plain"},
-       .data = [uris, path](const std::string& mime) { return mime == "text/uri-list" ? uris : path; },
+      {.mimeTypes = {uri::kUriListMime, "text/plain;charset=utf-8", "text/plain"},
+       .data = [uris, path](const std::string& mime) { return mime == uri::kUriListMime ? uris : path; },
        .actions = DragAndDrop::Copy,
        .icon = m_dragIcon != nullptr ? m_dragIcon->wlSurface() : nullptr,
        .finished =

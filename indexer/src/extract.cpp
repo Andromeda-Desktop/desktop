@@ -1,5 +1,7 @@
 #include "extract.h"
 
+#include "protocols/uri.h"
+
 #include <glib.h>
 #include <poppler.h>
 #include <zip.h>
@@ -20,13 +22,8 @@ namespace andromeda::index {
     constexpr std::size_t kMaxMarkup = 4 * 1024 * 1024;
 
     std::optional<std::string> pdfText(const std::string& path) {
-      gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-      if (uri == nullptr) {
-        return std::nullopt;
-      }
       GError* error = nullptr;
-      PopplerDocument* doc = poppler_document_new_from_file(uri, nullptr, &error);
-      g_free(uri);
+      PopplerDocument* doc = poppler_document_new_from_file(uri::fileUri(path).c_str(), nullptr, &error);
       if (doc == nullptr) {
         g_clear_error(&error);
         return std::nullopt;

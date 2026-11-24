@@ -3,8 +3,8 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "dbus/session_bus.h"
+#include "protocols/uri.h"
 
-#include <glib.h>
 #include <sdbus-c++/sdbus-c++.h>
 
 #include <algorithm>
@@ -28,11 +28,9 @@ namespace desk {
       if (response != 0 || it == results.end() || !it->second.containsValueOfType<std::vector<std::string>>()) {
         return paths;
       }
-      for (const auto& uri : it->second.get<std::vector<std::string>>()) {
-        gchar* file = g_filename_from_uri(uri.c_str(), nullptr, nullptr);
-        if (file != nullptr) {
-          paths.emplace_back(file);
-          g_free(file);
+      for (const auto& item : it->second.get<std::vector<std::string>>()) {
+        if (auto path = uri::pathFromFileUri(item)) {
+          paths.emplace_back(std::move(*path));
         }
       }
       return paths;

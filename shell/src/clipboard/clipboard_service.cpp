@@ -5,6 +5,7 @@
 #include "core/log.h"
 #include "core/deferred_call.h"
 #include "core/shared_worker.h"
+#include "net/uri.h"
 #include "render/core/image_encoder.h"
 #include "render/core/image_file_loader.h"
 #include "ext-data-control-v1-client-protocol.h"
@@ -66,7 +67,6 @@ namespace {
   };
 
   // Copied files (file managers): the entry keeps the URI list and serves the other forms from it.
-  constexpr std::string_view kUriListMimeType = "text/uri-list";
   constexpr std::string_view kCopiedFilesMimeType = "x-special/gnome-copied-files";
 
   std::string joinLines(const std::vector<std::string>& lines) {
@@ -78,20 +78,7 @@ namespace {
   }
 
   std::vector<std::string> urisOf(std::span<const std::uint8_t> data) {
-    std::vector<std::string> uris;
-    std::string_view rest(reinterpret_cast<const char*>(data.data()), data.size());
-    while (!rest.empty()) {
-      const std::size_t end = rest.find('\n');
-      std::string_view line = rest.substr(0, end);
-      rest = end == std::string_view::npos ? std::string_view{} : rest.substr(end + 1);
-      while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) {
-        line.remove_suffix(1);
-      }
-      if (!line.empty() && line.front() != '#') {
-        uris.emplace_back(line);
-      }
-    }
-    return uris;
+    return uri::parseUriList(std::string_view(reinterpret_cast<const char*>(data.data()), data.size()));
   }
 
   // The served bytes for one requested type of a copied-files payload.
@@ -575,17 +562,12 @@ const DataControlOps* extDataControlOps() { return &kExtDataControlOps; }
 
 const DataControlOps* wlrDataControlOps() { return &kWlrDataControlOps; }
 
-bool ClipboardEntry::isFiles() const { return dataMimeType == kUriListMimeType; }
+bool ClipboardEntry::isFiles() const { return dataMimeType == uri::kUriListMime; }
 
 std::vector<std::filesystem::path> ClipboardService::filePaths(std::span<const std::uint8_t> uriList) {
   std::vector<std::filesystem::path> paths;
-  for (const std::string& uri : urisOf(uriList)) {
-    if (char* path = g_filename_from_uri(uri.c_str(), nullptr, nullptr); path != nullptr) {
-      paths.emplace_back(path);
-      g_free(path);
-    } else {
-      paths.emplace_back(uri);
-    }
+  for (const std::string& item : urisOf(uriList)) {
+    paths.emplace_back(uri::pathFromFileUri(item).value_or(item));
   }
   return paths;
 }
@@ -606,7 +588,7 @@ std::string ClipboardService::previewText(std::string_view mimeType, std::span<c
   if (isTextMimeType(mimeType)) {
     return buildTextPreview(data);
   }
-  if (mimeType == kUriListMimeType) {
+  if (mimeType == uri::kUriListMime) {
     // The file count, then one path per line up to the preview size (always the first path).
     const auto paths = filePaths(data);
     std::string preview = std::to_string(paths.size());
@@ -1197,7 +1179,7 @@ bool ClipboardService::copyImagePng(std::vector<std::uint8_t> png) {
 }
 
 std::size_t ClipboardService::maxEntryBytesFor(std::string_view mimeType) {
-  return isTextMimeType(mimeType) || mimeType == kUriListMimeType ? kMaxTextEntryBytes : kMaxImageEntryBytes;
+  return isTextMimeType(mimeType) || mimeType == uri::kUriListMime ? kMaxTextEntryBytes : kMaxImageEntryBytes;
 }
 
 // Only one flavour of the selection is ever read, and every advertised type is
@@ -1206,7 +1188,7 @@ std::size_t ClipboardService::maxEntryBytesFor(std::string_view mimeType) {
 std::vector<std::string> ClipboardService::mimeTypesForPayload(const std::string& dataMimeType) {
   std::vector<std::string> mimeTypes;
   mimeTypes.push_back(dataMimeType);
-  if (dataMimeType == kUriListMimeType) {
+  if (dataMimeType == uri::kUriListMime) {
     mimeTypes.emplace_back(kCopiedFilesMimeType);
     mimeTypes.emplace_back("text/plain;charset=utf-8");
     mimeTypes.emplace_back("text/plain");
@@ -1589,7 +1571,7 @@ void ClipboardService::handleSourceSend(void* source, const char* mimeType, int 
   if (it != m_outgoingSources.end() && mimeType != nullptr) {
     const auto mimeIt = std::ranges::find(it->mimeTypes, std::string_view(mimeType));
     if (mimeIt != it->mimeTypes.end() && it->data != nullptr) {
-      const bool derived = it->mimeTypes.front() == kUriListMimeType && *mimeIt != kUriListMimeType;
+      const bool derived = it->mimeTypes.front() == uri::kUriListMime && *mimeIt != uri::kUriListMime;
       if (queueOutgoingWrite(source, fd, derived ? copiedFilesAs(*mimeIt, *it->data) : it->data)) {
         return;
       }
@@ -2429,10 +2411,10 @@ std::string ClipboardService::chooseMimeType(const OfferState& offer) const {
   };
 
   // A file manager offers the paths as text too; a URI list without text is also files.
-  const bool files = std::ranges::contains(offer.mimeTypes, kUriListMimeType)
+  const bool files = std::ranges::contains(offer.mimeTypes, uri::kUriListMime)
       && (std::ranges::contains(offer.mimeTypes, kCopiedFilesMimeType) || choose(kTextMimeTypes).empty());
   if (files) {
-    return std::string(kUriListMimeType);
+    return std::string(uri::kUriListMime);
   }
   if (std::string mimeType = choose(kTextMimeTypes); !mimeType.empty()) {
     return mimeType;

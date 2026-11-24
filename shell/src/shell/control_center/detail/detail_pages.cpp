@@ -5,6 +5,7 @@
 #include "dbus/mpris/mpris_service.h"
 #include "compositors/compositor_platform.h"
 #include "ipc/ipc_service.h"
+#include "net/uri.h"
 #include "util/parse_number.h"
 #include "util/string_utils.h"
 #include "system/app_identity.h"
@@ -1348,8 +1349,10 @@ namespace control_center {
       if (n.imageData.has_value()) {
         shown.image = std::make_shared<const NotificationImageData>(*n.imageData);
       }
-      if (n.icon.has_value() && !n.icon->empty()) {
-        shown.icons.push_back(n.icon->starts_with("file://") ? n.icon->substr(7) : *n.icon);
+      if (n.icon.has_value()) {
+        if (std::string icon = uri::normalizeFileUrl(*n.icon); !icon.empty()) {
+          shown.icons.push_back(std::move(icon));
+        }
       }
       if (n.desktopEntry.has_value() && !n.desktopEntry->empty()) {
         shown.icons.push_back(*n.desktopEntry);

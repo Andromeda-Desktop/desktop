@@ -6,6 +6,7 @@
 #include "i18n/i18n.h"
 #include "ipc/ipc_arg_parse.h"
 #include "ipc/ipc_service.h"
+#include "net/uri.h"
 #include "net/url_open.h"
 #include "notification/notification_manager.h"
 #include "pipewire/sound_player.h"
@@ -26,7 +27,6 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <format>
-#include <glib.h>
 #include <map>
 #include <ranges>
 #include <sdbus-c++/IProxy.h>
@@ -83,16 +83,6 @@ namespace {
       ++unit;
     }
     return unit == 0 ? std::format("{} {}", bytes, kUnits[0]) : std::format("{:.1f} {}", size, kUnits[unit]);
-  }
-
-  std::string fileUri(const std::filesystem::path& path) {
-    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-    if (uri == nullptr) {
-      return {};
-    }
-    std::string out(uri);
-    g_free(uri);
-    return out;
   }
 
 } // namespace
@@ -588,7 +578,7 @@ void LinkService::browse(const std::string& deviceId) {
   for (std::size_t at = 0; (at = name.find('/', at)) != std::string::npos;) {
     name.replace(at, 1, "\u2215");
   }
-  (void)net::openInBrowser(fileUri(std::filesystem::path(home) / "Phone" / name));
+  (void)net::openInBrowser(uri::fileUri((std::filesystem::path(home) / "Phone" / name).native()));
 }
 
 void LinkService::mirror(const std::string& deviceId) {
@@ -1170,9 +1160,9 @@ void LinkService::onAction(std::uint32_t id, const std::string& action, const st
     } else if (action == "cancel") {
       callTransfer("CancelTransfer", target.transferId);
     } else if ((action == "default" || action == "open") && !target.paths.empty()) {
-      (void)net::openInBrowser(fileUri(target.paths.front()), activationToken);
+      (void)net::openInBrowser(uri::fileUri(target.paths.front()), activationToken);
     } else if (action == "folder" && !target.paths.empty()) {
-      (void)net::openInBrowser(fileUri(std::filesystem::path(target.paths.front()).parent_path()), activationToken);
+      (void)net::openInBrowser(uri::fileUri(std::filesystem::path(target.paths.front()).parent_path().native()), activationToken);
     }
     return;
   }

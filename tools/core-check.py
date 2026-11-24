@@ -102,6 +102,8 @@ RULES = {
     "reply-drop": ("an async D-Bus reply nothing reads goes to logReply (libdesk-system dbus/reply_log.h): failures "
                    "are logged, not dropped (C13)", CPP_DIRS, CPP,
                    r"uponReplyInvoke\(\[[^\]]*\]\(std::optional<sdbus::Error>[^)]*\)\s*\{\s*\}", ()),
+    "uri-codec": ("file URIs, percent escapes and text/uri-list go through protocol/uri.h (C17)", CPP_DIRS,
+                  CPP + (".mm",), r"\bg_filename_(to|from)_uri\s*\(|\"text/uri-list\"|\"file://\"\s*\+", ()),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
                        ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",

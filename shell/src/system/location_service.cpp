@@ -7,7 +7,7 @@
 #include "i18n/i18n.h"
 #include "ipc/ipc_service.h"
 #include "net/http_client.h"
-#include "util/string_utils.h"
+#include "net/uri.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -338,7 +338,7 @@ void LocationService::startAddressGeocode() {
   std::filesystem::create_directories(transportCacheDir(), ec);
   const auto path = transportCacheDir() / "geocode.json";
   const std::string url =
-      "https://geocoding-api.open-meteo.com/v1/search?count=1&name=" + StringUtils::urlEncode(m_config.address);
+      "https://geocoding-api.open-meteo.com/v1/search?count=1&name=" + uri::encodeComponent(m_config.address);
   const std::uint64_t serial = ++m_requestSerial;
   m_requestKind = RequestKind::GeocodeAddress;
   m_httpClient.download(url, path, [this, path, serial](bool success) {

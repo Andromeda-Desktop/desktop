@@ -5,6 +5,7 @@
 #include "dbus/session_bus.h"
 #include "i18n/i18n.h"
 #include "launcher/quick_look_client.h"
+#include "net/uri.h"
 #include "net/url_open.h"
 #include "util/string_utils.h"
 
@@ -29,16 +30,6 @@ namespace {
   // docs/search.md debounce for async providers: longer than key repeat (25/s = 40 ms), short enough to feel instant.
   constexpr auto kTypingDebounce = std::chrono::milliseconds(60);
 
-  std::string fileUri(const std::string& path) {
-    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-    if (uri == nullptr) {
-      return {};
-    }
-    std::string out = uri;
-    g_free(uri);
-    return out;
-  }
-
   std::string socketPath() {
     const char* runtime = std::getenv("XDG_RUNTIME_DIR");
     return runtime == nullptr || runtime[0] == '\0' ? std::string() : std::string(runtime) + "/andromeda-index.sock";
@@ -53,11 +44,8 @@ namespace {
 
   // The freedesktop thumbnail of a file ($XDG_CACHE_HOME/thumbnails/{x-large,large,normal}/<md5 of uri>.png), or empty.
   std::string cachedThumbnail(const std::string& path) {
-    const std::string uri = fileUri(path);
-    if (uri.empty()) {
-      return {};
-    }
-    gchar* md5 = g_compute_checksum_for_string(G_CHECKSUM_MD5, uri.c_str(), -1);
+    const std::string fileUri = uri::fileUri(path);
+    gchar* md5 = g_compute_checksum_for_string(G_CHECKSUM_MD5, fileUri.c_str(), -1);
     const std::string name = std::string(md5) + ".png";
     g_free(md5);
     const char* cache = std::getenv("XDG_CACHE_HOME");
@@ -122,9 +110,8 @@ namespace {
         if (when == nullptr) {
           when = g_bookmark_file_get_modified_date_time(bookmarks, uris[i], nullptr);
         }
-        if (gchar* path = g_filename_from_uri(uris[i], nullptr, nullptr); path != nullptr) {
-          byUse.emplace_back(when != nullptr ? g_date_time_to_unix(when) : 0, path);
-          g_free(path);
+        if (auto path = uri::pathFromFileUri(uris[i])) {
+          byUse.emplace_back(when != nullptr ? g_date_time_to_unix(when) : 0, std::move(*path));
         }
       }
       g_strfreev(uris);
@@ -384,7 +371,7 @@ void FilesProvider::onAnswer(const Request& request, const std::string& body) co
 }
 
 bool FilesProvider::activate(const LauncherResult& result) {
-  if (!net::openInBrowser(fileUri(result.id))) {
+  if (!net::openInBrowser(uri::fileUri(result.id))) {
     kLog.warn("opening {} failed", result.id);
   }
   return true;

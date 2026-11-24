@@ -1,6 +1,7 @@
 #include "render/core/image_file_loader.h"
 
 #include "core/log.h"
+#include "protocols/uri.h"
 #include "render/core/icon_color_scheme.h"
 #include "render/core/image_decoder.h"
 #include "render/core/image_source_log.h"
@@ -90,47 +91,6 @@ namespace {
       value.remove_suffix(1);
     }
     return value;
-  }
-
-  [[nodiscard]] int hexValue(char ch) {
-    if (ch >= '0' && ch <= '9') {
-      return ch - '0';
-    }
-    if (ch >= 'a' && ch <= 'f') {
-      return ch - 'a' + 10;
-    }
-    if (ch >= 'A' && ch <= 'F') {
-      return ch - 'A' + 10;
-    }
-    return -1;
-  }
-
-  [[nodiscard]] std::expected<std::vector<std::uint8_t>, std::string> percentDecode(std::string_view value) {
-    std::vector<std::uint8_t> out;
-    out.reserve(value.size());
-
-    for (std::size_t i = 0; i < value.size(); ++i) {
-      const char ch = value[i];
-      if (ch != '%') {
-        out.push_back(static_cast<std::uint8_t>(ch));
-        continue;
-      }
-
-      if (i + 2 >= value.size()) {
-        return std::unexpected("data URI has truncated percent escape");
-      }
-
-      const int hi = hexValue(value[i + 1]);
-      const int lo = hexValue(value[i + 2]);
-      if (hi < 0 || lo < 0) {
-        return std::unexpected("data URI has invalid percent escape");
-      }
-
-      out.push_back(static_cast<std::uint8_t>((hi << 4) | lo));
-      i += 2;
-    }
-
-    return out;
   }
 
   [[nodiscard]] int base64Value(unsigned char ch) {
@@ -274,22 +234,17 @@ namespace {
       firstToken = false;
     }
 
-    auto decodedPayload = percentDecode(payload);
-    if (!decodedPayload) {
-      return std::unexpected(decodedPayload.error());
+    auto decodedText = uri::decodeComponentStrict(payload);
+    if (!decodedText) {
+      return std::unexpected("data URI has an invalid percent escape");
     }
 
     if (!base64) {
-      return DecodedDataUri{.bytes = std::move(*decodedPayload), .declaredSvg = declaredSvg};
+      return DecodedDataUri{.bytes = std::vector<std::uint8_t>(decodedText->begin(), decodedText->end()),
+                            .declaredSvg = declaredSvg};
     }
 
-    std::string decodedText;
-    decodedText.reserve(decodedPayload->size());
-    for (std::uint8_t byte : *decodedPayload) {
-      decodedText.push_back(static_cast<char>(byte));
-    }
-
-    auto decodedBytes = base64Decode(decodedText);
+    auto decodedBytes = base64Decode(*decodedText);
     if (!decodedBytes) {
       return std::unexpected(decodedBytes.error());
     }

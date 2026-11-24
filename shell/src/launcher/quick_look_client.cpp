@@ -2,8 +2,8 @@
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
+#include "net/uri.h"
 
-#include <glib.h>
 #include <sdbus-c++/sdbus-c++.h>
 
 namespace {
@@ -26,12 +26,7 @@ sdbus::IProxy& QuickLookClient::proxy() {
 }
 
 void QuickLookClient::toggle(const std::string& path) {
-  gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-  if (uri == nullptr) {
-    return;
-  }
-  const std::string fileUri = uri;
-  g_free(uri);
+  const std::string fileUri = uri::fileUri(path);
   // The launcher is a layer surface with no exported handle: the preview opens unparented.
   proxy()
       .callMethodAsync("ShowFile")
