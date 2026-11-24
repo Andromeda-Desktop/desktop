@@ -33,6 +33,8 @@ RULES = {
                  ("compositor/src/core/loop_bus.cpp", "compositor/src/core/scanout_keeper.cpp", "compositor/src/cli/")),
     "bus-floating": ("a bus callback with a floating slot outlives its owner: use bus::Client keep() or call() (AR3)",
                      ("compositor/src/",), CPP, r"\bsd_bus_\w+_async\(\s*[^,()]+,\s*nullptr\s*,", ()),
+    "clipboard-wait": ("clipboard file I/O runs as SharedWorker jobs; only the destructor drain waits (AR3 C9)",
+                       ("shell/src/clipboard/",), CPP, r"\.wait(_for|_until)?\(", ()),
     "schedule-frame": ("redraws go through the Output frame owner (C8)", ("compositor/src/",), CPP,
                        r"\bwlr_output_schedule_frame\(", ("compositor/src/output/",)),
     "output-at": ("output under a point via Server::outputAt (C11)", ("compositor/src/",), CPP,

@@ -183,3 +183,4 @@ sync-image shell/src/shell/settings/settings_window_automation.cpp 1
 sync-image shell/src/shell/settings/settings_window_input.cpp 1
 sync-image shell/src/shell/setup_wizard/setup_wizard_panel.cpp 3
 sync-image shell/src/shell/switcher/window_switcher_tile.cpp 1
+clipboard-wait shell/src/clipboard/clipboard_service.cpp 1

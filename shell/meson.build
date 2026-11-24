@@ -1224,6 +1224,7 @@ if build_tests
     'capsule_group_style_persist',
     'cli_help',
     'cli_parse',
+    'clipboard_persistence_model',
     'clipboard_service',
     'clipboard_storage_permissions',
     'config_animation_move',

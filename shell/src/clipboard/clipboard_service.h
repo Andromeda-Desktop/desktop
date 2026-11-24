@@ -131,8 +131,11 @@ public:
 
   void syncPersistence();
   void retryPersistence();
-  [[nodiscard]] bool clearEncryptedPersistenceForRecovery();
+  // Deletes the encrypted files on the storage worker; `done(cleared)` runs on the main loop.
+  void clearEncryptedPersistenceForRecovery(std::function<void(bool)> done);
   [[nodiscard]] bool hasEncryptedPersistence() const;
+  // True while a storage job (open, write, delete) has not delivered its result to the main loop.
+  [[nodiscard]] bool persistenceBusy() const noexcept;
   bool ensureEntryLoaded(std::size_t index);
   // The same data URI with the decrypt and base64 on the SharedWorker; `done` runs on the main loop.
   void imageDataUriAsync(const std::string& storageId, std::function<void(std::optional<std::string>)> done);
@@ -253,17 +256,37 @@ private:
   [[nodiscard]] std::size_t pinnedCount() const noexcept;
   void activatePersistenceKey(security::SecureKey key);
   void setPersistenceState(ClipboardPersistenceState state, bool migrationPending);
-  [[nodiscard]] bool loadPersistedHistory();
-  [[nodiscard]] bool loadEncryptedHistory();
-  [[nodiscard]] bool migrateLegacyHistory();
-  [[nodiscard]] bool
-  parseManifest(std::span<const std::uint8_t> contents, bool legacy, std::deque<ClipboardEntry>& entries) const;
+  // What the open job found on disk. `state` is Ready or the failure to show.
+  struct OpenResult {
+    enum class Source { None, Encrypted, Legacy };
+    ClipboardPersistenceState state = ClipboardPersistenceState::Ready;
+    Source source = Source::None;
+    std::deque<ClipboardEntry> entries;
+    bool migrationPending = false;
+  };
+  // Sets Opening and reads the stored history on the storage worker; writes wait for the result.
+  void openPersistence();
+  void applyOpen(OpenResult result);
+  void migrateLegacyHistory(std::deque<ClipboardEntry> entries);
+  void removeLegacyAfterWrite();
+  [[nodiscard]] static OpenResult readStorage(const security::SecureKey& key);
+  [[nodiscard]] static bool readLegacyHistory(std::deque<ClipboardEntry>& entries);
+  [[nodiscard]] static bool legacyStorageRemains();
+  [[nodiscard]] static bool removeEncryptedStorage();
+  // Deletes payload files whose id the manifest does not list.
+  [[nodiscard]] static bool removeUnlistedPayloads(const std::unordered_set<std::string>& listed);
+  [[nodiscard]] static bool
+  parseManifest(std::span<const std::uint8_t> contents, bool legacy, std::deque<ClipboardEntry>& entries);
   void mergePersistedHistory(std::deque<ClipboardEntry> entries);
-  [[nodiscard]] bool removeLegacyStorage();
-  // Writes payloads and the manifest on SharedWorker in FIFO order; `sync` writes before returning (migration,
-  // shutdown). Async returns true once queued.
-  bool persistHistory(bool force = false, bool sync = false);
-  // Blocks until queued history writes finish, before sync storage reads, deletes and shutdown.
+  [[nodiscard]] static bool removeLegacyStorage();
+  // Every file operation runs here: one FIFO SharedWorker job, counted for the destructor drain.
+  template <typename Result> void postStorageJob(std::function<Result()> work, std::function<void(Result)> done);
+  [[nodiscard]] std::uint64_t writeGeneration() const;
+  // Queues a write of m_history; false while Opening, without a key or with retention off.
+  bool persistHistory();
+  // Queues payloads and a manifest for `entries`; returns true once queued.
+  bool persistEntries(std::deque<ClipboardEntry>& entries);
+  // Bounded wait for queued storage jobs; only the destructor calls it (SharedWorker drops queued jobs at exit).
   void drainPendingWrites();
   struct PersistResult {
     bool ok = false;
@@ -272,9 +295,9 @@ private:
     std::size_t payloadBytes = 0;
     std::int64_t elapsedMs = 0;
     std::uint64_t generation = 0;
-    bool async = false;
   };
-  // Cancels queued writes (key change, recovery): they skip their files, and their payloads count as unwritten.
+  // Cancels queued writes (key change, recovery) without waiting: they skip their files, and their payloads count
+  // as unwritten.
   void cancelPendingWrites();
   void finishPersist(const PersistResult& result);
   void trimHistoryToBudget();
@@ -344,8 +367,12 @@ private:
   std::unordered_set<std::string> m_evictAfterWrite;
   // Payloads queued but not yet confirmed written.
   std::unordered_set<std::string> m_queuedPayloads;
-  // Async completions of the current generation not yet run on the main thread.
+  // Write completions of the current generation not yet run on the main thread.
   int m_outstandingCompletions = 0;
+  // Storage jobs whose completion has not run on the main thread.
+  int m_storageJobs = 0;
+  // Counts openPersistence calls; a completed open applies only when it is the newest.
+  std::uint64_t m_openSerial = 0;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   ClipboardPersistenceState m_persistenceState = ClipboardPersistenceState::Opening;
   bool m_persistenceMigrationPending = false;

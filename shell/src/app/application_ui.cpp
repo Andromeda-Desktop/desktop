@@ -680,19 +680,20 @@ void Application::initPanelManagerAndPanels() {
   m_settingsWindow.setNotificationManager(&m_notificationManager);
   m_clipboardService.setPersistenceChangeCallback([this] { m_settingsWindow.onExternalOptionsChanged(); });
   m_settingsWindow.setResetEncryptedStorage([this] {
-    const bool clipboardCleared = m_clipboardService.clearEncryptedPersistenceForRecovery();
-    const bool calendarCleared = m_calendarService.clearEncryptedCacheForRecovery();
-    const bool notificationsCleared = m_notificationManager.clearEncryptedHistoryForRecovery();
-    if (!clipboardCleared || !calendarCleared || !notificationsCleared) {
-      m_settingsWindow.showTransientStatus(i18n::tr("settings.storage-recovery.error-delete"), true);
-      m_settingsWindow.onExternalOptionsChanged();
-      return;
-    }
-    m_storageKeyProvider.resetAfterEncryptedDataCleared([this](bool success) {
-      m_settingsWindow.showTransientStatus(
-          i18n::tr(success ? "settings.storage-recovery.success" : "settings.storage-recovery.error-key"), !success
-      );
-      m_settingsWindow.onExternalOptionsChanged();
+    m_clipboardService.clearEncryptedPersistenceForRecovery([this](bool clipboardCleared) {
+      const bool calendarCleared = m_calendarService.clearEncryptedCacheForRecovery();
+      const bool notificationsCleared = m_notificationManager.clearEncryptedHistoryForRecovery();
+      if (!clipboardCleared || !calendarCleared || !notificationsCleared) {
+        m_settingsWindow.showTransientStatus(i18n::tr("settings.storage-recovery.error-delete"), true);
+        m_settingsWindow.onExternalOptionsChanged();
+        return;
+      }
+      m_storageKeyProvider.resetAfterEncryptedDataCleared([this](bool success) {
+        m_settingsWindow.showTransientStatus(
+            i18n::tr(success ? "settings.storage-recovery.success" : "settings.storage-recovery.error-key"), !success
+        );
+        m_settingsWindow.onExternalOptionsChanged();
+      });
     });
   });
   auto clipboardPanel = std::make_unique<ClipboardPanel>(&m_clipboardService, &m_configService, &m_asyncTextureCache);

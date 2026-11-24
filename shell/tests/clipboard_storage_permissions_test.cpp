@@ -2,6 +2,7 @@
 #include "security/secure_buffer.h"
 #include "security/storage_key_provider.h"
 #include "clipboard/clipboard_service.h"
+#include "tests/test_deferred.h"
 
 #include <algorithm>
 #include <chrono>
@@ -50,6 +51,19 @@ namespace {
       std::println(stderr, "clipboard_storage_permissions_test: {}", message);
     }
     return condition;
+  }
+
+  // Storage jobs run on the SharedWorker; state is read once every job has delivered.
+  ClipboardPersistenceState settledState(ClipboardService& clipboard) {
+    (void)expect(runDeferredUntil([&clipboard] { return !clipboard.persistenceBusy(); }), "storage jobs did not settle");
+    return clipboard.persistenceState();
+  }
+
+  bool clearForRecovery(ClipboardService& clipboard) {
+    std::optional<bool> cleared;
+    clipboard.clearEncryptedPersistenceForRecovery([&cleared](bool ok) { cleared = ok; });
+    (void)runDeferredUntil([&cleared] { return cleared.has_value(); });
+    return cleared == true;
   }
 
   // Paste reads the live selection, so persisted history is checked directly.
@@ -266,7 +280,7 @@ namespace {
       ok = dispatchCompletion(store) && ok;
       ok = dispatchCompletion(store) && ok;
       ok = expect(
-               clipboard.persistenceState() == ClipboardPersistenceState::Ready, "migration did not reach ready state"
+               settledState(clipboard) == ClipboardPersistenceState::Ready, "migration did not reach ready state"
            )
           && ok;
       ok = expect(!clipboard.persistenceMigrationPending(), "migration remained pending") && ok;
@@ -291,7 +305,7 @@ namespace {
       harness.configure(StorageKeySource::SecretService);
       ok = dispatchCompletion(store) && ok;
       ok = expect(
-               clipboard.persistenceState() == ClipboardPersistenceState::Ready,
+               settledState(clipboard) == ClipboardPersistenceState::Ready,
                "encrypted reload did not reach ready state"
            )
           && ok;
@@ -322,7 +336,7 @@ namespace {
 
     bool ok = dispatchCompletion(store);
     ok = expect(
-             clipboard.persistenceState() == ClipboardPersistenceState::Unavailable,
+             settledState(clipboard) == ClipboardPersistenceState::Unavailable,
              "unavailable provider state was not exposed"
          )
         && ok;
@@ -337,7 +351,7 @@ namespace {
     ok = dispatchCompletion(store) && ok;
     ok = dispatchCompletion(store) && ok;
     ok = expect(
-             clipboard.persistenceState() == ClipboardPersistenceState::Ready,
+             settledState(clipboard) == ClipboardPersistenceState::Ready,
              "retry did not migrate after the provider became available"
          )
         && ok;
@@ -367,7 +381,7 @@ namespace {
 
     bool ok = dispatchCompletion(store);
     ok = expect(
-             clipboard.persistenceState() == ClipboardPersistenceState::MissingKey,
+             settledState(clipboard) == ClipboardPersistenceState::MissingKey,
              "missing encrypted-history key was not exposed"
          )
         && ok;
@@ -406,11 +420,11 @@ namespace {
 
     bool ok = dispatchCompletion(store);
     ok = expect(
-             clipboard.persistenceState() == ClipboardPersistenceState::MissingKey,
+             settledState(clipboard) == ClipboardPersistenceState::MissingKey,
              "recovery fixture did not expose its missing key"
          )
         && ok;
-    ok = expect(clipboard.clearEncryptedPersistenceForRecovery(), "failed to clear encrypted clipboard storage") && ok;
+    ok = expect(clearForRecovery(clipboard), "failed to clear encrypted clipboard storage") && ok;
     ok = expect(!fs::exists(manifest), "recovery left the encrypted manifest behind") && ok;
     ok = expect(!fs::exists(encryptedPayload), "recovery left an encrypted payload behind") && ok;
     ok = expect(fs::exists(legacyPayload), "recovery removed a legacy plaintext payload") && ok;
@@ -422,7 +436,7 @@ namespace {
     ok = dispatchCompletion(store) && ok;
     ok = expect(resetResult == true, "Secret Service recovery did not complete successfully") && ok;
     ok = expect(
-             clipboard.persistenceState() == ClipboardPersistenceState::Ready,
+             settledState(clipboard) == ClipboardPersistenceState::Ready,
              "Secret Service recovery did not reopen clipboard persistence"
          )
         && ok;
@@ -454,7 +468,7 @@ namespace {
       ClipboardService& clipboard = harness.clipboard();
       harness.configure(StorageKeySource::File, keyFile.string());
       ok = expect(
-               clipboard.persistenceState() == ClipboardPersistenceState::Ready,
+               settledState(clipboard) == ClipboardPersistenceState::Ready,
                "file key source did not reach ready state"
            )
           && ok;
@@ -489,7 +503,7 @@ namespace {
       ClipboardService& clipboard = harness.clipboard();
       harness.configure(StorageKeySource::File, keyFile.string());
       ok = expect(
-               clipboard.persistenceState() == ClipboardPersistenceState::RecoveryRequired,
+               settledState(clipboard) == ClipboardPersistenceState::RecoveryRequired,
                "changed file key did not fail authentication"
            )
           && ok;
@@ -506,7 +520,7 @@ namespace {
       harness.configure(StorageKeySource::File, keyFile.string());
       ok =
           expect(
-              clipboard.persistenceState() == ClipboardPersistenceState::BackendError, "malformed file key was accepted"
+              settledState(clipboard) == ClipboardPersistenceState::BackendError, "malformed file key was accepted"
           )
           && ok;
       ok = expect(readFile(encryptedManifest) == encryptedBefore, "malformed file key changed encrypted history") && ok;
@@ -518,7 +532,7 @@ namespace {
       ClipboardService& clipboard = harness.clipboard();
       harness.configure(StorageKeySource::File, keyFile.string());
       ok = expect(
-               clipboard.persistenceState() == ClipboardPersistenceState::MissingKey,
+               settledState(clipboard) == ClipboardPersistenceState::MissingKey,
                "missing configured key file was not exposed"
            )
           && ok;
@@ -530,7 +544,7 @@ namespace {
       }
       clipboard.retryPersistence();
       ok = expect(
-               clipboard.persistenceState() == ClipboardPersistenceState::Ready,
+               settledState(clipboard) == ClipboardPersistenceState::Ready,
                "retry did not reopen history after the file key was provisioned"
            )
           && ok;
@@ -538,7 +552,7 @@ namespace {
 
       const std::string keyFileBeforeReset = readFile(keyFile);
       ok = expect(
-               clipboard.clearEncryptedPersistenceForRecovery(),
+               clearForRecovery(clipboard),
                "file-backed recovery failed to clear encrypted clipboard storage"
            )
           && ok;
@@ -546,7 +560,7 @@ namespace {
       harness.keys().resetAfterEncryptedDataCleared([&resetResult](bool success) { resetResult = success; });
       ok = expect(resetResult == true, "file-backed recovery did not reopen storage") && ok;
       ok = expect(
-               clipboard.persistenceState() == ClipboardPersistenceState::Ready,
+               settledState(clipboard) == ClipboardPersistenceState::Ready,
                "file-backed recovery did not restore ready state"
            )
           && ok;
