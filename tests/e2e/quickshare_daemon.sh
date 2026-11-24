@@ -104,8 +104,20 @@ in_phone "$BIN/andromeda-quickshare" --name "Phone Receiver" receive --dir "$RUN
   > "$RUNTIME/phone-recv.jsonl" 2>> "$OUT/phone-recv.log" &
 in_phone "$BIN/andromeda-quickshare" --name "Picky Phone" receive --dir "$RUNTIME/phone-in" --port 47301 --consent decline \
   > "$RUNTIME/phone-decline.jsonl" 2>> "$OUT/phone-recv.log" &
-qs StartDiscovery
-nearby_id() { prop Nearby | grep -o "('[^']*', '$1')" | cut -d"'" -f2; }
+# linkd ends discovery when its caller leaves the bus, so one connection that stays calls Start and Stop.
+mkfifo "$RUNTIME/discovery.in"
+exec 4<> "$RUNTIME/discovery.in"
+python3 -I -c '
+import sys
+from gi.repository import Gio
+bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+call = lambda m: bus.call_sync("org.andromeda.Link1", "/org/andromeda/Link1", sys.argv[1], m, None, None, 0, -1, None)
+call("StartDiscovery")
+for line in sys.stdin:
+    if line.strip() == "stop":
+        call("StopDiscovery")
+' "$QS_IFACE" <&4 &
+nearby_id() { prop Nearby | { grep -o "('[^']*', '$1')" || true; } | cut -d"'" -f2; }
 for _ in $(seq 100); do [[ -n $(nearby_id "Phone Receiver") && -n $(nearby_id "Picky Phone") ]] && break; sleep 0.1; done
 PEER=$(nearby_id "Phone Receiver")
 [[ -n $PEER ]] || fail "discovery did not find the receiver: $(prop Nearby)"
@@ -119,7 +131,7 @@ record "{\"step\":\"send-to-nearby\",\"id\":$SEND}"
 SEND=$(bus_call Send "sa(hs)" "$(nearby_id "Picky Phone")" 1 3 nope.txt 3< "$RUNTIME/files/nope.txt" | awk '{print $2}')
 wait_signal "SendFinished (uint64 $SEND, 'declined'"
 record "{\"step\":\"send-declined\",\"id\":$SEND}"
-qs StopDiscovery
+echo stop >&4
 for _ in $(seq 50); do [[ $(prop Nearby) == "(<@a(ss) []>,)" ]] && break; sleep 0.1; done
 [[ $(prop Nearby) == "(<@a(ss) []>,)" ]] || fail "Nearby not cleared on StopDiscovery: $(prop Nearby)"
 
