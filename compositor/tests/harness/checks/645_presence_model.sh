@@ -92,7 +92,15 @@ for _ in $(seq "$OPS"); do
       fi
       ;;
     2) step="window-minimize"; "$ANDROMEDA" msg window-minimize > /dev/null 2>&1 || step+=" (rejected)" ;;
-    3) step="window-restore-minimized"; "$ANDROMEDA" msg window-restore-minimized > /dev/null 2>&1 || step+=" (rejected)" ;;
+    3)
+      # A restore focuses the restored window, which scrolls the fullscreen one aside, as window-focus-next does.
+      if (($(fullscreen_count) == 0)); then
+        step="window-restore-minimized"
+        "$ANDROMEDA" msg window-restore-minimized > /dev/null 2>&1 || step+=" (rejected)"
+      else
+        step="skip"
+      fi
+      ;;
     4)
       if (($(fullscreen_count) == 0 || $(focused_fullscreen) == 1)); then
         step="window-toggle-fullscreen"
