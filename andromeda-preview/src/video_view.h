@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/timer_manager.h"
+#include "frame_pool.h"
 #include "helper_client.h"
 
 #include <array>
@@ -67,11 +68,7 @@ namespace preview {
       // Set once the compositor has accepted the first dmabuf (see checkDmabuf).
       wl_buffer* buffer = nullptr;
     };
-    struct Buffer {
-      VideoView* view = nullptr;
-      wl_buffer* buffer = nullptr;
-      std::uint32_t id = 0;
-    };
+    using Pool = FramePool<wl_buffer, VideoView>;
 
     void requestFrames();
     void onReply(const HelperReply& reply);
@@ -80,12 +77,13 @@ namespace preview {
     void present(Frame frame);
     [[nodiscard]] wl_buffer* createBuffer(const HelperReply& reply);
     [[nodiscard]] zwp_linux_buffer_params_v1* dmabufParams(const HelperReply& reply);
+    [[nodiscard]] static Pool::Key keyOf(const HelperReply& reply);
     void checkDmabuf();
     void applyGeometry();
     void release(std::uint32_t id);
     void fail();
 
-    static void onBufferRelease(void* data, wl_buffer* buffer);
+    static void onBufferRelease(void* data, wl_buffer*);
     static void onFrameDone(void* data, wl_callback* callback, std::uint32_t time);
     static void onParamsCreated(void* data, zwp_linux_buffer_params_v1* params, wl_buffer* buffer);
     static void onParamsFailed(void* data, zwp_linux_buffer_params_v1* params);
@@ -99,8 +97,7 @@ namespace preview {
     wl_subsurface* m_subsurface = nullptr;
     wp_viewport* m_viewport = nullptr;
     wl_callback* m_firstFrameCallback = nullptr;
-    // Buffers the compositor has not released yet.
-    std::vector<std::unique_ptr<Buffer>> m_buffers;
+    Pool m_pool;
 
     std::deque<Frame> m_queue;
     std::chrono::nanoseconds m_shownPts{0};

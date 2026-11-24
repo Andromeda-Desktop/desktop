@@ -21,14 +21,8 @@ fi
 ln -s "$XDG_RUNTIME_DIR/pipewire-0" "$RUNTIME/pipewire-0"
 mkdir -p "$RUNTIME/files"
 magick -size 800x500 gradient:'#5147e5'-'#f5f5f7' "$RUNTIME/files/sample.png"
-python3 -I - "$RUNTIME/files/sample.pdf" <<'PY'
-import cairo, sys
-s = cairo.PDFSurface(sys.argv[1], 595, 842)
-c = cairo.Context(s)
-for page in range(3):
-    c.set_font_size(48); c.move_to(72, 144); c.show_text(f"Page {page + 1}"); c.show_page()
-s.finish()
-PY
+magick -size 595x842 -pointsize 48 xc:white -annotate +72+144 'Page 1' xc:white -annotate +72+144 'Page 2' \
+  xc:white -annotate +72+144 'Page 3' "$RUNTIME/files/sample.pdf"
 # With a quiet AAC track: pause and resume run against the audio clock.
 ffmpeg -loglevel error -f lavfi -i testsrc2=size=640x360:rate=30 -f lavfi -i 'sine=frequency=330,volume=0.05' -t 10 \
   -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "$RUNTIME/files/sample.mp4"
@@ -64,6 +58,16 @@ with_noctalia '
   previewer=$!
   wait_for "previewer did not take its bus name" "gdbus introspect --session --dest org.gnome.NautilusPreviewer --object-path /org/gnome/NautilusPreviewer > /dev/null 2>&1"
   shown() { grep -c "shown $1" "$OUT/preview.log" || true; }
+  # Playback shows 10 different pictures. The window reuses at most 8 idle frame buffers plus those on screen, so a
+  # compositor that kept the first pixels of each buffer would show fewer.
+  playing() {
+    : > "$OUT/sums"
+    for _ in $(seq 300); do
+      grim - | sha1sum >> "$OUT/sums"
+      (( $(sort -u "$OUT/sums" | wc -l) >= 10 )) && { rm -f "$OUT/sums"; return 0; }
+    done
+    echo "FAIL: the $1 video showed $(sort -u "$OUT/sums" | wc -l) pictures"; exit 1
+  }
   # One keyboard for the whole run: a wtype per key alone adds and removes the device, and keys get dropped.
   wtype -s 3600000 &
   for pair in png:image pdf:pdf rs:text zip:"archive [0-9]* entries" bin:"unsupported" ttf:"font" dir:"folder 2 items" \
@@ -78,6 +82,7 @@ with_noctalia '
       wait_for "k did not pause the video" "grep -q \"playback paused\" \"$OUT/preview.log\""
       wtype k
       wait_for "k did not resume the video" "grep -q \"playback playing\" \"$OUT/preview.log\""
+      playing dmabuf
     fi
   done
   wait_for "no waveform for the FLAC" "grep -q \"waveform [0-9]* bars\" \"$OUT/preview.log\""
@@ -109,6 +114,7 @@ with_noctalia '
   call ShowFile "file://$RUNTIME/files/sample.mp4" "" false
   wait_for "no software video frame" "grep -q \"shown video .* (software)\" \"$OUT/preview-sw.log\""
   grim "$OUT/preview-mp4-sw.png"
+  playing software
   call Close
   kill "$previewer"; wait "$previewer" || true
   echo PASS

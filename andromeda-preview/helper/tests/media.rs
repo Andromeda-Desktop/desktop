@@ -134,6 +134,20 @@ fn software_decode_gives_bgrx_memfd_frames() {
 }
 
 #[test]
+fn software_frames_reuse_a_memfd_only_after_its_release() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(path) = clip(dir.path()) else { return eprintln!("skipped: no ffmpeg/libx264") };
+    let helper = Helper::start(&path, &[("GST_PLUGIN_FEATURE_RANK", "vah264dec:0")]);
+    let inode = |fds: &[OwnedFd]| rustix::fs::fstat(&fds[0]).unwrap().st_ino;
+    let (a, _, a_fds) = helper.ask(Msg::new(OP_FRAME, 0, 0, 0, 0));
+    let (_, _, b_fds) = helper.ask(Msg::new(OP_FRAME, 0, 0, 0, 0));
+    assert_ne!(inode(&a_fds), inode(&b_fds), "a held frame's memfd was rewritten");
+    proto::send(helper.sock.as_fd(), &Msg::new(OP_RELEASE, a.e, 0, 0, 0), None).unwrap();
+    let (_, _, c_fds) = helper.ask(Msg::new(OP_FRAME, 0, 0, 0, 0));
+    assert_eq!(inode(&c_fds), inode(&a_fds), "a released memfd was not reused");
+}
+
+#[test]
 fn video_with_audio_opens_with_both_streams() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("av.mp4");

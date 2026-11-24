@@ -147,6 +147,7 @@ configure_file(
 
 test('file_kind', executable('file_kind_test', 'tests/file_kind_test.cpp', link_with: _core,
   dependencies: [desk_app_dep, gio_dep]))
+test('frame_pool', executable('frame_pool_test', 'tests/frame_pool_test.cpp'))
 test('helper_client', executable('helper_client_test', 'tests/helper_client_test.cpp', link_with: _core,
   dependencies: [desk_app_dep, gio_dep]), env: ['ANDROMEDA_PREVIEW_HELPER=' + helper_bin.full_path()],
   depends: helper_bin)

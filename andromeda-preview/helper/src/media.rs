@@ -54,7 +54,16 @@ pub struct Media {
     playing: bool,
     next_id: u32,
     /// Frames the window still shows: their buffers must stay alive until it releases them.
-    held: HashMap<u32, gst::Sample>,
+    held: HashMap<u32, Held>,
+    /// Released software frame memfds of the current size, rewritten for later frames.
+    spare: Vec<OwnedFd>,
+}
+
+enum Held {
+    /// The sample owns the decoder surface behind the dmabuf.
+    Dmabuf { _sample: gst::Sample },
+    /// The window and the compositor may still read it: rewritten only after the release.
+    Memfd(OwnedFd),
 }
 
 impl Drop for Media {
@@ -299,6 +308,7 @@ impl Media {
             playing: false,
             next_id: 1,
             held: HashMap::new(),
+            spare: Vec::new(),
         })
     }
 
@@ -331,11 +341,8 @@ impl Media {
             }
             return Err(ERR_DECODE);
         };
-        let (frame, zero_copy) = export(&sample, self.next_id)?;
-        // A software frame is already copied out; only dmabufs must outlive the send.
-        if zero_copy {
-            self.held.insert(self.next_id, sample);
-        }
+        let (frame, held) = export(&sample, self.next_id, &mut self.spare)?;
+        self.held.insert(self.next_id, held);
         self.next_id = self.next_id.wrapping_add(1).max(1);
         Ok(frame)
     }
@@ -446,7 +453,11 @@ impl Media {
     }
 
     pub fn release(&mut self, id: u32) {
-        self.held.remove(&id);
+        if let Some(Held::Memfd(fd)) = self.held.remove(&id)
+            && self.spare.len() < MAX_HELD
+        {
+            self.spare.push(fd);
+        }
     }
 
     /// A frame at 10 % of the video fitted in a `size` x `size` box, as PNG (the freedesktop thumbnailer contract).
@@ -568,7 +579,7 @@ fn dup(fd: i32) -> Result<OwnedFd, u32> {
     rustix::io::fcntl_dupfd_cloexec(borrowed, 0).map_err(|_| ERR_DECODE)
 }
 
-fn export(sample: &gst::Sample, id: u32) -> Result<(Frame, bool), u32> {
+fn export(sample: &gst::Sample, id: u32, spare: &mut Vec<OwnedFd>) -> Result<(Frame, Held), u32> {
     let buffer = sample.buffer().ok_or(ERR_DECODE)?;
     let caps = sample.caps().ok_or(ERR_DECODE)?;
     let pts = buffer.pts().map_or(0, gst::ClockTime::nseconds);
@@ -603,12 +614,18 @@ fn export(sample: &gst::Sample, id: u32) -> Result<(Frame, bool), u32> {
             fds.push(dup(fd)?);
         }
         let msg = Msg { op: OP_FRAME_REPLY, a: meta.width(), b: meta.height(), c: info.fourcc(), d: meta.n_planes(), e: id };
-        return Ok((Frame { msg, payload, fds }, true));
+        return Ok((Frame { msg, payload, fds }, Held::Dmabuf { _sample: sample.clone() }));
     }
-    // Software frame: copy into a sealed memfd.
+    // Software frame: copy into a released memfd of the same size, or a new sealed one.
     let video = gstreamer_video::VideoInfo::from_caps(caps).map_err(|_| ERR_DECODE)?;
     let map = buffer.map_readable().map_err(|_| ERR_DECODE)?;
-    let fd = crate::decode::sealed_frame("preview-frame", map.as_slice())?;
+    let size = map.len() as u64;
+    spare.retain(|fd| rustix::fs::fstat(fd).is_ok_and(|st| st.st_size as u64 == size));
+    let fd = match spare.pop() {
+        Some(fd) => crate::decode::rewrite_frame(fd, map.as_slice())?,
+        None => crate::decode::sealed_frame("preview-frame", map.as_slice())?,
+    };
+    let sent = rustix::io::fcntl_dupfd_cloexec(&fd, 0).map_err(|_| ERR_DECODE)?;
     let mut payload = Vec::with_capacity(28);
     payload.extend_from_slice(&DRM_FORMAT_MOD_LINEAR.to_le_bytes());
     payload.extend_from_slice(&pts.to_le_bytes());
@@ -616,5 +633,5 @@ fn export(sample: &gst::Sample, id: u32) -> Result<(Frame, bool), u32> {
     payload.extend_from_slice(&u32::try_from(video.offset()[0]).map_err(|_| ERR_DECODE)?.to_le_bytes());
     payload.extend_from_slice(&u32::try_from(video.stride()[0]).map_err(|_| ERR_DECODE)?.to_le_bytes());
     let msg = Msg { op: OP_FRAME_REPLY, a: video.width(), b: video.height(), c: DRM_FORMAT_XRGB8888, d: 1, e: id };
-    Ok((Frame { msg, payload, fds: vec![fd] }, false))
+    Ok((Frame { msg, payload, fds: vec![sent] }, Held::Memfd(fd)))
 }

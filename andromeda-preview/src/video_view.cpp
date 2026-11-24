@@ -92,9 +92,7 @@ namespace preview {
         wl_buffer_destroy(frame.buffer);
       }
     }
-    for (auto& buffer : m_buffers) {
-      wl_buffer_destroy(buffer->buffer);
-    }
+    m_pool.clear(wl_buffer_destroy);
     if (m_firstFrameCallback != nullptr) {
       wl_callback_destroy(m_firstFrameCallback);
     }
@@ -306,16 +304,21 @@ namespace preview {
   }
 
   void VideoView::present(Frame frame) {
-    wl_buffer* buffer = frame.buffer != nullptr ? frame.buffer : createBuffer(frame.reply);
-    if (buffer == nullptr) {
-      fail();
-      return;
+    Pool::Key key = keyOf(frame.reply);
+    Pool::Entry* entry = frame.buffer != nullptr ? nullptr : m_pool.reuse(key, frame.reply.msg.e);
+    if (entry == nullptr) {
+      wl_buffer* buffer = frame.buffer != nullptr ? frame.buffer : createBuffer(frame.reply);
+      if (buffer == nullptr) {
+        fail();
+        return;
+      }
+      entry = m_pool.add(this, buffer, std::move(key), frame.reply.msg.e);
+      static constexpr wl_buffer_listener kListener{.release = &VideoView::onBufferRelease};
+      wl_buffer_add_listener(buffer, &kListener, entry);
     }
+    m_pool.trim(wl_buffer_destroy);
+    wl_buffer* buffer = entry->buffer;
     m_shownPts = frame.pts;
-    auto entry = std::make_unique<Buffer>(Buffer{.view = this, .buffer = buffer, .id = frame.reply.msg.e});
-    static constexpr wl_buffer_listener kListener{.release = &VideoView::onBufferRelease};
-    wl_buffer_add_listener(buffer, &kListener, entry.get());
-    m_buffers.push_back(std::move(entry));
     if (frame.reply.msg.a != m_videoWidth || frame.reply.msg.b != m_videoHeight) {
       setVideoSize(frame.reply.msg.a, frame.reply.msg.b);
       if (m_callbacks.moved) {
@@ -404,6 +407,18 @@ namespace preview {
     return params;
   }
 
+  VideoView::Pool::Key VideoView::keyOf(const HelperReply& reply) {
+    // A held fd keeps its file alive, so its inode names that memory until the pool drops the buffer.
+    Pool::Key key = layoutOf(reply);
+    for (const auto& fd : reply.fds) {
+      struct stat st{};
+      fstat(fd->get(), &st);
+      key.push_back(st.st_dev);
+      key.push_back(st.st_ino);
+    }
+    return key;
+  }
+
   std::vector<std::uint64_t> VideoView::layoutOf(const HelperReply& reply) {
     std::vector<std::uint64_t> layout{reply.msg.a, reply.msg.b, reply.msg.c, u64At(reply.payload, 0)};
     for (std::uint32_t plane = 0; plane < reply.msg.d; ++plane) {
@@ -465,13 +480,12 @@ namespace preview {
     self->fail();
   }
 
-  void VideoView::onBufferRelease(void* data, wl_buffer* buffer) {
-    auto* entry = static_cast<Buffer*>(data);
-    VideoView* self = entry->view;
-    const std::uint32_t id = entry->id;
-    wl_buffer_destroy(buffer);
-    std::erase_if(self->m_buffers, [entry](const auto& b) { return b.get() == entry; });
-    self->release(id);
+  void VideoView::onBufferRelease(void* data, wl_buffer*) {
+    auto* entry = static_cast<Pool::Entry*>(data);
+    VideoView* self = entry->owner;
+    if (const auto frame = Pool::release(*entry)) {
+      self->release(*frame);
+    }
     if (self->m_busy) {
       self->m_busy = false;
       self->requestFrames();

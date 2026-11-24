@@ -54,6 +54,14 @@ pub(crate) fn sealed_frame(name: &str, bytes: &[u8]) -> Result<OwnedFd, u32> {
     sealed_with(name, bytes, SealFlags::SHRINK | SealFlags::GROW | SealFlags::SEAL)
 }
 
+/// Writes a later frame of the same size into a released `sealed_frame` memfd.
+pub(crate) fn rewrite_frame(fd: OwnedFd, bytes: &[u8]) -> Result<OwnedFd, u32> {
+    let mut file = File::from(fd);
+    file.rewind().map_err(|_| ERR_DECODE)?;
+    file.write_all(bytes).map_err(|_| ERR_DECODE)?;
+    Ok(OwnedFd::from(file))
+}
+
 fn sealed_with(name: &str, bytes: &[u8], seals: SealFlags) -> Result<OwnedFd, u32> {
     let fd = rustix::fs::memfd_create(name, MemfdFlags::CLOEXEC | MemfdFlags::ALLOW_SEALING).map_err(|_| ERR_DECODE)?;
     let mut file = File::from(fd);
