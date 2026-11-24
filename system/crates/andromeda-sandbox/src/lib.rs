@@ -1,9 +1,9 @@
-//! Confines the helper after it opened its one file: resource limits, Landlock (read-only system and font
-//! paths, no TCP, no signals or abstract sockets outside the sandbox) and a seccomp allowlist.
+//! Confines a parser of untrusted files: resource limits, Landlock (read-only paths, no TCP, no signals or
+//! abstract sockets outside the sandbox) and a seccomp allowlist.
 
 use landlock::{
-    ABI, Access, AccessFs, AccessNet, CompatLevel, Compatible, Ruleset, RulesetAttr, RulesetCreatedAttr,
-    RulesetStatus, Scope, path_beneath_rules,
+    ABI, Access, AccessFs, AccessNet, CompatLevel, Compatible, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus,
+    Scope, path_beneath_rules,
 };
 use rustix::process::{Resource, Rlimit, setrlimit};
 use seccompiler::{
@@ -35,13 +35,19 @@ fn err(what: &str, e: impl std::fmt::Display) -> Error {
 pub enum Profile {
     /// PDF and text: CPU only.
     Document,
-    /// Video: the calls GStreamer threads make and DRM ioctls on the VA display, which opens before the sandbox;
+    /// Video: the calls `GStreamer` threads make and DRM ioctls on the VA display, which opens before the sandbox;
     /// no /dev/dri path is reachable.
     Media,
+    /// Indexer text extraction: reads any file by path, writes only to its open fds (stdout); no new fds to
+    /// pass, so no memfd or socket messages.
+    Extract,
 }
 
 /// Read-only paths the decoders need after start: shared data, fonts and the font cache.
-fn readable_paths() -> Vec<PathBuf> {
+fn readable_paths(profile: Profile) -> Vec<PathBuf> {
+    if profile == Profile::Extract {
+        return vec![PathBuf::from("/")];
+    }
     let mut paths: Vec<PathBuf> = ["/usr", "/etc/fonts", "/var/cache/fontconfig"].iter().map(PathBuf::from).collect();
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
         paths.push(home.join(".local/share/fonts"));
@@ -67,9 +73,8 @@ fn landlock(profile: Profile) -> Result<(), Error> {
         .and_then(|r| r.handle_access(AccessNet::from_all(abi)))
         .and_then(|r| r.scope(Scope::from_all(abi)))
         .and_then(Ruleset::create)
-        .and_then(|r| r.add_rules(path_beneath_rules(readable_paths(), AccessFs::from_read(abi))))
+        .and_then(|r| r.add_rules(path_beneath_rules(readable_paths(profile), AccessFs::from_read(abi))))
         .and_then(|r| r.add_rules(path_beneath_rules(devices, AccessFs::from_read(abi))))
-
         .and_then(landlock::RulesetCreated::restrict_self)
         .map_err(|e| err("landlock", e))?;
     if status.ruleset == RulesetStatus::NotEnforced {
@@ -128,7 +133,7 @@ const ALLOWED: &[libc::c_long] = &[
     libc::SYS_exit_group,
 ];
 
-/// Added for video: GStreamer's poll and wakeup fds, its threads' scheduling calls, and stat on plugin files
+/// Added for video: `GStreamer` poll and wakeup fds, its threads' scheduling calls, and stat on plugin files
 /// before it loads them (a path-existence leak accepted for media only). ioctl and socketpair get argument
 /// rules in `seccomp`.
 const MEDIA_EXTRA: &[libc::c_long] = &[
@@ -150,6 +155,12 @@ const MEDIA_EXTRA: &[libc::c_long] = &[
     libc::SYS_dup,
     libc::SYS_dup3,
 ];
+
+/// The extractor reads every path anyway, so stat reveals nothing more; Rust's `File::metadata` uses statx.
+const EXTRACT_EXTRA: &[libc::c_long] = &[libc::SYS_newfstatat, libc::SYS_statx];
+
+/// Removed for extraction: the calls that make or pass file descriptors to another process.
+const EXTRACT_DENIED: &[libc::c_long] = &[libc::SYS_memfd_create, libc::SYS_sendmsg, libc::SYS_recvmsg];
 
 /// x32 syscall numbers have this bit set; they reach the same handlers, so they must not bypass the list.
 const X32_SYSCALL_BIT: u32 = 0x4000_0000;
@@ -196,8 +207,13 @@ fn x32_filter() -> BpfProgram {
 
 fn seccomp(profile: Profile) -> Result<(), Error> {
     let own_pid = u64::from(std::process::id());
-    let extra: &[libc::c_long] = if profile == Profile::Media { MEDIA_EXTRA } else { &[] };
-    let mut allowed: BTreeMap<i64, Vec<SeccompRule>> = ALLOWED.iter().chain(extra).map(|&nr| (nr, vec![])).collect();
+    let (extra, denied): (&[libc::c_long], &[libc::c_long]) = match profile {
+        Profile::Document => (&[], &[]),
+        Profile::Media => (MEDIA_EXTRA, &[]),
+        Profile::Extract => (EXTRACT_EXTRA, EXTRACT_DENIED),
+    };
+    let mut allowed: BTreeMap<i64, Vec<SeccompRule>> =
+        ALLOWED.iter().chain(extra).filter(|nr| !denied.contains(nr)).map(|&nr| (nr, vec![])).collect();
     // Signals only to this process (abort() raises SIGABRT on itself).
     for nr in [libc::SYS_kill, libc::SYS_tgkill] {
         allowed.insert(nr, vec![cond(0, SeccompCmpOp::Eq, own_pid)?]);
@@ -215,22 +231,34 @@ fn seccomp(profile: Profile) -> Result<(), Error> {
         // terminal or socket ioctls (SIOCGIFCONF would list network interfaces).
         allowed.insert(
             libc::SYS_ioctl,
-            vec![cond32(1, SeccompCmpOp::MaskedEq(0xff00), 0x6400)?, cond32(1, SeccompCmpOp::MaskedEq(0xff00), 0x6200)?],
+            vec![
+                cond32(1, SeccompCmpOp::MaskedEq(0xff00), 0x6400)?,
+                cond32(1, SeccompCmpOp::MaskedEq(0xff00), 0x6200)?,
+            ],
         );
         // Scheduling calls on this process only (pid 0): never another process of the user.
         for nr in [libc::SYS_sched_setscheduler, libc::SYS_sched_getparam, libc::SYS_sched_getscheduler] {
             allowed.insert(nr, vec![cond32(0, SeccompCmpOp::Eq, 0)?]);
         }
         // GstPoll wakeups: a connected pair reaches nothing outside the process.
-        allowed.insert(libc::SYS_socketpair, vec![cond32(0, SeccompCmpOp::Eq, u64::from(libc::AF_UNIX.cast_unsigned()))?]);
+        allowed
+            .insert(libc::SYS_socketpair, vec![cond32(0, SeccompCmpOp::Eq, u64::from(libc::AF_UNIX.cast_unsigned()))?]);
     }
     // fcntl without F_SETOWN or F_SETSIG: those would let the socket signal another process.
     allowed.insert(
         libc::SYS_fcntl,
-        [libc::F_GETFD, libc::F_SETFD, libc::F_GETFL, libc::F_SETFL, libc::F_DUPFD_CLOEXEC, libc::F_ADD_SEALS, libc::F_GET_SEALS]
-            .iter()
-            .map(|&cmd| cond(1, SeccompCmpOp::Eq, u64::from(cmd.cast_unsigned())))
-            .collect::<Result<_, _>>()?,
+        [
+            libc::F_GETFD,
+            libc::F_SETFD,
+            libc::F_GETFL,
+            libc::F_SETFL,
+            libc::F_DUPFD_CLOEXEC,
+            libc::F_ADD_SEALS,
+            libc::F_GET_SEALS,
+        ]
+        .iter()
+        .map(|&cmd| cond(1, SeccompCmpOp::Eq, u64::from(cmd.cast_unsigned())))
+        .collect::<Result<_, _>>()?,
     );
     // prctl: thread names and anonymous memory names (glibc malloc) only.
     allowed.insert(
@@ -251,7 +279,7 @@ fn seccomp(profile: Profile) -> Result<(), Error> {
     Ok(())
 }
 
-/// Applies every limit to the whole process. Call it after the file is open and before any decoding.
+/// Applies every limit to the whole process. Call it before the first byte of untrusted data is parsed.
 ///
 /// # Errors
 /// Any layer that cannot be applied: the helper must then exit and decode nothing.

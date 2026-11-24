@@ -6,7 +6,7 @@ pub mod decode;
 pub mod font;
 pub mod media;
 pub mod proto;
-pub mod sandbox;
+pub use andromeda_sandbox as sandbox;
 
 use proto::{
     ERR_BAD_REQUEST, KIND_TEXT, Msg, OP_ANNOT_ADD, OP_AUDIO, OP_COVER, OP_TAGS, OP_ANNOT_REMOVE, OP_FIND, OP_SAVE, OP_FRAME, OP_INFO, OP_INFO_REPLY, OP_LINKS, OP_OUTLINE, OP_RELEASE, OP_RENDER, OP_RENDER_TILE, OP_SELECT, OP_TEXT,

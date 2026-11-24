@@ -6,6 +6,7 @@ version = 4
 name = "andromeda-preview-helper"
 version = "0.1.0"
 dependencies = [
+ "andromeda-sandbox",
  "cairo-rs",
  "command-fds",
  "freetype-rs",
@@ -14,13 +15,21 @@ dependencies = [
  "gstreamer-allocators",
  "gstreamer-app",
  "gstreamer-video",
- "landlock",
  "libc",
  "log",
  "poppler-rs",
  "rustix",
- "seccompiler",
  "tempfile",
+]
+
+[[package]]
+name = "andromeda-sandbox"
+version = "0.1.0"
+dependencies = [
+ "landlock",
+ "libc",
+ "rustix",
+ "seccompiler",
 ]
 
 [[package]]

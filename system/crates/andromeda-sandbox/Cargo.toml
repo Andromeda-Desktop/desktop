@@ -1,0 +1,21 @@
+[package]
+name = "andromeda-sandbox"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+rust-version = "1.89"
+publish = false
+
+# Explicit fields, no workspace inheritance: the preview helper and the indexer extractor use it by path.
+[dependencies]
+landlock = "0.4"
+libc = "0.2"
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+seccompiler = "0.5"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+rustix = { version = "1", default-features = false, features = ["std", "fs", "net"] }
+tempfile = "3"
