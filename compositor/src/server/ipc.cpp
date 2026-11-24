@@ -31,7 +31,6 @@ namespace andromeda {
 
   namespace {
     constexpr Logger kLog("ipc");
-    constexpr size_t kMaxRequestSize = 65536;
     // A subscriber that stops reading must not grow the compositor's heap without bound.
     constexpr size_t kMaxOutboundBacklog = 256 * 1024;
     constexpr int kConnectionTimeoutMs = 1000;
@@ -168,15 +167,10 @@ namespace andromeda {
     }
 
     // Names the client behind a connection: an fd number alone cannot be traced after the eviction closes it.
-    std::string peerName(int fd) {
-      ucred peer{};
-      socklen_t size = sizeof(peer);
-      if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &size) != 0) {
-        return "unknown peer";
-      }
+    std::string peerName(pid_t pid) {
       std::string comm;
-      std::ifstream(std::format("/proc/{}/comm", peer.pid)) >> comm;
-      return std::format("{} (pid {})", comm.empty() ? "?" : comm, peer.pid);
+      std::ifstream(std::format("/proc/{}/comm", pid)) >> comm;
+      return std::format("{} (pid {})", comm.empty() ? "?" : comm, pid);
     }
   } // namespace
 
@@ -271,19 +265,21 @@ namespace andromeda {
 
   void Ipc::acceptConnections() {
     while (true) {
-      const int clientFd = accept4(m_listenFd, nullptr, nullptr, SOCK_CLOEXEC | SOCK_NONBLOCK);
-      if (clientFd >= 0) {
-        ucred peer{};
-        socklen_t size = sizeof(peer);
-        if (getsockopt(clientFd, SOL_SOCKET, SO_PEERCRED, &peer, &size) != 0 || peer.uid != geteuid()) {
-          kLog.warn("refused an IPC connection from uid {}", peer.uid);
-          close(clientFd);
+      auto peer = ipc::acceptPeer(m_listenFd, SOCK_NONBLOCK);
+      if (peer) {
+        auto slot = m_slots.acquire();
+        if (!slot) {
+          kLog.warn("refused an IPC connection from pid {}: {} clients connected", peer->pid, m_slots.used());
           continue;
         }
-        addConnection(clientFd);
+        addConnection(peer->conn.release(), peer->pid, std::move(*slot));
         continue;
       }
       if (errno == EINTR) {
+        continue;
+      }
+      if (errno == EACCES) {
+        kLog.warn("refused an IPC connection from another user or a peer without a pidfd");
         continue;
       }
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -293,10 +289,12 @@ namespace andromeda {
     }
   }
 
-  void Ipc::addConnection(int clientFd) {
+  void Ipc::addConnection(int clientFd, pid_t pid, ipc::ClientSlots::Slot slot) {
     auto connection = std::make_unique<Connection>();
     connection->owner = this;
     connection->fd = clientFd;
+    connection->pid = pid;
+    connection->slot = std::move(slot);
 
     wl_event_loop* loop = wl_display_get_event_loop(m_server->display());
     connection->fdSource = wl_event_loop_add_fd(loop, clientFd, WL_EVENT_READABLE, onConnectionEvent, connection.get());
@@ -323,7 +321,7 @@ namespace andromeda {
     bool mayRead = (mask & (WL_EVENT_READABLE | WL_EVENT_HANGUP)) != 0;
     while (keep) {
       if (!connection->responding) {
-        const bool bufferedRequest = connection->input.contains('\n');
+        const bool bufferedRequest = connection->input.hasLine();
         if ((!mayRead && !bufferedRequest) || connection->frameWait != FrameWait::None) {
           break;
         }
@@ -333,7 +331,7 @@ namespace andromeda {
       if (keep && connection->responding) {
         keep = owner->writeResponse(*connection);
       }
-      if (!keep || connection->responding || !connection->input.contains('\n')) {
+      if (!keep || connection->responding || !connection->input.hasLine()) {
         break;
       }
     }
@@ -344,40 +342,35 @@ namespace andromeda {
   }
 
   bool Ipc::readRequest(Connection& connection) {
-    char chunk[4096];
     while (true) {
-      if (connection.input.contains('\n')) {
-        const size_t newline = connection.input.find('\n');
-        const std::string line = connection.input.substr(0, newline);
-        connection.input.erase(0, newline + 1);
-        answerRequest(connection, line);
+      if (auto line = connection.input.nextLine()) {
+        answerRequest(connection, *line);
         return true;
       }
-      const ssize_t size = recv(connection.fd, chunk, sizeof(chunk), 0);
+      const size_t size = connection.input.readFrom(connection.fd);
+      if (&connection == m_audio && connection.input.buffered() > kMaxAudioRequestSize) {
+        return false;
+      }
       if (size > 0) {
-        connection.input.append(chunk, static_cast<size_t>(size));
-        if (&connection == m_audio && connection.input.size() > kMaxAudioRequestSize) {
-          return false;
-        }
-        if (connection.input.size() > kMaxRequestSize) {
+        continue;
+      }
+      switch (connection.input.state()) {
+        case ipc::LineReader::State::Reading:
+          return true;
+        case ipc::LineReader::State::TooLong:
           prepareResponse(connection, R"({"err":"request too long"})");
           return true;
+        case ipc::LineReader::State::Closed: {
+          // A last request may end with end of file instead of '\n'.
+          const std::string rest = connection.input.takeRest();
+          if (rest.empty()) {
+            return false;
+          }
+          answerRequest(connection, rest);
+          return true;
         }
-        continue;
       }
-      if (size == 0) {
-        if (connection.input.empty()) {
-          return false;
-        }
-        const std::string line = std::move(connection.input);
-        connection.input.clear();
-        answerRequest(connection, line);
-        return true;
-      }
-      if (errno == EINTR) {
-        continue;
-      }
-      return errno == EAGAIN || errno == EWOULDBLOCK;
+      return false;
     }
   }
 
@@ -636,11 +629,7 @@ namespace andromeda {
     // Resolve positional action arguments before token cleanup can prune and renumber their workspace inventory.
     auto response = dispatchRequest(connection, req, line.size() + 1);
     if (!launchToken.empty()) {
-      ucred credentials{};
-      socklen_t length = sizeof(credentials);
-      if (getsockopt(connection.fd, SOL_SOCKET, SO_PEERCRED, &credentials, &length) == 0) {
-        m_server->completeIpcLaunch(launchToken, credentials.pid);
-      }
+      m_server->completeIpcLaunch(launchToken, connection.pid);
     }
     return response;
   }
@@ -654,7 +643,7 @@ namespace andromeda {
         error = R"({"err":"malformed audio request"})";
       } else if (requestSize > kMaxAudioRequestSize) {
         error = R"({"err":"audio request too long"})";
-      } else if (!connection.input.empty()) {
+      } else if (connection.input.buffered() != 0) {
         error = R"({"err":"audio request sent before the previous reply"})";
       } else if (connection.subscribedEvents != 0 || connection.screenCastActive) {
         error = R"({"err":"audio not allowed on this connection"})";
@@ -829,7 +818,7 @@ namespace andromeda {
         const size_t backlog = connection->output.size() - connection->writeOffset;
         if (backlog + update.size() > kMaxOutboundBacklog) {
           kLog.warn(
-              "subscriber {} stopped reading ({} bytes queued), disconnecting", peerName(connection->fd), backlog
+              "subscriber {} stopped reading ({} bytes queued), disconnecting", peerName(connection->pid), backlog
           );
           evicted.push_back(connection.get());
           continue;

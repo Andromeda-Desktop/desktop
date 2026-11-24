@@ -1,5 +1,7 @@
 #pragma once
 
+#include "protocols/ipc_channel.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -79,10 +81,14 @@ namespace andromeda {
     // Configured: the reply waits until no output has configured work left (its request started some).
     enum class FrameWait : uint8_t { None, Drawn, Settled, Configured };
 
+    static constexpr size_t kMaxRequestSize = 65536;
+
     struct Connection {
       Ipc* owner = nullptr;
       int fd = -1;
-      std::string input;
+      pid_t pid = 0;
+      std::optional<ipc::ClientSlots::Slot> slot;
+      ipc::LineReader input{kMaxRequestSize};
       std::string output;
       size_t writeOffset = 0;
       wl_event_source* fdSource = nullptr;
@@ -103,7 +109,7 @@ namespace andromeda {
     static void onSettleRecheck(void* data);
 
     void acceptConnections();
-    void addConnection(int clientFd);
+    void addConnection(int clientFd, pid_t pid, ipc::ClientSlots::Slot slot);
     bool readRequest(Connection& connection);
     bool writeResponse(Connection& connection);
     void prepareResponse(Connection& connection, std::string response);
@@ -133,6 +139,8 @@ namespace andromeda {
     wl_event_source* m_eventSource = nullptr;
     wl_event_source* m_settleRecheck = nullptr;
     bool m_renderSettleKick = false;
+    // Subscribers (shell, portal) stay connected; one-shot CLI requests close after their reply.
+    ipc::ClientSlots m_slots{64};
     std::vector<std::unique_ptr<Connection>> m_connections;
     // Last payload broadcast per family, indexed by the bit position of the event. A family that recomputes to the
     // same JSON is dropped rather than woken through to every subscriber; a fresh subscriber gets its own initial

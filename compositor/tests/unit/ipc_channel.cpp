@@ -45,6 +45,11 @@ namespace {
         line = randomLine(rng, maxLength);
         stream += line + '\n';
       }
+      // Sometimes the last line ends with end of file instead of '\n'.
+      const bool unterminated = !lines.empty() && std::bernoulli_distribution(0.3)(rng);
+      if (unterminated) {
+        stream.pop_back();
+      }
       std::size_t fitting = 0;
       while (fitting < lines.size() && lines[fitting].size() + 1 <= cap) {
         ++fitting;
@@ -80,6 +85,9 @@ namespace {
 
       const bool tooLong = fitting < lines.size();
       CHECK(reader.state() == (tooLong ? ipc::LineReader::State::TooLong : ipc::LineReader::State::Closed));
+      if (unterminated && !tooLong) {
+        got.push_back(reader.takeRest());
+      }
       CHECK_EQ(got.size(), fitting);
       for (std::size_t i = 0; i < std::min(got.size(), fitting); ++i) {
         CHECK(got[i] == lines[i]);
@@ -118,7 +126,7 @@ namespace {
     CHECK(ipc::readAll(fds[0], 100, in(150ms)).status == ipc::Status::TimedOut);
     CHECK(std::chrono::steady_clock::now() - start < 2s);
     CHECK(ipc::writeAll(fds[1], "askpass\nrest", in(1s)));
-    const auto line = ipc::readAll(fds[0], 100, in(1s), true);
+    const auto line = ipc::readAll(fds[0], 100, in(1s), [](std::string_view data) { return data.contains('\n'); });
     CHECK(line.status == ipc::Status::Ok);
     CHECK(line.data.starts_with("askpass\n"));
     close(fds[0]);

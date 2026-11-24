@@ -74,12 +74,19 @@ namespace ipc {
       errno = EACCES;
       return std::nullopt;
     }
-    return Peer{.conn = std::move(conn), .pid = cred.pid, .pidfd = Fd(pidfd)};
+    return Peer{.conn = std::move(conn), .pid = cred.pid, .gid = cred.gid, .pidfd = Fd(pidfd)};
   }
 
-  LineReader::State LineReader::readFrom(int fd) {
+  std::size_t LineReader::readFrom(int fd) {
+    if (m_state == State::TooLong && m_dropped < m_cap) {
+      char chunk[8192];
+      const ssize_t size = read(fd, chunk, std::min(sizeof(chunk), m_cap - m_dropped));
+      const std::size_t dropped = size > 0 ? static_cast<std::size_t>(size) : 0;
+      m_dropped += dropped;
+      return dropped;
+    }
     if (m_state != State::Reading) {
-      return m_state;
+      return 0;
     }
     if (m_start > 0) {
       m_buffer.erase(0, m_start);
@@ -92,7 +99,7 @@ namespace ipc {
         m_buffer.clear();
         m_state = State::TooLong;
       }
-      return m_state;
+      return 0;
     }
     char chunk[8192];
     ssize_t size = -1;
@@ -108,7 +115,7 @@ namespace ipc {
       m_buffer.clear();
       m_state = State::TooLong;
     }
-    return m_state;
+    return size > 0 ? static_cast<std::size_t>(size) : 0;
   }
 
   std::optional<std::string> LineReader::nextLine() {
@@ -123,6 +130,13 @@ namespace ipc {
       m_start = 0;
     }
     return line;
+  }
+
+  std::string LineReader::takeRest() {
+    std::string rest = m_buffer.substr(m_start);
+    m_buffer.clear();
+    m_start = 0;
+    return rest;
   }
 
   ClientSlots::Slot& ClientSlots::Slot::operator=(Slot&& other) noexcept {
@@ -168,11 +182,11 @@ namespace ipc {
     return true;
   }
 
-  Read readAll(int fd, std::size_t cap, Deadline deadline, bool stopAtNewline) {
+  Read readAll(int fd, std::size_t cap, Deadline deadline, bool (*complete)(std::string_view)) {
     Read result;
     char chunk[8192];
     for (;;) {
-      if (stopAtNewline && result.data.find('\n') != std::string::npos) {
+      if (complete != nullptr && !result.data.empty() && complete(result.data)) {
         result.status = Status::Ok;
         return result;
       }

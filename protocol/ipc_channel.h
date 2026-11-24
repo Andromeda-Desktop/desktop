@@ -37,6 +37,7 @@ namespace ipc {
   struct Peer {
     Fd conn;
     pid_t pid = 0;
+    gid_t gid = 0; // the primary group at connect(), as SO_PEERCRED
     Fd pidfd;
   };
 
@@ -52,12 +53,17 @@ namespace ipc {
 
     explicit LineReader(std::size_t cap) : m_cap(cap) {}
 
-    // One read() from fd into the free space. EAGAIN keeps Reading; end of file or an error gives Closed; a full
-    // buffer with no '\n' gives TooLong and drops the buffer. TooLong and Closed are final. Call nextLine() until
-    // it is empty before the next read.
-    State readFrom(int fd);
+    // One read() from fd into the free space; returns the bytes read, 0 when none came. EAGAIN keeps Reading; end
+    // of file or an error gives Closed; a full buffer with no '\n' gives TooLong and drops the buffer. TooLong and
+    // Closed are final. Call nextLine() until it is empty before the next read. In TooLong it reads and drops up to
+    // cap more bytes: a socket closed with unread bytes resets, and the peer would lose the error reply.
+    std::size_t readFrom(int fd);
     // The next complete line without its '\n'. Lines read before Closed stay available.
     [[nodiscard]] std::optional<std::string> nextLine();
+    // After Closed and the last nextLine(): the bytes after the last '\n', for a peer that ends its last line with
+    // end of file.
+    [[nodiscard]] std::string takeRest();
+    [[nodiscard]] bool hasLine() const { return m_buffer.find('\n', m_start) != std::string::npos; }
     [[nodiscard]] State state() const { return m_state; }
     [[nodiscard]] std::size_t buffered() const { return m_buffer.size() - m_start; }
 
@@ -65,6 +71,7 @@ namespace ipc {
     std::size_t m_cap;
     std::string m_buffer;
     std::size_t m_start = 0;
+    std::size_t m_dropped = 0;
     State m_state = State::Reading;
   };
 
@@ -104,9 +111,9 @@ namespace ipc {
   // Writes all bytes, waiting for space until the deadline. Works on blocking and non-blocking fds; never SIGPIPE.
   [[nodiscard]] bool writeAll(int fd, std::string_view bytes, Deadline deadline);
 
-  // Reads until end of file, at most cap bytes, until the deadline. stopAtNewline ends the read after the first
-  // '\n' (a peer that keeps its end open). data holds what came, also on TooLong and TimedOut.
-  [[nodiscard]] Read readAll(int fd, std::size_t cap, Deadline deadline, bool stopAtNewline = false);
+  // Reads until end of file, at most cap bytes, until the deadline; complete (when set) ends the read early once it
+  // accepts the data (a peer that keeps its end open). data holds what came, also on TooLong and TimedOut.
+  [[nodiscard]] Read readAll(int fd, std::size_t cap, Deadline deadline, bool (*complete)(std::string_view) = nullptr);
 
   // A connected stream socket (close-on-exec, blocking), or an empty Fd: no socket at path, or the server's
   // backlog stayed full until the deadline.
