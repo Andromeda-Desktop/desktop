@@ -10,23 +10,25 @@ source "$(dirname "$0")/lib.sh"
 boot_headless 2
 LAYER=$ROOT/compositor/build-debug/tests/layer-client
 POINTER=$ROOT/compositor/build-debug/tests/pointer-client
+WINDOW=$ROOT/compositor/build-debug/tests/unmap-client
 : > "$OUT/focus.txt"
 result() { echo "$1" >> "$OUT/focus.txt"; }
-active() { run "$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "keep") | .active'; }
-wait_active() {
-  for _ in $(seq 50); do [[ $(active) == "$1" ]] && return 0; sleep 0.1; done
+# The window stays activated under a layer by design (8c3b57788), so the checks read keyboard focus, not `active`.
+enters() { grep -c "^keyboard-enter$" "$1" || true; }
+wait_enters() {
+  for _ in $(seq 50); do [[ $(enters "$1") -ge $2 ]] && return 0; sleep 0.1; done
   return 1
 }
 
 # Headless has no keyboard; a virtual one gives the seat keyboard focus to hand around, as a real session has.
 run "$POINTER" 1 1 keyboard-only mod none mark ready pause 86400000 > "$OUT/keyboard.log" 2>&1 &
 for _ in $(seq 50); do grep -q '^ready$' "$OUT/keyboard.log" && break; sleep 0.1; done
-run foot --config=/dev/null --title=keep sh -c 'sleep 60' > /dev/null 2>&1 &
-wait_active true && result "PASS the window on HEADLESS-1 has focus" || result "FAIL the window never took focus"
+run "$WINDOW" keep > "$OUT/window.log" 2>&1 &
+wait_enters "$OUT/window.log" 1 && result "PASS the window on HEADLESS-1 has focus" || result "FAIL the window never took focus"
 run "$LAYER" HEADLESS-2 40 keyboard=exclusive > "$OUT/layer.log" 2>&1 &
 layer=$!
 for _ in $(seq 50); do grep -q '^ready$' "$OUT/layer.log" && break; sleep 0.1; done
-wait_active false && grep -q '^keyboard-enter$' "$OUT/layer.log" \
+wait_enters "$OUT/layer.log" 1 && grep -q '^keyboard-leave$' "$OUT/window.log" \
   && result "PASS the exclusive layer on HEADLESS-2 took keyboard focus" \
   || result "FAIL the exclusive layer did not take keyboard focus"
 
@@ -34,7 +36,7 @@ run "$DESKTOP_CLIENT" mirror HEADLESS-2 HEADLESS-1
 for _ in $(seq 50); do kill -0 "$layer" 2> /dev/null || break; sleep 0.1; done
 kill -0 "$layer" 2> /dev/null && result "FAIL the layer surface on the mirror was not closed" \
   || result "PASS the layer surface on the mirror was closed"
-wait_active true && result "PASS focus returned to the window on HEADLESS-1" \
+wait_enters "$OUT/window.log" 2 && result "PASS focus returned to the window on HEADLESS-1" \
   || result "FAIL focus stayed on the hidden layer surface"
 run "$ANDROMEDA" layers > "$OUT/layers.txt" 2>&1 || true
 run "$ANDROMEDA" windows --json > "$OUT/windows.json"
