@@ -1,5 +1,6 @@
 #include "system/desktop_entry.h"
 
+#include "core/freedesktop_key_file.h"
 #include "core/inotify/inotify.h"
 #include "core/log.h"
 #include "core/shared_worker.h"
@@ -211,13 +212,7 @@ namespace {
     return locale;
   }
 
-  std::optional<LocalizedAssignment> parseLocalizedAssignment(std::string_view line) {
-    const auto equals = line.find('=');
-    if (equals == std::string_view::npos) {
-      return std::nullopt;
-    }
-
-    const std::string_view fullKey = line.substr(0, equals);
+  std::optional<LocalizedAssignment> parseLocalizedAssignment(std::string_view fullKey, std::string_view value) {
     const auto bracket = fullKey.find('[');
     if (bracket == std::string_view::npos || bracket == 0 || fullKey.back() != ']') {
       return std::nullopt;
@@ -232,7 +227,7 @@ namespace {
     return LocalizedAssignment{
         .key = fullKey.substr(0, bracket),
         .locale = std::move(locale),
-        .value = line.substr(equals + 1),
+        .value = value,
     };
   }
 
@@ -246,9 +241,13 @@ namespace {
   }
 
   void parseDesktopFile(const fs::path& filepath, std::string_view language, std::vector<DesktopEntry>& entries) {
-    std::ifstream file(filepath);
-    if (!file.is_open()) {
-      kLog.debug("failed to open desktop entry file '{}'", filepath.string());
+    const auto parsed = freedesktop::parseKeyFile(filepath);
+    if (!parsed) {
+      kLog.debug("failed to read desktop entry file '{}': {}", filepath.string(), parsed.error().message);
+      return;
+    }
+    const freedesktop::KeyFile::Section* group = parsed->file.section("Desktop Entry");
+    if (group == nullptr) {
       return;
     }
 
@@ -256,8 +255,6 @@ namespace {
     entry.path = filepath.string();
     entry.id = filepath.stem().string();
 
-    bool inDesktopEntry = false;
-    bool inAction = false;
     LocalizedValues localizedNames;
     LocalizedValues localizedGenericNames;
     LocalizedValues localizedComments;
@@ -265,83 +262,14 @@ namespace {
     std::string type;
     bool hasAppImageVersion = false;
     bool appImageIntegrationDisabled = false;
-
-    // Desktop-environment visibility lists (OnlyShowIn/NotShowIn)
     std::vector<std::string> onlyShowIn;
     std::vector<std::string> notShowIn;
-
-    // Action parsing state
     std::vector<std::string> actionOrder;
-    struct ActionData {
-      std::string name;
-      std::string exec;
-      LocalizedValues localizedNames;
-    };
-    std::unordered_map<std::string, ActionData> actionMap;
-    std::string currentActionId;
-    ActionData currentActionData;
 
-    auto flushCurrentAction = [&] {
-      if (!currentActionId.empty()) {
-        currentActionData.name = localizedValue(language, currentActionData.localizedNames, currentActionData.name);
-        if (!currentActionData.name.empty() && !currentActionData.exec.empty()) {
-          actionMap[currentActionId] = currentActionData;
-        }
-        currentActionId.clear();
-        currentActionData = {};
-      }
-    };
-
-    std::string line;
-    while (std::getline(file, line)) {
-      // Strip trailing whitespace/carriage return
-      while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t')) {
-        line.pop_back();
-      }
-
-      if (line.empty() || line[0] == '#') {
-        continue;
-      }
-
-      if (line[0] == '[') {
-        flushCurrentAction();
-        inDesktopEntry = false;
-        inAction = false;
-
-        if (line == "[Desktop Entry]") {
-          inDesktopEntry = true;
-        } else if (line.size() > 17 && line.starts_with("[Desktop Action ") && line.back() == ']') {
-          currentActionId = line.substr(16, line.size() - 17);
-          if (!currentActionId.empty()) {
-            inAction = true;
-          }
-        }
-        continue;
-      }
-
-      if (inAction) {
-        if (const auto localized = parseLocalizedAssignment(line); localized && localized->key == "Name") {
-          currentActionData.localizedNames.insert_or_assign(localized->locale, localized->value);
-          continue;
-        }
-        auto eq = line.find('=');
-        if (eq == std::string::npos)
-          continue;
-        std::string_view key(line.data(), eq);
-        std::string_view value(line.data() + eq + 1, line.size() - eq - 1);
-        if (key == "Name") {
-          currentActionData.name = std::string(value);
-        } else if (key == "Exec") {
-          currentActionData.exec = std::string(value);
-        }
-        continue;
-      }
-
-      if (!inDesktopEntry) {
-        continue;
-      }
-
-      if (const auto localized = parseLocalizedAssignment(line)) {
+    for (const auto& [keyString, valueString] : *group) {
+      const std::string_view key = keyString;
+      const std::string_view value = valueString;
+      if (const auto localized = parseLocalizedAssignment(key, value)) {
         LocalizedValues* values = nullptr;
         if (localized->key == "Name") {
           values = &localizedNames;
@@ -357,15 +285,6 @@ namespace {
         }
         continue;
       }
-
-      auto eq = line.find('=');
-      if (eq == std::string::npos) {
-        continue;
-      }
-
-      std::string_view key(line.data(), eq);
-      std::string_view value(line.data() + eq + 1, line.size() - eq - 1);
-
       if (key == "Type") {
         type = std::string(value);
       } else if (key == "Name") {
@@ -409,9 +328,6 @@ namespace {
       }
     }
 
-    // Flush any trailing action section.
-    flushCurrentAction();
-
     if (type != "Application"
         || entry.noDisplay
         || entry.hidden
@@ -452,20 +368,37 @@ namespace {
         && (hasAppImageVersion || executableIsAppImage(entry.exec, isUserDesktopEntry(filepath)));
     entry.origin = detectOrigin(filepath, appImage);
 
-    // Build actions in the declared order.
+    // Actions in the declared order; one without a name or command is left out.
     for (const auto& id : actionOrder) {
-      auto it = actionMap.find(id);
-      if (it != actionMap.end()) {
-        entry.actions.push_back(
-            DesktopAction{
-                .id = it->first,
-                .name = it->second.name,
-                .exec = it->second.exec,
-                .nameLower = StringUtils::toLower(it->second.name),
-                .execLower = StringUtils::toLower(it->second.exec),
-            }
-        );
+      const freedesktop::KeyFile::Section* action = parsed->file.section("Desktop Action " + id);
+      if (action == nullptr) {
+        continue;
       }
+      std::string name;
+      std::string exec;
+      LocalizedValues localizedActionNames;
+      for (const auto& [key, value] : *action) {
+        if (const auto localized = parseLocalizedAssignment(key, value); localized && localized->key == "Name") {
+          localizedActionNames.insert_or_assign(localized->locale, localized->value);
+        } else if (key == "Name") {
+          name = value;
+        } else if (key == "Exec") {
+          exec = value;
+        }
+      }
+      name = localizedValue(language, localizedActionNames, name);
+      if (name.empty() || exec.empty()) {
+        continue;
+      }
+      entry.actions.push_back(
+          DesktopAction{
+              .id = id,
+              .name = name,
+              .exec = exec,
+              .nameLower = StringUtils::toLower(name),
+              .execLower = StringUtils::toLower(exec),
+          }
+      );
     }
 
     entries.push_back(std::move(entry));

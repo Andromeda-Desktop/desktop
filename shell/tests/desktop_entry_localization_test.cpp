@@ -63,7 +63,14 @@ int main(int argc, char* argv[]) {
         << "GenericName[ru]=Дисковая утилита\n"
         << "Keywords=disk;storage;\n"
         << "Keywords[ru]=диск;хранилище;\n"
-        << "Exec=noctalia-locale-probe\n";
+        << "Exec=noctalia-locale-probe\n"
+        << "Actions=new-window;nameless;missing;\n"
+        << "\n[Desktop Action new-window]\n"
+        << "Name=New Window\n"
+        << "Name[ru]=Новое окно\n"
+        << "Exec=noctalia-locale-probe --new-window\n"
+        << "\n[Desktop Action nameless]\n"
+        << "Exec=noctalia-locale-probe --nameless\n";
   }
 
   setenv("XDG_DATA_HOME", (root / "data").c_str(), 1);
@@ -77,6 +84,11 @@ int main(int argc, char* argv[]) {
 
   switchLanguage("en");
   TEST_CHECK(findEntry("noctalia-locale-probe").name == "Disk Locale Probe");
+  // Declared actions with a name and a command, in order; the nameless and missing ones drop out.
+  const auto& actions = findEntry("noctalia-locale-probe").actions;
+  TEST_CHECK(actions.size() == 1);
+  TEST_CHECK(actions[0].id == "new-window" && actions[0].name == "New Window");
+  TEST_CHECK(actions[0].exec == "noctalia-locale-probe --new-window");
 
   AppProvider provider(nullptr, nullptr);
   provider.initialize();
@@ -90,6 +102,7 @@ int main(int argc, char* argv[]) {
   TEST_CHECK(russian.name == "Диски Locale Probe");
   TEST_CHECK(russian.genericName == "Дисковая утилита");
   TEST_CHECK(russian.keywords == "диск;хранилище;");
+  TEST_CHECK(russian.actions.size() == 1 && russian.actions[0].name == "Новое окно");
 
   switchLanguage("pt-BR");
   TEST_CHECK(findEntry("noctalia-locale-probe").name == "Discos Locale Probe");
