@@ -36,7 +36,6 @@
 #include "ui/controls/button.h"
 #include "ui/controls/image.h"
 #include "ui/controls/label.h"
-#include "ui/controls/lockscreen_transition_cover.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "util/clamp.h"

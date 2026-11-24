@@ -1,32 +1,13 @@
-#include "render/programs/lockscreen_transition_program.h"
+#include "shell/lockscreen/lockscreen_transition.h"
+
+#include "render/scene/texture_shader_node.h"
 
 #include <algorithm>
-#include <array>
-#include <stdexcept>
+#include <memory>
 
 namespace {
 
-  constexpr char kVertexShader[] = R"(
-precision highp float;
-attribute vec2 a_position;
-uniform vec2 u_surface_size;
-uniform vec2 u_quad_size;
-uniform mat3 u_transform;
-varying vec2 v_texcoord;
-
-vec2 to_ndc(vec2 pixel_pos) {
-    vec2 normalized = pixel_pos / u_surface_size;
-    return vec2(normalized.x * 2.0 - 1.0, 1.0 - normalized.y * 2.0);
-}
-
-void main() {
-    v_texcoord = a_position;
-    vec3 pixel = u_transform * vec3(a_position * u_quad_size, 1.0);
-    gl_Position = vec4(to_ndc(pixel.xy), 0.0, 1.0);
-}
-)";
-
-  constexpr char kFragmentShader[] = R"(
+  constexpr char kFragment[] = R"(
 precision highp float;
 uniform sampler2D u_texture;
 uniform float u_transition;
@@ -34,7 +15,9 @@ uniform float u_progress;
 uniform float u_opacity;
 uniform float u_direction;
 uniform float u_smoothness;
-uniform vec2 u_center;
+uniform float u_center_x;
+uniform float u_center_y;
+#define u_center vec2(u_center_x, u_center_y)
 uniform float u_aspect_ratio;
 uniform float u_stripe_count;
 uniform float u_angle;
@@ -255,85 +238,38 @@ void main() {
 
 } // namespace
 
-void LockscreenTransitionProgram::ensureInitialized() {
-  if (m_program.isValid()) {
-    return;
-  }
-  m_program.create(kVertexShader, kFragmentShader);
-  const auto id = m_program.id();
-  m_positionLoc = glGetAttribLocation(id, "a_position");
-  m_surfaceSizeLoc = glGetUniformLocation(id, "u_surface_size");
-  m_quadSizeLoc = glGetUniformLocation(id, "u_quad_size");
-  m_transformLoc = glGetUniformLocation(id, "u_transform");
-  m_textureLoc = glGetUniformLocation(id, "u_texture");
-  m_transitionLoc = glGetUniformLocation(id, "u_transition");
-  m_progressLoc = glGetUniformLocation(id, "u_progress");
-  m_opacityLoc = glGetUniformLocation(id, "u_opacity");
-  m_directionLoc = glGetUniformLocation(id, "u_direction");
-  m_smoothnessLoc = glGetUniformLocation(id, "u_smoothness");
-  m_centerLoc = glGetUniformLocation(id, "u_center");
-  m_aspectRatioLoc = glGetUniformLocation(id, "u_aspect_ratio");
-  m_stripeCountLoc = glGetUniformLocation(id, "u_stripe_count");
-  m_angleLoc = glGetUniformLocation(id, "u_angle");
-  m_cellSizeLoc = glGetUniformLocation(id, "u_cell_size");
-  if (m_positionLoc < 0
-      || m_surfaceSizeLoc < 0
-      || m_quadSizeLoc < 0
-      || m_transformLoc < 0
-      || m_textureLoc < 0
-      || m_transitionLoc < 0
-      || m_progressLoc < 0
-      || m_opacityLoc < 0
-      || m_directionLoc < 0
-      || m_smoothnessLoc < 0
-      || m_centerLoc < 0
-      || m_aspectRatioLoc < 0
-      || m_stripeCountLoc < 0
-      || m_angleLoc < 0
-      || m_cellSizeLoc < 0) {
-    throw std::runtime_error("failed to query lockscreen transition shader locations");
-  }
+LockscreenTransitionCover::LockscreenTransitionCover() {
+  setHitTestVisible(false);
+  setParticipatesInLayout(false);
+  auto shader = std::make_unique<TextureShaderNode>();
+  shader->setParticipatesInLayout(false);
+  shader->setFragment(kFragment);
+  m_shader = static_cast<TextureShaderNode*>(addChild(std::move(shader)));
 }
 
-void LockscreenTransitionProgram::destroy() { m_program.destroy(); }
+void LockscreenTransitionCover::setTexture(TextureId texture) { m_shader->setTexture(texture); }
 
-void LockscreenTransitionProgram::abandon() noexcept { m_program.abandon(); }
+void LockscreenTransitionCover::setTransition(
+    LockscreenTransitionKind transition, float progress, const LockscreenTransitionParams& params
+) {
+  m_shader->setUniform("u_transition", static_cast<float>(transition));
+  m_shader->setUniform("u_progress", std::clamp(progress, 0.0F, 1.0F));
+  m_shader->setUniform("u_direction", params.direction);
+  m_shader->setUniform("u_smoothness", params.smoothness);
+  m_shader->setUniform("u_center_x", params.centerX);
+  m_shader->setUniform("u_center_y", params.centerY);
+  m_shader->setUniform("u_aspect_ratio", params.aspectRatio);
+  m_shader->setUniform("u_stripe_count", params.stripeCount);
+  m_shader->setUniform("u_angle", params.angle);
+  m_shader->setUniform("u_cell_size", params.cellSize);
+}
 
-void LockscreenTransitionProgram::draw(const LockscreenTransitionDrawParams& params) const {
-  if (!m_program.isValid()
-      || params.texture == 0
-      || params.surfaceWidth <= 0.0F
-      || params.surfaceHeight <= 0.0F
-      || params.quadWidth <= 0.0F
-      || params.quadHeight <= 0.0F) {
-    return;
-  }
+void LockscreenTransitionCover::setSize(float width, float height) {
+  Node::setSize(width, height);
+  m_shader->setFrameSize(width, height);
+}
 
-  static constexpr std::array<GLfloat, 12> kQuad = {
-      0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, 1.0F, 0.0F, 1.0F, 1.0F,
-  };
-
-  glUseProgram(m_program.id());
-  glUniform2f(m_surfaceSizeLoc, params.surfaceWidth, params.surfaceHeight);
-  glUniform2f(m_quadSizeLoc, params.quadWidth, params.quadHeight);
-  glUniformMatrix3fv(m_transformLoc, 1, GL_FALSE, params.transform.m.data());
-  glUniform1f(m_transitionLoc, static_cast<float>(params.transition));
-  glUniform1f(m_progressLoc, std::clamp(params.progress, 0.0F, 1.0F));
-  glUniform1f(m_opacityLoc, std::clamp(params.opacity, 0.0F, 1.0F));
-  glUniform1f(m_directionLoc, params.params.direction);
-  glUniform1f(m_smoothnessLoc, params.params.smoothness);
-  glUniform2f(m_centerLoc, params.params.centerX, params.params.centerY);
-  glUniform1f(m_aspectRatioLoc, params.params.aspectRatio);
-  glUniform1f(m_stripeCountLoc, params.params.stripeCount);
-  glUniform1f(m_angleLoc, params.params.angle);
-  glUniform1f(m_cellSizeLoc, params.params.cellSize);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(params.texture.value()));
-  glUniform1i(m_textureLoc, 0);
-
-  const auto position = static_cast<GLuint>(m_positionLoc);
-  glVertexAttribPointer(position, 2, GL_FLOAT, GL_FALSE, 0, kQuad.data());
-  glEnableVertexAttribArray(position);
-  glDrawArrays(GL_TRIANGLES, 0, 6);
-  glDisableVertexAttribArray(position);
+void LockscreenTransitionCover::setFrameSize(float width, float height) {
+  Node::setFrameSize(width, height);
+  m_shader->setFrameSize(width, height);
 }

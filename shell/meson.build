@@ -617,6 +617,7 @@ _noctalia_source_paths = [
   'src/shell/lockscreen/lockscreen_session_actions.cpp',
   'src/shell/lockscreen/lock_phone_row.cpp',
   'src/shell/lockscreen/lock_surface.cpp',
+  'src/shell/lockscreen/lockscreen_transition.cpp',
   'src/shell/osd/audio_osd.cpp',
   'src/shell/osd/media_osd.cpp',
   'src/shell/osd/brightness_osd.cpp',

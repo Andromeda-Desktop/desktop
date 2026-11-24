@@ -20,7 +20,7 @@ class RenderTarget;
 class TextureManager;
 struct WallpaperDrawParams;
 struct WallpaperMaskDrawParams;
-struct LockscreenTransitionDrawParams;
+struct TextureShaderDraw;
 
 class RenderFramebuffer {
 public:
@@ -220,7 +220,7 @@ public:
   virtual void drawShaderScene(const ShaderSceneDraw& scene) = 0;
   virtual void drawWallpaper(const WallpaperDrawParams& params) = 0;
   virtual void drawWallpaperMask(const WallpaperMaskDrawParams& params) = 0;
-  virtual void drawLockscreenTransition(const LockscreenTransitionDrawParams& params) = 0;
+  virtual void drawTextureShader(const TextureShaderDraw& draw) = 0;
   virtual void drawFullscreenTexture(TextureId texture, bool flipY) = 0;
   virtual void drawFullscreenTint(Color color) = 0;
   virtual void drawFramebufferBlur(

@@ -13,10 +13,10 @@
 #include "render/programs/terminal_grid_program.h"
 #include "render/programs/shader_scene_program.h"
 #include "render/programs/image_program.h"
-#include "render/programs/lockscreen_transition_program.h"
 #include "render/programs/rect_program.h"
 #include "render/programs/screen_corner_program.h"
 #include "render/programs/spinner_program.h"
+#include "render/programs/texture_shader_program.h"
 #include "render/programs/wallpaper_mask_program.h"
 #include "render/programs/wallpaper_program.h"
 
@@ -111,7 +111,7 @@ public:
   void drawShaderScene(const ShaderSceneDraw& scene) override;
   void drawWallpaper(const WallpaperDrawParams& params) override;
   void drawWallpaperMask(const WallpaperMaskDrawParams& params) override;
-  void drawLockscreenTransition(const LockscreenTransitionDrawParams& params) override;
+  void drawTextureShader(const TextureShaderDraw& draw) override;
   void drawFullscreenTexture(TextureId texture, bool flipY) override;
   void drawFullscreenTint(Color color) override;
   void drawFramebufferBlur(
@@ -175,7 +175,7 @@ private:
   ShaderSceneProgram m_shaderSceneProgram;
   WallpaperProgram m_wallpaperProgram;
   WallpaperMaskProgram m_wallpaperMaskProgram;
-  LockscreenTransitionProgram m_lockscreenTransitionProgram;
+  TextureShaderProgram m_textureShaderProgram;
   BlurProgram m_blurProgram;
   ShaderProgram m_fullscreenTextureProgram;
   ShaderProgram m_fullscreenTintProgram;

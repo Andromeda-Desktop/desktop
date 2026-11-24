@@ -5,7 +5,7 @@
 #include "core/timer_manager.h"
 #include "render/animation/animation_manager.h"
 #include "render/core/color.h"
-#include "render/core/lockscreen_transition_types.h"
+#include "shell/lockscreen/lockscreen_transition.h"
 #include "render/core/shared_texture_cache.h"
 #include "render/core/texture_manager.h"
 #include "render/scene/input_dispatcher.h"
@@ -46,7 +46,6 @@ class HttpClient;
 class Image;
 class Input;
 class Label;
-class LockscreenTransitionCover;
 class LinkPhoneState;
 class MprisService;
 class Renderer;

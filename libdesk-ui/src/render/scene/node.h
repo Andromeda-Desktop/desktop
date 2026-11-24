@@ -33,7 +33,7 @@ enum class NodeType : std::uint8_t {
   TerminalGrid,
   ShaderScene,
   Wallpaper,
-  LockscreenTransition,
+  TextureShader,
   RenderProxy,
 };
 

@@ -1086,11 +1086,10 @@ void GlesRenderBackend::drawWallpaperMask(const WallpaperMaskDrawParams& params)
   m_wallpaperMaskProgram.draw(params);
 }
 
-void GlesRenderBackend::drawLockscreenTransition(const LockscreenTransitionDrawParams& params) {
+void GlesRenderBackend::drawTextureShader(const TextureShaderDraw& draw) {
   flushBatches();
   gpuMark(GpuSplitTimer::kOtherDraw);
-  m_lockscreenTransitionProgram.ensureInitialized();
-  m_lockscreenTransitionProgram.draw(params);
+  m_textureShaderProgram.draw(draw);
 }
 
 void GlesRenderBackend::drawFullscreenTexture(TextureId texture, bool flipY) {
@@ -1167,7 +1166,7 @@ void GlesRenderBackend::destroyGpuObjects() {
   m_shaderSceneProgram.destroy();
   m_wallpaperProgram.destroy();
   m_wallpaperMaskProgram.destroy();
-  m_lockscreenTransitionProgram.destroy();
+  m_textureShaderProgram.destroy();
   m_blurProgram.destroy();
   m_fullscreenTextureProgram.destroy();
   m_fullscreenTintProgram.destroy();
@@ -1191,7 +1190,7 @@ void GlesRenderBackend::abandonGpuObjects() noexcept {
   m_shaderSceneProgram.abandon();
   m_wallpaperProgram.abandon();
   m_wallpaperMaskProgram.abandon();
-  m_lockscreenTransitionProgram.abandon();
+  m_textureShaderProgram.abandon();
   m_blurProgram.abandon();
   m_fullscreenTextureProgram.abandon();
   m_fullscreenTintProgram.abandon();
