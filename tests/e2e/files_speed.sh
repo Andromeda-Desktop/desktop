@@ -38,15 +38,13 @@ BUS_PID=$(sed -n 2p <<< "$bus_info")
 trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 # A cold launch first: the fresh HOME has an empty Mesa shader cache, which a user meets once per driver update. The
 # measured launch below reuses that cache, as every later launch does; the cold numbers are reported, not budgeted.
-run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
-  XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug "$FILES" "$HOME_DIR" > "$OUT/files-cold.log" 2>&1 &
+spawn env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
+  XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug "$FILES" "$HOME_DIR" > "$OUT/files-cold.log" 2>&1
 COLD_PID=$!
 for _ in $(seq 200); do grep -q "first frame at" "$OUT/files-cold.log" && break; sleep 0.05; done
 grep -q "first frame at" "$OUT/files-cold.log" || fail "the cold launch drew no first frame"
-# $! is the shell that runs `run`: stop the app itself, or the next launch is forwarded to it (single instance).
-cold_app=$(pgrep -f -- "$FILES $HOME_DIR\$") || fail "the cold launch has no process"
-kill $cold_app
-for _ in $(seq 100); do pgrep -f -- "$FILES $HOME_DIR\$" > /dev/null || break; sleep 0.05; done
+# Stop the app before the next launch, or that launch is forwarded to it (single instance).
+kill "$COLD_PID"
 wait "$COLD_PID" 2> /dev/null || true
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
   XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug DESK_FRAME_STATS=1 DESK_MOTION_TRACE=1 \

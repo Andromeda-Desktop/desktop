@@ -18,10 +18,10 @@ BUS=$(sed -n 1p <<< "$bus_info")
 BUS_PID=$(sed -n 2p <<< "$bus_info")
 trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 
-run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_DATA_HOME="$HOME_DIR/.local/share" \
+spawn env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_DATA_HOME="$HOME_DIR/.local/share" \
   XDG_STATE_HOME="$HOME_DIR/.local/state" XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_CACHE_HOME="$HOME_DIR/.cache" \
-  ANDROMEDA_LOG_LEVEL=debug "$FILES" "$HOME_DIR" > "$OUT/files.log" 2>&1 &
-SHELL_PID=$!
+  ANDROMEDA_LOG_LEVEL=debug "$FILES" "$HOME_DIR" > "$OUT/files.log" 2>&1
+PID=$!
 mapped() { [[ $(run "$ANDROMEDA" windows --json | jq "[.. | objects | select(.app_id? == \"$APP\")] | length") -gt 0 ]]; }
 for _ in $(seq 200); do mapped && break; sleep 0.05; done
 mapped || fail "the Files window did not map"
@@ -29,18 +29,13 @@ mapped || fail "the Files window did not map"
 for _ in $(seq 40); do grep -q "sidebar" "$OUT/files.log" && break; sleep 0.05; done
 sleep 0.5
 run "$ANDROMEDA" settle > /dev/null
-# $! is the background subshell of `run`; env execs Files as its child.
-PID=$(pgrep -P "$SHELL_PID" -x andromeda-files || pgrep -P "$SHELL_PID")
-[[ -n $PID ]] || fail "no Files process under $SHELL_PID"
-
 kill -TERM "$PID"
-for _ in $(seq 60); do kill -0 "$PID" 2> /dev/null || break; sleep 0.05; done
-if kill -0 "$PID" 2> /dev/null; then
-  kill -QUIT "$PID"
-  wait "$SHELL_PID" 2> /dev/null || true
-  fail "Files did not exit within 3 s of SIGTERM (core: coredumpctl info $PID)"
-fi
+# Files is this shell's child, so kill -0 sees it until wait reaps it: a watchdog sends SIGQUIT after 3 s instead.
+(sleep 3; kill -QUIT "$PID" 2> /dev/null) &
+WATCHDOG=$!
 status=0
-wait "$SHELL_PID" || status=$?
+wait "$PID" || status=$?
+kill "$WATCHDOG" 2> /dev/null || true
+((status != 128 + 3)) || fail "Files did not exit within 3 s of SIGTERM (core: coredumpctl info $PID)"
 [[ $status -eq 0 ]] || fail "Files exited with status $status after SIGTERM (coredumpctl info $PID)"
 echo "pass files_exit"

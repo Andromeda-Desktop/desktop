@@ -49,9 +49,14 @@ rm_runtime() {
 
 # run CMD...: run inside the session. A private HOME keeps Noctalia's theme templates and gsettings writes out of the
 # real user config.
-run() {
-  env -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME HOME="$RUNTIME/home" \
-    XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY=wayland-0 ANDROMEDA_SOCKET="$RUNTIME/andromeda-wayland-0.sock" "$@"
+run() { in_session command "$@"; }
+# spawn CMD...: run CMD inside the session in the background, with $! the PID of CMD itself. A script forks for a
+# backgrounded function, so after `run CMD &` the $! is a bash subshell and a kill of it leaves CMD running. CMD is
+# then this shell's child: kill -0 and `wait.sh --pid` see it until `wait` reaps it.
+spawn() { (in_session exec "$@") & }
+in_session() { # command|exec CMD...
+  "$1" env -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME HOME="$RUNTIME/home" \
+    XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY=wayland-0 ANDROMEDA_SOCKET="$RUNTIME/andromeda-wayland-0.sock" "${@:2}"
 }
 
 # stable_grim [-g GEOMETRY] FILE: shoot once two grabs 0.2 s apart are identical (fades settle). Exported into with_noctalia.
