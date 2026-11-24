@@ -30,6 +30,7 @@ _desk_app_dep = _desk_app_sp.get_variable('desk_app_dep')
 # Gallery video in place: the preview's subsurface player and sandboxed media helper (audio loads lazily).
 _preview_media_dep = subproject('andromeda-preview').get_variable('preview_media_dep')
 _gio_unix_dep = dependency('gio-unix-2.0') # GUnixMountMonitor, GDesktopAppInfo
+add_project_arguments('-DANDROMEDA_TRANSLATIONS_DIR="' + meson.current_source_dir() / 'translations' + '"', language: 'cpp')
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
 _files_lib = static_library('files_core',
@@ -167,3 +168,4 @@ configure_file(
   install_dir: get_option('prefix') / 'lib' / 'systemd' / 'user',
 )
 install_data('data/icons/dev.andromeda.Files.svg', 'data/icons/dev.andromeda.Photos.svg', install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps')
+install_data('translations/en.json', install_dir: get_option('datadir') / 'andromeda' / 'translations' / 'files')

@@ -4,6 +4,7 @@
 #include "app/app_window.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "i18n/i18n.h"
 #include "platform/input_events.h"
 #include "platform/surface.h"
 #include "render/scene/input_area.h"
@@ -249,9 +250,9 @@ std::unique_ptr<Node> TerminalPane::build(Renderer& renderer, float scale, float
     };
   };
   if (m_splits.size() < kMaxSplits) {
-    header->addChild(headerButton("layout-columns", "Split Terminal", later(&TerminalPane::split)));
+    header->addChild(headerButton("layout-columns", i18n::tr("files.terminal.split"), later(&TerminalPane::split)));
   }
-  header->addChild(headerButton("close", m_splits.size() > 1 ? "Close This Terminal" : "Close Terminal",
+  header->addChild(headerButton("close", i18n::tr(m_splits.size() > 1 ? "files.terminal.close-this" : "files.terminal.close"),
                                 later(&TerminalPane::closeActive)));
 
   auto cards = ui::row({.out = &m_cardsRow, .align = FlexAlign::Stretch, .gap = gap, .height = cardHeight});

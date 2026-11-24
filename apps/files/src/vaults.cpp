@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "core/sys/sys.h"
+#include "i18n/i18n.h"
 
 #include <algorithm>
 #include <fstream>
@@ -70,7 +71,7 @@ namespace {
                                                                         G_SUBPROCESS_FLAGS_STDERR_PIPE),
                                           &error);
     if (proc == nullptr) {
-      std::string message = error != nullptr ? error->message : "could not start";
+      std::string message = error != nullptr ? error->message : i18n::tr("files.vaults.could-not-start");
       g_clear_error(&error);
       done(-1, std::move(message));
       return;
@@ -161,13 +162,13 @@ bool Vaults::available() {
 
 std::string Vaults::nameError(const std::string& name) const {
   if (name.empty()) {
-    return "Give the vault a name.";
+    return i18n::tr("files.vaults.name-empty");
   }
   if (name.find('/') != std::string::npos || name == "." || name == "..") {
-    return "A name cannot contain “/”.";
+    return i18n::tr("files.vaults.name-slash");
   }
   if (find(name) != nullptr) {
-    return "A vault with this name exists.";
+    return i18n::tr("files.vaults.name-exists");
   }
   return {};
 }
@@ -183,7 +184,7 @@ void Vaults::create(const std::string& name, const std::string& password, Done d
   std::error_code ec;
   fs::create_directories(vault.cipher, ec);
   if (ec || !fs::is_empty(vault.cipher, ec)) {
-    done("The vault folder could not be made.");
+    done(i18n::tr("files.vaults.folder-failed"));
     return;
   }
   run({"gocryptfs", "-init", "-q", vault.cipher.string()}, password + "\n",
@@ -192,7 +193,7 @@ void Vaults::create(const std::string& name, const std::string& password, Done d
           kLog.warn("vault init {} failed: {}", vault.name, err);
           std::error_code e;
           fs::remove_all(vault.cipher, e);
-          done(err.empty() ? std::string("The vault could not be made.") : firstLine(err));
+          done(err.empty() ? i18n::tr("files.vaults.create-failed") : firstLine(err));
           return;
         }
         kLog.debug("vault created {}", vault.name);
@@ -223,10 +224,10 @@ void Vaults::unlock(const Vault& vault, const std::string& password, Done done) 
           startGuard(vault.mount);
         } else if (status == kWrongPassword) {
           kLog.debug("vault wrong password {}", vault.name);
-          error = "The password is not correct.";
+          error = i18n::tr("files.vaults.wrong-password");
         } else {
           kLog.warn("vault unlock {} failed ({}): {}", vault.name, status, err);
-          error = err.empty() ? std::string("The vault could not be opened.") : firstLine(err);
+          error = err.empty() ? i18n::tr("files.vaults.open-failed") : firstLine(err);
         }
         auto waiters = m_unlocking.extract(vault.mount.string());
         for (const Done& d : waiters.mapped()) {
@@ -242,7 +243,7 @@ void Vaults::lock(const Vault& vault, Done done) {
       done({});
     } else {
       kLog.warn("vault lock {} failed: {}", vault.name, err);
-      done(err.find("busy") != std::string::npos ? std::string("An app still uses files in the vault.")
+      done(err.find("busy") != std::string::npos ? i18n::tr("files.vaults.busy")
                                                  : firstLine(err));
     }
   });
@@ -267,7 +268,7 @@ int Vaults::guard(const fs::path& mount) {
     GUnixFDList* fds = nullptr;
     GVariant* reply = g_dbus_connection_call_with_unix_fd_list_sync(
         st.bus, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "Inhibit",
-        g_variant_new("(ssss)", "sleep", "Files", "Lock vaults", "delay"), G_VARIANT_TYPE("(h)"),
+        g_variant_new("(ssss)", "sleep", "Files", i18n::tr("files.vaults.inhibit-reason").c_str(), "delay"), G_VARIANT_TYPE("(h)"),
         G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &fds, nullptr, nullptr);
     if (reply != nullptr && fds != nullptr) {
       st.inhibit = g_unix_fd_list_get(fds, 0, nullptr);

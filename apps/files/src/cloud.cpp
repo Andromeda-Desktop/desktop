@@ -4,6 +4,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/sys/sys.h"
+#include "i18n/i18n.h"
 
 #include <algorithm>
 #include <csignal>
@@ -41,7 +42,7 @@ namespace {
                                       G_SUBPROCESS_FLAGS_STDERR_PIPE),
         &error);
     if (proc == nullptr) {
-      Result r{.status = -1, .out = {}, .err = error != nullptr ? error->message : "could not start"};
+      Result r{.status = -1, .out = {}, .err = error != nullptr ? error->message : i18n::tr("files.cloud.could-not-start")};
       g_clear_error(&error);
       done(std::move(r));
       return 0;
@@ -241,7 +242,7 @@ void Cloud::mount(const std::string& remote, Done done) {
           done({});
         } else {
           kLog.warn("cloud mount {} failed ({}): {}", remote, r.status, r.err);
-          done(r.err.empty() ? std::string("The account could not be opened.") : lastLine(r.err));
+          done(r.err.empty() ? i18n::tr("files.cloud.open-failed") : lastLine(r.err));
         }
       });
 }
@@ -252,7 +253,7 @@ void Cloud::unmount(const std::string& remote, Done done) {
       kLog.info("cloud unmounted {}", remote);
       done({});
     } else {
-      done(r.err.find("busy") != std::string::npos ? std::string("An app still uses files in this account.")
+      done(r.err.find("busy") != std::string::npos ? i18n::tr("files.cloud.busy")
                                                    : lastLine(r.err));
     }
   });
@@ -321,7 +322,7 @@ void Cloud::keep(const std::vector<fs::path>& paths, std::function<void(std::siz
       while (in.read(buf.data(), static_cast<std::streamsize>(buf.size())) || in.gcount() > 0) {
       }
       if (in.bad()) {
-        error = file.filename().string() + " could not be downloaded.";
+        error = i18n::tr("files.cloud.download-failed", "name", file.filename().string());
         break;
       }
       ++count;
@@ -366,7 +367,7 @@ void Cloud::freeUp(const std::vector<fs::path>& paths, std::function<void(std::s
 void Cloud::shareLink(const fs::path& path, std::function<void(const std::string&, const std::string&)> done) {
   const std::string remote = remoteOf(path);
   if (remote.empty()) {
-    done({}, "This item is not in a cloud account.");
+    done({}, i18n::tr("files.cloud.not-in-account"));
     return;
   }
   const std::string rel = path.lexically_relative(mountPoint(remote)).string();
@@ -378,7 +379,7 @@ void Cloud::shareLink(const fs::path& path, std::function<void(const std::string
     } else {
       kLog.debug("cloud link failed: {}", r.err);
       done({}, r.err.find("not supported") != std::string::npos || r.err.find("doesn't support") != std::string::npos
-                   ? std::string("This account has no public links.")
+                   ? i18n::tr("files.cloud.no-public-links")
                    : lastLine(r.err));
     }
   });
@@ -386,13 +387,13 @@ void Cloud::shareLink(const fs::path& path, std::function<void(const std::string
 
 std::string Cloud::nameError(const std::string& name) const {
   if (name.empty()) {
-    return "Give the account a name.";
+    return i18n::tr("files.cloud.name-empty");
   }
   if (name.find_first_of("/:[]") != std::string::npos || name.starts_with("-") || name.starts_with(" ")) {
-    return "A name cannot contain “/”, “:” or brackets.";
+    return i18n::tr("files.cloud.name-chars");
   }
   if (std::ranges::any_of(m_remotes, [&](const Remote& r) { return r.name == name; })) {
-    return "An account with this name exists.";
+    return i18n::tr("files.cloud.name-exists");
   }
   return {};
 }
@@ -405,7 +406,7 @@ void Cloud::addAccount(const std::string& name, const std::string& type, const s
   }
   const auto provider = std::ranges::find_if(providers(), [&](const Provider& p) { return std::string_view(p.type) == type; });
   if (provider == providers().end()) {
-    done("This provider is not supported.");
+    done(i18n::tr("files.cloud.provider-unsupported"));
     return;
   }
   std::vector<std::string> argv{"rclone", "config", "create", name, type};
@@ -434,8 +435,8 @@ void Cloud::addAccount(const std::string& name, const std::string& type, const s
         !doc["State"].get<std::string>().empty()) {
       const std::string state = doc["State"].get<std::string>();
       const std::string question = doc.contains("Option") && doc["Option"].is_object()
-                                       ? doc["Option"].value("Help", std::string("rclone needs one more answer."))
-                                       : std::string("rclone needs one more answer.");
+                                       ? doc["Option"].value("Help", i18n::tr("files.cloud.more-input"))
+                                       : i18n::tr("files.cloud.more-input");
       ask(question, [this, name, state, finish](const std::string* text) {
         if (text == nullptr) {
           cancelAdd();
@@ -456,7 +457,7 @@ void Cloud::addAccount(const std::string& name, const std::string& type, const s
     } else {
       kLog.warn("cloud add {} failed ({}): {}", name, r.status, r.err);
       run({"rclone", "config", "delete", name}, [](Result) {});
-      done(r.err.empty() ? std::string("The account could not be added.") : lastLine(r.err));
+      done(r.err.empty() ? i18n::tr("files.cloud.add-failed") : lastLine(r.err));
     }
   };
   if (!provider->oauth) {

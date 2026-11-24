@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "i18n/i18n.h"
 #include "dbus/session_bus.h"
 
 #include <sdbus-c++/sdbus-c++.h>
@@ -81,8 +82,8 @@ AppChooserPortal::AppChooserPortal(SessionBus& bus, Handlers handlers) : m_bus(b
                         AccessRequest r{.appId = std::move(appId), .parentWindow = std::move(parent),
                                         .title = std::move(title), .subtitle = std::move(subtitle),
                                         .body = std::move(body),
-                                        .denyLabel = option<std::string>(options, "deny_label").value_or("Deny"),
-                                        .grantLabel = option<std::string>(options, "grant_label").value_or("Allow"),
+                                        .denyLabel = option<std::string>(options, "deny_label").value_or(i18n::tr("files.portal.deny")),
+                                        .grantLabel = option<std::string>(options, "grant_label").value_or(i18n::tr("files.portal.allow")),
                                         .icon = option<std::string>(options, "icon").value_or(""), .choices = {}};
                         for (const ChoiceStruct& c : option<std::vector<ChoiceStruct>>(options, "choices").value_or({})) {
                           AccessChoice choice{.id = c.get<0>(), .label = c.get<1>(), .options = {}, .value = c.get<3>()};

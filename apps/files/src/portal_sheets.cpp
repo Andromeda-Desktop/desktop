@@ -2,6 +2,7 @@
 
 #include "app_chooser_sheet.h"
 #include "design_tokens.h"
+#include "i18n/i18n.h"
 #include "render/core/renderer.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
@@ -50,7 +51,7 @@ namespace {
 
   std::string appName(const std::string& appId) {
     if (appId.empty()) {
-      return "An app";
+      return i18n::tr("files.portal.an-app");
     }
     std::string name = appId;
     if (GDesktopAppInfo* info = g_desktop_app_info_new((appId + ".desktop").c_str())) {
@@ -81,11 +82,11 @@ PortalSheet::PortalSheet(SystemPortals::Request request, std::function<void(std:
 std::string PortalSheet::titleFor(const SystemPortals::Request& request) {
   switch (request.kind) {
   case SystemPortals::Kind::Account:
-    return "Share Your Details";
+    return i18n::tr("files.portal.title-account");
   case SystemPortals::Kind::Wallpaper:
-    return "Set Wallpaper";
+    return i18n::tr("files.portal.title-wallpaper");
   case SystemPortals::Kind::Launcher:
-    return request.webApp ? "Add Web App" : "Add to Apps";
+    return i18n::tr(request.webApp ? "files.portal.title-web" : "files.portal.title-launcher");
   }
   return {};
 }
@@ -123,7 +124,7 @@ std::unique_ptr<Node> PortalSheet::build(float s) {
   switch (m_request.kind) {
   case Kind::Account: {
     box->addChild(pictureNode(m_user.image, Tokens::spaceP64 * s, Tokens::spaceP64 * s, -1.0F));
-    headline(std::format("“{}” wants your name and picture", app));
+    headline(i18n::tr("files.portal.account", "app", app));
     if (!m_request.reason.empty()) {
       caption(m_request.reason, ColorRole::Label2);
     }
@@ -135,30 +136,30 @@ std::unique_ptr<Node> PortalSheet::build(float s) {
     card->addChild(ui::label({.text = m_user.id, .fontSize = Style::fontSizeCaption * s,
                               .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1}));
     box->addChild(std::move(card));
-    action = "Share";
+    action = i18n::tr("files.portal.share");
     break;
   }
   case Kind::Wallpaper: {
     box->addChild(pictureNode(m_request.path, Tokens::spaceP64 * 5.0F * s, Tokens::spaceP64 * 2.75F * s,
                               Style::scaledRadius(Tokens::radiusR8, s)));
-    headline(std::format("Set this picture from “{}” as your wallpaper?", app));
-    caption(m_request.setOn == "background" ? "Desktop" : "Desktop and Lock Screen", ColorRole::Label2);
-    action = "Set Wallpaper";
+    headline(i18n::tr("files.portal.wallpaper", "app", app));
+    caption(i18n::tr(m_request.setOn == "background" ? "files.portal.desktop" : "files.portal.desktop-lock"), ColorRole::Label2);
+    action = i18n::tr("files.portal.title-wallpaper");
     break;
   }
   case Kind::Launcher: {
     box->addChild(pictureNode(iconFileFor(m_request.path), Tokens::spaceP64 * s, Tokens::spaceP64 * s,
                               Style::scaledRadius(Tokens::radiusR12, s)));
-    headline(std::format("Add “{}” to your apps?", m_name.empty() ? m_request.name : m_name));
+    headline(i18n::tr("files.portal.add", "name", m_name.empty() ? m_request.name : m_name));
     if (m_request.editableName) {
-      box->addChild(ui::input({.value = m_name, .placeholder = std::string("Name"), .fontSize = Style::fontSizeBody * s,
+      box->addChild(ui::input({.value = m_name, .placeholder = i18n::tr("files.portal.name"), .fontSize = Style::fontSizeBody * s,
                                .controlHeight = Style::controlHeight * s, .width = Tokens::spaceP64 * 4.5F * s,
                                .onChange = [this](const std::string& v) { m_name = v; },
                                .onSubmit = [this](const std::string&) { accept(); }}));
     }
-    caption(m_request.webApp && !m_request.target.empty() ? m_request.target : std::format("From “{}”", app),
+    caption(m_request.webApp && !m_request.target.empty() ? m_request.target : i18n::tr("files.portal.from", "app", app),
             ColorRole::Label2);
-    action = "Add";
+    action = i18n::tr("files.portal.add-button");
     break;
   }
   }
@@ -167,7 +168,7 @@ std::unique_ptr<Node> PortalSheet::build(float s) {
                           .fillWidth = true});
   // System dialog footers: both buttons are capsules (rulebook 9.5).
   const float btnH = Tokens::sizeControlM * s;
-  buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Style::fontSizeBody * s,
+  buttons->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .fontSize = Style::fontSizeBody * s,
                                 .variant = ButtonVariant::Default, .paddingH = Tokens::spaceP16 * s, .radius = btnH / 2.0F,
                                 .height = btnH, .onClick = [this] { cancel(); }}));
   buttons->addChild(ui::button({.text = action, .fontSize = Style::fontSizeBody * s,

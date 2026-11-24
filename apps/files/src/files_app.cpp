@@ -5,6 +5,7 @@
 #include "core/log.h"
 #include "dbus/session_bus.h"
 #include "files_window.h"
+#include "i18n/i18n.h"
 #include "job_text.h"
 #include "tag_manager_sheet.h"
 #include "terminal_pane.h"
@@ -67,7 +68,9 @@ namespace {
 
 FilesApp::FilesApp(bool picker, bool service)
     : DeskApp({.id = picker ? kPickerAppId : kAppId, .name = "Files"}), m_picker(picker),
-      m_service(service) {}
+      m_service(service) {
+  i18n::Service::instance().addDomain("files", ANDROMEDA_TRANSLATIONS_DIR);
+}
 
 void FilesApp::showFromFileManager(FileManager1::Show show, const std::vector<std::string>& uris,
                                    const std::string& startupId) {
@@ -221,8 +224,8 @@ void FilesApp::scheduleIdleQuit() {
 void FilesApp::openPicker(std::uint64_t id, const PickerPortal::Request& request) {
   using Kind = PickerPortal::Request::Kind;
   const std::string title = !request.title.empty() ? request.title
-      : request.kind == Kind::Open                    ? (request.directory ? "Select Folder" : "Open File")
-                                                      : "Save File";
+      : request.kind == Kind::Open                    ? (request.directory ? i18n::tr("files.picker.select-folder") : i18n::tr("files.picker.open-file"))
+                                                      : i18n::tr("files.picker.save-file");
   // Save opens as the compact sheet (mockup §6); its chevron grows the window to the full browser.
   const bool save = request.kind == Kind::Save;
   AppWindow& window = addWindow({
@@ -255,7 +258,7 @@ void FilesApp::openPicker(std::uint64_t id, const PickerPortal::Request& request
 }
 
 void FilesApp::openPrint(std::uint64_t id, const PrintPortal::PrintRequest& request) {
-  AppWindow& window = addWindow({.appId = info().id, .title = "Print", .stateKey = "print", .width = kPrintWidth,
+  AppWindow& window = addWindow({.appId = info().id, .title = i18n::tr("files.window.print"), .stateKey = "print", .width = kPrintWidth,
                                  .height = kPrintHeight, .minWidth = kPrintMinWidth, .minHeight = kPrintMinHeight,
                                  .parentWindow = request.parentWindow});
   Dialog& dialog = m_dialogs[&window];
@@ -280,10 +283,10 @@ void FilesApp::openPrint(std::uint64_t id, const PrintPortal::PrintRequest& requ
               },
           .savePdf =
               [this, &window, id, title = request.title] {
-                std::string name = title.empty() ? std::string("Document") : title;
+                std::string name = title.empty() ? i18n::tr("files.picker.document") : title;
                 if (!name.ends_with(".pdf"))
                   name = fs::path(name).stem().string() + ".pdf";
-                pickSaveFile("Save as PDF", name, [this, &window, id](std::vector<fs::path> paths) {
+                pickSaveFile(i18n::tr("files.picker.save-pdf"), name, [this, &window, id](std::vector<fs::path> paths) {
                   const auto it = m_dialogs.find(&window);
                   if (paths.empty() || it == m_dialogs.end() || it->second.id != id || it->second.answered)
                     return;
@@ -318,7 +321,7 @@ void FilesApp::openPrint(std::uint64_t id, const PrintPortal::PrintRequest& requ
 }
 
 void FilesApp::openChooser(std::uint64_t id, const AppChooserPortal::ChooseRequest& request) {
-  AppWindow& window = addWindow({.appId = info().id, .title = "Open With", .stateKey = "open-with", .width = kChooserWidth,
+  AppWindow& window = addWindow({.appId = info().id, .title = i18n::tr("files.window.open-with"), .stateKey = "open-with", .width = kChooserWidth,
                                  .height = kChooserHeight, .minWidth = kChooserWidth, .minHeight = kDialogMinHeight,
                                  .parentWindow = request.parentWindow});
   Dialog& dialog = m_dialogs[&window];
@@ -426,7 +429,7 @@ void FilesApp::pickSaveFile(std::string title, std::string currentName,
   PickerPortal::Request request;
   request.kind = PickerPortal::Request::Kind::Save;
   request.title = std::move(title);
-  request.acceptLabel = "Save";
+  request.acceptLabel = i18n::tr("files.picker.save");
   request.currentName = std::move(currentName);
   openPicker(id, request);
 }
@@ -513,7 +516,7 @@ AppWindow& FilesApp::createWindow() {
   const bool photos = std::exchange(m_nextPhotos, false);
   AppWindow& window = addWindow({
       .appId = photos ? std::string("dev.andromeda.Photos") : info().id,
-      .title = photos ? std::string("Photos") : info().name,
+      .title = photos ? i18n::tr("files.window.photos") : info().name,
       .stateKey = photos ? std::string("photos") : std::string("main"),
       .navigation = true,
       .sidebarWidth = 240.0F,
@@ -863,10 +866,12 @@ void FilesApp::onJobChanged(const FileOpsClient::Job& job) {
 }
 
 void FilesApp::addCommands() {
+  commands().setGroupTitle("Conflict", i18n::tr("files.menu.conflict"));
+  commands().setGroupTitle("Picker", i18n::tr("files.menu.picker"));
   const auto chord = [](std::uint32_t sym, std::uint32_t mods) { return KeyChord{.sym = sym, .modifiers = mods}; };
   struct Spec {
     const char* id;
-    const char* label;
+    std::string label;
     const char* group;
     std::optional<KeyChord> shortcut;
     bool (*enabled)(const FilesWindow&);
@@ -877,153 +882,153 @@ void FilesApp::addCommands() {
   const auto selection = [](const FilesWindow& w) { return w.hasSelection(); };
   const auto conflict = [](const FilesWindow& w) { return w.hasConflict(); };
   const Spec specs[] = {
-      {"go.back", "Back", "Go", chord(XKB_KEY_Left, KeyMod::Alt), [](const FilesWindow& w) { return w.canBack(); },
+      {"go.back", i18n::tr("files.commands.go-back"), "Go", chord(XKB_KEY_Left, KeyMod::Alt), [](const FilesWindow& w) { return w.canBack(); },
        [](FilesWindow& w) { w.back(); }},
-      {"go.forward", "Forward", "Go", chord(XKB_KEY_Right, KeyMod::Alt),
+      {"go.forward", i18n::tr("files.commands.go-forward"), "Go", chord(XKB_KEY_Right, KeyMod::Alt),
        [](const FilesWindow& w) { return w.canForward(); }, [](FilesWindow& w) { w.forward(); }},
-      {"go.up", "Enclosing Folder", "Go", chord(XKB_KEY_Up, KeyMod::Alt), [](const FilesWindow& w) { return !w.inTrash(); },
+      {"go.up", i18n::tr("files.commands.go-up"), "Go", chord(XKB_KEY_Up, KeyMod::Alt), [](const FilesWindow& w) { return !w.inTrash(); },
        [](FilesWindow& w) { w.up(); }},
-      {"go.home", "Home", "Go", chord(XKB_KEY_Home, KeyMod::Alt), always,
+      {"go.home", i18n::tr("files.commands.go-home"), "Go", chord(XKB_KEY_Home, KeyMod::Alt), always,
        [](FilesWindow& w) { w.go(g_get_home_dir()); }},
-      {"go.trash", "Trash", "Go", std::nullopt, always, [](FilesWindow& w) { w.goTrash(); }},
-      {"file.open", "Open", "File", chord(XKB_KEY_Return, 0), selection, [](FilesWindow& w) { w.openSelection(); }},
-      {"file.open-with", "Open With…", "File", std::nullopt, [](const FilesWindow& w) { return w.canOpenWith(); },
+      {"go.trash", i18n::tr("files.commands.go-trash"), "Go", std::nullopt, always, [](FilesWindow& w) { w.goTrash(); }},
+      {"file.open", i18n::tr("files.commands.file-open"), "File", chord(XKB_KEY_Return, 0), selection, [](FilesWindow& w) { w.openSelection(); }},
+      {"file.open-with", i18n::tr("files.commands.file-open-with"), "File", std::nullopt, [](const FilesWindow& w) { return w.canOpenWith(); },
        [](FilesWindow& w) { w.openWith(); }},
-      {"file.import", "Import Photos…", "File", std::nullopt,
+      {"file.import", i18n::tr("files.commands.file-import"), "File", std::nullopt,
        [](const FilesWindow& w) { return !w.isPicker() && !w.importSource().empty(); },
        [](FilesWindow& w) { w.importPhotos(); }},
-      {"drive.format", "Erase Drive…", "File", std::nullopt,
+      {"drive.format", i18n::tr("files.commands.drive-format"), "File", std::nullopt,
        [](const FilesWindow& w) { return !w.isPicker() && !w.formatTarget().empty(); },
        [](FilesWindow& w) { w.askFormat(); }},
-      {"file.new-vault", "New Vault…", "File", std::nullopt,
+      {"file.new-vault", i18n::tr("files.commands.file-new-vault"), "File", std::nullopt,
        [](const FilesWindow& w) { return !w.isPicker() && Vaults::available(); },
        [](FilesWindow& w) { w.askNewVault(); }},
-      {"file.pin", "Add to Sidebar", "File", std::nullopt,
+      {"file.pin", i18n::tr("files.commands.file-pin"), "File", std::nullopt,
        [](const FilesWindow& w) { return !w.isPicker() && !w.inTrash() && w.selectionIsFolders(); },
        [](FilesWindow& w) { w.togglePin(); }},
-      {"file.star", "Add to Starred", "File", chord(XKB_KEY_d, KeyMod::Ctrl),
+      {"file.star", i18n::tr("files.commands.file-star"), "File", chord(XKB_KEY_d, KeyMod::Ctrl),
        [](const FilesWindow& w) { return !w.isPicker() && !w.inTrash() && w.hasSelection(); },
        [](FilesWindow& w) { w.toggleStar(); }},
-      {"edit.copy-location", "Copy Path", "Edit", chord(XKB_KEY_c, KeyMod::Ctrl | KeyMod::Alt),
+      {"edit.copy-location", i18n::tr("files.commands.edit-copy-location"), "Edit", chord(XKB_KEY_c, KeyMod::Ctrl | KeyMod::Alt),
        always, [](FilesWindow& w) { w.copyLocation(); }},
-      {"edit.select-pattern", "Select by Pattern…", "Edit", chord(XKB_KEY_s, KeyMod::Ctrl),
+      {"edit.select-pattern", i18n::tr("files.commands.edit-select-pattern"), "Edit", chord(XKB_KEY_s, KeyMod::Ctrl),
        [](const FilesWindow& w) { return !w.inTrash() || w.trashHasItems(); }, [](FilesWindow& w) { w.selectByPattern(); }},
-      {"file.new-smart-folder", "New Smart Folder…", "File", std::nullopt, [](const FilesWindow& w) { return !w.isPicker(); },
+      {"file.new-smart-folder", i18n::tr("files.commands.file-new-smart-folder"), "File", std::nullopt, [](const FilesWindow& w) { return !w.isPicker(); },
        [](FilesWindow& w) { w.newSmartFolder(false); }},
-      {"edit.save-search", "Save Search…", "Edit", std::nullopt, [](const FilesWindow& w) { return w.canSaveSearch(); },
+      {"edit.save-search", i18n::tr("files.commands.edit-save-search"), "Edit", std::nullopt, [](const FilesWindow& w) { return w.canSaveSearch(); },
        [](FilesWindow& w) { w.newSmartFolder(true); }},
-      {"file.edit-smart-folder", "Edit Smart Folder…", "File", std::nullopt,
+      {"file.edit-smart-folder", i18n::tr("files.commands.file-edit-smart-folder"), "File", std::nullopt,
        [](const FilesWindow& w) { return w.inSmartFolder(); }, [](FilesWindow& w) { w.editSmartFolder(); }},
-      {"file.remove-smart-folder", "Remove Smart Folder", "File", std::nullopt,
+      {"file.remove-smart-folder", i18n::tr("files.commands.file-remove-smart-folder"), "File", std::nullopt,
        [](const FilesWindow& w) { return w.inSmartFolder(); }, [](FilesWindow& w) { w.removeSmartFolder(); }},
-      {"view.split", "Split View", "View", std::nullopt, [](const FilesWindow& w) { return !w.isPicker(); },
+      {"view.split", i18n::tr("files.commands.view-split"), "View", std::nullopt, [](const FilesWindow& w) { return !w.isPicker(); },
        [](FilesWindow& w) { w.toggleSplitView(); }},
-      {"view.compare", "Compare Folders", "View", std::nullopt, [](const FilesWindow& w) { return w.canCompare(); },
+      {"view.compare", i18n::tr("files.commands.view-compare"), "View", std::nullopt, [](const FilesWindow& w) { return w.canCompare(); },
        [](FilesWindow& w) { w.toggleCompare(); }},
-      {"view.sync", "Sync Folders", "View", std::nullopt, [](const FilesWindow& w) { return w.comparing(); },
+      {"view.sync", i18n::tr("files.commands.view-sync"), "View", std::nullopt, [](const FilesWindow& w) { return w.comparing(); },
        [](FilesWindow& w) { w.syncCompare(); }},
-      {"view.terminal", "Show Terminal", "View", chord(XKB_KEY_F4, 0), [](const FilesWindow& w) { return !w.isPicker(); },
+      {"view.terminal", i18n::tr("files.commands.view-terminal"), "View", chord(XKB_KEY_F4, 0), [](const FilesWindow& w) { return !w.isPicker(); },
        [](FilesWindow& w) { w.toggleTerminal(); }},
-      {"view.terminal-split", "Split Terminal", "View", std::nullopt,
+      {"view.terminal-split", i18n::tr("files.commands.view-terminal-split"), "View", std::nullopt,
        [](const FilesWindow& w) { return w.terminalShown(); }, [](FilesWindow& w) { w.terminal()->split(); }},
-      {"view.terminal-close", "Close Terminal", "View", std::nullopt,
+      {"view.terminal-close", i18n::tr("files.commands.view-terminal-close"), "View", std::nullopt,
        [](const FilesWindow& w) { return w.terminalShown(); }, [](FilesWindow& w) { w.terminal()->closeActive(); }},
-      {"file.open-terminal", "Open Terminal Here", "File", chord(XKB_KEY_F4, KeyMod::Shift),
+      {"file.open-terminal", i18n::tr("files.commands.file-open-terminal"), "File", chord(XKB_KEY_F4, KeyMod::Shift),
        [](const FilesWindow& w) { return !w.inTrash(); }, [](FilesWindow& w) { w.openTerminalHere(); }},
-      {"file.open-admin", "Open as Administrator", "File", std::nullopt,
+      {"file.open-admin", i18n::tr("files.commands.file-open-admin"), "File", std::nullopt,
        [](const FilesWindow& w) { return !w.inTrash() && !w.isPicker(); }, [](FilesWindow& w) { w.openAsAdmin(); }},
-      {"file.restore", "Put Back", "File", std::nullopt,
+      {"file.restore", i18n::tr("files.commands.file-restore"), "File", std::nullopt,
        [](const FilesWindow& w) { return w.inTrash() && w.hasSelection(); }, [](FilesWindow& w) { w.restoreSelection(); }},
-      {"file.new-folder", "New Folder", "File", chord(XKB_KEY_N, KeyMod::Ctrl | KeyMod::Shift),
+      {"file.new-folder", i18n::tr("files.commands.file-new-folder"), "File", chord(XKB_KEY_N, KeyMod::Ctrl | KeyMod::Shift),
        [](const FilesWindow& w) { return w.canAddHere(); }, [](FilesWindow& w) { w.newFolder(); }},
-      {"edit.find", "Find", "Edit", chord(XKB_KEY_f, KeyMod::Ctrl), [](const FilesWindow&) { return true; },
+      {"edit.find", i18n::tr("files.commands.edit-find"), "Edit", chord(XKB_KEY_f, KeyMod::Ctrl), [](const FilesWindow&) { return true; },
        [](FilesWindow& w) { w.focusSearch(); }},
-      {"go.connect", "Connect to Server…", "Go", chord(XKB_KEY_k, KeyMod::Ctrl), [](const FilesWindow&) { return true; },
+      {"go.connect", i18n::tr("files.commands.go-connect"), "Go", chord(XKB_KEY_k, KeyMod::Ctrl), [](const FilesWindow&) { return true; },
        [](FilesWindow& w) { w.openConnect(""); }},
-      {"go.path", "Go to Folder…", "Go", chord(XKB_KEY_l, KeyMod::Ctrl), always, [](FilesWindow& w) { w.openPathField(""); }},
-      {"file.info", "Get Info", "File", chord(XKB_KEY_i, KeyMod::Ctrl), [](const FilesWindow& w) { return !w.inTrash() && w.hasSelection(); },
+      {"go.path", i18n::tr("files.commands.go-path"), "Go", chord(XKB_KEY_l, KeyMod::Ctrl), always, [](FilesWindow& w) { w.openPathField(""); }},
+      {"file.info", i18n::tr("files.commands.file-info"), "File", chord(XKB_KEY_i, KeyMod::Ctrl), [](const FilesWindow& w) { return !w.inTrash() && w.hasSelection(); },
        [](FilesWindow& w) { w.getInfo(); }},
-      {"trash.empty", "Empty Trash…", "File", chord(XKB_KEY_Delete, KeyMod::Ctrl | KeyMod::Shift),
+      {"trash.empty", i18n::tr("files.commands.trash-empty"), "File", chord(XKB_KEY_Delete, KeyMod::Ctrl | KeyMod::Shift),
        [](const FilesWindow& w) { return w.trashHasItems(); }, [](FilesWindow& w) { w.askEmptyTrash(); }},
-      {"file.tags", "Edit Tags…", "File", std::nullopt, [](const FilesWindow& w) { return !w.isPicker(); },
+      {"file.tags", i18n::tr("files.commands.file-tags"), "File", std::nullopt, [](const FilesWindow& w) { return !w.isPicker(); },
        [](FilesWindow& w) { w.openTagManager(); }},
-      {"file.make-link", "Make Link", "File", std::nullopt, [](const FilesWindow& w) { return w.inFolder() && w.hasSelection(); },
+      {"file.make-link", i18n::tr("files.commands.file-make-link"), "File", std::nullopt, [](const FilesWindow& w) { return w.inFolder() && w.hasSelection(); },
        [](FilesWindow& w) { w.makeLink(); }},
-      {"file.compress", "Compress…", "File", std::nullopt, [](const FilesWindow& w) { return !w.inTrash() && w.hasSelection(); },
+      {"file.compress", i18n::tr("files.commands.file-compress"), "File", std::nullopt, [](const FilesWindow& w) { return !w.inTrash() && w.hasSelection(); },
        [](FilesWindow& w) { w.compressSelection(); }},
-      {"file.extract-here", "Extract Here", "File", std::nullopt, [](const FilesWindow& w) { return w.canExtract(); },
+      {"file.extract-here", i18n::tr("files.commands.file-extract-here"), "File", std::nullopt, [](const FilesWindow& w) { return w.canExtract(); },
        [](FilesWindow& w) { w.extractSelection(true); }},
-      {"file.extract-to", "Extract To…", "File", std::nullopt, [](const FilesWindow& w) { return w.canExtract(); },
+      {"file.extract-to", i18n::tr("files.commands.file-extract-to"), "File", std::nullopt, [](const FilesWindow& w) { return w.canExtract(); },
        [](FilesWindow& w) { w.extractSelection(false); }},
-      {"file.rename", "Rename", "File", chord(XKB_KEY_F2, 0),
+      {"file.rename", i18n::tr("files.commands.file-rename"), "File", chord(XKB_KEY_F2, 0),
        [](const FilesWindow& w) { return !w.inTrash() && w.hasSelection(); }, [](FilesWindow& w) { w.renameSelection(); }},
-      {"edit.copy", "Copy", "Edit", chord(XKB_KEY_c, KeyMod::Ctrl), selection, [](FilesWindow& w) { w.copySelection(false); }},
-      {"edit.cut", "Cut", "Edit", chord(XKB_KEY_x, KeyMod::Ctrl), [](const FilesWindow& w) { return w.hasSelection() && !w.inAdmin(); },
+      {"edit.copy", i18n::tr("desk.edit.copy"), "Edit", chord(XKB_KEY_c, KeyMod::Ctrl), selection, [](FilesWindow& w) { w.copySelection(false); }},
+      {"edit.cut", i18n::tr("desk.edit.cut"), "Edit", chord(XKB_KEY_x, KeyMod::Ctrl), [](const FilesWindow& w) { return w.hasSelection() && !w.inAdmin(); },
        [](FilesWindow& w) { w.copySelection(true); }},
-      {"edit.paste", "Paste", "Edit", chord(XKB_KEY_v, KeyMod::Ctrl), [](const FilesWindow& w) { return w.canAddHere(); },
+      {"edit.paste", i18n::tr("desk.edit.paste"), "Edit", chord(XKB_KEY_v, KeyMod::Ctrl), [](const FilesWindow& w) { return w.canAddHere(); },
        [](FilesWindow& w) { w.paste(); }},
-      {"edit.trash", "Move to Trash", "Edit", chord(XKB_KEY_Delete, 0),
+      {"edit.trash", i18n::tr("files.commands.edit-trash"), "Edit", chord(XKB_KEY_Delete, 0),
        [](const FilesWindow& w) { return !w.inTrash() && w.hasSelection(); }, [](FilesWindow& w) { w.trashSelection(); }},
-      {"edit.delete", "Delete Immediately…", "Edit", chord(XKB_KEY_Delete, KeyMod::Shift),
+      {"edit.delete", i18n::tr("files.commands.edit-delete"), "Edit", chord(XKB_KEY_Delete, KeyMod::Shift),
        [](const FilesWindow& w) { return !w.inTrash() && w.hasSelection(); }, [](FilesWindow& w) { w.askDeleteSelection(); }},
-      {"edit.undo", "Undo", "Edit", chord(XKB_KEY_z, KeyMod::Ctrl), [](const FilesWindow& w) { return w.canUndo(); },
+      {"edit.undo", i18n::tr("files.commands.edit-undo"), "Edit", chord(XKB_KEY_z, KeyMod::Ctrl), [](const FilesWindow& w) { return w.canUndo(); },
        [](FilesWindow& w) { w.undo(); }},
-      {"edit.redo", "Redo", "Edit", chord(XKB_KEY_Z, KeyMod::Ctrl | KeyMod::Shift),
+      {"edit.redo", i18n::tr("files.commands.edit-redo"), "Edit", chord(XKB_KEY_Z, KeyMod::Ctrl | KeyMod::Shift),
        [](const FilesWindow& w) { return w.canRedo(); }, [](FilesWindow& w) { w.redo(); }, chord(XKB_KEY_y, KeyMod::Ctrl)},
-      {"edit.select-all", "Select All", "Edit", chord(XKB_KEY_a, KeyMod::Ctrl), always, [](FilesWindow& w) { w.selectAll(); }},
-      {"edit.invert-selection", "Invert Selection", "Edit", chord(XKB_KEY_I, KeyMod::Ctrl | KeyMod::Shift), always,
+      {"edit.select-all", i18n::tr("desk.edit.select-all"), "Edit", chord(XKB_KEY_a, KeyMod::Ctrl), always, [](FilesWindow& w) { w.selectAll(); }},
+      {"edit.invert-selection", i18n::tr("files.commands.edit-invert-selection"), "Edit", chord(XKB_KEY_I, KeyMod::Ctrl | KeyMod::Shift), always,
        [](FilesWindow& w) { w.invertSelection(); }},
-      {"view.hidden", "Show Hidden Files", "View", chord(XKB_KEY_h, KeyMod::Ctrl), always,
+      {"view.hidden", i18n::tr("files.commands.view-hidden"), "View", chord(XKB_KEY_h, KeyMod::Ctrl), always,
        [](FilesWindow& w) { w.toggleHidden(); }},
-      {"edit.copy-other-pane", "Copy to Other Pane", "Edit", chord(XKB_KEY_F5, 0),
+      {"edit.copy-other-pane", i18n::tr("files.commands.edit-copy-other-pane"), "Edit", chord(XKB_KEY_F5, 0),
        [](const FilesWindow& w) { return w.canCompare() && w.hasSelection(); },
        [](FilesWindow& w) { w.sendToOtherPane(false); }},
-      {"edit.move-other-pane", "Move to Other Pane", "Edit", chord(XKB_KEY_F6, 0),
+      {"edit.move-other-pane", i18n::tr("files.commands.edit-move-other-pane"), "Edit", chord(XKB_KEY_F6, 0),
        [](const FilesWindow& w) { return w.canCompare() && w.hasSelection(); },
        [](FilesWindow& w) { w.sendToOtherPane(true); }},
       // F5 reloads only while Copy to Other Pane is off: the first enabled match wins.
-      {"view.reload", "Reload", "View", chord(XKB_KEY_r, KeyMod::Ctrl), always, [](FilesWindow& w) { w.reload(); },
+      {"view.reload", i18n::tr("files.commands.view-reload"), "View", chord(XKB_KEY_r, KeyMod::Ctrl), always, [](FilesWindow& w) { w.reload(); },
        chord(XKB_KEY_F5, 0)},
-      {"view.extensions", "Show File Extensions", "View", std::nullopt, always,
+      {"view.extensions", i18n::tr("files.commands.view-extensions"), "View", std::nullopt, always,
        [](FilesWindow& w) { w.browser().setShowExtensions(!w.browser().showExtensions()); }},
-      {"view.group-none", "Don’t Group", "View", std::nullopt, always,
+      {"view.group-none", i18n::tr("files.commands.view-group-none"), "View", std::nullopt, always,
        [](FilesWindow& w) { w.groupBy(FileGroupBy::None); }},
-      {"view.group-kind", "Group by Kind", "View", std::nullopt, always,
+      {"view.group-kind", i18n::tr("files.commands.view-group-kind"), "View", std::nullopt, always,
        [](FilesWindow& w) { w.groupBy(FileGroupBy::Kind); }},
-      {"view.group-date", "Group by Date", "View", std::nullopt, always,
+      {"view.group-date", i18n::tr("files.commands.view-group-date"), "View", std::nullopt, always,
        [](FilesWindow& w) { w.groupBy(FileGroupBy::Date); }},
-      {"view.group-size", "Group by Size", "View", std::nullopt, always,
+      {"view.group-size", i18n::tr("files.commands.view-group-size"), "View", std::nullopt, always,
        [](FilesWindow& w) { w.groupBy(FileGroupBy::Size); }},
-      {"view.group-tags", "Group by Tags", "View", std::nullopt, always,
+      {"view.group-tags", i18n::tr("files.commands.view-group-tags"), "View", std::nullopt, always,
        [](FilesWindow& w) { w.groupBy(FileGroupBy::Tags); }},
-      {"view.options", "View Options…", "View", chord(XKB_KEY_j, KeyMod::Ctrl),
+      {"view.options", i18n::tr("files.commands.view-options"), "View", chord(XKB_KEY_j, KeyMod::Ctrl),
        [](const FilesWindow& w) { return !w.isPicker(); }, [](FilesWindow& w) { w.openViewOptions(); }},
-      {"view.zoom-in", "Bigger Icons", "View", chord(XKB_KEY_plus, KeyMod::Ctrl), always,
+      {"view.zoom-in", i18n::tr("files.commands.view-zoom-in"), "View", chord(XKB_KEY_plus, KeyMod::Ctrl), always,
        [](FilesWindow& w) { w.stepIconSize(1); }, chord(XKB_KEY_equal, KeyMod::Ctrl)},
-      {"view.zoom-out", "Smaller Icons", "View", chord(XKB_KEY_minus, KeyMod::Ctrl), always,
+      {"view.zoom-out", i18n::tr("files.commands.view-zoom-out"), "View", chord(XKB_KEY_minus, KeyMod::Ctrl), always,
        [](FilesWindow& w) { w.stepIconSize(-1); }},
-      {"view.zoom-reset", "Default Icon Size", "View", chord(XKB_KEY_0, KeyMod::Ctrl), always,
+      {"view.zoom-reset", i18n::tr("files.commands.view-zoom-reset"), "View", chord(XKB_KEY_0, KeyMod::Ctrl), always,
        [](FilesWindow& w) { w.stepIconSize(0); }},
-      {"view.details", "Show Details", "View", chord(XKB_KEY_p, KeyMod::Alt), [](const FilesWindow& w) { return !w.isPicker(); },
+      {"view.details", i18n::tr("files.commands.view-details"), "View", chord(XKB_KEY_p, KeyMod::Alt), [](const FilesWindow& w) { return !w.isPicker(); },
        [](FilesWindow& w) { w.toggleDetails(); }},
       // Ctrl+(Shift+)Tab lives in FileBrowser::onKey (pickers have no commands); these entries put the tabs in the More menu.
-      {"file.new-tab", "New Tab", "File", chord(XKB_KEY_t, KeyMod::Ctrl), [](const FilesWindow& w) { return !w.isPicker(); },
+      {"file.new-tab", i18n::tr("files.commands.file-new-tab"), "File", chord(XKB_KEY_t, KeyMod::Ctrl), [](const FilesWindow& w) { return !w.isPicker(); },
        [](FilesWindow& w) { w.newTab(); }},
-      {"view.next-tab", "Show Next Tab", "View", std::nullopt, [](const FilesWindow& w) { return w.tabCount() > 1; },
+      {"view.next-tab", i18n::tr("files.commands.view-next-tab"), "View", std::nullopt, [](const FilesWindow& w) { return w.tabCount() > 1; },
        [](FilesWindow& w) { w.stepTab(1); }},
-      {"view.previous-tab", "Show Previous Tab", "View", std::nullopt,
+      {"view.previous-tab", i18n::tr("files.commands.view-previous-tab"), "View", std::nullopt,
        [](const FilesWindow& w) { return w.tabCount() > 1; }, [](FilesWindow& w) { w.stepTab(-1); }},
-      {"picker.accept", "Choose", "Picker", std::nullopt, [](const FilesWindow& w) { return w.isPicker(); },
+      {"picker.accept", i18n::tr("files.commands.picker-accept"), "Picker", std::nullopt, [](const FilesWindow& w) { return w.isPicker(); },
        [](FilesWindow& w) { w.pickerAccept(); }},
-      {"picker.cancel", "Cancel", "Picker", chord(XKB_KEY_Escape, 0), [](const FilesWindow& w) { return w.isPicker(); },
+      {"picker.cancel", i18n::tr("common.actions.cancel"), "Picker", chord(XKB_KEY_Escape, 0), [](const FilesWindow& w) { return w.isPicker(); },
        [](FilesWindow& w) { w.pickerCancel(); }},
-      {"conflict.replace", "Replace", "Conflict", std::nullopt, conflict,
+      {"conflict.replace", i18n::tr("files.commands.conflict-replace"), "Conflict", std::nullopt, conflict,
        [](FilesWindow& w) { w.resolveConflict(FileOpsClient::Resolution::Replace); }},
-      {"conflict.skip", "Skip", "Conflict", std::nullopt, conflict,
+      {"conflict.skip", i18n::tr("files.commands.conflict-skip"), "Conflict", std::nullopt, conflict,
        [](FilesWindow& w) { w.resolveConflict(FileOpsClient::Resolution::Skip); }},
-      {"conflict.keep-both", "Keep Both", "Conflict", std::nullopt, conflict,
+      {"conflict.keep-both", i18n::tr("files.commands.conflict-keep-both"), "Conflict", std::nullopt, conflict,
        [](FilesWindow& w) { w.resolveConflict(FileOpsClient::Resolution::KeepBoth); }},
-      {"conflict.apply-all", "Apply to All", "Conflict", std::nullopt, conflict,
+      {"conflict.apply-all", i18n::tr("files.commands.conflict-apply-all"), "Conflict", std::nullopt, conflict,
        [](FilesWindow& w) { w.toggleApplyToAll(); }},
   };
   for (const Spec& spec : specs) {
@@ -1054,7 +1059,7 @@ void FilesApp::addCommands() {
   // tab left (Finder, Dolphin). Close Window gives up Ctrl+W first: a held shortcut cannot be taken.
   commands().add({
       .id = "window.close",
-      .label = "Close Window",
+      .label = i18n::tr("desk.window.close"),
       .group = "Window",
       .run = [this] {
         if (AppWindow* window = activeWindow()) {
@@ -1064,7 +1069,7 @@ void FilesApp::addCommands() {
   });
   commands().add({
       .id = "window.close-tab",
-      .label = "Close Tab",
+      .label = i18n::tr("files.commands.window-close-tab"),
       .group = "Window",
       .shortcut = KeyChord{.sym = XKB_KEY_w, .modifiers = KeyMod::Ctrl},
       .run = [this] {
@@ -1080,7 +1085,7 @@ void FilesApp::addCommands() {
 
   commands().add({
       .id = "file.new-window",
-      .label = "New Window",
+      .label = i18n::tr("files.commands.file-new-window"),
       .group = "File",
       .shortcut = chord(XKB_KEY_n, KeyMod::Ctrl),
       .enabled = [this] { return !m_picker; },

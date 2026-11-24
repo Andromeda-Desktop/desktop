@@ -1,5 +1,7 @@
 #include "permission_access.h"
 
+#include "i18n/i18n.h"
+
 namespace {
   // Read bit of each class; write is read >> 1, run (x) is read >> 2.
   std::uint32_t readBit(PermClass cls) {
@@ -48,16 +50,16 @@ std::optional<Access> commonAccess(std::span<const std::uint32_t> modes, PermCla
   return out;
 }
 
-const char* accessLabel(Access access) {
+std::string accessLabel(Access access) {
   switch (access) {
   case Access::None:
-    return "No access";
+    return i18n::tr("files.access.none");
   case Access::Read:
-    return "Read only";
+    return i18n::tr("files.access.read");
   case Access::ReadWrite:
-    return "Read and write";
+    return i18n::tr("files.access.read-write");
   case Access::WriteOnly:
-    return "Write only";
+    return i18n::tr("files.access.write");
   }
   return "";
 }

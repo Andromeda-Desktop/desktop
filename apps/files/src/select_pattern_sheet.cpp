@@ -1,5 +1,6 @@
 #include "select_pattern_sheet.h"
 
+#include "i18n/i18n.h"
 #include "util/safe_regex.h"
 
 #include "core/deferred_call.h"
@@ -50,7 +51,7 @@ std::vector<std::string> SelectPatternSheet::match(const std::vector<std::string
     const auto re = SafeRegex::compile(pattern, true);
     if (!re) {
       if (error != nullptr) {
-        *error = "This regular expression is not valid.";
+        *error = i18n::tr("files.pattern.invalid");
       }
       return out;
     }
@@ -58,7 +59,7 @@ std::vector<std::string> SelectPatternSheet::match(const std::vector<std::string
     if (re->exhausted()) {
       out.clear();
       if (error != nullptr) {
-        *error = "This regular expression takes too long. Make it simpler.";
+        *error = i18n::tr("files.pattern.slow");
       }
     }
     return out;
@@ -87,9 +88,8 @@ void SelectPatternSheet::update() {
   if (m_note != nullptr) {
     m_note->setText(!m_error.empty() ? m_error
                     : trimmed(m_pattern).empty()
-                        ? std::string("Type a pattern.")
-                        : std::format("Matches {} of {} {}.", m_matches.size(), m_names.size(),
-                                      m_names.size() == 1 ? "item" : "items"));
+                        ? i18n::tr("files.pattern.type")
+                        : i18n::trp("files.pattern.matches", static_cast<long>(m_names.size()), "matches", m_matches.size()));
     m_note->setColor(colorSpecFromRole(m_error.empty() ? ColorRole::Label2 : ColorRole::DangerText));
   }
   const bool any = !m_matches.empty();
@@ -132,7 +132,7 @@ std::unique_ptr<Node> SelectPatternSheet::build(float scale) {
   auto sheet = ui::column({.align = FlexAlign::Stretch, .width = kWidth * s});
   auto header = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::componentDialogPadding * s,
                          .height = Tokens::componentDialogHeader * s});
-  header->addChild(ui::label({.text = std::string("Select by Pattern"), .fontSize = Tokens::typeTitle3.size * s,
+  header->addChild(ui::label({.text = i18n::tr("files.pattern.title"), .fontSize = Tokens::typeTitle3.size * s,
                               .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
   sheet->addChild(std::move(header));
 
@@ -150,7 +150,7 @@ std::unique_ptr<Node> SelectPatternSheet::build(float scale) {
                                 m_focus(input);
                               }
                             }}));
-  body->addChild(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = "Wildcard"}, {.label = "Regex"}},
+  body->addChild(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = i18n::tr("files.pattern.wildcard")}, {.label = i18n::tr("files.pattern.regex")}},
                                 .selectedIndex = static_cast<std::size_t>(m_mode), .scale = s,
                                 .equalSegmentWidths = true,
                                 .onChange = [this](std::size_t i) { setMode(static_cast<Mode>(i)); }}));
@@ -159,12 +159,12 @@ std::unique_ptr<Node> SelectPatternSheet::build(float scale) {
   sheet->addChild(std::move(body));
 
   auto footer = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .padding = Tokens::componentDialogPadding * s});
-  footer->addChild(ui::button({.out = &m_deselect, .text = std::string("Deselect"), .variant = ButtonVariant::Default,
+  footer->addChild(ui::button({.out = &m_deselect, .text = i18n::tr("files.pattern.deselect"), .variant = ButtonVariant::Default,
                                .onClick = [this] { DeferredCall::callLater([this] { apply(false); }); }}));
   footer->addChild(ui::spacer());
-  footer->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default,
+  footer->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .variant = ButtonVariant::Default,
                                .onClick = [this] { DeferredCall::callLater([close = m_close] { close(); }); }}));
-  footer->addChild(ui::button({.out = &m_select, .text = std::string("Select"), .variant = ButtonVariant::Primary,
+  footer->addChild(ui::button({.out = &m_select, .text = i18n::tr("files.pattern.select"), .variant = ButtonVariant::Primary,
                                .onClick = [this] { DeferredCall::callLater([this] { apply(true); }); }}));
   sheet->addChild(std::move(footer));
   update();

@@ -1,5 +1,6 @@
 #include "files_window.h"
 #include "core/blocking_pool.h"
+#include "i18n/i18n.h"
 #include "server_url.h"
 #include "app_chooser_sheet.h"
 #include "conflict_sheet.h"
@@ -235,7 +236,7 @@ namespace {
       // The EXIF wall time comes back as UTC (exif_date.h): show it as written, no zone shift.
       const auto minute = std::chrono::floor<std::chrono::minutes>(*exif.taken);
       const std::chrono::year_month_day day{std::chrono::floor<std::chrono::days>(minute)};
-      info.rows.emplace_back("Taken", std::format("{} {:%b %Y, %H:%M}", static_cast<unsigned>(day.day()), minute));
+      info.rows.emplace_back(i18n::tr("files.info.taken"), std::format("{} {:%b %Y, %H:%M}", static_cast<unsigned>(day.day()), minute));
     }
     // Browsers record where a download came from (freedesktop user.xdg.origin.url).
     std::array<char, 2048> origin{};
@@ -245,7 +246,7 @@ namespace {
       const auto scheme = url.find("://");
       const auto host = scheme == std::string::npos ? std::string() : url.substr(scheme + 3, url.find('/', scheme + 3) - scheme - 3);
       if (!host.empty()) {
-        info.rows.emplace_back("From", host);
+        info.rows.emplace_back(i18n::tr("files.info.from"), host);
       }
     }
     fs::path folder = path.parent_path();
@@ -257,13 +258,13 @@ namespace {
     } else {
       where = folder.string();
     }
-    info.rows.emplace_back("Folder", where.empty() ? std::string("Home") : where);
+    info.rows.emplace_back(i18n::tr("files.info.folder"), where.empty() ? i18n::tr("files.info.home") : where);
     if (!tags.empty()) {
       std::string joined;
       for (const auto& t : tags) {
         joined += (joined.empty() ? "" : ", ") + t;
       }
-      info.rows.emplace_back("Tags", joined);
+      info.rows.emplace_back(i18n::tr("files.info.tags"), joined);
     }
     return info;
   }
@@ -392,7 +393,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
             if (!g_app_info_launch_default_for_uri(
                     uriFor(path).c_str(), launchContext(m_app.loop().wayland(), m_window.wlSurface()).get(), &error
                 )) {
-              showToast(std::format("Can’t open “{}”", path.filename().string()), false);
+              showToast(i18n::tr("files.window.cant-open", "name", path.filename().string()), false);
               kLog.warn("open {}: {}", path.string(), error != nullptr ? error->message : "?");
               g_clear_error(&error);
             }
@@ -466,7 +467,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
             }
             FileOpsClient* ops = m_app.fileOps();
             if (ops == nullptr) {
-              done("File operations are not available.");
+              done(i18n::tr("files.window.no-file-ops-dot"));
               return;
             }
             ops->rename(path, name, [this, alive = std::weak_ptr<bool>(m_alive), done, path, name](const std::string& job,
@@ -475,7 +476,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
                 return;
               }
               if (job.empty()) {
-                done(error.empty() ? std::string("The name could not be changed.") : error);
+                done(error.empty() ? i18n::tr("files.window.name-not-changed") : error);
                 return;
               }
               m_jobs.insert(job);
@@ -519,7 +520,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
                 .variant = ButtonVariant::Ghost,
                 .customPalette = Button::ButtonPalette{.normal = m_panes[1] != nullptr ? on : off, .hover = on,
                                                        .pressed = pressed, .disabled = off},
-                .tooltip = std::string("Split View (F3)"),
+                .tooltip = i18n::tr("files.window.split-tip"),
                 .radius = Tokens::sizeControlM * s / 2.0F,
                 .width = Tokens::sizeControlM * s,
                 .height = Tokens::sizeControlM * s,
@@ -536,7 +537,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
                   .variant = ButtonVariant::Ghost,
                   .customPalette = Button::ButtonPalette{.normal = m_compareOn ? on : off, .hover = on,
                                                          .pressed = pressed, .disabled = off},
-                  .tooltip = std::string("Compare Folders"),
+                  .tooltip = i18n::tr("files.window.compare-tip"),
                   .radius = Tokens::sizeControlM * s / 2.0F,
                   .width = Tokens::sizeControlM * s,
                   .height = Tokens::sizeControlM * s,
@@ -545,7 +546,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
               if (m_compareOn) {
                 // Mockup §16: "Sync Left → Right" on the side the copy goes to; here it follows the active pane.
                 row.addChild(ui::button({
-                    .text = std::string(m_activePane == 0 ? "Sync Left → Right" : "Sync Right → Left"),
+                    .text = i18n::tr(m_activePane == 0 ? "files.window.sync-lr" : "files.window.sync-rl"),
                     .variant = ButtonVariant::Default,
                     .onClick = [this] { syncCompare(); },
                 }));
@@ -557,7 +558,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
                 .variant = ButtonVariant::Ghost,
                 .customPalette = Button::ButtonPalette{.normal = m_terminalOpen ? on : off, .hover = on,
                                                        .pressed = pressed, .disabled = off},
-                .tooltip = std::string("Terminal (F4)"),
+                .tooltip = i18n::tr("files.window.terminal-tip"),
                 .radius = Tokens::sizeControlM * s / 2.0F,
                 .width = Tokens::sizeControlM * s,
                 .height = Tokens::sizeControlM * s,
@@ -569,7 +570,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
                 .glyphSize = Tokens::sizeSymbol * s,
                 .variant = ButtonVariant::Ghost,
                 .customPalette = Button::ButtonPalette{.normal = rest, .hover = on, .pressed = pressed, .disabled = off},
-                .tooltip = std::string("Details (Alt+P)"),
+                .tooltip = i18n::tr("files.window.details-tip"),
                 .radius = Tokens::sizeControlM * s / 2.0F,
                 .width = Tokens::sizeControlM * s,
                 .height = Tokens::sizeControlM * s,
@@ -763,7 +764,7 @@ std::vector<fs::path> FilesWindow::dragOutOfArchive(const std::vector<fs::path>&
   const fs::path archive = m_archive->archive();
   kLog.debug("drag out {} items from {} via {}", inner.size(), archive.filename().string(), dir.string());
   startJob(
-      "Extracting", inner.size(),
+      "extract", inner.size(),
       [&](FileOpsClient& ops, auto done) { ops.extract(archive, inner, dir, m_archivePassword, done); },
       [this, dir](const std::string& job) {
         m_renameDone[job] = [this, dir](const std::string& error) { finishDragExtract(dir, error.empty()); };
@@ -836,16 +837,16 @@ void FilesWindow::drop(const FileBrowser::DropTarget& target, const std::string&
              target.kind == FileBrowser::DropTarget::Kind::Trash ? std::string("trash") : target.folder.string());
   switch (op) {
   case DropOp::Trash:
-    startJob("Moving to Trash", sources.size(), [&](FileOpsClient& ops, auto done) { ops.trash(sources, done); });
+    startJob("trash", sources.size(), [&](FileOpsClient& ops, auto done) { ops.trash(sources, done); });
     break;
   case DropOp::Move:
-    startJob("Moving", sources.size(), [&](FileOpsClient& ops, auto done) { ops.move(sources, target.folder, done); });
+    startJob("move", sources.size(), [&](FileOpsClient& ops, auto done) { ops.move(sources, target.folder, done); });
     break;
   case DropOp::Copy:
-    startJob("Copying", sources.size(), [&](FileOpsClient& ops, auto done) { ops.copy(sources, target.folder, done); });
+    startJob("copy", sources.size(), [&](FileOpsClient& ops, auto done) { ops.copy(sources, target.folder, done); });
     break;
   case DropOp::Link:
-    startJob("Linking", sources.size(), [&](FileOpsClient& ops, auto done) { ops.link(sources, target.folder, done); });
+    startJob("link", sources.size(), [&](FileOpsClient& ops, auto done) { ops.link(sources, target.folder, done); });
     break;
   }
 }
@@ -923,7 +924,7 @@ void FilesWindow::renameSelection() {
       std::move(sources), std::move(items), std::move(existing),
       [this](std::vector<std::pair<fs::path, std::string>> pairs) {
         const std::size_t count = pairs.size();
-        startJob("Renaming", count, [&](FileOpsClient& ops, auto done) { ops.renameMany(pairs, done); });
+        startJob("rename", count, [&](FileOpsClient& ops, auto done) { ops.renameMany(pairs, done); });
       },
       [this] { m_window.dismissSheet(); },
       [this] { m_window.requestRebuild(); });
@@ -935,7 +936,7 @@ void FilesWindow::renameSelection() {
 void FilesWindow::dropData(const fs::path& folder, const std::string& mime, const std::string& data) {
   // Raw data from another app becomes a new file with a free name, then opens in rename (FILES-UX §2.3).
   const bool image = mime == "image/png";
-  const std::string stem = image ? "Dropped Image" : "Dropped Text";
+  const std::string stem = i18n::tr(image ? "files.drop.image" : "files.drop.text");
   const std::string ext = image ? ".png" : ".txt";
   std::string name = stem + ext;
   std::error_code ec;
@@ -949,7 +950,7 @@ void FilesWindow::dropData(const fs::path& folder, const std::string& mime, cons
     if (out != nullptr) {
       fs::remove(folder / name, ec); // ours (wbx made it): a short write leaves no half file behind
     }
-    showToast(std::format("Can’t save the dropped {}", image ? "image" : "text"), false);
+    showToast(i18n::tr(image ? "files.drop.save-failed-image" : "files.drop.save-failed-text"), false);
     return;
   }
   kLog.debug("dropped data {}", (folder / name).string());
@@ -967,13 +968,13 @@ void FilesWindow::newFolder() {
     return;
   }
   // The name is free now; the daemon picks another one only if something takes it first.
-  std::string name = "New Folder";
+  std::string name = i18n::tr("files.window.new-folder");
   std::error_code ec;
   for (int n = 2; fs::exists(location() / name, ec); ++n) {
-    name = std::format("New Folder {}", n);
+    name = i18n::tr("files.window.new-folder-numbered", "n", n);
   }
   m_browser->renameWhenListed(name);
-  startJob("Creating", 1, [&](FileOpsClient& ops, auto done) { ops.newFolder(location(), name, done); });
+  startJob("create", 1, [&](FileOpsClient& ops, auto done) { ops.newFolder(location(), name, done); });
 }
 
 std::vector<fs::path> FilesWindow::templates() {
@@ -1006,7 +1007,7 @@ void FilesWindow::newFromTemplate(const fs::path& file) {
     name = std::format("{} {}{}", stem, n, ext);
   }
   if (!fs::copy_file(file, location() / name, ec)) {
-    showToast(std::format("Could not create “{}”: {}", name, ec.message()), false);
+    showToast(i18n::tr("files.window.create-failed", "name", name, "error", ec.message()), false);
     return;
   }
   kLog.debug("new from template {}", name);
@@ -1096,7 +1097,7 @@ std::unique_ptr<Node> FilesWindow::buildContent(Renderer& renderer, float width,
         .ellipsize = TextEllipsize::End,
     }));
     if (m_toastUndo) {
-      toast->addChild(ui::button({.text = std::string("Undo"), .variant = ButtonVariant::Default,
+      toast->addChild(ui::button({.text = i18n::tr("files.window.undo"), .variant = ButtonVariant::Default,
                                   .radius = Tokens::sizeControlS * s / 2.0F, .height = Tokens::sizeControlS * s,
                                   .onClick = [this] { undo(); }}));
     }
@@ -1208,29 +1209,29 @@ void FilesWindow::fillCommandBar(Flex& row, float s) {
   };
   const std::size_t clip = m_app.clipboard().paths.size();
   if (commands.isEnabled("edit.paste") && clip > 0) {
-    button("edit.paste", "clipboard", clip == 1 ? std::string("Paste 1 item") : std::format("Paste {} items", clip),
+    button("edit.paste", "clipboard", i18n::trp("files.toolbar.paste", static_cast<long>(clip)),
            ButtonVariant::Primary, false, true);
   }
   if (m_browser->selectionCount() > 0) {
     if (inTrash()) {
-      button("file.restore", "restore", "Put Back", ButtonVariant::Ghost, false, !narrow);
-      button("edit.delete", "trash-x", "Delete Immediately…", ButtonVariant::Ghost, true, !narrow);
+      button("file.restore", "restore", i18n::tr("files.toolbar.put-back"), ButtonVariant::Ghost, false, !narrow);
+      button("edit.delete", "trash-x", i18n::tr("files.toolbar.delete-now"), ButtonVariant::Ghost, true, !narrow);
     } else {
       if (m_browser->selectionCount() == 1) {
-        button("file.rename", "pencil", "Rename", ButtonVariant::Ghost, false, !narrow);
+        button("file.rename", "pencil", i18n::tr("files.toolbar.rename"), ButtonVariant::Ghost, false, !narrow);
       }
-      button("edit.copy", "copy", "Copy", ButtonVariant::Ghost, false, !narrow);
-      button("edit.cut", "scissors", "Cut", ButtonVariant::Ghost, false, !narrow);
+      button("edit.copy", "copy", i18n::tr("desk.edit.copy"), ButtonVariant::Ghost, false, !narrow);
+      button("edit.cut", "scissors", i18n::tr("desk.edit.cut"), ButtonVariant::Ghost, false, !narrow);
       Button* share = nullptr;
       const float h = Tokens::sizeControlM * s;
       row.addChild(ui::button({
           .out = &share,
-          .text = narrow ? std::nullopt : std::optional<std::string>("Share"),
+          .text = narrow ? std::nullopt : std::optional<std::string>(i18n::tr("files.window.share")),
           .glyph = std::string("share"),
           .fontSize = Style::fontSizeCaption * s,
           .glyphSize = Tokens::sizeSymbol * s,
           .variant = ButtonVariant::Ghost,
-          .tooltip = std::string("Share"),
+          .tooltip = i18n::tr("files.window.share"),
           .paddingH = narrow ? std::nullopt : std::optional<float>(Tokens::spaceP8 * s),
           .radius = Style::scaledRadius(Tokens::radiusR8, s),
           .width = narrow ? std::optional<float>(h) : std::nullopt,
@@ -1242,12 +1243,12 @@ void FilesWindow::fillCommandBar(Flex& row, float s) {
         Node::mapToScene(share, 0.0F, 0.0F, x, y); // the menu opens over the bar, above the button
         showShareMenu(x, y);
       });
-      button("edit.trash", "trash", adminHere() != nullptr ? "Delete…" : "Move to Trash", ButtonVariant::Ghost, true, !narrow);
+      button("edit.trash", "trash", i18n::tr(adminHere() != nullptr ? "files.toolbar.delete-admin" : "files.toolbar.trash"), ButtonVariant::Ghost, true, !narrow);
     }
   }
   row.addChild(ui::box({.width = Tokens::spaceP8 * s, .height = Tokens::spaceP8 * s}));
-  button("edit.undo", "arrow-back-up", "Undo (Ctrl+Z)", ButtonVariant::Ghost, false, false);
-  button("edit.redo", "arrow-forward-up", "Redo (Ctrl+Shift+Z)", ButtonVariant::Ghost, false, false);
+  button("edit.undo", "arrow-back-up", i18n::tr("files.toolbar.undo"), ButtonVariant::Ghost, false, false);
+  button("edit.redo", "arrow-forward-up", i18n::tr("files.toolbar.redo"), ButtonVariant::Ghost, false, false);
 }
 
 void FilesWindow::onBrowserChanged() {
@@ -1525,9 +1526,9 @@ void FilesWindow::refreshSplitStatus() {
     return;
   }
   FileBrowser& other = *m_panes[m_activePane == 0 ? 1 : 0];
-  std::string suffix = std::format("{} pane: {}", m_activePane == 0 ? "Right" : "Left", other.title());
+  std::string suffix = i18n::tr(m_activePane == 0 ? "files.pane.right" : "files.pane.left", "title", other.title());
   if (const auto free = other.freeSpace()) {
-    suffix += std::format(" · {} free", formatFileSize(*free));
+    suffix = i18n::tr("files.pane.free", "status", suffix, "size", formatFileSize(*free));
   }
   m_browser->setStatusSuffix(std::move(suffix));
   m_panes[m_activePane == 0 ? 1 : 0]->setStatusSuffix({});
@@ -1627,15 +1628,15 @@ void FilesWindow::loadTrash(std::function<void()> then) {
       }
       m_trash = std::move(items);
       if (!m_picker.has_value()) {
-        FileBrowser::Listing listing{.id = "trash", .title = "Trash", .rows = std::move(rows), .activatable = false};
+        FileBrowser::Listing listing{.id = "trash", .title = i18n::tr("files.listing.trash"), .rows = std::move(rows), .activatable = false};
         // The Trash bar (Finder): what the Trash holds and Empty…, which asks first.
         listing.banner = [this](float s) {
           auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s,
                               .height = Tokens::sizeRowCompact * s + Tokens::spaceP8 * s});
-          bar->addChild(ui::label({.text = m_trash.empty() ? std::string("The Trash is empty") : std::format("{} in the Trash", noun(m_trash.size())),
+          bar->addChild(ui::label({.text = m_trash.empty() ? i18n::tr("files.trash.empty-banner") : i18n::tr("files.trash.count", "items", noun(m_trash.size())),
                                    .fontSize = Style::fontSizeCaption * s, .color = colorSpecFromRole(ColorRole::Label2),
                                    .maxLines = 1, .ellipsize = TextEllipsize::End, .flexGrow = 1.0F}));
-          bar->addChild(ui::button({.text = std::string("Empty…"), .enabled = !m_trash.empty(),
+          bar->addChild(ui::button({.text = i18n::tr("files.trash.empty-button"), .enabled = !m_trash.empty(),
                                     .variant = ButtonVariant::Default, .onClick = [this] { askEmptyTrash(); }}));
           return bar;
         };
@@ -1657,13 +1658,13 @@ void FilesWindow::buildPlaces() {
   if (m_picker.has_value()) {
     return;
   }
-  std::vector<FileBrowser::Place> places{{.label = "Recents", .glyph = "clock", .path = {}, .caption = {},
+  std::vector<FileBrowser::Place> places{{.label = i18n::tr("files.listing.recents"), .glyph = "clock", .path = {}, .caption = {},
                                           .onClick = [this] { goRecents(); }, .id = "recents", .art = "recents",
                                           .group = FileBrowser::Place::Group::Favourites},
-                                         {.label = "Starred", .glyph = "star", .path = {}, .caption = {},
+                                         {.label = i18n::tr("files.listing.starred"), .glyph = "star", .path = {}, .caption = {},
                                           .onClick = [this] { goStarred(); }, .id = "starred", .art = "starred",
                                           .group = FileBrowser::Place::Group::Favourites},
-                                         {.label = "This PC", .glyph = "device-desktop", .path = {}, .caption = {},
+                                         {.label = i18n::tr("files.listing.this-pc"), .glyph = "device-desktop", .path = {}, .caption = {},
                                           .onClick = [this] { goThisPc(); }, .id = "this-pc", .art = "computer"}};
   // Folders the user added to the sidebar (Add to Sidebar), after Recents and Starred; gone ones stay hidden.
   for (const fs::path& pin : m_app.pins().paths()) {
@@ -1710,7 +1711,7 @@ void FilesWindow::buildPlaces() {
                           : d.encrypted                    ? "lock"
                                                            : "usb";
       places.push_back({.label = d.name, .glyph = glyph, .path = d.mounted ? d.root : fs::path(),
-                        .caption = d.encrypted ? std::string("Locked") : std::string(),
+                        .caption = d.encrypted ? i18n::tr("files.drive.locked") : std::string(),
                         .onClick = d.mounted ? std::function<void()>() : [this, id = d.id] { mountDrive(id); },
                         .id = "drive:" + d.id,
                         .art = d.kind == Drives::Kind::Usb ? "usb" : d.kind == Drives::Kind::Drive ? "drive" : "",
@@ -1722,7 +1723,7 @@ void FilesWindow::buildPlaces() {
     for (const LinkShare::Device& d : link->devices()) {
       kLog.debug("sidebar phone:{} {}", d.id, d.connected ? std::to_string(d.battery) : std::string("away"));
       places.push_back({.label = d.name, .glyph = "device-mobile",
-                        .caption = !d.connected ? std::string("away")
+                        .caption = !d.connected ? i18n::tr("files.phone.away")
                                    : d.battery >= 0 ? std::format("{} %", d.battery)
                                                     : std::string(),
                         .onClick = [this, id = d.id] { showPhone(id); }, .id = "phone:" + d.id, .art = "phone",
@@ -1730,7 +1731,7 @@ void FilesWindow::buildPlaces() {
     }
   }
   // Network closes the Locations group, after the drives (mockup §1).
-  places.push_back({.label = "Network", .glyph = "network", .onClick = [this] { goNetwork(); }, .id = "network",
+  places.push_back({.label = i18n::tr("files.listing.network"), .glyph = "network", .onClick = [this] { goNetwork(); }, .id = "network",
                     .art = "network"});
   std::string smartNames;
   for (const SmartFolder& smart : smart_folders::load()) {
@@ -1746,7 +1747,7 @@ void FilesWindow::buildPlaces() {
                       .id = "tag:" + tag.name, .group = FileBrowser::Place::Group::Tags, .dot = rgbHex(tag.rgb)});
   }
   kLog.debug("sidebar tags [{}]", tagNames);
-  places.push_back({.label = "Trash", .glyph = !m_trash.empty() ? "trash-x" : "trash", .path = {},
+  places.push_back({.label = i18n::tr("files.listing.trash"), .glyph = !m_trash.empty() ? "trash-x" : "trash", .path = {},
                     .caption = !m_trash.empty() ? std::to_string(m_trash.size()) : std::string(), .onClick = [this] { goTrash(); },
                     .id = "trash", .dropTrash = true, .art = "trash", .group = FileBrowser::Place::Group::Last});
   if (m_panes[1] != nullptr) {
@@ -1831,7 +1832,7 @@ void FilesWindow::runTagOps() {
       return;
     }
     startJob(
-        op.mode == "rename" ? "Renaming the tag on" : "Removing the tag from", paths.size(),
+        op.mode == "rename" ? "tag-rename" : "tag-remove", paths.size(),
         [&](FileOpsClient& ops, auto done) {
           ops.setTags(paths, op.tags, op.mode, [done, next](const std::string& job, const std::string& error) {
             if (job.empty()) {
@@ -1873,7 +1874,7 @@ void FilesWindow::eject(const fs::path& mount) {
                              : g_mount_unmount_with_operation_finish(G_MOUNT(source), result, &error) != 0;
     std::string message;
     if (!ok) {
-      message = error != nullptr ? error->message : "unknown error";
+      message = error != nullptr ? error->message : i18n::tr("files.drive.unknown-error");
       kLog.warn("eject {}: {}", c->mount.string(), message);
       g_clear_error(&error);
     }
@@ -1889,7 +1890,7 @@ void FilesWindow::eject(const fs::path& mount) {
 
 void FilesWindow::unmounted(const fs::path& mount, const std::string& error) {
   if (!error.empty()) {
-    showToast(std::format("“{}” can’t be ejected: {}", mount.filename().string(), error), false);
+    showToast(i18n::tr("files.drive.cant-eject", "name", mount.filename().string(), "error", error), false);
     return;
   }
   // Every pane on the drive leaves it, not only the active one.
@@ -1909,7 +1910,7 @@ void FilesWindow::goTrash() {
   if (!inTrash()) {
     // The last read shows at once; the read below replaces it while the Trash still shows.
     m_browser->showListing(m_trashListing.id.empty()
-                               ? FileBrowser::Listing{.id = "trash", .title = "Trash", .rows = {}, .activatable = false}
+                               ? FileBrowser::Listing{.id = "trash", .title = i18n::tr("files.listing.trash"), .rows = {}, .activatable = false}
                                : std::move(m_trashListing));
   }
   loadTrash();
@@ -1917,7 +1918,7 @@ void FilesWindow::goTrash() {
 
 void FilesWindow::goRecents() {
   // The shared GTK/Qt recent-files list; entries that no longer exist drop out.
-  FileBrowser::Listing listing{.id = "recents", .title = "Recents", .rows = {}, .activatable = true};
+  FileBrowser::Listing listing{.id = "recents", .title = i18n::tr("files.listing.recents"), .rows = {}, .activatable = true};
   GBookmarkFile* bookmarks = g_bookmark_file_new();
   const std::string file = (fs::path(g_get_user_data_dir()) / "recently-used.xbel").string();
   if (g_bookmark_file_load_from_file(bookmarks, file.c_str(), nullptr)) {
@@ -1989,7 +1990,7 @@ void FilesWindow::goRecents() {
 
 void FilesWindow::goStarred() {
   // Starred items that are gone (or on a drive that is not mounted) do not show; they stay in the list.
-  FileBrowser::Listing listing{.id = "starred", .title = "Starred", .rows = {}, .activatable = true};
+  FileBrowser::Listing listing{.id = "starred", .title = i18n::tr("files.listing.starred"), .rows = {}, .activatable = true};
   for (const fs::path& path : m_app.starred().paths()) {
     if (auto info = statFile(path); info.has_value()) {
       info->setNameKeepLabel(path.string()); // absolute: the row opens as a path
@@ -2010,8 +2011,8 @@ void FilesWindow::toggleStar() {
     return;
   }
   const bool starred = m_app.starred().toggle(paths);
-  showToast(paths.size() == 1 ? std::format("{} “{}”", starred ? "Starred" : "Unstarred", paths.front().filename().string())
-                              : std::format("{} {} items", starred ? "Starred" : "Unstarred", paths.size()),
+  showToast(paths.size() == 1 ? i18n::tr(starred ? "files.star.one-starred" : "files.star.one-unstarred", "name", paths.front().filename().string())
+                              : i18n::tr(starred ? "files.star.many-starred" : "files.star.many-unstarred", "count", paths.size()),
             false);
   if (m_browser->listingId() == "starred") {
     goStarred();
@@ -2057,9 +2058,9 @@ void FilesWindow::showItemMenu(std::size_t index, float sceneX, float sceneY) {
   }
   if (m_picker.has_value()) {
     // A picker only chooses: its menu copies the path or opens a terminal, and changes no file.
-    std::vector<ContextMenuControlEntry> entries{{.id = 1, .label = "Copy Path", .glyph = "copy"}};
+    std::vector<ContextMenuControlEntry> entries{{.id = 1, .label = i18n::tr("files.menu.copy-path"), .glyph = "copy"}};
     if (paths.size() == 1 && isDir(paths.front())) {
-      entries.push_back({.id = 2, .label = "Open Terminal Here", .glyph = "terminal-2"});
+      entries.push_back({.id = 2, .label = i18n::tr("files.menu.open-terminal"), .glyph = "terminal-2"});
     }
     m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, alive = std::weak_ptr<bool>(m_alive)](std::int32_t id) {
       if (!alive.expired() && id > 0) {
@@ -2101,7 +2102,7 @@ void FilesWindow::showItemMenu(std::size_t index, float sceneX, float sceneY) {
     separator();
     add("file.info", {}, "info-circle");
     add("file.rename");
-    add("file.compress", name.empty() ? std::format("Compress {} Items", paths.size()) : std::format("Compress “{}”", name),
+    add("file.compress", name.empty() ? i18n::tr("files.menu.compress-many", "count", paths.size()) : i18n::tr("files.menu.compress-one", "name", name),
         "file-zip");
     add("file.extract-here");
     add("edit.copy", {}, "copy");
@@ -2110,14 +2111,14 @@ void FilesWindow::showItemMenu(std::size_t index, float sceneX, float sceneY) {
     add("file.make-link", {}, "link");
     separator();
     entries.push_back(shareEntry(ids));
-    add("file.star", selectionStarred() ? "Remove from Starred" : "Add to Starred", "star");
-    add("file.pin", selectionPinned() ? "Remove from Sidebar" : "Add to Sidebar");
+    add("file.star", i18n::tr(selectionStarred() ? "files.menu.unstar" : "files.menu.star"), "star");
+    add("file.pin", i18n::tr(selectionPinned() ? "files.menu.unpin" : "files.menu.pin"));
     add("file.open-terminal", {}, "terminal-2");
   add("file.open-admin", {}, "shield-lock");
     // Actions ›: KDE service menus that cover the selection, X-KDE-Submenu groups as their own submenus.
     m_serviceActions = service_menus::forItems(paths);
     if (!m_serviceActions.empty()) {
-      ContextMenuControlEntry actions{.label = "Actions", .hasSubmenu = true};
+      ContextMenuControlEntry actions{.label = i18n::tr("files.menu.actions"), .hasSubmenu = true};
       for (std::size_t i = 0; i < m_serviceActions.size(); ++i) {
         const auto& action = m_serviceActions[i];
         ids.push_back(std::format("service:{}", i));
@@ -2138,7 +2139,7 @@ void FilesWindow::showItemMenu(std::size_t index, float sceneX, float sceneY) {
     // Tags: a click on a dot adds the tag to every selected item, or removes it when all have it.
     const auto defs = loadTagConfig();
     if (!defs.empty() && m_app.fileOps() != nullptr) {
-      ContextMenuControlEntry tags{.label = "Tags"};
+      ContextMenuControlEntry tags{.label = i18n::tr("files.menu.tags")};
       for (std::size_t t = 0; t < defs.size(); ++t) {
         tags.dots.push_back({.id = static_cast<std::int32_t>(kTagEntryBase + t),
                              .color = ColorSpec{.role = std::nullopt, .fixed = rgbHex(defs[t].rgb), .alpha = 1.0F}});
@@ -2146,7 +2147,7 @@ void FilesWindow::showItemMenu(std::size_t index, float sceneX, float sceneY) {
       entries.push_back(std::move(tags));
     }
     separator();
-    add("edit.trash", adminHere() != nullptr ? std::string("Delete…") : std::string(), "trash");
+    add("edit.trash", adminHere() != nullptr ? i18n::tr("files.menu.delete-admin") : std::string(), "trash");
     entries.back().danger = !ids.empty() && ids.back() == "edit.trash";
   }
   m_window.openContextMenu(std::move(entries), sceneX, sceneY,
@@ -2214,7 +2215,7 @@ ContextMenuControlEntry FilesWindow::shareEntry(std::vector<std::string>& ids) {
 ContextMenuControlEntry FilesWindow::openWithEntry(const std::vector<fs::path>& paths, std::vector<std::string>& ids) {
   // Open With ›: the apps for the first item's type, the default first (Finder), then the full chooser.
   constexpr std::size_t kMaxApps = 8;
-  ContextMenuControlEntry entry{.label = "Open With", .hasSubmenu = true};
+  ContextMenuControlEntry entry{.label = i18n::tr("files.menu.open-with"), .hasSubmenu = true};
   const auto info = statFile(paths.front());
   if (info && !info->contentType.empty()) {
     std::string def;
@@ -2240,14 +2241,14 @@ ContextMenuControlEntry FilesWindow::openWithEntry(const std::vector<fs::path>& 
       std::string bare = id.ends_with(".desktop") ? id.substr(0, id.size() - 8) : id;
       ids.push_back("open.app:" + bare);
       entry.children.push_back({.id = static_cast<std::int32_t>(ids.size()), .label = name,
-                                .shortcut = id == def ? std::string("Default") : std::string()});
+                                .shortcut = id == def ? i18n::tr("files.menu.default") : std::string()});
     }
     if (!entry.children.empty()) {
       entry.children.push_back({.separator = true});
     }
   }
   ids.emplace_back("file.open-with");
-  entry.children.push_back({.id = static_cast<std::int32_t>(ids.size()), .label = "Other Application…"});
+  entry.children.push_back({.id = static_cast<std::int32_t>(ids.size()), .label = i18n::tr("files.menu.other-app")});
   return entry;
 }
 
@@ -2269,23 +2270,23 @@ void FilesWindow::showPlaceMenu(const FileBrowser::Place& place, float sceneX, f
   enum Id : std::int32_t { Open = 1, NewWindow, Terminal, CopyPath, Unpin, Eject, EmptyTrash, Info };
   const bool folder = !place.path.empty();
   const bool trash = place.id == "trash";
-  std::vector<ContextMenuControlEntry> entries{{.id = Open, .label = "Open", .glyph = "folder-open"}};
+  std::vector<ContextMenuControlEntry> entries{{.id = Open, .label = i18n::tr("files.menu.open"), .glyph = "folder-open"}};
   if (folder) {
-    entries.push_back({.id = NewWindow, .label = "Open in New Window", .glyph = "app-window"});
-    entries.push_back({.id = Terminal, .label = "Open in Terminal", .glyph = "terminal-2"});
+    entries.push_back({.id = NewWindow, .label = i18n::tr("files.menu.open-new-window"), .glyph = "app-window"});
+    entries.push_back({.id = Terminal, .label = i18n::tr("files.menu.open-in-terminal"), .glyph = "terminal-2"});
     entries.push_back({.separator = true});
-    entries.push_back({.id = CopyPath, .label = "Copy Path", .glyph = "copy"});
+    entries.push_back({.id = CopyPath, .label = i18n::tr("files.menu.copy-path"), .glyph = "copy"});
     if (place.id.starts_with("pin:")) {
-      entries.push_back({.id = Unpin, .label = "Remove from Sidebar", .glyph = "pinned-off"});
+      entries.push_back({.id = Unpin, .label = i18n::tr("files.menu.unpin"), .glyph = "pinned-off"});
     }
     if (place.eject) {
-      entries.push_back({.id = Eject, .label = "Eject", .glyph = "player-eject"});
+      entries.push_back({.id = Eject, .label = i18n::tr("files.menu.eject"), .glyph = "player-eject"});
     }
     entries.push_back({.separator = true});
-    entries.push_back({.id = Info, .label = "Get Info", .glyph = "info-circle"});
+    entries.push_back({.id = Info, .label = i18n::tr("files.menu.get-info"), .glyph = "info-circle"});
   } else if (trash) {
     entries.push_back({.separator = true});
-    entries.push_back({.id = EmptyTrash, .label = "Empty Trash", .enabled = !m_trash.empty(), .glyph = "trash-x"});
+    entries.push_back({.id = EmptyTrash, .label = i18n::tr("files.menu.empty-trash"), .enabled = !m_trash.empty(), .glyph = "trash-x"});
   }
   kLog.debug("menu place {}", place.id.empty() ? place.path.string() : place.id);
   m_window.openContextMenu(std::move(entries), sceneX, sceneY,
@@ -2304,7 +2305,7 @@ void FilesWindow::showPlaceMenu(const FileBrowser::Place& place, float sceneX, f
                              case NewWindow: m_app.openWindow(place.path); break;
                              case Terminal:
                                if (openTerminalIn(place.path).empty()) {
-                                 showToast("No terminal app is installed", false);
+                                 showToast(i18n::tr("files.toast.no-terminal"), false);
                                }
                                break;
                              case CopyPath: copyPaths({place.path}); break;
@@ -2353,9 +2354,9 @@ void FilesWindow::showBackgroundMenu(float sceneX, float sceneY) {
     add("file.new-folder", "folder-plus");
     // New Document ›: the ~/Templates files; none = the submenu says why in one disabled row (the long reason
     // on the row itself would set the menu width).
-    ContextMenuControlEntry doc{.label = "New Document", .hasSubmenu = true, .glyph = "file-plus"};
+    ContextMenuControlEntry doc{.label = i18n::tr("files.menu.new-document"), .hasSubmenu = true, .glyph = "file-plus"};
     if (templateFiles.empty()) {
-      doc.children.push_back({.label = "No templates in ~/Templates", .enabled = false});
+      doc.children.push_back({.label = i18n::tr("files.menu.no-templates"), .enabled = false});
     }
     for (std::size_t i = 0; i < templateFiles.size(); ++i) {
       doc.children.push_back({.id = kTemplateBase + static_cast<std::int32_t>(i),
@@ -2366,18 +2367,18 @@ void FilesWindow::showBackgroundMenu(float sceneX, float sceneY) {
     add("edit.paste", "clipboard");
     entries.push_back({.separator = true});
   }
-  static constexpr std::array kSorts{std::pair{FileSortKey::Name, "Name"}, std::pair{FileSortKey::Modified, "Date Modified"},
-                                     std::pair{FileSortKey::Size, "Size"}, std::pair{FileSortKey::Kind, "Kind"}};
-  ContextMenuControlEntry sort{.label = "Sort By", .hasSubmenu = true};
+  static constexpr std::array kSorts{std::pair{FileSortKey::Name, "files.sort.name"}, std::pair{FileSortKey::Modified, "files.sort.modified"},
+                                     std::pair{FileSortKey::Size, "files.sort.size"}, std::pair{FileSortKey::Kind, "files.sort.kind"}};
+  ContextMenuControlEntry sort{.label = i18n::tr("files.menu.sort-by"), .hasSubmenu = true};
   for (std::size_t i = 0; i < kSorts.size(); ++i) {
-    sort.children.push_back({.id = kSortBase + static_cast<std::int32_t>(i), .label = kSorts[i].second, .radio = true,
+    sort.children.push_back({.id = kSortBase + static_cast<std::int32_t>(i), .label = i18n::tr(kSorts[i].second), .radio = true,
                              .toggleState = m_browser->sortKey() == kSorts[i].first ? 1 : 0});
   }
   entries.push_back(std::move(sort));
-  static constexpr std::array kViews{"Icons", "List", "Columns", "Gallery"};
-  ContextMenuControlEntry view{.label = "View", .hasSubmenu = true};
+  static constexpr std::array kViews{"files.view.icons", "files.view.list", "files.view.columns", "files.view.gallery"};
+  ContextMenuControlEntry view{.label = i18n::tr("desk.menu.view"), .hasSubmenu = true};
   for (std::size_t i = 0; i < kViews.size(); ++i) {
-    view.children.push_back({.id = kViewBase + static_cast<std::int32_t>(i), .label = kViews[i], .radio = true,
+    view.children.push_back({.id = kViewBase + static_cast<std::int32_t>(i), .label = i18n::tr(kViews[i]), .radio = true,
                              .toggleState = static_cast<std::size_t>(m_browser->view()) == i ? 1 : 0});
   }
   entries.push_back(std::move(view));
@@ -2393,7 +2394,7 @@ void FilesWindow::showBackgroundMenu(float sceneX, float sceneY) {
     add("edit.copy-location", "copy");
     add("file.open-terminal", "terminal-2");
     if (!picker) {
-      entries.push_back({.id = kFolderInfo, .label = "Get Info", .glyph = "info-circle"});
+      entries.push_back({.id = kFolderInfo, .label = i18n::tr("files.menu.get-info"), .glyph = "info-circle"});
     }
   }
   m_window.openContextMenu(std::move(entries), sceneX, sceneY,
@@ -2487,7 +2488,7 @@ void FilesWindow::toggleTerminal() {
              });
     if (!m_terminal->running()) {
       m_terminal.reset();
-      showToast("The terminal could not start", false);
+      showToast(i18n::tr("files.toast.terminal-failed"), false);
       return;
     }
   }
@@ -2569,9 +2570,9 @@ void FilesWindow::sendToOtherPane(bool move) {
     return;
   }
   if (move) {
-    startJob("Moving", sources.size(), [&](FileOpsClient& ops, auto done) { ops.move(sources, target, done); });
+    startJob("move", sources.size(), [&](FileOpsClient& ops, auto done) { ops.move(sources, target, done); });
   } else {
-    startJob("Copying", sources.size(), [&](FileOpsClient& ops, auto done) { ops.copy(sources, target, done); });
+    startJob("copy", sources.size(), [&](FileOpsClient& ops, auto done) { ops.copy(sources, target, done); });
   }
 }
 
@@ -2595,7 +2596,7 @@ void FilesWindow::syncCompare() {
   kLog.debug("sync {} items in {} folders {} -> {}", (from == 0 ? m_compare.sendLeft : m_compare.sendRight).size(),
              byFolder.size(), source.string(), destination.string());
   if (byFolder.empty()) {
-    showToast("The folders are already in sync", false);
+    showToast(i18n::tr("files.toast.in-sync"), false);
     return;
   }
   // One job at a time: the window shows one conflict sheet, so a second job's question would wait unseen.
@@ -2620,7 +2621,7 @@ void FilesWindow::runSyncQueue() {
     });
   };
   startJob(
-      "Syncing", sources.size(),
+      "sync", sources.size(),
       [&](FileOpsClient& ops, auto done) {
         ops.copy(sources, into, [this, done, next](const std::string& job, const std::string& error) {
           if (job.empty()) {
@@ -2692,7 +2693,7 @@ void FilesWindow::newSmartFolder(bool fromSearch) {
     if (state->scope == FileBrowser::SearchScope::Folder && m_browser->listingId().empty()) {
       folder.folder = location();
     }
-    folder.name = !folder.text.empty() ? folder.text : "Saved Search";
+    folder.name = !folder.text.empty() ? folder.text : i18n::tr("files.listing.saved-search");
   }
   presentSmartSheet(std::move(folder), {});
 }
@@ -2728,7 +2729,7 @@ void FilesWindow::showPhotos() {
   smart_folders::run(photos, &m_app.index(), m_alive, [this, id](smart_folders::Rows rows) {
     kLog.info("photos: {} images", rows.size());
     if (m_browser->listingId() == id) {
-      m_browser->showListing({.id = id, .title = "Photos", .rows = std::move(rows), .activatable = true});
+      m_browser->showListing({.id = id, .title = i18n::tr("files.listing.photos"), .rows = std::move(rows), .activatable = true});
     }
   });
 }
@@ -2795,7 +2796,7 @@ void FilesWindow::openTerminalHere() {
   const auto paths = selectedPaths();
   const fs::path dir = paths.size() == 1 && isDir(paths.front()) ? paths.front() : location();
   if (openTerminalIn(dir).empty()) {
-    showToast("No terminal app is installed", false);
+    showToast(i18n::tr("files.toast.no-terminal"), false);
   }
 }
 
@@ -2850,7 +2851,7 @@ void FilesWindow::openAdmin(const fs::path& dir) {
 void FilesWindow::openArchive(const fs::path& archive) {
   FileOpsClient* ops = m_app.fileOps();
   if (ops == nullptr) {
-    showToast("File operations are not available", false);
+    showToast(i18n::tr("files.toast.no-file-ops"), false);
     return;
   }
   ops->listArchive(archive, [this, alive = std::weak_ptr<bool>(m_alive), archive](
@@ -2931,7 +2932,7 @@ void FilesWindow::startExtract(const fs::path& archive, ExtractSheet::Request re
     m_archivePassword = request.password;
   }
   startJob(
-      "Extracting", 1,
+      "extract", 1,
       [&](FileOpsClient& ops, auto done) { ops.extract(archive, {}, request.destination, request.password, done); },
       [this, archive, request](const std::string& job) {
         m_extracts[job] = PendingExtract{.archive = archive, .request = request};
@@ -2995,7 +2996,7 @@ void FilesWindow::getInfo(std::vector<fs::path> paths) {
       }
       m_window.dismissSheet();
       // Same name in the folder: the conflict sheet asks Replace or Keep Both.
-      startJob("Restoring", 1, [&](FileOpsClient& ops, auto done) { ops.copy({version}, folder, done); });
+      startJob("restore", 1, [&](FileOpsClient& ops, auto done) { ops.copy({version}, folder, done); });
     });
   });
   m_info->setOpen([this](const fs::path& version) {
@@ -3003,7 +3004,7 @@ void FilesWindow::getInfo(std::vector<fs::path> paths) {
     if (!g_app_info_launch_default_for_uri(
             uriFor(version).c_str(), launchContext(m_app.loop().wayland(), m_window.wlSurface()).get(), &error
         )) {
-      showToast(std::format("Can’t open “{}”", version.filename().string()), false);
+      showToast(i18n::tr("files.window.cant-open", "name", version.filename().string()), false);
       kLog.warn("open {}: {}", version.string(), error != nullptr ? error->message : "?");
       g_clear_error(&error);
     }
@@ -3019,17 +3020,17 @@ void FilesWindow::showStorage() {
           .emptyTrash = [this] { emptyTrash(); },
           .trash =
               [this](std::vector<fs::path> paths) {
-                startJob("Moving to Trash", paths.size(), [&](FileOpsClient& ops, auto done) { ops.trash(paths, done); });
+                startJob("trash", paths.size(), [&](FileOpsClient& ops, auto done) { ops.trash(paths, done); });
               },
           .remove =
               [this](std::vector<fs::path> paths) {
-                startJob("Deleting", paths.size(), [&](FileOpsClient& ops, auto done) { ops.remove(paths, done); });
+                startJob("delete", paths.size(), [&](FileOpsClient& ops, auto done) { ops.remove(paths, done); });
               },
           .open = [this](const fs::path& folder) { m_browser->jump(folder); },
       });
   m_storage = page;
   page->scan();
-  m_browser->showListing({.id = "storage", .title = "Storage", .rows = {}, .activatable = false,
+  m_browser->showListing({.id = "storage", .title = i18n::tr("files.listing.storage"), .rows = {}, .activatable = false,
                           .page = [page](float scale) { return page->build(scale); }});
 }
 
@@ -3048,16 +3049,15 @@ void FilesWindow::presentEmptyTrashSheet() {
       [this, count](float s) {
         auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
                                .width = Tokens::componentFilesNameField * s});
-        box->addChild(ui::label({.text = std::string("Empty the Trash?"), .fontSize = Tokens::typeTitle3.size * s,
+        box->addChild(ui::label({.text = i18n::tr("files.trash.confirm-title"), .fontSize = Tokens::typeTitle3.size * s,
                                  .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
-        box->addChild(ui::label({.text = std::format("{} {} deleted for good. You can’t undo this.", noun(count),
-                                                     count == 1 ? "is" : "are"),
+        box->addChild(ui::label({.text = i18n::trp("files.trash.confirm", static_cast<long>(count)),
                                  .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label2),
                                  .maxLines = 3}));
         auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
-        buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Style::fontSizeBody * s,
+        buttons->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .fontSize = Style::fontSizeBody * s,
                                       .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
-        buttons->addChild(ui::button({.text = std::string("Empty Trash"), .fontSize = Style::fontSizeBody * s,
+        buttons->addChild(ui::button({.text = i18n::tr("files.trash.empty-action"), .fontSize = Style::fontSizeBody * s,
                                       .variant = ButtonVariant::Destructive, .onClick = [this] {
                                         m_window.dismissSheet();
                                         emptyTrash();
@@ -3087,7 +3087,7 @@ void FilesWindow::galleryAction(std::string_view action, float sceneX, float sce
     toggleStar();
   } else if (action == "rotate") {
     if (!rotateJpegClockwise(photo)) {
-      showToast(std::format("“{}” cannot be rotated without loss.", photo.filename().string()), false);
+      showToast(i18n::tr("files.toast.rotate-failed", "name", photo.filename().string()), false);
       return;
     }
     m_app.thumbnails().reload(photo.string());
@@ -3126,7 +3126,7 @@ void FilesWindow::sendToPhone(const std::string& deviceId, std::vector<fs::path>
     return;
   }
   if (paths.empty()) {
-    showToast("Only files can go to a phone, not folders.", false);
+    showToast(i18n::tr("files.toast.phone-folders"), false);
     return;
   }
   std::string name = deviceId;
@@ -3146,8 +3146,8 @@ void FilesWindow::sendToPhone(const std::string& deviceId, std::vector<fs::path>
       return;
     }
     kLog.debug("share result {}", error.empty() ? "sent" : error);
-    showToast(error.empty() ? std::format("Sending {} to {}", noun(count), name)
-                            : std::format("Could not send to {}: {}", name, error),
+    showToast(error.empty() ? i18n::tr("files.toast.sending", "items", noun(count), "name", name)
+                            : i18n::tr("files.toast.send-failed", "name", name, "error", error),
               false);
     if (error.empty() && !transferId.empty()) {
       const std::string key = "link:" + transferId;
@@ -3174,7 +3174,7 @@ void FilesWindow::sendToPhone(const std::string& deviceId, std::vector<fs::path>
                                  updateJobPill();
                                  kLog.debug("share finished {}", status);
                                  const std::string why = LinkShare::outcome(status, name);
-                                 showToast(why.empty() ? std::format("Sent {} to {}", noun(count), name) : why, false);
+                                 showToast(why.empty() ? i18n::tr("files.toast.sent", "items", noun(count), "name", name) : why, false);
                                }});
     }
   });
@@ -3203,7 +3203,7 @@ void FilesWindow::showPhone(const std::string& deviceId) {
             .quickLook = [this](const fs::path& path) { quickLook(path, false); },
             .sendFiles =
                 [this, alive, deviceId] {
-                  m_app.pickFiles("Send Files", "Send", [this, alive, deviceId](std::vector<fs::path> files) {
+                  m_app.pickFiles(i18n::tr("files.picker.send-files"), i18n::tr("files.picker.send"), [this, alive, deviceId](std::vector<fs::path> files) {
                     if (!alive.expired() && !files.empty()) {
                       sendToPhone(deviceId, std::move(files));
                     }
@@ -3213,7 +3213,7 @@ void FilesWindow::showPhone(const std::string& deviceId) {
             .toast = [this](const std::string& text) { showToast(text, false); },
             .chooseFolder =
                 [this, alive](std::function<void(const fs::path&)> chosen) {
-                  m_app.pickFiles("Import To", "Choose", [alive, chosen = std::move(chosen)](std::vector<fs::path> picked) {
+                  m_app.pickFiles(i18n::tr("files.picker.import-to"), i18n::tr("files.picker.choose"), [alive, chosen = std::move(chosen)](std::vector<fs::path> picked) {
                     if (!alive.expired() && !picked.empty()) {
                       chosen(picked.front());
                     }
@@ -3224,7 +3224,7 @@ void FilesWindow::showPhone(const std::string& deviceId) {
   m_phone->load();
   const LinkShare::Device* d = link->device(deviceId);
   kLog.info("phone page {}", deviceId);
-  m_browser->showListing({.id = "phone:" + deviceId, .title = d != nullptr ? d->name : std::string("Phone"), .rows = {},
+  m_browser->showListing({.id = "phone:" + deviceId, .title = d != nullptr ? d->name : i18n::tr("files.listing.phone"), .rows = {},
                           .activatable = false, .page = [page = m_phone](float scale) { return page->build(scale); }});
 }
 
@@ -3236,7 +3236,7 @@ void FilesWindow::showPhoneImport(std::shared_ptr<PhonePage> page) {
     return;
   }
   kLog.info("phone import view {}", m_phone->deviceId());
-  m_browser->showListing({.id = "phone-import:" + m_phone->deviceId(), .title = "Import", .rows = {}, .activatable = false,
+  m_browser->showListing({.id = "phone-import:" + m_phone->deviceId(), .title = i18n::tr("files.listing.import"), .rows = {}, .activatable = false,
                           .page = [page = m_phone](float scale) { return page->buildImport(scale); }});
 }
 
@@ -3347,7 +3347,7 @@ void FilesWindow::mountDrive(const std::string& id) {
               if (live != nullptr) {
                 live->setError(error);
               } else {
-                showToast(std::format("Can’t open the drive: {}", error), false);
+                showToast(i18n::tr("files.drive.cant-open", "error", error), false);
               }
               return;
             }
@@ -3400,7 +3400,7 @@ void FilesWindow::mountDrive(const std::string& id) {
           return;
         }
         if (!error.empty()) {
-          showToast(std::format("Can’t open the drive: {}", error), false);
+          showToast(i18n::tr("files.drive.cant-open", "error", error), false);
           return;
         }
         refreshPlaces();
@@ -3441,14 +3441,14 @@ void FilesWindow::importPhotos() {
 void FilesWindow::importFiles(const fs::path& dcim, std::vector<fs::path> files) {
   kLog.debug("import {} new files from {}", files.size(), dcim.string());
   if (files.empty()) {
-    showToast("All photos on this drive are imported", false);
+    showToast(i18n::tr("files.toast.photos-imported"), false);
     return;
   }
   const fs::path dest = PhotoImport::destination();
   std::error_code ec;
   fs::create_directories(dest, ec);
   startJob(
-      "Importing", files.size(), [&](FileOpsClient& ops, auto done) { ops.copy(files, dest, done); },
+      "import", files.size(), [&](FileOpsClient& ops, auto done) { ops.copy(files, dest, done); },
       [this, files, dest](const std::string& job) {
         m_renameDone[job] = [this, files, dest](const std::string& error) {
           if (!error.empty()) {
@@ -3503,7 +3503,7 @@ void FilesWindow::askFormat() {
   }
   const std::vector<std::string> types = Drives::formats();
   if (types.empty()) {
-    showToast("No formatting tools are installed", false);
+    showToast(i18n::tr("files.toast.no-format-tools"), false);
     return;
   }
   m_formatName = location().filename().string();
@@ -3512,28 +3512,28 @@ void FilesWindow::askFormat() {
   m_formatType = 0;
   m_formatError.clear();
   m_formatBusy = false;
-  static const std::map<std::string, std::string> kLabels{{"exfat", "ExFAT (all computers)"},
-                                                          {"vfat", "FAT32 (old devices, 4 GB file limit)"},
-                                                          {"ntfs", "NTFS (Windows)"},
-                                                          {"ext4", "ext4 (Linux)"}};
+  static const std::map<std::string, std::string> kLabels{{"exfat", "files.fs.exfat"},
+                                                          {"vfat", "files.fs.vfat"},
+                                                          {"ntfs", "files.fs.ntfs"},
+                                                          {"ext4", "files.fs.ext4"}};
   m_window.presentSheet(
       [this, device, types](float s) {
         auto sheet = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
                                  .padding = Tokens::componentDialogPadding * s,
                                  .width = Tokens::componentDialogWidth * s});
-        sheet->addChild(ui::label({.text = std::format("Erase “{}”?", m_formatName),
+        sheet->addChild(ui::label({.text = i18n::tr("files.erase.title", "name", m_formatName),
                                    .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
                                    .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1,
                                    .ellipsize = TextEllipsize::Middle}));
-        sheet->addChild(ui::label({.text = std::format("Everything on {} is deleted for good.", device),
+        sheet->addChild(ui::label({.text = i18n::tr("files.erase.body", "device", device),
                                    .fontSize = Style::fontSizeCaption * s, .color = colorSpecFromRole(ColorRole::Label2),
                                    .maxLines = 2}));
-        sheet->addChild(ui::input({.value = m_formatName, .placeholder = std::string("Name"),
+        sheet->addChild(ui::input({.value = m_formatName, .placeholder = i18n::tr("files.erase.name"),
                                    .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
                                    .onChange = [this](const std::string& v) { m_formatName = v; }}));
         std::vector<std::string> options;
         for (const std::string& t : types) {
-          options.push_back(kLabels.contains(t) ? kLabels.at(t) : t);
+          options.push_back(kLabels.contains(t) ? i18n::tr(kLabels.at(t)) : t);
         }
         sheet->addChild(ui::select({.options = options, .selectedIndex = m_formatType,
                                     .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
@@ -3544,10 +3544,10 @@ void FilesWindow::askFormat() {
         }
         auto footer = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
         // The sheet stays until the erase ends, so its completion closes this sheet and no other.
-        footer->addChild(ui::button({.text = std::string("Cancel"), .enabled = !m_formatBusy,
+        footer->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .enabled = !m_formatBusy,
                                      .variant = ButtonVariant::Default,
                                      .onClick = [this] { DeferredCall::callLater([this] { m_window.dismissSheet(); }); }}));
-        footer->addChild(ui::button({.text = std::string(m_formatBusy ? "Erasing…" : "Erase"), .enabled = !m_formatBusy,
+        footer->addChild(ui::button({.text = i18n::tr(m_formatBusy ? "files.erase.erasing" : "files.erase.erase"), .enabled = !m_formatBusy,
                                      .variant = ButtonVariant::Destructive, .onClick = [this] { eraseDrive(); }}));
         sheet->addChild(std::move(footer));
         return sheet;
@@ -3575,7 +3575,7 @@ void FilesWindow::eraseDrive() {
                    if (error.empty()) {
                      m_formatDevice.clear();
                      m_window.dismissSheet();
-                     showToast(std::format("“{}” is erased", m_formatName), false);
+                     showToast(i18n::tr("files.erase.done", "name", m_formatName), false);
                      refreshPlaces();
                    } else {
                      m_formatError = error;
@@ -3604,7 +3604,7 @@ void FilesWindow::lockVault(const std::string& name) {
       return;
     }
     if (!error.empty()) {
-      showToast(std::format("Can’t lock “{}”: {}", name, error), false);
+      showToast(i18n::tr("files.vault.cant-lock", "name", name, "error", error), false);
     }
     buildPlaces();
   });
@@ -3615,29 +3615,30 @@ void FilesWindow::askDeleteSelection() {
   if (paths.empty()) {
     return;
   }
-  const std::string what = paths.size() == 1 ? std::format("“{}”", paths.front().filename().string()) : noun(paths.size());
+  const std::string what = paths.size() == 1 ? i18n::tr("files.delete.confirm-one", "name", paths.front().filename().string())
+                                                  : i18n::trp("files.delete.confirm-many", static_cast<long>(paths.size()));
   kLog.debug("ask delete {} items", paths.size());
   m_window.presentSheet(
       [this, paths, what](float s) {
         auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
                                .width = Tokens::componentFilesNameField * s});
-        box->addChild(ui::label({.text = std::format("Delete {} immediately?", what),
+        box->addChild(ui::label({.text = what,
                                  .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
                                  .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2}));
-        box->addChild(ui::label({.text = std::string("It does not go to the Trash. You can’t undo this."),
+        box->addChild(ui::label({.text = i18n::tr("files.delete.body"),
                                  .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label2),
                                  .maxLines = 3}));
         auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
-        buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Style::fontSizeBody * s,
+        buttons->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .fontSize = Style::fontSizeBody * s,
                                       .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
-        buttons->addChild(ui::button({.text = std::string("Delete"), .fontSize = Style::fontSizeBody * s,
+        buttons->addChild(ui::button({.text = i18n::tr("files.delete.button"), .fontSize = Style::fontSizeBody * s,
                                       .variant = ButtonVariant::Destructive, .onClick = [this, paths] {
                                         m_window.dismissSheet();
                                         if (AdminView* admin = adminHere()) {
                                           admin->remove(paths);
                                           return;
                                         }
-                                        startJob("Deleting", paths.size(),
+                                        startJob("delete", paths.size(),
                                                  [&](FileOpsClient& ops, auto done) { ops.remove(paths, done); });
                                       }}));
         box->addChild(std::move(buttons));
@@ -3657,13 +3658,13 @@ void FilesWindow::emptyTrash() {
     if (paths.empty()) {
       return;
     }
-    startJob("Emptying Trash", m_trash.size(), [&](FileOpsClient& ops, auto done) { ops.remove(paths, done); });
+    startJob("empty-trash", m_trash.size(), [&](FileOpsClient& ops, auto done) { ops.remove(paths, done); });
   });
 }
 
 void FilesWindow::makeLink() {
   const std::vector<fs::path> sources = selectedPaths();
-  startJob("Linking", sources.size(), [&](FileOpsClient& ops, auto done) { ops.link(sources, location(), done); });
+  startJob("link", sources.size(), [&](FileOpsClient& ops, auto done) { ops.link(sources, location(), done); });
 }
 
 void FilesWindow::compressSelection() {
@@ -3676,7 +3677,7 @@ void FilesWindow::compressSelection() {
       [this, paths](const fs::path& destination, const std::string& format, const std::string& password,
                     std::uint64_t volumeSize) {
         m_window.dismissSheet();
-        startJob("Compressing", paths.size(), [&](FileOpsClient& ops, auto done) {
+        startJob("compress", paths.size(), [&](FileOpsClient& ops, auto done) {
           ops.compress(paths, destination, format, password, volumeSize, done);
         });
       },
@@ -3686,29 +3687,28 @@ void FilesWindow::compressSelection() {
 
 void FilesWindow::goThisPc() {
   ThisPcOptions options;
-  for (const auto& [dir, label] : {std::pair{G_USER_DIRECTORY_DESKTOP, "Desktop"}, {G_USER_DIRECTORY_DOCUMENTS, "Documents"},
-                                   {G_USER_DIRECTORY_DOWNLOAD, "Downloads"}, {G_USER_DIRECTORY_PICTURES, "Pictures"},
-                                   {G_USER_DIRECTORY_MUSIC, "Music"}, {G_USER_DIRECTORY_VIDEOS, "Videos"}}) {
+  for (const auto& [dir, label] : {std::pair{G_USER_DIRECTORY_DESKTOP, "files.places.desktop"}, {G_USER_DIRECTORY_DOCUMENTS, "files.places.documents"},
+                                   {G_USER_DIRECTORY_DOWNLOAD, "files.places.downloads"}, {G_USER_DIRECTORY_PICTURES, "files.places.pictures"},
+                                   {G_USER_DIRECTORY_MUSIC, "files.places.music"}, {G_USER_DIRECTORY_VIDEOS, "files.places.videos"}}) {
     const char* path = g_get_user_special_dir(dir);
     if (path != nullptr && std::string_view(path) != g_get_home_dir()) {
-      options.folders.push_back({.label = label, .path = path, .art = {}, .caption = {}});
+      options.folders.push_back({.label = i18n::tr(label), .path = path, .art = {}, .caption = {}});
     }
   }
   const std::size_t trash = m_trash.size();
-  options.extra.push_back({.label = "Storage", .path = {}, .art = "drive", .caption = "See what uses the disk"});
-  options.extra.push_back({.label = "Network", .path = {}, .art = "network", .caption = "Servers and shared folders"});
-  options.extra.push_back({.label = "Trash", .path = {}, .art = "trash",
-                           .caption = trash == 0 ? std::string("Empty") : trash == 1 ? std::string("1 item")
-                                                                         : std::format("{} items", trash)});
+  options.extra.push_back({.label = i18n::tr("files.listing.storage"), .path = {}, .art = "drive", .caption = i18n::tr("files.places.storage-caption")});
+  options.extra.push_back({.label = i18n::tr("files.listing.network"), .path = {}, .art = "network", .caption = i18n::tr("files.places.network-caption")});
+  options.extra.push_back({.label = i18n::tr("files.listing.trash"), .path = {}, .art = "trash",
+                           .caption = trash == 0 ? i18n::tr("files.places.empty") : i18n::trp("files.places.items", static_cast<long>(trash))});
   options.open = [this, alive = std::weak_ptr<bool>(m_alive)](const ThisPcPlace& place) {
     // Deferred: the page that holds the clicked cell goes away with the jump.
     DeferredCall::callLater([this, alive, place] {
       if (alive.expired()) {
         return;
       }
-      if (place.label == "Storage") {
+      if (place.label == i18n::tr("files.listing.storage")) {
         showStorage();
-      } else if (place.label == "Network") {
+      } else if (place.label == i18n::tr("files.listing.network")) {
         goNetwork();
       } else if (place.path.empty()) {
         goTrash();
@@ -3717,7 +3717,7 @@ void FilesWindow::goThisPc() {
       }
     });
   };
-  m_browser->showListing({.id = "this-pc", .title = "This PC", .rows = {}, .activatable = false,
+  m_browser->showListing({.id = "this-pc", .title = i18n::tr("files.listing.this-pc"), .rows = {}, .activatable = false,
                           .page = [options = std::move(options)](float scale) { return buildThisPc(scale, options); }});
 }
 
@@ -3730,7 +3730,7 @@ void FilesWindow::goNetwork() {
     });
     m_network->start();
   }
-  m_browser->showListing({.id = "network", .title = "Network", .rows = {}, .activatable = false,
+  m_browser->showListing({.id = "network", .title = i18n::tr("files.listing.network"), .rows = {}, .activatable = false,
                           .page = [net = m_network](float scale) { return net->build(scale); }});
 }
 
@@ -3882,14 +3882,14 @@ void FilesWindow::submitPath() {
     m_browser->reveal(path);
     return;
   }
-  m_pathError = "No such folder.";
+  m_pathError = i18n::tr("files.toast.no-folder");
   m_window.requestRebuild();
 }
 
 std::unique_ptr<Node> FilesWindow::buildPathSheet(float s) {
   auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
                          .width = Tokens::componentFilesNameField * s});
-  box->addChild(ui::label({.text = std::string("Go to Folder"), .fontSize = Tokens::typeTitle3.size * s,
+  box->addChild(ui::label({.text = i18n::tr("files.goto.title"), .fontSize = Tokens::typeTitle3.size * s,
                            .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
   box->addChild(ui::input({
       .value = m_pathText,
@@ -3927,9 +3927,9 @@ std::unique_ptr<Node> FilesWindow::buildPathSheet(float s) {
                              .ellipsize = TextEllipsize::Middle}));
   }
   auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
-  buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Style::fontSizeBody * s,
+  buttons->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .fontSize = Style::fontSizeBody * s,
                                 .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
-  buttons->addChild(ui::button({.text = std::string("Go"), .fontSize = Style::fontSizeBody * s,
+  buttons->addChild(ui::button({.text = i18n::tr("files.goto.go"), .fontSize = Style::fontSizeBody * s,
                                 .variant = ButtonVariant::Primary, .onClick = [this] { submitPath(); }}));
   box->addChild(std::move(buttons));
   return box;
@@ -3987,7 +3987,7 @@ void FilesWindow::openSelection() {
     if (!g_app_info_launch_default_for_uri(
             uriFor(path).c_str(), launchContext(m_app.loop().wayland(), m_window.wlSurface()).get(), &error
         )) {
-      showToast(std::format("Can’t open “{}”", path.filename().string()), false);
+      showToast(i18n::tr("files.window.cant-open", "name", path.filename().string()), false);
       kLog.warn("open {}: {}", path.string(), error != nullptr ? error->message : "?");
       g_clear_error(&error);
     }
@@ -4036,7 +4036,7 @@ void FilesWindow::openWith() {
 void FilesWindow::launchWith(const std::string& id, const std::vector<fs::path>& paths) {
   GDesktopAppInfo* app = g_desktop_app_info_new((id + ".desktop").c_str());
   if (app == nullptr) {
-    showToast("Can’t find that app", false);
+    showToast(i18n::tr("files.toast.cant-find-app"), false);
     return;
   }
   GList* uris = nullptr;
@@ -4047,7 +4047,7 @@ void FilesWindow::launchWith(const std::string& id, const std::vector<fs::path>&
   if (!g_app_info_launch_uris(
           G_APP_INFO(app), uris, launchContext(m_app.loop().wayland(), m_window.wlSurface()).get(), &error
       )) {
-    showToast(std::format("Can’t open with {}", g_app_info_get_name(G_APP_INFO(app))), false);
+    showToast(i18n::tr("files.toast.cant-open-with", "app", g_app_info_get_name(G_APP_INFO(app))), false);
     kLog.warn("open with {}: {}", id, error != nullptr ? error->message : "?");
     g_clear_error(&error);
   } else {
@@ -4092,7 +4092,7 @@ void FilesWindow::copySelection(bool cut) {
                          return text;
                        }});
   }
-  showToast(std::format("{} {}", cut ? "Cut" : "Copied", noun(paths.size())), false);
+  showToast(i18n::tr(cut ? "files.toast.cut" : "files.toast.copied", "items", noun(paths.size())), false);
 }
 
 void FilesWindow::copyLocation() {
@@ -4110,7 +4110,7 @@ void FilesWindow::copyPaths(const std::vector<fs::path>& paths) {
                       {.mimeTypes = {"text/plain;charset=utf-8", "text/plain", "UTF8_STRING"},
                        .data = [text](const std::string&) { return text; }});
     kLog.debug("location copied {}", text);
-    showToast("Copied location", false);
+    showToast(i18n::tr("files.toast.copied-location"), false);
   }
 }
 
@@ -4118,10 +4118,10 @@ void FilesWindow::startJob(const char* verb, std::size_t count, std::function<vo
                            std::function<void(const std::string& job)> started, std::function<void()> refused) {
   FileOpsClient* ops = m_app.fileOps();
   if (ops == nullptr) {
-    showToast("File operations are not available", false);
+    showToast(i18n::tr("files.toast.no-file-ops"), false);
     return;
   }
-  showToast(std::format("{} {}…", verb, noun(count)), false);
+  showToast(i18n::tr((std::string("files.job.progress-") + verb).c_str(), "items", noun(count)), false);
   start(*ops, [this, alive = std::weak_ptr<bool>(m_alive), verb = std::string(verb), started = std::move(started),
                refused = std::move(refused)](const std::string& job,
                                                                                        const std::string& error) {
@@ -4129,7 +4129,7 @@ void FilesWindow::startJob(const char* verb, std::size_t count, std::function<vo
       return;
     }
     if (job.empty()) {
-      showToast(std::format("{} failed: {}", verb, error), false);
+      showToast(i18n::tr(("files.job.failed-" + verb).c_str(), "error", error), false);
       if (refused) {
         refused();
       }
@@ -4202,9 +4202,9 @@ void FilesWindow::pasteInternal() {
   if (clip.cut) {
     m_app.clipboard() = {};
     refreshCommandBar();
-    startJob("Moving", clip.paths.size(), [&](FileOpsClient& ops, auto done) { ops.move(clip.paths, location(), done); });
+    startJob("move", clip.paths.size(), [&](FileOpsClient& ops, auto done) { ops.move(clip.paths, location(), done); });
   } else {
-    startJob("Copying", clip.paths.size(), [&](FileOpsClient& ops, auto done) { ops.copy(clip.paths, location(), done); });
+    startJob("copy", clip.paths.size(), [&](FileOpsClient& ops, auto done) { ops.copy(clip.paths, location(), done); });
   }
 }
 
@@ -4217,7 +4217,7 @@ void FilesWindow::trashSelection() {
   if (inTrash() || paths.empty()) {
     return;
   }
-  startJob("Moving to Trash", paths.size(), [&](FileOpsClient& ops, auto done) { ops.trash(paths, done); });
+  startJob("trash", paths.size(), [&](FileOpsClient& ops, auto done) { ops.trash(paths, done); });
 }
 
 void FilesWindow::restoreSelection() {
@@ -4234,7 +4234,7 @@ void FilesWindow::restoreSelection() {
       items.emplace_back(item.trashDir, item.name);
     }
   }
-  startJob("Restoring", items.size(), [&](FileOpsClient& ops, auto done) { ops.restore(items, done); });
+  startJob("restore", items.size(), [&](FileOpsClient& ops, auto done) { ops.restore(items, done); });
 }
 
 void FilesWindow::undo() { runHistory(HistoryStep::Undo); }
@@ -4250,7 +4250,7 @@ void FilesWindow::runHistory(HistoryStep step) {
   stack.pop_back();
   kLog.debug("{} {}", step == HistoryStep::Undo ? "undo" : "redo", job);
   // Redo is the undo of an undo job: the daemon keeps each undo's own inverse.
-  startJob(step == HistoryStep::Undo ? "Undoing" : "Redoing", 1, [&](FileOpsClient& c, auto done) { c.undo(job, done); },
+  startJob(step == HistoryStep::Undo ? "undo" : "redo", 1, [&](FileOpsClient& c, auto done) { c.undo(job, done); },
            [this, step, tagJob = m_app.tags().ownsJob(job)](const std::string& undoJob) {
              m_historyJobs[undoJob] = step;
              if (tagJob) {
@@ -4268,7 +4268,7 @@ void FilesWindow::showConflict(const FileOpsClient::Job& job) {
   kLog.debug("conflict sheet {}", job.folderClash.has_value() ? "merge" : "file");
   const bool shown = m_conflict != nullptr; // the next question of the same job: no Skip for the shown sheet
   m_conflict = std::make_shared<ConflictSheet>(
-      ConflictSheet::Info{.verb = job.kind == "move" ? "Moving" : "Copying", .source = source, .target = target,
+      ConflictSheet::Info{.verb = i18n::tr(job.kind == "move" ? "files.conflict.verb-moving" : "files.conflict.verb-copying"), .source = source, .target = target,
                           .totalFiles = job.totalFiles, .conflictIndex = job.conflictIndex,
                           .conflictTotal = job.conflictTotal, .folderClash = job.folderClash},
       &m_app.thumbnails(),
@@ -4456,24 +4456,24 @@ void FilesWindow::openViewOptions(const Node* anchor) {
                               .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1,
                               .ellipsize = TextEllipsize::Middle}));
     const bool own = b.listingId().empty() && !location().empty();
-    head->addChild(ui::label({.text = own ? "Saved for this folder" : "Applies here until you leave",
+    head->addChild(ui::label({.text = i18n::tr(own ? "files.viewopts.saved" : "files.viewopts.temporary"),
                               .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
                               .color = colorSpecFromRole(ColorRole::Label2)}));
     box->addChild(std::move(head));
-    const auto caption = [&](const char* text) {
+    const auto caption = [&](const std::string& text) {
       return ui::label({.text = std::string(text), .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
                         .color = colorSpecFromRole(ColorRole::Label2)});
     };
-    const auto group = [&](const char* text, std::unique_ptr<Node> control) {
+    const auto group = [&](const std::string& text, std::unique_ptr<Node> control) {
       auto g = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
       g->addChild(caption(text));
       g->addChild(std::move(control));
       box->addChild(std::move(g));
     };
-    group("View", ui::segmented({.options = std::vector<ui::SegmentedOption>{{.glyph = "layout-grid", .tooltip = "Icons"},
-                                                                             {.glyph = "list", .tooltip = "List"},
-                                                                             {.glyph = "columns-3", .tooltip = "Columns"},
-                                                                             {.glyph = "photo", .tooltip = "Gallery"}},
+    group(i18n::tr("desk.menu.view"), ui::segmented({.options = std::vector<ui::SegmentedOption>{{.glyph = "layout-grid", .tooltip = i18n::tr("files.view.icons")},
+                                                                             {.glyph = "list", .tooltip = i18n::tr("files.view.list")},
+                                                                             {.glyph = "columns-3", .tooltip = i18n::tr("files.view.columns")},
+                                                                             {.glyph = "photo", .tooltip = i18n::tr("files.view.gallery")}},
                                  .selectedIndex = v.view, .scale = s, .equalSegmentWidths = true,
                                  .height = Tokens::sizeControlM * s,
                                  .onChange = [this](std::size_t i) {
@@ -4481,20 +4481,20 @@ void FilesWindow::openViewOptions(const Node* anchor) {
                                    openViewOptions(); // the icon size row comes or goes: the popover resizes
                                  }}));
     if (static_cast<FileBrowser::View>(v.view) == FileBrowser::View::Icons) {
-      group("Icon Size", ui::slider({.minValue = Tokens::componentFilesIconMin, .maxValue = Tokens::componentFilesIconMax,
+      group(i18n::tr("files.viewopts.icon-size"), ui::slider({.minValue = Tokens::componentFilesIconMin, .maxValue = Tokens::componentFilesIconMax,
                                      .step = Tokens::spaceP16, .value = b.iconSize(),
                                      .controlHeight = Tokens::sizeControlS * s,
                                      .onValueChanged = [this](double value) { m_browser->setIconSize(static_cast<float>(value)); }}));
     }
-    static constexpr std::array<std::pair<const char*, FileSortKey>, 5> kKeys{{{"Name", FileSortKey::Name},
-                                                                               {"Modified", FileSortKey::Modified},
-                                                                               {"Added", FileSortKey::Added},
-                                                                               {"Size", FileSortKey::Size},
-                                                                               {"Kind", FileSortKey::Kind}}};
+    static constexpr std::array<std::pair<const char*, FileSortKey>, 5> kKeys{{{"files.viewopts.sort-name", FileSortKey::Name},
+                                                                               {"files.viewopts.sort-modified", FileSortKey::Modified},
+                                                                               {"files.viewopts.sort-added", FileSortKey::Added},
+                                                                               {"files.viewopts.sort-size", FileSortKey::Size},
+                                                                               {"files.viewopts.sort-kind", FileSortKey::Kind}}};
     std::vector<ui::SegmentedOption> sorts;
     std::size_t current = 0;
     for (std::size_t i = 0; i < kKeys.size(); ++i) {
-      sorts.push_back({.label = kKeys[i].first});
+      sorts.push_back({.label = i18n::tr(kKeys[i].first)});
       current = kKeys[i].second == v.sort.key ? i : current;
     }
     auto sortRow = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
@@ -4512,30 +4512,30 @@ void FilesWindow::openViewOptions(const Node* anchor) {
     const float circle = Tokens::sizeControlM * s;
     sortRow->addChild(ui::button({.glyph = std::string(v.sort.descending ? "sort-descending" : "sort-ascending"),
                                   .glyphSize = Tokens::sizeSymbol * s, .variant = ButtonVariant::Default,
-                                  .customPalette = plain, .tooltip = std::string(v.sort.descending ? "Descending" : "Ascending"),
+                                  .customPalette = plain, .tooltip = i18n::tr(v.sort.descending ? "files.viewopts.descending" : "files.viewopts.ascending"),
                                   .radius = circle / 2.0F, .width = circle, .height = circle, .onClick = [this] {
                                     FileSort sort = m_browser->sortOrder();
                                     sort.descending = !sort.descending;
                                     m_browser->setSortOrder(sort);
                                     m_window.refreshPopover();
                                   }}));
-    group("Sort By", std::move(sortRow));
-    static constexpr std::array<std::pair<const char*, FileGroupBy>, 5> kGroups{{{"None", FileGroupBy::None},
-                                                                                 {"Kind", FileGroupBy::Kind},
-                                                                                 {"Date", FileGroupBy::Date},
-                                                                                 {"Size", FileGroupBy::Size},
-                                                                                 {"Tags", FileGroupBy::Tags}}};
+    group(i18n::tr("files.viewopts.sort-by"), std::move(sortRow));
+    static constexpr std::array<std::pair<const char*, FileGroupBy>, 5> kGroups{{{"files.viewopts.group-none", FileGroupBy::None},
+                                                                                 {"files.viewopts.group-kind", FileGroupBy::Kind},
+                                                                                 {"files.viewopts.group-date", FileGroupBy::Date},
+                                                                                 {"files.viewopts.group-size", FileGroupBy::Size},
+                                                                                 {"files.viewopts.group-tags", FileGroupBy::Tags}}};
     std::vector<ui::SegmentedOption> groups;
     std::size_t groupNow = 0;
     for (std::size_t i = 0; i < kGroups.size(); ++i) {
-      groups.push_back({.label = kGroups[i].first});
+      groups.push_back({.label = i18n::tr(kGroups[i].first)});
       groupNow = kGroups[i].second == v.group ? i : groupNow;
     }
-    group("Group By", ui::segmented({.options = std::move(groups), .selectedIndex = groupNow,
+    group(i18n::tr("files.viewopts.group-by"), ui::segmented({.options = std::move(groups), .selectedIndex = groupNow,
                                      .fontSize = Style::fontSizeCaption * s, .scale = s, .compact = true,
                                      .equalSegmentWidths = true, .height = Tokens::sizeControlM * s,
                                      .onChange = [this](std::size_t i) { groupBy(kGroups[i].second); }}));
-    const auto toggleRow = [&](const char* text, bool on, std::function<void(bool)> change) {
+    const auto toggleRow = [&](const std::string& text, bool on, std::function<void(bool)> change) {
       auto row = ui::row({.align = FlexAlign::Center, .height = Tokens::sizeRow * s});
       row->addChild(ui::label({.text = std::string(text), .fontSize = Style::fontSizeBody * s,
                                .color = colorSpecFromRole(ColorRole::Label1), .flexGrow = 1.0F}));
@@ -4544,20 +4544,20 @@ void FilesWindow::openViewOptions(const Node* anchor) {
     };
     if (static_cast<FileBrowser::View>(v.view) == FileBrowser::View::List) {
       static constexpr std::array<std::pair<const char*, std::uint8_t>, 3> kColumns{
-          {{"Dimensions", file_columns::kDimensions}, {"Duration", file_columns::kDuration}, {"Artist", file_columns::kArtist}}};
+          {{"files.viewopts.dimensions", file_columns::kDimensions}, {"files.viewopts.duration", file_columns::kDuration}, {"files.viewopts.artist", file_columns::kArtist}}};
       auto columns = ui::column({.align = FlexAlign::Stretch});
       for (const auto& [label, bit] : kColumns) {
-        columns->addChild(toggleRow(label, (b.listColumns() & bit) != 0, [this, bit](bool) {
+        columns->addChild(toggleRow(i18n::tr(label), (b.listColumns() & bit) != 0, [this, bit](bool) {
           m_browser->setListColumns(static_cast<std::uint8_t>(m_browser->listColumns() ^ bit));
         }));
       }
-      group("Columns", std::move(columns));
+      group(i18n::tr("files.viewopts.columns"), std::move(columns));
     }
     auto shows = ui::column({.align = FlexAlign::Stretch});
-    shows->addChild(toggleRow("Show Hidden Files", v.showHidden, [this](bool on) { m_browser->setShowHidden(on); }));
-    shows->addChild(toggleRow("Show File Extensions", v.extensions, [this](bool on) { m_browser->setShowExtensions(on); }));
+    shows->addChild(toggleRow(i18n::tr("files.commands.view-hidden"), v.showHidden, [this](bool on) { m_browser->setShowHidden(on); }));
+    shows->addChild(toggleRow(i18n::tr("files.commands.view-extensions"), v.extensions, [this](bool on) { m_browser->setShowExtensions(on); }));
     box->addChild(std::move(shows));
-    box->addChild(ui::button({.text = std::string("Use as Defaults"), .fontSize = Style::fontSizeBody * s,
+    box->addChild(ui::button({.text = i18n::tr("files.viewopts.defaults"), .fontSize = Style::fontSizeBody * s,
                               .variant = ButtonVariant::Default, .customPalette = plain, .paddingH = Tokens::spaceP12 * s,
                               .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = Tokens::sizeControlM * s, .onClick = [this] {
                                 view_store::writeDefault(view_store::encode(m_browser->viewState()));
@@ -4645,7 +4645,7 @@ void FilesWindow::onJobChanged(const FileOpsClient::Job& job) {
   if (auto it = m_renameDone.find(job.path); it != m_renameDone.end()) {
     auto done = std::move(it->second);
     m_renameDone.erase(it);
-    done(job.state == "done" ? std::string() : job.error.empty() ? std::string("The name could not be changed.") : job.error);
+    done(job.state == "done" ? std::string() : job.error.empty() ? i18n::tr("files.window.name-not-changed") : job.error);
   }
   kLog.debug("job {} {}{}", job.kind, job.state, job.undoable ? " undoable" : "");
   if (m_conflictJob == job.path) {

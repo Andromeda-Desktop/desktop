@@ -1,6 +1,7 @@
 #include "job_pill.h"
 
 #include "design_tokens.h"
+#include "i18n/i18n.h"
 #include "render/scene/input_area.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
@@ -73,12 +74,12 @@ namespace job_pill {
 
   std::string detail(const FileOpsClient::Job& job, double bytesPerSecond) {
     if (job.totalBytes == 0) {
-      return std::format("{} of {} files", countText(job.doneFiles), countText(job.totalFiles));
+      return i18n::tr("files.job.files-progress", "done", countText(job.doneFiles), "total", countText(job.totalFiles));
     }
-    std::string out = std::format("{} of {}", formatFileSize(job.doneBytes), formatFileSize(job.totalBytes));
+    std::string out = i18n::tr("files.job.bytes-progress", "done", formatFileSize(job.doneBytes), "total", formatFileSize(job.totalBytes));
     if (bytesPerSecond > 0.0 && job.totalBytes > job.doneBytes) {
       const auto left = static_cast<std::uint64_t>(std::ceil(static_cast<double>(job.totalBytes - job.doneBytes) / bytesPerSecond));
-      out += left < 60 ? std::format(" · {} s left", left) : std::format(" · {} min left", (left + 59) / 60);
+      out += left < 60 ? i18n::tr("files.job.left-s", "n", left) : i18n::tr("files.job.left-min", "n", (left + 59) / 60);
     }
     return out;
   }
@@ -149,7 +150,7 @@ namespace job_pill {
       return {.pause = pausable && job.state == "running", .resume = pausable && job.state == "paused"};
     }
     std::string detailText(const FileOpsClient::Job& job, double rate) {
-      return job.state == "paused" ? std::string("Paused") : detail(job, rate);
+      return job.state == "paused" ? i18n::tr("files.job.paused") : detail(job, rate);
     }
   } // namespace
 
@@ -176,14 +177,15 @@ namespace job_pill {
       moving = moving && j.kind == "move";
       sending = sending && j.kind == "send";
     }
-    box->addChild(ui::label({.text = std::format("{} {} item{}", sending ? "Sending" : moving ? "Moving" : "Copying", items,
-                                                 items == 1 ? "" : "s"),
+    box->addChild(ui::label({.text = i18n::trp(sending  ? "files.job.pill-sending"
+                                              : moving ? "files.job.pill-moving" : "files.job.pill-copying",
+                                              static_cast<long>(items)),
                              .fontSize = Style::fontSizeBody * s, .fontWeight = FontWeight::SemiBold,
                              .color = colorSpecFromRole(ColorRole::Label1)}));
     if (rows != nullptr) {
       rows->clear();
     }
-    const auto circle = [&](const char* glyph, const char* tooltip, std::function<void()> onClick) {
+    const auto circle = [&](const char* glyph, const std::string& tooltip, std::function<void()> onClick) {
       return ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::spaceP12 * s, .variant = ButtonVariant::Ghost,
                          .tooltip = std::string(tooltip), .radius = Tokens::spaceP12 * s, .width = Tokens::spaceP24 * s,
                          .height = Tokens::spaceP24 * s, .onClick = std::move(onClick)});
@@ -211,10 +213,10 @@ namespace job_pill {
       row->addChild(std::move(col));
       const RowButtons b = rowButtons(j);
       if (b.pause || b.resume) {
-        row->addChild(circle(b.pause ? "player-pause" : "player-play", b.pause ? "Pause" : "Resume",
+        row->addChild(circle(b.pause ? "player-pause" : "player-play", b.pause ? i18n::tr("files.job.pause") : i18n::tr("files.job.resume"),
                              [pause, path = j.path, p = b.pause] { pause(path, p); }));
       }
-      row->addChild(circle("x", "Stop", [cancel, path = j.path] { cancel(path); }));
+      row->addChild(circle("x", i18n::tr("files.job.stop"), [cancel, path = j.path] { cancel(path); }));
       box->addChild(std::move(row));
       if (rows != nullptr) {
         rows->push_back(nodes);

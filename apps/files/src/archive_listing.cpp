@@ -1,5 +1,6 @@
 #include "archive_listing.h"
 
+#include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/flex.h"
@@ -57,12 +58,12 @@ namespace {
   std::string formatLabel(const fs::path& archive) {
     const std::string name = lower(archive.filename().string());
     if (name.ends_with(".zip")) {
-      return "ZIP archive";
+      return i18n::tr("files.archive.zip");
     }
     if (name.ends_with(".7z")) {
-      return "7z archive";
+      return i18n::tr("files.archive.7z");
     }
-    return "tar archive";
+    return i18n::tr("files.archive.tar");
   }
 } // namespace
 
@@ -162,19 +163,18 @@ std::unique_ptr<Node> ArchiveListing::buildExtractBar(float scale, std::function
   const float s = scale;
   std::error_code ec;
   const auto packed = fs::file_size(m_archive, ec);
-  std::string text = std::format("{} · {} {} · {} unpacked", formatLabel(m_archive), m_items, m_items == 1 ? "item" : "items",
-                                 formatFileSize(m_unpacked));
-  if (!ec) {
-    text += " from " + formatFileSize(packed);
-  }
+  const std::string items = i18n::trp("files.archive.items", static_cast<long>(m_items));
+  const std::string text = ec ? i18n::tr("files.archive.summary", "kind", formatLabel(m_archive), "items", items, "size", formatFileSize(m_unpacked))
+                              : i18n::tr("files.archive.summary-packed", "kind", formatLabel(m_archive), "items", items, "size",
+                                         formatFileSize(m_unpacked), "packed", formatFileSize(packed));
   auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s,
                       .height = Tokens::sizeRowCompact * s + Tokens::spaceP8 * s});
   bar->addChild(ui::label({.text = std::move(text), .fontSize = Style::fontSizeCaption * s,
                            .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1,
                            .ellipsize = TextEllipsize::End, .flexGrow = 1.0F}));
-  bar->addChild(ui::button({.text = std::string("Extract To…"), .variant = ButtonVariant::Default,
+  bar->addChild(ui::button({.text = i18n::tr("files.archive.extract-to"), .variant = ButtonVariant::Default,
                             .onClick = std::move(extractTo)}));
-  bar->addChild(ui::button({.text = std::string("Extract All"), .variant = ButtonVariant::Primary,
+  bar->addChild(ui::button({.text = i18n::tr("files.archive.extract-all"), .variant = ButtonVariant::Primary,
                             .onClick = std::move(extractAll)}));
   return bar;
 }

@@ -1,6 +1,7 @@
 #include "app_chooser_sheet.h"
 
 #include "design_tokens.h"
+#include "i18n/i18n.h"
 #include "render/core/renderer.h"
 #include "ui/app_icon.h"
 #include "ui/builders.h"
@@ -177,8 +178,8 @@ std::unique_ptr<Node> AppChooserSheet::build(float s) {
   // Mockup §4 .dlg: 416 wide, padding 24, gap 16; .gcard lists of 40 .arow rows with 24 icons.
   auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP16 * s, .padding = Tokens::spaceP24 * s,
                          .width = kSheetWidth * s, .flexGrow = 1.0F});
-  const std::string title = m_request.filename.empty() ? std::string("Open With")
-                                                       : std::format("Open “{}” with", m_request.filename);
+  const std::string title = m_request.filename.empty() ? i18n::tr("files.chooser.title")
+                                                       : i18n::tr("files.chooser.title-file", "name", m_request.filename);
   box->addChild(ui::label({.text = title, .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
                            .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1,
                            .ellipsize = TextEllipsize::Middle}));
@@ -211,7 +212,7 @@ std::unique_ptr<Node> AppChooserSheet::build(float s) {
                                .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1,
                                .ellipsize = TextEllipsize::End, .flexGrow = 1.0F}));
       if (markDefault && app.id == m_default) {
-        row->addChild(ui::label({.text = std::string("Default"), .fontSize = Style::fontSizeCaption * s,
+        row->addChild(ui::label({.text = i18n::tr("files.chooser.default"), .fontSize = Style::fontSizeCaption * s,
                                  .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label3)}));
       }
       auto area = std::make_unique<RowArea>();
@@ -234,7 +235,7 @@ std::unique_ptr<Node> AppChooserSheet::build(float s) {
     return list;
   };
   if (!m_recommended.empty()) {
-    box->addChild(ui::label({.text = std::string("Recommended"), .fontSize = Style::fontSizeCaption * s,
+    box->addChild(ui::label({.text = i18n::tr("files.chooser.recommended"), .fontSize = Style::fontSizeCaption * s,
                              .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2)}));
     box->addChild(card(m_recommended, true, true));
   }
@@ -245,7 +246,7 @@ std::unique_ptr<Node> AppChooserSheet::build(float s) {
                               .color = colorSpecFromRole(ColorRole::Label2)}));
   search->addChild(ui::input({
       .value = m_search,
-      .placeholder = std::string("All apps"),
+      .placeholder = i18n::tr("files.chooser.all-apps"),
       .fontSize = Style::fontSizeBody * s,
       .controlHeight = searchH,
       .horizontalPadding = 0.0F,
@@ -281,7 +282,7 @@ std::unique_ptr<Node> AppChooserSheet::build(float s) {
   all->addChild(std::move(scroll));
   box->addChild(std::move(all));
   if (m_recommended.empty() && rest.empty()) {
-    box->addChild(ui::label({.text = std::string("No app can open this file"), .fontSize = Style::fontSizeBody * s,
+    box->addChild(ui::label({.text = i18n::tr("files.chooser.none"), .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::Label2)}));
   }
   if (!m_request.contentType.empty() && !m_selected.empty()) {
@@ -296,7 +297,7 @@ std::unique_ptr<Node> AppChooserSheet::build(float s) {
     }
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     row->addChild(ui::checkbox({.checked = m_alwaysUse, .onChange = [this](bool on) { m_alwaysUse = on; }}));
-    row->addChild(ui::label({.text = std::format("Always use {} for {} files", name, type),
+    row->addChild(ui::label({.text = i18n::tr("files.chooser.always-use", "app", name, "type", type),
                              .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label1),
                              .maxLines = 1, .ellipsize = TextEllipsize::End, .flexGrow = 1.0F}));
     box->addChild(std::move(row));
@@ -306,7 +307,7 @@ std::unique_ptr<Node> AppChooserSheet::build(float s) {
   Button::ButtonPalette plain = Button::defaultPalette(ButtonVariant::Default);
   plain.borderWidth = 0.0F;
   const float btnH = Tokens::sizeControlM * s;
-  buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Style::fontSizeBody * s,
+  buttons->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .fontSize = Style::fontSizeBody * s,
                                 .variant = ButtonVariant::Default, .customPalette = plain,
                                 .paddingH = Tokens::spaceP16 * s, .radius = btnH / 2.0F, .height = btnH, .onClick = [this] {
                                   if (!m_answered) {
@@ -314,7 +315,7 @@ std::unique_ptr<Node> AppChooserSheet::build(float s) {
                                     m_answer(1, {});
                                   }
                                 }}));
-  buttons->addChild(ui::button({.text = std::string("Open"), .fontSize = Style::fontSizeBody * s,
+  buttons->addChild(ui::button({.text = i18n::tr("files.chooser.open"), .fontSize = Style::fontSizeBody * s,
                                 .enabled = !m_selected.empty(), .variant = ButtonVariant::Primary,
                                 .paddingH = Tokens::spaceP16 * s, .radius = btnH / 2.0F, .height = btnH,
                                 .onClick = [this] { open(); }}));

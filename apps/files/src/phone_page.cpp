@@ -1,6 +1,7 @@
 #include "phone_page.h"
 
 #include "core/blocking_pool.h"
+#include "i18n/i18n.h"
 #include "state_file.h"
 #include "core/input/cursor_shape.h"
 
@@ -52,16 +53,16 @@ namespace {
 
   std::string ago(std::int64_t when) {
     if (when <= 0) {
-      return "Away";
+      return i18n::tr("files.phone.away-plain");
     }
     const auto secs = std::max<std::int64_t>(0, std::time(nullptr) - when);
     if (secs < 3600) {
-      return std::format("Away · last seen {} min ago", std::max<std::int64_t>(1, secs / 60));
+      return i18n::tr("files.phone.seen-min", "count", std::max<std::int64_t>(1, secs / 60));
     }
     if (secs < 86400) {
-      return std::format("Away · last seen {} h ago", secs / 3600);
+      return i18n::tr("files.phone.seen-h", "count", secs / 3600);
     }
-    return std::format("Away · last seen {} days ago", secs / 86400);
+    return i18n::tr("files.phone.seen-days", "count", secs / 86400);
   }
 
   std::string dayTitle(std::uint64_t time) {
@@ -72,10 +73,10 @@ namespace {
     std::tm today{};
     localtime_r(&now, &today);
     if (day.tm_year == today.tm_year && day.tm_yday == today.tm_yday) {
-      return "Today";
+      return i18n::tr("files.phone.today");
     }
     if (day.tm_year == today.tm_year && day.tm_yday + 1 == today.tm_yday) {
-      return "Yesterday";
+      return i18n::tr("files.phone.yesterday");
     }
     char buf[32];
     std::strftime(buf, sizeof(buf), "%e %B %Y", &day);
@@ -350,7 +351,7 @@ void PhonePage::importNext(std::vector<std::string> paths, fs::path folder, std:
     m_picked.clear();
     saveImported();
     kLog.info("phone imported {} photos", done);
-    m_actions.toast(std::format("Imported {} {} to {}", done, done == 1 ? "photo" : "photos", folder.filename().string()));
+    m_actions.toast(i18n::trp("files.phone.imported", static_cast<long>(done), "folder", folder.filename().string()));
     m_actions.rebuild();
     return;
   }
@@ -385,10 +386,10 @@ std::unique_ptr<Node> PhonePage::buildHero(float s) const {
   info->addChild(text(d->name, 17.0F * s, ColorRole::Label1, FontWeight::SemiBold));
   std::string status;
   if (d->connected) {
-    status = d->transport == "bluetooth" ? "Connected over Bluetooth" : "Connected over Wi-Fi";
-    if (d->battery >= 0) {
-      status += std::format(" · {} %", d->battery);
-    }
+    const bool bluetooth = d->transport == "bluetooth";
+    status = d->battery >= 0
+                 ? i18n::tr(bluetooth ? "files.phone.bluetooth-battery" : "files.phone.wifi-battery", "battery", d->battery)
+                 : i18n::tr(bluetooth ? "files.phone.bluetooth" : "files.phone.wifi");
   } else {
     status = ago(d->lastSeen);
   }
@@ -401,14 +402,14 @@ std::unique_ptr<Node> PhonePage::buildHero(float s) const {
     bar->addChild(ui::box({.fill = colorSpecFromRole(used > 0.9F ? ColorRole::Danger : ColorRole::Accent),
                            .width = kStorageBar * s * used, .height = 4.0F * s}));
     info->addChild(std::move(bar));
-    info->addChild(text(std::format("{} free of {}", formatFileSize(d->storageFree), formatFileSize(d->storageTotal)),
+    info->addChild(text(i18n::tr("files.phone.storage", "free", formatFileSize(d->storageFree), "total", formatFileSize(d->storageTotal)),
                         12.0F * s, ColorRole::Label2));
   }
   card->addChild(std::move(info));
   const bool on = d->connected;
-  card->addChild(ui::button({.text = std::string("Mirror Screen"), .enabled = on, .variant = ButtonVariant::Default,
+  card->addChild(ui::button({.text = i18n::tr("files.phone.mirror"), .enabled = on, .variant = ButtonVariant::Default,
                              .onClick = [this] { m_link.mirror(m_deviceId); }}));
-  card->addChild(ui::button({.text = std::string("Send Files…"), .enabled = on, .variant = ButtonVariant::Primary,
+  card->addChild(ui::button({.text = i18n::tr("files.phone.send-files"), .enabled = on, .variant = ButtonVariant::Primary,
                              .onClick = [this] { m_actions.sendFiles(); }}));
   return card;
 }
@@ -486,8 +487,8 @@ std::unique_ptr<Node> PhonePage::build(float scale) {
   const LinkShare::Device* d = device();
   if (d == nullptr) {
     auto box = ui::column({.align = FlexAlign::Stretch, .paddingH = 16.0F * s});
-    box->addChild(buildState(s, "Use your phone with Files", "Pair a phone with Andromeda Link to see its photos and folders here.",
-                             "Set Up Link…", [] { (void)process::runAsync(std::vector<std::string>{"andromeda-settings", "link"}); }));
+    box->addChild(buildState(s, i18n::tr("files.phone.pair-title"), i18n::tr("files.phone.pair-body"),
+                             i18n::tr("files.phone.pair-button"), [] { (void)process::runAsync(std::vector<std::string>{"andromeda-settings", "link"}); }));
     page->addChild(std::move(box));
     scroll->content()->addChild(std::move(page));
     return scroll;
@@ -506,23 +507,23 @@ std::unique_ptr<Node> PhonePage::build(float scale) {
   const std::size_t pending = pendingCount();
   std::vector<std::pair<std::string, std::function<void()>>> links;
   if (!away && !m_photos.empty()) {
-    links.emplace_back("Import…", [this] { later([this] { m_actions.showImport(shared_from_this()); }); });
+    links.emplace_back(i18n::tr("files.phone.import-link"), [this] { later([this] { m_actions.showImport(shared_from_this()); }); });
   }
   auto photos = ui::column({.align = FlexAlign::Stretch, .opacity = away ? 0.5F : 1.0F});
-  photos->addChild(buildSection(s, "Recent Photos", pending > 0 && !away ? std::format("{} not imported", pending) : "",
+  photos->addChild(buildSection(s, i18n::tr("files.phone.recent"), pending > 0 && !away ? i18n::tr("files.phone.not-imported", "count", pending) : std::string(),
                                 std::move(links)));
   if (m_photoError == "denied") {
     auto box = ui::column({.align = FlexAlign::Stretch, .paddingH = 16.0F * s});
-    box->addChild(buildState(s, std::format("Photos Are Off on {}", d->name),
-                             "Allow photo access in Andromeda Link on the phone, then try again.", "Try Again",
+    box->addChild(buildState(s, i18n::tr("files.phone.photos-off", "name", d->name),
+                             i18n::tr("files.phone.photos-off-body"), i18n::tr("files.phone.try-again"),
                              [this] { later([this] { load(); }); }));
     photos->addChild(std::move(box));
   } else if (m_photos.empty()) {
     photos->addChild(ui::row({.paddingH = 16.0F * s},
-                             text(away ? std::string("The phone is away.")
-                                  : m_loading ? std::string("Loading photos…")
+                             text(away ? i18n::tr("files.phone.is-away")
+                                  : m_loading ? i18n::tr("files.phone.loading")
                                   : !m_photoError.empty() ? m_photoError
-                                                         : std::string("No photos on the phone."),
+                                                         : i18n::tr("files.phone.no-photos"),
                                   13.0F * s, m_photoError.empty() ? ColorRole::Label2 : ColorRole::DangerText)));
   } else {
     auto strip = ui::row({.align = FlexAlign::Start, .gap = 8.0F * s, .paddingH = 16.0F * s, .clipChildren = true});
@@ -536,20 +537,20 @@ std::unique_ptr<Node> PhonePage::build(float scale) {
   // On the Phone: the browse mount's top folders.
   const fs::path root = m_root;
   auto folders = ui::column({.align = FlexAlign::Stretch, .opacity = away ? 0.5F : 1.0F});
-  folders->addChild(buildSection(s, "On the Phone", "",
+  folders->addChild(buildSection(s, i18n::tr("files.phone.on-phone"), "",
                                  root.empty() ? std::vector<std::pair<std::string, std::function<void()>>>{}
                                               : std::vector<std::pair<std::string, std::function<void()>>>{
-                                                    {"Show All", [this, root] { later([this, root] { m_actions.open(root); }); }}}));
+                                                    {i18n::tr("files.phone.show-all"), [this, root] { later([this, root] { m_actions.open(root); }); }}}));
   if (root.empty() && !away && m_foldersState == Folders::Listed) {
     auto box = ui::column({.align = FlexAlign::Stretch, .paddingH = 16.0F * s});
-    box->addChild(buildState(s, "Browsing Is Off",
-                             std::format("Turn on Browse in Andromeda Link on {} to see its folders here.", d->name),
-                             "Send Files…", [this] { later([this] { m_actions.sendFiles(); }); }));
+    box->addChild(buildState(s, i18n::tr("files.phone.browse-off"),
+                             i18n::tr("files.phone.browse-off-body", "name", d->name),
+                             i18n::tr("files.phone.send-files"), [this] { later([this] { m_actions.sendFiles(); }); }));
     folders->addChild(std::move(box));
   } else if (!root.empty()) {
     auto grid = ui::row({.align = FlexAlign::Start, .wrap = true, .gap = 8.0F * s, .paddingH = 16.0F * s});
     for (const fs::path& dir : m_folders) {
-      const std::string name = dir.filename() == "DCIM" ? "Camera" : dir.filename().string();
+      const std::string name = dir.filename() == "DCIM" ? i18n::tr("files.phone.camera") : dir.filename().string();
       auto col = ui::column({.align = FlexAlign::Center, .gap = 4.0F * s, .padding = 8.0F * s,
                              .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = 120.0F * s,
                              .onClick = [this, dir] { later([this, dir] { m_actions.open(dir); }); },
@@ -570,8 +571,8 @@ std::unique_ptr<Node> PhonePage::build(float scale) {
   if (!files.empty()) {
     const char* dl = g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
     const fs::path downloads = dl != nullptr ? fs::path(dl) : files.front().parent_path();
-    page->addChild(buildSection(s, std::format("Received from {}", d->name), "",
-                                {{"Show in Downloads", [this, downloads] { later([this, downloads] { m_actions.open(downloads); }); }}}));
+    page->addChild(buildSection(s, i18n::tr("files.phone.received", "name", d->name), "",
+                                {{i18n::tr("files.phone.show-downloads"), [this, downloads] { later([this, downloads] { m_actions.open(downloads); }); }}}));
     auto list = ui::column({.align = FlexAlign::Stretch, .paddingH = 16.0F * s});
     std::error_code ec;
     for (const fs::path& file : files) {
@@ -594,7 +595,7 @@ std::unique_ptr<Node> PhonePage::buildImport(float scale) {
   const LinkShare::Device* d = device();
   auto root = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
   auto top = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .paddingV = 12.0F * s});
-  top->addChild(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = "Not Imported"}, {.label = "All"}},
+  top->addChild(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = i18n::tr("files.phone.tab-new")}, {.label = i18n::tr("files.phone.tab-all")}},
                                .selectedIndex = m_showAll ? 1U : 0U, .equalSegmentWidths = true, .width = 260.0F * s,
                                .onChange = [this](std::size_t i) { later([this, i] { m_showAll = i == 1; m_actions.rebuild(); }); }}));
   root->addChild(std::move(top));
@@ -616,7 +617,7 @@ std::unique_ptr<Node> PhonePage::buildImport(float scale) {
         fresh += dayTitle(shot.photo.time) == title && !imported(shot.photo.path) ? 1 : 0;
       }
       body->addChild(ui::row({.paddingV = 4.0F * s, .paddingH = 16.0F * s},
-                             text(fresh > 0 ? std::format("{} · {} new", title, fresh) : title, 13.0F * s,
+                             text(fresh > 0 ? i18n::tr("files.phone.day-new", "day", title, "count", fresh) : title, 13.0F * s,
                                   ColorRole::Label1, FontWeight::SemiBold)));
       auto g = ui::row({.align = FlexAlign::Start, .wrap = true, .gap = 6.0F * s, .paddingH = 16.0F * s});
       grid = g.get();
@@ -627,7 +628,7 @@ std::unique_ptr<Node> PhonePage::buildImport(float scale) {
   }
   if (shown == 0) {
     body->addChild(ui::row({.justify = FlexJustify::Center, .paddingV = 48.0F * s},
-                           text(m_loading ? std::string("Loading photos…") : std::string("Every photo is imported."),
+                           text(m_loading ? i18n::tr("files.phone.loading") : i18n::tr("files.phone.all-imported"),
                                 13.0F * s, ColorRole::Label2)));
   }
   scroll->content()->addChild(std::move(body));
@@ -638,10 +639,10 @@ std::unique_ptr<Node> PhonePage::buildImport(float scale) {
   auto bar = ui::row({.align = FlexAlign::Center, .gap = 8.0F * s, .paddingH = 16.0F * s,
                       .fill = colorSpecFromRole(ColorRole::TintThick), .border = colorSpecFromRole(ColorRole::Separator),
                       .borderWidth = 0.5F * s, .height = 56.0F * s});
-  bar->addChild(text(m_importing ? std::string("Importing…") : std::format("{} selected", m_picked.size()), 13.0F * s,
+  bar->addChild(text(m_importing ? i18n::tr("files.phone.importing") : i18n::tr("files.phone.selected", "count", m_picked.size()), 13.0F * s,
                      ColorRole::Label2, FontWeight::Medium, 1.0F));
-  const std::string where = m_destination.empty() ? std::format("To Pictures › {}", d ? d->name : m_deviceId)
-                                                 : std::format("To {}", m_destination.filename().string());
+  const std::string where = m_destination.empty() ? i18n::tr("files.phone.to-pictures", "device", d ? d->name : m_deviceId)
+                                                 : i18n::tr("files.phone.to-folder", "folder", m_destination.filename().string());
   bar->addChild(ui::button({.text = where, .glyph = std::string("folder"), .variant = ButtonVariant::Ghost,
                             .onClick = [this] {
                               m_actions.chooseFolder([weak = weak_from_this()](const fs::path& folder) {
@@ -653,9 +654,9 @@ std::unique_ptr<Node> PhonePage::buildImport(float scale) {
                                 }
                               });
                             }}));
-  bar->addChild(ui::button({.text = std::format("Import All {} New", pending), .enabled = pending > 0 && !m_importing,
+  bar->addChild(ui::button({.text = i18n::tr("files.phone.import-all", "count", pending), .enabled = pending > 0 && !m_importing,
                             .variant = ButtonVariant::Default, .onClick = [this] { later([this] { import(true); }); }}));
-  bar->addChild(ui::button({.text = std::format("Import {}", m_picked.size()), .enabled = !m_picked.empty() && !m_importing,
+  bar->addChild(ui::button({.text = i18n::tr("files.phone.import-n", "count", m_picked.size()), .enabled = !m_picked.empty() && !m_importing,
                             .variant = ButtonVariant::Primary, .onClick = [this] { later([this] { import(false); }); }}));
   root->addChild(std::move(bar));
   return root;

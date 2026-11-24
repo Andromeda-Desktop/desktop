@@ -1,6 +1,7 @@
 #include "extract_sheet.h"
 
 #include "core/deferred_call.h"
+#include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/flex.h"
@@ -40,13 +41,12 @@ ExtractSheet::ExtractSheet(fs::path archive, std::vector<std::string> topNames, 
 
 std::string ExtractSheet::smartNote() const {
   if (m_topNames.size() == 1) {
-    return std::format("The archive has one top item, so “{}” goes here as it is.", m_topNames.front());
+    return i18n::tr("files.extract.note-one", "name", m_topNames.front());
   }
   if (m_topNames.empty()) {
-    return std::format("Many items go into a new folder “{}”.", archiveStem(m_archive));
+    return i18n::tr("files.extract.note-empty", "folder", archiveStem(m_archive));
   }
-  return std::format("The archive has {} items at the top, so they go into a new folder “{}”.", m_topNames.size(),
-                     archiveStem(m_archive));
+  return i18n::tr("files.extract.note-many", "count", m_topNames.size(), "folder", archiveStem(m_archive));
 }
 
 std::unique_ptr<Node> ExtractSheet::build(float scale) {
@@ -57,9 +57,9 @@ std::unique_ptr<Node> ExtractSheet::build(float scale) {
   auto header = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::componentDialogPadding * s,
                          .height = Tokens::componentDialogHeader * s});
   header->addChild(ui::label({
-      .text = m_state == State::Normal          ? std::format("Extract “{}”", name)
-              : m_state == State::WrongPassword ? std::string("Wrong Password")
-                                                : std::format("“{}” Is Protected", name),
+      .text = m_state == State::Normal          ? i18n::tr("files.extract.title", "name", name)
+              : m_state == State::WrongPassword ? i18n::tr("files.extract.wrong-password")
+                                                : i18n::tr("files.extract.protected", "name", name),
       .fontSize = Tokens::typeTitle3.size * s,
       .fontWeight = FontWeight::SemiBold,
       .color = colorSpecFromRole(ColorRole::Label1),
@@ -72,13 +72,13 @@ std::unique_ptr<Node> ExtractSheet::build(float scale) {
                           .paddingH = Tokens::componentDialogPadding * s});
   if (m_state != State::Normal) {
     body->addChild(ui::label({.text = m_state == State::WrongPassword
-                                          ? std::format("The password does not open “{}”. Try again.", name)
-                                          : std::string("Enter the password to extract this archive."),
+                                          ? i18n::tr("files.extract.password-wrong", "name", name)
+                                          : i18n::tr("files.extract.password-prompt"),
                               .fontSize = Style::fontSizeBody * s,
                               .color = colorSpecFromRole(m_state == State::WrongPassword ? ColorRole::DangerText
                                                                                          : ColorRole::Label2)}));
     auto field = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s});
-    field->addChild(ui::input({.value = m_request.password, .placeholder = std::string("Password"),
+    field->addChild(ui::input({.value = m_request.password, .placeholder = i18n::tr("files.extract.password"),
                                .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
                                .passwordMode = true, .invalid = m_state == State::WrongPassword, .flexGrow = 1.0F,
                                .onChange = [this](const std::string& v) {
@@ -92,13 +92,13 @@ std::unique_ptr<Node> ExtractSheet::build(float scale) {
   }
 
   auto to = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s});
-  to->addChild(ui::label({.text = std::string("To"), .fontSize = Style::fontSizeBody * s,
+  to->addChild(ui::label({.text = i18n::tr("files.extract.to"), .fontSize = Style::fontSizeBody * s,
                           .color = colorSpecFromRole(ColorRole::Label2), .width = kFieldLabel * s}));
   to->addChild(ui::label({.text = m_destination.filename().empty() ? m_destination.string() : m_destination.filename().string(),
                           .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1,
                           .ellipsize = TextEllipsize::Middle, .flexGrow = 1.0F}));
   if (m_choose) {
-    to->addChild(ui::button({.text = std::string("Change…"), .variant = ButtonVariant::Default, .onClick = [this] {
+    to->addChild(ui::button({.text = i18n::tr("files.extract.change"), .variant = ButtonVariant::Default, .onClick = [this] {
                                m_choose([this](const fs::path& folder) {
                                  m_destination = folder;
                                  DeferredCall::callLater([rebuild = m_rebuild] { rebuild(); });
@@ -109,23 +109,23 @@ std::unique_ptr<Node> ExtractSheet::build(float scale) {
   body->addChild(ui::label({.text = smartNote(), .fontSize = Style::fontSizeCaption * s,
                             .color = colorSpecFromRole(ColorRole::Label2)}));
 
-  const auto check = [&](const char* label, bool& value) {
+  const auto check = [&](const std::string& label, bool& value) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     row->addChild(ui::checkbox({.checked = value, .scale = s, .onChange = [&value](bool on) { value = on; }}));
     row->addChild(ui::label({.text = std::string(label), .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::Label1)}));
     body->addChild(std::move(row));
   };
-  check("Show the folder when done", m_request.showWhenDone);
-  check("Move the archive to Trash after extracting", m_request.trashArchive);
+  check(i18n::tr("files.extract.show-folder"), m_request.showWhenDone);
+  check(i18n::tr("files.extract.trash-archive"), m_request.trashArchive);
   sheet->addChild(std::move(body));
 
   auto footer = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s,
                          .padding = Tokens::componentDialogPadding * s});
-  footer->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default, .onClick = [this] {
+  footer->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .variant = ButtonVariant::Default, .onClick = [this] {
                                  DeferredCall::callLater([close = m_close] { close(); });
                                }}));
-  footer->addChild(ui::button({.out = &m_ok, .text = std::string("Extract"),
+  footer->addChild(ui::button({.out = &m_ok, .text = i18n::tr("files.extract.extract"),
                                .enabled = m_state == State::Normal || !m_request.password.empty(),
                                .variant = ButtonVariant::Primary,
                                .onClick = [this] { DeferredCall::callLater([this] { submit(); }); }}));

@@ -1,6 +1,7 @@
 #include "network_page.h"
 
 #include "core/log.h"
+#include "i18n/i18n.h"
 #include "ui/controls/flex.h"
 #include "ui/files/this_pc.h"
 
@@ -22,7 +23,7 @@ namespace {
   std::string protocolLabel(std::string_view uri) {
     const std::string_view scheme = uri.substr(0, uri.find(':'));
     if (scheme == "smb") {
-      return "Windows share (SMB)";
+      return i18n::tr("files.network.smb");
     }
     if (scheme == "sftp" || scheme == "ssh") {
       return "SFTP";
@@ -243,19 +244,19 @@ std::unique_ptr<Node> NetworkPage::build(float scale) {
     const bool offline = m_offline.contains(serverKey(server.uri));
     // The URI rides in `path`: place cells do not read it, and openPlace() needs it back.
     return ThisPcPlace{.label = server.name, .path = fs::path(server.uri), .art = "network",
-                       .caption = offline ? std::string("Not responding") : std::move(line), .warn = offline};
+                       .caption = offline ? i18n::tr("files.network.offline") : std::move(line), .warn = offline};
   };
   std::vector<PlaceSection> sections;
-  PlaceSection found{.title = "On this network"};
+  PlaceSection found{.title = i18n::tr("files.network.found")};
   if (m_found.empty()) {
-    found.caption = m_looking ? "Looking…" : "Nothing found on this network";
+    found.caption = i18n::tr(m_looking ? "files.network.looking" : "files.network.none");
   }
   for (const Server& server : m_found) {
     found.places.push_back(cell(server, protocolLabel(server.uri)));
   }
   sections.push_back(std::move(found));
   if (!m_saved.empty()) {
-    PlaceSection saved{.title = "Saved servers"};
+    PlaceSection saved{.title = i18n::tr("files.network.saved")};
     for (const Server& server : m_saved) {
       saved.places.push_back(cell(server, server.uri));
     }
@@ -267,7 +268,7 @@ std::unique_ptr<Node> NetworkPage::build(float scale) {
           page->openPlace(place);
         }
       },
-      PlaceAction{.label = "Connect to Server…", .run = [weak = weak_from_this()] {
+      PlaceAction{.label = i18n::tr("files.network.connect"), .run = [weak = weak_from_this()] {
                     if (auto page = weak.lock(); page && page->m_actions.connect) {
                       page->m_actions.connect({});
                     }
@@ -374,7 +375,7 @@ void NetworkPage::onMounted(void* source, void* result, void* data) {
   if (ok) {
     gchar* path = g_file_get_path(job->file);
     if (path == nullptr) {
-      message = "The server is connected, but Files cannot open it: gvfs-fuse is not running.";
+      message = i18n::tr("files.network.no-fuse");
     } else if (page) {
       page->m_offline.erase(serverKey(job->uri));
       // A later mount from the sheet keeps an earlier "connect at login" unless the sheet set it now.
@@ -397,14 +398,14 @@ void NetworkPage::onMounted(void* source, void* result, void* data) {
     message = job->question;
   } else if (job->needsPassword) {
     needsPassword = true;
-    message = job->sentPassword ? "The user name or password is not correct." : "This server needs a password.";
+    message = i18n::tr(job->sentPassword ? "files.network.bad-login" : "files.network.needs-password");
   } else if (offlineError(error)) {
     if (page) {
       page->m_offline.insert(serverKey(job->uri));
     }
-    message = "The server does not answer. Check the address and the network.";
+    message = i18n::tr("files.network.no-answer");
   } else {
-    message = error != nullptr ? error->message : "The server could not be connected.";
+    message = error != nullptr ? error->message : i18n::tr("files.network.failed");
   }
   kLog.debug("mount {}: {}", job->uri, message.empty() ? "ok" : message);
   g_clear_error(&error);

@@ -5,6 +5,7 @@
 #include "core/log.h"
 #include "dbus/session_bus.h"
 #include "dbus/reply_log.h"
+#include "i18n/i18n.h"
 
 #include <glib.h>
 #include <sdbus-c++/sdbus-c++.h>
@@ -133,16 +134,16 @@ void PrintJobs::apply(int jobId, const JobStatus& status) {
   Job& job = it->second;
   switch (status.state) {
   case JobState::Waiting:
-    show(jobId, Shown::Progress, std::format("Printing “{}”", job.title), std::format("{} · waiting", job.label));
+    show(jobId, Shown::Progress, i18n::tr("files.printing.title", "title", job.title), i18n::tr("files.printing.waiting", "printer", job.label));
     break;
   case JobState::Printing:
-    show(jobId, Shown::Progress, std::format("Printing “{}”", job.title),
-         job.pages > 0 ? std::format("{} · page {} of {}", job.label, std::min(status.pagesDone + 1, job.pages), job.pages)
+    show(jobId, Shown::Progress, i18n::tr("files.printing.title", "title", job.title),
+         job.pages > 0 ? i18n::tr("files.printing.page", "printer", job.label, "page", std::min(status.pagesDone + 1, job.pages), "pages", job.pages)
                        : job.label);
     break;
   case JobState::Stopped:
-    show(jobId, Shown::Problem, std::format("“{}” did not print", job.title),
-         std::format("{}: {}. The job waits.", job.label, status.reason.empty() ? "stopped" : status.reason));
+    show(jobId, Shown::Problem, i18n::tr("files.printing.failed-title", "title", job.title),
+         i18n::tr("files.printing.stopped", "printer", job.label, "reason", status.reason.empty() ? i18n::tr("files.printing.stopped-reason") : status.reason));
     break;
   case JobState::Unknown:
     break;
@@ -150,8 +151,8 @@ void PrintJobs::apply(int jobId, const JobStatus& status) {
   case JobState::Cancelled:
   case JobState::Failed:
     if (status.state == JobState::Failed)
-      failed(std::format("“{}” did not print", job.title),
-             std::format("{}: {}.", job.label, status.reason.empty() ? "the printer stopped the job" : status.reason));
+      failed(i18n::tr("files.printing.failed-title", "title", job.title),
+             i18n::tr("files.printing.failed", "printer", job.label, "reason", status.reason.empty() ? i18n::tr("files.printing.failed-reason") : status.reason));
     // A Notify still in flight closes its notification in the reply, as the job is gone.
     if (job.note != 0) {
       m_byNote.erase(job.note);
@@ -183,7 +184,7 @@ void PrintJobs::send(int jobId) {
     return;
   const bool problem = job.shown == Shown::Problem;
   const std::vector<std::string> actions =
-      problem ? std::vector<std::string>{"cancel", "Cancel Job", "queue", "Show Queue"} : std::vector<std::string>{};
+      problem ? std::vector<std::string>{"cancel", i18n::tr("files.printing.cancel"), "queue", i18n::tr("files.printing.queue")} : std::vector<std::string>{};
   const std::map<std::string, sdbus::Variant> hints{
       {"desktop-entry", sdbus::Variant{std::string{"dev.andromeda.Files"}}},
       {"urgency", sdbus::Variant{static_cast<std::uint8_t>(problem ? 2 : 1)}},

@@ -1,5 +1,7 @@
 #include "vaults.h"
 
+#include "i18n/i18n.h"
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -31,6 +33,8 @@ namespace {
 } // namespace
 
 int main() {
+  i18n::Service::instance().addDomain("files", ANDROMEDA_TRANSLATIONS_DIR);
+  i18n::Service::instance().setLanguage("en");
   char tmpl[] = "/tmp/files-vaults-XXXXXX";
   const fs::path root = ::mkdtemp(tmpl);
   ::setenv("XDG_DATA_HOME", (root / "data").c_str(), 1);

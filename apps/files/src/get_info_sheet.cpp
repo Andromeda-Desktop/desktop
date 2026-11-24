@@ -6,6 +6,7 @@
 #include "core/log.h"
 #include "core/text_clipboard.h"
 #include "files/file_ops_client.h"
+#include "i18n/i18n.h"
 #include "permission_access.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
@@ -33,7 +34,7 @@ namespace fs = std::filesystem;
 
 namespace {
   constexpr Logger kLog("files-info");
-  std::unique_ptr<Flex> section(const char* caption, float s);
+  std::unique_ptr<Flex> section(const std::string& caption, float s);
   const float& kFieldLabel = Tokens::componentFilesFieldLabel;
   constexpr std::uint64_t kCountPostEvery = 4096; // entries between live size updates
 
@@ -43,7 +44,7 @@ namespace {
     std::string text = parent.string();
     const char* home = g_get_home_dir();
     if (home != nullptr && text.starts_with(home)) {
-      text = "Home" + text.substr(std::string_view(home).size());
+      text = i18n::tr("files.info.home") + text.substr(std::string_view(home).size());
     }
     std::string out;
     for (const fs::path& part : fs::path(text)) {
@@ -110,7 +111,7 @@ namespace {
   std::string defaultApp(const std::string& contentType) {
     GAppInfo* app = g_app_info_get_default_for_type(contentType.c_str(), FALSE);
     if (app == nullptr) {
-      return "None";
+      return i18n::tr("files.getinfo.none");
     }
     std::string name = g_app_info_get_display_name(app);
     g_object_unref(app);
@@ -240,8 +241,8 @@ std::string GetInfoSheet::sizeText() const {
     return formatFileSize(bytes);
   }
   const std::uint64_t items = m_count->items;
-  std::string text = std::format("{} · {} {}", formatFileSize(bytes), items, items == 1 ? "item" : "items");
-  return m_count->done ? text : "Counting… " + text;
+  std::string text = i18n::trp("files.getinfo.size-items", static_cast<long>(items), "size", formatFileSize(bytes));
+  return m_count->done ? text : i18n::tr("files.getinfo.counting", "text", text);
 }
 
 void GetInfoSheet::updateSize() {
@@ -260,7 +261,7 @@ std::unique_ptr<Node> GetInfoSheet::build(float scale) {
   for (const Item& item : m_items) {
     (item.isDir ? folders : files) += 1;
   }
-  std::string title = m_items.size() == 1 ? m_items.front().path.filename().string() : std::format("{} Items", m_items.size());
+  std::string title = m_items.size() == 1 ? m_items.front().path.filename().string() : i18n::tr("files.getinfo.title-many", "count", m_items.size());
   auto header = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::componentDialogPadding * s,
                          .height = Tokens::componentDialogHeader * s});
   header->addChild(ui::label({.text = std::move(title), .fontSize = Tokens::typeTitle3.size * s,
@@ -288,14 +289,14 @@ std::unique_ptr<Node> GetInfoSheet::build(float scale) {
                               .color = colorSpecFromRole(ColorRole::DangerText), .maxLines = 3}));
   }
   if (m_admin.has_value()) {
-    body->addChild(ui::button({.text = std::string("Change as Administrator…"), .variant = ButtonVariant::Default,
+    body->addChild(ui::button({.text = i18n::tr("files.getinfo.change-admin"), .variant = ButtonVariant::Default,
                                .onClick = [this] { DeferredCall::callLater([this] { changeAsAdmin(); }); }}));
   }
   sheet->addChild(std::move(body));
 
   auto footer = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s,
                          .padding = Tokens::componentDialogPadding * s});
-  footer->addChild(ui::button({.text = std::string("Done"), .variant = ButtonVariant::Primary, .onClick = [this] {
+  footer->addChild(ui::button({.text = i18n::tr("files.tags.done"), .variant = ButtonVariant::Primary, .onClick = [this] {
                                  DeferredCall::callLater([close = m_close] { close(); });
                                }}));
   sheet->addChild(std::move(footer));
@@ -347,19 +348,19 @@ std::vector<GetInfoSheet::Version> GetInfoSheet::previousVersions(const fs::path
 }
 
 std::unique_ptr<Node> GetInfoSheet::buildVersions(float s) {
-  auto box = section("Previous Versions", s);
+  auto box = section(i18n::tr("files.getinfo.versions"), s);
   for (const Version& v : m_versions) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     row->addChild(ui::label({.text = std::format("{} · {}", formatFileDate(v.modifiedNs), formatFileSize(v.size)),
                              .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label1),
                              .flexGrow = 1.0F}));
-    row->addChild(ui::button({.text = std::string("Open"), .variant = ButtonVariant::Default,
+    row->addChild(ui::button({.text = i18n::tr("files.getinfo.open"), .variant = ButtonVariant::Default,
                               .onClick = [this, path = v.path] {
                                 if (m_open) {
                                   m_open(path);
                                 }
                               }}));
-    row->addChild(ui::button({.text = std::string("Restore"), .variant = ButtonVariant::Default,
+    row->addChild(ui::button({.text = i18n::tr("files.getinfo.restore"), .variant = ButtonVariant::Default,
                               .onClick = [this, path = v.path] {
                                 if (m_restore && !m_items.empty()) {
                                   kLog.debug("restore version {}", path.string());
@@ -376,7 +377,7 @@ void GetInfoSheet::failed(const std::string& error, AdminChange change) {
   // EPERM: the items belong to another user; root can make the change after polkit asks.
   if (error.find("Operation not permitted") != std::string::npos || error.find("os error 1)") != std::string::npos) {
     m_admin = std::move(change);
-    m_error = "These items belong to another user.";
+    m_error = i18n::tr("files.getinfo.other-user");
   }
   load();
   later(m_rebuild);
@@ -408,12 +409,12 @@ void GetInfoSheet::changeAsAdmin() {
   GError* error = nullptr;
   GSubprocess* proc = g_subprocess_newv(argv.data(), static_cast<GSubprocessFlags>(G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE), &error);
   if (proc == nullptr) {
-    m_error = std::format("Could not ask for the administrator password: {}", error->message);
+    m_error = i18n::tr("files.getinfo.ask-failed", "error", error->message);
     g_error_free(error);
     later(m_rebuild);
     return;
   }
-  m_error = "Waiting for the administrator password…";
+  m_error = i18n::tr("files.admin.waiting-password");
   later(m_rebuild);
   struct Ctx {
     GetInfoSheet* self;
@@ -432,8 +433,8 @@ void GetInfoSheet::changeAsAdmin() {
           GetInfoSheet* self = ctx->self;
           // pkexec exits 126 when the user dismissed the password dialog.
           const bool dismissed = ran && g_subprocess_get_if_exited(p) && g_subprocess_get_exit_status(p) == 126;
-          self->m_error = ok ? std::string() : dismissed ? std::string("No change: the password was not given.")
-                                                         : std::string(err != nullptr && *err != '\0' ? err : "The change failed.");
+          self->m_error = ok ? std::string() : dismissed ? i18n::tr("files.getinfo.no-change")
+                                                         : err != nullptr && *err != '\0' ? std::string(err) : i18n::tr("files.admin.change-failed");
           if (ok) {
             self->m_admin.reset();
           }
@@ -448,7 +449,7 @@ void GetInfoSheet::changeAsAdmin() {
 }
 
 namespace {
-  std::unique_ptr<Flex> section(const char* caption, float s) {
+  std::unique_ptr<Flex> section(const std::string& caption, float s) {
     auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
     box->addChild(ui::label({.text = std::string(caption), .fontSize = Style::fontSizeBody * s,
                              .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
@@ -470,44 +471,44 @@ namespace {
 } // namespace
 
 std::unique_ptr<Node> GetInfoSheet::buildGeneral(float s) {
-  auto box = section("General", s);
+  auto box = section(i18n::tr("files.getinfo.general"), s);
   const auto shared = [&](auto get, auto text) -> std::string {
     const auto first = get(m_items.front());
     const bool same = std::ranges::all_of(m_items, [&](const Item& i) { return get(i) == first; });
-    return same ? text(first) : std::string("Mixed");
+    return same ? text(first) : i18n::tr("files.getinfo.mixed");
   };
   if (m_items.size() == 1) {
     const auto info = statFile(m_items.front().path);
-    auto kind = field("Kind", s);
-    kind->addChild(value(info ? fileKindLabel(*info) : std::string("Unknown"), s));
+    auto kind = field(i18n::tr("files.getinfo.kind"), s);
+    kind->addChild(value(info ? fileKindLabel(*info) : i18n::tr("files.getinfo.unknown"), s));
     box->addChild(std::move(kind));
     if (info && !info->isDir) {
-      auto open = field("Open With", s);
+      auto open = field(i18n::tr("files.getinfo.open-with"), s);
       open->addChild(value(defaultApp(info->contentType), s));
       box->addChild(std::move(open));
     }
   }
-  auto size = field("Size", s);
+  auto size = field(i18n::tr("files.getinfo.size"), s);
   size->addChild(value(sizeText(), s, &m_size));
   box->addChild(std::move(size));
-  auto at = field("Where", s);
+  auto at = field(i18n::tr("files.getinfo.where"), s);
   at->addChild(value(shared([](const Item& i) { return i.path.parent_path(); }, where), s));
   box->addChild(std::move(at));
-  const auto date = [&](const char* label, std::int64_t Item::*member) {
+  const auto date = [&](const std::string& label, std::int64_t Item::*member) {
     auto row = field(label, s);
     row->addChild(value(shared([member](const Item& i) { return i.*member; },
-                               [](std::int64_t t) { return t == 0 ? std::string("Unknown") : formatFileDate(t); }),
+                               [](std::int64_t t) { return t == 0 ? i18n::tr("files.getinfo.unknown") : formatFileDate(t); }),
                         s));
     box->addChild(std::move(row));
   };
-  date("Created", &Item::createdNs);
-  date("Modified", &Item::modifiedNs);
-  date("Opened", &Item::openedNs);
+  date(i18n::tr("files.getinfo.created"), &Item::createdNs);
+  date(i18n::tr("files.getinfo.modified"), &Item::modifiedNs);
+  date(i18n::tr("files.getinfo.opened"), &Item::openedNs);
   return box;
 }
 
 std::unique_ptr<Node> GetInfoSheet::buildPermissions(float s) {
-  auto box = section("Permissions", s);
+  auto box = section(i18n::tr("files.getinfo.permissions"), s);
   std::vector<std::uint32_t> modes;
   for (const Item& item : m_items) {
     modes.push_back(item.mode);
@@ -515,7 +516,7 @@ std::unique_ptr<Node> GetInfoSheet::buildPermissions(float s) {
   const Item& first = m_items.front();
   const bool oneOwner = std::ranges::all_of(m_items, [&](const Item& i) { return i.uid == first.uid; });
   const bool oneGroup = std::ranges::all_of(m_items, [&](const Item& i) { return i.gid == first.gid; });
-  const auto picker = [&](const char* label, const std::vector<std::pair<std::uint32_t, std::string>>& ids,
+  const auto picker = [&](const std::string& label, const std::vector<std::pair<std::uint32_t, std::string>>& ids,
                           std::optional<std::uint32_t> now, std::function<void(std::uint32_t)> pick) {
     std::vector<std::string> options;
     std::optional<std::size_t> selected;
@@ -527,7 +528,7 @@ std::unique_ptr<Node> GetInfoSheet::buildPermissions(float s) {
     }
     auto row = field(label, s);
     row->addChild(ui::select({.options = std::move(options), .selectedIndex = selected,
-                              .placeholder = std::string("Mixed"), .fontSize = Style::fontSizeBody * s,
+                              .placeholder = i18n::tr("files.getinfo.mixed"), .fontSize = Style::fontSizeBody * s,
                               .controlHeight = Style::controlHeight * s,
                               .onSelectionChanged = [ids, pick = std::move(pick)](std::size_t i, std::string_view) {
                                 if (i < ids.size()) {
@@ -536,20 +537,20 @@ std::unique_ptr<Node> GetInfoSheet::buildPermissions(float s) {
                               }}));
     box->addChild(std::move(row));
   };
-  picker("Owner", ownerChoices(oneOwner ? std::optional(first.uid) : std::nullopt),
+  picker(i18n::tr("files.getinfo.owner"), ownerChoices(oneOwner ? std::optional(first.uid) : std::nullopt),
          oneOwner ? std::optional(first.uid) : std::nullopt,
          [this](std::uint32_t uid) { setOwner({.uid = uid, .gid = std::nullopt}); });
-  picker("Group", groupChoices(oneGroup ? std::optional(first.gid) : std::nullopt),
+  picker(i18n::tr("files.getinfo.group"), groupChoices(oneGroup ? std::optional(first.gid) : std::nullopt),
          oneGroup ? std::optional(first.gid) : std::nullopt,
          [this](std::uint32_t gid) { setOwner({.uid = std::nullopt, .gid = gid}); });
-  const std::array<std::string, 3> names{oneOwner ? userName(first.uid) : std::string("Owner"),
-                                         oneGroup ? groupName(first.gid) : std::string("Group"), std::string("Everyone")};
+  const std::array<std::string, 3> names{oneOwner ? userName(first.uid) : i18n::tr("files.getinfo.owner"),
+                                         oneGroup ? groupName(first.gid) : i18n::tr("files.getinfo.group"), i18n::tr("files.getinfo.everyone")};
   for (int cls = 0; cls < 3; ++cls) {
     const auto common = commonAccess(modes, static_cast<PermClass>(cls));
-    std::vector<ui::SegmentedOption> options{{.label = "No access"}, {.label = "Read only"}, {.label = "Read and write"}};
+    std::vector<ui::SegmentedOption> options{{.label = i18n::tr("files.access.none")}, {.label = i18n::tr("files.access.read")}, {.label = i18n::tr("files.access.read-write")}};
     std::size_t selected = common.has_value() ? static_cast<std::size_t>(*common) : 3;
     if (selected >= 3) {
-      options.push_back({.label = common.has_value() ? accessLabel(*common) : "Mixed"});
+      options.push_back({.label = common.has_value() ? accessLabel(*common) : i18n::tr("files.getinfo.mixed")});
       selected = 3;
     }
     auto row = field(names[static_cast<std::size_t>(cls)], s);
@@ -561,7 +562,7 @@ std::unique_ptr<Node> GetInfoSheet::buildPermissions(float s) {
                                  }}));
     box->addChild(std::move(row));
   }
-  const auto check = [&](const char* label, bool checked, std::function<void(bool)> set) {
+  const auto check = [&](const std::string& label, bool checked, std::function<void(bool)> set) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     row->addChild(ui::checkbox({.checked = checked, .scale = s, .onChange = std::move(set)}));
     row->addChild(ui::label({.text = std::string(label), .fontSize = Style::fontSizeBody * s,
@@ -570,12 +571,12 @@ std::unique_ptr<Node> GetInfoSheet::buildPermissions(float s) {
   };
   if (std::ranges::none_of(m_items, [](const Item& i) { return i.isDir; })) {
     const bool runs = std::ranges::all_of(m_items, [](const Item& i) { return (i.mode & 0111) != 0; });
-    check("Allow running as a program", runs, [this](bool on) { setRun(on); });
+    check(i18n::tr("files.getinfo.allow-run"), runs, [this](bool on) { setRun(on); });
   } else {
-    check("Apply to enclosed items", m_recursive, [this](bool on) { m_recursive = on; });
+    check(i18n::tr("files.getinfo.apply-enclosed"), m_recursive, [this](bool on) { m_recursive = on; });
   }
   if (m_items.size() > 1) {
-    box->addChild(ui::label({.text = std::format("A change here applies to all {} items.", m_items.size()),
+    box->addChild(ui::label({.text = i18n::tr("files.getinfo.applies-all", "count", m_items.size()),
                              .fontSize = Style::fontSizeCaption * s, .color = colorSpecFromRole(ColorRole::Label2)}));
   }
   return box;
@@ -662,18 +663,18 @@ void GetInfoSheet::setRun(bool allow) {
 }
 
 std::unique_ptr<Node> GetInfoSheet::buildChecksums(float s) {
-  auto box = section("Checksum", s);
-  const auto row = [&](const char* label, Sum& sum, const char* algorithm) {
+  auto box = section(i18n::tr("files.getinfo.checksum"), s);
+  const auto row = [&](const std::string& label, Sum& sum, const char* algorithm) {
     auto r = field(label, s);
     switch (sum.state) {
     case Sum::State::Idle:
       r->addChild(value(std::string(), s));
-      r->addChild(ui::button({.text = std::string("Show"), .variant = ButtonVariant::Default,
+      r->addChild(ui::button({.text = i18n::tr("files.getinfo.show"), .variant = ButtonVariant::Default,
                               .onClick = [this, &sum, algorithm] { runChecksum(sum, algorithm); }}));
       break;
     case Sum::State::Running:
-      r->addChild(value(std::string("Computing…"), s));
-      r->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default, .onClick = [this, &sum] {
+      r->addChild(value(i18n::tr("files.getinfo.computing"), s));
+      r->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .variant = ButtonVariant::Default, .onClick = [this, &sum] {
                                 sum.state = Sum::State::Cancelling;
                                 if (!sum.job.empty()) {
                                   m_ops->cancel(sum.job);
@@ -682,11 +683,11 @@ std::unique_ptr<Node> GetInfoSheet::buildChecksums(float s) {
                               }}));
       break;
     case Sum::State::Cancelling:
-      r->addChild(value(std::string("Cancelling…"), s));
+      r->addChild(value(i18n::tr("files.getinfo.cancelling"), s));
       break;
     case Sum::State::Done:
       r->addChild(value(sum.hex, s));
-      r->addChild(ui::button({.text = std::string("Copy"), .variant = ButtonVariant::Default, .onClick = [&sum] {
+      r->addChild(ui::button({.text = i18n::tr("files.getinfo.copy"), .variant = ButtonVariant::Default, .onClick = [&sum] {
                                 if (TextClipboard* clipboard = Input::textClipboard()) {
                                   clipboard->setClipboardText(sum.hex);
                                 }
@@ -695,7 +696,7 @@ std::unique_ptr<Node> GetInfoSheet::buildChecksums(float s) {
     case Sum::State::Failed:
       r->addChild(ui::label({.text = sum.error, .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::DangerText), .maxLines = 1, .flexGrow = 1.0F}));
-      r->addChild(ui::button({.text = std::string("Retry"), .variant = ButtonVariant::Default,
+      r->addChild(ui::button({.text = i18n::tr("files.getinfo.retry"), .variant = ButtonVariant::Default,
                               .onClick = [this, &sum, algorithm] { runChecksum(sum, algorithm); }}));
       break;
     }
@@ -703,7 +704,7 @@ std::unique_ptr<Node> GetInfoSheet::buildChecksums(float s) {
   };
   row("SHA-256", m_sha, "sha256");
   row("MD5", m_md5, "md5");
-  box->addChild(ui::input({.value = m_compare, .placeholder = std::string("Paste a checksum to compare"),
+  box->addChild(ui::input({.value = m_compare, .placeholder = i18n::tr("files.getinfo.paste-hint"),
                            .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
                            .onChange = [this](const std::string& v) {
                              m_compare = v;
@@ -723,13 +724,13 @@ void GetInfoSheet::updateCompare() {
   std::string text;
   if (!want.empty()) {
     if (m_sha.state == Sum::State::Done && want == m_sha.hex) {
-      text = "Matches the SHA-256 checksum.";
+      text = i18n::tr("files.getinfo.match-sha");
     } else if (m_md5.state == Sum::State::Done && want == m_md5.hex) {
-      text = "Matches the MD5 checksum.";
+      text = i18n::tr("files.getinfo.match-md5");
     } else if (m_sha.state == Sum::State::Done || m_md5.state == Sum::State::Done) {
-      text = "Does not match.";
+      text = i18n::tr("files.getinfo.no-match");
     } else {
-      text = want.size() == 32 ? "Show the MD5 checksum to compare." : "Show the SHA-256 checksum to compare.";
+      text = i18n::tr(want.size() == 32 ? "files.getinfo.show-md5" : "files.getinfo.show-sha");
     }
   }
   m_compareResult->setText(text);

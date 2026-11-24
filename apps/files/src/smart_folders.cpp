@@ -1,6 +1,7 @@
 #include "smart_folders.h"
 
 #include "core/blocking_pool.h"
+#include "i18n/i18n.h"
 #include "state_file.h"
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
@@ -70,26 +71,30 @@ namespace {
     }
   }
 
-  const char* kindLabel(const std::string& kind) {
-    return kind == "pdf" ? "PDF" : kind == "image" ? "Image" : kind == "doc" ? "Document" : kind == "sheet" ? "Spreadsheet" : "";
+  std::string kindLabel(const std::string& kind) {
+    return kind == "pdf"     ? i18n::tr("files.smart.kind-pdf")
+           : kind == "image" ? i18n::tr("files.smart.kind-image")
+           : kind == "doc"   ? i18n::tr("files.smart.kind-doc")
+           : kind == "sheet" ? i18n::tr("files.smart.kind-sheet")
+                             : std::string();
   }
 } // namespace
 
 std::string SmartFolder::sentence() const {
   std::vector<std::string> parts;
   if (!text.empty()) {
-    parts.push_back(std::format("Name contains “{}”", text));
+    parts.push_back(i18n::tr("files.smart.sentence-name", "text", text));
   }
   if (!kind.empty()) {
-    parts.push_back(std::format("Kind is {}", kindLabel(kind)));
+    parts.push_back(i18n::tr("files.smart.sentence-kind", "kind", kindLabel(kind)));
   }
   if (days == 1) {
-    parts.emplace_back("Modified today");
+    parts.push_back(i18n::tr("files.smart.sentence-today"));
   } else if (days > 0) {
-    parts.push_back(days == 365 ? std::string("Modified in the last year")
-                                : std::format("Modified in the last {} days", days));
+    parts.push_back(days == 365 ? i18n::tr("files.smart.sentence-year")
+                                : i18n::tr("files.smart.sentence-days", "days", days));
   }
-  parts.push_back(folder.empty() ? std::string("in This PC") : std::format("in {}", folder.filename().string()));
+  parts.push_back(folder.empty() ? i18n::tr("files.smart.sentence-pc") : i18n::tr("files.smart.sentence-folder", "name", folder.filename().string()));
   std::string out;
   for (const auto& p : parts) {
     out += (out.empty() ? "" : " · ") + p;

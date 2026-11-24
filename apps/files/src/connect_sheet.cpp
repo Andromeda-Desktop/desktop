@@ -1,6 +1,7 @@
 #include "connect_sheet.h"
 
 #include "core/deferred_call.h"
+#include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/checkbox.h"
@@ -30,20 +31,20 @@ std::unique_ptr<Node> ConnectSheet::build(float scale) {
 
   auto header = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::componentDialogPadding * s,
                          .height = Tokens::componentDialogHeader * s});
-  header->addChild(ui::label({.text = std::string("Connect to Server"), .fontSize = Tokens::typeTitle3.size * s,
+  header->addChild(ui::label({.text = i18n::tr("files.connect.title"), .fontSize = Tokens::typeTitle3.size * s,
                               .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
   sheet->addChild(std::move(header));
 
   auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
                           .paddingH = Tokens::componentDialogPadding * s});
-  const auto fieldRow = [&](const char* label) {
+  const auto fieldRow = [&](const std::string& label) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s});
     row->addChild(ui::label({.text = std::string(label), .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::Label2), .width = kFieldLabel * s}));
     return row;
   };
 
-  auto address = fieldRow("Server");
+  auto address = fieldRow(i18n::tr("files.connect.server"));
   address->addChild(ui::input({.value = m_address, .placeholder = std::string("smb://server/share"),
                                .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
                                .flexGrow = 1.0F,
@@ -58,16 +59,16 @@ std::unique_ptr<Node> ConnectSheet::build(float scale) {
   body->addChild(ui::label({.text = std::string(kExamples), .fontSize = Style::fontSizeCaption * s,
                             .color = colorSpecFromRole(ColorRole::Label3), .maxLines = 2}));
 
-  auto user = fieldRow("User");
-  user->addChild(ui::input({.value = m_user, .placeholder = std::string("Guest when empty"),
+  auto user = fieldRow(i18n::tr("files.connect.user"));
+  user->addChild(ui::input({.value = m_user, .placeholder = i18n::tr("files.connect.guest"),
                             .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
                             .flexGrow = 1.0F,
                             .onChange = [this](const std::string& v) { m_user = v; },
                             .onSubmit = [this](const std::string&) { submit(); }}));
   body->addChild(std::move(user));
 
-  auto password = fieldRow("Password");
-  password->addChild(ui::input({.value = m_password, .placeholder = std::string(m_showPassword ? "Required" : "Optional"),
+  auto password = fieldRow(i18n::tr("files.connect.password"));
+  password->addChild(ui::input({.value = m_password, .placeholder = i18n::tr(m_showPassword ? "files.connect.required" : "files.connect.optional"),
                                 .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
                                 .passwordMode = true, .flexGrow = 1.0F,
                                 .onChange = [this](const std::string& v) { m_password = v; },
@@ -78,7 +79,7 @@ std::unique_ptr<Node> ConnectSheet::build(float scale) {
   remember->addChild(ui::row({.width = kFieldLabel * s})); // aligns with the fields
   remember->addChild(ui::checkbox({.checked = m_remember, .scale = s,
                                    .onChange = [this](bool on) { m_remember = on; }}));
-  remember->addChild(ui::label({.text = std::string("Remember password in the keyring"),
+  remember->addChild(ui::label({.text = i18n::tr("files.connect.remember"),
                                 .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label1)}));
   body->addChild(std::move(remember));
 
@@ -86,7 +87,7 @@ std::unique_ptr<Node> ConnectSheet::build(float scale) {
   reconnect->addChild(ui::row({.width = kFieldLabel * s}));
   reconnect->addChild(ui::checkbox({.checked = m_reconnect, .scale = s,
                                     .onChange = [this](bool on) { m_reconnect = on; }}));
-  reconnect->addChild(ui::label({.text = std::string("Connect again at login"),
+  reconnect->addChild(ui::label({.text = i18n::tr("files.connect.reconnect"),
                                  .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label1)}));
   body->addChild(std::move(reconnect));
 
@@ -98,10 +99,10 @@ std::unique_ptr<Node> ConnectSheet::build(float scale) {
 
   auto footer = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s,
                          .padding = Tokens::componentDialogPadding * s});
-  footer->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default, .onClick = [this] {
+  footer->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .variant = ButtonVariant::Default, .onClick = [this] {
                                  DeferredCall::callLater([close = m_close] { close(); });
                                }}));
-  footer->addChild(ui::button({.out = &m_ok, .text = std::string(m_busy ? "Connecting…" : (m_question.empty() ? "Connect" : "Accept")),
+  footer->addChild(ui::button({.out = &m_ok, .text = i18n::tr(m_busy ? "files.connect.connecting" : (m_question.empty() ? "files.connect.connect" : "files.connect.accept")),
                                .variant = ButtonVariant::Primary,
                                .onClick = [this] { DeferredCall::callLater([this] { submit(); }); }}));
   sheet->addChild(std::move(footer));
@@ -113,7 +114,7 @@ void ConnectSheet::update() {
   const auto url = parseServerUrl(m_address);
   if (m_ok != nullptr) {
     m_ok->setEnabled(url.has_value() && !m_busy);
-    m_ok->setText(m_busy ? "Connecting…" : (m_question.empty() ? "Connect" : "Accept"));
+    m_ok->setText(i18n::tr(m_busy ? "files.connect.connecting" : (m_question.empty() ? "files.connect.connect" : "files.connect.accept")));
   }
   if (m_note != nullptr) {
     // A typing error shows only after Connect; the host's mount error shows until the address changes.

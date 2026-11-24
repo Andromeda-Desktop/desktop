@@ -3,6 +3,7 @@
 #include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/flex.h"
@@ -31,16 +32,16 @@ namespace {
     const char* id;
     const char* extension;
     bool password;
-    const char* note;
+    const char* noteKey;
     // Guessed packed size per source byte, for text and for other files that are not already compressed.
     double textRatio;
     double otherRatio;
   };
   constexpr std::array<Format, 3> kFormats{{
-      {"ZIP", "zip", ".zip", true, "ZIP opens everywhere. File names stay visible even with a password.", 0.35, 0.65},
-      {"7z", "7z", ".7z", true, "7z makes the smallest archive. File names stay visible even with a password.", 0.25,
+      {"ZIP", "zip", ".zip", true, "files.compress.note-zip", 0.35, 0.65},
+      {"7z", "7z", ".7z", true, "files.compress.note-7z", 0.25,
        0.55},
-      {"tar.zst", "tar.zst", ".tar.zst", false, "tar.zst keeps Linux permissions and links. It takes no password.",
+      {"tar.zst", "tar.zst", ".tar.zst", false, "files.compress.note-tar-zst",
        0.35, 0.65},
   }};
 
@@ -51,12 +52,12 @@ namespace {
     std::uint64_t bytes;
   };
   constexpr std::array<Split, 6> kSplits{{
-      {"Don’t Split", "none", 0},
-      {"10 MB", "10m", 10'000'000},
-      {"25 MB (Email)", "25m", 25'000'000},
-      {"100 MB", "100m", 100'000'000},
-      {"700 MB (CD)", "700m", 700'000'000},
-      {"4 GB (FAT32)", "4g", 4'000'000'000},
+      {"files.compress.split-none", "none", 0},
+      {"files.compress.split-10m", "10m", 10'000'000},
+      {"files.compress.split-25m", "25m", 25'000'000},
+      {"files.compress.split-100m", "100m", 100'000'000},
+      {"files.compress.split-700m", "700m", 700'000'000},
+      {"files.compress.split-4g", "4g", 4'000'000'000},
   }};
 
   constexpr std::array<std::string_view, 33> kPackedExtensions = {
@@ -102,7 +103,7 @@ namespace {
   // "Holiday photos" for one item (a file loses its extension), "Archive" for more.
   std::string defaultName(const std::vector<fs::path>& sources) {
     if (sources.size() != 1) {
-      return "Archive";
+      return i18n::tr("files.compress.archive");
     }
     const fs::path& one = sources.front();
     std::error_code ec;
@@ -128,7 +129,7 @@ CompressSheet::CompressSheet(std::vector<fs::path> sources, Compress compress, s
 
 std::string CompressSheet::estimate() const {
   if (!m_totals) {
-    return "Estimating…";
+    return i18n::tr("files.compress.estimating");
   }
   const Format& format = kFormats[m_format];
   const auto bytes = static_cast<std::uint64_t>(static_cast<double>(m_totals->packed) +
@@ -136,9 +137,9 @@ std::string CompressSheet::estimate() const {
                                                 static_cast<double>(m_totals->other) * format.otherRatio);
   const std::uint64_t volume = kSplits[m_split].bytes;
   if (volume == 0 || bytes <= volume) {
-    return std::format("About {}", formatFileSize(bytes));
+    return i18n::tr("files.compress.about", "size", formatFileSize(bytes));
   }
-  return std::format("About {} in {} parts", formatFileSize(bytes), (bytes + volume - 1) / volume);
+  return i18n::tr("files.compress.about-parts", "size", formatFileSize(bytes), "parts", (bytes + volume - 1) / volume);
 }
 
 fs::path CompressSheet::destination() const {
@@ -154,8 +155,8 @@ std::unique_ptr<Node> CompressSheet::build(float scale) {
   auto header = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::componentDialogPadding * s,
                          .height = Tokens::componentDialogHeader * s});
   header->addChild(ui::label({
-      .text = m_sources.size() == 1 ? std::format("Compress “{}”", m_sources.front().filename().string())
-                                    : std::format("Compress {} Items", m_sources.size()),
+      .text = m_sources.size() == 1 ? i18n::tr("files.compress.title-one", "name", m_sources.front().filename().string())
+                                    : i18n::tr("files.compress.title-many", "count", m_sources.size()),
       .fontSize = Tokens::typeTitle3.size * s,
       .fontWeight = FontWeight::SemiBold,
       .color = colorSpecFromRole(ColorRole::Label1),
@@ -166,7 +167,7 @@ std::unique_ptr<Node> CompressSheet::build(float scale) {
 
   auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
                           .paddingH = Tokens::componentDialogPadding * s});
-  const auto fieldRow = [&](const char* label) {
+  const auto fieldRow = [&](const std::string& label) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s});
     // A label alone does not keep its width: the cell holds the field column in place (mockup .frow .fl).
     auto cell = ui::row({.align = FlexAlign::Center, .width = kFieldLabel * s});
@@ -176,7 +177,7 @@ std::unique_ptr<Node> CompressSheet::build(float scale) {
     return row;
   };
 
-  auto name = fieldRow("Name");
+  auto name = fieldRow(i18n::tr("files.compress.field-name"));
   name->addChild(ui::input({.value = m_name, .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
                             .flexGrow = 1.0F,
                             .onChange = [this](const std::string& v) {
@@ -188,7 +189,7 @@ std::unique_ptr<Node> CompressSheet::build(float scale) {
                             .color = colorSpecFromRole(ColorRole::Label2)}));
   body->addChild(std::move(name));
 
-  auto formats = fieldRow("Format");
+  auto formats = fieldRow(i18n::tr("files.compress.field-format"));
   std::vector<ui::SegmentedOption> options;
   for (const Format& f : kFormats) {
     options.push_back({.label = f.label});
@@ -206,8 +207,8 @@ std::unique_ptr<Node> CompressSheet::build(float scale) {
   body->addChild(std::move(formats));
 
   if (format.password) {
-    auto password = fieldRow("Password");
-    password->addChild(ui::input({.value = m_password, .placeholder = std::string("Optional"),
+    auto password = fieldRow(i18n::tr("files.compress.field-password"));
+    password->addChild(ui::input({.value = m_password, .placeholder = std::string(i18n::tr("files.compress.optional")),
                                   .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
                                   .passwordMode = true, .flexGrow = 1.0F,
                                   .onChange = [this](const std::string& v) { m_password = v; },
@@ -215,10 +216,10 @@ std::unique_ptr<Node> CompressSheet::build(float scale) {
     body->addChild(std::move(password));
   }
 
-  auto split = fieldRow("Split");
+  auto split = fieldRow(i18n::tr("files.compress.field-split"));
   std::vector<std::string> splits;
   for (const Split& option : kSplits) {
-    splits.emplace_back(option.label);
+    splits.emplace_back(i18n::tr(option.label));
   }
   split->addChild(ui::select({.options = std::move(splits), .selectedIndex = m_split, .fontSize = Style::fontSizeBody * s,
                               .controlHeight = Style::controlHeight * s,
@@ -230,16 +231,16 @@ std::unique_ptr<Node> CompressSheet::build(float scale) {
   split->addChild(ui::label({.out = &m_estimate, .text = estimate(), .fontSize = Style::fontSizeCaption * s,
                              .color = colorSpecFromRole(ColorRole::Label2)}));
   body->addChild(std::move(split));
-  body->addChild(ui::label({.out = &m_note, .text = std::string(format.note), .fontSize = Style::fontSizeCaption * s,
+  body->addChild(ui::label({.out = &m_note, .text = i18n::tr(format.noteKey), .fontSize = Style::fontSizeCaption * s,
                             .color = colorSpecFromRole(ColorRole::Label2)}));
   sheet->addChild(std::move(body));
 
   auto footer = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s,
                          .padding = Tokens::componentDialogPadding * s});
-  footer->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default, .onClick = [this] {
+  footer->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .variant = ButtonVariant::Default, .onClick = [this] {
                                  DeferredCall::callLater([close = m_close] { close(); });
                                }}));
-  footer->addChild(ui::button({.out = &m_ok, .text = std::string("Compress"), .variant = ButtonVariant::Primary,
+  footer->addChild(ui::button({.out = &m_ok, .text = std::string(i18n::tr("files.compress.compress")), .variant = ButtonVariant::Primary,
                                .onClick = [this] { DeferredCall::callLater([this] { submit(); }); }}));
   sheet->addChild(std::move(footer));
   update();
@@ -252,7 +253,7 @@ void CompressSheet::update() {
     m_ok->setEnabled(valid && !m_sources.empty());
   }
   if (m_note != nullptr) {
-    m_note->setText(valid ? kFormats[m_format].note : "A name can’t be empty or contain “/”.");
+    m_note->setText(valid ? i18n::tr(kFormats[m_format].noteKey) : i18n::tr("files.compress.name-invalid"));
   }
   if (m_estimate != nullptr) {
     m_estimate->setText(estimate());

@@ -1,5 +1,7 @@
 #include "admin_session.h"
 
+#include "i18n/i18n.h"
+
 #include <map>
 #include <print>
 #include <random>
@@ -22,6 +24,8 @@ namespace {
 } // namespace
 
 int main() {
+  i18n::Service::instance().addDomain("files", ANDROMEDA_TRANSLATIONS_DIR);
+  i18n::Service::instance().setLanguage("en");
   for (unsigned seed = 1; seed <= 2000; ++seed) {
     std::mt19937 rng(seed);
     std::vector<nlohmann::json> written;

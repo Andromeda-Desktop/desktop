@@ -1,5 +1,8 @@
 #include "admin_session.h"
 
+#include "i18n/i18n.h"
+
+
 #include <utility>
 
 AdminSession::AdminSession(std::function<void(const std::string&)> write, std::function<void()> changed)
@@ -34,7 +37,7 @@ bool AdminSession::transition(Phase to, std::string failure) {
 
 void AdminSession::request(nlohmann::json op, Reply reply) {
   if (m_phase == Phase::Failed || m_phase == Phase::Closed) {
-    reply({{"ok", false}, {"error", m_phase == Phase::Failed ? m_failure : std::string("The administrator tab is closed.")}});
+    reply({{"ok", false}, {"error", m_phase == Phase::Failed ? m_failure : std::string(i18n::tr("files.admin.tab-closed"))}});
     return;
   }
   m_queue.push_back({.op = std::move(op), .reply = std::move(reply)});
@@ -57,7 +60,7 @@ void AdminSession::pump() {
 void AdminSession::onLine(std::string_view line) {
   const nlohmann::json msg = nlohmann::json::parse(line, nullptr, false);
   if (msg.is_discarded() || !msg.is_object()) {
-    fail("The administrator helper sent a line Files cannot read.");
+    fail(i18n::tr("files.admin.helper-unreadable"));
     return;
   }
   if (m_phase == Phase::Starting) {
@@ -65,13 +68,13 @@ void AdminSession::onLine(std::string_view line) {
       transition(Phase::Ready);
       pump();
     } else {
-      fail("The administrator helper did not start.");
+      fail(i18n::tr("files.admin.helper-not-started"));
     }
     return;
   }
   if (m_phase != Phase::Busy || !m_inFlight.has_value() || msg.value("id", std::uint64_t{0}) != m_inFlight->id) {
     if (m_phase == Phase::Ready || m_phase == Phase::Busy) {
-      fail("The administrator helper answered out of order.");
+      fail(i18n::tr("files.admin.helper-out-of-order"));
     }
     return;
   }
@@ -87,11 +90,11 @@ void AdminSession::onExit(int status) {
     return;
   }
   if (m_phase == Phase::Starting && status == 126) {
-    fail("No administrator password was given.");
+    fail(i18n::tr("files.admin.no-password"));
   } else if (m_phase == Phase::Starting && status == 127) {
-    fail("You are not allowed to work as the administrator.");
+    fail(i18n::tr("files.admin.not-allowed"));
   } else {
-    fail("The administrator helper stopped.");
+    fail(i18n::tr("files.admin.helper-stopped"));
   }
 }
 
@@ -104,7 +107,7 @@ void AdminSession::fail(std::string why) {
 void AdminSession::close() {
   const bool wasFailed = m_phase == Phase::Failed;
   if (transition(Phase::Closed) && !wasFailed) {
-    drain("The administrator tab is closed.");
+    drain(i18n::tr("files.admin.tab-closed"));
   }
 }
 

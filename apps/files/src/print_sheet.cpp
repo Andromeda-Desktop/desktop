@@ -7,6 +7,7 @@
 #include "core/log.h"
 #include "design_tokens.h"
 #include "helper_client.h"
+#include "i18n/i18n.h"
 #include "print_jobs.h"
 #include "render/core/renderer.h"
 #include "render/scene/node.h"
@@ -50,7 +51,7 @@ namespace {
 
   std::string appName(const std::string& appId) {
     if (appId.empty())
-      return "An app";
+      return i18n::tr("files.portal.an-app");
     std::string name = appId;
     if (GDesktopAppInfo* info = g_desktop_app_info_new((appId + ".desktop").c_str())) {
       name = g_app_info_get_name(G_APP_INFO(info));
@@ -160,14 +161,14 @@ namespace {
   std::string stateText(const PrinterInfo& p) {
     switch (p.state) {
     case PrinterState::Ready:
-      return p.reason.empty() ? std::string("Ready") : "Ready · " + p.reason;
+      return p.reason.empty() ? i18n::tr("files.print.ready") : i18n::tr("files.print.ready-reason", "reason", p.reason);
     case PrinterState::Printing:
-      return p.queuedJobs > 0 ? std::format("Printing · {} {} waiting", p.queuedJobs, p.queuedJobs == 1 ? "job" : "jobs")
-                              : std::string("Printing");
+      return p.queuedJobs > 0 ? i18n::trp("files.print.printing-waiting", static_cast<long>(p.queuedJobs))
+                              : i18n::tr("files.print.printing");
     case PrinterState::NeedsAttention:
-      return (p.reason.empty() ? std::string("Needs attention") : p.reason) + ". The job waits.";
+      return i18n::tr("files.print.attention", "reason", p.reason.empty() ? i18n::tr("files.print.needs-attention") : p.reason);
     case PrinterState::Offline:
-      return "Offline · the job prints when it is back";
+      return i18n::tr("files.print.offline");
     }
     return {};
   }
@@ -483,12 +484,12 @@ std::unique_ptr<Node> PrintSheet::buildPreview(Renderer& renderer, float s, floa
   };
   switch (m_preview) {
   case Preview::Loading:
-    pv->addChild(note("Preparing preview…"));
+    pv->addChild(note(i18n::tr("files.print.preview-loading")));
     return pv;
   case Preview::Failed:
     pv->addChild(ui::glyph({.glyph = std::string("file"), .glyphSize = 40.0F * s,
                             .color = colorSpecFromRole(ColorRole::Label3)}));
-    pv->addChild(note("No preview for this file. It prints as usual."));
+    pv->addChild(note(i18n::tr("files.print.preview-none")));
     return pv;
   case Preview::Ready:
     break;
@@ -521,9 +522,9 @@ std::unique_ptr<Node> PrintSheet::buildPreview(Renderer& renderer, float s, floa
     }
     pv->addChild(std::move(strip));
   }
-  const char* unit = n > 1 ? "Sheet" : "Page";
-  pv->addChild(note(sheets > 1 ? std::format("{} {} of {} · ←/→", unit, m_sheet + 1, sheets)
-                               : std::format("{} 1 of 1", unit)));
+  const char* position = sheets > 1 ? (n > 1 ? "files.print.sheet-of" : "files.print.page-of")
+                                    : (n > 1 ? "files.print.sheet-only" : "files.print.page-only");
+  pv->addChild(note(i18n::tr(position, "n", m_sheet + 1, "total", sheets)));
   return pv;
 }
 
@@ -635,19 +636,18 @@ void PrintSheet::buildMain(Node& col, float s) {
   };
 
   auto ttl = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s});
-  ttl->addChild(ui::label({.text = std::format("Print “{}”", m_request.title.empty() ? "Document" : m_request.title),
+  ttl->addChild(ui::label({.text = i18n::tr("files.print.title", "title", m_request.title.empty() ? i18n::tr("files.print.document") : m_request.title),
                            .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
                            .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2,
                            .ellipsize = TextEllipsize::Middle}));
-  ttl->addChild(rows.label(m_pageCount > 0 ? std::format("{} · {} {}", appName(m_request.appId), m_pageCount,
-                                                         m_pageCount == 1 ? "page" : "pages")
+  ttl->addChild(rows.label(m_pageCount > 0 ? i18n::trp("files.print.meta", static_cast<long>(m_pageCount), "app", appName(m_request.appId))
                                            : appName(m_request.appId),
                            ColorRole::Label2, rows.caption));
   col.addChild(std::move(ttl));
 
   auto card = rows.card();
   if (m_printersState == Printers::Loading) {
-    rows.opt(*card, "Printer", rows.label("Looking for printers…", ColorRole::Label2));
+    rows.opt(*card, i18n::tr("files.print.printer"), rows.label(i18n::tr("files.print.looking"), ColorRole::Label2));
     col.addChild(std::move(card));
     return;
   }
@@ -660,14 +660,14 @@ void PrintSheet::buildMain(Node& col, float s) {
     states.push_back(stateText(each));
     dots.push_back(stateColour(each.state));
   }
-  names.emplace_back("Save as PDF");
+  names.emplace_back(i18n::tr("files.print.save-as-pdf"));
   states.emplace_back();
   auto printerSelect = ui::row({.align = FlexAlign::Center, .flexGrow = 1.0F});
   printerSelect->addChild(ui::select(
       {.options = std::move(names),
        .selectedIndex = m_target == Target::SaveAsPdf ? m_printers.size() : m_printer, .fontSize = rows.body,
        .controlHeight = rows.ctlH, .glyphSize = 14.0F * s, .optionIndicators = std::move(dots), .optionSubtitles = std::move(states),
-       .separatorBefore = m_printers.size(), .actions = {"Add Printer…"},
+       .separatorBefore = m_printers.size(), .actions = {i18n::tr("files.print.add-printer")},
        .onAction = [](std::size_t) { openPrinterSettings(); }, .flexGrow = 1.0F,
        .onSelectionChanged = [this, rebuild](std::size_t i, std::string_view) {
          if (i < m_printers.size())
@@ -676,12 +676,12 @@ void PrintSheet::buildMain(Node& col, float s) {
            selectSaveAsPdf();
          rebuild();
        }}));
-  rows.opt(*card, "Printer", std::move(printerSelect));
+  rows.opt(*card, i18n::tr("files.print.printer"), std::move(printerSelect));
 
   const PrinterInfo* p = printer();
   if (!p) {
-    card->addChild(rows.note(m_printers.empty() ? "No printers found. Add one in Settings › Printers, or save a PDF."
-                                                : "Saves the document as the app made it.",
+    card->addChild(rows.note(m_printers.empty() ? i18n::tr("files.print.no-printers")
+                                                : i18n::tr("files.print.saves-as-made"),
                              ColorRole::Label2));
     col.addChild(std::move(card));
     return;
@@ -702,17 +702,18 @@ void PrintSheet::buildMain(Node& col, float s) {
   copies->addChild(ui::stepper({.minValue = 1, .maxValue = 999, .step = 1, .value = m_options.copies, .scale = s,
                                 .onValueChanged = [this](int v) { m_options.copies = v; }}));
   copies->addChild(ui::row({.flexGrow = 1.0F}));
-  copies->addChild(rows.label("Collate"));
+  copies->addChild(rows.label(i18n::tr("files.print.collate")));
   copies->addChild(ui::toggle({.checked = m_options.collate, .onChange = [this](bool on) { m_options.collate = on; }}));
-  rows.opt(*card, "Copies", std::move(copies));
+  rows.opt(*card, i18n::tr("files.print.copies"), std::move(copies));
 
   auto pages = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-  pages->addChild(rows.seg({m_pageCount > 0 ? std::format("All {}", m_pageCount) : std::string("All"), "Range"},
+  pages->addChild(rows.seg({m_pageCount > 0 ? i18n::tr("files.print.all-n", "count", m_pageCount) : i18n::tr("files.print.all"),
+                            i18n::tr("files.print.range")},
                            m_allPages ? 0 : 1, [this, rebuild](std::size_t i) {
                              m_allPages = i == 0;
                              rebuild();
                            }));
-  pages->addChild(ui::input({.out = &m_rangeInput, .value = m_rangeText, .placeholder = std::string("e.g. 1-2, 4"), .fontSize = rows.body,
+  pages->addChild(ui::input({.out = &m_rangeInput, .value = m_rangeText, .placeholder = i18n::tr("files.print.range-placeholder"), .fontSize = rows.body,
                              .controlHeight = rows.ctlH, .invalid = !m_allPages && !m_rangeError.empty(),
                              .enabled = !m_allPages, .flexGrow = 1.0F,
                              .onChange = [this](const std::string& text) {
@@ -731,15 +732,15 @@ void PrintSheet::buildMain(Node& col, float s) {
                                  },
                              // A rebuild keeps the caret where the user typed.
                              .configure = [this](Input& input) { input.selectRange(m_rangeCaret, m_rangeCaret); }}));
-  rows.opt(*card, "Pages", std::move(pages));
+  rows.opt(*card, i18n::tr("files.print.pages"), std::move(pages));
   m_rangeNote = static_cast<Flex*>(card->addChild(rows.note(m_rangeError, ColorRole::DangerText, &m_rangeNoteLabel)));
 
   if (p->duplex)
-    rows.opt(*card, "Two-sided",
-             rows.seg({"Off", "Long Edge", "Short Edge"}, static_cast<std::size_t>(m_options.duplex),
+    rows.opt(*card, i18n::tr("files.print.two-sided"),
+             rows.seg({i18n::tr("files.print.off"), i18n::tr("files.print.long-edge"), i18n::tr("files.print.short-edge")}, static_cast<std::size_t>(m_options.duplex),
                       [this](std::size_t i) { m_options.duplex = static_cast<Duplex>(i); }));
   if (p->colour)
-    rows.opt(*card, "Colour", rows.seg({"Colour", "Black and White"}, m_options.colour ? 0 : 1,
+    rows.opt(*card, i18n::tr("files.print.colour"), rows.seg({i18n::tr("files.print.colour"), i18n::tr("files.print.black-white")}, m_options.colour ? 0 : 1,
                                        [this](std::size_t i) { m_options.colour = i == 0; }));
   if (!p->media.empty()) {
     std::vector<std::string> media;
@@ -749,13 +750,12 @@ void PrintSheet::buildMain(Node& col, float s) {
       if (p->media[i] == m_options.media)
         on = i;
     }
-    rows.opt(*card, "Paper", rows.select(std::move(media), on, [this, rebuild, all = p->media](std::size_t i) {
+    rows.opt(*card, i18n::tr("files.print.paper"), rows.select(std::move(media), on, [this, rebuild, all = p->media](std::size_t i) {
       m_options.media = all[i];
       rebuild();
     }));
     if (!m_appMedia.empty() && m_options.media != m_appMedia)
-      card->addChild(rows.note(std::format("The app laid out the pages for {}. They print scaled to fit.",
-                                           mediaLabel(m_appMedia)),
+      card->addChild(rows.note(i18n::tr("files.print.paper-note", "media", mediaLabel(m_appMedia)),
                                ColorRole::Label2));
   }
   col.addChild(std::move(card));
@@ -764,7 +764,7 @@ void PrintSheet::buildMain(Node& col, float s) {
   const float rowW = (kColumnWidth - 2.0F * Tokens::spaceP4) * s;
   auto moreRow = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::spaceP12 * s, .width = rowW,
                           .height = rows.rowH});
-  auto moreLabel = rows.label("More Options…", ColorRole::AccentText);
+  auto moreLabel = rows.label(i18n::tr("files.print.more-options"), ColorRole::AccentText);
   moreLabel->setFlexGrow(1.0F);
   moreRow->addChild(std::move(moreLabel));
   moreRow->addChild(ui::glyph({.glyph = std::string("chevron-right"), .glyphSize = 14.0F * s,
@@ -810,13 +810,13 @@ void PrintSheet::buildMore(Node& col, float s) {
 
   auto header = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP4 * s});
   header->addChild(ui::button({.glyph = std::string("chevron-left"), .glyphSize = 14.0F * s,
-                               .variant = ButtonVariant::Default, .tooltip = std::string("Back"),
+                               .variant = ButtonVariant::Default, .tooltip = i18n::tr("files.print.back"),
                                .radius = 16.0F * s, .width = 32.0F * s, .height = 32.0F * s,
                                .onClick = [this, rebuild] {
                                  m_screen = Screen::Main;
                                  rebuild();
                                }}));
-  header->addChild(ui::label({.text = std::string("More Options"), .fontSize = Tokens::typeTitle3.size * s,
+  header->addChild(ui::label({.text = i18n::tr("files.print.more-options-title"), .fontSize = Tokens::typeTitle3.size * s,
                               .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
   tagFocus(*header, "print.back");
   col.addChild(std::move(header));
@@ -827,19 +827,19 @@ void PrintSheet::buildMore(Node& col, float s) {
   for (std::size_t i = 0; i < std::size(kPerSheet); ++i)
     if (kPerSheet[i] == m_options.numberUp)
       up = i;
-  rows.opt(*card, "Per sheet", rows.seg({"1", "2", "4", "6"}, up, [this, rebuild](std::size_t i) {
+  rows.opt(*card, i18n::tr("files.print.per-sheet"), rows.seg({"1", "2", "4", "6"}, up, [this, rebuild](std::size_t i) {
     m_options.numberUp = kPerSheet[i];
     m_sheet = 0;
     rebuild();
   }));
-  rows.opt(*card, "Orientation",
-           rows.seg({"Auto", "Portrait", "Landscape"}, static_cast<std::size_t>(m_options.orientation),
+  rows.opt(*card, i18n::tr("files.print.orientation"),
+           rows.seg({i18n::tr("files.print.auto"), i18n::tr("files.print.portrait"), i18n::tr("files.print.landscape")}, static_cast<std::size_t>(m_options.orientation),
                     [this, rebuild](std::size_t i) {
                       m_options.orientation = static_cast<Orientation>(i);
                       rebuild();
                     }));
   auto scale = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-  scale->addChild(rows.seg({"Fit", "100 %", "Custom"}, static_cast<std::size_t>(m_options.scaling),
+  scale->addChild(rows.seg({i18n::tr("files.print.fit"), "100 %", i18n::tr("files.print.custom")}, static_cast<std::size_t>(m_options.scaling),
                            [this, rebuild](std::size_t i) {
                              m_options.scaling = static_cast<Scaling>(i);
                              rebuild();
@@ -847,13 +847,14 @@ void PrintSheet::buildMore(Node& col, float s) {
   if (m_options.scaling == Scaling::Custom)
     scale->addChild(ui::stepper({.minValue = 10, .maxValue = 400, .step = 5, .value = m_options.scalePercent, .scale = s,
                                  .onValueChanged = [this](int v) { m_options.scalePercent = v; }}));
-  rows.opt(*card, "Scale", std::move(scale));
-  rows.opt(*card, "Margins", rows.select({"Default", "None", "Narrow", "Wide"},
+  rows.opt(*card, i18n::tr("files.print.scale"), std::move(scale));
+  rows.opt(*card, i18n::tr("files.print.margins"),
+           rows.select({i18n::tr("files.print.margins-default"), i18n::tr("files.print.margins-none"), i18n::tr("files.print.margins-narrow"), i18n::tr("files.print.margins-wide")},
                                          static_cast<std::size_t>(m_options.margins),
                                          [this](std::size_t i) { m_options.margins = static_cast<Margins>(i); }));
-  rows.opt(*card, "Order", rows.select({"Front to Back", "Back to Front"}, m_options.reverseOrder ? 1 : 0,
+  rows.opt(*card, i18n::tr("files.print.order"), rows.select({i18n::tr("files.print.front-back"), i18n::tr("files.print.back-front")}, m_options.reverseOrder ? 1 : 0,
                                        [this](std::size_t i) { m_options.reverseOrder = i == 1; }));
-  rows.opt(*card, "Booklet", rows.toggle(m_options.booklet, [this](bool on) { m_options.booklet = on; }));
+  rows.opt(*card, i18n::tr("files.print.booklet"), rows.toggle(m_options.booklet, [this](bool on) { m_options.booklet = on; }));
   col.addChild(std::move(card));
 
   const PrinterInfo* p = printer();
@@ -906,7 +907,7 @@ std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width
   plain.borderWidth = 0.0F;
   const bool pdf = m_target == Target::SaveAsPdf;
   if (!pdf && m_printersState == Printers::Loaded)
-    buttons->addChild(ui::button({.text = std::string("Save as PDF…"), .fontSize = body,
+    buttons->addChild(ui::button({.text = i18n::tr("files.print.save-as-pdf-ellipsis"), .fontSize = body,
                                   .variant = ButtonVariant::Default, .customPalette = plain,
                                   .paddingH = Tokens::spaceP12 * s, .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = ctlH,
                                   .onClick = [this] {
@@ -914,13 +915,13 @@ std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width
                                       m_cb.savePdf();
                                   }}));
   buttons->addChild(ui::row({.flexGrow = 1.0F}));
-  buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = body, .variant = ButtonVariant::Default,
+  buttons->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .fontSize = body, .variant = ButtonVariant::Default,
                                 .customPalette = plain, .paddingH = Tokens::spaceP12 * s,
                                 .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = ctlH, .onClick = [this] {
                                   if (m_cb.cancel)
                                     m_cb.cancel();
                                 }}));
-  buttons->addChild(ui::button({.out = &m_printButton, .text = std::string(pdf ? "Save…" : "Print"), .fontSize = body,
+  buttons->addChild(ui::button({.out = &m_printButton, .text = pdf ? i18n::tr("files.print.save") : i18n::tr("files.print.print"), .fontSize = body,
                                 .enabled = !m_sent && (pdf || (printer() != nullptr && rangeValid())),
                                 .variant = ButtonVariant::Primary, .paddingH = Tokens::spaceP12 * s,
                                 .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = ctlH, .onClick = [this] { submit(); }}));

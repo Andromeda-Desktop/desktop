@@ -4,6 +4,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "files/file_ops_client.h"
+#include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/flex.h"
@@ -26,29 +27,35 @@ namespace {
   constexpr Logger kLog("files-storage");
   // Category -> bar colour; categories not listed use the last entry.
   struct Swatch {
-    const char* name;
+    const char* name; // the helper's category name
     ColorRole role;
     float alpha;
+    const char* label; // catalog key
   };
   constexpr std::array<Swatch, 8> kSwatches{{
-      {"Apps and system", ColorRole::Label2, 1.0F},
-      {"Documents", ColorRole::Accent, 1.0F},
-      {"Pictures", ColorRole::Warning, 1.0F},
-      {"Videos", ColorRole::Danger, 1.0F},
-      {"Music", ColorRole::Success, 1.0F},
-      {"Archives", ColorRole::Accent, 0.5F},
-      {"Caches", ColorRole::Label3, 1.0F},
-      {"Other", ColorRole::Fill3, 1.0F},
+      {"Apps and system", ColorRole::Label2, 1.0F, "files.storage.cat-apps"},
+      {"Documents", ColorRole::Accent, 1.0F, "files.storage.cat-documents"},
+      {"Pictures", ColorRole::Warning, 1.0F, "files.storage.cat-pictures"},
+      {"Videos", ColorRole::Danger, 1.0F, "files.storage.cat-videos"},
+      {"Music", ColorRole::Success, 1.0F, "files.storage.cat-music"},
+      {"Archives", ColorRole::Accent, 0.5F, "files.storage.cat-archives"},
+      {"Caches", ColorRole::Label3, 1.0F, "files.storage.cat-caches"},
+      {"Other", ColorRole::Fill3, 1.0F, "files.storage.cat-other"},
   }};
   constexpr float kBarGrow = 1000.0F; // flex weight of a whole bar; a segment gets its share
 
-  ColorSpec swatch(const std::string& name) {
+  const Swatch& swatchFor(const std::string& name) {
     for (const Swatch& s : kSwatches) {
       if (name == s.name) {
-        return colorSpecFromRole(s.role, s.alpha);
+        return s;
       }
     }
-    return colorSpecFromRole(kSwatches.back().role, kSwatches.back().alpha);
+    return kSwatches.back();
+  }
+
+  ColorSpec swatch(const std::string& name) {
+    const Swatch& s = swatchFor(name);
+    return colorSpecFromRole(s.role, s.alpha);
   }
 
   std::string shortPath(const fs::path& path) {
@@ -56,7 +63,7 @@ namespace {
     const char* home = g_get_home_dir();
     if (home != nullptr && text.starts_with(home)) {
       const std::string rest = text.substr(std::string_view(home).size());
-      return rest.empty() ? "Home" : "~" + rest;
+      return rest.empty() ? i18n::tr("files.storage.home") : "~" + rest;
     }
     return text;
   }
@@ -111,15 +118,18 @@ void StoragePage::scan(bool fresh) {
   std::weak_ptr<StoragePage> weak = weak_from_this();
   BlockingPool::instance().run([weak, root = m_root] {
     struct statvfs fsInfo{};
-    std::string usage;
+    std::uint64_t used = 0;
+    std::uint64_t total = 0;
     if (::statvfs(root.c_str(), &fsInfo) == 0) {
       const std::uint64_t capacity = static_cast<std::uint64_t>(fsInfo.f_blocks) * fsInfo.f_frsize;
       const std::uint64_t free = static_cast<std::uint64_t>(fsInfo.f_bavail) * fsInfo.f_frsize;
-      usage = std::format("{} used of {}", formatFileSize(capacity - free), formatFileSize(capacity));
+      used = capacity - free;
+      total = capacity;
     }
-    DeferredCall::callLater([weak, usage = std::move(usage)]() mutable {
+    DeferredCall::callLater([weak, used, total] {
       if (auto self = weak.lock()) {
-        self->m_usage = std::move(usage);
+        self->m_usage = total == 0 ? std::string()
+                                  : i18n::tr("files.storage.used", "used", formatFileSize(used), "total", formatFileSize(total));
         self->m_actions.rebuild();
       }
     });
@@ -138,7 +148,7 @@ void StoragePage::scan(bool fresh) {
                sum.trash, sum.caches, sum.oldDownloadItems.size(),
                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
     kLog.debug("storage total {}", sum.total);
-    self->m_error = self->m_summary ? std::string() : error.empty() ? std::string("The scan gave no result.") : error;
+    self->m_error = self->m_summary ? std::string() : error.empty() ? i18n::tr("files.storage.no-result") : error;
     if (self->m_drill) {
       self->drill(*self->m_drill);
     }
@@ -182,15 +192,15 @@ std::unique_ptr<Node> StoragePage::build(float scale) {
   auto page = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP24 * s, .padding = Tokens::spaceP24 * s});
 
   auto header = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s});
-  header->addChild(ui::label({.text = std::string("Storage"), .fontSize = Tokens::typeTitle3.size * s,
+  header->addChild(ui::label({.text = i18n::tr("files.storage.title"), .fontSize = Tokens::typeTitle3.size * s,
                               .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
   header->addChild(text(m_usage, Style::fontSizeBody * s, ColorRole::Label2, 1.0F));
-  header->addChild(ui::button({.text = std::string(m_scanning ? "Scanning…" : "Scan Again"), .enabled = !m_scanning,
+  header->addChild(ui::button({.text = m_scanning ? i18n::tr("files.storage.scanning") : i18n::tr("files.storage.scan-again"), .enabled = !m_scanning,
                                .variant = ButtonVariant::Default, .onClick = [this] { later([this] { scan(true); }); }}));
   page->addChild(std::move(header));
 
   if (!m_summary) {
-    page->addChild(text(m_scanning ? std::string("Scanning this drive…") : m_error, Style::fontSizeBody * s,
+    page->addChild(text(m_scanning ? i18n::tr("files.storage.scanning-drive") : m_error, Style::fontSizeBody * s,
                         m_error.empty() ? ColorRole::Label2 : ColorRole::DangerText));
     return page;
   }
@@ -218,7 +228,7 @@ std::unique_ptr<Node> StoragePage::buildBar(float s) const {
     auto item = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
     item->addChild(ui::box({.fill = swatch(name), .radius = Tokens::spaceP8 * s / 2.0F, .width = Tokens::spaceP8 * s,
                             .height = Tokens::spaceP8 * s}));
-    item->addChild(text(std::format("{} {}", name, formatFileSize(bytes)), Style::fontSizeCaption * s, ColorRole::Label2));
+    item->addChild(text(std::format("{} {}", i18n::tr(swatchFor(name).label), formatFileSize(bytes)), Style::fontSizeCaption * s, ColorRole::Label2));
     legend->addChild(std::move(item));
   }
   box->addChild(std::move(bar));
@@ -243,12 +253,12 @@ std::unique_ptr<Node> StoragePage::buildFolders(float s) {
                                   });
                                 }}));
   }
-  title->addChild(ui::label({.text = m_drill ? shortPath(*m_drill) : std::string("Largest folders"),
+  title->addChild(ui::label({.text = m_drill ? shortPath(*m_drill) : i18n::tr("files.storage.largest"),
                              .fontSize = Style::fontSizeBody * s, .fontWeight = FontWeight::SemiBold,
                              .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1,
                              .ellipsize = TextEllipsize::Middle, .flexGrow = 1.0F}));
   if (m_drill && m_actions.open) {
-    title->addChild(ui::button({.text = std::string("Show in Files"), .variant = ButtonVariant::Default,
+    title->addChild(ui::button({.text = i18n::tr("files.storage.show-in-files"), .variant = ButtonVariant::Default,
                                 .onClick = [this] { m_actions.open(*m_drill); }}));
   }
   box->addChild(std::move(title));
@@ -277,11 +287,11 @@ std::unique_ptr<Node> StoragePage::buildFolders(float s) {
 
 std::unique_ptr<Node> StoragePage::buildRecommendations(float s) {
   auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s});
-  box->addChild(ui::label({.text = std::string("Recommendations"), .fontSize = Style::fontSizeBody * s,
+  box->addChild(ui::label({.text = i18n::tr("files.storage.recommendations"), .fontSize = Style::fontSizeBody * s,
                            .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
   const Summary& sum = *m_summary;
-  const auto recommend = [&](Confirm kind, const char* label, std::uint64_t bytes, const char* action, std::string question,
-                             const char* confirmLabel, std::function<void()> act, std::function<void()> review) {
+  const auto recommend = [&](Confirm kind, std::string label, std::uint64_t bytes, std::string action, std::string question,
+                             std::string confirmLabel, std::function<void()> act, std::function<void()> review) {
     if (bytes == 0) {
       return;
     }
@@ -289,13 +299,13 @@ std::unique_ptr<Node> StoragePage::buildRecommendations(float s) {
                         .minHeight = Tokens::sizeRowCompact * s});
     if (m_confirm == kind) {
       row->addChild(text(std::move(question), Style::fontSizeBody * s, ColorRole::Label1, 1.0F));
-      row->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default, .onClick = [this] {
+      row->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Default, .onClick = [this] {
                                   later([this] {
                                     m_confirm = Confirm::None;
                                     m_actions.rebuild();
                                   });
                                 }}));
-      row->addChild(ui::button({.text = std::string(confirmLabel), .variant = ButtonVariant::Primary,
+      row->addChild(ui::button({.text = std::move(confirmLabel), .variant = ButtonVariant::Primary,
                                 .onClick = [this, act = std::move(act)] {
                                   later([this, act] {
                                     m_confirm = Confirm::None;
@@ -309,10 +319,10 @@ std::unique_ptr<Node> StoragePage::buildRecommendations(float s) {
       row->addChild(text(label, Style::fontSizeBody * s, ColorRole::Label1, 1.0F));
       row->addChild(text(formatFileSize(bytes), Style::fontSizeBody * s, ColorRole::Label2));
       if (review) {
-        row->addChild(ui::button({.text = std::string("Review"), .variant = ButtonVariant::Default,
+        row->addChild(ui::button({.text = i18n::tr("files.storage.review"), .variant = ButtonVariant::Default,
                                   .onClick = std::move(review)}));
       }
-      row->addChild(ui::button({.text = std::string(action), .variant = ButtonVariant::Default, .onClick = [this, kind] {
+      row->addChild(ui::button({.text = std::move(action), .variant = ButtonVariant::Default, .onClick = [this, kind] {
                                   later([this, kind] {
                                     m_confirm = kind;
                                     m_actions.rebuild();
@@ -321,12 +331,13 @@ std::unique_ptr<Node> StoragePage::buildRecommendations(float s) {
     }
     box->addChild(std::move(row));
   };
-  recommend(Confirm::EmptyTrash, "Empty Trash", sum.trash, "Empty…",
-            "Empty the Trash? Its items are deleted for good.", "Empty Trash", m_actions.emptyTrash, {});
+  recommend(Confirm::EmptyTrash, i18n::tr("files.storage.empty-trash"), sum.trash, i18n::tr("files.storage.empty-action"),
+            i18n::tr("files.storage.empty-confirm"), i18n::tr("files.storage.empty-trash"), m_actions.emptyTrash, {});
   const fs::path downloads = fs::path(g_get_home_dir()) / "Downloads";
-  recommend(Confirm::OldDownloads, "Downloads older than 90 days", sum.oldDownloads, "Move to Trash…",
-            std::format("Move {} old downloads to the Trash? You can undo it.", sum.oldDownloadItems.size()),
-            "Move to Trash",
+  recommend(Confirm::OldDownloads, i18n::tr("files.storage.old-downloads"), sum.oldDownloads,
+            i18n::tr("files.storage.trash-action"),
+            i18n::trp("files.storage.trash-confirm", static_cast<long>(sum.oldDownloadItems.size())),
+            i18n::tr("files.storage.trash-button"),
             [this, items = sum.oldDownloadItems] {
               if (m_actions.trash) {
                 m_actions.trash(items);
@@ -334,8 +345,8 @@ std::unique_ptr<Node> StoragePage::buildRecommendations(float s) {
             },
             m_actions.open ? std::function<void()>([this, downloads] { m_actions.open(downloads); }) : nullptr);
   const fs::path caches = fs::path(g_get_home_dir()) / ".cache";
-  recommend(Confirm::Caches, "App caches", sum.caches, "Clear…",
-            "Delete the app caches? Apps make them again when they need them.", "Delete Caches",
+  recommend(Confirm::Caches, i18n::tr("files.storage.caches"), sum.caches, i18n::tr("files.storage.clear-action"),
+            i18n::tr("files.storage.caches-confirm"), i18n::tr("files.storage.caches-button"),
             [this, caches] {
               std::vector<fs::path> items;
               std::error_code ec;
@@ -348,7 +359,7 @@ std::unique_ptr<Node> StoragePage::buildRecommendations(float s) {
             },
             {});
   if (box->children().size() == 1) {
-    box->addChild(text("Nothing to clean up.", Style::fontSizeBody * s, ColorRole::Label2));
+    box->addChild(text(i18n::tr("files.storage.nothing"), Style::fontSizeBody * s, ColorRole::Label2));
   }
   return box;
 }

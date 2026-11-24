@@ -5,6 +5,7 @@
 #include "core/files/file_info.h"
 #include "design_tokens.h"
 #include "details_pane.h"
+#include "i18n/i18n.h"
 #include "portal_sheets.h"
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
@@ -75,7 +76,7 @@ namespace {
   };
 
   // Mockup .dlg .btn: 32 high capsules, fill_2 with no outline (the accent one for the primary action).
-  std::unique_ptr<Node> capsule(const char* text, ButtonVariant variant, float s, std::function<void()> onClick) {
+  std::unique_ptr<Node> capsule(const std::string& text, ButtonVariant variant, float s, std::function<void()> onClick) {
     Button::ButtonPalette palette = Button::defaultPalette(variant);
     palette.borderWidth = 0.0F;
     return ui::button({.text = std::string(text), .fontSize = Style::fontSizeBody * s, .variant = variant,
@@ -87,13 +88,13 @@ namespace {
   std::string ageWords(std::int64_t ns) {
     const std::int64_t days = ns / kNsPerDay;
     if (days >= 14) {
-      return std::format("{} weeks", days / 7);
+      return i18n::tr("files.conflict.weeks", "count", days / 7);
     }
     if (days >= 1) {
-      return std::format("{} day{}", days, days == 1 ? "" : "s");
+      return i18n::trp("files.conflict.days", days);
     }
     const std::int64_t hours = ns / (kNsPerDay / 24);
-    return hours >= 1 ? std::format("{} hour{}", hours, hours == 1 ? "" : "s") : std::string("a moment");
+    return hours >= 1 ? i18n::trp("files.conflict.hours", hours) : i18n::tr("files.conflict.moment");
   }
 } // namespace
 
@@ -119,25 +120,26 @@ std::string ConflictSheet::difference(std::uint64_t newSize, std::int64_t newTim
                                       std::optional<double> oldSeconds) {
   std::vector<std::string> parts;
   if (newSize != oldSize) {
-    parts.push_back(std::format("{} {}", formatFileSize(newSize > oldSize ? newSize - oldSize : oldSize - newSize),
-                                newSize > oldSize ? "larger" : "smaller"));
+    parts.push_back(i18n::tr(newSize > oldSize ? "files.conflict.larger" : "files.conflict.smaller", "size",
+                                formatFileSize(newSize > oldSize ? newSize - oldSize : oldSize - newSize)));
   }
   if (std::llabs(newTimeNs - oldTimeNs) >= kNsPerDay / 24) {
-    parts.push_back(std::format("{} {}", ageWords(std::llabs(newTimeNs - oldTimeNs)), newTimeNs > oldTimeNs ? "newer" : "older"));
+    parts.push_back(i18n::tr(newTimeNs > oldTimeNs ? "files.conflict.newer" : "files.conflict.older", "age", ageWords(std::llabs(newTimeNs - oldTimeNs))));
   }
   if (newSeconds && oldSeconds && std::abs(*newSeconds - *oldSeconds) >= 1.0) {
     const double d = std::abs(*newSeconds - *oldSeconds);
-    parts.push_back(std::format("{} {}", d < 60.0 ? std::format("{} s", std::lround(d)) : formatDuration(d),
-                                *newSeconds > *oldSeconds ? "longer" : "shorter"));
+    parts.push_back(i18n::tr(*newSeconds > *oldSeconds ? "files.conflict.longer" : "files.conflict.shorter", "time",
+                                d < 60.0 ? i18n::tr("files.conflict.seconds", "count", std::lround(d)) : formatDuration(d)));
   }
   if (parts.empty()) {
-    return "Both files have the same size and date.";
+    return i18n::tr("files.conflict.same");
   }
   std::string text = parts.front();
   for (std::size_t i = 1; i < parts.size(); ++i) {
-    text += (i + 1 == parts.size() ? " and " : ", ") + parts[i];
+    text = i + 1 == parts.size() ? i18n::tr("files.conflict.join-last", "head", text, "last", parts[i])
+                                   : i18n::tr("files.conflict.join", "head", text, "next", parts[i]);
   }
-  return std::format("The copy is {}.", text);
+  return i18n::tr("files.conflict.copy-is", "text", text);
 }
 
 ConflictSheet::ConflictSheet(Info info, ThumbnailService* thumbnails, std::function<void(Choice, bool)> answer,
@@ -161,20 +163,18 @@ std::unique_ptr<Node> ConflictSheet::buildMerge(float s) {
     head->addChild(std::make_unique<IconNode>(*folder, m_info.target, m_thumbnails, kThumb * s));
   }
   auto titles = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
-  titles->addChild(ui::label({.text = std::format("A folder “{}” is already in {}", m_info.target.filename().string(),
-                                                  m_info.target.parent_path().filename().string()),
+  titles->addChild(ui::label({.text = i18n::tr("files.conflict.folder-exists", "name", m_info.target.filename().string(), "folder", m_info.target.parent_path().filename().string()),
                               .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
                               .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2,
                               .ellipsize = TextEllipsize::Middle}));
-  titles->addChild(ui::label({.text = std::format("{} 1 folder · {} files", m_info.verb,
-                                                  clash.newFiles + clash.sameFiles + clash.differentFiles),
+  titles->addChild(ui::label({.text = i18n::tr("files.conflict.folder-summary", "verb", m_info.verb, "count", clash.newFiles + clash.sameFiles + clash.differentFiles),
                               .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
                               .color = colorSpecFromRole(ColorRole::Label2)}));
   head->addChild(std::move(titles));
   box->addChild(std::move(head));
   // Three count cards (r12, 600 17/24 + 500 12 label_2); "different" in the warning colour.
   auto counts = ui::row({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
-  const auto count = [&](std::uint64_t n, const char* what, bool warn) {
+  const auto count = [&](std::uint64_t n, const std::string& what, bool warn) {
     auto c = ui::column({.align = FlexAlign::Start, .paddingV = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s,
                          .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Style::scaledRadius(Tokens::radiusR12, s), .flexGrow = 1.0F});
     c->addChild(ui::label({.text = std::to_string(n), .fontSize = Tokens::typeTitle2.size * s,
@@ -184,9 +184,9 @@ std::unique_ptr<Node> ConflictSheet::buildMerge(float s) {
                            .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2)}));
     counts->addChild(std::move(c));
   };
-  count(clash.newFiles, "new files", false);
-  count(clash.sameFiles, "same files", false);
-  count(clash.differentFiles, "different", true);
+  count(clash.newFiles, i18n::tr("files.conflict.new-files"), false);
+  count(clash.sameFiles, i18n::tr("files.conflict.same-files"), false);
+  count(clash.differentFiles, i18n::tr("files.conflict.different"), true);
   box->addChild(std::move(counts));
   if (!clash.different.empty()) {
     auto list = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s,
@@ -207,20 +207,19 @@ std::unique_ptr<Node> ConflictSheet::buildMerge(float s) {
     }
     box->addChild(std::move(list));
   }
-  box->addChild(ui::label({.text = std::format("Merge adds the {} new files and skips the {} same ones.{}", clash.newFiles,
-                                               clash.sameFiles,
-                                               clash.differentFiles > 0
-                                                   ? std::format(" It asks about the {} different ones next.", clash.differentFiles)
-                                                   : std::string()),
+  box->addChild(ui::label({.text = clash.differentFiles > 0
+                                  ? i18n::tr("files.conflict.merge-ask", "new", clash.newFiles, "same", clash.sameFiles, "different",
+                                             clash.differentFiles)
+                                  : i18n::tr("files.conflict.merge", "new", clash.newFiles, "same", clash.sameFiles),
                            .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
                            .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 3}));
   auto buttons = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-  buttons->addChild(capsule("Stop", ButtonVariant::Default, s, [this] { choose(Choice::Stop); }));
+  buttons->addChild(capsule(i18n::tr("files.conflict.stop"), ButtonVariant::Default, s, [this] { choose(Choice::Stop); }));
   buttons->addChild(ui::node({.flexGrow = 1.0F}));
-  buttons->addChild(capsule("Keep Both", ButtonVariant::Default, s, [this] { choose(Choice::KeepBoth); }));
+  buttons->addChild(capsule(i18n::tr("files.conflict.keep-both"), ButtonVariant::Default, s, [this] { choose(Choice::KeepBoth); }));
   // Replace swaps the whole folder (the old one to the trash); Merge copies into it.
-  buttons->addChild(capsule("Replace", ButtonVariant::Default, s, [this] { choose(Choice::Replace); }));
-  buttons->addChild(capsule("Merge", ButtonVariant::Primary, s, [this] { choose(Choice::Merge); }));
+  buttons->addChild(capsule(i18n::tr("files.conflict.replace"), ButtonVariant::Default, s, [this] { choose(Choice::Replace); }));
+  buttons->addChild(capsule(i18n::tr("files.conflict.merge-button"), ButtonVariant::Primary, s, [this] { choose(Choice::Merge); }));
   box->addChild(std::move(buttons));
   return box;
 }
@@ -240,18 +239,18 @@ std::unique_ptr<Node> ConflictSheet::build(float s) {
     head->addChild(std::make_unique<IconNode>(*source, m_info.source, m_thumbnails, kThumb * s));
   }
   auto titles = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
-  titles->addChild(ui::label({.text = std::format("“{}” is already in {}", m_info.target.filename().string(),
-                                                  m_info.target.parent_path().filename().string()),
+  titles->addChild(ui::label({.text = i18n::tr("files.conflict.already-in", "name", m_info.target.filename().string(), "folder", m_info.target.parent_path().filename().string()),
                               .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
                               .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2,
                               .ellipsize = TextEllipsize::Middle}));
-  titles->addChild(ui::label({.text = std::format("{} {} item{} to {}{}", m_info.verb, m_info.totalFiles,
-                                                  m_info.totalFiles == 1 ? "" : "s",
-                                                  m_info.target.parent_path().filename().string(),
-                                                  m_info.conflictIndex > 0 && m_info.conflictTotal > 0
-                                                      ? std::format(" · conflict {} of {}", m_info.conflictIndex,
-                                                                    m_info.conflictTotal)
-                                                      : std::string()),
+  titles->addChild(ui::label({.text = m_info.conflictIndex > 0 && m_info.conflictTotal > 0
+                                  ? i18n::tr("files.conflict.job-numbered", "verb", m_info.verb, "items",
+                                             i18n::trp("files.conflict.items", static_cast<long>(m_info.totalFiles)), "folder",
+                                             m_info.target.parent_path().filename().string(), "index", m_info.conflictIndex,
+                                             "total", m_info.conflictTotal)
+                                  : i18n::tr("files.conflict.job", "verb", m_info.verb, "items",
+                                             i18n::trp("files.conflict.items", static_cast<long>(m_info.totalFiles)), "folder",
+                                             m_info.target.parent_path().filename().string()),
                               .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
                               .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1}));
   head->addChild(std::move(titles));
@@ -297,20 +296,20 @@ std::unique_ptr<Node> ConflictSheet::build(float s) {
       }
     }
     auto cap = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
-    cap->addChild(ui::label({.text = std::string(isNew ? "COPYING" : "ALREADY THERE"), .fontSize = Style::fontSizeMini * s,
+    cap->addChild(ui::label({.text = i18n::tr(isNew ? "files.conflict.copying" : "files.conflict.already-there"), .fontSize = Style::fontSizeMini * s,
                              .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label2),
                              .flexGrow = 1.0F}));
     if (source && target) {
       const auto& mine = isNew ? *source : *target;
       const auto& other = isNew ? *target : *source;
-      const char* badge = mine.mtimeNs > other.mtimeNs + kNsPerDay / 24 ? "NEWER"
-                          : mine.size > other.size                    ? "LARGER"
+      const char* badge = mine.mtimeNs > other.mtimeNs + kNsPerDay / 24 ? "files.conflict.newer-badge"
+                          : mine.size > other.size                    ? "files.conflict.larger-badge"
                                                                       : nullptr;
       if (badge != nullptr) {
         auto b = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::spaceP8 * s,
                           .fill = colorSpecFromRole(ColorRole::Success, 0.16F), .radius = kBadgeHeight / 2.0F * s,
                           .height = kBadgeHeight * s});
-        b->addChild(ui::label({.text = std::string(badge),
+        b->addChild(ui::label({.text = i18n::tr(badge),
                                .fontSize = Style::fontSizeMini * s,
                                .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Success)}));
         cap->addChild(std::move(b));
@@ -376,27 +375,26 @@ std::unique_ptr<Node> ConflictSheet::build(float s) {
   const std::uint64_t others = m_info.conflictTotal > m_info.conflictIndex ? m_info.conflictTotal - m_info.conflictIndex : 0;
   if (others > 0 || (m_info.conflictTotal == 0 && m_info.totalFiles > 1)) {
     opt->addChild(ui::checkbox({.checked = m_applyToAll, .onChange = [this](bool on) { m_applyToAll = on; }}));
-    opt->addChild(ui::label({.text = others > 0 ? std::format("Do the same for the {} other conflict{}", others,
-                                                              others == 1 ? "" : "s")
-                                                : std::string("Do the same for the other conflicts"),
+    opt->addChild(ui::label({.text = others > 0 ? i18n::trp("files.conflict.others", static_cast<long>(others))
+                                                : i18n::tr("files.conflict.others-unknown"),
                              .fontSize = Style::fontSizeBody * s,
                              .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label1)}));
   }
   opt->addChild(ui::node({.flexGrow = 1.0F}));
-  opt->addChild(ui::label({.text = std::format("Keep Both saves “{}”", keepBothName(m_info.target)),
+  opt->addChild(ui::label({.text = i18n::tr("files.conflict.keep-both-saves", "name", keepBothName(m_info.target)),
                            .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
                            .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1,
                            .ellipsize = TextEllipsize::Middle}));
   box->addChild(std::move(opt));
 
   auto buttons = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-  buttons->addChild(capsule("Stop", ButtonVariant::Default, s, [this] { choose(Choice::Stop); }));
+  buttons->addChild(capsule(i18n::tr("files.conflict.stop"), ButtonVariant::Default, s, [this] { choose(Choice::Stop); }));
   buttons->addChild(ui::node({.flexGrow = 1.0F}));
   // The primary follows the selected card: keep the copy = Replace, keep the one there = Skip.
-  buttons->addChild(capsule("Skip", m_keepNew ? ButtonVariant::Default : ButtonVariant::Primary, s,
+  buttons->addChild(capsule(i18n::tr("files.conflict.skip"), m_keepNew ? ButtonVariant::Default : ButtonVariant::Primary, s,
                             [this] { choose(Choice::Skip); }));
-  buttons->addChild(capsule("Keep Both", ButtonVariant::Default, s, [this] { choose(Choice::KeepBoth); }));
-  buttons->addChild(capsule("Replace", m_keepNew ? ButtonVariant::Primary : ButtonVariant::Default, s,
+  buttons->addChild(capsule(i18n::tr("files.conflict.keep-both"), ButtonVariant::Default, s, [this] { choose(Choice::KeepBoth); }));
+  buttons->addChild(capsule(i18n::tr("files.conflict.replace"), m_keepNew ? ButtonVariant::Primary : ButtonVariant::Default, s,
                             [this] { choose(Choice::Replace); }));
   box->addChild(std::move(buttons));
   return box;

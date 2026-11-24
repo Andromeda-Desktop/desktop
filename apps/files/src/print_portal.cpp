@@ -2,6 +2,7 @@
 
 #include "core/blocking_pool.h"
 #include "core/deferred_call.h"
+#include "i18n/i18n.h"
 #include "core/log.h"
 #include "printing/cups_printers.h"
 #include "dbus/session_bus.h"
@@ -243,7 +244,8 @@ void PrintPortal::print(std::uint64_t id, const PrintOptions& options, const std
         return;
       if (const auto* e = std::get_if<JobError>(&outcome)) {
         kLog.warn("print job failed: {}", e->message);
-        m_jobs.failed(std::format("“{}” did not print", title), std::format("{}: {}", printerLabel, e->message));
+        m_jobs.failed(i18n::tr("files.printing.failed-title", "title", title),
+                      i18n::tr("files.printing.job-error", "printer", printerLabel, "reason", e->message));
         apply(id, PrintEvent::JobFailed);
         return;
       }
@@ -289,8 +291,8 @@ void PrintPortal::savePdf(std::uint64_t id, const std::filesystem::path& path) {
         return;
       if (!saved) {
         kLog.warn("save as PDF failed: {}", path.string());
-        m_jobs.failed(std::format("“{}” was not saved", title),
-                      std::format("Could not write {}.", path.filename().string()));
+        m_jobs.failed(i18n::tr("files.printing.save-failed", "title", title),
+                      i18n::tr("files.printing.save-failed-detail", "name", path.filename().string()));
       }
       apply(id, saved ? PrintEvent::JobSent : PrintEvent::JobFailed);
     });

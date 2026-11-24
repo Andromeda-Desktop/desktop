@@ -1,5 +1,7 @@
 #include "server_url.h"
 
+#include "i18n/i18n.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -56,7 +58,7 @@ bool hex(char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c
 std::expected<ServerUrl, std::string> parseServerUrl(std::string_view input) {
   std::string_view s = trim(input);
   if (s.empty()) {
-    return std::unexpected("Type a server address, for example smb://nas.local/share.");
+    return std::unexpected(i18n::tr("files.server.empty"));
   }
   std::string unc;
   ServerUrl url;
@@ -68,8 +70,7 @@ std::expected<ServerUrl, std::string> parseServerUrl(std::string_view input) {
   } else if (const auto sep = s.find("://"); sep != std::string_view::npos) {
     url.scheme = gioScheme(s.substr(0, sep));
     if (url.scheme.empty()) {
-      return std::unexpected("Files cannot connect with \"" + std::string(s.substr(0, sep)) +
-                             "\". Use smb, sftp, dav, davs, nfs or ftp.");
+      return std::unexpected(i18n::tr("files.server.scheme", "scheme", std::string(s.substr(0, sep))));
     }
     s.remove_prefix(sep + 3);
   } else {
@@ -83,10 +84,10 @@ std::expected<ServerUrl, std::string> parseServerUrl(std::string_view input) {
   if (const auto at = authority.rfind('@'); at != std::string_view::npos) {
     const std::string_view user = authority.substr(0, at);
     if (user.find(':') != std::string_view::npos) {
-      return std::unexpected("Type the password in the Password field, not in the address.");
+      return std::unexpected(i18n::tr("files.server.password-in-address"));
     }
     if (user.empty() || !std::ranges::all_of(user, userChar)) {
-      return std::unexpected("The user name in the address is not valid.");
+      return std::unexpected(i18n::tr("files.server.user"));
     }
     url.user = std::string(user);
     authority.remove_prefix(at + 1);
@@ -97,16 +98,16 @@ std::expected<ServerUrl, std::string> parseServerUrl(std::string_view input) {
     const auto close = authority.find(']');
     if (close == std::string_view::npos || close == 1 ||
         !std::ranges::all_of(authority.substr(1, close - 1), [](char c) { return hex(c) || c == ':' || c == '.'; })) {
-      return std::unexpected("The IPv6 address is not valid.");
+      return std::unexpected(i18n::tr("files.server.ipv6"));
     }
     url.host = std::string(authority.substr(0, close + 1));
     const std::string_view rest = authority.substr(close + 1);
     if (!rest.empty() && !rest.starts_with(':')) {
-      return std::unexpected("The server address is not valid.");
+      return std::unexpected(i18n::tr("files.server.address"));
     }
     portText = rest.empty() ? rest : rest.substr(1);
     if (!rest.empty() && portText.empty()) {
-      return std::unexpected("Type a port number after the colon.");
+      return std::unexpected(i18n::tr("files.server.port-missing"));
     }
   } else {
     const auto colon = authority.find(':');
@@ -114,14 +115,14 @@ std::expected<ServerUrl, std::string> parseServerUrl(std::string_view input) {
     if (colon != std::string_view::npos) {
       portText = authority.substr(colon + 1);
       if (portText.empty()) {
-        return std::unexpected("Type a port number after the colon.");
+        return std::unexpected(i18n::tr("files.server.port-missing"));
       }
     }
     if (url.host.empty()) {
-      return std::unexpected("Type the server name or address.");
+      return std::unexpected(i18n::tr("files.server.host-missing"));
     }
     if (!std::ranges::all_of(url.host, hostChar) || url.host.starts_with('-') || url.host.starts_with('.')) {
-      return std::unexpected("\"" + url.host + "\" is not a valid server name.");
+      return std::unexpected(i18n::tr("files.server.host", "host", url.host));
     }
   }
 
@@ -129,7 +130,7 @@ std::expected<ServerUrl, std::string> parseServerUrl(std::string_view input) {
     unsigned value = 0;
     const auto [end, ec] = std::from_chars(portText.data(), portText.data() + portText.size(), value);
     if (ec != std::errc{} || end != portText.data() + portText.size() || value == 0 || value > 65535) {
-      return std::unexpected("The port must be a number from 1 to 65535.");
+      return std::unexpected(i18n::tr("files.server.port-range"));
     }
     url.port = static_cast<std::uint16_t>(value);
   }

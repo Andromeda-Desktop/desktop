@@ -6,6 +6,7 @@
 #include "core/files/media_info.h"
 #include "core/log.h"
 #include "design_tokens.h"
+#include "i18n/i18n.h"
 #include "portal_sheets.h"
 #include "render/core/renderer.h"
 #include "tags.h"
@@ -182,7 +183,7 @@ void DetailsPane::fill() {
     return ui::label({.text = std::move(t), .fontSize = size, .fontWeight = weight, .color = colorSpecFromRole(role),
                       .maxLines = lines, .ellipsize = TextEllipsize::Middle});
   };
-  const auto kv = [&](const char* key, std::string value) {
+  const auto kv = [&](const std::string& key, std::string value) {
     // Mockup .kv: 12/16 type, so rows sit 28 apart with the 12 gap.
     auto row = ui::row({.align = FlexAlign::Center, .minHeight = Tokens::spaceP16 * s});
     row->addChild(ui::label({.text = std::string(key), .fontSize = Style::fontSizeCaption * s,
@@ -215,7 +216,7 @@ void DetailsPane::fill() {
   const Facts& f = *m_facts;
   if (m_selection.size() > 1) {
     preview(m_selection.front(), f.info);
-    m_root->addChild(text(std::format("{} items", m_selection.size()), Tokens::typeHeadline.size * s,
+    m_root->addChild(text(i18n::tr("files.details.items", "count", m_selection.size()), Tokens::typeHeadline.size * s,
                           FontWeight::SemiBold, ColorRole::Label1, 1));
     m_root->addChild(text(formatFileSize(f.total), Style::fontSizeCaption * s, FontWeight::Medium, ColorRole::Label2, 1));
   } else {
@@ -238,25 +239,25 @@ void DetailsPane::fill() {
     m_root->addChild(std::move(names));
     const MediaInfo& media = f.media;
     if (media.size) {
-      kv("Dimensions", std::format("{} × {}", media.size->first, media.size->second));
+      kv(i18n::tr("files.details.dimensions"), std::format("{} × {}", media.size->first, media.size->second));
       kLog.debug("details {} {}x{}", path.filename().string(), media.size->first, media.size->second);
     }
     if (media.seconds) {
-      kv("Duration", formatDuration(*media.seconds));
+      kv(i18n::tr("files.details.duration"), formatDuration(*media.seconds));
     }
     if (!media.artist.empty()) {
-      kv("Artist", media.artist);
+      kv(i18n::tr("files.details.artist"), media.artist);
     }
     if (f.born != 0) {
-      kv("Created", formatFileDate(f.born));
+      kv(i18n::tr("files.details.created"), formatFileDate(f.born));
     }
     if (info) {
-      kv("Modified", formatFileDate(info->mtimeNs));
+      kv(i18n::tr("files.details.modified"), formatFileDate(info->mtimeNs));
     }
-    kv("Where", path.parent_path().parent_path().filename().string() + " › " + path.parent_path().filename().string());
+    kv(i18n::tr("files.details.where"), path.parent_path().parent_path().filename().string() + " › " + path.parent_path().filename().string());
     if (!f.tags.empty()) {
       auto row = ui::row({.align = FlexAlign::Center});
-      row->addChild(ui::label({.text = std::string("Tags"), .fontSize = Style::fontSizeCaption * s,
+      row->addChild(ui::label({.text = i18n::tr("files.details.tags"), .fontSize = Style::fontSizeCaption * s,
                                .color = colorSpecFromRole(ColorRole::Label2), .minWidth = kKeyWidth * s, .maxWidth = kKeyWidth * s}));
       auto dots = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
       for (const std::string& tag : f.tags) {
@@ -274,16 +275,16 @@ void DetailsPane::fill() {
   if (!m_selection.empty()) {
     auto buttons = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     // Mockup .btn: 32 high r8 rectangles, fill_2 with no outline, Open in the accent.
-    const auto button = [&](const char* label, ButtonVariant variant, std::function<void()> onClick) {
+    const auto button = [&](const std::string& label, ButtonVariant variant, std::function<void()> onClick) {
       Button::ButtonPalette palette = Button::defaultPalette(variant);
       palette.borderWidth = 0.0F;
       return ui::button({.text = std::string(label), .fontSize = Style::fontSizeBody * s, .variant = variant,
                          .customPalette = palette, .paddingH = Tokens::spaceP12 * s, .radius = Style::scaledRadius(Tokens::radiusR8, s),
                          .height = Tokens::sizeControlM * s, .onClick = std::move(onClick)});
     };
-    buttons->addChild(button("Open", ButtonVariant::Primary, [this] { m_actions.open(); }));
+    buttons->addChild(button(i18n::tr("files.details.open"), ButtonVariant::Primary, [this] { m_actions.open(); }));
     if (m_selection.size() == 1 && !(f.info && f.info->isDir)) {
-      buttons->addChild(button("Open With…", ButtonVariant::Default, [this] { m_actions.openWith(); }));
+      buttons->addChild(button(i18n::tr("files.details.open-with"), ButtonVariant::Default, [this] { m_actions.openWith(); }));
     }
     if (m_actions.share) {
       Button::ButtonPalette palette = Button::defaultPalette(ButtonVariant::Default);

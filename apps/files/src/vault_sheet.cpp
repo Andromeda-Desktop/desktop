@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 
 #include <format>
+#include "i18n/i18n.h"
 #include "render/scene/input_dispatcher.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
@@ -30,7 +31,7 @@ std::unique_ptr<Node> VaultSheet::build(float scale) {
   auto header = ui::column({.align = FlexAlign::Start, .justify = FlexJustify::Center, .gap = Tokens::spaceP4 * s,
                             .paddingH = Tokens::componentDialogPadding * s,
                             .height = Tokens::componentDialogHeader * s});
-  header->addChild(ui::label({.text = create ? std::string("New Vault") : std::format("Unlock “{}”", m_name),
+  header->addChild(ui::label({.text = create ? i18n::tr("files.vault.new") : i18n::tr("files.vault.unlock-title", "name", m_name),
                               .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
                               .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1,
                               .ellipsize = TextEllipsize::Middle}));
@@ -38,12 +39,11 @@ std::unique_ptr<Node> VaultSheet::build(float scale) {
 
   auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
                           .paddingH = Tokens::componentDialogPadding * s});
-  body->addChild(ui::label({.text = create ? std::string("Files you put in a vault are encrypted. Without the "
-                                                         "password nobody can open them, you included.")
-                                           : std::string("Enter the password."),
+  body->addChild(ui::label({.text = create ? i18n::tr("files.vault.create-note")
+                                           : i18n::tr("files.vault.unlock-note"),
                             .fontSize = Style::fontSizeCaption * s, .color = colorSpecFromRole(ColorRole::Label2),
                             .maxLines = 3}));
-  const auto fieldRow = [&](const char* label) {
+  const auto fieldRow = [&](const std::string& label) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s});
     row->addChild(ui::label({.text = std::string(label), .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::Label2), .width = kFieldLabel * s}));
@@ -57,8 +57,8 @@ std::unique_ptr<Node> VaultSheet::build(float scale) {
     }
   };
   if (create) {
-    auto name = fieldRow("Name");
-    name->addChild(ui::input({.value = m_name, .placeholder = std::string("Private"),
+    auto name = fieldRow(i18n::tr("files.vault.name"));
+    name->addChild(ui::input({.value = m_name, .placeholder = i18n::tr("files.vault.name-hint"),
                               .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
                               .flexGrow = 1.0F,
                               .onChange = [this](const std::string& v) {
@@ -70,8 +70,8 @@ std::unique_ptr<Node> VaultSheet::build(float scale) {
                               .configure = m_error.empty() ? focusFirst : std::function<void(Input&)>()}));
     body->addChild(std::move(name));
   }
-  auto password = fieldRow("Password");
-  password->addChild(ui::input({.out = &m_passwordInput, .value = m_password, .placeholder = std::string(create ? "8 characters or more" : ""),
+  auto password = fieldRow(i18n::tr("files.vault.password"));
+  password->addChild(ui::input({.out = &m_passwordInput, .value = m_password, .placeholder = create ? i18n::tr("files.vault.password-hint") : std::string(),
                                 .fontSize = Style::fontSizeBody * s, .controlHeight = Style::controlHeight * s,
                                 .passwordMode = true, .flexGrow = 1.0F,
                                 .onChange = [this](const std::string& v) {
@@ -83,7 +83,7 @@ std::unique_ptr<Node> VaultSheet::build(float scale) {
                                 .configure = create && m_error.empty() ? std::function<void(Input&)>() : focusFirst}));
   body->addChild(std::move(password));
   if (create) {
-    auto confirm = fieldRow("Verify");
+    auto confirm = fieldRow(i18n::tr("files.vault.verify"));
     confirm->addChild(ui::input({.value = m_confirm, .fontSize = Style::fontSizeBody * s,
                                  .controlHeight = Style::controlHeight * s, .passwordMode = true, .flexGrow = 1.0F,
                                  .onChange = [this](const std::string& v) {
@@ -100,10 +100,10 @@ std::unique_ptr<Node> VaultSheet::build(float scale) {
 
   auto footer = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s,
                          .padding = Tokens::componentDialogPadding * s});
-  footer->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default, .onClick = [this] {
+  footer->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .variant = ButtonVariant::Default, .onClick = [this] {
                                  DeferredCall::callLater([close = m_close] { close(); });
                                }}));
-  footer->addChild(ui::button({.out = &m_ok, .text = std::string(create ? "Create" : "Unlock"),
+  footer->addChild(ui::button({.out = &m_ok, .text = i18n::tr(create ? "files.vault.create" : "files.vault.unlock"),
                                .variant = ButtonVariant::Primary,
                                .onClick = [this] { DeferredCall::callLater([this] { submit(); }); }}));
   sheet->addChild(std::move(footer));
@@ -117,7 +117,7 @@ void VaultSheet::update() {
                                               : !m_password.empty();
     m_ok->setEnabled(ready && !m_busy);
     if (m_busy) {
-      m_ok->setText(m_mode == Mode::Create ? "Creating…" : "Unlocking…");
+      m_ok->setText(i18n::tr(m_mode == Mode::Create ? "files.vault.creating" : "files.vault.unlocking"));
     }
   }
   if (m_note != nullptr) {
@@ -132,11 +132,11 @@ void VaultSheet::submit() {
   }
   if (m_mode == Mode::Create) {
     if (m_password.size() < kMinPassword) {
-      setError("Use a password of 8 characters or more.");
+      setError(i18n::tr("files.vault.password-short"));
       return;
     }
     if (m_password != m_confirm) {
-      setError("The passwords are not the same.");
+      setError(i18n::tr("files.vault.password-mismatch"));
       return;
     }
   } else if (m_password.empty()) {

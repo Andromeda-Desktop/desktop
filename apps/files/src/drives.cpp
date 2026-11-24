@@ -1,6 +1,7 @@
 #include "drives.h"
 
 #include "core/blocking_pool.h"
+#include "i18n/i18n.h"
 #include "state_file.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -166,7 +167,7 @@ void Drives::mount(const std::string& id, AskPassword ask, Mounted done) {
   }
   g_list_free_full(volumes, g_object_unref);
   if (found == nullptr) {
-    done({}, "The drive is gone.");
+    done({}, i18n::tr("files.drive.gone"));
     return;
   }
   auto* call = new MountCall{.ask = std::move(ask), .done = std::move(done), .name = takeString(g_volume_get_name(found))};
@@ -232,7 +233,7 @@ void Drives::mount(const std::string& id, AskPassword ask, Mounted done) {
             g_object_unref(mount);
           }
           kLog.debug("drive mounted at {}", root.string());
-          c->done(root, root.empty() ? std::string("The drive has no folder to show.") : std::string());
+          c->done(root, root.empty() ? i18n::tr("files.drive.no-folder") : std::string());
         }
         g_object_unref(v);
       },
@@ -292,7 +293,7 @@ void Drives::unlock(const std::string& device, const std::string& passphrase, Mo
   const std::string object = udisksObject(bus, device);
   if (object.empty()) {
     g_object_unref(bus);
-    done({}, "The drive is not known to the system.");
+    done({}, i18n::tr("files.drive.unknown"));
     return;
   }
   kLog.debug("drive unlock {} ({} characters)", device, passphrase.size());
@@ -313,7 +314,7 @@ void Drives::unlock(const std::string& device, const std::string& passphrase, Mo
                              std::string_view(err->message).find("activate") != std::string_view::npos;
           const std::string message = dbusError(err);
           kLog.debug("drive unlock failed: {}", message);
-          c->done({}, wrong ? std::string("The password is not correct.") : message);
+          c->done({}, wrong ? i18n::tr("files.drive.wrong-password") : message);
           return;
         }
         const char* cleartext = nullptr;
@@ -405,7 +406,7 @@ void Drives::format(const std::string& device, const std::string& type, const st
     };
     std::string object = bus != nullptr ? udisksObject(bus, device) : std::string();
     if (bus == nullptr || object.empty()) {
-      error = "The drive is not known to the system.";
+      error = i18n::tr("files.drive.unknown");
     } else {
       const std::string backing = property(object, "CryptoBackingDevice");
       if (call(object, "org.freedesktop.UDisks2.Filesystem", "Unmount", g_variant_new("(@a{sv})", noOptions())) &&

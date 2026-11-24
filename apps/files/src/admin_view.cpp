@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/flex.h"
@@ -104,7 +105,7 @@ void AdminView::open(const fs::path& dir, bool navigate) {
                                    return;
                                  }
                                  m_rows.clear();
-                                 m_error = reply.value("ok", false) ? std::string() : reply.value("error", std::string("The folder could not be read."));
+                                 m_error = reply.value("ok", false) ? std::string() : reply.value("error", i18n::tr("files.admin.folder-unreadable"));
                                  for (const auto& e : reply.value("entries", nlohmann::json::array())) {
                                    m_rows.push_back(rowOf(dir, e));
                                  }
@@ -121,7 +122,7 @@ void AdminView::change(nlohmann::json op, std::string done, std::function<void(c
       return;
     }
     const bool ok = reply.value("ok", false);
-    const std::string error = ok ? std::string() : reply.value("error", std::string("The change failed."));
+    const std::string error = ok ? std::string() : reply.value("error", i18n::tr("files.admin.change-failed"));
     kLog.debug("admin {} {}", done, ok ? "ok" : error);
     m_host.toast(ok ? done : error);
     if (then) {
@@ -132,12 +133,12 @@ void AdminView::change(nlohmann::json op, std::string done, std::function<void(c
 }
 
 void AdminView::newFolder(std::function<void(const fs::path&)> made) {
-  std::string name = "New Folder";
+  std::string name = i18n::tr("files.admin.new-folder");
   for (int n = 2; std::ranges::any_of(m_rows, [&](const auto& r) { return r->displayName() == name; }); ++n) {
-    name = std::format("New Folder {}", n);
+    name = i18n::tr("files.admin.new-folder-numbered", "n", n);
   }
   const fs::path path = m_dir / name;
-  change({{"op", "mkdir"}, {"path", path.string()}}, std::format("Made {} as the administrator", name),
+  change({{"op", "mkdir"}, {"path", path.string()}}, i18n::tr("files.admin.made", "name", name),
          [made = std::move(made), path](const std::string& error) {
            if (error.empty()) {
              made(path);
@@ -146,25 +147,27 @@ void AdminView::newFolder(std::function<void(const fs::path&)> made) {
 }
 
 void AdminView::rename(const fs::path& path, const std::string& name, std::function<void(const std::string&)> done) {
-  change({{"op", "rename"}, {"path", path.string()}, {"name", name}}, std::format("Renamed to {}", name),
+  change({{"op", "rename"}, {"path", path.string()}, {"name", name}}, i18n::tr("files.admin.renamed", "name", name),
          std::move(done));
 }
 
 void AdminView::remove(const std::vector<fs::path>& paths) {
   change({{"op", "delete"}, {"paths", pathList(paths)}},
-         paths.size() == 1 ? std::format("Deleted {}", paths.front().filename().string()) : std::format("Deleted {} items", paths.size()));
+         i18n::tr("files.admin.deleted", "items",
+                  paths.size() == 1 ? paths.front().filename().string() : i18n::trp("files.job.items", static_cast<long>(paths.size()))));
 }
 
 void AdminView::transfer(const std::vector<fs::path>& sources, const fs::path& dest, bool move) {
   change({{"op", move ? "move" : "copy"}, {"sources", pathList(sources)}, {"dest", dest.string()}},
-         std::format("{} {} as the administrator", move ? "Moved" : "Copied",
-                     sources.size() == 1 ? sources.front().filename().string() : std::format("{} items", sources.size())));
+         i18n::tr(move ? "files.admin.moved" : "files.admin.copied", "items",
+                  sources.size() == 1 ? sources.front().filename().string()
+                                      : i18n::trp("files.job.items", static_cast<long>(sources.size()))));
 }
 
 void AdminView::chmod(const std::vector<fs::path>& paths, std::uint32_t mode, std::uint32_t mask, bool recursive,
                       std::function<void(const std::string& error)> done) {
   change({{"op", "chmod"}, {"paths", pathList(paths)}, {"mode", mode}, {"mask", mask}, {"recursive", recursive}},
-         "Permissions changed", std::move(done));
+         i18n::tr("files.admin.permissions-changed"), std::move(done));
 }
 
 void AdminView::chown(const std::vector<fs::path>& paths, std::optional<std::uint32_t> uid,
@@ -176,7 +179,7 @@ void AdminView::chown(const std::vector<fs::path>& paths, std::optional<std::uin
   if (gid.has_value()) {
     op["gid"] = *gid;
   }
-  change(std::move(op), "Owner changed", std::move(done));
+  change(std::move(op), i18n::tr("files.admin.owner-changed"), std::move(done));
 }
 
 void AdminView::show(bool navigate) {
@@ -212,11 +215,11 @@ std::unique_ptr<Node> AdminView::banner(float s) {
                       .height = Tokens::sizeRowCompact * s + Tokens::spaceP8 * s});
   bar->addChild(ui::glyph({.glyph = "shield-lock", .glyphSize = Tokens::sizeSymbolInline * s,
                            .color = colorSpecFromRole(ColorRole::DangerText)}));
-  bar->addChild(ui::label({.text = std::string("Administrator: changes here run as root and cannot be undone."),
+  bar->addChild(ui::label({.text = i18n::tr("files.admin.banner"),
                            .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
                            .color = colorSpecFromRole(ColorRole::DangerText), .maxLines = 1,
                            .ellipsize = TextEllipsize::End, .flexGrow = 1.0F}));
-  bar->addChild(ui::button({.text = std::string("Close"), .variant = ButtonVariant::Default,
+  bar->addChild(ui::button({.text = i18n::tr("files.admin.close"), .variant = ButtonVariant::Default,
                             .onClick = [this] {
                               DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive), dir = m_dir] {
                                 if (!alive.expired()) {
@@ -239,11 +242,11 @@ std::unique_ptr<Node> AdminView::statusPage(float s) {
   const std::string text = failed            ? m_process->session().failure()
                            : !m_error.empty() ? m_error
                            : now == AdminSession::Phase::Starting || now == AdminSession::Phase::Closed
-                               ? "Waiting for the administrator password…"
-                                                                               : "Reading the folder…";
+                               ? i18n::tr("files.admin.waiting-password")
+                                                                               : i18n::tr("files.admin.reading-folder");
   page->addChild(ui::label({.text = text, .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label2)}));
   if (failed) {
-    page->addChild(ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Default,
+    page->addChild(ui::button({.text = i18n::tr("files.admin.try-again"), .variant = ButtonVariant::Default,
                                .onClick = [this] {
                                  DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
                                    if (!alive.expired()) {

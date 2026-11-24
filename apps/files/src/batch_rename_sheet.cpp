@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "i18n/i18n.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/flex.h"
@@ -40,7 +41,7 @@ std::unique_ptr<Node> BatchRenameSheet::build(float scale) {
   auto header = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::componentDialogPadding * s,
                          .height = Tokens::componentDialogHeader * s});
   header->addChild(ui::label({
-      .text = std::format("Rename {} Items", m_items.size()),
+      .text = i18n::tr("files.batch.title", "count", m_items.size()),
       .fontSize = Tokens::typeTitle3.size * s,
       .fontWeight = FontWeight::SemiBold,
       .color = colorSpecFromRole(ColorRole::Label1),
@@ -50,8 +51,8 @@ std::unique_ptr<Node> BatchRenameSheet::build(float scale) {
   auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
                           .paddingH = Tokens::componentDialogPadding * s});
   body->addChild(ui::segmented({
-      .options = std::vector<ui::SegmentedOption>{{.label = "Replace"}, {.label = "Add"}, {.label = "Format"},
-                                                  {.label = "Case"}, {.label = "Regex"}},
+      .options = std::vector<ui::SegmentedOption>{{.label = i18n::tr("files.batch.mode-replace")}, {.label = i18n::tr("files.batch.mode-add")}, {.label = i18n::tr("files.batch.mode-format")},
+                                                  {.label = i18n::tr("files.batch.mode-case")}, {.label = i18n::tr("files.batch.mode-regex")}},
       .selectedIndex = static_cast<std::size_t>(m_rule.mode),
       .scale = s,
       .equalSegmentWidths = true,
@@ -69,7 +70,7 @@ std::unique_ptr<Node> BatchRenameSheet::build(float scale) {
                                  m_rule.keepExtension = on;
                                  updatePreview();
                                }}));
-  keep->addChild(ui::label({.text = std::string("Keep extensions"), .fontSize = Style::fontSizeBody * s,
+  keep->addChild(ui::label({.text = i18n::tr("files.batch.keep-extensions"), .fontSize = Style::fontSizeBody * s,
                             .color = colorSpecFromRole(ColorRole::Label1)}));
   body->addChild(std::move(keep));
 
@@ -85,10 +86,10 @@ std::unique_ptr<Node> BatchRenameSheet::build(float scale) {
   footer->addChild(ui::label({.out = &m_summary, .fontSize = Style::fontSizeCaption * s,
                               .color = colorSpecFromRole(ColorRole::Label2), .width = kSummaryWidth * s, .maxLines = 2}));
   footer->addChild(ui::spacer());
-  footer->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default, .onClick = [this] {
+  footer->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .variant = ButtonVariant::Default, .onClick = [this] {
                                  DeferredCall::callLater([close = m_close] { close(); });
                                }}));
-  footer->addChild(ui::button({.out = &m_ok, .text = std::string("Rename"), .variant = ButtonVariant::Primary,
+  footer->addChild(ui::button({.out = &m_ok, .text = std::string(i18n::tr("files.batch.rename")), .variant = ButtonVariant::Primary,
                                .onClick = [this] { DeferredCall::callLater([this] { submit(); }); }}));
   sheet->addChild(std::move(footer));
   updatePreview();
@@ -97,7 +98,7 @@ std::unique_ptr<Node> BatchRenameSheet::build(float scale) {
 
 std::unique_ptr<Node> BatchRenameSheet::buildFields(float s) {
   auto fields = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
-  const auto field = [&](const char* label, std::string& value, const char* placeholder) {
+  const auto field = [&](const std::string& label, std::string& value, const std::string& placeholder) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s});
     row->addChild(ui::label({.text = std::string(label), .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::Label2), .width = kFieldLabel * s}));
@@ -119,30 +120,30 @@ std::unique_ptr<Node> BatchRenameSheet::buildFields(float s) {
   };
   switch (m_rule.mode) {
   case BatchRenameRule::Mode::Replace: {
-    field("Find", m_rule.find, "Text to find");
-    field("Replace with", m_rule.replacement, "");
+    field(i18n::tr("files.batch.find"), m_rule.find, i18n::tr("files.batch.find-hint"));
+    field(i18n::tr("files.batch.replace-with"), m_rule.replacement, "");
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     row->addChild(ui::checkbox({.checked = m_rule.matchCase, .scale = s, .onChange = [this](bool on) {
                                   m_rule.matchCase = on;
                                   updatePreview();
                                 }}));
-    row->addChild(ui::label({.text = std::string("Match case"), .fontSize = Style::fontSizeBody * s,
+    row->addChild(ui::label({.text = std::string(i18n::tr("files.batch.match-case")), .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::Label1)}));
     fields->addChild(std::move(row));
     break;
   }
   case BatchRenameRule::Mode::Add:
-    field("Text", m_rule.text, "Text to add");
-    choice({{.label = "After name"}, {.label = "Before name"}}, m_rule.addBefore ? 1 : 0,
+    field(i18n::tr("files.batch.text"), m_rule.text, i18n::tr("files.batch.text-hint"));
+    choice({{.label = i18n::tr("files.batch.after")}, {.label = i18n::tr("files.batch.before")}}, m_rule.addBefore ? 1 : 0,
            [this](std::size_t i) { m_rule.addBefore = i == 1; });
     break;
   case BatchRenameRule::Mode::Format: {
-    field("Format", m_rule.format, "{name} {n}");
+    field(i18n::tr("files.batch.format"), m_rule.format, "{name} {n}");
     // Mockup §14 shows the tokens as chips in the field; here a chip adds its token at the end of the format.
     auto chips = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     chips->addChild(ui::row({.width = kFieldLabel * s}));
-    for (const auto& [label, token] : {std::pair{"Name", "{name}"}, std::pair{"Counter", "{n}"},
-                                       std::pair{"Date Modified", "{date}"}, std::pair{"Date Taken", "{taken}"}}) {
+    for (const auto& [label, token] : {std::pair{i18n::tr("files.batch.token-name"), "{name}"}, std::pair{i18n::tr("files.batch.token-counter"), "{n}"},
+                                       std::pair{i18n::tr("files.batch.token-modified"), "{date}"}, std::pair{i18n::tr("files.batch.token-taken"), "{taken}"}}) {
       chips->addChild(ui::button({.text = std::string(label), .fontSize = Style::fontSizeCaption * s,
                                   .variant = ButtonVariant::Tonal, .minHeight = Tokens::spaceP24 * s,
                                   .paddingH = Tokens::spaceP8 * s, .radius = Tokens::spaceP12 * s,
@@ -154,14 +155,14 @@ std::unique_ptr<Node> BatchRenameSheet::buildFields(float s) {
     }
     fields->addChild(std::move(chips));
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s});
-    row->addChild(ui::label({.text = std::string("Start at"), .fontSize = Style::fontSizeBody * s,
+    row->addChild(ui::label({.text = std::string(i18n::tr("files.batch.start-at")), .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::Label2), .width = kFieldLabel * s}));
     row->addChild(ui::stepper({.minValue = 0, .maxValue = 999999, .step = 1, .value = m_rule.start, .scale = s,
                                .onValueChanged = [this](int v) {
                                  m_rule.start = v;
                                  updatePreview();
                                }}));
-    row->addChild(ui::label({.text = std::string("Digits"), .fontSize = Style::fontSizeBody * s,
+    row->addChild(ui::label({.text = std::string(i18n::tr("files.batch.digits")), .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::Label2)}));
     row->addChild(ui::stepper({.minValue = 1, .maxValue = 9, .step = 1, .value = m_rule.digits, .scale = s,
                                .onValueChanged = [this](int v) {
@@ -172,12 +173,12 @@ std::unique_ptr<Node> BatchRenameSheet::buildFields(float s) {
     break;
   }
   case BatchRenameRule::Mode::Case:
-    choice({{.label = "lowercase"}, {.label = "UPPERCASE"}, {.label = "Title Case"}}, static_cast<std::size_t>(m_rule.caseMode),
+    choice({{.label = i18n::tr("files.batch.lower")}, {.label = i18n::tr("files.batch.upper")}, {.label = i18n::tr("files.batch.title-case")}}, static_cast<std::size_t>(m_rule.caseMode),
            [this](std::size_t i) { m_rule.caseMode = static_cast<BatchRenameRule::CaseMode>(i); });
     break;
   case BatchRenameRule::Mode::Regex:
-    field("Pattern", m_rule.find, "Regular expression");
-    field("Replace with", m_rule.replacement, "$1 for groups");
+    field(i18n::tr("files.batch.pattern"), m_rule.find, i18n::tr("files.batch.pattern-hint"));
+    field(i18n::tr("files.batch.replace-with"), m_rule.replacement, i18n::tr("files.batch.replace-with-hint"));
     break;
   }
   return fields;
@@ -220,8 +221,8 @@ void BatchRenameSheet::updatePreview() {
       m_list->addChild(std::move(row));
     }
   }
-  const std::string summary = problems > 0 ? std::format("{} can’t be renamed", problems)
-                                           : std::format("{} of {} change", changed, m_items.size());
+  const std::string summary = problems > 0 ? i18n::tr("files.batch.cannot-rename", "count", problems)
+                                           : i18n::tr("files.batch.changes", "changed", changed, "total", m_items.size());
   std::size_t clashes = 0;
   for (const auto& r : m_results) {
     clashes += r.conflict ? 1 : 0;
@@ -229,12 +230,12 @@ void BatchRenameSheet::updatePreview() {
   if (m_summary != nullptr) {
     // Mockup §14: the conflict line says what to do, in the warning colour.
     m_summary->setText(clashes > 0 && clashes == problems
-                           ? std::format("{} files would get the same name. Add a counter or change the format.", clashes)
+                           ? i18n::tr("files.batch.clash", "count", clashes)
                            : summary);
     m_summary->setColor(colorSpecFromRole(problems > 0 ? ColorRole::Warning : ColorRole::Label2));
   }
   if (m_ok != nullptr) {
-    m_ok->setText(changed > 0 ? std::format("Rename {}", changed) : std::string("Rename"));
+    m_ok->setText(changed > 0 ? i18n::tr("files.batch.rename-n", "count", changed) : std::string(i18n::tr("files.batch.rename")));
   }
   std::string first;
   for (std::size_t i = 0; i < std::min<std::size_t>(m_results.size(), 3); ++i) {

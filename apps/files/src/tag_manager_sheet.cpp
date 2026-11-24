@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "i18n/i18n.h"
 #include "render/core/color.h"
 #include "render/scene/input_area.h"
 #include "ui/builders.h"
@@ -32,7 +33,7 @@ namespace {
   std::string nameError(const std::string& name) {
     const bool blank = name.find_first_not_of(" \t") == std::string::npos;
     const bool control = std::ranges::any_of(name, [](char c) { return static_cast<unsigned char>(c) < 0x20; });
-    return blank || control || name.find(',') != std::string::npos ? "A tag name can’t be empty or contain a comma."
+    return blank || control || name.find(',') != std::string::npos ? i18n::tr("files.tags.name-invalid")
                                                                     : std::string();
   }
 
@@ -99,7 +100,7 @@ bool TagManagerSheet::rename(const std::string& old, const std::string& rawNow) 
   }
   m_error = nameError(now);
   if (m_error.empty() && find(now) != m_tags.size()) {
-    m_error = std::format("There is already a tag named “{}”.", now);
+    m_error = i18n::tr("files.tags.exists", "name", now);
   }
   if (!m_error.empty()) {
     kLog.debug("tag rename refused: {}", m_error);
@@ -181,9 +182,9 @@ bool TagManagerSheet::remove(const std::string& name) {
 
 void TagManagerSheet::addTag() {
   commitDraft();
-  std::string name = "New Tag";
+  std::string name = i18n::tr("files.tags.new-tag");
   for (int n = 2; find(name) != m_tags.size(); ++n) {
-    name = std::format("New Tag {}", n);
+    name = i18n::tr("files.tags.new-tag-numbered", "n", n);
   }
   // The first Finder colour no tag uses yet, else grey.
   std::uint32_t rgb = kColors[std::size(kColors) - 1];
@@ -227,7 +228,7 @@ void TagManagerSheet::indexChanged() {
   }
   for (const auto& [name, label] : m_counts) {
     const std::size_t n = m_host.count(name);
-    label->setText(n == 1 ? "1 item" : std::format("{} items", n));
+    label->setText(i18n::trp("files.tags.items", static_cast<long>(n)));
   }
 }
 
@@ -246,7 +247,7 @@ std::unique_ptr<Node> TagManagerSheet::buildRow(std::size_t index, float s) {
                            .ellipsize = TextEllipsize::End, .flexGrow = 1.0F}));
   const std::size_t n = m_host.count(tag.name);
   Label* count = nullptr;
-  row->addChild(ui::label({.out = &count, .text = n == 1 ? std::string("1 item") : std::format("{} items", n),
+  row->addChild(ui::label({.out = &count, .text = i18n::trp("files.tags.items", static_cast<long>(n)),
                            .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
                            .color = colorSpecFromRole(ColorRole::Label3)}));
   m_counts[tag.name] = count;
@@ -261,11 +262,11 @@ std::unique_ptr<Node> TagManagerSheet::buildEditor(float s) {
     return editor;
   }
   const TagDef& tag = m_tags[m_selected];
-  const auto fieldRow = [&](const char* label) {
+  const auto fieldRow = [&](const std::string& label) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     // A label alone does not keep its width: the cell holds the field column in place.
     auto cell = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .width = kFieldLabel * s});
-    if (*label != '\0') {
+    if (!label.empty()) {
       cell->addChild(ui::label({.text = std::string(label), .fontSize = Style::fontSizeCaption * s,
                                 .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2)}));
     }
@@ -273,8 +274,8 @@ std::unique_ptr<Node> TagManagerSheet::buildEditor(float s) {
     return row;
   };
 
-  auto name = fieldRow("Name");
-  name->addChild(ui::input({.value = m_draft, .placeholder = std::string("Tag name"), .fontSize = Style::fontSizeBody * s,
+  auto name = fieldRow(i18n::tr("files.tags.field-name"));
+  name->addChild(ui::input({.value = m_draft, .placeholder = i18n::tr("files.tags.hint"), .fontSize = Style::fontSizeBody * s,
                             .controlHeight = Style::controlHeight * s, .invalid = !m_error.empty(), .flexGrow = 1.0F,
                             .onChange = [this](const std::string& v) { m_draft = v; },
                             .onSubmit = [this](const std::string&) { commitDraft(); },
@@ -286,7 +287,7 @@ std::unique_ptr<Node> TagManagerSheet::buildEditor(float s) {
                             }}));
   editor->addChild(std::move(name));
 
-  auto colors = fieldRow("Colour");
+  auto colors = fieldRow(i18n::tr("files.tags.field-colour"));
   auto swatches = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
   for (const std::uint32_t c : kColors) {
     const bool on = c == tag.rgb;
@@ -312,29 +313,29 @@ std::unique_ptr<Node> TagManagerSheet::buildEditor(float s) {
   auto actions = fieldRow("");
   if (m_confirmDelete) {
     const std::size_t n = m_host.count(tag.name);
-    actions->addChild(ui::label({.text = n == 0 ? std::format("Delete “{}”?", tag.name)
-                                                : std::format("Remove “{}” from {}?", tag.name,
-                                                              n == 1 ? std::string("1 item") : std::format("{} items", n)),
+    actions->addChild(ui::label({.text = n == 0 ? i18n::tr("files.tags.delete-confirm", "name", tag.name)
+                                                : i18n::tr("files.tags.remove-confirm", "name", tag.name, "items",
+                                                           i18n::trp("files.tags.items", static_cast<long>(n))),
                                  .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
                                  .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1,
                                  .ellipsize = TextEllipsize::End, .flexGrow = 1.0F}));
-    actions->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Default, .onClick = [this] {
+    actions->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .variant = ButtonVariant::Default, .onClick = [this] {
                                     m_confirmDelete = false;
                                     rebuildLater();
                                   }}));
-    actions->addChild(ui::button({.text = std::string("Delete"), .variant = ButtonVariant::Destructive,
+    actions->addChild(ui::button({.text = i18n::tr("files.tags.delete"), .variant = ButtonVariant::Destructive,
                                   .onClick = [this, name = tag.name] {
                                     DeferredCall::callLater([this, name] { remove(name); });
                                   }}));
   } else {
     actions->addChild(ui::button({.glyph = std::string("chevron-up"), .enabled = m_selected > 0,
-                                  .variant = ButtonVariant::Default, .tooltip = std::string("Move Up"),
+                                  .variant = ButtonVariant::Default, .tooltip = i18n::tr("files.tags.move-up"),
                                   .onClick = [this, name = tag.name] { move(name, -1); }}));
     actions->addChild(ui::button({.glyph = std::string("chevron-down"), .enabled = m_selected + 1 < m_tags.size(),
-                                  .variant = ButtonVariant::Default, .tooltip = std::string("Move Down"),
+                                  .variant = ButtonVariant::Default, .tooltip = i18n::tr("files.tags.move-down"),
                                   .onClick = [this, name = tag.name] { move(name, 1); }}));
     actions->addChild(ui::spacer());
-    actions->addChild(ui::button({.text = std::string("Delete Tag…"), .variant = ButtonVariant::Default, .onClick = [this] {
+    actions->addChild(ui::button({.text = i18n::tr("files.tags.delete-tag"), .variant = ButtonVariant::Default, .onClick = [this] {
                                     m_confirmDelete = true;
                                     rebuildLater();
                                   }}));
@@ -350,7 +351,7 @@ std::unique_ptr<Node> TagManagerSheet::build(float scale) {
 
   auto header = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::componentDialogPadding * s,
                          .height = Tokens::componentDialogHeader * s});
-  header->addChild(ui::label({.text = std::string("Tags"), .fontSize = Tokens::typeTitle3.size * s,
+  header->addChild(ui::label({.text = i18n::tr("files.tags.title"), .fontSize = Tokens::typeTitle3.size * s,
                               .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
   sheet->addChild(std::move(header));
 
@@ -360,7 +361,7 @@ std::unique_ptr<Node> TagManagerSheet::build(float scale) {
                           .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Style::scaledRadius(Tokens::radiusR8, s),
                           .border = colorSpecFromRole(ColorRole::GlassCardEdge), .borderWidth = std::max(1.0F, 0.5F * s)});
   if (m_tags.empty()) {
-    card->addChild(ui::label({.text = std::string("No tags yet. New Tag adds one."), .fontSize = Style::fontSizeBody * s,
+    card->addChild(ui::label({.text = i18n::tr("files.tags.empty"), .fontSize = Style::fontSizeBody * s,
                               .color = colorSpecFromRole(ColorRole::Label2), .height = kRow * s}));
   } else {
     auto scroll = ui::scrollView({.contentScale = s, .scrollbarAutoHide = true,
@@ -377,10 +378,10 @@ std::unique_ptr<Node> TagManagerSheet::build(float scale) {
   sheet->addChild(std::move(body));
 
   auto footer = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .padding = Tokens::componentDialogPadding * s});
-  footer->addChild(ui::button({.text = std::string("New Tag"), .glyph = std::string("plus"), .variant = ButtonVariant::Default,
+  footer->addChild(ui::button({.text = i18n::tr("files.tags.new"), .glyph = std::string("plus"), .variant = ButtonVariant::Default,
                                .onClick = [this] { DeferredCall::callLater([this] { addTag(); }); }}));
   footer->addChild(ui::spacer());
-  footer->addChild(ui::button({.text = std::string("Done"), .variant = ButtonVariant::Primary,
+  footer->addChild(ui::button({.text = i18n::tr("files.tags.done"), .variant = ButtonVariant::Primary,
                                .onClick = [this] { done(); }}));
   sheet->addChild(std::move(footer));
   return sheet;

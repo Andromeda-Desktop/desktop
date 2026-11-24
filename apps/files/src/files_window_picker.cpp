@@ -1,4 +1,5 @@
 #include "app/app_window.h"
+#include "i18n/i18n.h"
 #include "state_file.h"
 #include "core/log.h"
 #include "files_app.h"
@@ -78,16 +79,16 @@ namespace {
   // Why a save name cannot be used, or "" when it can (mockup §25 inline errors).
   std::string nameError(const std::string& name) {
     if (name.empty()) {
-      return "Enter a name.";
+      return i18n::tr("files.picker.name-empty");
     }
     if (name.find('/') != std::string::npos) {
-      return "A name cannot contain “/”.";
+      return i18n::tr("files.picker.name-slash");
     }
     if (name == "." || name == "..") {
-      return "This name is reserved.";
+      return i18n::tr("files.picker.name-reserved");
     }
     if (name.size() > 255) {
-      return "The name is too long.";
+      return i18n::tr("files.picker.name-long");
     }
     return {};
   }
@@ -124,7 +125,7 @@ void FilesWindow::setPicker(std::uint64_t id, PickerPortal::Request request) {
   using Kind = PickerPortal::Request::Kind;
   if (picker.request.title.empty() && picker.request.directory) {
     const std::string app = appName(picker.request.appId);
-    m_window.setTitle(app.empty() ? std::string("Choose a Folder") : std::format("Choose a Folder for “{}”", app));
+    m_window.setTitle(app.empty() ? i18n::tr("files.picker.choose-folder") : i18n::tr("files.picker.choose-folder-for", "app", app));
   }
   const bool openFiles = picker.request.kind == Kind::Open && !picker.request.directory;
   const bool callerFolder = !picker.request.currentFolder.empty();
@@ -167,16 +168,16 @@ std::string FilesWindow::pickerPrimaryLabel() const {
     return request.acceptLabel;
   }
   if (request.kind != Kind::Open) {
-    return "Save";
+    return i18n::tr("files.picker.save");
   }
   if (request.directory) {
-    return "Select";
+    return i18n::tr("files.picker.select");
   }
   std::size_t files = 0;
   for (const fs::path& path : selectedPaths()) {
     files += isDir(path) ? 0 : 1;
   }
-  return files > 1 ? std::format("Open {} Items", files) : std::string("Open");
+  return files > 1 ? i18n::tr("files.picker.open-n", "count", files) : i18n::tr("files.picker.open");
 }
 
 std::optional<std::uint64_t> FilesWindow::pickerId() const noexcept {
@@ -301,7 +302,7 @@ std::unique_ptr<Node> FilesWindow::buildPickerFooter(float s) {
                                                                                              : nameError(m_picker->name);
     const bool replacing = !m_picker->confirmReplace.empty() && m_picker->confirmReplace == m_picker->name;
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s});
-    row->addChild(ui::label({.text = std::string("Save As"), .fontSize = Style::fontSizeBody * s,
+    row->addChild(ui::label({.text = i18n::tr("files.picker.save-as"), .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::Label2), .width = Tokens::componentFilesFieldLabel * s}));
     const std::size_t dot = m_picker->name.rfind('.');
     const std::size_t stem = dot == std::string::npos || dot == 0 ? m_picker->name.size() : dot;
@@ -309,7 +310,7 @@ std::unique_ptr<Node> FilesWindow::buildPickerFooter(float s) {
     m_picker->nameFocused = true;
     row->addChild(ui::input({
         .value = m_picker->name,
-        .placeholder = std::string("Name"),
+        .placeholder = i18n::tr("files.picker.name"),
         .fontSize = Style::fontSizeBody * s,
         .invalid = !error.empty(),
         .flexGrow = 1.0F,
@@ -338,7 +339,7 @@ std::unique_ptr<Node> FilesWindow::buildPickerFooter(float s) {
       auto note = ui::row({});
       note->addChild(ui::node({.width = Tokens::componentFilesFieldLabel * s + Tokens::spaceP12 * s}));
       note->addChild(ui::label({
-          .text = replacing ? std::format("“{}” already exists. Replace it?", m_picker->name) : error,
+          .text = replacing ? i18n::tr("files.picker.replace-confirm", "name", m_picker->name) : error,
           .fontSize = Style::fontSizeCaption * s,
           .color = colorSpecFromRole(replacing ? ColorRole::Label2 : ColorRole::DangerText),
           .maxLines = 2,
@@ -398,13 +399,13 @@ std::unique_ptr<Node> FilesWindow::buildPickerFooter(float s) {
     }));
   }
   footer->addChild(ui::node({.flexGrow = 1.0F}));
-  footer->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Style::fontSizeBody * s,
+  footer->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .fontSize = Style::fontSizeBody * s,
                                .variant = ButtonVariant::Default, .onClick = [this] { pickerCancel(); }}));
   const bool replacing = request.kind == Kind::Save && !m_picker->confirmReplace.empty() &&
                          m_picker->confirmReplace == m_picker->name;
   const bool blocked = request.kind == Kind::Save && !nameError(m_picker->name).empty();
   footer->addChild(ui::button({
-      .text = replacing ? std::string("Replace") : pickerPrimaryLabel(),
+      .text = replacing ? i18n::tr("files.picker.replace") : pickerPrimaryLabel(),
       .fontSize = Style::fontSizeBody * s,
       .enabled = !blocked,
       .variant = replacing ? ButtonVariant::Destructive : ButtonVariant::Primary,
@@ -432,7 +433,7 @@ std::unique_ptr<Node> FilesWindow::buildSaveCompact(float s) {
   // Mockup §6 "Save Image": label column 48 (field_label), rows gap 12, buttons right; the chevron grows the browser.
   auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
                          .flexGrow = 1.0F});
-  const auto labelled = [&](const char* text) {
+  const auto labelled = [&](const std::string& text) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s});
     row->addChild(ui::label({.text = std::string(text), .fontSize = Style::fontSizeBody * s,
                              .color = colorSpecFromRole(ColorRole::Label2), .width = Tokens::componentFilesFieldLabel * s}));
@@ -442,7 +443,7 @@ std::unique_ptr<Node> FilesWindow::buildSaveCompact(float s) {
   auto footer = buildPickerFooter(s);
   // Tags: one dot per sidebar tag; a click toggles it (applied after the app writes the file).
   {
-    auto row = labelled("Tags");
+    auto row = labelled(i18n::tr("files.picker.tags"));
     for (const TagDef& tag : loadTagConfig()) {
       if (!tag.sidebar) {
         continue;
@@ -482,7 +483,7 @@ std::unique_ptr<Node> FilesWindow::buildSaveCompact(float s) {
   }
   // Where: this app's recent folders, then the places; the chevron expands the full browser.
   {
-    auto row = labelled("Where");
+    auto row = labelled(i18n::tr("files.picker.where"));
     std::vector<fs::path> folders = recentFoldersFor(m_picker->request.appId);
     for (const GUserDirectory dir : {G_USER_DIRECTORY_DOCUMENTS, G_USER_DIRECTORY_DESKTOP, G_USER_DIRECTORY_DOWNLOAD,
                                      G_USER_DIRECTORY_PICTURES, G_USER_DIRECTORY_MUSIC, G_USER_DIRECTORY_VIDEOS}) {
@@ -496,7 +497,7 @@ std::unique_ptr<Node> FilesWindow::buildSaveCompact(float s) {
     std::vector<std::string> names;
     std::size_t current = 0;
     for (std::size_t i = 0; i < folders.size(); ++i) {
-      names.push_back(folders[i] == fs::path(g_get_home_dir()) ? std::string("Home") : folders[i].filename().string());
+      names.push_back(folders[i] == fs::path(g_get_home_dir()) ? i18n::tr("files.picker.home") : folders[i].filename().string());
       current = folders[i] == location() ? i : current;
     }
     row->addChild(ui::select({
@@ -513,7 +514,7 @@ std::unique_ptr<Node> FilesWindow::buildSaveCompact(float s) {
             },
     }));
     row->addChild(ui::button({.glyph = std::string("chevron-down"), .variant = ButtonVariant::Default,
-                              .tooltip = std::string("Show all folders"), .onClick = [this] { expandPicker(); }}));
+                              .tooltip = i18n::tr("files.picker.show-all"), .onClick = [this] { expandPicker(); }}));
     footer->insertChildAt(footer->children().size() - 1, std::move(row));
   }
   box->addChild(std::move(footer));
