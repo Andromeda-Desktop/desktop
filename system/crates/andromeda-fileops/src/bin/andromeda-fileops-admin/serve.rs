@@ -392,7 +392,7 @@ mod tests {
         fs::create_dir(root.path().join("d")).expect("mkdir");
         fs::write(root.path().join("d/a"), "a").expect("write");
         fs::write(root.path().join("d/b"), "b").expect("write");
-        fs::set_permissions(root.path().join("d/b"), fs::Permissions::from_mode(0)).expect("chmod");
+        fs::set_permissions(root.path().join("d/b"), fs::Permissions::from_mode(0o0)).expect("chmod");
         if fs::File::open(root.path().join("d/b")).is_ok() {
             return;
         }

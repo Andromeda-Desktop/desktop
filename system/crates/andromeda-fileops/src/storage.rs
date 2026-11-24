@@ -355,7 +355,7 @@ fn scan_rooted(root: &Path, home: &Path, ctl: &dyn Control) -> OpResult<Summary>
     Ok(summary)
 }
 
-/// The last scan of `root` on disk ($XDG_CACHE_HOME/andromeda/storage), so the page shows numbers at once after a
+/// The last scan of `root` on disk (`$XDG_CACHE_HOME/andromeda/storage`), so the page shows numbers at once after a
 /// restart while a fresh walk runs.
 fn saved_path(root: &Path) -> PathBuf {
     let base = std::env::var_os("XDG_CACHE_HOME").map_or_else(|| home().join(".cache"), PathBuf::from);

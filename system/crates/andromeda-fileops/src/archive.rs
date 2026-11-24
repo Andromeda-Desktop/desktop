@@ -226,7 +226,7 @@ impl OutFormat {
     }
 }
 
-/// "photos.zip.002" for part 2 of "photos.zip" (the 7-Zip volume names, read by 7-Zip, PeaZip and Ark).
+/// "photos.zip.002" for part 2 of "photos.zip" (the 7-Zip volume names, read by 7-Zip, `PeaZip` and Ark).
 fn volume_name(base: &Path, part: usize) -> PathBuf {
     let mut name = base.as_os_str().to_os_string();
     name.push(format!(".{part:03}"));
@@ -783,7 +783,7 @@ impl Writer<'_> {
     }
 
     fn copy_out(&mut self, data: &mut dyn Read, slot: &Path, mode: u32, mtime: u64) -> Result<(), ArchiveError> {
-        let perm = if mode & 0o777 == 0 { 0o644 } else { mode & 0o777 };
+        let perm = if mode.trailing_zeros() >= 9 { 0o644 } else { mode & 0o777 };
         let mut out = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -1674,7 +1674,7 @@ mod tests {
             (OutFormat::TarZst, "tar.zst", ""),
         ] {
             let archive = root.path().join(format!("project.{ext}"));
-            let (undo, result) = compress(&[src.clone()], &archive, format, password, 0, &Quietly);
+            let (undo, result) = compress(std::slice::from_ref(&src), &archive, format, password, 0, &Quietly);
             result.unwrap_or_else(|e| panic!("{ext}: {e}"));
             assert!(matches!(&undo[..], [UndoStep::Created(p)] if *p == archive));
             let mut names: Vec<_> =
@@ -1727,7 +1727,7 @@ mod tests {
         {
             let archive = root.path().join(format!("big.{ext}"));
             fs::write(volume_name(&archive, 1), "taken").expect("write");
-            let (undo, result) = compress(&[src.clone()], &archive, format, password, 100_000, &Quietly);
+            let (undo, result) = compress(std::slice::from_ref(&src), &archive, format, password, 100_000, &Quietly);
             result.unwrap_or_else(|e| panic!("{ext}: {e}"));
             let taken = root.path().join(free_pick_name(archive.file_name().expect("name"), 1));
             let volumes: Vec<PathBuf> = (1..=undo.len()).map(|k| volume_name(&taken, k)).collect();

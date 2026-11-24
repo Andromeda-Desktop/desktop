@@ -97,12 +97,12 @@ pub fn set_owner(
     ctl: &dyn Control,
 ) -> (Vec<UndoStep>, OpResult<()>) {
     walk(paths, recursive, ctl, |path, meta| {
-        let (old_uid, old_gid) = (meta.uid(), meta.gid());
-        if uid.is_none_or(|u| u == old_uid) && gid.is_none_or(|g| g == old_gid) {
+        let (old_uid, prev_gid) = (meta.uid(), meta.gid());
+        if uid.is_none_or(|u| u == old_uid) && gid.is_none_or(|g| g == prev_gid) {
             return Ok(None);
         }
         std::os::unix::fs::lchown(path, uid, gid)?;
-        Ok(Some(UndoStep::Owner { path: path.to_path_buf(), uid: old_uid, gid: old_gid }))
+        Ok(Some(UndoStep::Owner { path: path.to_path_buf(), uid: old_uid, gid: prev_gid }))
     })
 }
 
@@ -193,7 +193,7 @@ mod tests {
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).expect("chmod");
         fs::set_permissions(dir.join("f"), fs::Permissions::from_mode(0o644)).expect("chmod");
         std::os::unix::fs::symlink("/etc/hostname", dir.join("link")).expect("link");
-        let (undo, result) = set_permissions(&[dir.clone()], 0o000, 0o007, true, &Quietly);
+        let (undo, result) = set_permissions(std::slice::from_ref(&dir), 0o000, 0o007, true, &Quietly);
         result.expect("chmod");
         assert_eq!((mode_of(&dir), mode_of(&dir.join("f"))), (0o750, 0o640));
         let (_, result, _) = ops::undo(&undo, &Quietly);
@@ -207,11 +207,11 @@ mod tests {
         let file = root.path().join("f");
         fs::write(&file, "x").expect("write");
         let gid = fs::metadata(&file).expect("meta").gid();
-        let (undo, result) = set_owner(&[file.clone()], None, Some(gid), false, &Quietly);
+        let (undo, result) = set_owner(std::slice::from_ref(&file), None, Some(gid), false, &Quietly);
         result.expect("same group");
         assert!(undo.is_empty());
         if !rustix::process::geteuid().is_root() {
-            let (undo, result) = set_owner(&[file.clone()], Some(0), None, false, &Quietly);
+            let (undo, result) = set_owner(std::slice::from_ref(&file), Some(0), None, false, &Quietly);
             assert!(result.is_err() && undo.is_empty(), "a user cannot give a file to root");
         }
     }

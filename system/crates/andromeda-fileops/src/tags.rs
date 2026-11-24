@@ -96,13 +96,13 @@ pub fn set_tags(paths: &[PathBuf], tags: &[String], mode: Mode, ctl: &dyn Contro
             }
             Mode::Remove => now.retain(|t| !tags.contains(t)),
             Mode::Rename => {
-                if let [old, new] = tags {
-                    if now.contains(old) {
-                        now.retain(|t| t != new);
-                        for t in &mut now {
-                            if t == old {
-                                t.clone_from(new);
-                            }
+                if let [old, new] = tags
+                    && now.contains(old)
+                {
+                    now.retain(|t| t != new);
+                    for t in &mut now {
+                        if t == old {
+                            t.clone_from(new);
                         }
                     }
                 }

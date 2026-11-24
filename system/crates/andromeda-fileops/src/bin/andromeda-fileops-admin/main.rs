@@ -24,7 +24,7 @@ enum Change {
     Owner { uid: Option<u32>, gid: Option<u32> },
 }
 
-/// The same rule as the daemon (info.rs new_mode): a folder's search bit follows its read bit.
+/// The same rule as the daemon (info.rs `new_mode`): a folder's search bit follows its read bit.
 fn new_mode(old: u32, mode: u32, mask: u32, is_dir: bool) -> u32 {
     let mut out = (old & !mask) | (mode & mask);
     if is_dir {
@@ -52,7 +52,7 @@ fn checked(path: &str) -> Result<PathBuf, String> {
     Ok(p.to_path_buf())
 }
 
-/// Opens each component from `/` with O_NOFOLLOW, so no link anywhere on the path is followed: a user who can write a
+/// Opens each component from `/` with ``O_NOFOLLOW``, so no link anywhere on the path is followed: a user who can write a
 /// parent folder cannot swap it for a link to /etc between our check and the change.
 fn open_parent(path: &Path) -> Result<(OwnedFd, std::ffi::OsString), String> {
     let name = path.file_name().ok_or_else(|| format!("{}: no file name", path.display()))?.to_owned();
@@ -72,8 +72,8 @@ fn apply(path: &Path, change: &Change, recursive: bool, count: &mut u64) -> Resu
     apply_at(&dir, &name, path, change, recursive, count)
 }
 
-/// Every step is relative to an open folder and never follows a link (fstatat, fchmodat with AT_SYMLINK_NOFOLLOW,
-/// openat with O_NOFOLLOW), and a folder is entered only if it is still the one that was stat'ed.
+/// Every step is relative to an open folder and never follows a link (fstatat, fchmodat with `AT_SYMLINK_NOFOLLOW`,
+/// openat with `O_NOFOLLOW`), and a folder is entered only if it is still the one that was stat'ed.
 fn apply_at(
     dir: &OwnedFd,
     name: &std::ffi::OsStr,
@@ -117,8 +117,8 @@ fn apply_at(
         if now.st_ino != st.st_ino || now.st_dev != st.st_dev {
             return Err(format!("{}: changed while it was being changed", shown.display()));
         }
-        let mut entries = Dir::read_from(&child).map_err(err)?;
-        while let Some(entry) = entries.next() {
+        let entries = Dir::read_from(&child).map_err(err)?;
+        for entry in entries {
             let entry = entry.map_err(err)?;
             let bytes = entry.file_name().to_bytes();
             if bytes == b"." || bytes == b".." {

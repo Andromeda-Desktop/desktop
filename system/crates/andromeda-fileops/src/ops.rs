@@ -195,7 +195,7 @@ pub fn folder_clash(source: &Path, target: &Path) -> Option<FolderClash> {
             if here.is_dir() {
                 match there {
                     Ok(there) if there.is_dir() => {
-                        walk(&entry.path(), &target.join(&name), &inner.join(&name), clash, seen)
+                        walk(&entry.path(), &target.join(&name), &inner.join(&name), clash, seen);
                     }
                     // A folder that is new here brings all its files as new.
                     Err(_) => clash.new += measure(&[entry.path()]).0.saturating_sub(1),
@@ -427,7 +427,7 @@ impl<'a> Run<'a> {
         }
     }
 
-    /// Copies only the data runs (SEEK_DATA / SEEK_HOLE) and sets the length, so holes stay holes.
+    /// Copies only the data runs (`SEEK_DATA` / `SEEK_HOLE`) and sets the length, so holes stay holes.
     fn copy_sparse(&mut self, input: &File, output: &File, len: u64, source: &Path) -> OpResult<()> {
         let mut buffer = vec![0u8; 1 << 20];
         let mut pos = 0u64;
@@ -829,7 +829,7 @@ mod tests {
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).expect("chmod");
         fs::create_dir_all(&dst).expect("dst");
         let ctl = Answers::new(&[]);
-        let (_, result) = copy(&[dir.clone()], &dst, &ctl);
+        let (_, result) = copy(std::slice::from_ref(&dir), &dst, &ctl);
         assert!(result.is_ok());
         let copied = dst.join("private/disk.img");
         let meta = fs::metadata(&copied).expect("copied");

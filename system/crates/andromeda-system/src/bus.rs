@@ -176,13 +176,13 @@ mod tests {
         (Bus(child), address.trim().to_owned())
     }
 
-    struct Backend;
+    struct Backend(u32);
 
     #[interface(name = "test.Backend")]
     impl Backend {
         #[zbus(property)]
         fn value(&self) -> u32 {
-            0
+            self.0
         }
     }
 
@@ -192,7 +192,7 @@ mod tests {
         let (_bus, address) = private_bus();
         let backend = connection::Builder::address(address.as_str())
             .name("test.Backend")
-            .serve_at("/test", Backend)
+            .serve_at("/test", Backend(0))
             .build()
             .await
             .unwrap();

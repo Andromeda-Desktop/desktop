@@ -832,7 +832,7 @@ impl Manager {
     }
 
     /// Scans `root` (one file system) as a job: its Result is JSON {root, total, categories [[name, bytes]],
-    /// largest [[path, bytes]], trash, caches, old_downloads, old_download_items [[path, bytes]], scanned_at,
+    /// largest [[path, bytes]], trash, caches, `old_downloads`, `old_download_items` [[path, bytes]], `scanned_at`,
     /// cached (read from disk after a daemon restart)}. A scan
     /// younger than 10 min is reused unless `fresh`.
     async fn storage_scan(
@@ -894,6 +894,7 @@ impl Manager {
 
     /// Writes `sources` into the new archive `destination`; format zip, 7z, tar.gz, tar.xz or tar.zst. Only zip and
     /// 7z take a password. A `volume_size` above 0 splits a larger archive into destination.001, .002, …
+    #[allow(clippy::too_many_arguments)]
     async fn compress(
         &mut self,
         sources: Vec<Vec<u8>>,
@@ -988,7 +989,7 @@ mod tests {
     fn a_paused_job_waits_at_its_pause_point_until_resume() {
         let job = shared(0);
         job.pause().expect("pause");
-        assert!(lock(&job.status).state == State::Paused);
+        assert_eq!(lock(&job.status).state, State::Paused);
         let (tx, rx) = mpsc::channel();
         let worker = job.clone();
         let thread = std::thread::spawn(move || {
@@ -999,7 +1000,7 @@ mod tests {
         job.resume().expect("resume");
         rx.recv_timeout(Duration::from_secs(2)).expect("the worker went on after resume");
         thread.join().expect("join");
-        assert!(lock(&job.status).state == State::Running);
+        assert_eq!(lock(&job.status).state, State::Running);
         assert!(job.resume().is_err(), "a running job cannot resume");
     }
 
