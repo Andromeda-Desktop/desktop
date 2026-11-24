@@ -14,6 +14,7 @@ ALLOW = os.path.join(ROOT, "tools/core-check-allow.txt")
 CPP = (".c", ".cc", ".cpp", ".h", ".hpp")
 CPP_DIRS = ("compositor/src/", "shell/src/", "libdesk-ui/src/", "libdesk-app/src/", "libdesk-system/src/",
             "libdesk-term/src/", "apps/", "portal/src/", "indexer/src/", "andromeda-preview/", "session/", "system/")
+LINE_COMMENT = re.compile(r"^\s*//.*$", re.M)
 SKIP = re.compile(r"(^|/)(tests?|subprojects|build[^/]*|greeter)/|_test\.|^shell/src/greeter/|^greeter/")
 
 # id: (why and owner, path prefixes, suffixes, pattern, owner paths exempt from the rule)
@@ -128,6 +129,8 @@ def scan():
             if not path.startswith(dirs) or not path.endswith(suffixes) or path.startswith(owners):
                 continue
             text = open(os.path.join(ROOT, path), encoding="utf-8", errors="replace").read()
+            if path.endswith(CPP):
+                text = LINE_COMMENT.sub("", text)
             if rule == "std-fs-async":
                 hits = async_hits(text, rx)
             else:

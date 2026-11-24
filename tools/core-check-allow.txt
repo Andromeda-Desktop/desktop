@@ -73,14 +73,11 @@ raw-spawn andromeda-preview/src/helper_client.cpp 1
 raw-spawn apps/terminal/src/agent_host.cpp 1
 raw-spawn compositor/src/cli/debug.cpp 1
 raw-spawn compositor/src/cli/update.cpp 2
-raw-spawn compositor/src/core/fdlimit.cpp 1
-raw-spawn compositor/src/core/log.cpp 1
 raw-spawn compositor/src/core/process.cpp 1
 raw-spawn compositor/src/server/greeter_mode.cpp 1
 raw-spawn compositor/src/server/server.cpp 2
 raw-spawn indexer/src/content_worker.cpp 1
 raw-spawn libdesk-system/src/dbus/polkit/polkit_agent.cpp 1
-raw-spawn libdesk-ui/src/core/log.cpp 1
 raw-spawn libdesk-ui/src/core/sys/sys_macos.cpp 1
 raw-spawn libdesk-ui/src/core/sys/sys_posix.cpp 2
 raw-spawn portal/src/dbus/request.cpp 1
