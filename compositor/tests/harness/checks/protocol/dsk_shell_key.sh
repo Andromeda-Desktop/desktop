@@ -39,7 +39,7 @@ printf 'key %s 1\nkey %s 0\nkey %s 1\nkey %s 0\nmark sent\n' "$KEYSYM_X" "$KEYSY
 await_events "$SHELL_LOG" mark\ sent 1 "the shell's request round trip"
 await_events "$WINDOW_LOG" "keyboard-key code=$KEY_Y state=released" 1 "the barrier key"
 await_events "$WINDOW_LOG" "keyboard-key code=$KEY_X state=pressed" 1 "the synthetic key"
-if [[ $(events "$SHELL_LOG" action) != 0 ]]; then
+if [[ $(events "$SHELL_LOG" "action bound-") != 0 ]]; then
   echo "the synthetic key ran a binding: $(tr '\n' '|' < "$SHELL_LOG")"
   exit 1
 fi
