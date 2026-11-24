@@ -429,11 +429,10 @@ void LockEditor::layoutScene(float width, float height) {
   m_slotState.bottom = place.layout == AuthLayout::Centered && !place.media.empty();
   std::vector<LockEditorSlots::Rect> placeRects;
   for (int i = 0; i < m_slotState.places; ++i) {
-    const AuthRect r = LockCards::widgetRect(place, static_cast<std::size_t>(i), scale);
-    placeRects.push_back({r.x, r.y, r.w, r.h});
+    placeRects.push_back(LockCards::widgetRect(place, static_cast<std::size_t>(i), scale));
   }
   m_slots.layout(
-      renderer, m_slotState, placeRects, {place.media.x, place.media.y, place.media.w, place.media.h}, width, height,
+      renderer, m_slotState, placeRects, place.media, width, height,
       scale
   );
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "shell/auth/auth_layout.h"
+
 #include "render/core/color.h"
 
 #include <array>
@@ -57,13 +59,7 @@ public:
   };
   static constexpr float kMaxDim = 0.6F;
 
-  struct Rect {
-    float x = 0.0F;
-    float y = 0.0F;
-    float w = 0.0F;
-    float h = 0.0F;
-    [[nodiscard]] bool contains(float px, float py) const { return px >= x && px < x + w && py >= y && py < y + h; }
-  };
+  using Rect = AuthRect;
 
   // The items of `tab` (0 Photos, 1 Live, 2 Colours). Photos and Live list `directory` (one level, by name); Photos
   // starts with "Same as desktop".

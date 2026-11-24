@@ -1,5 +1,7 @@
 #pragma once
 
+#include "shell/auth/auth_layout.h"
+
 #include <string>
 #include <vector>
 
@@ -52,13 +54,7 @@ public:
   [[nodiscard]] Hit hitTest(float x, float y) const;
 
 private:
-  struct Rect {
-    float x = 0.0F;
-    float y = 0.0F;
-    float w = 0.0F;
-    float h = 0.0F;
-    [[nodiscard]] bool contains(float px, float py) const { return px >= x && px < x + w && py >= y && py < y + h; }
-  };
+  using Rect = AuthRect;
 
   struct Chip {
     RectNode* bg = nullptr;

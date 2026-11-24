@@ -1,6 +1,7 @@
 #pragma once
 
 #include "protocols/dwindle_tree.h"
+#include "render/scene/node.h"
 
 #include <cstdint>
 #include <functional>
@@ -13,12 +14,7 @@ namespace ui {
 
   // Split panes in an app window (Terminal sessions, Viewer documents): the compositor's dwindle tree per split and
   // the geometry the app's pane cards follow. Keys are the app's item ids.
-  struct PaneRect {
-    float x = 0.0F;
-    float y = 0.0F;
-    float width = 0.0F;
-    float height = 0.0F;
-  };
+  using PaneRect = LayoutRect;
 
   class SplitTrees {
   public:

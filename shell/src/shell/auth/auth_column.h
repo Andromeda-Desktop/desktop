@@ -122,12 +122,7 @@ public:
     bool operator==(const State&) const = default;
   };
 
-  struct Rect {
-    float x = 0.0F;
-    float y = 0.0F;
-    float w = 0.0F;
-    float h = 0.0F;
-  };
+  using Rect = AuthRect;
 
   // The visible clock lines as one alpha mask in surface coordinates (dsk_surface_v1.set_glass_mask).
   struct GlassMask {

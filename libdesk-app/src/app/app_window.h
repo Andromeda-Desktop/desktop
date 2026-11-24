@@ -256,12 +256,7 @@ public:
   void toggleFullscreen();
   [[nodiscard]] bool fullscreen() const noexcept;
   // The content area in surface coordinates (logical px), as of the last layout.
-  struct Rect {
-    float x = 0.0F;
-    float y = 0.0F;
-    float width = 0.0F;
-    float height = 0.0F;
-  };
+  using Rect = LayoutRect;
   [[nodiscard]] Rect contentRect() const noexcept { return m_contentRect; }
   // After each layout (size, scale or fullscreen change).
   void setLayoutCallback(std::function<void()> callback) { m_onLayout = std::move(callback); }

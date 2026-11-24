@@ -1,6 +1,7 @@
 #pragma once
 
 #include "render/animation/animation_manager.h"
+#include "shell/auth/auth_layout.h"
 
 #include <array>
 #include <functional>
@@ -18,12 +19,7 @@ class Renderer;
 // the mask row) and all auth state; this class only draws and animates.
 class RyokuAuthScene {
 public:
-  struct Rect {
-    float x = 0.0F;
-    float y = 0.0F;
-    float w = 0.0F;
-    float h = 0.0F;
-  };
+  using Rect = AuthRect;
   struct Action {
     std::string label;
     std::function<void()> run;

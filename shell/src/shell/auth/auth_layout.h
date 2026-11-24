@@ -21,6 +21,7 @@ struct AuthRect {
   [[nodiscard]] bool empty() const noexcept { return w <= 0.0F || h <= 0.0F; }
   [[nodiscard]] float bottom() const noexcept { return y + h; }
   [[nodiscard]] float right() const noexcept { return x + w; }
+  [[nodiscard]] bool contains(float px, float py) const noexcept { return px >= x && px < x + w && py >= y && py < y + h; }
 };
 
 struct AuthPlacementInput {
