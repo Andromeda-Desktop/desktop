@@ -7,9 +7,11 @@
 
 // Re-checks the icon theme when something that decides it changes: a theme installed or removed, the GTK settings
 // files, or dconf's database behind GSettings. Nothing runs while nothing changes.
+class DirectoryWatcher;
+
 class IconThemePollSource final : public PollSource {
 public:
-  IconThemePollSource();
+  explicit IconThemePollSource(DirectoryWatcher& dirs);
   ~IconThemePollSource() override;
 
   IconThemePollSource(const IconThemePollSource&) = delete;

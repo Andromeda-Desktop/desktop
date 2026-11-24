@@ -102,7 +102,6 @@
 #include "shell/tray/tray_drawer_panel.h"
 #include "shell/wallpaper/panel/wallpaper_panel.h"
 #include "shell/wallpaper/wallpaper_paths.h"
-#include "system/brightness_poll_source.h"
 #include "system/brightness_service.h"
 #include "system/distro_info.h"
 #include "system/easyeffects_service.h"
@@ -225,7 +224,8 @@ void trimAllocator() {
 
 Application::Application()
     : m_lockKeysService(m_wayland),
-      m_calendarService(m_configService, m_httpClient, m_secretStore, m_storageKeyProvider, &m_notificationManager),
+      m_calendarService(m_configService, m_httpClient, m_secretStore, m_storageKeyProvider, m_dirWatcher,
+                        &m_notificationManager),
       m_gammaService(m_wayland), m_locationService(m_configService, m_httpClient),
       m_weatherService(m_configService, m_httpClient) {
   m_notificationManager.loadPersistedHistory();

@@ -24,9 +24,6 @@ namespace {
   // libqalculate loads its XML definitions in ~8 ms; this keeps them off the shell's first frame.
   constexpr auto kCalculatorLoadDelay = std::chrono::seconds(2);
 
-  constexpr Inotify::WatchMask kDefinitionsWatchMask =
-      IN_CLOSE_WRITE | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF;
-
   // Cheap pre-filter: the provider participates in global search on every keystroke,
   // so reject anything without a digit to avoid evaluating plain search text
   // (e.g. "firefox"). Letters/spaces are kept so unit and currency conversions
@@ -97,10 +94,15 @@ namespace {
 
 } // namespace
 
-MathProvider::MathProvider(ClipboardService* clipboard, ConfigService* config, HttpClient* httpClient)
-    : m_clipboard(clipboard), m_config(config), m_httpClient(httpClient) {}
+MathProvider::MathProvider(ClipboardService* clipboard, ConfigService* config, HttpClient* httpClient,
+                           DirectoryWatcher* dirs)
+    : m_clipboard(clipboard), m_config(config), m_httpClient(httpClient), m_dirs(dirs) {}
 
-MathProvider::~MathProvider() = default;
+MathProvider::~MathProvider() {
+  if (m_definitionsWatch >= 0) {
+    m_dirs->unwatch(m_definitionsWatch);
+  }
+}
 
 std::string MathProvider::displayName() const { return i18n::tr("launcher.providers.calculator.title"); }
 
@@ -121,21 +123,9 @@ void MathProvider::onLauncherOpened() {
     return;
   }
 
-  bool changed = false;
-  bool watchLost = false;
-  m_inotify.drain([&changed, &watchLost](const inotify_event* event) {
-    changed = true;
-    if ((event->mask & (IN_DELETE_SELF | IN_MOVE_SELF)) != 0) {
-      watchLost = true;
-    }
-  });
-  if (watchLost && m_definitionsWatcher.has_value()) {
-    m_inotify.unwatch(*m_definitionsWatcher);
-    m_definitionsWatcher.reset();
-  }
-
+  bool changed = std::exchange(m_definitionsChanged, false);
   // No watch but the directory exists: it was created since the last open.
-  if (!m_definitionsWatcher.has_value() && watchDefinitionsDir()) {
+  if (m_definitionsWatch < 0 && watchDefinitionsDir()) {
     changed = true;
   }
   if (!changed) {
@@ -173,11 +163,17 @@ void MathProvider::rebuildCalculator() {
 
 bool MathProvider::watchDefinitionsDir() {
   std::error_code ec;
-  if (!std::filesystem::is_directory(m_definitionsDir, ec)) {
+  if (m_dirs == nullptr || !std::filesystem::is_directory(m_definitionsDir, ec)) {
     return false;
   }
-  m_definitionsWatcher = m_inotify.watch(m_definitionsDir, kDefinitionsWatchMask);
-  return m_definitionsWatcher.has_value();
+  m_definitionsWatch = m_dirs->watch(m_definitionsDir, [this](DirectoryWatcher::Event event, const std::string&,
+                                                              const std::string&) {
+    m_definitionsChanged = true;
+    if (event == DirectoryWatcher::Event::Gone) {
+      m_dirs->unwatch(std::exchange(m_definitionsWatch, -1));
+    }
+  });
+  return m_definitionsWatch >= 0;
 }
 
 void MathProvider::refreshExchangeRates() const {

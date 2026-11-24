@@ -7,7 +7,7 @@
 #include "calendar/google_oauth.h"
 #include "calendar/sync_failure.h"
 #include "config/config_types.h"
-#include "core/inotify/inotify.h"
+#include "core/files/directory_watcher.h"
 #include "security/storage_key_provider.h"
 
 #include <chrono>
@@ -65,7 +65,8 @@ public:
 
   CalendarService(
       ConfigService& configService, HttpClient& httpClient, security::SecretStore& secretStore,
-      security::StorageKeyProvider& storageKeyProvider, NotificationManager* notifications = nullptr
+      security::StorageKeyProvider& storageKeyProvider, DirectoryWatcher& dirs,
+      NotificationManager* notifications = nullptr
   );
   ~CalendarService();
 
@@ -76,8 +77,6 @@ public:
 
   [[nodiscard]] int pollTimeoutMs() const;
   void tick();
-  void addPollFds(std::vector<pollfd>& fds);
-  void dispatchPoll(const std::vector<pollfd>& fds, std::size_t startIdx);
 
   [[nodiscard]] bool enabled() const noexcept { return m_activeConfig.enabled; }
   [[nodiscard]] bool hasData() const noexcept { return m_snapshot.valid; }
@@ -158,6 +157,7 @@ private:
   void fetchIcs(const CalendarConfig::Account& account);
   void fetchVdir(const CalendarConfig::Account& account);
   void updateVdirWatches();
+  void onVdirEvent(const std::filesystem::path& path, DirectoryWatcher::Event event);
   void fetchGoogle(const CalendarConfig::Account& account);
   void refreshGoogleToken(
       const std::string& accountId, std::function<void(calendar::SyncFailure failure, std::string accessToken)> cb
@@ -221,9 +221,8 @@ private:
   std::uint64_t m_syncStatusRevision = 0;
   ConnectFlow m_connect;
   calendar::CalDavClient m_caldav;
-  Inotify m_vdirInotify;
-  std::map<std::filesystem::path, int> m_watchedVdirPaths;
-  std::map<int, std::filesystem::path> m_watchedVdirWds;
+  DirectoryWatcher& m_dirs;
+  std::map<std::filesystem::path, DirectoryWatcher::WatchId> m_watchedVdirPaths;
   std::chrono::steady_clock::time_point m_vdirDebounceUntil;
   bool m_vdirDebouncePending = false;
   struct VdirWorker;

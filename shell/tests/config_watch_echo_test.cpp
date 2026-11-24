@@ -48,12 +48,12 @@ namespace {
     return {};
   }
 
-  bool waitFor(ConfigService& config, const std::function<bool()>& done) {
+  bool waitFor(DirectoryWatcher& dirs, const std::function<bool()>& done) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (std::chrono::steady_clock::now() < deadline) {
-      pollfd descriptor{.fd = config.watchFd(), .events = POLLIN};
+      pollfd descriptor{.fd = dirs.fd(), .events = POLLIN};
       if (::poll(&descriptor, 1, 10) > 0) {
-        config.checkReload();
+        dirs.processEvents();
       }
       TimerManager::instance().tick();
       if (done()) {
@@ -67,11 +67,12 @@ namespace {
     return std::ranges::contains(config.config().plugins.enabled, id);
   }
 
-  void drainWatch(ConfigService& config) {
+  // Reads the queued events without delivering them: the config never sees them.
+  void drainWatch(DirectoryWatcher& dirs) {
     std::array<char, 4096> buffer{};
     while (true) {
-      pollfd descriptor{.fd = config.watchFd(), .events = POLLIN};
-      if (::poll(&descriptor, 1, 50) <= 0 || ::read(config.watchFd(), buffer.data(), buffer.size()) <= 0) {
+      pollfd descriptor{.fd = dirs.fd(), .events = POLLIN};
+      if (::poll(&descriptor, 1, 50) <= 0 || ::read(dirs.fd(), buffer.data(), buffer.size()) <= 0) {
         return;
       }
     }
@@ -87,22 +88,23 @@ int main() {
   ::setenv("ANDROMEDA_CONFIG_HOME", (root / "config").c_str(), 1);
   ::setenv("XDG_STATE_HOME", (root / "state").c_str(), 1);
 
-  ConfigService config;
-  expect(config.watchFd() >= 0, "inotify watch is set up");
+  DirectoryWatcher dirs;
+  ConfigService config(&dirs);
+  expect(dirs.fd() >= 0, "inotify watch is set up");
 
   // External edit in the same batch as the echo of a setter write.
   config.setPluginEnabled("me/own", true);
   const auto overrides = findOverrides(root / "state");
   expect(!overrides.empty(), "setter wrote overrides.toml");
   writeFileAtomic(overrides, "[plugins]\nenabled = [\"ext/same-batch\"]\n");
-  expect(waitFor(config, [&] { return enabled(config, "ext/same-batch"); }), "same-batch external edit reloads");
+  expect(waitFor(dirs, [&] { return enabled(config, "ext/same-batch"); }), "same-batch external edit reloads");
 
   // External edit after a setter write whose echo never reaches the watcher.
   config.setPluginEnabled("me/second", true);
-  drainWatch(config);
+  drainWatch(dirs);
   writeFileAtomic(overrides, "[plugins]\nenabled = [\"ext/after-lost-echo\"]\n");
   expect(
-      waitFor(config, [&] { return enabled(config, "ext/after-lost-echo"); }), "external edit after a lost echo reloads"
+      waitFor(dirs, [&] { return enabled(config, "ext/after-lost-echo"); }), "external edit after a lost echo reloads"
   );
 
   std::filesystem::remove_all(root);

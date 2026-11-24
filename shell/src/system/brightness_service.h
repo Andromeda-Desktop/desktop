@@ -10,6 +10,7 @@
 class IpcService;
 class SystemBus;
 class CompositorPlatform;
+class DirectoryWatcher;
 struct BrightnessConfig;
 struct wl_output;
 
@@ -35,7 +36,8 @@ public:
     End,
   };
 
-  BrightnessService(SystemBus* bus, CompositorPlatform& platform, const BrightnessConfig& config);
+  BrightnessService(SystemBus* bus, CompositorPlatform& platform, const BrightnessConfig& config,
+                    DirectoryWatcher& dirs);
   ~BrightnessService();
 
   BrightnessService(const BrightnessService&) = delete;
@@ -63,8 +65,6 @@ public:
   void setChangeCallback(ChangeCallback callback);
 
   // Poll integration — inotify fd for external brightness changes.
-  [[nodiscard]] int watchFd() const noexcept;
-  void dispatchWatch();
 
 private:
   struct Impl;

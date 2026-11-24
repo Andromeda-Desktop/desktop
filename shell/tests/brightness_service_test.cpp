@@ -1,6 +1,7 @@
 #include "compositors/compositor_platform.h"
 #include "config/config_types.h"
 #include "core/deferred_call.h"
+#include "core/files/directory_watcher.h"
 #include "system/brightness_service.h"
 #include "tests/test_check.h"
 #include "compositors/shell_wayland_connection.h"
@@ -200,6 +201,7 @@ namespace {
     ShellWaylandConnection wayland;
     CompositorPlatform platform;
     BrightnessConfig config;
+    DirectoryWatcher dirs;
     std::unique_ptr<BrightnessService> service;
     std::size_t dispatchCount = 0;
 
@@ -214,7 +216,7 @@ namespace {
             .backend = BrightnessBackendPreference::Ddcutil,
         });
       }
-      service = std::make_unique<BrightnessService>(nullptr, platform, config);
+      service = std::make_unique<BrightnessService>(nullptr, platform, config, dirs);
     }
 
     bool waitFor(const std::function<bool()>& predicate, std::chrono::milliseconds timeout = 2500ms) {
@@ -224,13 +226,13 @@ namespace {
           return true;
         }
         std::array<pollfd, 2> descriptors{{
-            {.fd = service->watchFd(), .events = POLLIN, .revents = 0},
+            {.fd = dirs.fd(), .events = POLLIN, .revents = 0},
             {.fd = DeferredCall::wakeFd(), .events = POLLIN, .revents = 0},
         }};
         const int ready = poll(descriptors.data(), descriptors.size(), 10);
         TEST_CHECK(ready >= 0 || errno == EINTR);
         if (ready > 0 && (descriptors[0].revents & POLLIN) != 0) {
-          service->dispatchWatch();
+          dirs.processEvents();
         }
         if (ready > 0 && (descriptors[1].revents & POLLIN) != 0) {
           DeferredCall::drainWakeFd();

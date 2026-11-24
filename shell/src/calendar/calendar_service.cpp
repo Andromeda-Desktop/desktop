@@ -288,13 +288,17 @@ private:
 
 CalendarService::CalendarService(
     ConfigService& configService, HttpClient& httpClient, security::SecretStore& secretStore,
-    security::StorageKeyProvider& storageKeyProvider, NotificationManager* notifications
+    security::StorageKeyProvider& storageKeyProvider, DirectoryWatcher& dirs, NotificationManager* notifications
 )
     : m_configService(configService), m_httpClient(httpClient), m_notifications(notifications), m_oauth(httpClient),
       m_google(httpClient), m_credentials(secretStore), m_storageKeyProvider(storageKeyProvider), m_caldav(httpClient),
-      m_vdirWorker(std::make_shared<VdirWorker>()) {}
+      m_dirs(dirs), m_vdirWorker(std::make_shared<VdirWorker>()) {}
 
-CalendarService::~CalendarService() = default;
+CalendarService::~CalendarService() {
+  for (const auto& [path, id] : m_watchedVdirPaths) {
+    m_dirs.unwatch(id);
+  }
+}
 
 void CalendarService::initialize() {
   m_activeConfig = m_configService.config().calendar;
@@ -570,30 +574,15 @@ void CalendarService::tick() {
   }
 }
 
-void CalendarService::addPollFds(std::vector<pollfd>& fds) {
-  if (m_vdirInotify.fd() >= 0) {
-    fds.push_back({.fd = m_vdirInotify.fd(), .events = POLLIN, .revents = 0});
-  }
-}
-
-void CalendarService::dispatchPoll(const std::vector<pollfd>& fds, std::size_t startIdx) {
-  if (m_vdirInotify.fd() >= 0 && startIdx < fds.size() && (fds[startIdx].revents & POLLIN) != 0) {
-    bool changed = false;
-    m_vdirInotify.drain([&](const inotify_event* event) {
-      changed = true;
-      if ((event->mask & (IN_DELETE_SELF | IN_MOVE_SELF | IN_IGNORED)) != 0) {
-        if (auto it = m_watchedVdirWds.find(event->wd); it != m_watchedVdirWds.end()) {
-          m_watchedVdirPaths.erase(it->second);
-          m_watchedVdirWds.erase(it);
-        }
-      }
-    });
-    if (changed) {
-      m_vdirDebouncePending = true;
-      m_vdirDebounceUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds{300};
+void CalendarService::onVdirEvent(const std::filesystem::path& path, DirectoryWatcher::Event event) {
+  if (event == DirectoryWatcher::Event::Gone) {
+    if (const auto it = m_watchedVdirPaths.find(path); it != m_watchedVdirPaths.end()) {
+      m_dirs.unwatch(it->second);
+      m_watchedVdirPaths.erase(it);
     }
   }
-  tick();
+  m_vdirDebouncePending = true;
+  m_vdirDebounceUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds{300};
 }
 
 void CalendarService::scheduleNextRefresh() {
@@ -1024,10 +1013,6 @@ void CalendarService::fetchIcs(const CalendarConfig::Account& account) {
 }
 
 void CalendarService::updateVdirWatches() {
-  if (m_vdirInotify.fd() < 0) {
-    return;
-  }
-
   std::unordered_set<std::string> desired;
   if (m_activeConfig.enabled) {
     for (const CalendarConfig::Account& account : m_activeConfig.accounts) {
@@ -1055,28 +1040,23 @@ void CalendarService::updateVdirWatches() {
   // Drop watches no longer desired
   for (auto it = m_watchedVdirPaths.begin(); it != m_watchedVdirPaths.end();) {
     if (!desired.contains(it->first.string())) {
-      m_vdirInotify.unwatch(it->second);
-      m_watchedVdirWds.erase(it->second);
+      m_dirs.unwatch(it->second);
       it = m_watchedVdirPaths.erase(it);
     } else {
       ++it;
     }
   }
 
-  // Add newly desired watches
-  constexpr std::uint32_t mask =
-      IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_TO | IN_MOVED_FROM | IN_CLOSE_WRITE | IN_DELETE_SELF | IN_MOVE_SELF;
   for (const auto& pathStr : desired) {
     const std::filesystem::path path(pathStr);
     if (m_watchedVdirPaths.contains(path)) {
       continue;
     }
-    const auto wd = m_vdirInotify.watch(path, mask);
-    if (!wd.has_value()) {
-      continue;
+    const auto id = m_dirs.watch(path, [this, path](DirectoryWatcher::Event event, const std::string&,
+                                                    const std::string&) { onVdirEvent(path, event); });
+    if (id >= 0) {
+      m_watchedVdirPaths.emplace(path, id);
     }
-    m_watchedVdirPaths.emplace(path, *wd);
-    m_watchedVdirWds.emplace(*wd, path);
   }
 }
 

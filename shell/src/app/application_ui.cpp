@@ -100,7 +100,6 @@
 #include "shell/wallpaper/wallpaper_paths.h"
 #include "system/app_identity.h"
 #include "system/system_font.h"
-#include "system/brightness_poll_source.h"
 #include "system/brightness_service.h"
 #include "system/desktop_entry.h"
 #include "system/desktop_entry_launch.h"
@@ -785,7 +784,7 @@ void Application::initPanelManagerAndPanels() {
     launcherPanel->addProvider(std::make_unique<SessionProvider>(&m_configService, &m_sessionActionRunner));
     launcherPanel->addProvider(std::make_unique<WebSearchProvider>(&m_compositorPlatform));
     launcherPanel->addProvider(std::make_unique<FocusProvider>(&m_notificationManager));
-    launcherPanel->addProvider(std::make_unique<MathProvider>(&m_clipboardService, &m_configService, &m_httpClient));
+    launcherPanel->addProvider(std::make_unique<MathProvider>(&m_clipboardService, &m_configService, &m_httpClient, &m_dirWatcher));
     launcherPanel->addProvider(std::make_unique<EmojiProvider>(&m_clipboardService, &m_configService));
     auto clipboard = std::make_unique<ClipboardProvider>(&m_clipboardService, m_bus.get());
     m_clipboardProvider = clipboard.get();

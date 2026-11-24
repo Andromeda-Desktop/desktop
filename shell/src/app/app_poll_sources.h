@@ -7,12 +7,10 @@
 #include "clipboard/clipboard_poll_source.h"
 #include "compositors/keyboard_layout_poll_source.h"
 #include "compositors/workspace_poll_source.h"
-#include "config/config_poll_source.h"
 #include "core/process/process_poll_source.h"
 #include "dbus/notification/notification_poll_source.h"
 #include "ipc/ipc_poll_source.h"
 #include "net/http_client_poll_source.h"
-#include "system/desktop_entry_poll_source.h"
 #include "system/icon_theme_poll_source.h"
 #include "system/location_poll_source.h"
 #include "system/lock_keys_poll_source.h"
@@ -22,7 +20,6 @@
 
 #include <memory>
 
-class BrightnessPollSource;
 class MemoryPressurePollSource;
 class PipeWirePollSource;
 class PipeWireSpectrumPollSource;
@@ -40,8 +37,6 @@ struct AppPollSources {
   DeferredCallPollSource deferredCall;
   ProcessPollSource process;
   TimePollSource time;
-  ConfigPollSource config;
-  DesktopEntryPollSource desktopEntry;
   IconThemePollSource iconTheme;
   ClipboardPollSource clipboard;
   TimerPollSource timer;
@@ -49,7 +44,6 @@ struct AppPollSources {
   WorkspacePollSource workspace;
   KeyboardLayoutPollSource keyboardLayout;
   LockKeysPollSource lockKeys;
-  std::unique_ptr<BrightnessPollSource> brightness;
   std::unique_ptr<MemoryPressurePollSource> memoryPressure;
   std::unique_ptr<PipeWirePollSource> pipewire;
   std::unique_ptr<PipeWireSpectrumPollSource> pipewireSpectrum;

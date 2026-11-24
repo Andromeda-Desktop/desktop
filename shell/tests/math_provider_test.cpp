@@ -30,7 +30,8 @@ namespace {
 
   // command() runs a program; it must stay disabled even after user definitions load.
   // The calculator engine builds on the SharedWorker after an open that needs one.
-  void openLauncher(MathProvider& provider) {
+  void openLauncher(MathProvider& provider, DirectoryWatcher& dirs) {
+    dirs.processEvents();
     provider.onLauncherOpened();
     TEST_CHECK(runDeferredUntil([&provider] { return !provider.queryPrefixed("2 + 2").empty(); }));
   }
@@ -51,11 +52,12 @@ int main() {
   setenv("QALCULATE_USER_DIR", root.c_str(), 1);
 
   // Starts without a definitions directory, so no watch is set up.
-  MathProvider provider(nullptr, nullptr, nullptr);
+  DirectoryWatcher dirs;
+  MathProvider provider(nullptr, nullptr, nullptr, &dirs);
   provider.initialize();
   // The calculator loads on the first launcher open, or later after start.
   TEST_CHECK(provider.queryPrefixed("2 + 2").empty());
-  openLauncher(provider);
+  openLauncher(provider, dirs);
 
   TEST_CHECK(provider.query("EUR").empty());
   TEST_CHECK(!provider.queryPrefixed("EUR").empty());
@@ -66,18 +68,18 @@ int main() {
   TEST_CHECK(firstTitle(provider, "noctaliaprobe*2") != "= 480");
   fs::create_directories(definitions);
   writeVariable(definitions, "noctaliaprobe", "240");
-  openLauncher(provider);
+  openLauncher(provider, dirs);
   TEST_CHECK(firstTitle(provider, "noctaliaprobe*2") == "= 480");
   TEST_CHECK(!commandRuns(provider, marker));
 
   // Edits are picked up through the watch.
   writeVariable(definitions, "noctaliaprobe", "100");
-  openLauncher(provider);
+  openLauncher(provider, dirs);
   TEST_CHECK(firstTitle(provider, "noctaliaprobe*2") == "= 200");
 
   // Removed definitions disappear rather than lingering from the previous load.
   fs::remove(definitions / "variables.xml");
-  openLauncher(provider);
+  openLauncher(provider, dirs);
   TEST_CHECK(firstTitle(provider, "noctaliaprobe*2") != "= 200");
   TEST_CHECK(!commandRuns(provider, marker));
 

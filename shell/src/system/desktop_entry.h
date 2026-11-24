@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+class DirectoryWatcher;
+
 struct DesktopAction {
   std::string id;
   std::string name;
@@ -82,8 +84,17 @@ std::shared_ptr<const std::vector<DesktopEntry>> desktopEntriesSnapshot();
 
 std::uint64_t desktopEntriesVersion();
 void setDesktopEntryLanguage(std::string_view language);
-int desktopEntryWatchFd() noexcept;
-void checkDesktopEntryReload();
+// While it lives, the cache follows changes to its directories through `dirs` and rescans at once, so
+// worker-thread desktopEntriesSnapshot() readers see a current list even when nothing calls desktopEntries().
+// It primes the cache on construction.
+class DesktopEntryWatch {
+public:
+  explicit DesktopEntryWatch(DirectoryWatcher& dirs);
+  ~DesktopEntryWatch();
+
+  DesktopEntryWatch(const DesktopEntryWatch&) = delete;
+  DesktopEntryWatch& operator=(const DesktopEntryWatch&) = delete;
+};
 
 // Cheaply re-stat the resolved XDG application source directories and mark the
 // cache dirty only if they changed. Catches Nix profile-generation symlink

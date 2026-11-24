@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/inotify/inotify.h"
+#include "core/files/directory_watcher.h"
 #include "core/timer_manager.h"
 #include "launcher/launcher_provider.h"
 
@@ -15,7 +15,7 @@ class CalcEngine;
 
 class MathProvider : public LauncherProvider {
 public:
-  MathProvider(ClipboardService* clipboard, ConfigService* config, HttpClient* httpClient);
+  MathProvider(ClipboardService* clipboard, ConfigService* config, HttpClient* httpClient, DirectoryWatcher* dirs);
   ~MathProvider() override;
 
   [[nodiscard]] std::string_view defaultPrefix() const override { return "calc"; }
@@ -58,7 +58,9 @@ private:
   bool m_reloadAgain = false;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   std::filesystem::path m_definitionsDir;
-  Inotify m_inotify;
-  std::optional<int> m_definitionsWatcher;
+  DirectoryWatcher* m_dirs;
+  DirectoryWatcher::WatchId m_definitionsWatch = -1;
+  // Read on the next launcher open: rebuilding loads libqalculate (~8 ms).
+  bool m_definitionsChanged = false;
   mutable bool m_exchangeRatesChecked = false;
 };

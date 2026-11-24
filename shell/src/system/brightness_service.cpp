@@ -6,7 +6,7 @@
 #include "compositors/compositor_platform.h"
 #include "config/config_types.h"
 #include "core/deferred_call.h"
-#include "core/inotify/inotify.h"
+#include "core/files/directory_watcher.h"
 #include "core/log.h"
 #include "core/process/process.h"
 #include "core/timer_manager.h"
@@ -75,7 +75,7 @@ namespace {
     std::string backlightName;
     std::string sysfsPath;
     std::string connectorName;
-    int inotifyWd = -1;
+    DirectoryWatcher::WatchId sysfsWatch = -1;
 
     int ddcBus = -1;
     // Incremented on each user brightness write; completions with an older epoch are ignored.
@@ -718,7 +718,7 @@ struct BrightnessService::Impl {
   std::map<std::string, Fade> fades;
   Timer fadeTimer;
 
-  Inotify m_inotify;
+  DirectoryWatcher& dirs;
 
   std::uint64_t generation = 0;
   std::uint64_t discoveryEpoch = 0;
@@ -737,9 +737,9 @@ struct BrightnessService::Impl {
   std::unordered_map<std::string, DdcJob> pendingRefreshes;
   std::queue<WorkerCompletion> completions;
 
-  Impl(SystemBus* systemBus, CompositorPlatform& compositorPlatform, BrightnessConfig config)
+  Impl(SystemBus* systemBus, CompositorPlatform& compositorPlatform, BrightnessConfig config, DirectoryWatcher& watcher)
       : bus(systemBus), wayland(compositorPlatform.wayland()), platform(compositorPlatform),
-        activeConfig(std::move(config)) {
+        activeConfig(std::move(config)), dirs(watcher) {
     if (bus != nullptr) {
       loginProxy =
           sdbus::createProxy(bus->connection(), kSystem1BusName, sdbus::ObjectPath{"/org/andromeda/System1/Login"});
@@ -798,12 +798,9 @@ struct BrightnessService::Impl {
   }
 
   void clearBacklightWatches() {
-    if (m_inotify.fd() >= 0) {
-      for (auto& display : internals) {
-        if (display.inotifyWd >= 0) {
-          m_inotify.unwatch(display.inotifyWd);
-          display.inotifyWd = -1;
-        }
+    for (auto& display : internals) {
+      if (display.sysfsWatch >= 0) {
+        dirs.unwatch(std::exchange(display.sysfsWatch, -1));
       }
     }
     std::erase_if(internals, [](const DisplayInternal& display) {
@@ -945,15 +942,18 @@ struct BrightnessService::Impl {
     ::closedir(dir);
 
     for (auto& [connector, candidate] : bestByConnector) {
-      if (m_inotify.fd() >= 0) {
-        const std::string watchPath = candidate.display.sysfsPath + "/brightness";
-        const auto wd = m_inotify.watch(watchPath.c_str(), IN_MODIFY);
-        if (!wd.has_value()) {
-          kLog.debug("inotify_add_watch failed for {}", watchPath);
-        } else {
-          candidate.display.inotifyWd = wd.value();
-        }
-      }
+      // User-space writes change brightness, the driver reports through actual_brightness (sysfs_notify); both
+      // reach a watch on the device directory.
+      candidate.display.sysfsWatch = dirs.watch(
+          candidate.display.sysfsPath,
+          [this, backlight = candidate.display.backlightName](DirectoryWatcher::Event event, const std::string& name,
+                                                              const std::string&) {
+            if (event == DirectoryWatcher::Event::Overflow
+                || (event == DirectoryWatcher::Event::Changed && (name == "brightness" || name == "actual_brightness"))) {
+              onBacklightChanged(backlight);
+            }
+          }
+      );
       kLog.info(
           "selected backlight '{}' type='{}' connector={} match={}", candidate.display.backlightName, candidate.type,
           connector, candidate.exactDrmMatch ? "exact" : "fallback"
@@ -1437,12 +1437,6 @@ struct BrightnessService::Impl {
     DeferredCall::callLaterIfAlive(workerAlive, [this] { processCompletions(); });
   }
 
-  void handlePollEvents() {
-    if (m_inotify.fd() >= 0) {
-      handleInotify();
-    }
-  }
-
   void processCompletions() {
     std::queue<WorkerCompletion> ready;
     {
@@ -1634,30 +1628,20 @@ struct BrightnessService::Impl {
     return false;
   }
 
-  void handleInotify() {
-    if (m_inotify.fd() < 0) {
+  void onBacklightChanged(const std::string& backlight) {
+    const auto display = std::ranges::find_if(internals, [&](const DisplayInternal& d) {
+      return d.backend == RuntimeBackend::Backlight && d.backlightName == backlight;
+    });
+    if (display == internals.end()) {
       return;
     }
-
-    bool changed = false;
-
-    m_inotify.drain([this, &changed](const inotify_event* event) {
-      for (auto& display : internals) {
-        if (display.backend != RuntimeBackend::Backlight || display.inotifyWd != event->wd) {
-          continue;
-        }
-
-        const float newBrightness = readBacklightBrightness(display.sysfsPath, display.maxRaw);
-        if (std::abs(newBrightness - display.pub.brightness) > 0.001F) {
-          display.pub.brightness = newBrightness;
-          syncPublicDisplay(display);
-          changed = true;
-        }
-        break;
-      }
-    });
-
-    if (changed && changeCallback) {
+    const float newBrightness = readBacklightBrightness(display->sysfsPath, display->maxRaw);
+    if (std::abs(newBrightness - display->pub.brightness) <= 0.001F) {
+      return;
+    }
+    display->pub.brightness = newBrightness;
+    syncPublicDisplay(*display);
+    if (changeCallback) {
       changeCallback();
     }
   }
@@ -1693,8 +1677,9 @@ struct BrightnessService::Impl {
   }
 };
 
-BrightnessService::BrightnessService(SystemBus* bus, CompositorPlatform& platform, const BrightnessConfig& config)
-    : m_impl(new Impl(bus, platform, config)) {
+BrightnessService::BrightnessService(SystemBus* bus, CompositorPlatform& platform, const BrightnessConfig& config,
+                                     DirectoryWatcher& dirs)
+    : m_impl(new Impl(bus, platform, config, dirs)) {
   m_impl->rebuildState(false);
 }
 
@@ -1955,8 +1940,4 @@ void BrightnessService::registerIpc(IpcService& ipc, const std::function<void(Ba
 
 void BrightnessService::setChangeCallback(ChangeCallback callback) { m_impl->changeCallback = std::move(callback); }
 
-int BrightnessService::watchFd() const noexcept {
-  return m_impl->m_inotify.fd();
-}
 
-void BrightnessService::dispatchWatch() { m_impl->handlePollEvents(); }

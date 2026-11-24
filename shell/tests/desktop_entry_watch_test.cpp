@@ -1,3 +1,4 @@
+#include "core/files/directory_watcher.h"
 #include "system/desktop_entry.h"
 #include "tests/test_check.h"
 #include "tests/test_deferred.h"
@@ -5,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <poll.h>
 #include <string>
 #include <string_view>
@@ -20,8 +22,8 @@ namespace {
   }
 
   // inotify queues an event inside the syscall that causes it, so pending events can be checked without waiting.
-  bool watchEventPending() {
-    pollfd pfd{.fd = desktopEntryWatchFd(), .events = POLLIN, .revents = 0};
+  bool watchEventPending(const DirectoryWatcher& dirs) {
+    pollfd pfd{.fd = dirs.fd(), .events = POLLIN, .revents = 0};
     return poll(&pfd, 1, 0) > 0;
   }
 
@@ -45,18 +47,21 @@ int main() {
   setenv("XDG_DATA_HOME", (root / "data").c_str(), 1);
   setenv("XDG_DATA_DIRS", (root / "empty").c_str(), 1);
 
+  DirectoryWatcher dirs;
+  std::optional<DesktopEntryWatch> watch(std::in_place, dirs);
   TEST_CHECK(hasId(desktopEntries(), "watch-probe"));
 
   // A refresh must queue nothing for directories it keeps watching: past the queue limit, that overflows into a rescan.
   writeEntry(applications / "nested/watch-probe-added.desktop", "Added Probe");
-  TEST_CHECK(watchEventPending());
-  checkDesktopEntryReload();
+  TEST_CHECK(watchEventPending(dirs));
+  dirs.processEvents();
   TEST_CHECK(runDeferredUntil([] { return hasId(desktopEntries(), "watch-probe-added"); }));
-  TEST_CHECK(!watchEventPending());
+  TEST_CHECK(!watchEventPending(dirs));
 
   writeEntry(applications / "nested/watch-probe-later.desktop", "Later Probe");
-  TEST_CHECK(watchEventPending());
+  TEST_CHECK(watchEventPending(dirs));
 
+  watch.reset();
   std::error_code ec;
   fs::remove_all(root, ec);
   return 0;

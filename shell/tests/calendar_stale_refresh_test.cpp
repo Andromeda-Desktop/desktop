@@ -81,7 +81,8 @@ namespace {
     http.setOfflineMode(true);
     security::SecretStore store{std::make_unique<UnavailableBackend>()};
     security::StorageKeyProvider keys{store};
-    CalendarService calendar(config, http, store, keys);
+    DirectoryWatcher dirs;
+    CalendarService calendar(config, http, store, keys, dirs);
     calendar.initialize();
 
     const CalendarConfig::Account account = config.config().calendar.accounts.at(0);

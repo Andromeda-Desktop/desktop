@@ -78,6 +78,7 @@
 #include "shell/activity/activity_window.h"
 #include "shell/wallpaper/wallpaper_window.h"
 #include "system/container_service.h"
+#include "system/desktop_entry.h"
 #include "dbus/name_owner_watch.h"
 #include "system/activity_actions.h"
 #include "system/ambient_brightness.h"
@@ -343,10 +344,10 @@ private:
   ClipboardService m_clipboardService{m_storageKeyProvider};
   WaylandTextInputService m_textInputService;
   VirtualKeyboardService m_virtualKeyboardService;
-  ConfigService m_configService;
-  HttpClient m_httpClient;
   DirectoryWatcher m_dirWatcher;
   FileWatcher m_fileWatcher{m_dirWatcher};
+  ConfigService m_configService{&m_dirWatcher};
+  HttpClient m_httpClient;
   // The desktop interface font family; the shell draws with it while shell.font_family is empty.
   std::optional<std::string> m_systemFontFamily;
   noctalia::theme::ThemeService m_themeService{m_configService, m_httpClient};
@@ -584,7 +585,7 @@ private:
       .notification{m_notificationManager},
       .process{process::AsyncProcessManager::instance()},
       .time{m_timeService},
-      .config{m_configService},
+      .iconTheme{m_dirWatcher},
       .clipboard{m_clipboardService},
       .keyRepeat{m_wayland},
       .workspace{m_compositorPlatform},
@@ -597,6 +598,7 @@ private:
       .calendar{m_calendarService},
       .calendarReminder{m_calendarReminderMonitor},
   };
+  DesktopEntryWatch m_desktopEntryWatch{m_dirWatcher};
 
   Timer m_polkitInitTimer;
   std::vector<focus::Trigger> m_focusTriggers;

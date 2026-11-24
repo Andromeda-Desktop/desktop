@@ -9,7 +9,7 @@
 #include "compositors/event_stream_poll_source.h"
 #include "compositors/keyboard_layout_poll_source.h"
 #include "compositors/shell_wayland_connection.h"
-#include "config/config_poll_source.h"
+#include "core/files/directory_watcher.h"
 #include "config/config_service.h"
 #include "core/deferred_call.h"
 #include "core/input/keybind_matcher.h"
@@ -500,7 +500,7 @@ namespace {
         sources.push_back(m_systemBusPoll.get());
       }
       sources.push_back(&m_deferredPoll);
-      sources.push_back(&m_configPoll);
+      sources.push_back(&m_dirWatcher);
       sources.push_back(&m_timerPoll);
       sources.push_back(&m_keyRepeatPoll);
       sources.push_back(&m_eventStreamPoll);
@@ -513,7 +513,8 @@ namespace {
 
     ShellWaylandConnection m_wayland;
     CompositorPlatform m_platform{m_wayland, CompositorPlatform::Role::Lock};
-    ConfigService m_config;
+    DirectoryWatcher m_dirWatcher;
+    ConfigService m_config{&m_dirWatcher};
     HttpClient m_http;
     noctalia::theme::ThemeService m_theme{m_config, m_http};
     LiveAppearanceSync m_liveAppearance;
@@ -548,7 +549,6 @@ namespace {
     std::unique_ptr<LockDBusService> m_control;
 
     DeferredCallPollSource m_deferredPoll;
-    ConfigPollSource m_configPoll{m_config};
     TimerPollSource m_timerPoll;
     KeyRepeatPollSource m_keyRepeatPoll{m_wayland};
     EventStreamPollSource m_eventStreamPoll{m_platform};

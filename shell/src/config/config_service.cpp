@@ -53,9 +53,6 @@ namespace schema = noctalia::config::schema;
 
 namespace {
 
-  // Completed writes, renames, creates (dotfile managers create symlinks) and removals. In-progress
-  // writes (IN_MODIFY) are skipped; the debounce below covers the steps of a multi-step save.
-  constexpr std::uint32_t inotifyMask = IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE | IN_MOVED_FROM;
   constexpr std::chrono::milliseconds kWatchReloadDebounce{150};
 
   constexpr Logger kLog("config");
@@ -614,7 +611,7 @@ ConfigService::WallpaperBatch::~WallpaperBatch() {
   }
 }
 
-ConfigService::ConfigService() {
+ConfigService::ConfigService(DirectoryWatcher* dirs) : m_dirs(dirs) {
   m_configDir = FileUtils::configDir();
 
   // Create the state dir eagerly so override writes don't
@@ -631,6 +628,18 @@ ConfigService::ConfigService() {
   m_stateStore.load();
   loadAll();
   setupWatch();
+}
+
+ConfigService::~ConfigService() {
+  if (m_dirs == nullptr) {
+    return;
+  }
+  for (const auto id : m_watches) {
+    m_dirs->unwatch(id);
+  }
+  for (const auto& [dir, id] : m_includeDirWatches) {
+    m_dirs->unwatch(id);
+  }
 }
 
 // ── Public interface ─────────────────────────────────────────────────────────
@@ -930,62 +939,46 @@ Config ConfigService::makeDefaultConfig() {
   return config;
 }
 
-void ConfigService::checkReload() {
-  if (m_inotify.fd() < 0) {
-    return;
-  }
-
-  bool configChanged = false;
-  bool overridesChanged = false;
-
-  m_inotify.drain([this, &configChanged, &overridesChanged](const inotify_event* event) {
-    if (event->len > 0) {
-      const std::string_view name{event->name};
-      if (event->wd == m_configWatchWd && name.ends_with(".toml")) {
-        configChanged = true;
-      }
-
-      if (event->wd == m_overridesWatchWd) {
-        const auto overridesFilename = std::filesystem::path(m_overridesPath).filename().string();
-        if (name == overridesFilename) {
-          overridesChanged = true;
-        }
-      }
-
-      // Check whether this event comes from a symlink-target directory.
-      const auto symIt = m_symlinkDirWds.find(event->wd);
-      if (symIt != m_symlinkDirWds.end()) {
-        for (const auto& watched : symIt->second) {
-          if (name != watched.filename) {
-            continue;
-          }
-          if (watched.overrides) {
-            overridesChanged = true;
-          } else {
-            configChanged = true;
-          }
-        }
-      }
-
-      // Any *.toml change in a watched [include] directory is a config change.
-      if (m_includeDirWds.contains(event->wd) && name.ends_with(".toml")) {
-        configChanged = true;
-      }
+DirectoryWatcher::WatchId ConfigService::watchDirectory(const std::filesystem::path& dir, WatchMatch match) {
+  using Event = DirectoryWatcher::Event;
+  return m_dirs->watch(dir, [this, match = std::move(match)](Event event, const std::string& name,
+                                                            const std::string& newName) {
+    switch (event) {
+    // Completed writes, moves, creates (dotfile managers create symlinks) and removals. In-progress writes (Changed)
+    // are skipped; the debounce covers the steps of a multi-step save.
+    case Event::Written:
+    case Event::MovedIn:
+    case Event::Created:
+    case Event::Deleted:
+      onWatchedChange(match(name));
+      break;
+    case Event::Renamed:
+      onWatchedChange(std::max(match(name), match(newName)));
+      break;
+    case Event::Overflow:
+      onWatchedChange(WatchReload::Config);
+      onWatchedChange(WatchReload::Overrides);
+      break;
+    case Event::Changed:
+    case Event::Gone:
+      break;
     }
   });
+}
 
-  if (overridesChanged && m_writtenOverridesContent && readTextFile(m_overridesPath) == *m_writtenOverridesContent) {
-    overridesChanged = false;
+void ConfigService::onWatchedChange(WatchReload reload) {
+  if (reload == WatchReload::Overrides && m_writtenOverridesContent
+      && readTextFile(m_overridesPath) == *m_writtenOverridesContent) {
+    reload = WatchReload::None;
   }
-
-  if (!configChanged && !overridesChanged) {
+  if (reload == WatchReload::None) {
     return;
   }
 
   // Editors save in several steps (truncate then write, rename the old file away then write the
   // new one, write a temp file then rename it over). Reload once the burst settles so a half-saved
   // or briefly missing file is never applied.
-  m_pendingWatchReload = std::max(m_pendingWatchReload, overridesChanged ? WatchReload::Overrides : WatchReload::Config);
+  m_pendingWatchReload = std::max(m_pendingWatchReload, reload);
   m_watchReloadTimer.start(kWatchReloadDebounce, [this] { applyPendingWatchReload(); });
 }
 
@@ -1206,21 +1199,32 @@ DockConfig ConfigService::resolveForOutput(const DockConfig& base, const Wayland
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 void ConfigService::setupWatch() {
-  if (m_configDir.empty()) {
+  if (m_configDir.empty() || m_dirs == nullptr) {
     return;
   }
 
   std::error_code ec;
   std::filesystem::create_directories(m_configDir, ec);
 
-  const auto watchId = m_inotify.watch(m_configDir.c_str(), inotifyMask);
-  if (!watchId.has_value()) {
-    kLog.warn("inotify_add_watch failed, hot reload disabled");
+  const auto configWatch = watchDirectory(m_configDir, [](std::string_view name) {
+    return name.ends_with(".toml") ? WatchReload::Config : WatchReload::None;
+  });
+  if (configWatch < 0) {
+    kLog.warn("cannot watch {}, hot reload disabled", m_configDir);
     return;
   }
-  m_configWatchWd = watchId.value();
-
+  m_watches.push_back(configWatch);
   kLog.debug("watching {} for changes", m_configDir);
+
+  const auto watchTarget = [this](const std::filesystem::path& real, WatchReload reload) {
+    const auto id = watchDirectory(real.parent_path(), [name = real.filename().string(), reload](std::string_view changed) {
+      return changed == name ? reload : WatchReload::None;
+    });
+    if (id >= 0) {
+      m_watches.push_back(id);
+      kLog.debug("watching symlink target {}", real.string());
+    }
+  };
 
   // For any *.toml entries that are symlinks, also watch the real target's parent
   // directory so that edits to the target file (e.g. via dotfile management) trigger
@@ -1236,50 +1240,37 @@ void ConfigService::setupWatch() {
     }
     std::error_code canonEc;
     const auto real = std::filesystem::canonical(entry.path(), canonEc);
-    if (canonEc) {
-      continue;
-    }
-    const auto realDir = real.parent_path().string();
-    const auto realName = real.filename().string();
-    // inotify.watch is idempotent per inode — if realDir == m_configDir the
-    // existing watch descriptor is returned and we simply record the extra name.
-    const auto wd = m_inotify.watch(realDir.c_str(), inotifyMask);
-    if (wd.has_value()) {
-      m_symlinkDirWds[wd.value()].push_back(SymlinkTargetWatch{.filename = realName, .overrides = false});
-      kLog.debug("watching symlink target {} in {}", realName, realDir);
+    if (!canonEc) {
+      watchTarget(real, WatchReload::Config);
     }
   }
 
   // Also watch the state dir for overrides file edits (external writes).
   if (!m_overridesPath.empty()) {
-    const auto overridesDir = std::filesystem::path(m_overridesPath).parent_path().string();
-    const auto wd = m_inotify.watch(overridesDir.c_str(), inotifyMask);
-    if (!wd.has_value()) {
-      kLog.warn("inotify_add_watch failed for {}, overrides reload disabled", overridesDir);
+    const std::filesystem::path overrides(m_overridesPath);
+    const auto overridesWatch =
+        watchDirectory(overrides.parent_path(), [name = overrides.filename().string()](std::string_view changed) {
+          return changed == name ? WatchReload::Overrides : WatchReload::None;
+        });
+    if (overridesWatch < 0) {
+      kLog.warn("cannot watch {}, overrides reload disabled", overrides.parent_path().string());
     } else {
-      kLog.debug("watching {} for changes", overridesDir);
-      m_overridesWatchWd = wd.value();
+      m_watches.push_back(overridesWatch);
     }
 
     const auto target = resolveAtomicWriteTarget(m_overridesPath);
     if (target.has_value() && target->throughSymlink) {
-      const auto realDir = target->path.parent_path().string();
-      const auto realName = target->path.filename().string();
-      const auto targetWd = m_inotify.watch(realDir.c_str(), inotifyMask);
-      if (targetWd.has_value()) {
-        m_symlinkDirWds[targetWd.value()].push_back(SymlinkTargetWatch{.filename = realName, .overrides = true});
-        kLog.debug("watching settings symlink target {} in {}", realName, realDir);
-      }
+      watchTarget(target->path, WatchReload::Overrides);
     }
   }
 
-  // The ctor's first loadAll() ran before this fd existed, so establish the
+  // The ctor's first loadAll() ran before the watches existed, so establish the
   // initial [include] directory watches now.
   refreshIncludeWatches();
 }
 
 void ConfigService::refreshIncludeWatches() {
-  if (m_inotify.fd() < 0) {
+  if (m_dirs == nullptr || m_watches.empty()) {
     return;
   }
 
@@ -1314,8 +1305,7 @@ void ConfigService::refreshIncludeWatches() {
   // Drop watches no longer wanted.
   for (auto it = m_includeDirWatches.begin(); it != m_includeDirWatches.end();) {
     if (!desired.contains(it->first)) {
-      m_inotify.unwatch(it->second);
-      m_includeDirWds.erase(it->second);
+      m_dirs->unwatch(it->second);
       it = m_includeDirWatches.erase(it);
     } else {
       ++it;
@@ -1327,19 +1317,13 @@ void ConfigService::refreshIncludeWatches() {
     if (m_includeDirWatches.contains(dir)) {
       continue;
     }
-    const auto wd = m_inotify.watch(dir.c_str(), inotifyMask);
-    if (!wd.has_value()) {
-      continue;
+    const auto id = watchDirectory(dir, [](std::string_view name) {
+      return name.ends_with(".toml") ? WatchReload::Config : WatchReload::None;
+    });
+    if (id >= 0) {
+      m_includeDirWatches.emplace(dir, id);
+      kLog.debug("watching include directory {}", dir);
     }
-    // inotify_add_watch is idempotent per inode: if this dir is already watched by
-    // the config/overrides/symlink-target watches, the existing wd comes back. Do
-    // not record it (and never remove it) — its original owner manages its lifetime.
-    if (wd == m_configWatchWd || wd == m_overridesWatchWd || m_symlinkDirWds.contains(*wd)) {
-      continue;
-    }
-    m_includeDirWatches.emplace(dir, *wd);
-    m_includeDirWds.insert(*wd);
-    kLog.debug("watching include directory {}", dir);
   }
 }
 

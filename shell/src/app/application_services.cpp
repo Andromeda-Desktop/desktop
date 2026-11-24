@@ -108,7 +108,6 @@
 #include "shell/tray/tray_drawer_panel.h"
 #include "shell/wallpaper/panel/wallpaper_panel.h"
 #include "shell/wallpaper/wallpaper_paths.h"
-#include "system/brightness_poll_source.h"
 #include "system/brightness_schedule.h"
 #include "system/brightness_service.h"
 #include "system/distro_info.h"
@@ -1879,7 +1878,7 @@ void Application::initBrightnessAndPipewire() {
 
   try {
     m_brightnessService = std::make_unique<BrightnessService>(
-        m_systemBus.get(), m_compositorPlatform, m_configService.config().brightness
+        m_systemBus.get(), m_compositorPlatform, m_configService.config().brightness, m_dirWatcher
     );
     m_brightnessService->setChangeCallback([this, shouldRefreshControlCenter] {
       m_brightnessOsd.onBrightnessChanged(*m_brightnessService);

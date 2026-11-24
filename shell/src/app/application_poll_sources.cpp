@@ -12,7 +12,6 @@
 #include "pipewire/pipewire_poll_source.h"
 #include "pipewire/pipewire_spectrum_poll_source.h"
 #include "pipewire/wireplumber_mixer.h"
-#include "system/brightness_poll_source.h"
 #include "core/memory_pressure_poll_source.h"
 #include "ui/dialogs/file_dialog_sheet.h"
 #include "core/files/directory_watcher.h"
@@ -42,8 +41,6 @@ std::vector<PollSource*> Application::currentPollSources() {
   if (m_filesProvider != nullptr) {
     sources.push_back(m_filesProvider);
   }
-  sources.push_back(&m_poll.config);
-  sources.push_back(&m_poll.desktopEntry);
   sources.push_back(&m_poll.iconTheme);
   sources.push_back(&m_poll.clipboard);
   sources.push_back(&m_poll.timer);
@@ -69,9 +66,6 @@ std::vector<PollSource*> Application::currentPollSources() {
   }
   if (m_poll.polkit != nullptr) {
     sources.push_back(m_poll.polkit.get());
-  }
-  if (m_poll.brightness != nullptr) {
-    sources.push_back(m_poll.brightness.get());
   }
   if (m_poll.memoryPressure != nullptr) {
     sources.push_back(m_poll.memoryPressure.get());
@@ -129,13 +123,6 @@ std::vector<PollSource*> Application::buildPollSources() {
     }
   } else {
     m_poll.pipewireSpectrum.reset();
-  }
-  if (m_brightnessService != nullptr) {
-    if (m_poll.brightness == nullptr) {
-      m_poll.brightness = std::make_unique<BrightnessPollSource>(*m_brightnessService);
-    }
-  } else {
-    m_poll.brightness.reset();
   }
   if (m_poll.memoryPressure == nullptr) {
     m_poll.memoryPressure = std::make_unique<MemoryPressurePollSource>(MemoryPressurePollSource::ownCgroupPressureFile(), [this] {

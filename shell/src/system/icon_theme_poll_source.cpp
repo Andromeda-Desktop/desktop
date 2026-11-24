@@ -1,6 +1,6 @@
 #include "system/icon_theme_poll_source.h"
 
-#include "core/inotify/inotify.h"
+#include "core/files/directory_watcher.h"
 #include "system/icon_resolver.h"
 
 #include <algorithm>
@@ -10,7 +10,6 @@
 #include <poll.h>
 #include <string>
 #include <string_view>
-#include <sys/inotify.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -22,8 +21,6 @@ namespace {
 
   constexpr std::chrono::seconds kCheckInterval{60};
   constexpr std::chrono::milliseconds kDebounceInterval{100};
-  constexpr std::uint32_t kCompletedFileChange = IN_CLOSE_WRITE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO;
-  constexpr std::uint32_t kDirectoryChange = IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO;
 
   enum WatchRole : std::uint8_t {
     WATCH_BASE_DIR = 1U << 0U,
@@ -40,6 +37,7 @@ namespace {
   };
 
   struct ActiveWatch {
+    DirectoryWatcher::WatchId id = -1;
     std::uint8_t roles = 0;
     std::unordered_set<std::string> settingsFiles;
     std::unordered_set<std::string> missingChildren;
@@ -58,9 +56,9 @@ namespace {
 } // namespace
 
 struct IconThemePollSource::Impl {
-  Inotify inotify;
+  DirectoryWatcher& dirs;
   std::function<void()> changeCallback;
-  std::unordered_map<int, ActiveWatch> watches;
+  std::unordered_map<std::string, ActiveWatch> watches; // by directory
   Clock::time_point nextCheck = Clock::now() + kCheckInterval;
   Clock::time_point debounceUntil;
   bool contentPending = false;
@@ -68,14 +66,22 @@ struct IconThemePollSource::Impl {
   // The 60 s re-check stats every icon dir; it runs only when inotify could not watch them all.
   bool watchesComplete = false;
 
-  Impl() { resetWatches(); }
+  explicit Impl(DirectoryWatcher& watcher) : dirs(watcher) { resetWatches(); }
+  ~Impl() { clearWatches(); }
 
-  void resetWatches() {
-    for (const auto& watch : watches) {
-      inotify.unwatch(watch.first);
+  Impl(const Impl&) = delete;
+  Impl& operator=(const Impl&) = delete;
+
+  void clearWatches() {
+    for (const auto& [path, watch] : watches) {
+      dirs.unwatch(watch.id);
     }
     watches.clear();
-    watchesComplete = inotify.fd() >= 0;
+  }
+
+  void resetWatches() {
+    clearWatches();
+    watchesComplete = true;
 
     std::unordered_map<std::string, DesiredWatch> desired;
     const auto paths = IconResolver::themeWatchPaths();
@@ -110,20 +116,21 @@ struct IconThemePollSource::Impl {
       watch.missingChildren.emplace(child.filename().string());
     }
 
-    constexpr std::uint32_t mask =
-        IN_CLOSE_WRITE | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF;
     for (auto& [path, watch] : desired) {
       std::error_code ec;
       if (!fs::is_directory(path, ec)) {
         continue;
       }
-      const auto wd = inotify.watch(path, mask);
-      watchesComplete = watchesComplete && wd.has_value();
-      if (wd.has_value()) {
-        auto& active = watches[*wd];
-        active.roles |= watch.roles;
-        active.settingsFiles.insert(watch.settingsFiles.begin(), watch.settingsFiles.end());
-        active.missingChildren.insert(watch.missingChildren.begin(), watch.missingChildren.end());
+      const auto id = dirs.watch(path, [this, path](DirectoryWatcher::Event event, const std::string& name,
+                                                    const std::string& newName) {
+        handleEvent(path, event, name, newName);
+      });
+      watchesComplete = watchesComplete && id >= 0;
+      if (id >= 0) {
+        watches[path] = ActiveWatch{.id = id,
+                                    .roles = watch.roles,
+                                    .settingsFiles = std::move(watch.settingsFiles),
+                                    .missingChildren = std::move(watch.missingChildren)};
       }
     }
   }
@@ -134,23 +141,49 @@ struct IconThemePollSource::Impl {
     debounceUntil = Clock::now() + kDebounceInterval;
   }
 
-  void handleEvent(const inotify_event* event) {
-    if ((event->mask & IN_Q_OVERFLOW) != 0) {
+  void handleEvent(const std::string& path, DirectoryWatcher::Event event, const std::string& name,
+                   const std::string& newName) {
+    using Event = DirectoryWatcher::Event;
+    if (event == Event::Overflow) {
       queueChange(true, true);
       return;
     }
-    const auto it = watches.find(event->wd);
+    const auto it = watches.find(path);
     if (it == watches.end()) {
       return;
     }
+    if (event == Event::Gone) {
+      queueChange(false, true);
+      return;
+    }
+    // A removed or moved-away directory reports Gone on its own watch; here only arrivals count as directory changes.
+    const auto isDirectory = [&path](const std::string& child) {
+      std::error_code ec;
+      return fs::is_directory(fs::path(path) / child, ec);
+    };
+    switch (event) {
+    case Event::Written:
+    case Event::Deleted:
+      handleName(it->second, name, true, false);
+      break;
+    case Event::Created:
+      handleName(it->second, name, false, isDirectory(name));
+      break;
+    case Event::MovedIn:
+      handleName(it->second, name, true, isDirectory(name));
+      break;
+    case Event::Renamed:
+      handleName(it->second, name, true, false);
+      handleName(it->second, newName, true, isDirectory(newName));
+      break;
+    default:
+      break;
+    }
+  }
 
-    const auto& watch = it->second;
-    const std::string_view name = event->len > 0 ? std::string_view(event->name) : std::string_view{};
-    const bool completedFileChange = (event->mask & kCompletedFileChange) != 0;
-    const bool directoryChange = (event->mask & IN_ISDIR) != 0 && (event->mask & kDirectoryChange) != 0;
+  void handleName(const ActiveWatch& watch, std::string_view name, bool completedFileChange, bool directoryChange) {
     bool content = false;
-    bool metadata = (event->mask & (IN_DELETE_SELF | IN_MOVE_SELF)) != 0;
-
+    bool metadata = false;
     if (hasRole(watch.roles, WATCH_SETTINGS_DIR)
         && completedFileChange
         && watch.settingsFiles.contains(std::string(name))) {
@@ -194,7 +227,7 @@ struct IconThemePollSource::Impl {
   }
 };
 
-IconThemePollSource::IconThemePollSource() : m_impl(std::make_unique<Impl>()) {}
+IconThemePollSource::IconThemePollSource(DirectoryWatcher& dirs) : m_impl(std::make_unique<Impl>(dirs)) {}
 
 IconThemePollSource::~IconThemePollSource() = default;
 
@@ -212,11 +245,7 @@ int IconThemePollSource::pollTimeoutMs() const {
   return timeout;
 }
 
-void IconThemePollSource::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) {
-  if (m_impl->inotify.fd() >= 0 && startIdx < fds.size() && (fds[startIdx].revents & POLLIN) != 0) {
-    m_impl->inotify.drain([this](const inotify_event* event) { m_impl->handleEvent(event); });
-  }
-
+void IconThemePollSource::dispatch(const std::vector<pollfd>& /*fds*/, std::size_t /*startIdx*/) {
   auto now = Clock::now();
   if ((m_impl->contentPending || m_impl->metadataPending) && now >= m_impl->debounceUntil) {
     m_impl->applyPendingChange();
@@ -234,8 +263,4 @@ void IconThemePollSource::dispatch(const std::vector<pollfd>& fds, std::size_t s
   }
 }
 
-void IconThemePollSource::doAddPollFds(std::vector<pollfd>& fds) {
-  if (m_impl->inotify.fd() >= 0) {
-    fds.push_back({.fd = m_impl->inotify.fd(), .events = POLLIN, .revents = 0});
-  }
-}
+void IconThemePollSource::doAddPollFds(std::vector<pollfd>& /*fds*/) {}

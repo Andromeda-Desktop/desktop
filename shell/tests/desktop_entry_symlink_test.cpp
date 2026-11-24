@@ -1,3 +1,4 @@
+#include "core/files/directory_watcher.h"
 #include "system/desktop_entry.h"
 #include "tests/test_check.h"
 #include "tests/test_deferred.h"
@@ -5,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <poll.h>
 #include <string>
 #include <string_view>
@@ -39,12 +41,12 @@ namespace {
   }
 
   // The rescan runs on the SharedWorker: true once its list replaced the one at `version`.
-  bool waitForRescan(std::uint64_t version) {
-    pollfd pfd{.fd = desktopEntryWatchFd(), .events = POLLIN, .revents = 0};
+  bool waitForRescan(DirectoryWatcher& dirs, std::uint64_t version) {
+    pollfd pfd{.fd = dirs.fd(), .events = POLLIN, .revents = 0};
     if (poll(&pfd, 1, 2000) <= 0) {
       return false;
     }
-    checkDesktopEntryReload();
+    dirs.processEvents();
     return runDeferredUntil([version] { return desktopEntriesVersion() > version; });
   }
 
@@ -75,26 +77,29 @@ int main() {
   TEST_CHECK(countId(entries, "symlink-probe-nested") == 1);
   TEST_CHECK(countId(entries, "symlink-probe-linked") == 1);
 
+  DirectoryWatcher dirs;
+  std::optional<DesktopEntryWatch> watch(std::in_place, dirs);
   const auto initialVersion = desktopEntriesVersion();
 
   writeEntry(elsewhere / "symlink-probe-added.desktop", "Added Probe");
-  TEST_CHECK(waitForRescan(initialVersion));
+  TEST_CHECK(waitForRescan(dirs, initialVersion));
   const auto addedVersion = desktopEntriesVersion();
   TEST_CHECK(addedVersion > initialVersion);
   TEST_CHECK(countId(desktopEntries(), "symlink-probe-added") == 1);
 
   writeEntry(elsewhere / "deeper/symlink-probe-deeper.desktop", "Deeper Probe");
-  TEST_CHECK(waitForRescan(addedVersion));
+  TEST_CHECK(waitForRescan(dirs, addedVersion));
   const auto deeperVersion = desktopEntriesVersion();
   TEST_CHECK(deeperVersion > addedVersion);
   TEST_CHECK(countId(desktopEntries(), "symlink-probe-deeper") == 1);
 
   writeEntry(elsewhere / "deeper/symlink-probe-deeper.desktop", "Renamed Probe");
-  TEST_CHECK(waitForRescan(deeperVersion));
+  TEST_CHECK(waitForRescan(dirs, deeperVersion));
   TEST_CHECK(desktopEntriesVersion() > deeperVersion);
   TEST_CHECK(nameOf(desktopEntries(), "symlink-probe-deeper") == "Renamed Probe");
 
   std::error_code ec;
+  watch.reset();
   fs::remove_all(root, ec);
   return 0;
 }

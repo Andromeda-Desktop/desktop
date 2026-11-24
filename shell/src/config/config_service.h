@@ -4,7 +4,7 @@
 #include "config/config_types.h"
 #include "config/schema/diagnostics.h"
 #include "config/state_store.h"
-#include "core/inotify/inotify.h"
+#include "core/files/directory_watcher.h"
 #include "core/timer_manager.h"
 #include "protocols/toml.h"
 #include "ui/ui_settings.h"
@@ -52,8 +52,9 @@ public:
     ConfigService& m_config;
   };
 
-  ConfigService();
-  ~ConfigService() override = default;
+  // Without `dirs` (tests, tools) the config does not follow file changes.
+  explicit ConfigService(DirectoryWatcher* dirs = nullptr);
+  ~ConfigService() override;
 
   ConfigService(const ConfigService&) = delete;
   ConfigService& operator=(const ConfigService&) = delete;
@@ -69,7 +70,6 @@ public:
   [[nodiscard]] const ConfigChangeSet& lastChange() const noexcept { return m_lastChange; }
   [[nodiscard]] const std::string& lastMutationError() const noexcept { return m_lastMutationError; }
   [[nodiscard]] bool matchesKeybind(KeybindAction action, std::uint32_t sym, std::uint32_t modifiers) const;
-  [[nodiscard]] int watchFd() const noexcept { return m_inotify.fd(); }
   [[nodiscard]] std::string buildSupportReport() const;
   [[nodiscard]] std::string buildMergedUserConfig() const;
   [[nodiscard]] std::string buildEffectiveConfig() const;
@@ -96,7 +96,6 @@ public:
   // unlabeled subscribers are reported by registration index.
   void addReloadCallback(ReloadCallback callback, std::string_view label = {});
   void setNotificationManager(NotificationManager* manager);
-  void checkReload();
   void forceReload();
   // forceReload() with every section marked changed, for edits that no config diff shows (dev token reload).
   void reloadAllSections();
@@ -240,7 +239,7 @@ private:
   // Validates `next`, persists it, and reloads. `changed` reports whether anything moved.
   bool commitOverrideTable(toml::table next, bool* changed, const OverrideDiagnostics& known = {});
   void setupWatch();
-  // Reconciles inotify watches for [include]d files: watches the parent dir of
+  // Reconciles watches for [include]d files: watches the parent dir of
   // every loaded file plus every directory named in an [include].files list, and
   // drops watches no longer needed. Safe no-op when hot reload is disabled.
   void refreshIncludeWatches();
@@ -324,28 +323,20 @@ private:
   Timer m_legacyReminderTimer;
   NotificationManager* m_notificationManager = nullptr;
 
-  // Single inotify fd, two watch descriptors (config dir + state dir).
-  Inotify m_inotify;
-  int m_configWatchWd = -1;
-  int m_overridesWatchWd = -1;
+  DirectoryWatcher* m_dirs = nullptr;
   // Watch events are coalesced into one reload after a short quiet period.
   Timer m_watchReloadTimer;
   // Overrides reloads the config too, so it ranks above Config.
   enum class WatchReload : std::uint8_t { None, Config, Overrides };
   WatchReload m_pendingWatchReload = WatchReload::None;
-  struct SymlinkTargetWatch {
-    std::string filename;
-    bool overrides = false;
-  };
-  // Extra watches on symlink-target directories: wd -> list of filenames to match.
-  std::unordered_map<int, std::vector<SymlinkTargetWatch>> m_symlinkDirWds;
-
-  // Watches on directories that hold [include]d files (subdirs / absolute paths
-  // outside the config dir). Any *.toml change in one of these is a config change.
-  // Kept separate from m_symlinkDirWds because matching is dir-wide, not per-file.
-  std::unordered_set<int> m_includeDirWds;
-  // Canonical directory path -> inotify watch descriptor, for diffing on reload.
-  std::unordered_map<std::string, int> m_includeDirWatches;
+  // Which file names in a watched directory matter, and what their change reloads.
+  using WatchMatch = std::function<WatchReload(std::string_view name)>;
+  DirectoryWatcher::WatchId watchDirectory(const std::filesystem::path& dir, WatchMatch match);
+  void onWatchedChange(WatchReload reload);
+  // The config dir, the overrides dir and the directories of symlink targets.
+  std::vector<DirectoryWatcher::WatchId> m_watches;
+  // Directories that hold [include]d files: canonical path -> watch; any *.toml change there is a config change.
+  std::unordered_map<std::string, DirectoryWatcher::WatchId> m_includeDirWatches;
   // Set by the last loadAll(): every file pulled in (root + included) and every
   // directory named in an [include].files list. Drives refreshIncludeWatches().
   std::vector<std::filesystem::path> m_includeLoadedFiles;

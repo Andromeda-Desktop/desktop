@@ -1,7 +1,7 @@
 #include "system/desktop_entry.h"
 
 #include "core/freedesktop_key_file.h"
-#include "core/inotify/inotify.h"
+#include "core/files/directory_watcher.h"
 #include "core/log.h"
 #include "core/shared_worker.h"
 #include "i18n/language_tag.h"
@@ -523,7 +523,12 @@ namespace {
       return m_version;
     }
 
-    int watchFd() const noexcept { return m_inotify.fd(); }
+    // The cache follows changes only while it has a watcher; null drops every watch first.
+    void setWatcher(DirectoryWatcher* dirs) {
+      clearWatches();
+      m_dirs = dirs;
+      m_dirty = m_dirty || dirs != nullptr;
+    }
 
     void checkSourcesChanged() {
       if (computeSourceSignature() != m_sourceSignature) {
@@ -532,26 +537,17 @@ namespace {
       }
     }
 
-    void checkReload() {
-      if (m_inotify.fd() < 0) {
-        return;
-      }
-
-      bool changed = false;
-      m_inotify.drain([this, &changed](const inotify_event* event) {
-        if ((event->mask & IN_IGNORED) != 0) {
-          m_watches.erase(event->wd);
-        } else {
-          changed = true;
+    void onDirectoryEvent(const std::string& dir, DirectoryWatcher::Event event) {
+      if (event == DirectoryWatcher::Event::Gone) {
+        if (const auto it = m_watches.find(dir); it != m_watches.end()) {
+          m_dirs->unwatch(it->second);
+          m_watches.erase(it);
         }
-      });
-
-      if (changed) {
-        kLog.debug("desktop entry inotify detected filesystem changes; marking cache dirty");
-        m_dirty = true;
-        // Rescan now, off the main thread, so the next keystroke already finds the new entries.
-        refreshIfNeeded();
       }
+      kLog.debug("desktop entry directory {} changed; marking cache dirty", dir);
+      m_dirty = true;
+      // Rescan now, off the main thread, so the next keystroke already finds the new entries.
+      refreshIfNeeded();
     }
 
     void setLanguage(std::string_view language) {
@@ -644,58 +640,46 @@ namespace {
     }
 
     void clearWatches() {
-      if (m_inotify.fd() >= 0) {
-        for (const auto& [wd, _] : m_watches)
-          m_inotify.unwatch(wd);
+      for (const auto& [dir, id] : m_watches) {
+        m_dirs->unwatch(id);
       }
       m_watches.clear();
     }
 
-    // Re-adding a watched directory keeps its descriptor and queues nothing. Only directories the scan no longer
-    // visited are unwatched, so the IN_IGNORED events a refresh queues scale with what changed, not with the tree.
+    // A directory still watched keeps its watch, so a refresh queues nothing for it; only directories the scan no
+    // longer visited are unwatched.
     void rebuildWatches(const std::vector<fs::path>& dirs) {
-      if (m_inotify.fd() < 0) {
+      if (m_dirs == nullptr) {
         return;
       }
-
-      std::unordered_map<int, std::string> watches;
-      for (const auto& dir : dirs) {
-        if (const auto wd = addWatch(dir)) {
-          watches[*wd] = dir.string();
+      std::unordered_map<std::string, DirectoryWatcher::WatchId> watches;
+      for (const auto& path : dirs) {
+        const std::string dir = path.string();
+        if (const auto kept = m_watches.find(dir); kept != m_watches.end()) {
+          watches.emplace(dir, kept->second);
+          m_watches.erase(kept);
+          continue;
         }
-      }
-      for (const auto& [wd, _] : m_watches) {
-        if (!watches.contains(wd)) {
-          m_inotify.unwatch(wd);
+        const auto id = m_dirs->watch(path, [this, dir](DirectoryWatcher::Event event, const std::string&,
+                                                        const std::string&) { onDirectoryEvent(dir, event); });
+        if (id < 0) {
+          kLog.warn("failed to watch desktop entry directory '{}'", dir);
+          continue;
         }
+        watches.emplace(dir, id);
       }
+      clearWatches();
       m_watches = std::move(watches);
-    }
-
-    std::optional<int> addWatch(const fs::path& path) {
-      constexpr std::uint32_t kMask = IN_CREATE
-          | IN_DELETE
-          | IN_MOVED_FROM
-          | IN_MOVED_TO
-          | IN_CLOSE_WRITE
-          | IN_DELETE_SELF
-          | IN_MOVE_SELF
-          | IN_ATTRIB;
-      const auto wd = m_inotify.watch(path, kMask);
-      if (!wd.has_value()) {
-        kLog.warn("failed to watch desktop entry directory '{}'", path.string());
-      }
-      return wd;
     }
 
     std::shared_ptr<const std::vector<DesktopEntry>> m_entries = std::make_shared<std::vector<DesktopEntry>>();
     mutable std::mutex m_entriesMutex; // guards the m_entries swap against entriesSnapshot() readers
     std::uint64_t m_version = 0;
-    Inotify m_inotify;
+    DirectoryWatcher* m_dirs = nullptr;
     bool m_dirty = true;
     bool m_scanning = false;
     std::shared_ptr<int> m_alive = std::make_shared<int>(0);
-    std::unordered_map<int, std::string> m_watches;
+    std::unordered_map<std::string, DirectoryWatcher::WatchId> m_watches; // by directory
     std::string m_sourceSignature;
     std::string m_language;
   };
@@ -728,8 +712,11 @@ std::uint64_t desktopEntriesVersion() { return cache().version(); }
 
 void setDesktopEntryLanguage(std::string_view language) { cache().setLanguage(language); }
 
-int desktopEntryWatchFd() noexcept { return cache().watchFd(); }
+DesktopEntryWatch::DesktopEntryWatch(DirectoryWatcher& dirs) {
+  cache().setWatcher(&dirs);
+  cache().entries();
+}
 
-void checkDesktopEntryReload() { cache().checkReload(); }
+DesktopEntryWatch::~DesktopEntryWatch() { cache().setWatcher(nullptr); }
 
 void refreshDesktopEntriesIfSourcesChanged() { cache().checkSourcesChanged(); }
