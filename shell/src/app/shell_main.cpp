@@ -12,6 +12,7 @@
 #include "config/legacy_home_move.h"
 #include "core/build_info.h"
 #include "core/log.h"
+#include "core/process/process.h"
 #include "core/process/process_fds.h"
 #include "ipc/cli.h"
 #include "launcher/dmenu_cli.h"
@@ -201,56 +202,31 @@ namespace {
 
   SpawnResult daemonize(pid_t* outPid, int* parentPipe, char* const argv[]) {
     auto pipeFds = std::array<int, 2>{-1, -1};
-    if (::pipe(pipeFds.data()) == -1) {
+    if (::pipe2(pipeFds.data(), O_CLOEXEC) == -1) {
       std::perror("pipe");
       return SpawnResult::Error;
     }
-
-    pid_t pid = ::fork();
-    if (pid < 0) {
-      std::perror("fork");
+    // Exec before shell startup so GLib, D-Bus and polkit start from a normal process image in a new session.
+    constexpr int kChildPipeFd = 3;
+    process::SpawnSpec spec;
+    for (char* const* arg = argv; *arg != nullptr; ++arg) {
+      spec.argv.emplace_back(*arg);
+    }
+    spec.fds = {{pipeFds[1], kChildPipeFd}};
+    spec.env = {{kDaemonPipeEnv, std::to_string(kChildPipeFd)}};
+    spec.group = process::SpawnSpec::Group::NewSession;
+    const auto child = process::spawn(spec);
+    const int spawnError = errno;
+    closeFd(pipeFds[1]);
+    if (!child) {
+      errno = spawnError;
+      std::perror("spawn");
       closeFd(pipeFds[0]);
-      closeFd(pipeFds[1]);
       return SpawnResult::Error;
     }
-
-    if (pid > 0) {
-      if (outPid)
-        *outPid = pid;
-      if (parentPipe)
-        *parentPipe = pipeFds[0];
-      closeFd(pipeFds[1]);
-      return SpawnResult::Parent;
-    }
-
-    closeFd(pipeFds[0]);
-    sys::resetChildSignals();
-    // Match v4's early daemon boundary, but exec before shell startup so GLib,
-    // D-Bus, and polkit start from a normal process image rather than a raw
-    // post-fork child.
-    if (::setsid() == -1) {
-      std::perror("setsid");
-      const int daemonResult = 1;
-      (void)writeAll(pipeFds[1], &daemonResult, sizeof(daemonResult));
-      closeFd(pipeFds[1]);
-      _exit(1);
-    }
-
-    const std::string pipeFd = std::to_string(pipeFds[1]);
-    if (::setenv(kDaemonPipeEnv, pipeFd.c_str(), 1) == -1) {
-      std::perror("setenv");
-      const int daemonResult = 1;
-      (void)writeAll(pipeFds[1], &daemonResult, sizeof(daemonResult));
-      closeFd(pipeFds[1]);
-      _exit(1);
-    }
-
-    ::execvp(argv[0], argv);
-    std::perror("execvp");
-    const int daemonResult = 1;
-    (void)writeAll(pipeFds[1], &daemonResult, sizeof(daemonResult));
-    closeFd(pipeFds[1]);
-    _exit(1);
+    *outPid = child->pid;
+    *parentPipe = pipeFds[0];
+    return SpawnResult::Parent;
   }
 
   int runShell() {

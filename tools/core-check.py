@@ -67,12 +67,15 @@ RULES = {
                          r"\bui::(?:toggle|slider)\(\{(?:(?!\}\);)[\s\S]){0,1200}?\bsetOverride\b",
                          ("shell/src/shell/settings/settings_control_factory.cpp",)),
     "shell-string": ("command strings run only through process::shellArgv/runShell (libdesk-system) or execShell "
-                     "(compositor core/process); fixed commands pass argv (C12)", CPP_DIRS, CPP,
+                     "(compositor core/process) or portal AsyncProcess; fixed commands pass argv (C12)", CPP_DIRS, CPP,
                      r"\"(/bin/)?sh\"\s*,\s*\"-l?c\"",
-                     ("libdesk-system/src/core/process/process.cpp", "compositor/src/core/process.cpp")),
-    "raw-spawn": ("child processes via libdesk-system process; in the compositor binary via core/process forkChild "
-                  "or spawnProgram (C12)", CPP_DIRS, CPP,
-                  r"\b(v?fork|posix_spawnp?)\s*\(", ("libdesk-system/src/core/process/", "compositor/src/core/process.cpp")),
+                     ("libdesk-system/src/core/process/process.cpp", "compositor/src/core/process.cpp",
+                      "portal/src/dbus/request.cpp")),
+    "raw-spawn": ("child processes via libdesk-system process; owners in binaries without it: compositor core/process "
+                  "(forkChild, spawnProgram), portable libdesk-ui code core/sys, portal AsyncProcess, indexer Extractor "
+                  "(C12)", CPP_DIRS, CPP, r"\b(v?fork|posix_spawnp?)\s*\(",
+                  ("libdesk-system/src/core/process/", "compositor/src/core/process.cpp", "libdesk-ui/src/core/sys/",
+                   "portal/src/dbus/request.cpp", "indexer/src/content_worker.cpp")),
     "exit-poll": ("child exit by pidfd in libdesk-system process; the compositor reaps in core/process (C12)", CPP_DIRS,
                   CPP, r"\bWNOHANG\b", ("libdesk-system/src/core/process/", "compositor/src/core/process.cpp")),
     "heap-trim": ("heap trim via heap::releaseFree (protocol/heap.h) or sys::releaseFreeHeap in libdesk-ui (C12)",

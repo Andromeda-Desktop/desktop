@@ -7,7 +7,9 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <memory>
 #include <sys/epoll.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <utility>
@@ -88,9 +90,10 @@ namespace xdpu {
     pid_t pid = -1;
     int stdinFd = -1;
     int stdoutFd = -1;
+    int pidfd = -1; // readable once the child exits
     int stdinWatch = 0;
     int stdoutWatch = 0;
-    int waitTimer = 0;
+    int exitWatch = 0;
     size_t inputOffset = 0;
     bool finished = false;
 
@@ -136,6 +139,16 @@ namespace xdpu {
 
       closeFd(stdinPipe[0]);
       closeFd(stdoutPipe[1]);
+      pidfd = static_cast<int>(::syscall(SYS_pidfd_open, pid, 0));
+      if (pidfd < 0) {
+        std::fprintf(stderr, "dbus: pidfd_open failed for '%s': %s\n", command.c_str(), std::strerror(errno));
+        ::kill(pid, SIGKILL);
+        ::waitpid(pid, nullptr, 0);
+        pid = -1;
+        closeFd(stdinPipe[1]);
+        closeFd(stdoutPipe[0]);
+        return false;
+      }
       stdinFd = stdinPipe[1];
       stdoutFd = stdoutPipe[0];
       if (!setNonBlocking(stdinFd) || !setNonBlocking(stdoutFd)) {
@@ -238,7 +251,7 @@ namespace xdpu {
         }
         if (size == 0) {
           closeStdout();
-          scheduleWait(self, 0);
+          watchExit(self);
           return;
         }
         if (errno == EINTR) {
@@ -248,44 +261,35 @@ namespace xdpu {
           break;
         }
         closeStdout();
-        scheduleWait(self, 0);
+        watchExit(self);
         return;
       }
 
       if ((events & (EPOLLHUP | EPOLLERR)) != 0) {
         closeStdout();
-        scheduleWait(self, 0);
+        watchExit(self);
       }
     }
 
-    void scheduleWait(const std::shared_ptr<AsyncProcess>& self, int timeoutMs) {
-      if (finished || pid <= 0) {
+    // Finishes once the child exits, after its output closed or it was told to terminate.
+    void watchExit(const std::shared_ptr<AsyncProcess>& self) {
+      if (finished || pid <= 0 || exitWatch != 0) {
         return;
       }
-      if (waitTimer != 0) {
-        loop.removeTimer(waitTimer);
-        waitTimer = 0;
-      }
-      waitTimer = loop.addTimer(timeoutMs, [self]() { self->m_impl->pollExit(self); });
+      std::weak_ptr<AsyncProcess> weak = self;
+      exitWatch = loop.addFd(pidfd, EPOLLIN, [weak](uint32_t) {
+        if (auto process = weak.lock()) {
+          process->m_impl->reap();
+        }
+      });
     }
 
-    void pollExit(const std::shared_ptr<AsyncProcess>& self) {
-      waitTimer = 0;
-      if (finished || pid <= 0) {
-        return;
-      }
-
+    void reap() {
       int status = 0;
-      const pid_t waited = ::waitpid(pid, &status, WNOHANG);
-      if (waited == 0) {
-        scheduleWait(self, 25);
-        return;
-      }
-      if (waited < 0 && errno == EINTR) {
-        scheduleWait(self, 0);
-        return;
-      }
-
+      pid_t waited;
+      do {
+        waited = ::waitpid(pid, &status, 0);
+      } while (waited < 0 && errno == EINTR);
       ProcessResult result;
       result.output = std::move(output);
       if (waited == pid) {
@@ -298,6 +302,8 @@ namespace xdpu {
         }
       }
       pid = -1;
+      closeExitWatch();
+      closeFd(pidfd);
       finish(std::move(result));
     }
 
@@ -307,7 +313,7 @@ namespace xdpu {
       closeStdout();
       if (pid > 0) {
         ::kill(pid, SIGTERM);
-        scheduleWait(self, 25);
+        watchExit(self);
       }
     }
 
@@ -318,11 +324,7 @@ namespace xdpu {
       finished = true;
       closeStdin();
       closeStdout();
-      if (waitTimer != 0) {
-        const int timer = waitTimer;
-        waitTimer = 0;
-        loop.removeTimer(timer);
-      }
+      closeExitWatch();
 
       auto cb = std::move(callback);
       if (cb) {
@@ -330,21 +332,33 @@ namespace xdpu {
       }
     }
 
+    void closeExitWatch() {
+      if (exitWatch != 0) {
+        loop.removeFd(exitWatch);
+        exitWatch = 0;
+      }
+    }
+
     void destroy() {
       callback = nullptr;
-      if (waitTimer != 0) {
-        const int timer = waitTimer;
-        waitTimer = 0;
-        loop.removeTimer(timer);
-      }
       closeStdin();
       closeStdout();
-      if (pid > 0) {
-        ::kill(pid, SIGTERM);
-        int status = 0;
-        (void)::waitpid(pid, &status, WNOHANG);
-        pid = -1;
+      closeExitWatch();
+      if (pid <= 0) {
+        closeFd(pidfd);
+        return;
       }
+      // The loop reaps the terminated child after this object is gone.
+      ::kill(pid, SIGTERM);
+      auto watch = std::make_shared<int>(0);
+      *watch = loop.addFd(pidfd, EPOLLIN, [&loop = loop, watch, child = pid, fd = pidfd](uint32_t) {
+        ::waitpid(child, nullptr, 0);
+        loop.removeFd(*watch);
+        int owned = fd;
+        closeFd(owned);
+      });
+      pid = -1;
+      pidfd = -1;
     }
   };
 

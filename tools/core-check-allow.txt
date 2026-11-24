@@ -4,13 +4,6 @@ app-executable apps/player/meson.build 1
 app-executable apps/viewer/meson.build 1
 exit-poll apps/terminal/src/agent_host.cpp 1
 exit-poll libdesk-term/src/pty_session.cpp 1
-exit-poll portal/src/dbus/request.cpp 2
 raw-spawn apps/terminal/src/agent_host.cpp 1
-raw-spawn indexer/src/content_worker.cpp 1
-raw-spawn libdesk-ui/src/core/sys/sys_macos.cpp 1
-raw-spawn libdesk-ui/src/core/sys/sys_posix.cpp 2
-raw-spawn portal/src/dbus/request.cpp 1
-raw-spawn shell/src/app/shell_main.cpp 1
 shell-string apps/terminal/src/terminal_window.cpp 1
-shell-string portal/src/dbus/request.cpp 1
 shell-timer shell/src/shell/live_activity/live_activity_island.cpp 1
