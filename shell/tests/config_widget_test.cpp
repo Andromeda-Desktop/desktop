@@ -1,5 +1,5 @@
 #include "config/widget_config.h"
-#include "core/toml.h"
+#include "protocols/toml.h"
 
 #include <print>
 #include <string>
