@@ -4,6 +4,8 @@
 #include "security/secret_store.h"
 #include "tests/test_check.h"
 
+#include "tests/test_deferred.h"
+
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -177,16 +179,8 @@ namespace {
   };
 
   // Dispatches until the callback sets done: a cancelled operation also wakes the store.
-  bool dispatchUntil(security::SecretStore& store, const bool& done) {
-    for (int wake = 0; wake < 4 && !done; ++wake) {
-      std::vector<pollfd> fds;
-      const std::size_t start = store.addPollFds(fds);
-      if (fds.size() != 1 || ::poll(fds.data(), static_cast<nfds_t>(fds.size()), 10000) != 1) {
-        return false;
-      }
-      store.dispatch(fds, start);
-    }
-    return done;
+  bool dispatchUntil(security::SecretStore& /*store*/, const bool& done) {
+    return runDeferredUntil([&] { return done; }, std::chrono::seconds(10));
   }
 
   const security::SecretId kId{.scope = "storage", .owner = "encrypted-state", .name = "master-key"};

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/poll_source.h"
 #include "security/secure_buffer.h"
 
 #include <functional>
@@ -115,14 +114,14 @@ namespace security {
     std::weak_ptr<SecretStoreCancellation> m_cancellation;
   };
 
-  class SecretStore final : public PollSource {
+  class SecretStore final {
   public:
     using LookupCallback = std::function<void(SecretStoreStatus, SecureBuffer)>;
     using StatusCallback = std::function<void(SecretStoreStatus)>;
 
     SecretStore();
     explicit SecretStore(std::unique_ptr<SecretStoreBackend> backend);
-    ~SecretStore() override;
+    ~SecretStore();
 
     SecretStore(const SecretStore&) = delete;
     SecretStore& operator=(const SecretStore&) = delete;
@@ -133,11 +132,6 @@ namespace security {
     SecretStoreOperation retryAvailabilityCheck(StatusCallback callback = {});
 
     [[nodiscard]] std::optional<SecretStoreStatus> availabilityStatus() const;
-
-    void dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) override;
-
-  protected:
-    void doAddPollFds(std::vector<pollfd>& fds) override;
 
   private:
     class Impl;

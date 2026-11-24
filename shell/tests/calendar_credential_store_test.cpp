@@ -1,5 +1,7 @@
 #include "calendar/calendar_credential_store.h"
 
+#include "tests/test_deferred.h"
+
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -186,17 +188,8 @@ namespace {
     std::size_t m_storeCalls = 0;
   };
 
-  bool dispatchOne(security::SecretStore& store) {
-    std::vector<pollfd> fds;
-    const std::size_t start = store.addPollFds(fds);
-    if (!expect(start == 0 && fds.size() == 1, "SecretStore poll fd missing")) {
-      return false;
-    }
-    if (!expect(::poll(fds.data(), static_cast<nfds_t>(fds.size()), 2000) == 1, "completion timed out")) {
-      return false;
-    }
-    store.dispatch(fds, start);
-    return true;
+  bool dispatchOne(security::SecretStore& /*store*/) {
+    return expect(runDeferredOnce(std::chrono::seconds(2)), "completion timed out");
   }
 
   calendar::CredentialMigration migration(bool& finalized) {

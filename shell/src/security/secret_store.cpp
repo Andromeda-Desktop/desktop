@@ -1,5 +1,6 @@
 #include "security/secret_store.h"
 
+#include "core/deferred_call.h"
 #include "core/log.h"
 #include "protocols/crash_capture.h"
 #include "util/secure_wipe.h"
@@ -902,13 +903,10 @@ namespace security {
       if (m_backend == nullptr) {
         throw std::invalid_argument("SecretStore requires a backend");
       }
-      m_eventFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-      if (m_eventFd < 0) {
-        throw std::runtime_error("failed to create SecretStore eventfd");
-      }
     }
 
     ~Impl() {
+      m_alive.reset();
       std::shared_ptr<SecretStoreCancellation> active;
       {
         std::scoped_lock lock(m_queueMutex);
@@ -930,8 +928,6 @@ namespace security {
         std::scoped_lock lock(m_completionMutex);
         m_completions.clear();
       }
-      ::close(m_eventFd);
-      m_eventFd = -1;
     }
 
     SecretStoreOperation enqueue(Request request) {
@@ -955,14 +951,8 @@ namespace security {
       return SecretStoreOperation(cancellation);
     }
 
-    void addPollFd(std::vector<pollfd>& fds) const { fds.push_back({.fd = m_eventFd, .events = POLLIN, .revents = 0}); }
-
-    void dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) {
-      if (startIdx >= fds.size() || (fds[startIdx].revents & (POLLIN | POLLERR | POLLHUP)) == 0) {
-        return;
-      }
-      drainEventFd();
-
+  private:
+    void deliverCompletions() {
       std::deque<Completion> completions;
       {
         std::scoped_lock lock(m_completionMutex);
@@ -985,6 +975,7 @@ namespace security {
       }
     }
 
+  public:
     [[nodiscard]] std::optional<SecretStoreStatus> availabilityStatus() const { return m_availabilityStatus; }
 
   private:
@@ -1065,21 +1056,7 @@ namespace security {
               }
           );
         }
-        signalMain();
-      }
-    }
-
-    void signalMain() const {
-      constexpr std::uint64_t one = 1;
-      const ssize_t written = ::write(m_eventFd, &one, sizeof(one));
-      if (written < 0 && errno != EAGAIN) {
-        kLog.warn("failed to signal SecretStore eventfd: errno={}", errno);
-      }
-    }
-
-    void drainEventFd() const {
-      std::uint64_t ignored = 0;
-      while (::read(m_eventFd, &ignored, sizeof(ignored)) > 0) {
+        DeferredCall::callLaterIfAlive(m_aliveToken, [this] { deliverCompletions(); });
       }
     }
 
@@ -1123,7 +1100,9 @@ namespace security {
     }
 
     std::unique_ptr<SecretStoreBackend> m_backend;
-    int m_eventFd = -1;
+    // Completions reach the main loop only while the store lives; the worker reads only the weak token.
+    std::shared_ptr<int> m_alive = std::make_shared<int>(0);
+    const std::weak_ptr<const void> m_aliveToken = m_alive;
     std::thread m_worker;
     bool m_workerRunning = false; // guarded by m_queueMutex
 
@@ -1208,9 +1187,5 @@ namespace security {
   }
 
   std::optional<SecretStoreStatus> SecretStore::availabilityStatus() const { return m_impl->availabilityStatus(); }
-
-  void SecretStore::doAddPollFds(std::vector<pollfd>& fds) { m_impl->addPollFd(fds); }
-
-  void SecretStore::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) { m_impl->dispatch(fds, startIdx); }
 
 } // namespace security

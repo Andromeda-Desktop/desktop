@@ -3,6 +3,8 @@
 #include "security/secret_store.h"
 #include "tests/test_check.h"
 
+#include "tests/test_deferred.h"
+
 #include <cstdint>
 #include <poll.h>
 #include <span>
@@ -10,15 +12,7 @@
 #include <vector>
 
 namespace {
-  bool dispatchCompletion(security::SecretStore& store) {
-    std::vector<pollfd> fds;
-    const std::size_t start = store.addPollFds(fds);
-    if (fds.size() != 1 || ::poll(fds.data(), static_cast<nfds_t>(fds.size()), 10000) != 1) {
-      return false;
-    }
-    store.dispatch(fds, start);
-    return true;
-  }
+  bool dispatchCompletion(security::SecretStore& /*store*/) { return runDeferredOnce(std::chrono::seconds(10)); }
 } // namespace
 
 int main() {

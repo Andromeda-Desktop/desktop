@@ -217,18 +217,8 @@ namespace {
     std::filesystem::permissions(path, requested, std::filesystem::perm_options::replace);
   }
 
-  bool dispatchCompletion(security::SecretStore& store) {
-    std::vector<pollfd> fds;
-    const std::size_t start = store.addPollFds(fds);
-    if (!expect(start == 0 && fds.size() == 1, "SecretStore did not publish one poll fd")) {
-      return false;
-    }
-    const int ready = ::poll(fds.data(), static_cast<nfds_t>(fds.size()), 2000);
-    if (!expect(ready == 1, "timed out waiting for SecretStore completion")) {
-      return false;
-    }
-    store.dispatch(fds, start);
-    return true;
+  bool dispatchCompletion(security::SecretStore& /*store*/) {
+    return expect(runDeferredOnce(std::chrono::seconds(2)), "timed out waiting for SecretStore completion");
   }
 
   std::string readFile(const std::filesystem::path& path) {

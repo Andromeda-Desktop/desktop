@@ -1,10 +1,10 @@
 #include "shell/wallpaper/panel/wallpaper_scanner.h"
+#include "tests/test_deferred.h"
 
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <poll.h>
 #include <print>
 #include <string>
 #include <vector>
@@ -32,28 +32,14 @@ namespace {
     }));
   }
 
-  // Runs the scan to completion through the poll loop, the same way the shell
-  // drives the scanner. Returns nullptr if no result lands before the deadline.
+  // Runs the scan to completion through the main-loop callbacks, the same way the shell drives the scanner. Returns
+  // nullptr if no result lands before the deadline.
   const WallpaperScanResult* scanBlocking(WallpaperScanner& scanner, const fs::path& dir) {
     if (scanner.requestScan(dir, true)) {
       return scanner.cached(dir, true);
     }
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
-    while (std::chrono::steady_clock::now() < deadline) {
-      std::vector<pollfd> fds;
-      const std::size_t start = scanner.addPollFds(fds);
-      if (fds.empty()) {
-        return nullptr;
-      }
-      if (::poll(fds.data(), fds.size(), 200) < 0) {
-        return nullptr;
-      }
-      scanner.dispatch(fds, start);
-      if (const auto* result = scanner.cached(dir, true)) {
-        return result;
-      }
-    }
-    return nullptr;
+    runDeferredUntil([&] { return scanner.cached(dir, true) != nullptr; }, std::chrono::seconds(20));
+    return scanner.cached(dir, true);
   }
 
 } // namespace

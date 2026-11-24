@@ -1,16 +1,14 @@
 #include "shell/wallpaper/panel/wallpaper_scanner.h"
 
+#include "core/blocking_pool.h"
 #include "core/files/directory_scanner.h"
 #include "core/log.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"
 
 #include <algorithm>
-#include <cerrno>
 #include <string>
-#include <sys/eventfd.h>
 #include <system_error>
-#include <unistd.h>
 #include <unordered_set>
 #include <utility>
 
@@ -110,26 +108,6 @@ namespace {
 
 } // namespace
 
-WallpaperScanner::WallpaperScanner() {
-  m_eventFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (m_eventFd < 0) {
-    kLog.warn("failed to create eventfd; wallpaper scans will not wake the loop");
-  }
-}
-
-WallpaperScanner::~WallpaperScanner() {
-  {
-    std::scoped_lock lock(m_queueMutex);
-    m_shutdown.store(true);
-  }
-  m_queueCv.notify_all();
-  m_worker.joinAll();
-  if (m_eventFd >= 0) {
-    ::close(m_eventFd);
-    m_eventFd = -1;
-  }
-}
-
 bool WallpaperScanner::requestScan(const std::filesystem::path& dir, bool flatten) {
   CacheKey key{dir.string(), flatten};
 
@@ -157,12 +135,15 @@ bool WallpaperScanner::requestScan(const std::filesystem::path& dir, bool flatte
     return false; // already queued/in flight
   }
 
-  {
-    std::scoped_lock lock(m_queueMutex);
-    m_jobQueue.push_back(Job{.dir = key.dir, .flatten = flatten, .dirMtime = mtime});
-    m_worker.spawn([this](std::size_t slot) { workerLoop(slot); });
-  }
-  m_queueCv.notify_one();
+  BlockingPool::instance().run<WallpaperScanResult>(
+      m_alive,
+      [dir = key.dir, flatten, mtime] {
+        WallpaperScanResult result = scanDirectory(dir, flatten, mtime);
+        kLog.debug("scanned {} ({}): {} entries", result.dir, result.flatten ? "flat" : "shallow", result.entries.size());
+        return result;
+      },
+      [this](WallpaperScanResult result) { apply(std::move(result)); }
+  );
   return false;
 }
 
@@ -177,81 +158,11 @@ bool WallpaperScanner::scanning(const std::filesystem::path& dir, bool flatten) 
 
 void WallpaperScanner::invalidate() { m_cache.clear(); }
 
-void WallpaperScanner::doAddPollFds(std::vector<pollfd>& fds) {
-  if (m_eventFd < 0) {
-    return;
-  }
-  fds.push_back({.fd = m_eventFd, .events = POLLIN, .revents = 0});
-}
-
-void WallpaperScanner::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) {
-  if (m_eventFd < 0 || startIdx >= fds.size()) {
-    return;
-  }
-  if ((fds[startIdx].revents & POLLIN) == 0) {
-    return;
-  }
-
-  std::uint64_t ignored = 0;
-  while (::read(m_eventFd, &ignored, sizeof(ignored)) > 0) {
-  }
-
-  std::deque<WallpaperScanResult> results;
-  {
-    std::scoped_lock lock(m_resultMutex);
-    results = std::move(m_results);
-    m_results.clear();
-  }
-  if (results.empty()) {
-    return;
-  }
-
-  for (auto& result : results) {
-    CacheKey key{result.dir, result.flatten};
-    m_pending.erase(key);
-    m_cache.insert_or_assign(std::move(key), std::move(result));
-  }
-
+void WallpaperScanner::apply(WallpaperScanResult result) {
+  CacheKey key{result.dir, result.flatten};
+  m_pending.erase(key);
+  m_cache.insert_or_assign(std::move(key), std::move(result));
   if (m_onComplete) {
     m_onComplete();
-  }
-}
-
-void WallpaperScanner::signalMain() {
-  if (m_eventFd < 0) {
-    return;
-  }
-  const std::uint64_t one = 1;
-  const ssize_t written = ::write(m_eventFd, &one, sizeof(one));
-  if (written < 0 && errno != EAGAIN) {
-    kLog.warn("failed to signal wallpaper scan eventfd: errno={}", errno);
-  }
-}
-
-void WallpaperScanner::workerLoop(std::size_t slot) {
-  while (true) {
-    Job job;
-    {
-      std::unique_lock<std::mutex> lock(m_queueMutex);
-      if (!m_queueCv.wait_for(lock, IdleWorkerSlots::kIdleExit, [this]() {
-            return m_shutdown.load() || !m_jobQueue.empty();
-          })) {
-        m_worker.exited(slot);
-        return;
-      }
-      if (m_shutdown.load()) {
-        return;
-      }
-      job = std::move(m_jobQueue.front());
-      m_jobQueue.pop_front();
-    }
-
-    WallpaperScanResult result = scanDirectory(job.dir, job.flatten, job.dirMtime);
-    kLog.debug("scanned {} ({}): {} entries", result.dir, result.flatten ? "flat" : "shallow", result.entries.size());
-    {
-      std::scoped_lock lock(m_resultMutex);
-      m_results.push_back(std::move(result));
-    }
-    signalMain();
   }
 }

@@ -1,15 +1,9 @@
 #pragma once
 
-#include "core/poll_source.h"
-#include "core/idle_worker_slots.h"
-
-#include <atomic>
-#include <condition_variable>
 #include <cstddef>
-#include <deque>
 #include <filesystem>
 #include <functional>
-#include <mutex>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -31,18 +25,14 @@ struct WallpaperScanResult {
   bool flatten = false;
 };
 
-// Walks wallpaper directories on a background worker thread. The directory walk
-// (and its per-entry stat calls) used to run synchronously on the UI thread,
-// freezing the shell on large folders. Results land in a main-thread cache and
-// fire onComplete() via the poll loop. Mirrors ThumbnailService's worker +
-// eventfd pattern.
-class WallpaperScanner : public PollSource {
+// Walks wallpaper directories on BlockingPool, so the per-entry stat calls never run on the UI thread. Results land
+// in a main-thread cache and fire onComplete().
+class WallpaperScanner {
 public:
-  // Fired on the main thread after one or more scans land in the cache.
+  // Fired on the main thread after a scan lands in the cache.
   using CompletionCallback = std::function<void()>;
 
-  WallpaperScanner();
-  ~WallpaperScanner() override;
+  WallpaperScanner() = default;
 
   WallpaperScanner(const WallpaperScanner&) = delete;
   WallpaperScanner& operator=(const WallpaperScanner&) = delete;
@@ -64,12 +54,6 @@ public:
   // Drops all cached results so the next requestScan() re-walks.
   void invalidate();
 
-  [[nodiscard]] int pollTimeoutMs() const override { return -1; }
-  void dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) override;
-
-protected:
-  void doAddPollFds(std::vector<pollfd>& fds) override;
-
 private:
   struct CacheKey {
     std::string dir;
@@ -82,28 +66,11 @@ private:
     }
   };
 
-  struct Job {
-    std::string dir;
-    bool flatten = false;
-    std::filesystem::file_time_type dirMtime;
-  };
+  void apply(WallpaperScanResult result);
 
-  void workerLoop(std::size_t slot);
-  void signalMain();
-
-  int m_eventFd = -1;
-  IdleWorkerSlots m_worker{1, "dsk-wpscan"};
-  std::atomic<bool> m_shutdown{false};
-
-  std::mutex m_queueMutex;
-  std::condition_variable m_queueCv;
-  std::deque<Job> m_jobQueue;
-
-  std::mutex m_resultMutex;
-  std::deque<WallpaperScanResult> m_results;
-
-  // Main-thread state.
   std::unordered_map<CacheKey, WallpaperScanResult, CacheKeyHash> m_cache;
   std::unordered_set<CacheKey, CacheKeyHash> m_pending;
   CompletionCallback m_onComplete;
+  // Scans finish on the main loop only while the scanner lives.
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

@@ -1,5 +1,7 @@
 #include "security/secret_store.h"
+#include "core/deferred_call.h"
 #include "core/log.h"
+#include "tests/test_deferred.h"
 
 #include <array>
 #include <condition_variable>
@@ -193,18 +195,20 @@ namespace {
     bool m_blocked = false;
   };
 
-  bool dispatchCompletion(security::SecretStore& store) {
-    std::vector<pollfd> fds;
-    const std::size_t start = store.addPollFds(fds);
-    if (!expect(start == 0 && fds.size() == 1, "SecretStore did not publish exactly one poll fd")) {
-      return false;
+  bool waitCompletion() {
+    pollfd pfd{.fd = DeferredCall::wakeFd(), .events = POLLIN, .revents = 0};
+    return expect(::poll(&pfd, 1, 2000) == 1, "timed out waiting for SecretStore completion");
+  }
+
+  void runCompletions() {
+    DeferredCall::drainWakeFd();
+    for (auto& call : DeferredCall::takePending()) {
+      call();
     }
-    const int ready = ::poll(fds.data(), static_cast<nfds_t>(fds.size()), 2000);
-    if (!expect(ready == 1, "timed out waiting for SecretStore completion")) {
-      return false;
-    }
-    store.dispatch(fds, start);
-    return true;
+  }
+
+  bool dispatchCompletion(security::SecretStore& /*store*/) {
+    return expect(runDeferredOnce(std::chrono::seconds(2)), "timed out waiting for SecretStore completion");
   }
 
   bool exactIdentityAndValidation() {
@@ -390,9 +394,7 @@ namespace {
         labelMarker, [](SecretStoreStatus) {}
     );
 
-    std::vector<pollfd> fds;
-    const std::size_t start = store.addPollFds(fds);
-    if (!expect(::poll(fds.data(), static_cast<nfds_t>(fds.size()), 2000) == 1, "log test completion timed out")) {
+    if (!waitCompletion()) {
       return false;
     }
 
@@ -411,7 +413,7 @@ namespace {
       return false;
     }
 
-    store.dispatch(fds, start);
+    runCompletions();
     flushLogs(); // log lines reach stderr on the writer thread
     std::fflush(stderr);
     (void)::dup2(savedStderr, STDERR_FILENO);

@@ -25,3 +25,16 @@ template <typename Done> bool runDeferredUntil(Done done, std::chrono::milliseco
     }
   }
 }
+
+// Waits up to `timeout` for one main-loop wake, then runs the queued callbacks. False on timeout.
+inline bool runDeferredOnce(std::chrono::milliseconds timeout) {
+  pollfd pfd{.fd = DeferredCall::wakeFd(), .events = POLLIN, .revents = 0};
+  if (poll(&pfd, 1, static_cast<int>(timeout.count())) != 1) {
+    return false;
+  }
+  DeferredCall::drainWakeFd();
+  for (auto& call : DeferredCall::takePending()) {
+    call();
+  }
+  return true;
+}
