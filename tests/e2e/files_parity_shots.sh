@@ -119,7 +119,9 @@ with_noctalia '
     DESK_FILES_GEOMETRY=1 "$FILES" "$P" > "$OUT/files.log" 2>&1 &
   for _ in $(seq 100); do grep -q "first frame" "$OUT/files.log" 2> /dev/null && break; sleep 0.05; done
   grep -q "first frame" "$OUT/files.log" || fail "Files drew no first frame"
-  w=$("$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"dev.andromeda.Files\")][0]")
+  files_window() { "$ANDROMEDA" windows --json | jq -ec "[.. | objects | select(.app_id? == \"dev.andromeda.Files\")][0]"; }
+  wait_for "Files has no window in the listing" eval "files_window > /dev/null"
+  w=$(files_window)
   WX=$(jq .x <<< "$w"); WY=$(jq .y <<< "$w")
 
   # §2 dark: list view, launch-poster.png selected, details pane, then split view.
@@ -200,7 +202,7 @@ with_noctalia '
   m=$(mark); "$POINTER" 1280 720 keyboard-only tap 119 pause 100 mod control tap 5 mod none > /dev/null
   wait_log "$m" "view gallery" || fail "Ctrl+4 did not open the Gallery"
   wait_log "$m" "gallery photo full size" || fail "the Gallery showed no full-size photo"
-  m=$(mark); "$POINTER" 1280 720 keyboard-only tap 23 > /dev/null # I: the Info card, as the mockup shows it
+  m=$(mark); keys tap 23 # I: the Info card, as the mockup shows it
   wait_log "$m" "gallery info for PXL_20261002_071214.jpg map" || fail "I did not open the Info card"
   shot d-gallery
   m=$(mark); "$NOCTALIA" msg theme-mode-set light > /dev/null
