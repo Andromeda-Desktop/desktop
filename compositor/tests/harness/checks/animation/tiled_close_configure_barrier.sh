@@ -3,6 +3,8 @@
 # clock runs. A later stale-size client keeps the compositor endpoint instead of falling back to its old buffer.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUT_MS=1000
 readonly MOVE_MS=600
 readonly SHOTS="$ANDROMEDA_RUNTIME_DIR/tiled-close-configure"
@@ -77,26 +79,15 @@ spawn() {
   return 1
 }
 
-wait_for_log() {
-  local log=$1 pattern=$2 message=$3
-  for _ in $(seq 100); do
-    grep -q "$pattern" "$log" && return 0
-    sleep 0.025
-  done
-  echo "$message: $(tail -n 20 "$log")"
-  return 1
+expect_log() {
+  await_log_count "$1" "$2" > /dev/null || { echo "$3: $(tail -n 20 "$1")"; return 1; }
 }
 
-wait_for_log_since() {
-  local log=$1 mark=$2 pattern=$3 message=$4
-  for _ in $(seq 100); do
-    if tail -n "+$((mark + 1))" "$log" | grep -q "$pattern"; then
-      return 0
-    fi
-    sleep 0.025
-  done
-  echo "$message: $(tail -n "+$((mark + 1))" "$log")"
-  return 1
+log_since_has() { tail -n "+$(($2 + 1))" "$1" | grep -q "$3"; }
+
+expect_log_since() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" log_since_has "$1" "$2" "$3" \
+    || { echo "$4: $(tail -n "+$(($2 + 1))" "$1")"; return 1; }
 }
 
 # The marker band may sit over the moving survivor, so identify it by its green channel alone.
@@ -133,14 +124,14 @@ verify_layout() {
   spawn "close-configure-$mode-third" "$third_log" 0xFF808000
   finish_animations
 
-  wait_for_log "$survivor_log" 'configured-size=640x360' "$mode survivor never received its three-window size"
+  expect_log "$survivor_log" 'configured-size=640x360' "$mode survivor never received its three-window size"
   local mark closing_id
   mark=$(wc -l < "$survivor_log")
   closing_id=$(jq -r .id <<< "$window")
   grim "$SHOTS/$mode-before.png"
   "$ANDROMEDA" msg "window-close:$closing_id" > /dev/null
-  wait_for_log "$third_log" '^unmapped$' "$mode third window did not unmap"
-  wait_for_log_since "$survivor_log" "$mark" 'configured-size=640x720' \
+  expect_log "$third_log" '^unmapped$' "$mode third window did not unmap"
+  expect_log_since "$survivor_log" "$mark" 'configured-size=640x720' \
     "$mode survivor did not receive its target configure"
 
   # The survivor's target configure proves the close arranged, starting windows_move and windows_out together.
@@ -213,10 +204,10 @@ finish_animations
 closing_id=$(jq -r .id <<< "$window")
 stale_mark=$(wc -l < "$STALE_LOG")
 "$ANDROMEDA" msg "window-close:$closing_id" > /dev/null
-wait_for_log "$ANDROMEDA_RUNTIME_DIR/close-configure-stale-third.log" '^unmapped$' \
+expect_log "$ANDROMEDA_RUNTIME_DIR/close-configure-stale-third.log" '^unmapped$' \
   "stale-size closer did not unmap"
 # The survivor presents again once it has acknowledged its target configure, still at its old size.
-wait_for_log_since "$STALE_LOG" "$stale_mark" '^mapped 640x720' "stale-size survivor did not acknowledge its target"
+expect_log_since "$STALE_LOG" "$stale_mark" '^mapped 640x720' "stale-size survivor did not acknowledge its target"
 "$ANDROMEDA" clock-advance 1200
 grim "$SHOTS/stale-final.png"
 read -r final_x final_y final_w final_h <<< "$(pattern_bounds "$SHOTS/stale-final.png")"

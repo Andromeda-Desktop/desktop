@@ -31,16 +31,13 @@ spawn_client() {
   "$CLIENT" "$title" 1200 700 > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
 }
 
-wait_for_focus() {
-  local want=$1
-  for _ in $(seq 40); do
-    if [[ $("$ANDROMEDA" windows --json | jq -r --arg id "$want" \
-      '.[] | select(.id == $id) | (.focused and .active)') == true ]]; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected $want to hold workspace and keyboard focus: $("$ANDROMEDA" windows --json)"
+holds_focus() {
+  "$ANDROMEDA" windows --json | jq -e --arg id "$1" 'any(.[]; .id == $id and .focused and .active)' > /dev/null
+}
+
+expect_focus() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" holds_focus "$1" && return 0
+  echo "expected $1 to hold workspace and keyboard focus: $("$ANDROMEDA" windows --json)"
   return 1
 }
 
@@ -98,9 +95,9 @@ fi
 # Cross from the focused tile into the first tile so follows_mouse observes a real enter. Restore keyboard focus to
 # the newest window without moving the pointer, then close it.
 pointer move "$focused_x" "$focused_y" move "$other_x" "$other_y"
-wait_for_focus "$other_id"
+expect_focus "$other_id"
 "$ANDROMEDA" msg "window-focus:$focused_id" > /dev/null
-wait_for_focus "$focused_id"
+expect_focus "$focused_id"
 "$ANDROMEDA" msg "window-close:$focused_id" > /dev/null
 for _ in $(seq 40); do
   grep -q '^unmapped$' "$ANDROMEDA_RUNTIME_DIR/dwindle-close-focused.log" && break
@@ -111,7 +108,7 @@ if ! grep -q '^unmapped$' "$ANDROMEDA_RUNTIME_DIR/dwindle-close-focused.log"; th
   exit 1
 fi
 await_count 2
-wait_for_focus "$predecessor_id"
+expect_focus "$predecessor_id"
 
 # Use another workspace for the close-under-pointer scenario so its Dwindle tree is independent of the first one.
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
@@ -145,7 +142,7 @@ fi
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$((closing_x + 50))" "$((closing_y + 50))" pause 10000 \
   > "$ANDROMEDA_RUNTIME_DIR/stationary-pointer.log" 2>&1 &
 pointer_pid=$!
-wait_for_focus "$closing_id"
+expect_focus "$closing_id"
 
 "$ANDROMEDA" msg "window-close:$closing_id" > /dev/null
 for _ in $(seq 40); do
@@ -161,7 +158,7 @@ await_count 7
 # First prove the intended survivor has taken over the cursor's old tile, then require focus to follow that scene
 # transition without sending another pointer event.
 wait_for_origin "$expander_id" "$closing_x" "$closing_y"
-wait_for_focus "$expander_id"
+expect_focus "$expander_id"
 
 # Close the revealed tile too, without moving the pointer. Its predecessor now expands into the same position and must
 # inherit hover focus just like the first survivor did. This catches stale seat pointer focus left by the first unmap.
@@ -178,6 +175,6 @@ if ! grep -q '^unmapped$' "$ANDROMEDA_RUNTIME_DIR/dwindle-close-expander.log"; t
 fi
 await_count 6
 wait_for_origin "$next_expander_id" "$closing_x" "$closing_y"
-wait_for_focus "$next_expander_id"
+expect_focus "$next_expander_id"
 
 echo "Dwindle close focus preserves keyboard intent across consecutive survivors revealed beneath a stationary pointer"

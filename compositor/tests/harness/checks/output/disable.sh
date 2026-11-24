@@ -19,39 +19,8 @@ spawn_client() {
   foot --title=output-disable-rehome sh -c 'sleep 120' > /dev/null 2>&1 &
 }
 
-wait_for_workspace() {
-  local expected=$1 workspace= windows=
-  for _ in $(seq 40); do
-    windows=$("$ANDROMEDA" windows --json)
-    if [[ $(jq 'length' <<< "$windows") -ne 1 ]]; then
-      sleep 0.1
-      continue
-    fi
-    workspace=$(jq -r '.[0].workspace' <<< "$windows")
-    [[ $workspace == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected window workspace '$expected', got '$workspace'"
-  return 1
-}
-
-wait_for_temporary_workspace() {
-  local native=$1 workspace=
-  for _ in $(seq 40); do
-    workspace=$("$ANDROMEDA" windows --json | jq -r '.[0].workspace // ""')
-    if [[ $workspace == HEADLESS-1:* && $workspace != "$native" ]] \
-      && "$ANDROMEDA" workspaces --json | jq -e --arg id "$workspace" \
-        'any(.[]; .id == $id and .named == false)' > /dev/null; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected a separate anonymous temporary workspace on HEADLESS-1, got '$workspace' (native '$native')"
-  return 1
-}
-
 spawn_client
-wait_for_workspace 'HEADLESS-2:1'
+await_sole_workspace 'HEADLESS-2:1'
 native_refuge=$("$ANDROMEDA" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-1" and .index == 1) | .id')
 
 # Disable the output through a live reload.
@@ -66,7 +35,7 @@ if ! await_log_since "$mark" "output 'HEADLESS-2': disabled by config"; then
   tail -8 "$ANDROMEDA_LOG" | sed 's/^/  | /'
   exit 1
 fi
-wait_for_temporary_workspace "$native_refuge"
+await_temporary_workspace HEADLESS-1 "$native_refuge"
 
 # Re-enable: the compositor must survive the disable and come back with a mode.
 mark=$(log_mark)
@@ -78,6 +47,6 @@ if ! await_log_since "$mark" "output 'HEADLESS-2': applied mode="; then
   exit 1
 fi
 
-wait_for_workspace 'HEADLESS-2:1'
+await_sole_workspace 'HEADLESS-2:1'
 
 echo "output disabled and re-enabled through live reload, and its window came back"

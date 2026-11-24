@@ -3,6 +3,8 @@
 # grab. An actual outside click must still dismiss the popup afterward.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly LEFT_BUTTON=272
@@ -16,13 +18,11 @@ if [[ ! -x $POINTER || ! -x $POPUP_CLIENT ]]; then
   exit 1
 fi
 
-wait_for_log() {
-  local expected=$1
-  for _ in $(seq 50); do
-    grep -qx "$expected" "$CLIENT_LOG" 2>/dev/null && return 0
-    sleep 0.1
-  done
-  echo "timed out waiting for '$expected': $(< "$CLIENT_LOG")"
+client_said() { grep -qx "$1" "$CLIENT_LOG" 2> /dev/null; }
+
+expect_client_line() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" client_said "$1" && return 0
+  echo "timed out waiting for '$1': $(< "$CLIENT_LOG")"
   return 1
 }
 
@@ -35,7 +35,7 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 "$POPUP_CLIENT" > "$CLIENT_LOG" 2>&1 &
-wait_for_log ready
+expect_client_line ready
 
 windows='[]'
 for _ in $(seq 50); do
@@ -61,7 +61,7 @@ printf 'window=%s x=%s y=%s state=%s\n' "$window_id" "$window_x" "$window_y" "$w
   move "$window_x" "$window_y" click "$LEFT_BUTTON" pause 1500 move 1 1 click "$LEFT_BUTTON" \
   >> "$POINTER_LOG" 2>&1 &
 pointer_pid=$!
-wait_for_log popup-mapped
+expect_client_line popup-mapped
 
 "$ANDROMEDA" msg "window-focus:$window_id" > /dev/null
 sleep 0.2 # real time: the popup is never dismissed
@@ -74,6 +74,6 @@ wait "$pointer_pid" || {
   echo "pointer client failed: $(< "$POINTER_LOG")"
   exit 1
 }
-wait_for_log popup-done
+expect_client_line popup-done
 
 echo "same-view focus preserves the popup grab; an outside click dismisses it"

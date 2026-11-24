@@ -44,15 +44,11 @@ wait_for_fullscreen() {
   return 1
 }
 
-wait_for_log() {
-  local start=$1 pattern=$2 label=$3
-  for _ in $(seq 60); do
-    if tail -n +"$start" "$ANDROMEDA_LOG" | grep -Fq "$pattern"; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "$label: $(tail -n +"$start" "$ANDROMEDA_LOG" | tr '\n' '|')"
+log_has_since() { tail -n +"$1" "$ANDROMEDA_LOG" | grep -Fq "$2"; }
+
+expect_log_since() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" log_has_since "$1" "$2" && return 0
+  echo "$3: $(tail -n +"$1" "$ANDROMEDA_LOG" | tr '\n' '|')"
   return 1
 }
 
@@ -78,7 +74,7 @@ if ! grep -q '^fullscreen-requested=false$' "$CLIENT_LOG"; then
   echo "the X11 client did not send its unfullscreen request: $(tr '\n' '|' < "$CLIENT_LOG")"
   exit 1
 fi
-wait_for_log "$LOG_MARK" "request_fullscreen denied for compositor-owned X11" \
+expect_log_since "$LOG_MARK" "request_fullscreen denied for compositor-owned X11" \
   "the compositor did not reject the X11 unfullscreen request"
 wait_for_fullscreen true "an X11 request overrode compositor-owned fullscreen"
 

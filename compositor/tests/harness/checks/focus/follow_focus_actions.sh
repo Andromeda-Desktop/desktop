@@ -12,13 +12,11 @@ readonly FOREIGN_TOPLEVEL="${ANDROMEDA_FOREIGN_TOPLEVEL_CLIENT:-./build-debug/te
 
 windows() { "$ANDROMEDA" windows --json; }
 
-wait_for_active() {
-  local id=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq -r --arg id "$id" '.[] | select(.id == $id) | .active') == true ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $id to be active: $(windows)"
+is_active() { windows | jq -e --arg id "$1" 'any(.[]; .id == $id and .active)' > /dev/null; }
+
+expect_active() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" is_active "$1" && return 0
+  echo "expected $1 to be active: $(windows)"
   return 1
 }
 
@@ -116,7 +114,7 @@ if [[ $after_x == "$before_x" ]]; then
 fi
 "$ANDROMEDA" msg "window-focus:$second_id" > /dev/null
 "$POINTER" 2560 720 click "$BTN_LEFT"
-wait_for_active "$second_id"
+expect_active "$second_id"
 
 # Output focus must use the target window when follows_focus is enabled. The output center itself is outside the
 # focused half-width fixture, so an unmoved click distinguishes the two landing points.
@@ -130,15 +128,15 @@ fi
 "$ANDROMEDA" msg "window-focus:$other_id" > /dev/null
 "$ANDROMEDA" msg "window-focus:$first_id" > /dev/null
 "$ANDROMEDA" msg "$output_action" > /dev/null
-wait_for_active "$other_id"
+expect_active "$other_id"
 "$POINTER" 2560 720 click "$BTN_LEFT"
-wait_for_active "$other_id"
+expect_active "$other_id"
 
 # A dock uses foreign-toplevel activation rather than Andromeda's IPC. It must receive the same configured pointer-following
 # behavior.
 "$FOREIGN_TOPLEVEL" follow-first "$first_output" activate
-wait_for_active "$first_id"
+expect_active "$first_id"
 "$POINTER" 2560 720 click "$BTN_LEFT"
-wait_for_active "$first_id"
+expect_active "$first_id"
 
 echo "follows_focus tracks ID focus, local moves, output focus, and foreign-toplevel activation"

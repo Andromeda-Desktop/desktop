@@ -34,16 +34,13 @@ exec {x_control_fd}<>"$X_CONTROL"
 "$X_CLIENT" "$X_TITLE_A" <&"$x_control_fd" > "$X_LOG" 2>&1 &
 "$NATIVE_CLIENT" "$NATIVE_TITLE" > "$NATIVE_LOG" 2>&1 &
 
-wait_for_windows() {
-  for _ in $(seq 60); do
-    local windows
-    windows=$("$ANDROMEDA" windows --json)
-    if [[ $(jq -r --arg x "$X_TITLE_A" --arg n "$NATIVE_TITLE" \
-      '[.[] | select(.title == $x or .title == $n)] | length' <<< "$windows") == 2 ]]; then
-      return 0
-    fi
-    sleep 0.1
-  done
+fixtures_mapped() {
+  "$ANDROMEDA" windows --json | jq -e --arg x "$X_TITLE_A" --arg n "$NATIVE_TITLE" \
+    '[.[] | select(.title == $x or .title == $n)] | length == 2' > /dev/null
+}
+
+expect_fixtures_mapped() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" fixtures_mapped && return 0
   echo "the X11 and native focus fixtures did not all map: $("$ANDROMEDA" windows --json)"
   echo "X11 log: $(tr '\n' '|' < "$X_LOG")"
   echo "native log: $(tr '\n' '|' < "$NATIVE_LOG")"
@@ -105,7 +102,7 @@ await_new_event() {
   return 1
 }
 
-wait_for_windows
+expect_fixtures_mapped
 readonly X_ID_A=$(window_id "$X_TITLE_A")
 readonly NATIVE_ID=$(window_id "$NATIVE_TITLE")
 

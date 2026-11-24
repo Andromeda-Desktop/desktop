@@ -17,14 +17,8 @@ window_count() {
   "$ANDROMEDA" windows --json | jq 'length'
 }
 
-wait_for_log() {
-  local file=$1 pattern=$2 label=$3
-  for _ in $(seq 80); do
-    grep -q "$pattern" "$file" 2>/dev/null && return 0
-    sleep 0.05
-  done
-  echo "$label did not report '$pattern': $(< "$file")"
-  return 1
+expect_log() {
+  await_log_count "$1" "$2" > /dev/null || { echo "$3 did not report '$2': $(< "$1")"; return 1; }
 }
 
 spawn_client() {
@@ -48,7 +42,7 @@ spawn_client data-drag-edge-c
 await_count 3
 "$DRAG_CLIENT" target data-drag-edge-target > "$TARGET_LOG" 2>&1 &
 TARGET_PID=$!
-wait_for_log "$TARGET_LOG" '^ready$' "drop target"
+expect_log "$TARGET_LOG" '^ready$' "drop target"
 await_count 4
 
 "$ANDROMEDA" msg column-focus-first > /dev/null
@@ -64,12 +58,12 @@ fi
 
 "$DRAG_CLIENT" > "$SOURCE_LOG" 2>&1 &
 SOURCE_PID=$!
-wait_for_log "$SOURCE_LOG" '^ready$' "drag source"
+expect_log "$SOURCE_LOG" '^ready$' "drag source"
 
 pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
   move 32 32 press "$LEFT_BUTTON" \
   -- move 1279 360 mark edge hold move 1000 360 mark target hold release "$LEFT_BUTTON"
-wait_for_log "$SOURCE_LOG" '^drag-started$' "drag source"
+expect_log "$SOURCE_LOG" '^drag-started$' "drag source"
 
 pointer_step edge
 moved=false
@@ -89,13 +83,13 @@ if [[ $moved != true ]]; then
   echo "data-device drag at the right edge did not reveal the offscreen target: first x $initial_first_x -> $first_x, target x $initial_target_x -> $target_x"
   exit 1
 fi
-wait_for_log "$TARGET_LOG" '^drag-enter$' "stationary edge drop target"
+expect_log "$TARGET_LOG" '^drag-enter$' "stationary edge drop target"
 
 pointer_step target
 pointer_release
 
-wait_for_log "$TARGET_LOG" '^drop-received$' "drop target"
-wait_for_log "$SOURCE_LOG" '^drag-finished$' "drag source"
+expect_log "$TARGET_LOG" '^drop-received$' "drop target"
+expect_log "$SOURCE_LOG" '^drag-finished$' "drag source"
 wait "$TARGET_PID"
 wait "$SOURCE_PID"
 

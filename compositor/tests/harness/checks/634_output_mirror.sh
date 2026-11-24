@@ -14,16 +14,6 @@ readonly AFTER_SHOT="$ANDROMEDA_RUNTIME_DIR/mirror-after.png"
 readonly GREEN='g > 0.9 && r < 0.1 && b < 0.1'
 
 log_mark() { wc -l < "$ANDROMEDA_LOG"; }
-wait_for_workspace() {
-  local expected=$1 workspace=
-  for _ in $(seq 40); do
-    workspace=$("$ANDROMEDA" windows --json | jq -r '.[0].workspace // empty')
-    [[ $workspace == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected window workspace '$expected', got '$workspace'"
-  return 1
-}
 
 foot --config=/dev/null --override=colors-dark.background=00ff00 --title=mirror-green sh -c 'sleep 120' > /dev/null 2>&1 &
 for _ in $(seq 40); do
@@ -42,7 +32,7 @@ if ! await_log_since "$mark" "output 'HEADLESS-2': mirroring 'HEADLESS-1'"; then
   tail -8 "$ANDROMEDA_LOG" | sed 's/^/  | /'
   exit 1
 fi
-wait_for_workspace 'HEADLESS-1:1'
+await_sole_workspace 'HEADLESS-1:1'
 "$ANDROMEDA" settle > /dev/null
 grim -o HEADLESS-1 "$SOURCE_SHOT"
 source_green=$("$ANDROMEDA_PIXEL_PROBE" "$SOURCE_SHOT" count "$GREEN")
@@ -87,7 +77,7 @@ if ! await_log_since "$mark" "output 'HEADLESS-2': stopped mirroring"; then
   echo "HEADLESS-2 kept mirroring after the key was removed"
   exit 1
 fi
-wait_for_workspace 'HEADLESS-2:1'
+await_sole_workspace 'HEADLESS-2:1'
 "$ANDROMEDA" settle > /dev/null
 grim -o HEADLESS-2 "$AFTER_SHOT"
 after_green=$("$ANDROMEDA_PIXEL_PROBE" "$AFTER_SHOT" count "$GREEN")

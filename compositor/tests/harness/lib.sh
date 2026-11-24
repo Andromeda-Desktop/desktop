@@ -137,6 +137,25 @@ await_workspace() {
   echo "expected '$1' on '$2', got '$(_aw_field "$1" workspace)'"
   return 1
 }
+_aw_sole_workspace_is() { _aw_windows | jq -e --arg w "$1" 'length == 1 and (.[0].workspace // "") == $w' > /dev/null; }
+_aw_temporary_workspace() {
+  local workspace
+  workspace=$(_aw_windows | jq -r '.[0].workspace // ""')
+  [[ $workspace == "$1":* && $workspace != "$2" ]] \
+    && "$ANDROMEDA" workspaces --json | jq -e --arg id "$workspace" 'any(.[]; .id == $id and .named == false)' > /dev/null
+}
+# await_sole_workspace EXPECTED: the only window sits on workspace EXPECTED ("" when it has none).
+await_sole_workspace() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_sole_workspace_is "$1" && return 0
+  echo "expected the only window on workspace '$1', got: $(_aw_windows)"
+  return 1
+}
+# await_temporary_workspace OUTPUT NATIVE: the only window sits on an anonymous workspace of OUTPUT other than NATIVE.
+await_temporary_workspace() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_temporary_workspace "$1" "$2" && return 0
+  echo "expected a separate anonymous temporary workspace on '$1' (native '$2'): $(_aw_windows)"
+  return 1
+}
 # Waits for a line matching $2 in $ANDROMEDA_LOG after its first $1 lines (a mark taken with wc -l).
 await_log_since() {
   await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_log_since "$1" "$2" && return 0

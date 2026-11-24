@@ -33,14 +33,11 @@ active_workspace() {
     '.[] | select(.output == "HEADLESS-1" and .active) | .index'
 }
 
-wait_for_workspace() {
-  local want=$1 actual=
-  for _ in $(seq 40); do
-    actual=$(active_workspace)
-    [[ $actual == "$want" ]] && return 0
-    sleep 0.05
-  done
-  echo "hot corner did not switch to workspace $want, active workspace is ${actual:-missing}"
+workspace_is_active() { [[ $(active_workspace) == "$1" ]]; }
+
+expect_active_workspace() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" workspace_is_active "$1" && return 0
+  echo "hot corner did not switch to workspace $1, active workspace is $(active_workspace)"
   return 1
 }
 
@@ -93,6 +90,6 @@ wait_for_fullscreen
 
 # The fullscreen window has lost focus. Its retained fullscreen flag must not block the corner.
 pointer move 0 0 pause 250
-wait_for_workspace 2
+expect_active_workspace 2
 
 echo "only the focused fullscreen window suppresses hot corners"
