@@ -10,6 +10,8 @@ BUILD=$SRC/build-debug
 gcc -c -o "$RUNTIME/dsk-proto.o" "$BUILD/desktop-unstable-v1-client-protocol.c"
 g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-ui/src" -I"$BUILD" -o "$RUNTIME/settings-set" \
   "$(dirname "$0")/settings_set.cpp" "$SRC/src/compositors/settings_control.cpp" "$RUNTIME/dsk-proto.o" -lwayland-client
+# Only the Frosted style follows the Glass (tint) slider; Tinted, the default, holds a fixed level.
+run "$RUNTIME/settings-set" appearance.glass_style frosted > /dev/null
 run "$RUNTIME/settings-set" appearance.glass 0 > /dev/null
 export SETTINGS_SET=$RUNTIME/settings-set
 
