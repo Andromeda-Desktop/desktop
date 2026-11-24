@@ -1,9 +1,9 @@
 #include "dbus/modem/modem_manager_service.h"
-#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
 #include "i18n/i18n.h"
+#include "dbus/name_owner_watch.h"
 
 #include <algorithm>
 #include <map>
@@ -21,9 +21,6 @@ namespace {
 
   const sdbus::ServiceName kMmBusName{"org.freedesktop.ModemManager1"};
   const sdbus::ObjectPath kRootPath{"/org/freedesktop/ModemManager1"};
-  const sdbus::ServiceName kDaemonBusName{busname::kDaemon};
-  const sdbus::ObjectPath kDaemonPath{busname::kDaemonPath};
-  constexpr auto kDaemonInterface = busname::kDaemon;
   constexpr auto kModemInterface = "org.freedesktop.ModemManager1.Modem";
   constexpr auto kModem3gppInterface = "org.freedesktop.ModemManager1.Modem.Modem3gpp";
   // SignalQuality on the base Modem interface is maintained by ModemManager itself.
@@ -100,7 +97,7 @@ namespace {
 struct ModemManagerService::Impl {
   ModemManagerService& self;
   SystemBus& bus;
-  std::unique_ptr<sdbus::IProxy> daemon; // NameOwnerChanged watch on the bus daemon.
+  NameOwnerWatch owner;
   std::unique_ptr<sdbus::IProxy> root;   // ObjectManager on "/"
   std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> modemProxies;
 
@@ -228,9 +225,13 @@ struct ModemManagerService::Impl {
     }
   }
 
-  void onNameOwnerChanged(const std::string& newOwner) {
+  void onNameOwnerChanged(const std::string& oldOwner, const std::string& newOwner) {
     if (newOwner.empty()) {
-      kLog.info("modem manager left the bus");
+      if (oldOwner.empty()) {
+        kLog.info("modem manager not on the bus; waiting for it to appear");
+      } else {
+        kLog.info("modem manager left the bus");
+      }
       detach();
       return;
     }
@@ -247,21 +248,12 @@ ModemManagerService::ModemManagerService(SystemBus& bus) : m_impl(std::make_uniq
   // on demand and can die mid-session, e.g. killed while hanging on an unresponsive
   // modem port. Follow the bus name instead of fixing availability at construction,
   // or a shell started while it is down would never offer cellular controls.
-  m_impl->daemon = sdbus::createProxy(bus.connection(), kDaemonBusName, kDaemonPath);
-  m_impl->daemon->uponSignal("NameOwnerChanged")
-      .onInterface(kDaemonInterface)
-      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
-        if (name != kMmBusName) {
-          return;
-        }
-        m_impl->onNameOwnerChanged(newOwner);
-      });
-
-  if (bus.nameHasOwner(kMmBusName)) {
-    m_impl->attach();
-  } else {
-    kLog.info("modem manager not on the bus; waiting for it to appear");
-  }
+  m_impl->owner = NameOwnerWatch::name(
+      bus.connection(), kMmBusName,
+      [this](const std::string& /*name*/, const std::string& oldOwner, const std::string& newOwner) {
+        m_impl->onNameOwnerChanged(oldOwner, newOwner);
+      }
+  );
 }
 
 ModemManagerService::~ModemManagerService() = default;

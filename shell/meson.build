@@ -1542,6 +1542,16 @@ if build_tests
       args: ['--', secret_service_prompt_integration_exe.full_path()],
       depends: secret_service_prompt_integration_exe,
     )
+    name_owner_watch_integration_exe = executable('name_owner_watch_integration_test',
+      sources: files('tests/name_owner_watch_integration_test.cpp'),
+      dependencies: noctalia_core_dep,
+      override_options: ['b_ndebug=false'],
+    )
+    test('name_owner_watch_integration',
+      dbus_run_session,
+      args: ['--', name_owner_watch_integration_exe.full_path()],
+      depends: name_owner_watch_integration_exe,
+    )
     foreach mode : ['registration', 'discovery', 'vanished', 'connections']
       test('tray_' + mode + '_integration',
         dbus_run_session,

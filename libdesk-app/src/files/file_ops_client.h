@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -138,7 +140,7 @@ private:
 
   SessionBus& m_bus;
   std::unique_ptr<sdbus::IProxy> m_manager;
-  std::unique_ptr<sdbus::IProxy> m_busWatch; // FileOps1 owner changes: a restarted daemon knows none of our jobs
+  NameOwnerWatch m_busWatch; // FileOps1 owner changes: a restarted daemon knows none of our jobs
   std::set<std::string> m_settling; // finished jobs whose GetAll is in flight
   std::map<std::string, std::unique_ptr<sdbus::IProxy>> m_jobProxies;
   std::map<std::string, Job> m_jobs;

@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "dbus/name_owner_watch.h"
 
 class ClipboardService;
 class IpcService;
@@ -71,7 +72,7 @@ private:
 
   NotificationManager& m_notifications;
   ClipboardService& m_clipboard;
-  std::unique_ptr<sdbus::IProxy> m_bus;
+  NameOwnerWatch m_linkOwner;
   std::unique_ptr<sdbus::IProxy> m_proxy;
   std::unique_ptr<sdbus::IProxy> m_fileManager;
   ChangeCallback m_changeCallback;

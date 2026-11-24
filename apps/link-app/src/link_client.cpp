@@ -1,5 +1,4 @@
 #include "link_client.h"
-#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -82,14 +81,10 @@ namespace linkapp {
     }
     m_proxy = sdbus::createProxy(m_bus.connection(), kBusName, kObjectPath);
     // Link1 starting or stopping after this app: ask again, so presence leaves NoDaemon or enters it.
-    m_busWatch = sdbus::createProxy(m_bus.connection(), sdbus::ServiceName{busname::kDaemon},
-                                    sdbus::ObjectPath{busname::kDaemonPath});
-    m_busWatch->uponSignal("NameOwnerChanged").onInterface(busname::kDaemon)
-        .call([this](const std::string& name, const std::string&, const std::string&) {
-          if (name == kBusName) {
-            refresh();
-            refreshNearby();
-          }
+    m_busWatch = NameOwnerWatch::changes(m_bus.connection(), kBusName,
+        [this](const std::string&, const std::string&, const std::string&) {
+          refresh();
+          refreshNearby();
         });
     m_proxy->uponSignal("PropertiesChanged")
         .onInterface("org.freedesktop.DBus.Properties")

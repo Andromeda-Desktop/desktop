@@ -4,6 +4,7 @@
 #include "dbus/link/link_commands.h"
 #include "dbus/link/link_phone_state.h"
 #include "notification/notification.h"
+#include "dbus/name_owner_watch.h"
 
 #include <chrono>
 #include <cstdint>
@@ -269,7 +270,7 @@ private:
     std::vector<std::string> paths;
   };
 
-  std::unique_ptr<sdbus::IProxy> m_daemon;
+  NameOwnerWatch m_linkOwner;
   std::unique_ptr<sdbus::IProxy> m_link;
   NotificationManager& m_notifications;
   ClipboardService& m_clipboard;

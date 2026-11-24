@@ -1,10 +1,10 @@
 #include "dbus/polkit/polkit_agent.h"
-#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "core/process/process.h"
 #include "dbus/system_bus.h"
 #include "i18n/i18n.h"
+#include "dbus/name_owner_watch.h"
 
 #include <algorithm>
 #include <array>
@@ -440,7 +440,7 @@ struct PolkitAgent::Impl {
   std::unique_ptr<sdbus::IObject> object;
   std::unique_ptr<sdbus::IProxy> authority;
   std::uint64_t registerCall = 0; // the Register reply that counts; an owner change makes earlier ones stale
-  std::unique_ptr<sdbus::IProxy> busWatch;
+  NameOwnerWatch busWatch;
   Subject subject;
   Registration registration = Registration::Idle;
   bool m_nextInternal = false;
@@ -521,16 +521,10 @@ struct PolkitAgent::Impl {
           .forInterface(kAgentInterface);
       authority = sdbus::createProxy(bus.connection(), kAuthorityName, kAuthorityPath);
       // polkitd forgets its agents when it restarts (a package upgrade), so a new owner gets the registration again.
-      busWatch = sdbus::createProxy(
-          bus.connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
-      );
-      busWatch->uponSignal("NameOwnerChanged")
-          .onInterface(busname::kDaemon)
-          .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
+      busWatch = NameOwnerWatch::changes(
+          bus.connection(), kAuthorityName,
+          [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
             guard("NameOwnerChanged", [&] {
-              if (name != kAuthorityName) {
-                return;
-              }
               clearPending(kErrorCancelled, "polkitd restarted");
               registration = Registration::Idle;
               ++registerCall;
@@ -960,9 +954,6 @@ void PolkitAgent::registerWithGaze() {
   };
   try {
     m_gaze = sdbus::createProxy(m_bus.connection(), gazeName, sdbus::ObjectPath{"/com/gundulabs/Gaze"});
-    m_dbus = sdbus::createProxy(
-        m_bus.connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
-    );
     using ScoredFace = sdbus::Struct<std::string, double, double, bool, double, double, bool>;
     m_gaze->uponSignal("VerifyStatus")
         .onInterface("com.gundulabs.Gaze")
@@ -980,16 +971,14 @@ void PolkitAgent::registerWithGaze() {
           m_impl->faceCheckEnded(i18n::tr(key));
         });
     // gazed keeps the list in memory, so a restarted gazed needs it again.
-    m_dbus->uponSignal("NameOwnerChanged")
-        .onInterface(busname::kDaemon)
-        .call([add, gazeName](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
-          if (name == gazeName && !newOwner.empty()) {
+    m_gazeOwner = NameOwnerWatch::name(
+        m_bus.connection(), gazeName,
+        [add](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+          if (!newOwner.empty()) {
             add();
           }
-        });
-    if (m_bus.nameHasOwner(gazeName)) {
-      add();
-    }
+        }
+    );
   } catch (const std::exception& e) {
     kLog.debug("face prompts off: {}", e.what());
   }

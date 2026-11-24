@@ -2,6 +2,7 @@
 
 #include "protocols/backoff.h"
 #include "core/timer_manager.h"
+#include "dbus/name_owner_watch.h"
 
 #include <chrono>
 #include <cstdint>
@@ -209,6 +210,7 @@ private:
   std::shared_ptr<void> m_aliveGuard = std::make_shared<int>(0);
   std::unique_ptr<sdbus::IObject> m_controlObject;
   std::unique_ptr<sdbus::IProxy> m_dbusProxy;
+  NameOwnerWatch m_ownerWatch;
   std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> m_playerProxies;
   std::unordered_map<std::string, MprisPlayerInfo> m_players;
   std::unordered_map<std::string, std::string> m_logicalTrackSignatures;

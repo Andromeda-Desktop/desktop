@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -51,7 +53,7 @@ private:
 
   ChangeCallback m_changeCallback;
   std::unique_ptr<sdbus::IConnection> m_connection;
-  std::unique_ptr<sdbus::IProxy> m_dbusProxy;
+  NameOwnerWatch m_ownerWatch;
   std::unique_ptr<sdbus::IProxy> m_logindProxy;
   std::int64_t m_inhibitLocks = 0;
   std::uint32_t m_nextCookieId = 1337;

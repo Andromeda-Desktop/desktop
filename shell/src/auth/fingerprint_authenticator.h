@@ -2,6 +2,7 @@
 
 #include "auth/fingerprint_auth_machine.h"
 #include "core/timer_manager.h"
+#include "dbus/name_owner_watch.h"
 
 #include <cstdint>
 #include <functional>
@@ -51,7 +52,7 @@ private:
   void emitStatus(const std::string& message, bool isError);
 
   SystemBus& m_bus;
-  std::unique_ptr<sdbus::IProxy> m_busDaemon;
+  NameOwnerWatch m_fprintOwner;
   std::unique_ptr<sdbus::IProxy> m_device;
   std::unique_ptr<sdbus::IProxy> m_manager; // alive while GetDefaultDevice is pending
 

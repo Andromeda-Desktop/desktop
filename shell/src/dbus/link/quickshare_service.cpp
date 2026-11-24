@@ -1,5 +1,4 @@
 #include "dbus/link/quickshare_service.h"
-#include "protocols/bus_names.h"
 
 #include "cli/schema_msg.h"
 #include "core/log.h"
@@ -27,9 +26,6 @@ namespace {
   const sdbus::ServiceName kLinkBusName{"org.andromeda.Link1"};
   const sdbus::ObjectPath kLinkPath{"/org/andromeda/Link1"};
   constexpr auto kInterface = "org.andromeda.Link1.QuickShare";
-  const sdbus::ServiceName kBusName{busname::kDaemon};
-  const sdbus::ObjectPath kBusPath{busname::kDaemonPath};
-  constexpr auto kBusInterface = busname::kDaemon;
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
   const sdbus::ServiceName kFileManagerName{"org.freedesktop.FileManager1"};
   const sdbus::ObjectPath kFileManagerPath{"/org/freedesktop/FileManager1"};
@@ -63,13 +59,9 @@ namespace {
 
 QuickShareService::QuickShareService(SessionBus& bus, NotificationManager& notifications, ClipboardService& clipboard)
     : m_notifications(notifications), m_clipboard(clipboard) {
-  m_bus = sdbus::createProxy(bus.connection(), kBusName, kBusPath);
-  m_bus->uponSignal("NameOwnerChanged")
-      .onInterface(kBusInterface)
-      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
-        if (name != kLinkBusName) {
-          return;
-        }
+  m_linkOwner = NameOwnerWatch::name(
+      bus.connection(), kLinkBusName,
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
         // Offer and send ids belong to the old daemon: a stale Accept could name a new daemon's offer.
         for (const auto& [notification, id] : std::exchange(m_offerNotifications, {})) {
           m_notifications.close(notification);
@@ -84,7 +76,8 @@ QuickShareService::QuickShareService(SessionBus& bus, NotificationManager& notif
         if (!newOwner.empty()) {
           refresh();
         }
-      });
+      }
+  );
 
   m_proxy = sdbus::createProxy(bus.connection(), kLinkBusName, kLinkPath);
   m_proxy->uponSignal("PropertiesChanged")
@@ -154,15 +147,6 @@ QuickShareService::QuickShareService(SessionBus& bus, NotificationManager& notif
         onAction(id, action, activationToken);
       }
   );
-
-  m_bus->callMethodAsync("NameHasOwner")
-      .onInterface(kBusInterface)
-      .withArguments(std::string{kLinkBusName})
-      .uponReplyInvoke([this](std::optional<sdbus::Error> error, bool owned) {
-        if (!error.has_value() && owned) {
-          refresh();
-        }
-      });
 }
 
 QuickShareService::~QuickShareService() = default;

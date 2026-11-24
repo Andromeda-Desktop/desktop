@@ -1,6 +1,7 @@
 #pragma once
 
 #include "protocols/backoff.h"
+#include "dbus/name_owner_watch.h"
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -170,6 +171,7 @@ private:
   std::unique_ptr<sdbus::IObject> m_watcherObject;
   std::unique_ptr<sdbus::IProxy> m_watcherProxy;
   std::unique_ptr<sdbus::IProxy> m_dbusProxy;
+  NameOwnerWatch m_ownerWatch;
   std::unordered_map<std::string, TrayItemInfo> m_items;
   // itemPids() cache: a bus name keeps its owner's PID (unique names are never reused), so each costs one bus call.
   mutable std::unordered_map<std::string, std::uint32_t> m_itemPids;

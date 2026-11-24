@@ -2,6 +2,7 @@
 
 #include "dbus/portal/global_shortcuts_backend.h"
 #include "dbus/portal/global_shortcuts_session_state.h"
+#include "dbus/name_owner_watch.h"
 
 #include <map>
 #include <memory>
@@ -55,6 +56,6 @@ private:
   GlobalShortcutsBackend& m_backend;
   std::unique_ptr<sdbus::IObject> m_object;
   std::unique_ptr<sdbus::IProxy> m_dbus;
-  sdbus::Slot m_frontendWatch;
+  NameOwnerWatch m_frontendWatch;
   std::map<std::string, Session> m_sessions;
 };

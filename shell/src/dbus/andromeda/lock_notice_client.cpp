@@ -17,26 +17,19 @@ namespace {
   const sdbus::ServiceName kShellBusName{"org.andromeda.Shell1"};
   const sdbus::ObjectPath kShellPath{"/org/andromeda/Shell1"};
   constexpr auto kShellInterface = "org.andromeda.Shell1";
-  constexpr auto kOwnerRule = "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',"
-                              "interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.andromeda.Shell1'";
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
 
 } // namespace
 
 LockNoticeClient::LockNoticeClient(SessionBus& bus) {
-  m_ownerMatch = bus.connection().addMatch(
-      kOwnerRule,
-      [this](sdbus::Message message) {
-        std::string name;
-        std::string oldOwner;
-        std::string newOwner;
-        message >> name >> oldOwner >> newOwner;
+  m_ownerMatch = NameOwnerWatch::changes(
+      bus.connection(), kShellBusName,
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
         store({});
         if (!newOwner.empty()) {
           refresh();
         }
-      },
-      sdbus::return_slot
+      }
   );
 
   m_shell = sdbus::createProxy(bus.connection(), kShellBusName, kShellPath);

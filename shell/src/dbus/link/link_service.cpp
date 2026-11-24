@@ -1,5 +1,4 @@
 #include "dbus/link/link_service.h"
-#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "core/process/process.h"
@@ -42,9 +41,6 @@ namespace {
   const sdbus::ServiceName kLinkBusName{"org.andromeda.Link1"};
   const sdbus::ObjectPath kLinkPath{"/org/andromeda/Link1"};
   constexpr auto kLinkInterface = "org.andromeda.Link1";
-  const sdbus::ServiceName kDaemonBusName{busname::kDaemon};
-  const sdbus::ObjectPath kDaemonPath{busname::kDaemonPath};
-  constexpr auto kDaemonInterface = busname::kDaemon;
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
   // The daemon's window length; it reports the close itself through Pairing.
   constexpr auto kPairingWindow = std::chrono::seconds(120);
@@ -104,19 +100,16 @@ LinkService::LinkService(
     SessionBus& bus, NotificationManager& notifications, ClipboardService& clipboard, std::weak_ptr<SoundPlayer> sounds
 )
     : m_notifications(notifications), m_clipboard(clipboard), m_sounds(std::move(sounds)) {
-  m_daemon = sdbus::createProxy(bus.connection(), kDaemonBusName, kDaemonPath);
-  m_daemon->uponSignal("NameOwnerChanged")
-      .onInterface(kDaemonInterface)
-      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
-        if (name != kLinkBusName) {
-          return;
-        }
+  m_linkOwner = NameOwnerWatch::name(
+      bus.connection(), kLinkBusName,
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
         // A restart hands the name straight to the new owner, so any owner means reload.
         detach();
         if (!newOwner.empty()) {
           refresh();
         }
-      });
+      }
+  );
 
   m_link = sdbus::createProxy(bus.connection(), kLinkBusName, kLinkPath);
   m_link->uponSignal("PropertiesChanged")
@@ -227,15 +220,6 @@ LinkService::LinkService(
   m_notifications.addCloseObserver([this](std::uint32_t id, CloseReason reason, const std::string&) {
     onNotificationClosed(id, reason);
   });
-
-  m_daemon->callMethodAsync("NameHasOwner")
-      .onInterface(kDaemonInterface)
-      .withArguments(std::string{kLinkBusName})
-      .uponReplyInvoke([this](std::optional<sdbus::Error> error, bool owned) {
-        if (!error.has_value() && owned) {
-          refresh();
-        }
-      });
 }
 
 LinkService::~LinkService() = default;

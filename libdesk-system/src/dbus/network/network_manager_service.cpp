@@ -40,9 +40,6 @@ namespace {
   constexpr auto kNmAccessPointInterface = "org.freedesktop.NetworkManager.AccessPoint";
   constexpr auto k_nmIp4ConfigInterface = "org.freedesktop.NetworkManager.IP4Config";
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
-  const sdbus::ServiceName kDbusBusName{busname::kDaemon};
-  const sdbus::ObjectPath kDbusObjectPath{busname::kDaemonPath};
-  constexpr auto kDbusInterface = busname::kDaemon;
   const sdbus::ServiceName kSystem1BusName{busname::kSystem1};
   const sdbus::ObjectPath kSystem1NetworkPath{"/org/andromeda/System1/Network"};
   constexpr auto kSystem1NetworkInterface = "org.andromeda.System1.Network";
@@ -223,20 +220,16 @@ NetworkManagerService::NetworkManagerService(SystemBus& bus) : m_bus(bus) {
   m_lifetimeToken = std::make_shared<int>(0);
   // NetworkManager can start after the shell or restart mid-session. Follow its bus name instead of
   // fixing availability at construction, or a shell started while it is down never shows a network.
-  m_busDaemon = sdbus::createProxy(m_bus.connection(), kDbusBusName, kDbusObjectPath);
-  m_busDaemon->uponSignal("NameOwnerChanged")
-      .onInterface(kDbusInterface)
-      .call([this](const std::string& name, const std::string& oldOwner, const std::string& newOwner) {
-        if (name != kNmBusName) {
-          return;
-        }
+  m_nmOwner = NameOwnerWatch::name(
+      m_bus.connection(), kNmBusName,
+      [this](const std::string& /*name*/, const std::string& oldOwner, const std::string& newOwner) {
         if (newOwner.empty()) {
-          kLog.info("NetworkManager left the bus");
+          if (oldOwner.empty()) {
+            kLog.info("NetworkManager not on the bus; waiting for it to appear");
+          } else {
+            kLog.info("NetworkManager left the bus");
+          }
           detach();
-          return;
-        }
-        // Already attached to this owner when the constructor saw it before the signal arrived.
-        if (oldOwner.empty() && available()) {
           return;
         }
         kLog.info("NetworkManager appeared on the bus");
@@ -247,13 +240,8 @@ NetworkManagerService::NetworkManagerService(SystemBus& bus) : m_bus(bus) {
           kLog.warn("NetworkManager attach failed: {}", e.what());
           detach();
         }
-      });
-
-  if (bus.nameHasOwner(kNmBusName)) {
-    attach();
-  } else {
-    kLog.info("NetworkManager not on the bus; waiting for it to appear");
-  }
+      }
+  );
 }
 
 void NetworkManagerService::attach() {

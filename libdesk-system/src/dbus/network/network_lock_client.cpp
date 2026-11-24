@@ -19,9 +19,6 @@ namespace {
   constexpr auto kNmInterface = "org.freedesktop.NetworkManager";
   constexpr auto kActiveInterface = "org.freedesktop.NetworkManager.Connection.Active";
   constexpr auto kAccessPointInterface = "org.freedesktop.NetworkManager.AccessPoint";
-  constexpr auto kOwnerRule = "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',"
-                              "interface='org.freedesktop.DBus',member='NameOwnerChanged',"
-                              "arg0='org.freedesktop.NetworkManager'";
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
   // NM_STATE_CONNECTED_LOCAL: the primary connection is activated.
   constexpr std::uint32_t kNmStateConnectedLocal = 50;
@@ -59,13 +56,9 @@ namespace {
 } // namespace
 
 NetworkLockClient::NetworkLockClient(SystemBus& bus) : m_bus(bus) {
-  m_ownerMatch = bus.connection().addMatch(
-      kOwnerRule,
-      [this](sdbus::Message message) {
-        std::string name;
-        std::string oldOwner;
-        std::string newOwner;
-        message >> name >> oldOwner >> newOwner;
+  m_ownerMatch = NameOwnerWatch::changes(
+      bus.connection(), kNmBusName,
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
         // Dropping the proxies cancels their calls: no reply from the old owner lands in the reset state.
         m_active.reset();
         m_accessPoint.reset();
@@ -75,8 +68,7 @@ NetworkLockClient::NetworkLockClient(SystemBus& bus) : m_bus(bus) {
         if (!newOwner.empty()) {
           refresh();
         }
-      },
-      sdbus::return_slot
+      }
   );
 
   m_nm = sdbus::createProxy(bus.connection(), kNmBusName, kNmPath);

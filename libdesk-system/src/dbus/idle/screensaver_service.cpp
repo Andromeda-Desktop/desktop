@@ -40,14 +40,14 @@ ScreenSaverService::ScreenSaverService(SystemBus* systemBus) {
     if (e.getName() != kFileExistsError) {
       kLog.warn("screensaver D-Bus registration failed: {}", e.what());
     }
+    m_ownerWatch = {};
     m_connection.reset();
     m_objects.clear();
-    m_dbusProxy.reset();
   } catch (const std::exception& e) {
     kLog.warn("screensaver D-Bus registration failed: {}", e.what());
+    m_ownerWatch = {};
     m_connection.reset();
     m_objects.clear();
-    m_dbusProxy.reset();
   }
 
   registerLogindIdleMonitor(systemBus);
@@ -58,7 +58,7 @@ ScreenSaverService::ScreenSaverService(SystemBus* systemBus) {
 
 ScreenSaverService::~ScreenSaverService() {
   m_logindProxy.reset();
-  m_dbusProxy.reset();
+  m_ownerWatch = {};
   m_objects.clear();
   m_connection.reset();
 }
@@ -109,12 +109,8 @@ void ScreenSaverService::registerScreenSaver() {
     return;
   }
 
-  m_dbusProxy = sdbus::createProxy(
-      *m_connection, sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
-  );
-  m_dbusProxy->uponSignal("NameOwnerChanged")
-      .onInterface(busname::kDaemon)
-      .call([this](const std::string& /*name*/, const std::string& oldOwner, const std::string& newOwner) {
+  m_ownerWatch = NameOwnerWatch::all(
+      *m_connection, [this](const std::string& /*name*/, const std::string& oldOwner, const std::string& newOwner) {
         if (!newOwner.empty()) {
           return;
         }
@@ -122,7 +118,8 @@ void ScreenSaverService::registerScreenSaver() {
         if (removed > 0) {
           kLog.info("screensaver: cleared {} inhibit(s) after client disconnect", removed);
         }
-      });
+      }
+  );
 
   for (const auto& path : kObjectPaths) {
     try {

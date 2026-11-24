@@ -1,5 +1,4 @@
 #include "dbus/andromeda/software_update_service.h"
-#include "protocols/bus_names.h"
 
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -58,22 +57,21 @@ SoftwareUpdateService::SoftwareUpdateService(SessionBus& session, SystemBus* sys
       });
   if (m_system != nullptr) {
     m_helper = sdbus::createProxy(m_system->connection(), kHelperService, kHelperPath);
-    m_busDaemon = sdbus::createProxy(
-        m_system->connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
-    );
-    m_busDaemon->uponSignal("NameOwnerChanged")
-        .onInterface(busname::kDaemon)
-        .call([this](const std::string& name, const std::string& /*old*/, const std::string& owner) {
+    m_helperOwner = NameOwnerWatch::changes(
+        m_system->connection(), kHelperName,
+        [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& owner) {
+          if (!owner.empty()) {
+            return;
+          }
           // The helper exited (crash, kill) while our upgrade ran: no Finished will come.
-          if (name == kHelperName && owner.empty() && m_run.state() == RunState::Running) {
+          if (m_run.state() == RunState::Running) {
             m_run.stopped(false);
             m_resultMessage = "the update service stopped";
             notify();
           }
-          if (name == kHelperName && owner.empty()) {
-            releaseWaiters();
-          }
-        });
+          releaseWaiters();
+        }
+    );
     m_helper->uponSignal("Progress")
         .onInterface(kHelperName)
         .call([this](const std::string& stage, int percent, const std::string& package) {

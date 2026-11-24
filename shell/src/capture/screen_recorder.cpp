@@ -23,9 +23,6 @@ namespace {
   constexpr Logger kLog("screen-recorder");
 
   const sdbus::ServiceName kPortalBusName{"org.freedesktop.portal.Desktop"};
-  constexpr auto kPortalOwnerRule =
-      "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',"
-      "interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.portal.Desktop'";
   const sdbus::ObjectPath kPortalPath{"/org/freedesktop/portal/desktop"};
   constexpr auto kScreenCast = "org.freedesktop.portal.ScreenCast";
   constexpr auto kRequest = "org.freedesktop.portal.Request";
@@ -465,13 +462,9 @@ void ScreenRecorder::finish(const std::string& error) {
 }
 
 void ScreenRecorder::watchPortalOwner() {
-  m_portalOwnerWatch = m_bus.connection().addMatch(
-      kPortalOwnerRule,
-      [this](sdbus::Message message) {
-        std::string name;
-        std::string oldOwner;
-        std::string newOwner;
-        message >> name >> oldOwner >> newOwner;
+  m_portalOwnerWatch = NameOwnerWatch::changes(
+      m_bus.connection(), kPortalBusName,
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
         // A gained owner is D-Bus activation; a lost owner forgets the session, so no Response comes.
         if (!newOwner.empty()) {
           return;
@@ -482,8 +475,7 @@ void ScreenRecorder::watchPortalOwner() {
             finish("the portal stopped");
           }
         });
-      },
-      sdbus::return_slot
+      }
   );
 }
 
@@ -550,7 +542,7 @@ void ScreenRecorder::setState(State state) {
   const bool wasActive = active();
   m_state = state;
   if (state != State::Starting) {
-    m_portalOwnerWatch.reset();
+    m_portalOwnerWatch = {};
   }
   if (state == State::Recording) {
     m_since = std::chrono::steady_clock::now();

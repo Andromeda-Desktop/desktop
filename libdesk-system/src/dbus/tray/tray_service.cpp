@@ -573,9 +573,10 @@ void TrayService::start() {
 
 void TrayService::startWithWatcherDetection() {
   m_dbusProxy = sdbus::createProxy(m_bus.connection(), kDbusName, kDbusPath);
-  m_dbusProxy->uponSignal("NameOwnerChanged")
-      .onInterface(kDbusInterface)
-      .call([this](const std::string& name, const std::string& old_owner, const std::string& new_owner) {
+  // Items live under unique names and org.kde.StatusNotifierItem-<pid>-<n>: no namespace covers both.
+  m_ownerWatch = NameOwnerWatch::all(
+      m_bus.connection(),
+      [this](const std::string& name, const std::string& old_owner, const std::string& new_owner) {
         if (name == std::string{kWatcherBusName}) {
           if (m_watcherRole == WatcherRole::Client) {
             if (old_owner.empty() && !new_owner.empty()) {
@@ -593,7 +594,8 @@ void TrayService::startWithWatcherDetection() {
         if (!old_owner.empty() && new_owner.empty()) {
           removeItemsForBusName(name);
         }
-      });
+      }
+  );
 
   const bool useClientMode = externalWatcherHasOwner();
   if (useClientMode) {

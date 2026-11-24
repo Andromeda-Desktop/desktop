@@ -2,6 +2,7 @@
 
 #include "link_model.h"
 #include "mirror_decoder.h"
+#include "dbus/name_owner_watch.h"
 
 #include <cstdint>
 #include <functional>
@@ -187,7 +188,7 @@ namespace linkapp {
     SessionBus& m_bus;
     std::unique_ptr<sdbus::IProxy> m_proxy;
     std::unique_ptr<sdbus::IProxy> m_fileManager;
-    std::unique_ptr<sdbus::IProxy> m_busWatch;
+    NameOwnerWatch m_busWatch;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::function<void()> m_changed;
     struct Upload;

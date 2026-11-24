@@ -19,9 +19,6 @@ namespace {
   constexpr auto kSessionInterface = "org.freedesktop.impl.portal.Session";
   constexpr std::uint32_t kVersion = 1;
   constexpr auto kFrontendName = "org.freedesktop.portal.Desktop";
-  constexpr auto kFrontendOwnerRule =
-      "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',"
-      "interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.portal.Desktop'";
   // The compositor raises a protocol error, which ends the shell, past these limits (dsk_global_shortcuts_session_v1).
   constexpr std::size_t kMaxShortcuts = 64;
   constexpr std::size_t kMaxText = 256;
@@ -57,19 +54,14 @@ GlobalShortcutsPortal::GlobalShortcutsPortal(SessionBus& bus, GlobalShortcutsBac
   m_dbus = sdbus::createProxy(
       m_bus.connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
   );
-  m_frontendWatch = m_bus.connection().addMatch(
-      kFrontendOwnerRule,
-      [this](sdbus::Message message) {
-        std::string name;
-        std::string oldOwner;
-        std::string newOwner;
-        message >> name >> oldOwner >> newOwner;
+  m_frontendWatch = NameOwnerWatch::changes(
+      m_bus.connection(), kFrontendName,
+      [this](const std::string& /*name*/, const std::string& oldOwner, const std::string& /*newOwner*/) {
         // Every session belongs to the frontend that created it; a gained owner (D-Bus activation) has none yet.
         if (!oldOwner.empty()) {
           closeAll();
         }
-      },
-      sdbus::return_slot
+      }
   );
 
   auto createSession = sdbus::registerMethod("CreateSession")

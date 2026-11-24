@@ -1,4 +1,6 @@
 #include "dbus/system_bus.h"
+
+#include "dbus/name_owner_watch.h"
 #include "protocols/bus_names.h"
 
 #include "core/log.h"
@@ -41,15 +43,7 @@ SystemBus::SystemBus() {
 
 sdbus::IConnection::PollData SystemBus::getPollData() const { return m_connection->getEventLoopPollData(); }
 
-bool SystemBus::nameHasOwner(std::string_view name) const {
-  auto proxy = sdbus::createProxy(*m_connection, kDbusName, kDbusPath);
-  bool hasOwner = false;
-  proxy->callMethod("NameHasOwner")
-      .onInterface(kDbusInterface)
-      .withArguments(std::string{name})
-      .storeResultsTo(hasOwner);
-  return hasOwner;
-}
+bool SystemBus::nameHasOwner(std::string_view name) const { return ::nameHasOwner(*m_connection, std::string{name}); }
 
 // Directed signals reach a handler even when another peer sent them, so callers check the sender here.
 bool SystemBus::isNameOwner(std::string_view name, std::string_view sender) const {

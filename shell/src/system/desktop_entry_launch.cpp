@@ -4,6 +4,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/shared_worker.h"
+#include "dbus/name_owner_watch.h"
 #include "core/process/process.h"
 #include "system/desktop_entry.h"
 #include "system/terminal_launch.h"
@@ -311,9 +312,9 @@ namespace {
       m_dbus = sdbus::createProxy(
           *m_connection, sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
       );
-      m_dbus->uponSignal("NameOwnerChanged")
-          .onInterface(busname::kDaemon)
-          .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
+      m_ownerWatch = NameOwnerWatch::all(
+          *m_connection,
+          [this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
             if (name.starts_with(':')) {
               return;
             }
@@ -323,7 +324,8 @@ namespace {
             } else {
               m_owned.insert(name);
             }
-          });
+          }
+      );
       m_connection->enterEventLoopAsync();
       std::vector<std::string> names;
       m_dbus->callMethod("ListNames").onInterface(busname::kDaemon).storeResultsTo(names);
@@ -340,6 +342,7 @@ namespace {
     std::map<std::string, std::unique_ptr<sdbus::IProxy>> m_apps;
     std::mutex m_mutex;
     std::set<std::string> m_owned;
+    NameOwnerWatch m_ownerWatch;
   };
 
   // A running D-Bus-activatable app takes the launch over the bus, with no new process; otherwise `exec` runs on the

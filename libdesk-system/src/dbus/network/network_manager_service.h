@@ -2,6 +2,7 @@
 
 #include "core/timer_manager.h"
 #include "dbus/network/inetwork_service.h"
+#include "dbus/name_owner_watch.h"
 
 #include <chrono>
 #include <cstdint>
@@ -143,7 +144,7 @@ private:
   struct PendingAccessPointActivation;
 
   SystemBus& m_bus;
-  std::unique_ptr<sdbus::IProxy> m_busDaemon; // NameOwnerChanged watch for NetworkManager.
+  NameOwnerWatch m_nmOwner;
   std::unique_ptr<sdbus::IProxy> m_nm;
   std::unique_ptr<sdbus::IProxy> m_system1Network; // NetworkManager writes go through org.andromeda.System1.
   std::unique_ptr<sdbus::IProxy> m_activeConnection;

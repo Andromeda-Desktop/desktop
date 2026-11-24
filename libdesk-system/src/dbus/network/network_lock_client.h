@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dbus/network/network_types.h"
+#include "dbus/name_owner_watch.h"
 
 #include <functional>
 #include <map>
@@ -36,7 +37,7 @@ private:
   void notify();
 
   SystemBus& m_bus;
-  sdbus::Slot m_ownerMatch;
+  NameOwnerWatch m_ownerMatch;
   std::unique_ptr<sdbus::IProxy> m_nm;
   std::unique_ptr<sdbus::IProxy> m_active;
   std::unique_ptr<sdbus::IProxy> m_accessPoint;

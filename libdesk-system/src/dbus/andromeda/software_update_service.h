@@ -2,6 +2,7 @@
 
 #include "core/timer_manager.h"
 #include "dbus/andromeda/update_run.h"
+#include "dbus/name_owner_watch.h"
 
 #include <cstdint>
 #include <functional>
@@ -106,7 +107,7 @@ private:
   SystemBus* m_system = nullptr;
   std::unique_ptr<sdbus::IProxy> m_update;
   std::unique_ptr<sdbus::IProxy> m_helper;
-  std::unique_ptr<sdbus::IProxy> m_busDaemon;
+  NameOwnerWatch m_helperOwner;
   std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);
   std::function<void()> m_changeCallback;
 

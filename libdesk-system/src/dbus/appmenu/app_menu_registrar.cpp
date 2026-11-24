@@ -1,5 +1,4 @@
 #include "dbus/appmenu/app_menu_registrar.h"
-#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -15,9 +14,6 @@ namespace {
   const sdbus::ServiceName kBusName{"com.canonical.AppMenu.Registrar"};
   const sdbus::ObjectPath kObjectPath{"/com/canonical/AppMenu/Registrar"};
   constexpr auto kInterface = "com.canonical.AppMenu.Registrar";
-  const sdbus::ServiceName kDbusName{busname::kDaemon};
-  const sdbus::ObjectPath kDbusPath{busname::kDaemonPath};
-  constexpr auto kDbusInterface = busname::kDaemon;
 
 } // namespace
 
@@ -66,10 +62,9 @@ AppMenuRegistrar::AppMenuRegistrar(SessionBus& bus) : m_bus(bus) {
       )
       .forInterface(kInterface);
   // A client that exits without UnregisterWindow leaves no menu behind.
-  m_dbus = sdbus::createProxy(m_bus.connection(), kDbusName, kDbusPath);
-  m_dbus->uponSignal("NameOwnerChanged")
-      .onInterface(kDbusInterface)
-      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
+  m_ownerWatch = NameOwnerWatch::all(
+      m_bus.connection(),
+      [this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
         if (!newOwner.empty() || !name.starts_with(':')) {
           return;
         }
@@ -83,7 +78,8 @@ AppMenuRegistrar::AppMenuRegistrar(SessionBus& bus) : m_bus(bus) {
         if (removed != 0) {
           notifyChanged();
         }
-      });
+      }
+  );
   m_bus.connection().requestName(kBusName);
   kLog.info("serving {}", static_cast<const std::string&>(kBusName));
 }

@@ -2,6 +2,7 @@
 
 #include "auth/face_auth_machine.h"
 #include "core/timer_manager.h"
+#include "dbus/name_owner_watch.h"
 
 #include <cstdint>
 #include <functional>
@@ -68,7 +69,7 @@ private:
   SystemBus& m_bus;
   std::string m_user;
   std::unique_ptr<sdbus::IProxy> m_gaze;
-  std::unique_ptr<sdbus::IProxy> m_dbus;
+  NameOwnerWatch m_gazeOwner;
 
   AuthenticatedCallback m_onAuthenticated;
   StatusCallback m_onStatus;

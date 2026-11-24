@@ -1,5 +1,4 @@
 #include "auth/fingerprint_authenticator.h"
-#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -64,25 +63,18 @@ namespace {
 using fingerprint_auth::Phase;
 
 FingerprintAuthenticator::FingerprintAuthenticator(SystemBus& bus) : m_bus(bus) {
-  try {
-    m_busDaemon = sdbus::createProxy(
-        m_bus.connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
-    );
-    m_busDaemon->uponSignal("NameOwnerChanged")
-        .onInterface(busname::kDaemon)
-        .call([this](const std::string& name, const std::string& oldOwner, const std::string& /*newOwner*/) {
-          if (name != kFprintBusName || oldOwner.empty()) {
-            return;
-          }
-          kLog.info("fprintd left the bus; claiming the fingerprint device again");
-          m_device.reset();
-          setAvailable(false);
-          run(m_machine.serviceLost());
-        });
-  } catch (const sdbus::Error& e) {
-    kLog.debug("could not monitor fprintd restarts: {}", e.what());
-    m_busDaemon.reset();
-  }
+  m_fprintOwner = NameOwnerWatch::changes(
+      m_bus.connection(), kFprintBusName,
+      [this](const std::string& /*name*/, const std::string& oldOwner, const std::string& /*newOwner*/) {
+        if (oldOwner.empty()) {
+          return;
+        }
+        kLog.info("fprintd left the bus; claiming the fingerprint device again");
+        m_device.reset();
+        setAvailable(false);
+        run(m_machine.serviceLost());
+      }
+  );
 }
 
 FingerprintAuthenticator::~FingerprintAuthenticator() { stop(); }

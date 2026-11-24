@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbus/name_owner_watch.h"
+
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -34,7 +36,7 @@ public:
 private:
   SessionBus& m_bus;
   std::unique_ptr<sdbus::IObject> m_object;
-  std::unique_ptr<sdbus::IProxy> m_dbus;
+  NameOwnerWatch m_ownerWatch;
   // X11 window id -> (service, menu object path).
   std::map<std::uint32_t, std::pair<std::string, std::string>> m_menus;
   std::function<void()> m_changed;

@@ -7,6 +7,7 @@
 #include <poll.h>
 #include <string>
 #include <vector>
+#include "dbus/name_owner_watch.h"
 
 class SystemBus;
 
@@ -87,6 +88,6 @@ private:
   struct Impl;
   std::unique_ptr<Impl> m_impl;
   SystemBus& m_bus;
-  std::unique_ptr<sdbus::IProxy> m_dbus;
+  NameOwnerWatch m_gazeOwner;
   std::unique_ptr<sdbus::IProxy> m_gaze;
 };

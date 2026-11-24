@@ -1542,9 +1542,9 @@ void MprisService::syncSignals(const std::optional<MprisPlayerInfo>& previousAct
 }
 
 void MprisService::registerBusSignals() {
-  m_dbusProxy->uponSignal("NameOwnerChanged")
-      .onInterface(kDbusInterface)
-      .call([this](const std::string& name, const std::string& old_owner, const std::string& new_owner) {
+  m_ownerWatch = NameOwnerWatch::prefix(
+      m_bus.connection(), "org.mpris.MediaPlayer2",
+      [this](const std::string& name, const std::string& old_owner, const std::string& new_owner) {
         if (!is_mpris_bus_name(name)) {
           return;
         }
@@ -1562,7 +1562,8 @@ void MprisService::registerBusSignals() {
         }
 
         addOrRefreshPlayer(name);
-      });
+      }
+  );
 }
 
 void MprisService::discoverPlayers() {

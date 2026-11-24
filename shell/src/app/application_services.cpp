@@ -437,43 +437,31 @@ void Application::syncNotificationDaemon() {
 }
 
 void Application::installNotificationBusNameWatch() {
-  if (m_notificationBusNameWatchInstalled || m_bus == nullptr) {
+  if (m_notificationBusNameWatch || m_bus == nullptr) {
     return;
   }
 
-  m_notificationBusNameWatchProxy = sdbus::createProxy(
-      m_bus->connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
-  );
-  m_notificationBusNameWatchProxy->uponSignal("NameOwnerChanged")
-      .onInterface(busname::kDaemon)
-      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& /*newOwner*/) {
-        if (name != notification_dbus::kFreedesktopNotificationsBusName) {
-          return;
-        }
+  m_notificationBusNameWatch = NameOwnerWatch::changes(
+      m_bus->connection(), notification_dbus::kFreedesktopNotificationsBusName,
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& /*newOwner*/) {
         DeferredCall::callLater([this] {
           if (m_notificationDaemonMode == NotificationDaemonMode::Failed) {
             m_notificationDaemonMode = NotificationDaemonMode::Unset;
           }
           syncNotificationDaemon();
         });
-      });
-  m_notificationBusNameWatchInstalled = true;
+      }
+  );
 }
 
 void Application::installSecretServiceNameWatch() {
-  if (m_secretServiceNameWatchInstalled || m_bus == nullptr) {
+  if (m_secretServiceNameWatch || m_bus == nullptr) {
     return;
   }
 
-  m_secretServiceNameWatchProxy = sdbus::createProxy(
-      m_bus->connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
-  );
-  m_secretServiceNameWatchProxy->uponSignal("NameOwnerChanged")
-      .onInterface(busname::kDaemon)
-      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
-        if (name != kSecretServiceBusName) {
-          return;
-        }
+  m_secretServiceNameWatch = NameOwnerWatch::changes(
+      m_bus->connection(), std::string{kSecretServiceBusName},
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
         if (m_secretServiceCollectionProbe != nullptr) {
           m_secretServiceCollectionProbe->invalidate();
         }
@@ -493,18 +481,13 @@ void Application::installSecretServiceNameWatch() {
             onSecretServiceCollectionChanged();
           }
         });
-      });
-  m_secretServiceNameWatchInstalled = true;
+      }
+  );
 
   // The provider may have claimed the name between our first lookup and this watch. Consumers are
   // still opening at this point, so their change callbacks drive the actual retry.
   try {
-    bool hasOwner = false;
-    m_secretServiceNameWatchProxy->callMethod("NameHasOwner")
-        .onInterface(busname::kDaemon)
-        .withArguments(std::string{kSecretServiceBusName})
-        .storeResultsTo(hasOwner);
-    m_secretServiceOwned = hasOwner;
+    m_secretServiceOwned = nameHasOwner(m_bus->connection(), std::string{kSecretServiceBusName});
   } catch (const sdbus::Error& e) {
     kLog.debug("secret service NameHasOwner failed: {}", e.what());
   }

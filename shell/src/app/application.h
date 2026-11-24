@@ -78,6 +78,7 @@
 #include "shell/activity/activity_window.h"
 #include "shell/wallpaper/wallpaper_window.h"
 #include "system/container_service.h"
+#include "dbus/name_owner_watch.h"
 #include "system/activity_actions.h"
 #include "system/ambient_brightness.h"
 #include "system/activity_monitor.h"
@@ -492,10 +493,8 @@ private:
   std::unique_ptr<KeyboardBacklightService> m_keyboardBacklightService;
   std::unique_ptr<TrayService> m_trayService;
   std::unique_ptr<NotificationDBusHost> m_notificationDbus;
-  std::unique_ptr<sdbus::IProxy> m_notificationBusNameWatchProxy;
-  bool m_notificationBusNameWatchInstalled = false;
-  std::unique_ptr<sdbus::IProxy> m_secretServiceNameWatchProxy;
-  bool m_secretServiceNameWatchInstalled = false;
+  NameOwnerWatch m_notificationBusNameWatch;
+  NameOwnerWatch m_secretServiceNameWatch;
   std::unique_ptr<sdbus::IProxy> m_secretServiceCollectionWatchProxy;
   std::unique_ptr<SecretCollectionProbe> m_secretServiceCollectionProbe;
   bool m_secretServiceCollectionWatchInstalled = false;

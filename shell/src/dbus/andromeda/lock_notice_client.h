@@ -1,6 +1,7 @@
 #pragma once
 
 #include "shell/lockscreen/lock_notice_groups.h"
+#include "dbus/name_owner_watch.h"
 
 #include <functional>
 #include <memory>
@@ -26,7 +27,7 @@ private:
   void refresh();
   void store(std::vector<LockNoticeGroup> groups);
 
-  sdbus::Slot m_ownerMatch;
+  NameOwnerWatch m_ownerMatch;
   std::unique_ptr<sdbus::IProxy> m_shell;
   std::vector<LockNoticeGroup> m_groups;
   std::function<void()> m_changeCallback;

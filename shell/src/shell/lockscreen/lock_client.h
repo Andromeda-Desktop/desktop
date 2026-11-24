@@ -8,6 +8,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include "dbus/name_owner_watch.h"
 
 class SessionBus;
 
@@ -214,7 +215,7 @@ private:
   void sendLock(const std::string& reason);
   void call(const char* method);
 
-  std::unique_ptr<sdbus::IProxy> m_daemon;
+  NameOwnerWatch m_lockOwner;
   std::unique_ptr<sdbus::IProxy> m_lock;
   LockClientState m_state;
   std::vector<std::function<void()>> m_whenResolved;

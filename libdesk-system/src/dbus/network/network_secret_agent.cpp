@@ -1,9 +1,9 @@
 #include "dbus/network/network_secret_agent.h"
-#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "core/timer_manager.h"
 #include "dbus/system_bus.h"
+#include "dbus/name_owner_watch.h"
 
 #include <cstdint>
 #include <map>
@@ -33,9 +33,6 @@ namespace {
   const sdbus::ServiceName kNmBusName{"org.freedesktop.NetworkManager"};
   const sdbus::ObjectPath kAgentManagerObjectPath{"/org/freedesktop/NetworkManager/AgentManager"};
   constexpr auto kAgentManagerInterface = "org.freedesktop.NetworkManager.AgentManager";
-  const sdbus::ServiceName kDbusBusName{busname::kDaemon};
-  const sdbus::ObjectPath kDbusObjectPath{busname::kDaemonPath};
-  constexpr auto kDbusInterface = busname::kDaemon;
 
   constexpr std::uint32_t kNmSecretAgentGetSecretsFlagAllowInteraction = 0x1;
 
@@ -67,7 +64,7 @@ namespace {
 struct NetworkSecretAgent::Impl {
   SystemBus& bus;
   std::unique_ptr<sdbus::IObject> object;
-  std::unique_ptr<sdbus::IProxy> nameWatcher;
+  NameOwnerWatch nmOwner;
   // Owns the pending Register call: destroying it cancels the reply.
   std::unique_ptr<sdbus::IProxy> agentManager;
   bool registered = false;
@@ -213,29 +210,23 @@ NetworkSecretAgent::NetworkSecretAgent(SystemBus& bus) : m_impl(std::make_unique
       )
       .forInterface(kAgentInterface);
 
-  m_impl->nameWatcher = sdbus::createProxy(bus.connection(), kDbusBusName, kDbusObjectPath);
-  m_impl->nameWatcher->uponSignal("NameOwnerChanged")
-      .onInterface(kDbusInterface)
-      .call([this](const std::string& name, const std::string& oldOwner, const std::string& newOwner) {
-        if (name != kNmBusName || (oldOwner.empty() && !newOwner.empty() && m_impl->registered)) {
-          return;
-        }
+  m_impl->nmOwner = NameOwnerWatch::name(
+      bus.connection(), kNmBusName,
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
         m_impl->registered = false;
         m_impl->cancelPending("NetworkManager owner changed");
         if (!newOwner.empty()) {
           m_impl->registerAgent();
         }
-      });
-  if (bus.nameHasOwner(kNmBusName)) {
-    m_impl->registerAgent();
-  }
+      }
+  );
 }
 
 NetworkSecretAgent::~NetworkSecretAgent() {
   if (m_impl == nullptr) {
     return;
   }
-  m_impl->nameWatcher.reset();
+  m_impl->nmOwner = {};
   m_impl->cancelPending("agent shutting down");
   if (!m_impl->registered) {
     return;

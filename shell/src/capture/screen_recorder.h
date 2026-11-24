@@ -2,6 +2,7 @@
 
 #include "capture/screencopy_capture.h"
 #include "core/poll_source.h"
+#include "dbus/name_owner_watch.h"
 
 #include <chrono>
 #include <cstdint>
@@ -79,7 +80,7 @@ private:
   NotificationManager& m_notifications;
   std::unique_ptr<sdbus::IProxy> m_portal;
   std::unique_ptr<sdbus::IProxy> m_request;
-  sdbus::Slot m_portalOwnerWatch;
+  NameOwnerWatch m_portalOwnerWatch;
   std::string m_sessionHandle;
   std::string m_restoreToken;
   std::uint64_t m_tokenSeq = 0;

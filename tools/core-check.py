@@ -93,6 +93,10 @@ RULES = {
                       r"\"org\.freedesktop\.login1[\".]",
                       ("libdesk-system/src/dbus/logind/logind_service.", "compositor/src/server/sleep_watch.cpp",
                        "shell/src/greeter/", "apps/files/src/vaults.cpp")),
+    "owner-watch": ("bus name owners are followed through NameOwnerWatch (libdesk-system dbus/name_owner_watch.h) "
+                    "(C13); the compositor has no libdesk-system and keeps its sd-bus matches",
+                    CPP_DIRS, CPP, r"uponSignal\(\"NameOwnerChanged\"\)|member='NameOwnerChanged'",
+                    ("libdesk-system/src/dbus/name_owner_watch.", "compositor/src/")),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
                        ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",

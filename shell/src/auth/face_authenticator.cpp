@@ -1,5 +1,4 @@
 #include "auth/face_authenticator.h"
-#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -24,10 +23,6 @@ namespace {
   constexpr auto kGazeInterface = "com.gundulabs.Gaze";
   // gazed classifies any service it does not know as a screen lock: no confirmation, lock-screen start delay.
   constexpr auto kPamService = "andromeda-lock";
-
-  const sdbus::ServiceName kDbusBusName{busname::kDaemon};
-  const sdbus::ObjectPath kDbusPath{busname::kDaemonPath};
-  constexpr auto kDbusInterface = busname::kDaemon;
 
 
   constexpr auto kRetryDelay = std::chrono::milliseconds(500);
@@ -74,19 +69,14 @@ namespace {
 } // namespace
 
 FaceAuthenticator::FaceAuthenticator(SystemBus& bus, std::string user) : m_bus(bus), m_user(std::move(user)) {
-  try {
-    m_dbus = sdbus::createProxy(m_bus.connection(), kDbusBusName, kDbusPath);
-    m_dbus->uponSignal("NameOwnerChanged")
-        .onInterface(kDbusInterface)
-        .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
-          if (name == kGazeBusName && newOwner.empty()) {
-            handleDaemonGone();
-          }
-        });
-  } catch (const sdbus::Error& e) {
-    kLog.debug("could not watch gazed ownership: {}", e.what());
-    m_dbus.reset();
-  }
+  m_gazeOwner = NameOwnerWatch::changes(
+      m_bus.connection(), kGazeBusName,
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (newOwner.empty()) {
+          handleDaemonGone();
+        }
+      }
+  );
 }
 
 FaceAuthenticator::~FaceAuthenticator() { stop(); }

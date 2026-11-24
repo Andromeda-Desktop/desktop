@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dbus/link/link_phone_state.h"
+#include "dbus/name_owner_watch.h"
 
 #include <functional>
 #include <memory>
@@ -26,7 +27,7 @@ private:
   void refresh();
   void notify();
 
-  std::unique_ptr<sdbus::IProxy> m_daemon;
+  NameOwnerWatch m_linkOwner;
   std::unique_ptr<sdbus::IProxy> m_link;
   std::function<void()> m_changeCallback;
 };

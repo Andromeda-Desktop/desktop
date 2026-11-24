@@ -1,5 +1,4 @@
 #include "dbus/link/link_lock_client.h"
-#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -17,9 +16,6 @@ namespace {
   const sdbus::ServiceName kLinkBusName{"org.andromeda.Link1"};
   const sdbus::ObjectPath kLinkPath{"/org/andromeda/Link1"};
   constexpr auto kLinkInterface = "org.andromeda.Link1";
-  const sdbus::ServiceName kDaemonBusName{busname::kDaemon};
-  const sdbus::ObjectPath kDaemonPath{busname::kDaemonPath};
-  constexpr auto kDaemonInterface = busname::kDaemon;
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
 
   using VariantMap = std::map<std::string, sdbus::Variant>;
@@ -32,20 +28,17 @@ namespace {
 } // namespace
 
 LinkLockClient::LinkLockClient(SessionBus& bus) {
-  m_daemon = sdbus::createProxy(bus.connection(), kDaemonBusName, kDaemonPath);
-  m_daemon->uponSignal("NameOwnerChanged")
-      .onInterface(kDaemonInterface)
-      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
-        if (name != kLinkBusName) {
-          return;
-        }
+  m_linkOwner = NameOwnerWatch::name(
+      bus.connection(), kLinkBusName,
+      [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
         clearPhoneState();
         m_call.reset();
         notify();
         if (!newOwner.empty()) {
           refresh();
         }
-      });
+      }
+  );
 
   m_link = sdbus::createProxy(bus.connection(), kLinkBusName, kLinkPath);
   m_link->uponSignal("PropertiesChanged")
@@ -74,15 +67,6 @@ LinkLockClient::LinkLockClient(SessionBus& bus) {
             ) {
         applyCall(deviceId, state, number, name, app);
         notify();
-      });
-
-  m_daemon->callMethodAsync("NameHasOwner")
-      .onInterface(kDaemonInterface)
-      .withArguments(std::string{kLinkBusName})
-      .uponReplyInvoke([this](std::optional<sdbus::Error> error, bool owned) {
-        if (!error.has_value() && owned) {
-          refresh();
-        }
       });
 }
 
