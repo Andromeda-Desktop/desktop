@@ -15,6 +15,20 @@ extern "C" {
 
 namespace andromeda {
 
+  ShadowStyle shadowStyle(const Tokens::Elevation& elevation) {
+    const auto round = [](double v) { return static_cast<int>(std::lround(v)); };
+    return ShadowStyle{
+        .softness = round(elevation.keyBlur),
+        .offsetX = 0,
+        .offsetY = round(elevation.keyY),
+        .opacity = {.light = static_cast<float>(elevation.keyLight), .dark = static_cast<float>(elevation.keyDark)},
+        .contactSoftness = round(elevation.contactBlur),
+        .contactOffsetY = round(elevation.contactY),
+        .contactOpacity = {.light = static_cast<float>(elevation.contactLight),
+                           .dark = static_cast<float>(elevation.contactDark)},
+    };
+  }
+
   void SurfaceShadow::update(
       wlr_scene_tree* parent, int contentWidth, int contentHeight, int borderTotal, int cornerRadius, int topExtension,
       int originX, int originY

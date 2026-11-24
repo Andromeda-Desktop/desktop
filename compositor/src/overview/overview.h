@@ -10,6 +10,7 @@
 #include "overview/style.h"
 #include "scene/hint_rect.h"
 #include "scene/surface_blur.h"
+#include "scene/surface_shadow.h"
 #include "util/listener.h"
 #include "util/tracked.h"
 #include "view/chrome_attachment.h"
@@ -344,7 +345,8 @@ namespace andromeda {
       // Spaces: the current workspace's frame under its windows (wallpaper mirror and glass tint); hidden otherwise.
       WorkspaceBackground frame;
       // The frame's shadow (below it) and its edge hairline (in a tree at the frame origin, above its wallpaper).
-      wlr_scene_shadow* frameShadow = nullptr;
+      wlr_scene_tree* frameShadowTree = nullptr;
+      SurfaceShadow frameShadow;
       wlr_scene_border* frameRim = nullptr;
       std::vector<std::unique_ptr<Card>> cards;
       std::vector<std::unique_ptr<DesktopSurface>> desktop;

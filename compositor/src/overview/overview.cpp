@@ -722,8 +722,8 @@ namespace andromeda {
     if (state.frame.tree != nullptr) {
       wlr_scene_node_set_enabled(&state.frame.tree->node, framed);
     }
-    if (state.frameShadow != nullptr) {
-      wlr_scene_node_set_enabled(&state.frameShadow->node, framed);
+    if (!framed) {
+      state.frameShadow.hide();
     }
     if (framed) {
       const wlr_box& box = *state.mainBox;
@@ -740,22 +740,9 @@ namespace andromeda {
         return std::array<float, 4>{channel(24), channel(16), channel(8), channel(0)};
       };
       const float fade = static_cast<float>(std::clamp(m_progress, 0.0, 1.0));
-      if (state.frameShadow != nullptr) {
-        // E2 (0 6 16): the nearest elevation to the mockup's 0 8 24 .28; the hole keeps it out of the translucent frame.
-        const auto& e2 = Tokens::elevationE2;
-        const int sigma = static_cast<int>(std::lround(e2.keyBlur / 2.0F));
-        const int offsetY = static_cast<int>(std::lround(e2.keyY));
-        wlr_scene_node_set_position(&state.frameShadow->node, box.x - sigma, box.y - sigma + offsetY);
-        wlr_scene_shadow_set_size(state.frameShadow, box.width + 2 * sigma, box.height + 2 * sigma);
-        wlr_scene_shadow_set_blur_sigma(state.frameShadow, static_cast<float>(sigma));
-        wlr_scene_shadow_set_corner_radius(state.frameShadow, radius);
-        std::array<float, 4> shadow{};
-        premultiplied(shadow.data(), color(scheme.shadow | 0xFFU), (light ? e2.keyLight : e2.keyDark) * fade);
-        wlr_scene_shadow_set_color(state.frameShadow, shadow.data());
-        wlr_scene_shadow_set_clipped_region(
-            state.frameShadow,
-            clipped_region{.area = {sigma, sigma - offsetY, box.width, box.height}, .corners = corner_radii_all(radius)}
-        );
+      if (state.frameShadowTree != nullptr) {
+        state.frameShadow.setAlpha(fade);
+        state.frameShadow.update(state.frameShadowTree, box.width, box.height, 0, radius, 0, box.x, box.y);
       }
       if (state.frameRim != nullptr) {
         wlr_scene_node_raise_to_top(&state.frameRim->node.parent->node);

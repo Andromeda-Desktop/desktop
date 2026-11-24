@@ -110,10 +110,7 @@ settings-control shell/src/shell/settings/settings_window_popups.cpp 1
 settings-control shell/src/shell/settings/settings_window_scene.cpp 1
 settings-control shell/src/shell/settings/widget_add_popup.cpp 1
 shadow-create compositor/src/overview/overview.cpp 1
-shadow-create compositor/src/overview/overview_cards.cpp 1
-shadow-create compositor/src/scene/glass_panel.cpp 1
 shadow-create compositor/src/scene/hint_rect.cpp 1
-shadow-create compositor/src/view/snap_assist.cpp 1
 shell-string apps/terminal/src/terminal_window.cpp 1
 shell-string portal/src/dbus/request.cpp 1
 shell-timer shell/src/shell/live_activity/live_activity_island.cpp 2

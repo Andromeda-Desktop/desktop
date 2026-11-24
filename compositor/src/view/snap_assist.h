@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/animation.h"
+#include "scene/surface_shadow.h"
 #include "util/listener.h"
 #include "util/tracked.h"
 #include "view/snap.h"
@@ -102,7 +103,8 @@ namespace andromeda {
     Server& m_server;
     wlr_scene_tree* m_tree = nullptr;
     std::unique_ptr<GlassPanel> m_scrim;
-    wlr_scene_shadow* m_lensShadow = nullptr;
+    wlr_scene_tree* m_lensShadowTree = nullptr; // between the scrim and the lens
+    SurfaceShadow m_lensShadow;
     wlr_scene_rect* m_lens = nullptr;
     std::uint64_t m_iconListener = 0;
     SnapAssistMode<Picture> m_mode;
@@ -119,7 +121,6 @@ namespace andromeda {
     // Opacity of the whole assist: in on fade, out on fade_out (rulebook 7.3: fade alone for a frame that does not move).
     AnimatedValue m_fade{0.0};
     std::array<float, 4> m_lensColor{};
-    std::array<float, 4> m_lensShadowColor{};
     wlr_output* m_output = nullptr;
     wlr_box m_box{};
     SnapZone m_zone;

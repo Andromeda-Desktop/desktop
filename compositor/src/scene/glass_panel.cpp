@@ -22,7 +22,6 @@ namespace andromeda {
       return;
     }
     const float clear[4]{};
-    m_shadow = wlr_scene_shadow_create(m_tree, 1, 1, 0, 1.0F, clear);
     m_tint = wlr_scene_rect_create(m_tree, 1, 1, clear);
     m_hairline = wlr_scene_rect_create(m_tree, 1, 1, clear);
   }
@@ -50,6 +49,7 @@ namespace andromeda {
     if (m_blur.pollBackdrop(&luminance)) {
       const bool light = config().appearance.scheme == ColorScheme::Light;
       const float target = glass::adaptDensity(light, light ? luminance.darkest : luminance.brightest);
+      m_shadow.setBackdropLuminance(luminance.mean);
       // Jitter inside the deadband is ignored, as on shell glass, so the panel does not pulse over video.
       if (std::abs(target - m_densityTarget) > glass::kAdaptDeadband || target == 0.0F || target == 1.0F) {
         m_densityTarget = target;
@@ -67,7 +67,7 @@ namespace andromeda {
   }
 
   void GlassPanel::place(const wlr_box& box, int radius, float opacity) {
-    if (m_tree == nullptr || m_shadow == nullptr || m_tint == nullptr || m_hairline == nullptr) {
+    if (m_tree == nullptr || m_tint == nullptr || m_hairline == nullptr) {
       return;
     }
     m_box = box;
@@ -86,21 +86,15 @@ namespace andromeda {
       return color;
     };
 
-    // E2 for a shape, E3 for a popover; the hole keeps it from showing through the translucent glass.
-    const auto& e3 = shape ? Tokens::elevationE2 : Tokens::elevationE3;
-    const int sigma = static_cast<int>(std::lround(e3.keyBlur / 2.0F));
-    const int offsetY = static_cast<int>(std::lround(e3.keyY));
-    wlr_scene_node_set_enabled(&m_shadow->node, !m_useScrim);
-    wlr_scene_node_set_position(&m_shadow->node, box.x - sigma, box.y - sigma + offsetY);
-    wlr_scene_shadow_set_size(m_shadow, box.width + 2 * sigma, box.height + 2 * sigma);
-    wlr_scene_shadow_set_blur_sigma(m_shadow, static_cast<float>(sigma));
-    wlr_scene_shadow_set_corner_radius(m_shadow, radius);
-    wlr_scene_shadow_set_color(m_shadow, faded(rgba(scheme.shadow | 0xFFU, light ? e3.keyLight : e3.keyDark)).data());
+    // E2 for a shape, E3 for a popover; a scrim has none.
+    if (m_useScrim) {
+      m_shadow.hide();
+    } else {
+      m_shadow.setStyle(shadowStyle(shape ? Tokens::elevationE2 : Tokens::elevationE3));
+      m_shadow.setAlpha(opacity);
+      m_shadow.update(m_tree, box.width, box.height, 0, radius, 0, box.x, box.y);
+    }
     const fx_corner_radii corners = corner_radii_new(radius, radius, radius, radius);
-    wlr_scene_shadow_set_clipped_region(
-        m_shadow,
-        clipped_region{.area = {sigma, sigma - offsetY, box.width, box.height}, .corners = corners}
-    );
 
     m_blur.setLiquid(m_useScrim ? 0.0F : material.level);
     m_blur.setRim(m_useScrim ? 0.0F : material.rim);

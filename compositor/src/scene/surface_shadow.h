@@ -1,5 +1,7 @@
 #pragma once
 
+#include "design_tokens.h"
+
 #include <array>
 #include <optional>
 
@@ -32,6 +34,9 @@ namespace andromeda {
     int contactOffsetY = 0;
     ShadowOpacity contactOpacity; // 0 in both schemes draws no contact shadow
   };
+
+  // One elevation token as a style: softness is the token's CSS blur radius (the shader halves it into a sigma).
+  [[nodiscard]] ShadowStyle shadowStyle(const Tokens::Elevation& elevation);
 
   // Owns the desired-state logic for one SceneFX drop-shadow node. The node is a
   // child of the owner's scene tree and freed by scene-tree teardown (no destructor).

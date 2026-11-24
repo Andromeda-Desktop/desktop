@@ -132,7 +132,8 @@ namespace andromeda {
       wlr_scene_node_set_enabled(&m_tree->node, false);
       m_scrim = std::make_unique<GlassPanel>(m_tree, glass::Kind::Sheet);
       const float clear[4]{};
-      m_lensShadow = wlr_scene_shadow_create(m_tree, 1, 1, 0, 1.0F, clear);
+      m_lensShadowTree = wlr_scene_tree_create(m_tree);
+      m_lensShadow.setStyle(shadowStyle(Tokens::elevationE1));
       m_lens = wlr_scene_rect_create(m_tree, 1, 1, clear);
     }
     m_server.registerAnimatable(this);
@@ -238,9 +239,7 @@ namespace andromeda {
     if (m_lens != nullptr) {
       wlr_scene_rect_set_color(m_lens, faded(m_lensColor).data());
     }
-    if (m_lensShadow != nullptr) {
-      wlr_scene_shadow_set_color(m_lensShadow, faded(m_lensShadowColor).data());
-    }
+    m_lensShadow.setAlpha(opacity);
     for (const auto& card : cards()) {
       if (card->frame != nullptr) {
         card->frame->setAlpha(opacity);
@@ -270,7 +269,7 @@ namespace andromeda {
       wlr_scene_node_destroy(&picture.content->node);
     }
     picture.content = wlr_scene_tree_create(m_tree);
-    if (picture.content == nullptr || m_lens == nullptr || m_lensShadow == nullptr) {
+    if (picture.content == nullptr || m_lens == nullptr || m_lensShadowTree == nullptr) {
       return;
     }
     const auto& colors = scheme();
@@ -377,11 +376,6 @@ namespace andromeda {
     // Rulebook 6 lens behind the current card: white 92 % light / 14 % dark with E1.
     m_lensColor = premultiplied(colors.lens);
     wlr_scene_rect_set_corner_radius(m_lens, kLensRadius);
-    const auto& e1 = Tokens::elevationE1;
-    const auto shadow = premultiplied((colors.shadow & ~0xFFU) | static_cast<std::uint32_t>(std::lround(
-                                          (light ? e1.keyLight : e1.keyDark) * 255.0F
-                                      )));
-    m_lensShadowColor = shadow;
     if (m_lit >= picture.cards.size()) {
       m_lit = 0;
     }
@@ -469,13 +463,13 @@ namespace andromeda {
   }
 
   void SnapAssist::placeLens() {
-    if (m_lens == nullptr || m_lensShadow == nullptr) {
+    if (m_lens == nullptr || m_lensShadowTree == nullptr) {
       return;
     }
     const bool show = m_mode.open() && m_lit < cards().size();
     wlr_scene_node_set_enabled(&m_lens->node, show);
-    wlr_scene_node_set_enabled(&m_lensShadow->node, show);
     if (!show) {
+      m_lensShadow.hide();
       return;
     }
     const int x = static_cast<int>(std::lround(m_lensBox[0].current()));
@@ -484,13 +478,7 @@ namespace andromeda {
     const int h = std::max(1, static_cast<int>(std::lround(m_lensBox[3].current())) - y);
     wlr_scene_node_set_position(&m_lens->node, x, y);
     wlr_scene_rect_set_size(m_lens, w, h);
-    const auto& e1 = Tokens::elevationE1;
-    const int sigma = std::max(1, static_cast<int>(std::lround(e1.keyBlur / 2.0F)));
-    const int offsetY = static_cast<int>(std::lround(e1.keyY));
-    wlr_scene_node_set_position(&m_lensShadow->node, x - sigma, y - sigma + offsetY);
-    wlr_scene_shadow_set_size(m_lensShadow, w + 2 * sigma, h + 2 * sigma);
-    wlr_scene_shadow_set_blur_sigma(m_lensShadow, static_cast<float>(sigma));
-    wlr_scene_shadow_set_corner_radius(m_lensShadow, kLensRadius);
+    m_lensShadow.update(m_lensShadowTree, w, h, 0, kLensRadius, 0, x, y);
   }
 
   bool SnapAssist::tickAnimations(double nowMsec) {

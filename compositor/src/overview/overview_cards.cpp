@@ -540,9 +540,11 @@ namespace andromeda {
       state->frame = createWorkspaceBackground(*state);
       if (state->frame.tree != nullptr) {
         const std::array<float, 4> clear{};
-        state->frameShadow = wlr_scene_shadow_create(state->tree, 0, 0, 0, 0.0F, clear.data());
-        if (state->frameShadow != nullptr) {
-          wlr_scene_node_place_below(&state->frameShadow->node, &state->frame.tree->node);
+        state->frameShadowTree = wlr_scene_tree_create(state->tree);
+        if (state->frameShadowTree != nullptr) {
+          wlr_scene_node_place_below(&state->frameShadowTree->node, &state->frame.tree->node);
+          // E2: the nearest elevation to the mockup's 0 8 24 .28.
+          state->frameShadow.setStyle(shadowStyle(Tokens::elevationE2));
         }
         if (wlr_scene_tree* rimTree = wlr_scene_tree_create(state->frame.tree)) {
           state->frameRim = wlr_scene_border_create(rimTree, clear.data(), clear.data());

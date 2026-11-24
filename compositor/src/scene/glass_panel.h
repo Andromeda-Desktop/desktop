@@ -2,6 +2,7 @@
 
 #include "protocols/glass_material.h"
 #include "scene/surface_blur.h"
+#include "scene/surface_shadow.h"
 
 #include <array>
 
@@ -10,7 +11,6 @@ extern "C" {
 }
 
 struct wlr_scene_rect;
-struct wlr_scene_shadow;
 struct wlr_scene_tree;
 
 namespace andromeda {
@@ -36,7 +36,7 @@ namespace andromeda {
 
   private:
     wlr_scene_tree* m_tree = nullptr;
-    wlr_scene_shadow* m_shadow = nullptr;
+    SurfaceShadow m_shadow;
     SurfaceBlur m_blur;
     wlr_scene_rect* m_tint = nullptr;
     wlr_scene_rect* m_hairline = nullptr;
