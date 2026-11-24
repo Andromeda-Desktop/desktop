@@ -1563,6 +1563,7 @@ void Application::initWidgetControllersAndCallbacks() {
     m_configService.setThemeMode(scheme == "light" ? ThemeMode::Light : ThemeMode::Dark);
   });
   m_liveAppearance.setOnBatch([this](const SettingsControl& compositor) {
+    m_configService.seedScalesFromCompositor([&compositor](std::string_view key) { return compositor.value(key); });
     m_configService.moveLegacyAnimationSettings(
         [&compositor](std::string_view key) { return compositor.value(key); }, compositor.lastFailure(),
         [this](const std::string& key, const std::string& value) { m_liveAppearance.set(key, value); }

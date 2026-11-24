@@ -13,6 +13,8 @@
 #include "util/string_utils.h"
 
 #include <algorithm>
+#include <charconv>
+#include <cmath>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -1918,6 +1920,37 @@ void ConfigService::moveLegacyAnimationSettings(
   }
   m_legacyAnimationMove = Move::Finished;
   (void)clearOverride({"shell", "animation"});
+}
+
+void ConfigService::seedScalesFromCompositor(const std::function<std::string(std::string_view key)>& value) {
+  if (m_scaleSeed == ScaleSeed::Done) {
+    return;
+  }
+  m_scaleSeed = ScaleSeed::Done;
+  std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> seeds;
+  const auto seed = [&](bool set, std::string_view compositorKey, const noctalia::config::schema::Range<float>& range,
+                        float current, std::vector<std::string> path) {
+    if (set) {
+      return;
+    }
+    const std::string text = value(compositorKey);
+    float parsed = 0.0F;
+    const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), parsed);
+    if (ec != std::errc{} || end != text.data() + text.size() || !std::isfinite(parsed)) {
+      return;
+    }
+    const float clamped = noctalia::config::schema::applyRange(parsed, range);
+    if (std::abs(clamped - current) > 1.0e-4F) {
+      seeds.emplace_back(std::move(path), static_cast<double>(clamped));
+    }
+  };
+  seed(m_scaleKeysSet.uiScale, "appearance.ui_scale", noctalia::config::schema::kUiScaleRange, m_config.accessibility.uiScale,
+       {"accessibility", "ui_scale"});
+  seed(m_scaleKeysSet.cornerScale, "appearance.corner_scale", noctalia::config::schema::kCornerRadiusScaleRange,
+       m_config.shell.cornerRadiusScale, {"shell", "corner_radius_scale"});
+  if (!seeds.empty() && setOverrides(seeds)) {
+    kLog.info("config: took {} scale value(s) from the compositor settings into the shell config", seeds.size());
+  }
 }
 
 bool ConfigService::resetBarLaneOverride(const std::vector<std::string>& lanePath, bool* changed) {

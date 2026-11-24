@@ -78,6 +78,8 @@ namespace andromeda {
   // managedSettingKeys() and the settings file. An empty value (monostate) restores the default.
   [[nodiscard]] std::span<const std::string_view> volatileSettingKeys();
   [[nodiscard]] bool isVolatileSetting(std::string_view key);
+  // A mirror of a shell key: only the shell's runtime layer writes it (AR6).
+  [[nodiscard]] bool isShellMirrorSetting(std::string_view key);
   void setVolatileSetting(std::string_view key, const ManagedSettingValue& value);
 
   // Layer values that sit above the settings file, as TOML merged over it on every config load. Never persisted.

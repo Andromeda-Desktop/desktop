@@ -35,6 +35,12 @@ if "$DESKTOP" settings-set general.autostart x > /dev/null 2>&1; then
   echo "a key outside the managed set was accepted"
   exit 1
 fi
+for mirror in appearance.ui_scale appearance.corner_scale; do
+  if "$DESKTOP" settings-set "$mirror" 1.25 > /dev/null 2>&1; then
+    echo "$mirror mirrors the shell key, yet a base set was accepted"
+    exit 1
+  fi
+done
 
 "$DESKTOP" settings-set appearance.border_width 0
 expect_setting "appearance.border_width=0 customized"

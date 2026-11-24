@@ -166,6 +166,10 @@ namespace andromeda {
       reject(parsed.error);
       return;
     }
+    if (isShellMirrorSetting(key)) {
+      reject(std::format("{} mirrors the shell setting; change the shell's scale instead", key));
+      return;
+    }
     if (isVolatileSetting(key)) {
       if (wl_resource_get_version(resource) < 2) {
         reject(std::format("{} needs version 2 of the protocol", key));

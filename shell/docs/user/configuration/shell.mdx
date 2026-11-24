@@ -462,6 +462,7 @@ high_contrast         = false           # enable high contrast mode for visually
 ```
 
 - `ui_scale` is completely separate from `bar.scale` and `[widget.*].scale`: bar scale settings only affect bar widget content; `ui_scale` covers the control center, launcher, clipboard, and other non-bar surfaces. Neither changes Wayland output / HiDPI buffer scale.
+- `ui_scale` and `[shell] corner_radius_scale` are the only scale settings you edit. The compositor keys `appearance.ui_scale` and `appearance.corner_scale` mirror them and refuse a direct change. When a shell key is unset at the first start, it takes the compositor value once.
 - `high_contrast` increases visibility and contrast by ensuring pure black backgrounds and high visibility borders for visually impaired users. It forces the `pure_black_dark` override under the hood for dark themes.
 
 ---

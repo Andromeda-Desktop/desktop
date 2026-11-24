@@ -1696,6 +1696,10 @@ void ConfigService::loadAll() {
       kLog.warn("config validation error: {}", e.what());
     }
   }
+  m_scaleKeysSet = {
+      .uiScale = static_cast<bool>(merged.at_path("accessibility.ui_scale")),
+      .cornerScale = static_cast<bool>(merged.at_path("shell.corner_radius_scale")),
+  };
   if (semanticError.empty()) {
     try {
       parseConfigTable(merged, nextConfig, true, false);

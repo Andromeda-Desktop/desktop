@@ -1252,6 +1252,7 @@ if build_tests
     'clipboard_service',
     'clipboard_storage_permissions',
     'config_animation_move',
+    'config_scale_seed',
     'config_migration',
     'config_override_mutation',
     'config_path_resolution',

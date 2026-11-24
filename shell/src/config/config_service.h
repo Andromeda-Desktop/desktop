@@ -202,6 +202,11 @@ public:
       const std::function<std::string(std::string_view key)>& value, std::string_view failure,
       const std::function<void(const std::string& key, const std::string& value)>& set
   );
+  // The shell keys accessibility.ui_scale and shell.corner_radius_scale are the only user scale keys; the compositor's
+  // appearance.ui_scale and corner_scale mirror them. Call it on every compositor settings batch: on the first one,
+  // before the shell's own layer reaches the compositor, a shell key that no config file sets takes the compositor's
+  // value, clamped to the shell range.
+  void seedScalesFromCompositor(const std::function<std::string(std::string_view key)>& value);
   bool clearOverrides(const std::vector<std::vector<std::string>>& paths, bool* changed);
   bool renameOverrideTable(const std::vector<std::string>& oldPath, const std::vector<std::string>& newPath);
 
@@ -296,6 +301,15 @@ private:
   std::unordered_map<std::string, std::string> m_monitorWallpaperPaths;
   std::vector<WallpaperFavorite> m_wallpaperFavorites;
   mutable std::unordered_map<std::string, bool> m_effectiveOverrideCache;
+
+  enum class ScaleSeed : std::uint8_t { Pending, Done };
+  ScaleSeed m_scaleSeed = ScaleSeed::Pending;
+  // Whether the loaded config (files and overrides) sets each shell scale key.
+  struct ScaleKeysSet {
+    bool uiScale = true;
+    bool cornerScale = true;
+  };
+  ScaleKeysSet m_scaleKeysSet;
 
   enum class LegacyAnimationMove : std::uint8_t { NotStarted, Waiting, Finished };
   LegacyAnimationMove m_legacyAnimationMove = LegacyAnimationMove::NotStarted;

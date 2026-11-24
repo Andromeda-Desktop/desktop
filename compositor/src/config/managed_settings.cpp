@@ -134,6 +134,7 @@ namespace andromeda {
       std::span<const std::string_view> choices{};
       std::string (*get)(const Config&) = nullptr;
       bool isVolatile = false; // applied and sent to subscribers, never written to the settings file
+      bool shellMirror = false; // the shell's runtime layer writes it; a base set is refused (AR6)
     };
 
     // Every entry maps to a key the config reader accepts; the ranges repeat the reader's own.
@@ -383,8 +384,8 @@ namespace andromeda {
         Spec{"appearance.border_width", Kind::Int, 0, 100, {}, [](const Config& c) { return text(c.appearance.borderWidth); }},
         Spec{"appearance.outer_border_width", Kind::Int, 0, 100, {}, [](const Config& c) { return text(c.appearance.outerBorderWidth); }},
         Spec{"appearance.corner_radius", Kind::Int, 0, 100, {}, [](const Config& c) { return text(c.appearance.cornerRadius); }},
-        Spec{"appearance.corner_scale", Kind::Real, 0.0, 2.0, {}, [](const Config& c) { return text(c.appearance.cornerScale); }},
-        Spec{"appearance.ui_scale", Kind::Real, 0.5, 2.0, {}, [](const Config& c) { return text(c.appearance.uiScale); }},
+        Spec{"appearance.corner_scale", Kind::Real, 0.0, 2.0, {}, [](const Config& c) { return text(c.appearance.cornerScale); }, false, true},
+        Spec{"appearance.ui_scale", Kind::Real, 0.5, 2.0, {}, [](const Config& c) { return text(c.appearance.uiScale); }, false, true},
         Spec{"appearance.title_bar.mode", Kind::Choice, 0, 0, kTitleBarModes, [](const Config& c) {
                return text(c.appearance.titleBar.mode);
              }},
@@ -624,6 +625,11 @@ namespace andromeda {
   bool isVolatileSetting(std::string_view key) {
     const Spec* spec = findSpec(key);
     return spec != nullptr && spec->isVolatile;
+  }
+
+  bool isShellMirrorSetting(std::string_view key) {
+    const Spec* spec = findSpec(key);
+    return spec != nullptr && spec->shellMirror;
   }
 
   void setVolatileSetting(std::string_view key, const ManagedSettingValue& value) {

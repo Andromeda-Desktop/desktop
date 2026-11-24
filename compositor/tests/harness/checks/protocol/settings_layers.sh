@@ -67,6 +67,19 @@ expect_setting "appearance.border_width=3 customized"
 expect_notified "appearance.border_width=3 customized"
 never_saved '= 7'
 
+"$D" layer-hold style appearance.ui_scale 1.25 > "$LOG/hold" &
+HOLDER=$!
+for _ in $(seq 40); do
+  grep -q '^ready' "$LOG/hold" && break
+  sleep 0.1
+done
+grep -q '^ready' "$LOG/hold" || { echo "the style layer could not set the appearance.ui_scale mirror"; exit 1; }
+expect_setting "appearance.ui_scale=1.25"
+never_saved 'ui_scale'
+kill "$HOLDER"
+wait "$HOLDER" 2> /dev/null || true
+HOLDER=
+
 expect_setting "power.on_battery=false"
 "$D" settings-set power.on_battery true
 expect_setting "power.on_battery=true"
