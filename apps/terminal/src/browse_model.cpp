@@ -24,7 +24,7 @@ namespace term::browse {
     constexpr std::uint32_t kPageDown = 0xff56;
     constexpr std::uint32_t kEnd = 0xff57;
     constexpr std::ptrdiff_t kPage = 10;
-    constexpr float kNameBonus = 1000.0F;
+    constexpr float kNameBonus = 4096.0F; // above any FuzzyMatch score (1024 exact)
 
     bool enter(const Key& key) { return key.sym == kReturn || key.sym == kKpEnter; }
 

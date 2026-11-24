@@ -110,14 +110,6 @@ else
 endif
 _system_deps += [egl_dep, gles2_dep]
 
-# ── Vendored: fzy matcher ─────────────────────────────────────────────────────
-_fzy_lib = static_library('fzy',
-  'third_party/fzy/src/match.c',
-  c_args: ['-Wno-pedantic', '-Wno-conversion'],
-  override_options: ['warning_level=0'],
-)
-_fzy_inc = include_directories('third_party/fzy/src', is_system: true)
-
 _protocol_sources = []
 _protocol_headers = []
 # ── Wayland client protocols the toolkit binds ────────────────────────────────
@@ -418,8 +410,7 @@ desk_ui_lib = static_library('desk_ui',
   sources: _desk_ui_sources + _sys_sources + (is_wayland ? _wayland_sources : _cocoa_sources) + _protocol_sources
     + _protocol_headers,
   dependencies: _system_deps,
-  include_directories: _desk_ui_inc + [_fzy_inc],
-  link_with: _fzy_lib,
+  include_directories: _desk_ui_inc,
   cpp_args: [
     '-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow',
     # paths::assetsRoot() looks for the installed noctalia asset bundle (fonts, translations).
@@ -432,7 +423,7 @@ desk_ui_lib = static_library('desk_ui',
 )
 
 desk_ui_dep = declare_dependency(
-  link_with: [desk_ui_lib, _fzy_lib],
+  link_with: desk_ui_lib,
   dependencies: _system_deps,
   include_directories: _desk_ui_inc,
   sources: _protocol_headers,

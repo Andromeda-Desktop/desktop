@@ -17,9 +17,11 @@ Files: compositor/andromedafx/*
 Copyright: Drew DeVault, Jari Vetoniemi
 License: Expat
 
-Files: libdesk-ui/third_party/fzy/*
+Files: libdesk-ui/third_party/fzy/* libdesk-ui/src/util/fuzzy_match.cpp
 Copyright: John Hawthorn
-License: Expat
+           2026 The Andromeda authors
+License: GPL-3.0+ and Expat
+Comment: fuzzy_match.cpp ports the fzy scorer to UTF-8 codepoints; fzy's notice is third_party/fzy/LICENSE.
 
 Files: libdesk-ui/third_party/wuffs/* greeter/third_party/wuffs/*
 Copyright: The Wuffs Authors

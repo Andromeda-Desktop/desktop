@@ -166,4 +166,4 @@ Desktop widgets live under `src/shell/desktop/` and do not use the bar `Widget` 
 
 ## Launcher
 
-Results dispatch activation only to the provider that produced them. Fuzzy scoring uses the vendored `third_party/fzy`. Desktop entry scanning follows XDG data-dir precedence.
+Results dispatch activation only to the provider that produced them. Fuzzy scoring uses libdesk-ui `FuzzyMatch` (fzy ported to UTF-8 codepoints). Desktop entry scanning follows XDG data-dir precedence.

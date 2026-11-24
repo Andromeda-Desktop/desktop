@@ -99,8 +99,7 @@ endif
 _ui_sp = subproject('libdesk-ui')
 _system_sp = subproject('libdesk-system')
 desk_shared_lib = shared_library('andromeda-desk',
-  link_whole: [desk_app_lib, _system_sp.get_variable('desk_system_lib'), _ui_sp.get_variable('desk_ui_lib'),
-    _ui_sp.get_variable('_fzy_lib')],
+  link_whole: [desk_app_lib, _system_sp.get_variable('desk_system_lib'), _ui_sp.get_variable('desk_ui_lib')],
   dependencies: _deps,
   link_args: '-Wl,-Bsymbolic-functions',
   install: true,
