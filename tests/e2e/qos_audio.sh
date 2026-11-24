@@ -16,9 +16,11 @@ UNIT=app-qos-audio-$$.scope
 # The compositor reaches the real user manager and the shell the real PipeWire through these links.
 ln -s "$REAL/bus" "$RUNTIME/bus"
 ln -s "$REAL/pipewire-0" "$RUNTIME/pipewire-0"
-# On AC (an empty power-supply dir): a hidden silent app stops at T2.
-mkdir -p "$RUNTIME/power"
-export ANDROMEDA_QOS_TEST_DELAYS_MS=1000,1500 ANDROMEDA_QOS_TEST_POWER_SUPPLY=$RUNTIME/power
+# On battery (Balanced): a hidden silent app goes to T2 after 1 s; on mains it stays T1. T3 waits 60 s.
+mkdir -p "$RUNTIME/power/BAT0"
+echo Battery > "$RUNTIME/power/BAT0/type"
+echo Discharging > "$RUNTIME/power/BAT0/status"
+export ANDROMEDA_QOS_TEST_DELAYS_MS=1000,60000 ANDROMEDA_QOS_TEST_POWER_SUPPLY=$RUNTIME/power
 trap 'systemctl --user stop "$UNIT" 2>/dev/null; kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null; rm_runtime' EXIT
 boot_headless 1
 
