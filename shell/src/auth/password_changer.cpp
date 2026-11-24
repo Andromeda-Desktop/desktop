@@ -1,6 +1,7 @@
 #include "auth/password_changer.h"
 
 #include "core/log.h"
+#include "core/sys/sys.h"
 
 #include <algorithm>
 #include <cctype>
@@ -169,6 +170,7 @@ namespace password_change {
         return {.message = std::strerror(errno)};
       }
       if (pid == 0) {
+        sys::resetChildSignals();
         ::execve("/usr/bin/passwd", argv, envp.data());
         ::execve("/bin/passwd", argv, envp.data());
         ::_exit(127);

@@ -30,11 +30,6 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <vector>
-#include <thread>
-#include <sys/wait.h>
-#include <spawn.h>
-
-extern char** environ;
 
 namespace sys {
 
@@ -243,27 +238,6 @@ namespace sys {
     std::error_code ec;
     std::string path = std::filesystem::read_symlink("/proc/self/exe", ec).string();
     return ec ? std::string() : path;
-  }
-
-  bool spawnDetached(const std::string& program, const std::vector<std::string>& args) {
-    std::vector<char*> argv{const_cast<char*>(program.c_str())};
-    for (const std::string& arg : args) argv.push_back(const_cast<char*>(arg.c_str()));
-    argv.push_back(nullptr);
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    for (const int fd : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
-      posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", fd == STDIN_FILENO ? O_RDONLY : O_WRONLY, 0);
-    }
-    posix_spawnattr_t attr;
-    posix_spawnattr_init(&attr);
-    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID);
-    pid_t pid = -1;
-    const int rc = ::posix_spawn(&pid, program.c_str(), &actions, &attr, argv.data(), environ);
-    posix_spawnattr_destroy(&attr);
-    posix_spawn_file_actions_destroy(&actions);
-    if (rc != 0) return false;
-    std::thread([pid] { ::waitpid(pid, nullptr, 0); }).detach();
-    return true;
   }
 
   std::string userRuntimeDir() {

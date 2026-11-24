@@ -15,6 +15,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 
 #ifndef ANDROMEDA_AGENTD_PATH
@@ -44,6 +45,7 @@ namespace term::agent {
   namespace {
 
     constexpr std::size_t kStderrTail = 4096;
+    constexpr int kTermGraceMs = 3000;
     constexpr std::int64_t kSessionIdSpan = std::int64_t{1} << 32;
 
     enum class Wait : std::uint8_t { Ready, Exited, Stopped };
@@ -138,12 +140,20 @@ namespace term::agent {
         thread->join();
       }
     }
-    // The reader stopped without reaping: an agent that takes its time over SIGTERM is reaped off this thread.
+    // The reader stopped without reaping: the pool gives the agent kTermGraceMs to obey SIGTERM, then kills its group.
     if (m_pid > 0 && ::waitpid(m_pid, nullptr, WNOHANG) == 0) {
-      std::thread([pid = m_pid] {
+      BlockingPool::instance().run([pid = m_pid] {
+        const int exitFd = sys::childExitFd(pid);
+        pollfd exited{exitFd, POLLIN, 0};
+        if (exitFd < 0 || ::poll(&exited, 1, kTermGraceMs) != 1) {
+          ::kill(-pid, SIGKILL);
+        }
+        if (exitFd >= 0) {
+          ::close(exitFd);
+        }
         while (::waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {
         }
-      }).detach();
+      });
     }
   }
 
@@ -251,6 +261,7 @@ namespace term::agent {
     posix_spawnattr_init(&attr);
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
     posix_spawnattr_setpgroup(&attr, 0);
+    sys::resetChildSignals(&attr);
     pid_t pid = -1;
     const int rc = program.empty() ? ENOENT : posix_spawn(&pid, program.c_str(), &actions, &attr, argv.data(), envp.data());
     posix_spawnattr_destroy(&attr);

@@ -385,6 +385,7 @@ _sys_sources = host_machine.system() == 'darwin' \
       'src/core/freedesktop_thumbnails_none.cpp', 'src/a11y/a11y_roots_none.cpp') \
   : files('src/core/sys/sys_linux.cpp', 'src/core/files/directory_watcher.cpp', 'src/core/freedesktop_thumbnails.cpp',
       'src/a11y/atspi_bridge.cpp', 'src/ui/app_icon.cpp')
+_sys_sources += files('src/core/sys/sys_posix.cpp')
 
 # The Wayland backend, and code that still calls Linux-only APIs: `just macos-check` builds everything else.
 _wayland_sources = files(

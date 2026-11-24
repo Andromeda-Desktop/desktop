@@ -7,12 +7,14 @@
 #include <string>
 #include <vector>
 #include <string_view>
+#include <spawn.h>
 
 struct msghdr;
 struct stat;
 struct winsize;
 
-// The OS layer: portable code reaches Linux- or macOS-only calls only through these (sys_linux.cpp, sys_macos.cpp).
+// The OS layer: portable code reaches Linux- or macOS-only calls only through these (sys_linux.cpp, sys_macos.cpp;
+// sys_posix.cpp holds the calls both share).
 namespace sys {
 
   // Names the calling thread; Linux keeps the first 15 bytes.
@@ -75,8 +77,16 @@ namespace sys {
   [[nodiscard]] std::string executablePath();
   // An andromeda-appd child runs the app from a library: executablePath() returns this path, not the zygote's.
   void setExecutablePath(std::string path);
-  // Starts program in a new session with stdio on /dev/null so it outlives the caller; a thread reaps it.
+  // Starts program in a new session with stdio on /dev/null so it outlives the caller. A double fork makes it no
+  // child of the caller, so nothing reaps it here. False when the exec fails.
   [[nodiscard]] bool spawnDetached(const std::string& program, const std::vector<std::string>& args);
+  // Between fork and exec: every signal back to SIG_DFL and an empty mask, so the parent's ignored (SIGPIPE) and
+  // blocked signals never reach the program. Async-signal-safe.
+  void resetChildSignals();
+  // The same through posix_spawn attributes; keeps the flags already set on attr.
+  void resetChildSignals(posix_spawnattr_t* attr);
+  // Once at process start: a write to a closed pipe or socket fails with EPIPE instead of ending the process.
+  void ignoreSigpipe();
   // The user's private directory for sockets: XDG_RUNTIME_DIR on Linux (empty when unset), the per-user temp dir
   // on macOS. No trailing slash.
   [[nodiscard]] std::string userRuntimeDir();

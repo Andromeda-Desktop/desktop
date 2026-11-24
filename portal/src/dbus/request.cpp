@@ -122,6 +122,8 @@ namespace xdpu {
       }
 
       if (pid == 0) {
+        // The portal ignores SIGPIPE; the command starts with the default.
+        std::signal(SIGPIPE, SIG_DFL);
         ::dup2(stdinPipe[0], STDIN_FILENO);
         ::dup2(stdoutPipe[1], STDOUT_FILENO);
         closeFd(stdinPipe[0]);

@@ -1,4 +1,5 @@
 #include "core/process/app_zygote.h"
+#include "core/sys/sys.h"
 
 #include <dlfcn.h>
 #include <glib.h>
@@ -130,9 +131,7 @@ namespace process::zygote {
       if (pid == 0) {
         close(listener);
         close(conn);
-        struct sigaction dfl{};
-        dfl.sa_handler = SIG_DFL;
-        sigaction(SIGCHLD, &dfl, nullptr);
+        sys::resetChildSignals();
         setsid();
         if (!request->workingDir.empty() && chdir(request->workingDir.c_str()) != 0) {
           std::perror("zygote: chdir");

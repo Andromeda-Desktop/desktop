@@ -57,7 +57,16 @@ namespace andromeda::index {
         posix_spawn_file_actions_adddup2(&actions, fromChild[1], STDOUT_FILENO);
         const std::string path = helper.string();
         char* argv[] = {const_cast<char*>(path.c_str()), nullptr};
-        const bool started = posix_spawn(&m_pid, path.c_str(), &actions, nullptr, argv, environ) == 0;
+        // The indexer ignores SIGPIPE; the extractor starts with the default.
+        posix_spawnattr_t attr;
+        posix_spawnattr_init(&attr);
+        sigset_t pipeSignal;
+        sigemptyset(&pipeSignal);
+        sigaddset(&pipeSignal, SIGPIPE);
+        posix_spawnattr_setsigdefault(&attr, &pipeSignal);
+        posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSIGDEF);
+        const bool started = posix_spawn(&m_pid, path.c_str(), &actions, &attr, argv, environ) == 0;
+        posix_spawnattr_destroy(&attr);
         posix_spawn_file_actions_destroy(&actions);
         close(toChild[0]);
         close(fromChild[1]);

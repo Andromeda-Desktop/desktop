@@ -213,10 +213,7 @@ bool PtySession::spawnLocal(const SpawnOptions& o) {
     ::setenv("TERM_PROGRAM", "andromeda-terminal", 1);
     for (const auto& kv : o.env) ::putenv(const_cast<char*>(kv.c_str()));
     // An app started from a script inherits ignored SIGINT/SIGQUIT; the shell must start with defaults.
-    for (int sig = 1; sig < NSIG; ++sig) ::signal(sig, SIG_DFL);
-    sigset_t none;
-    sigemptyset(&none);
-    sigprocmask(SIG_SETMASK, &none, nullptr);
+    sys::resetChildSignals();
     ::execvp(argv[0], argv.data());
     _exit(127);
   }

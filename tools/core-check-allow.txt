@@ -96,8 +96,8 @@ raw-spawn compositor/src/server/server.cpp 2
 raw-spawn indexer/src/content_worker.cpp 1
 raw-spawn libdesk-system/src/dbus/polkit/polkit_agent.cpp 1
 raw-spawn libdesk-ui/src/core/log.cpp 1
-raw-spawn libdesk-ui/src/core/sys/sys_linux.cpp 1
-raw-spawn libdesk-ui/src/core/sys/sys_macos.cpp 2
+raw-spawn libdesk-ui/src/core/sys/sys_macos.cpp 1
+raw-spawn libdesk-ui/src/core/sys/sys_posix.cpp 2
 raw-spawn portal/src/dbus/request.cpp 1
 raw-spawn shell/src/app/shell_main.cpp 1
 raw-spawn shell/src/auth/pam_authenticator.cpp 1
@@ -184,6 +184,3 @@ sync-image shell/src/shell/settings/settings_window_input.cpp 1
 sync-image shell/src/shell/setup_wizard/setup_wizard_panel.cpp 3
 sync-image shell/src/shell/switcher/window_switcher_tile.cpp 1
 clipboard-wait shell/src/clipboard/clipboard_service.cpp 1
-thread-detach apps/terminal/src/agent_host.cpp 1
-thread-detach libdesk-ui/src/core/sys/sys_linux.cpp 1
-thread-detach libdesk-ui/src/core/sys/sys_macos.cpp 1

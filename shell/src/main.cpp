@@ -1,3 +1,4 @@
+#include "core/sys/sys.h"
 #include "greeter/greeter_host.h"
 #include "time/time_locale.h"
 
@@ -106,6 +107,7 @@ int main(int argc, char* argv[]) {
     execWithJemalloc(argv);
   }
 #endif
+  sys::ignoreSigpipe();
 #ifdef __GLIBC__
   mallopt(M_ARENA_MAX, 2);
 #endif

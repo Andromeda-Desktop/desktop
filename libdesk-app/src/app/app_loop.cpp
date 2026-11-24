@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "core/sys/sys.h"
 #include "core/timer_manager.h"
 #include "render/core/startup_metrics.h"
 #include "platform/surface.h"
@@ -60,6 +61,7 @@ AppLoop::~AppLoop() = default;
 
 bool AppLoop::initialize(bool sharedGl, const std::string& appId) {
   m_sharedGl = sharedGl;
+  sys::ignoreSigpipe();
   if (!display().connect(std::nullopt)) {
     kLog.error("failed to connect to the Wayland compositor");
     return false;

@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "core/process/app_zygote.h"
 #include "core/process/async_process_manager.h"
+#include "core/sys/sys.h"
 #include "util/string_utils.h"
 
 #include <sdbus-c++/sdbus-c++.h>
@@ -425,6 +426,7 @@ namespace {
     }
 
     if (pid == 0) {
+      sys::resetChildSignals();
       // Lead a new process group so a timeout can signal the whole tree
       // (e.g. checkupdates spawning pacman -Sy), not just the top-level shell.
       ::setpgid(0, 0);
@@ -650,6 +652,7 @@ namespace {
     }
 
     // Grandchild
+    sys::resetChildSignals();
     if (needPid) {
       const pid_t self = ::getpid();
       writePipeOrIgnore(reportPipe[1], &self, sizeof(self));
@@ -1084,6 +1087,7 @@ namespace process {
     }
 
     if (pid == 0) {
+      sys::resetChildSignals();
       if (inSock[0] >= 0) {
         ::dup2(inSock[0], STDIN_FILENO);
       }

@@ -2,6 +2,7 @@
 
 #include "core/lazy_library.h"
 #include "core/log.h"
+#include "core/sys/sys.h"
 #include "i18n/i18n.h"
 
 #include <algorithm>
@@ -406,6 +407,7 @@ PamAuthenticator::Result PamAuthenticator::authenticateCurrentUser(
 
   if (pid == 0) {
     // Keep this path async-signal-safe until execv().
+    sys::resetChildSignals();
     if (::dup2(inPipe[0], STDIN_FILENO) < 0 || ::dup2(outPipe[1], STDOUT_FILENO) < 0) {
       ::_exit(127);
     }

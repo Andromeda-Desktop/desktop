@@ -1,6 +1,7 @@
 #include "shell/lockscreen/lock_helper_process.h"
 
 #include "core/log.h"
+#include "core/sys/sys.h"
 #include "core/toml.h"
 
 #include <array>
@@ -134,6 +135,7 @@ std::vector<int> LockHelperProcess::start(const std::vector<Slot>& slots, const 
   if (pid == 0) {
     // Async-signal-safe until execv. Every fd moves above the target range first: dup2 onto
     // the same number keeps FD_CLOEXEC, and a source may already sit on another target number.
+    sys::resetChildSignals();
     const int startCopy = ::fcntl(startFd, F_DUPFD_CLOEXEC, kScratchFd);
     const int aliveCopy = ::fcntl(alive[0], F_DUPFD_CLOEXEC, kScratchFd);
     std::array<int, kMaxSlots> copies{};

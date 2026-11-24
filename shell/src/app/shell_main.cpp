@@ -224,6 +224,7 @@ namespace {
     }
 
     closeFd(pipeFds[0]);
+    sys::resetChildSignals();
     // Match v4's early daemon boundary, but exec before shell startup so GLib,
     // D-Bus, and polkit start from a normal process image rather than a raw
     // post-fork child.

@@ -1,6 +1,7 @@
 #include "helper_client.h"
 
 #include "core/log.h"
+#include "core/sys/sys.h"
 
 #include <algorithm>
 #include <array>
@@ -117,8 +118,12 @@ namespace preview {
     std::array<char*, 4> argv{
         const_cast<char*>(helper.c_str()), const_cast<char*>(kindArg.c_str()), const_cast<char*>(path.c_str()), nullptr
     };
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    sys::resetChildSignals(&attr);
     pid_t pid = -1;
-    const int rc = posix_spawn(&pid, helper.c_str(), &actions, nullptr, argv.data(), env.data());
+    const int rc = posix_spawn(&pid, helper.c_str(), &actions, &attr, argv.data(), env.data());
+    posix_spawnattr_destroy(&attr);
     posix_spawn_file_actions_destroy(&actions);
     ::close(sv[1]);
     if (rc != 0) {
