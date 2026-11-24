@@ -131,6 +131,12 @@ RULES = {
                   r"==\s*\"(ctrl|control|ctl|shift|alt|option|super|logo|win|meta|mod4|esc|del|enter)\"", ()),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
                        ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
+    "bare-build": ("justfile builds, tests and reconfigures run through tools/build.sh (slots, dir lock); installs "
+                   "use --no-rebuild", ("",), ("justfile",),
+                   r"^(?![^#\n]*tools/(?:build|f7)\.sh)[^#\n]*?(?<![\w/.-])(?:ninja\s+-C|meson\s+(?:setup|compile|test"
+                   r"|install)\b|meson\s+configure\s+\S+\s+[-\"])(?![^\n]*(?:\buninstall\b|--no-rebuild))", ()),
+    "protocol-copy": ("a Wayland protocol XML used by more than one module lives once in protocol/; module protocols/ "
+                      "dirs link to it", ("",), ("/protocols/",), r"", ()),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",
                     ("apps/",), ("meson.build",), r"subproject\('libdesk-ui'|\b_?desk_ui_dep\b", ()),
 }
@@ -178,9 +184,15 @@ def whole_seconds(text, name):
 def scan():
     found = {}
     files = tracked()
+    xml_names = [os.path.basename(p) for p in files if re.match(r"(protocol|[\w-]+/protocols)/[^/]+\.xml$", p)]
     for rule, (_, dirs, suffixes, pattern, owners) in RULES.items():
         rx = re.compile(pattern, re.M)
         for path in files:
+            if rule == "protocol-copy":
+                if path.endswith(".xml") and "/protocols/" in path and not os.path.islink(os.path.join(ROOT, path)) \
+                        and xml_names.count(os.path.basename(path)) > 1:
+                    found[(rule, path)] = 1
+                continue
             if not path.startswith(dirs) or not path.endswith(suffixes) or path.startswith(owners):
                 continue
             text = open(os.path.join(ROOT, path), encoding="utf-8", errors="replace").read()

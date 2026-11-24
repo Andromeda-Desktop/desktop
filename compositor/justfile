@@ -61,11 +61,11 @@ configure m=mode install_prefix=prefix:
         # A build directory rejects an option added since it was configured
         # until Meson re-reads the option file, so regenerate and try again.
         # Subproject options are accepted only by a fresh setup, so a newly forced wrap regenerates the directory.
-        meson setup "build-{{m}}" "${args[@]}" --reconfigure \
-          || { meson setup "build-{{m}}" --reconfigure && meson setup "build-{{m}}" "${args[@]}" --reconfigure; } \
-          || meson setup "build-{{m}}" "${args[@]}" --wipe
+        ../tools/build.sh meson setup "build-{{m}}" "${args[@]}" --reconfigure \
+          || { ../tools/build.sh meson setup "build-{{m}}" --reconfigure && ../tools/build.sh meson setup "build-{{m}}" "${args[@]}" --reconfigure; } \
+          || ../tools/build.sh meson setup "build-{{m}}" "${args[@]}" --wipe
     else
-        meson setup "build-{{m}}" "${args[@]}"
+        ../tools/build.sh meson setup "build-{{m}}" "${args[@]}"
     fi
     ln -sfn "build-{{m}}/compile_commands.json" compile_commands.json
 
@@ -94,11 +94,11 @@ _enable-tests m=mode ipc="no":
         args+=(-Dtest_ipc=enabled)
     fi
     if ((${#args[@]} > 0)); then
-        meson configure "build-{{m}}" "${args[@]}"
+        ../tools/build.sh meson configure "build-{{m}}" "${args[@]}"
     fi
 
 build m=mode: (_ensure-configured m)
-    meson compile -C build-{{m}} andromeda
+    ../tools/build.sh meson compile -C build-{{m}} andromeda
 
 debug: (build "debug")
 
@@ -132,8 +132,8 @@ test m=mode: (_ensure-configured m) (_enable-tests m)
     if [[ "{{m}}" == "asan" ]]; then
         export ASAN_OPTIONS="{{asan-options}}${ASAN_OPTIONS:+:${ASAN_OPTIONS}}"
     fi
-    meson compile -C build-{{m}} unit-tests
-    meson test -C build-{{m}} --print-errorlogs
+    ../tools/build.sh meson compile -C build-{{m}} unit-tests
+    ../tools/build.sh meson test -C build-{{m}} --print-errorlogs
 
 # The andromedafx renderer ownership check needs a real DRM render node, which a
 # container or a headless runner does not have, so it is a tool rather than a
@@ -147,7 +147,7 @@ gpu-test m=mode: (_ensure-configured m) (_enable-tests m)
         echo "no DRM render node under /dev/dri: nothing to check" >&2
         exit 1
     fi
-    ninja -C build-{{m}} andromedafx/andromedafx-renderer-test
+    ../tools/build.sh ninja -C build-{{m}} andromedafx/andromedafx-renderer-test
     ./build-{{m}}/andromedafx/andromedafx-renderer-test "${nodes[@]}"
 
 # Regressions for the GitHub workflow scripts. Pure Python, builds nothing.
@@ -163,7 +163,7 @@ check *filters: (_ensure-configured mode) (_enable-tests mode "yes")
         export ASAN_OPTIONS="{{asan-options}}${ASAN_OPTIONS:+:${ASAN_OPTIONS}}"
     fi
     # Silent unless it fails: the run's own report is the output.
-    if ! build_log=$(meson compile -C build-{{mode}} andromeda harness-clients 2>&1); then
+    if ! build_log=$(../tools/build.sh meson compile -C build-{{mode}} andromeda harness-clients 2>&1); then
         printf '%s\n' "$build_log" >&2
         exit 1
     fi
@@ -177,7 +177,7 @@ check-stress name n="32": (_ensure-configured mode) (_enable-tests mode "yes")
     if [[ "{{mode}}" == "asan" ]]; then
         export ASAN_OPTIONS="{{asan-options}}${ASAN_OPTIONS:+:${ASAN_OPTIONS}}"
     fi
-    if ! build_log=$(meson compile -C build-{{mode}} andromeda harness-clients 2>&1); then
+    if ! build_log=$(../tools/build.sh meson compile -C build-{{mode}} andromeda harness-clients 2>&1); then
         printf '%s\n' "$build_log" >&2
         exit 1
     fi
@@ -227,7 +227,7 @@ format-docs-check: _docs_formatter
 lint *files: (_ensure-configured mode) (_enable-tests mode)
     #!/usr/bin/env bash
     set -euo pipefail
-    meson compile -C build-{{mode}} andromeda unit-tests harness-clients
+    ../tools/build.sh meson compile -C build-{{mode}} andromeda unit-tests harness-clients
     opts=(-quiet -p "build-{{mode}}" -header-filter='\.\./(src|tests)/.*' -warnings-as-errors='*' -extra-arg=-Wno-error)
     if (($# > 0)); then
         exec clang-tidy --use-color "${opts[@]}" "$@"

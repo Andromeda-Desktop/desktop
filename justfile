@@ -76,7 +76,7 @@ phone-state name="now":
 
 # Every E2E script; a failure does not stop the run. Logs and failed.txt go to /tmp/andromeda-e2e.
 e2e: build
-    meson compile -C compositor/build-debug harness-clients
+    tools/build.sh meson compile -C compositor/build-debug harness-clients
     cd compositor && just asan
     rm -f /tmp/andromeda-e2e/failed.txt
     just e2e-run tests/e2e/*.sh
@@ -129,11 +129,11 @@ macos-check:
     set -euo pipefail
     cross=$HOME/.cache/andromeda-mac/cross.ini
     [ -f "$cross" ] || tools/macos/deps.py
-    [ -d libdesk-app/build-macos ] || meson setup libdesk-app/build-macos libdesk-app --cross-file "$cross" -Dplatform=macos
+    [ -d libdesk-app/build-macos ] || tools/build.sh meson setup libdesk-app/build-macos libdesk-app --cross-file "$cross" -Dplatform=macos
     tools/build.sh ninja -C libdesk-app/build-macos
     tools/macos/link-check.sh libdesk-app/build-macos
     tools/build-libghostty.sh macos
-    [ -d apps/terminal/build-macos ] || meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos --buildtype=release
+    [ -d apps/terminal/build-macos ] || tools/build.sh meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos --buildtype=release
     tools/build.sh ninja -C apps/terminal/build-macos
     tools/macos/link-check.sh apps/terminal/build-macos andromeda-terminal libdesk-term/libghostty-vt/prefix-macos/lib/libghostty-vt.dylib
     for crate in ptyd agentd; do cargo check -q --locked --target aarch64-apple-darwin --tests --manifest-path apps/terminal/$crate/Cargo.toml --target-dir /var/tmp/andromeda-macos-cargo; done
@@ -177,7 +177,7 @@ design-reference:
 
 # Live shell loop: the user session runs shell/build-f7/andromeda-shell; each new build-f7 binary (mold link) restarts the shell and captures the screen to /tmp/andromeda-live/last.png.
 dev-live:
-    meson configure shell/build-f7 -Dcpp_link_args=-fuse-ld=mold -Dc_link_args=-fuse-ld=mold -Dbackend_max_links=1
+    tools/build.sh meson configure shell/build-f7 -Dcpp_link_args=-fuse-ld=mold -Dc_link_args=-fuse-ld=mold -Dbackend_max_links=1
     tools/f7.sh andromeda-shell noctalia-calc.so
     mkdir -p ~/.config/systemd/user/andromeda-shell.service.d /tmp/andromeda-live
     printf '[Service]\nEnvironment=ANDROMEDA_DEV_TOKENS=%s/protocol/design-tokens.toml\nExecStart=\nExecStart=%s/shell/build-f7/andromeda-shell\n' "$PWD" "$PWD" > ~/.config/systemd/user/andromeda-shell.service.d/dev-live.conf
@@ -192,8 +192,8 @@ dev-live-off:
 
 # The session compositor runs compositor/build-live/andromeda from the next login. A compositor cannot restart under a live session: rebuild, then log out and in.
 dev-comp:
-    [ -d compositor/build-live ] || meson setup compositor/build-live compositor --buildtype=debugoptimized --prefix=/usr -Dcpp_link_args=-fuse-ld=mold -Dc_link_args=-fuse-ld=mold
-    ninja -C compositor/build-live andromeda
+    [ -d compositor/build-live ] || tools/build.sh meson setup compositor/build-live compositor --buildtype=debugoptimized --prefix=/usr -Dcpp_link_args=-fuse-ld=mold -Dc_link_args=-fuse-ld=mold
+    tools/build.sh ninja -C compositor/build-live andromeda
     # A relink drops the file cap; without it the GPU context is not high priority.
     sudo setcap cap_sys_nice=ep compositor/build-live/andromeda || echo 'run: sudo setcap cap_sys_nice=ep compositor/build-live/andromeda (GPU high priority)'
     mkdir -p ~/.config/systemd/user/andromeda.service.d

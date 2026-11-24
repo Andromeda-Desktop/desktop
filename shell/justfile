@@ -15,16 +15,16 @@ configure m=mode install_prefix=prefix:
     [[ "{{m}}" == "release" ]] && args+=(-Db_lto=true)
     [[ "{{m}}" == "asan"    ]] && args+=(-Db_sanitize=address,undefined)
     if [[ -d "build-{{m}}" ]]; then
-        meson setup "build-{{m}}" "${args[@]}" --prefix "{{install_prefix}}" --reconfigure
+        ../tools/build.sh meson setup "build-{{m}}" "${args[@]}" --prefix "{{install_prefix}}" --reconfigure
     else
-        meson setup "build-{{m}}" "${args[@]}" --prefix "{{install_prefix}}"
+        ../tools/build.sh meson setup "build-{{m}}" "${args[@]}" --prefix "{{install_prefix}}"
     fi
     ln -sfn "build-{{m}}/compile_commands.json" compile_commands.json
 
 build m=mode: (_ensure-configured m)
     # Named targets fail on a dir configured before they existed; regenerate first (no-op when current).
-    ninja -C build-{{m}} build.ninja
-    meson compile -C build-{{m}} andromeda-shell:executable andromeda-shell:shared_module noctalia-calc
+    ../tools/build.sh ninja -C build-{{m}} build.ninja
+    ../tools/build.sh meson compile -C build-{{m}} andromeda-shell:executable andromeda-shell:shared_module noctalia-calc
 
 _ensure-configured m=mode:
     #!/usr/bin/env bash
@@ -40,7 +40,7 @@ _ensure-configured m=mode:
     [[ "$current_cpp_std" != "{{cpp-std}}" ]] && args+=(-Dcpp_std={{cpp-std}})
     [[ "$current_tests" != "auto" ]] && args+=(-Dtests=auto)
     if (( ${#args[@]} > 0 )); then
-        meson configure "build-{{m}}" "${args[@]}"
+        ../tools/build.sh meson configure "build-{{m}}" "${args[@]}"
     fi
 
 run m=mode: (build m)
@@ -51,9 +51,9 @@ test m=mode *args: (_ensure-configured m)
     #!/usr/bin/env bash
     set -euo pipefail
     if [[ "{{m}}" == "release" || "{{m}}" == "asan" ]]; then
-        meson setup "build-{{m}}" -Dtests=enabled --reconfigure >/dev/null
+        ../tools/build.sh meson setup "build-{{m}}" -Dtests=enabled --reconfigure >/dev/null
     fi
-    meson test -C build-{{m}} {{args}}
+    ../tools/build.sh meson test -C build-{{m}} {{args}}
 
 # Regressions for the GitHub workflow scripts. Pure Python, builds nothing.
 test-workflows:
@@ -114,7 +114,7 @@ format-docs-check: _docs_formatter
 _clang_tidy m=mode *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    meson compile -C "build-{{m}}" generated-headers
+    ../tools/build.sh meson compile -C "build-{{m}}" generated-headers
     src_root="$(realpath src)"
     # compile_commands.json stores build-relative paths, so clang-tidy emits header
     # diagnostics as ../src/...; the header-filter must match that form (an absolute

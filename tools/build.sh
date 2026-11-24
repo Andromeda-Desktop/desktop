@@ -25,6 +25,10 @@ args=("$@")
 for ((i = 0; i < ${#args[@]} - 1; i++)); do
   [ "${args[$i]}" = -C ] && dir=$(realpath -m "${args[$((i + 1))]}")
 done
+# meson setup and configure take the build dir as their first argument, not -C.
+if [ "${1:-}" = meson ] && [[ "${2:-}" =~ ^(setup|configure)$ ]] && [[ -n "${3:-}" && "$3" != -* ]]; then
+  dir=$(realpath -m "$3")
+fi
 key=$(printf '%s\0' "$PWD" "$@" | md5sum | cut -c1-16)
 
 # Inner stage: holds the dir lock (if any), skips a covered request, then takes the first free slot.

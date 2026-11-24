@@ -24,9 +24,9 @@ configure m=mode install_prefix=prefix:
         ;;
     esac
     if [[ -d "build-{{m}}" ]]; then
-        meson setup "build-{{m}}" "${args[@]}" --reconfigure
+        ../tools/build.sh meson setup "build-{{m}}" "${args[@]}" --reconfigure
     else
-        meson setup "build-{{m}}" "${args[@]}"
+        ../tools/build.sh meson setup "build-{{m}}" "${args[@]}"
     fi
     ln -sfn "build-{{m}}/compile_commands.json" compile_commands.json
 
@@ -38,7 +38,7 @@ _ensure-configured m=mode:
     fi
 
 build m=mode: (_ensure-configured m)
-    meson compile -C build-{{m}}
+    ../tools/build.sh meson compile -C build-{{m}}
 
 debug: (build "debug")
 
@@ -47,7 +47,7 @@ asan: (build "asan")
 release: (build "release")
 
 install: (build "release")
-    sudo meson install -C build-release
+    sudo meson install --no-rebuild -C build-release
 
 uninstall:
     sudo meson compile -C build-release uninstall
