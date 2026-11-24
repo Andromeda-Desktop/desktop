@@ -8,6 +8,8 @@
 # detached with no way back.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_LEFT=272
 readonly BTN_RIGHT=273
 readonly OUTPUT_W=1280
@@ -20,15 +22,6 @@ pointer() {
 
 spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_count() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for $1 window(s)"
-  return 1
 }
 
 window() {
@@ -65,9 +58,9 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client toggle-keep
-wait_for_count 1
+await_count 1
 spawn_client toggle-wide
-wait_for_count 2
+await_count 2
 "$ANDROMEDA" settle
 
 # Give the window a floating size that differs from its column, so the drop can

@@ -3,6 +3,8 @@
 # of blanking the output for the whole windows_in timeline.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly PEER_CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly IMAGE="$ANDROMEDA_RUNTIME_DIR/fullscreen-open-center.png"
@@ -49,18 +51,6 @@ default_fullscreen = true
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
-wait_for_window() {
-  local title=$1
-  for _ in $(seq 100); do
-    if "$ANDROMEDA" windows --json | jq -e --arg title "$title" '.[] | select(.title == $title)' > /dev/null; then
-      return 0
-    fi
-    sleep 0.025
-  done
-  echo "timed out waiting for $title"
-  return 1
-}
-
 # Bounding box of the opener's red and green columns, which the fade leaves dim early in the timeline. The blue peer
 # never matches.
 opener_bounds() {
@@ -87,7 +77,7 @@ assert_centred() {
 
 FILL_COLOR=0xFF0000FF "$PEER_CLIENT" fullscreen-peer 400 240 \
   > "$ANDROMEDA_RUNTIME_DIR/fullscreen-peer.log" 2>&1 &
-wait_for_window fullscreen-peer
+await_window fullscreen-peer
 "$ANDROMEDA" settle
 
 sed -i 's/^enabled = false # OPEN_ANIMATION$/enabled = true # OPEN_ANIMATION/' "$ANDROMEDA_CONFIG"
@@ -96,7 +86,7 @@ sed -i 's/^enabled = false # OPEN_ANIMATION$/enabled = true # OPEN_ANIMATION/' "
 # Animation time only moves by clock-advance; advancing 3000 ms finishes the 3000 ms opening timeline.
 "$ANDROMEDA" clock-freeze
 "$CLIENT" fullscreen-open 400 240 > "$ANDROMEDA_RUNTIME_DIR/fullscreen-open.log" 2>&1 &
-wait_for_window fullscreen-open
+await_window fullscreen-open
 "$ANDROMEDA" clock-advance 900
 read -r early_x early_y early_w early_h < <(opener_bounds)
 early_blue=$(peer_blue)

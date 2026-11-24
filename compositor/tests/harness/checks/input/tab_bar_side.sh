@@ -3,6 +3,8 @@
 # the slot under it, counted down the bar.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -13,17 +15,6 @@ readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client
 
 spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_windows() {
-  local expected=$1 count=
-  for _ in $(seq 60); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
 }
 
 wait_for_shown() {
@@ -72,11 +63,11 @@ CONFIG
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client tab-a
-wait_for_windows 1
+await_count 1
 spawn_client tab-b
-wait_for_windows 2
+await_count 2
 spawn_client tab-c
-wait_for_windows 3
+await_count 3
 "$ANDROMEDA" settle
 wait_for_shown tab-c
 

@@ -4,6 +4,8 @@
 # be centered there: floating the last column pulls the strip back onto the new last one.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 declare -A CLIENT_PID=()
 
 spawn_titled() {
@@ -12,15 +14,6 @@ spawn_titled() {
 }
 
 window_count() { "$ANDROMEDA" windows --json | jq 'length'; }
-
-wait_for_count() {
-  for _ in $(seq 80); do
-    [[ $(window_count) -eq $1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for $1 window(s), have $(window_count)"
-  return 1
-}
 
 field_of() {
   "$ANDROMEDA" windows --json \
@@ -50,11 +43,11 @@ EOF
 # one): removing T2 does not renumber T1's column, so T1.x is a clean readout of the strip's scroll offset alone,
 # undisturbed by the legitimate column-compaction a removal next door would also cause.
 spawn_titled T1
-wait_for_count 1
+await_count 1
 spawn_titled T2
-wait_for_count 2
+await_count 2
 spawn_titled T3
-wait_for_count 3
+await_count 3
 "$ANDROMEDA" msg "window-focus:$(id_of T2)" > /dev/null
 "$ANDROMEDA" settle
 
@@ -76,11 +69,11 @@ fi
 # A second float (opens floating directly, via the window rule above) opens and closes while focus stays on floats
 # throughout, mirroring the reported episode.
 spawn_titled F2
-wait_for_count 4
+await_count 4
 "$ANDROMEDA" msg "window-focus:$(id_of F2)" > /dev/null
 "$ANDROMEDA" settle
 kill -TERM "${CLIENT_PID[F2]}" 2>/dev/null || true
-wait_for_count 3
+await_count 3
 "$ANDROMEDA" settle
 
 t1_x_final=$(field_of T1 x)

@@ -3,21 +3,13 @@
 # in the lower subtree can move into the upper tile and back down.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
 spawn_client() {
   local title=$1
   "$CLIENT" "$title" 1200 700 > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 wait_for_y() {
@@ -45,15 +37,15 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client dwindle-nested-left
-wait_for_count 1
+await_count 1
 spawn_client dwindle-nested-upper-right
-wait_for_count 2
+await_count 2
 spawn_client dwindle-nested-lower-left
-wait_for_count 3
+await_count 3
 spawn_client dwindle-nested-lower-right-upper
-wait_for_count 4
+await_count 4
 spawn_client dwindle-nested-lower-right-lower
-wait_for_count 5
+await_count 5
 sleep 0.1
 
 windows=$("$ANDROMEDA" windows --json)

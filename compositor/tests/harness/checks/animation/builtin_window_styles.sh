@@ -6,6 +6,8 @@
 # A shown tab keeps its close snapshot over its red replacement; an already-hidden tab never contributes pixels.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly SUBSURFACE_CLIENT="${ANDROMEDA_SUBSURFACE_CLIENT:-./build-debug/tests/subsurface-client}"
 readonly IMAGE="$ANDROMEDA_RUNTIME_DIR/builtin-window-styles.png"
@@ -73,22 +75,10 @@ default_position = { x = 100, y = 440, anchor = "top_left" }
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
-wait_for_window() {
-  local title=$1
-  for _ in $(seq 100); do
-    if "$ANDROMEDA" windows --json | jq -e --arg title "$title" '.[] | select(.title == $title)' > /dev/null; then
-      return 0
-    fi
-    sleep 0.025
-  done
-  echo "timed out waiting for $title"
-  return 1
-}
-
 spawn() {
   local title=$1 color=${2:-0xFF0000FF}
   FILL_COLOR="$color" "$CLIENT" "$title" 400 240 > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
-  wait_for_window "$title"
+  await_window "$title"
 }
 
 window_id() {
@@ -211,7 +201,7 @@ sed -i 's/^style = "popin" # CLOSE_STYLE$/style = "fade" # CLOSE_STYLE/' "$ANDRO
 "$ANDROMEDA" msg config-reload > /dev/null
 "$SUBSURFACE_CLIENT" style-group 400 240 > "$ANDROMEDA_RUNTIME_DIR/style-group.log" 2>&1 &
 group_pid=$!
-wait_for_window style-group
+await_window style-group
 "$ANDROMEDA" clock-advance 2350
 read -r group_open_red group_open_blue <<< "$(sample_rgb 940 540)"
 assert_group_fade opening "$group_open_red" "$group_open_blue"

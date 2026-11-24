@@ -3,6 +3,8 @@
 # with "hover" only the selected one does, and closing the overview takes the chrome away with it.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 IMAGE="$ANDROMEDA_RUNTIME_DIR/chrome.png"
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF2'
@@ -25,19 +27,10 @@ mode = "off"
 EOF2
 "$ANDROMEDA" msg config-reload > /dev/null
 
-wait_for_windows() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $1 window(s): $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 FILL_COLOR=0xFF0000FF "$ANDROMEDA_UNMAP_CLIENT" chrome-blue 500 400 > /dev/null 2>&1 &
-wait_for_windows 1
+await_count 1
 FILL_COLOR=0xFFFF0000 "$ANDROMEDA_UNMAP_CLIENT" chrome-red 500 400 > /dev/null 2>&1 &
-wait_for_windows 2
+await_count 2
 "$ANDROMEDA" settle
 
 # Light text pixels in the band just under the blue (unselected) card.

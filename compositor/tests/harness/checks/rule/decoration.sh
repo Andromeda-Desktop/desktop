@@ -7,6 +7,8 @@
 # ring its rule adds, and its drop shadow.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly SCREENSHOT="$ANDROMEDA_RUNTIME_DIR/rule-decoration.png"
 
@@ -54,15 +56,6 @@ window_of() {
   "$ANDROMEDA" windows --json | jq -c --arg title "$1" '.[] | select(.title == $title)'
 }
 
-wait_mapped() {
-  for _ in $(seq 60); do
-    [[ -n $(window_of "$1") ]] && return 0
-    sleep 0.05
-  done
-  echo "$1 never mapped: $("$ANDROMEDA" windows --json)"
-  exit 1
-}
-
 # Window opens and the config reload animate; settle waits for every timeline to reach rest before the grab.
 shot_settled() {
   "$ANDROMEDA" settle
@@ -70,9 +63,9 @@ shot_settled() {
 }
 
 "$CLIENT" bare-window > "$ANDROMEDA_RUNTIME_DIR/rule-decoration-bare.log" 2>&1 &
-wait_mapped bare-window
+await_window bare-window
 "$CLIENT" framed-window > "$ANDROMEDA_RUNTIME_DIR/rule-decoration-framed.log" 2>&1 &
-wait_mapped framed-window
+await_window framed-window
 
 BARE=$(window_of bare-window)
 FRAMED=$(window_of framed-window)

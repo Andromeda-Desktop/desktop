@@ -8,18 +8,6 @@ source "$ANDROMEDA_HARNESS_LIB"
 
 windows() { "$ANDROMEDA" windows --json; }
 
-wait_for_window() {
-  local title=$1
-  for _ in $(seq 80); do
-    if windows | jq -e --arg title "$title" 'any(.[]; .title == $title)' > /dev/null; then
-      return 0
-    fi
-    sleep 0.025
-  done
-  echo "window $title did not map: $(windows)"
-  return 1
-}
-
 field() {
   local title=$1 key=$2
   windows | jq -r --arg title "$title" --arg key "$key" '.[] | select(.title == $title) | .[$key]'
@@ -41,7 +29,7 @@ CONFIG
 
 env APP_ID=wide-column FILL_COLOR=0xFFFF0000 RESIZE_FILL_COLOR=0xFFFF0000 \
   "$ANDROMEDA_UNMAP_CLIENT" wide-a 400 400 > "$ANDROMEDA_RUNTIME_DIR/wide-a.log" 2>&1 &
-wait_for_window wide-a
+await_window wide-a
 "$ANDROMEDA" settle > /dev/null
 
 # 2.0 spans two viewports with the gap between the would-be slots: a little under twice the 1280-wide output.

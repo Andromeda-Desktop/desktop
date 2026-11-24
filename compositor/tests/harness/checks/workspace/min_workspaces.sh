@@ -5,6 +5,8 @@
 # limit, moving a workspace onto the output reuses an empty workspace instead of merging with an occupied one.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BASELINE="$(< "$ANDROMEDA_CONFIG")"
 
 write_config() {
@@ -27,16 +29,6 @@ expect_names() {
   exit 1
 }
 
-wait_for_windows() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  exit 1
-}
-
 workspace_index_of_window() {
   local workspace_id
   workspace_id=$("$ANDROMEDA" windows --json | jq -r '.[0].workspace')
@@ -52,7 +44,7 @@ expect_names HEADLESS-2 "1" "floor scoped to its output"
 # The floor is not a ceiling: occupying the last workspace still appends a trailing empty one.
 "$ANDROMEDA" msg workspace-switch:3/HEADLESS-1 > /dev/null
 foot --title=min-workspaces-view sh -c 'sleep 120' > /dev/null 2>&1 &
-wait_for_windows 1
+await_count 1
 expect_names HEADLESS-1 "1 2 3 4" "trailing empty above the floor"
 if [[ $(workspace_index_of_window) != "3" ]]; then
   echo "view did not map on the third workspace: index=$(workspace_index_of_window)"
@@ -61,7 +53,7 @@ fi
 
 window_id=$("$ANDROMEDA" windows --json | jq -r '.[0].id')
 "$ANDROMEDA" msg "window-close:$window_id" > /dev/null
-wait_for_windows 0
+await_count 0
 expect_names HEADLESS-1 "1 2 3" "pruning stops at the floor"
 
 # Raising and lowering the floor without touching the output name set: the reload must reach this output's inventory
@@ -95,7 +87,7 @@ match.title = "^workspace-limit-source$"
 default_output = "HEADLESS-2"'
 "$ANDROMEDA" msg workspace-switch:64/HEADLESS-1 > /dev/null
 foot --title=workspace-limit-view sleep 120 > /dev/null 2>&1 &
-wait_for_windows 1
+await_count 1
 expect_names HEADLESS-1 "$(seq -s ' ' 64)" "trailing empty respects the limit"
 [[ $(workspace_index_of_window) == 64 ]]
 "$ANDROMEDA" msg window-move-to-workspace:1/HEADLESS-1 > /dev/null
@@ -103,7 +95,7 @@ expect_names HEADLESS-1 "$(seq -s ' ' 64)" "leading empty respects the limit"
 [[ $(workspace_index_of_window) == 1 ]]
 "$ANDROMEDA" msg window-move-to-workspace:64/HEADLESS-1 > /dev/null
 foot --title=workspace-limit-source sleep 120 > /dev/null 2>&1 &
-wait_for_windows 2
+await_count 2
 before_transfer=$("$ANDROMEDA" windows --json)
 source_id=$(jq -r '.[] | select(.title == "workspace-limit-source") | .id' <<< "$before_transfer")
 source_workspace=$(jq -r '.[] | select(.title == "workspace-limit-source") | .workspace' <<< "$before_transfer")

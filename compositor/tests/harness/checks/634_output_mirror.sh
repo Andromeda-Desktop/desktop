@@ -5,6 +5,8 @@
 # The mirror's own pixels need a real renderer on a visible output; tests/unit/mirror_placement.cpp pins the geometry.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 BASELINE=$(< "$ANDROMEDA_CONFIG")
 readonly SOURCE_SHOT="$ANDROMEDA_RUNTIME_DIR/mirror-source.png"
 readonly TARGET_SHOT="$ANDROMEDA_RUNTIME_DIR/mirror-target.png"
@@ -12,14 +14,6 @@ readonly AFTER_SHOT="$ANDROMEDA_RUNTIME_DIR/mirror-after.png"
 readonly GREEN='g > 0.9 && r < 0.1 && b < 0.1'
 
 log_mark() { wc -l < "$ANDROMEDA_LOG"; }
-wait_for_log_since() {
-  local mark=$1 pattern=$2
-  for _ in $(seq 40); do
-    tail -n +"$((mark + 1))" "$ANDROMEDA_LOG" | grep -q "$pattern" && return 0
-    sleep 0.25
-  done
-  return 1
-}
 wait_for_workspace() {
   local expected=$1 workspace=
   for _ in $(seq 40); do
@@ -43,7 +37,7 @@ mark=$(log_mark)
   printf '\n[output.HEADLESS-2]\nmirror = "HEADLESS-1"\n'
 } > "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
-if ! wait_for_log_since "$mark" "output 'HEADLESS-2': mirroring 'HEADLESS-1'"; then
+if ! await_log_since "$mark" "output 'HEADLESS-2': mirroring 'HEADLESS-1'"; then
   echo "HEADLESS-2 did not start mirroring on reload"
   tail -8 "$ANDROMEDA_LOG" | sed 's/^/  | /'
   exit 1
@@ -89,7 +83,7 @@ done
 mark=$(log_mark)
 printf '%s\n' "$BASELINE" > "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
-if ! wait_for_log_since "$mark" "output 'HEADLESS-2': stopped mirroring"; then
+if ! await_log_since "$mark" "output 'HEADLESS-2': stopped mirroring"; then
   echo "HEADLESS-2 kept mirroring after the key was removed"
   exit 1
 fi

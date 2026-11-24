@@ -3,21 +3,13 @@
 # region the incoming workspace has already uncovered.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly TRANSITION_SHOT="$ANDROMEDA_RUNTIME_DIR/slide-viewport-clip.png"
 
 spawn_client() {
   "$CLIENT" "$1" 1200 400 > /dev/null 2>&1 &
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 sample_blue() {
@@ -58,7 +50,7 @@ EOF
 # The window reaches past the right output edge, so the outgoing workspace has
 # content outside the viewport it slides with.
 spawn_client slide-overhang
-wait_for_count 1
+await_count 1
 "$ANDROMEDA" settle
 
 # Only the slide itself is slow: the window is already resting at its overhang.

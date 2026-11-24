@@ -3,6 +3,8 @@
 # pointer, each newly passing column must not be mistaken for another pointer enter and start a focus cascade.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -12,28 +14,8 @@ spawn_client() {
   "$CLIENT" "$1" 1200 700 > /dev/null 2>&1 &
 }
 
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 active_title() {
   "$ANDROMEDA" windows --json | jq -r '[.[] | select(.active) | .title] | if length == 1 then .[0] else "none" end'
-}
-
-wait_for_active() {
-  local want=$1
-  for _ in $(seq 100); do
-    [[ $(active_title) == "$want" ]] && return 0
-    sleep 0.01
-  done
-  echo "expected '$want' to be active, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -58,9 +40,9 @@ count=0
 for title in hover-stability-a hover-stability-b hover-stability-c; do
   spawn_client "$title"
   count=$((count + 1))
-  wait_for_count "$count"
+  await_count "$count"
 done
-wait_for_active hover-stability-c
+await_active hover-stability-c
 
 # The last column rests centered at x=264. The previous column extends from x=-499 to x=252, leaving the trigger
 # point inside it. Wait for map-time position animations so this starting presentation is deterministic.
@@ -75,7 +57,7 @@ done
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" "${pointer_args[@]}" &
 pointer_pid=$!
 
-wait_for_active hover-stability-b
+await_active hover-stability-b
 while kill -0 "$pointer_pid" 2>/dev/null; do
   current=$(active_title)
   if [[ $current != hover-stability-b ]]; then

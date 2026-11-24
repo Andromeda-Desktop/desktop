@@ -6,6 +6,8 @@
 # destroy-time fallback focus.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -27,16 +29,6 @@ pointer() {
 spawn_client() {
   local title=$1
   "$CLIENT" "$title" 1200 700 > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 wait_for_focus() {
@@ -82,11 +74,11 @@ EOF
 # First preserve intentional keyboard focus. Park the pointer over the first leaf, focus the third leaf explicitly,
 # and close it. The second leaf is its layout predecessor and must retain the resulting focus.
 spawn_client "dwindle-close-pointer"
-wait_for_count 1
+await_count 1
 spawn_client "dwindle-close-predecessor"
-wait_for_count 2
+await_count 2
 spawn_client "dwindle-close-focused"
-wait_for_count 3
+await_count 3
 
 # Let the one-millisecond opening animation settle before using target positions for hit-testing.
 sleep 0.1
@@ -118,7 +110,7 @@ if ! grep -q '^unmapped$' "$ANDROMEDA_RUNTIME_DIR/dwindle-close-focused.log"; th
   echo "keyboard-focused client did not unmap: $(< "$ANDROMEDA_RUNTIME_DIR/dwindle-close-focused.log")"
   exit 1
 fi
-wait_for_count 2
+await_count 2
 wait_for_focus "$predecessor_id"
 
 # Use another workspace for the close-under-pointer scenario so its Dwindle tree is independent of the first one.
@@ -132,7 +124,7 @@ for title in dwindle-close-a dwindle-close-b dwindle-reveal-predecessor dwindle-
   dwindle-close-expander dwindle-close-next-expander; do
   spawn_client "$title"
   count=$((count + 1))
-  wait_for_count "$count"
+  await_count "$count"
 done
 
 # Let the opening animation settle before reading target positions for hit-testing.
@@ -164,7 +156,7 @@ if ! grep -q '^unmapped$' "$ANDROMEDA_RUNTIME_DIR/dwindle-close-under-pointer.lo
   echo "focused client did not unmap: $(< "$ANDROMEDA_RUNTIME_DIR/dwindle-close-under-pointer.log")"
   exit 1
 fi
-wait_for_count 7
+await_count 7
 
 # First prove the intended survivor has taken over the cursor's old tile, then require focus to follow that scene
 # transition without sending another pointer event.
@@ -184,7 +176,7 @@ if ! grep -q '^unmapped$' "$ANDROMEDA_RUNTIME_DIR/dwindle-close-expander.log"; t
   echo "first revealed client did not unmap: $(< "$ANDROMEDA_RUNTIME_DIR/dwindle-close-expander.log")"
   exit 1
 fi
-wait_for_count 6
+await_count 6
 wait_for_origin "$next_expander_id" "$closing_x" "$closing_y"
 wait_for_focus "$next_expander_id"
 

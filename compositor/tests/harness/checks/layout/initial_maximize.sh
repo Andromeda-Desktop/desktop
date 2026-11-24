@@ -2,17 +2,9 @@
 # Saved client maximization is ignored by default and honored only when configured.
 set -euo pipefail
 
-readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
+source "$ANDROMEDA_HARNESS_LIB"
 
-wait_for_log() {
-  local log=$1 pattern=$2
-  for _ in $(seq 40); do
-    grep -q "$pattern" "$log" && return 0
-    sleep 0.05
-  done
-  echo "maximize client did not report '$pattern': $(cat "$log")"
-  return 1
-}
+readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
 spawn_maximized_client() {
   local title=$1 log=$2
@@ -20,7 +12,7 @@ spawn_maximized_client() {
   env LOG_CONFIGURES=1 "$@" "$CLIENT" "$title" > "$log" 2>&1 &
   CLIENT_PID=$!
 
-  wait_for_log "$log" '^mapped$'
+  await_log_count "$log" '^mapped$'
 }
 
 assert_maximized_before_map() {
@@ -45,18 +37,18 @@ exec {control_fd}<>"$CONTROL_FIFO"
 env LOG_CONFIGURES=1 REQUEST_MAXIMIZED=1 REQUEST_MAXIMIZED_AFTER_MAP=1 MAXIMIZE_ON_STDIN=1 \
   "$CLIENT" initial-maximize-default <&"$control_fd" > "$DEFAULT_LOG" 2>&1 &
 CLIENT_PID=$!
-wait_for_log "$DEFAULT_LOG" '^mapped$' || exit 1
+await_log_count "$DEFAULT_LOG" '^mapped$' || exit 1
 
 # Synchronize after the post-map restore re-assertion and end the opening
 # sequence before issuing a distinct client maximize request.
 printf s >&"$control_fd"
-wait_for_log "$DEFAULT_LOG" '^surface-committed$' || exit 1
+await_log_count "$DEFAULT_LOG" '^surface-committed$' || exit 1
 if grep -q '^configured-maximized$' "$DEFAULT_LOG"; then
   echo "opening client maximize request was accepted by default"
   exit 1
 fi
 printf m >&"$control_fd"
-wait_for_log "$DEFAULT_LOG" '^maximize-requested$' || exit 1
+await_log_count "$DEFAULT_LOG" '^maximize-requested$' || exit 1
 for _ in $(seq 40); do
   request_line=$(grep -n '^maximize-requested$' "$DEFAULT_LOG" | sed -n '1s/:.*//p')
   maximize_line=$(grep -n '^configured-maximized$' "$DEFAULT_LOG" | sed -n '1s/:.*//p' || true)
@@ -74,10 +66,10 @@ readonly FRAME_LOG="$ANDROMEDA_RUNTIME_DIR/initial-maximize-after-frame.log"
 env LOG_CONFIGURES=1 REQUEST_MAXIMIZED_AFTER_FRAME=1 MAXIMIZE_ON_STDIN=1 \
   "$CLIENT" initial-maximize-after-frame <&"$control_fd" > "$FRAME_LOG" 2>&1 &
 CLIENT_PID=$!
-wait_for_log "$FRAME_LOG" '^maximize-after-frame$' || exit 1
+await_log_count "$FRAME_LOG" '^maximize-after-frame$' || exit 1
 # Two roundtrips: the second one's reply follows any configure answering the request.
 printf s >&"$control_fd"
-wait_for_log "$FRAME_LOG" '^surface-committed$' || exit 1
+await_log_count "$FRAME_LOG" '^surface-committed$' || exit 1
 printf s >&"$control_fd"
 for _ in $(seq 40); do
   (($(grep -c '^surface-committed$' "$FRAME_LOG") >= 2)) && break
@@ -98,7 +90,7 @@ printf '\nhonor_restored_maximize = true\n\n[animation]\nenabled = false\n' >> "
 
 readonly HONORED_LOG="$ANDROMEDA_RUNTIME_DIR/initial-maximize-honored.log"
 spawn_maximized_client initial-maximize-honored "$HONORED_LOG" REQUEST_MAXIMIZED_AFTER_CONFIGURE=1 || exit 1
-wait_for_log "$HONORED_LOG" '^configured-maximized$' || exit 1
+await_log_count "$HONORED_LOG" '^configured-maximized$' || exit 1
 assert_maximized_before_map "$HONORED_LOG"
 stop_client
 

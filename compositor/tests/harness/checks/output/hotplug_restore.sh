@@ -4,23 +4,14 @@
 # the same names. Windows must find their way home across that too.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly WORKSPACE="${ANDROMEDA_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
 readonly FOREIGN_TOPLEVEL="${ANDROMEDA_FOREIGN_TOPLEVEL_CLIENT:-./build-debug/tests/foreign-toplevel-client}"
 readonly BASELINE="$(< "$ANDROMEDA_CONFIG")"
 
 spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 40); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.25
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
 }
 
 field_of() {
@@ -88,13 +79,13 @@ wait_for_active_workspace() {
 
 # Two windows on one output and one on the other, the same shape 625 uses, on dynamic workspaces.
 spawn_client hotplug-first
-wait_for_count 1
+await_count 1
 move_to_workspace hotplug-first 1/HEADLESS-1
 spawn_client hotplug-second
-wait_for_count 2
+await_count 2
 move_to_workspace hotplug-second 2/HEADLESS-1
 spawn_client hotplug-other
-wait_for_count 3
+await_count 3
 move_to_workspace hotplug-other 1/HEADLESS-2
 "$ANDROMEDA" msg workspace-switch:3/HEADLESS-1 > /dev/null
 "$FOREIGN_TOPLEVEL" hotplug-first HEADLESS-1

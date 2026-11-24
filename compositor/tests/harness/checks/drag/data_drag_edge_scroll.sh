@@ -17,16 +17,6 @@ window_count() {
   "$ANDROMEDA" windows --json | jq 'length'
 }
 
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 80); do
-    [[ $(window_count) -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 wait_for_log() {
   local file=$1 pattern=$2 label=$3
   for _ in $(seq 80); do
@@ -51,15 +41,15 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client data-drag-edge-a
-wait_for_count 1
+await_count 1
 spawn_client data-drag-edge-b
-wait_for_count 2
+await_count 2
 spawn_client data-drag-edge-c
-wait_for_count 3
+await_count 3
 "$DRAG_CLIENT" target data-drag-edge-target > "$TARGET_LOG" 2>&1 &
 TARGET_PID=$!
 wait_for_log "$TARGET_LOG" '^ready$' "drop target"
-wait_for_count 4
+await_count 4
 
 "$ANDROMEDA" msg column-focus-first > /dev/null
 "$ANDROMEDA" settle

@@ -2,22 +2,14 @@
 # Named scrolling columns honor orientation and workspace scope without changing other layouts.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly VERTICAL_CLIENT="${ANDROMEDA_SUBSURFACE_CLIENT:-./build-debug/tests/subsurface-client}"
 readonly MAX_LOG="$ANDROMEDA_RUNTIME_DIR/named-vertical-max.log"
 
 spawn_client() {
   "$CLIENT" "$1" 800 600 > "$ANDROMEDA_RUNTIME_DIR/$1.log" 2>&1 &
-}
-
-wait_for_windows() {
-  local expected=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $expected ]] && return 0
-    sleep 0.1
-  done
-  echo "timed out waiting for $expected clients: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 wait_for_query() {
@@ -105,9 +97,9 @@ EOF
 # A vertical named lane uses the first launched member's primary-axis extent,
 # while configured order controls the cross-axis row positions.
 "$VERTICAL_CLIENT" named-vertical-later 800 600 > "$ANDROMEDA_RUNTIME_DIR/named-vertical-later.log" 2>&1 &
-wait_for_windows 1
+await_count 1
 "$VERTICAL_CLIENT" named-vertical-first 800 600 > "$ANDROMEDA_RUNTIME_DIR/named-vertical-first.log" 2>&1 &
-wait_for_windows 2
+await_count 2
 wait_for_query \
   'all(.[]; .w == 624 and .h == 166 and .y == 277) and any(.[]; .title == "named-vertical-first" and .x == 10) and any(.[]; .title == "named-vertical-later" and .x == 646)' \
   "vertical named lane did not retain the first launched member's width or configured order"
@@ -115,7 +107,7 @@ wait_for_query \
 # Maximizing a joining member expands the established lane. Its first configure
 # must already match the final arranged size.
 "$VERTICAL_CLIENT" named-vertical-max 800 600 > "$MAX_LOG" 2>&1 &
-wait_for_windows 3
+await_count 3
 wait_for_query \
   'all(.[]; .w == 412 and .h == 700 and .y == 10) and any(.[]; .title == "named-vertical-first" and .x == 10) and any(.[]; .title == "named-vertical-max" and .x == 434) and any(.[]; .title == "named-vertical-later" and .x == 858)' \
   "maximized member did not join and expand the vertical named lane"
@@ -135,9 +127,9 @@ sed -i 's/^workspace_axis = "horizontal"$/workspace_axis = "vertical"/' "$ANDROM
 # column in strip order, not whichever column happens to be focused.
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 spawn_client named-split-a
-wait_for_windows 4
+await_count 4
 spawn_client named-split-b
-wait_for_windows 5
+await_count 5
 wait_for_query \
   '[.[] | select(.title == "named-split-a" or .title == "named-split-b") | .x] | unique | length == 1' \
   "horizontal named members did not initially share a column"
@@ -146,7 +138,7 @@ wait_for_query \
   'any(.[]; .title == "named-split-a" and .x == 10) and any(.[]; .title == "named-split-b" and .x > 600)' \
   "manual expel did not split the named column"
 spawn_client named-split-c
-wait_for_windows 6
+await_count 6
 wait_for_query \
   'any(.[]; .title == "named-split-a" and .x == 10 and .y == 10) and any(.[]; .title == "named-split-c" and .x == 10 and .y > 10) and any(.[]; .title == "named-split-b" and .x > 600)' \
   "new member did not join the first named column after a manual split"
@@ -156,7 +148,7 @@ split_workspace=$(workspace_of named-split-a)
 # into the existing workspace's layout.
 "$ANDROMEDA" msg workspace-switch:4 > /dev/null
 spawn_client named-split-local
-wait_for_windows 7
+await_count 7
 local_workspace=$(workspace_of named-split-local)
 if [[ -z $vertical_workspace || -z $split_workspace || -z $local_workspace \
       || $vertical_workspace == "$split_workspace" || $split_workspace == "$local_workspace" ]]; then
@@ -166,9 +158,9 @@ fi
 
 # Floating views retain floating placement even when they share a name.
 spawn_client named-float-a
-wait_for_windows 8
+await_count 8
 spawn_client named-float-b
-wait_for_windows 9
+await_count 9
 wait_for_query \
   '[.[] | select(.title == "named-float-a" or .title == "named-float-b")] | length == 2 and all(.[]; .floating == true)' \
   "named-column rules changed floating placement"
@@ -177,9 +169,9 @@ wait_for_query \
 # a scrolling column.
 "$ANDROMEDA" msg workspace-switch:3 > /dev/null
 spawn_client named-master-a
-wait_for_windows 10
+await_count 10
 spawn_client named-master-b
-wait_for_windows 11
+await_count 11
 wait_for_query \
   '[.[] | select(.title == "named-master-a" or .title == "named-master-b") | .x] | unique | length == 2' \
   "named-column rules changed master layout insertion"

@@ -3,6 +3,8 @@
 # replay that selected view into the default keyboard grab before the next key is delivered.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly LEFT_BUTTON=272
@@ -16,16 +18,6 @@ readonly TARGET_LOG="$ANDROMEDA_RUNTIME_DIR/data-drag-hover-target.log"
 
 spawn_client() {
   "$CLIENT" "$1" 624 700 > "$2" 2>&1 &
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 active_title() {
@@ -44,9 +36,9 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client "data-drag-hover-source" "$SOURCE_LOG"
-wait_for_count 1
+await_count 1
 spawn_client "data-drag-hover-target" "$TARGET_LOG"
-wait_for_count 2
+await_count 2
 sleep 0.1
 
 windows=$("$ANDROMEDA" windows --json)

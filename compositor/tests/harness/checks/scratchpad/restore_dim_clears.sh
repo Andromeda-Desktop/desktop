@@ -3,6 +3,8 @@
 # backdrop dim to 0 and refresh the dim/blur nodes, as hiding it through scratchpad-toggle does.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BEFORE="$ANDROMEDA_RUNTIME_DIR/scratchpad-restore-before.png"
 readonly AFTER="$ANDROMEDA_RUNTIME_DIR/scratchpad-restore-after.png"
 
@@ -33,23 +35,12 @@ title = "^scratch-"
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 40); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
-}
-
 foot --title=scratch-a sh -c 'sleep 120' > /dev/null 2>&1 &
-wait_for_count 1
+await_count 1
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
 
 foot --title=scratch-b sh -c 'sleep 120' > /dev/null 2>&1 &
-wait_for_count 2
+await_count 2
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
 
 # Show both scratchpad windows: the backdrop dims.
@@ -66,7 +57,7 @@ fi
 # dim must stay.
 "$ANDROMEDA" msg window-toggle-scratchpad > /dev/null
 "$ANDROMEDA" settle
-if ! wait_for_count 2; then
+if ! await_count 2; then
   echo "restoring the first window changed the window count unexpectedly"
   exit 1
 fi

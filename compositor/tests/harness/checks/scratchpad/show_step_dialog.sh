@@ -3,6 +3,8 @@
 # replacing it, and closing the dialog leaves the window on show.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly PARENT_CLIENT="${ANDROMEDA_SEAT_LOG_CLIENT:-./build-debug/tests/seat-log-client}"
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly PARENT_LOG="$ANDROMEDA_RUNTIME_DIR/dialog-parent.log"
@@ -42,15 +44,6 @@ EOF
 windows() { "$ANDROMEDA" windows --json; }
 window_of() { windows | jq -c --arg title "$1" '.[] | select(.title == $title)'; }
 
-wait_for_window() {
-  for _ in $(seq 80); do
-    [[ -n "$(window_of "$1")" ]] && return 0
-    sleep 0.05
-  done
-  echo "window '$1' never appeared: $(windows)"
-  return 1
-}
-
 # Whether the red window, the green dialog, and the parent (anything bright inside its box but clear of the dialog)
 # are on screen.
 shown() {
@@ -76,7 +69,7 @@ expect() {
 }
 
 EXPORT_TOPLEVEL=1 "$PARENT_CLIENT" dialog-parent > "$PARENT_LOG" 2>&1 &
-wait_for_window dialog-parent
+await_window dialog-parent
 handle=
 for _ in $(seq 80); do
   handle=$(sed -n 's/^exported handle=//p' "$PARENT_LOG")
@@ -90,7 +83,7 @@ fi
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
 
 FILL_COLOR=0xFFFF0000 "$CLIENT" dialog-other 200 150 > "$ANDROMEDA_RUNTIME_DIR/dialog-other.log" 2>&1 &
-wait_for_window dialog-other
+await_window dialog-other
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
 
 # The parent was focused last, so the first step shows it on its own.
@@ -101,7 +94,7 @@ expect "parent" "the scratchpad did not show the parent on its own"
 FILL_COLOR=0xFF00FF00 TRANSIENT_FOREIGN_HANDLE="$handle" \
   "$CLIENT" dialog-child 300 200 > "$ANDROMEDA_RUNTIME_DIR/dialog-child.log" 2>&1 &
 child=$!
-wait_for_window dialog-child
+await_window dialog-child
 expect "green parent" "the dialog replaced its parent instead of showing beside it"
 
 # Stepping skips the dialog: it goes with its parent.

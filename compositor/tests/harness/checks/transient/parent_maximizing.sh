@@ -3,6 +3,8 @@
 # parent. Attached to the parent, it sits over what shows of the parent until the resize lands.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly OBSERVER="${ANDROMEDA_SEAT_LOG_CLIENT:-./build-debug/tests/seat-log-client}"
 readonly PARENT_LOG="$ANDROMEDA_RUNTIME_DIR/maximizing-parent.log"
@@ -16,16 +18,6 @@ windows() {
 field_of() {
   local title=$1 field=$2
   windows | jq -r --arg title "$title" --arg field "$field" '.[] | select(.title == $title) | .[$field]'
-}
-
-wait_for_window_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $(windows)"
-  return 1
 }
 
 wait_for_size() {
@@ -67,7 +59,7 @@ EOF2
 mkfifo "$PARENT_FIFO"
 exec {parent_fd}<>"$PARENT_FIFO"
 HOLD_RESIZE=1 EXPORT_TOPLEVEL=1 "$OBSERVER" maximizing-parent <&"$parent_fd" > "$PARENT_LOG" 2>&1 &
-wait_for_window_count 1
+await_count 1
 handle=
 for _ in $(seq 60); do
   handle=$(sed -n 's/^exported handle=//p' "$PARENT_LOG")
@@ -83,7 +75,7 @@ fi
 # The 400x300 dialog is attached to the parent, so while the parent still shows its old box it is centered there, at
 # 120,90.
 TRANSIENT_FOREIGN_HANDLE=$handle "$CLIENT" maximizing-child 400 300 > "$CHILD_LOG" 2>&1 &
-wait_for_window_count 2
+await_count 2
 wait_for_position maximizing-child 120 90
 if [[ "$(field_of maximizing-parent w)x$(field_of maximizing-parent h)" != 640x480 ]]; then
   echo "the parent was expected to still hold its 640x480: $(windows)"

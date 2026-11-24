@@ -3,6 +3,8 @@
 # actions resize stacked windows, and focus-last follows global MRU order across workspaces.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 accepts() {
   if ! out=$("$ANDROMEDA" msg "$1" 2>&1); then
     echo "expected '$1' to be accepted, got: $out"
@@ -12,17 +14,6 @@ accepts() {
 
 spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_windows() {
-  local expected=$1 count=
-  for _ in $(seq 40); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
 }
 
 field_of() {
@@ -89,21 +80,10 @@ wait_for_b_height_percent() {
   return 1
 }
 
-wait_for_focus() {
-  local title=$1 active=
-  for _ in $(seq 50); do
-    active=$(field_of "$title" active)
-    [[ $active == true ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' to become active, got $active"
-  return 1
-}
-
 spawn_client harness-a
-wait_for_windows 1
+await_count 1
 spawn_client harness-b
-wait_for_windows 2
+await_count 2
 
 accepts window-consume-or-expel-left
 wait_for_stacked
@@ -124,7 +104,7 @@ b_workspace=$(field_of harness-b workspace)
 
 accepts workspace-switch:2
 spawn_client harness-c
-wait_for_windows 3
+await_count 3
 c_workspace=$(field_of harness-c workspace)
 if [[ -z $b_workspace || -z $c_workspace || $b_workspace == "$c_workspace" ]]; then
   echo "expected harness-b and harness-c on distinct workspaces, got '$b_workspace' and '$c_workspace'"
@@ -132,14 +112,14 @@ if [[ -z $b_workspace || -z $c_workspace || $b_workspace == "$c_workspace" ]]; t
 fi
 
 accepts window-focus-last
-wait_for_focus harness-b
+await_active harness-b
 if [[ $(field_of harness-b workspace) != "$b_workspace" ]]; then
   echo "expected focus-last to return to harness-b's original workspace"
   exit 1
 fi
 
 accepts window-focus-last
-wait_for_focus harness-c
+await_active harness-c
 if [[ $(field_of harness-c workspace) != "$c_workspace" ]]; then
   echo "expected repeated focus-last to return to harness-c's workspace"
   exit 1

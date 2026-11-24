@@ -2,6 +2,8 @@
 # Late title rules preserve named scrolling-column width ownership and may reclassify a member.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly CONTROL_FIFO="$ANDROMEDA_RUNTIME_DIR/named-width-control"
 readonly RECLASSIFY_FIFO="$ANDROMEDA_RUNTIME_DIR/named-reclassify-control"
@@ -9,16 +11,6 @@ readonly ORDER_FIFO="$ANDROMEDA_RUNTIME_DIR/named-order-control"
 
 spawn_client() {
   "$CLIENT" "$1" 800 600 > "$ANDROMEDA_RUNTIME_DIR/$1.log" 2>&1 &
-}
-
-wait_for_windows() {
-  local expected=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $expected ]] && return 0
-    sleep 0.1
-  done
-  echo "timed out waiting for $expected clients: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 column_delta() {
@@ -90,15 +82,15 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client named-width-owner
-wait_for_windows 1
+await_count 1
 spawn_client named-width-unrelated
-wait_for_windows 2
+await_count 2
 
 mkfifo "$CONTROL_FIFO"
 exec {control_fd}<>"$CONTROL_FIFO"
 APP_ID=named-width-joiner TITLE_AFTER_MAP=named-width-late \
   "$CLIENT" named-width-placeholder 800 600 <&"$control_fd" > "$ANDROMEDA_RUNTIME_DIR/named-width-joiner.log" 2>&1 &
-wait_for_windows 3
+await_count 3
 
 for _ in $(seq 60); do
   windows=$("$ANDROMEDA" windows --json)
@@ -129,13 +121,13 @@ fi
 # Reclassifying a member from one named group to a new group must split it out
 # of the old stack. Later members of the new group then join its new column.
 spawn_client named-reclass-owner
-wait_for_windows 4
+await_count 4
 mkfifo "$RECLASSIFY_FIFO"
 exec {reclassify_fd}<>"$RECLASSIFY_FIFO"
 APP_ID=named-reclass-joiner TITLE_AFTER_MAP=named-reclass-late \
   "$CLIENT" named-reclass-placeholder 800 600 <&"$reclassify_fd" \
   > "$ANDROMEDA_RUNTIME_DIR/named-reclass-joiner.log" 2>&1 &
-wait_for_windows 5
+await_count 5
 printf 'u' >&"$reclassify_fd"
 
 for _ in $(seq 60); do
@@ -151,7 +143,7 @@ if [[ -z $old_x || -z $new_x || $old_x == "$new_x" ]]; then
 fi
 
 spawn_client named-reclass-follower
-wait_for_windows 6
+await_count 6
 for _ in $(seq 60); do
   windows=$("$ANDROMEDA" windows --json)
   old_x=$(jq -r '.[] | select(.title == "named-reclass-owner") | .x' <<< "$windows")
@@ -166,7 +158,7 @@ if [[ -z $follower_x || $new_x != "$follower_x" || $old_x == "$new_x" ]]; then
 fi
 
 spawn_client named-reclass-after
-wait_for_windows 7
+await_count 7
 for _ in $(seq 60); do
   windows=$("$ANDROMEDA" windows --json)
   new_x=$(jq -r '.[] | select(.title == "named-reclass-late") | .x' <<< "$windows")
@@ -182,17 +174,17 @@ fi
 # A late order-only rule must not undo a manual split from an existing named
 # column or let the later-joining member apply its own width.
 spawn_client named-order-owner
-wait_for_windows 8
+await_count 8
 mkfifo "$ORDER_FIFO"
 exec {order_fd}<>"$ORDER_FIFO"
 APP_ID=named-order-joiner TITLE_AFTER_MAP=named-order-late \
   "$CLIENT" named-order-placeholder 800 600 <&"$order_fd" > "$ANDROMEDA_RUNTIME_DIR/named-order-joiner.log" 2>&1 &
-wait_for_windows 9
+await_count 9
 order_id=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "named-order-placeholder") | .id')
 "$ANDROMEDA" msg "window-focus:$order_id" > /dev/null
 "$ANDROMEDA" msg window-consume-or-expel-right > /dev/null
 spawn_client named-order-after
-wait_for_windows 10
+await_count 10
 for _ in $(seq 60); do
   windows=$("$ANDROMEDA" windows --json)
   owner_x=$(jq -r '.[] | select(.title == "named-order-owner") | .x' <<< "$windows")

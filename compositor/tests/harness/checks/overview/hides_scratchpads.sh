@@ -6,6 +6,8 @@
 # transition observable instead of merely covering an incorrectly visible scratchpad.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly OUTPUT_LAYOUT_W=2560
@@ -18,16 +20,6 @@ readonly FIRST_SCRATCHPAD=overview-first
 readonly SECOND_SCRATCHPAD=overview-second
 readonly FIRST_LOG="$ANDROMEDA_RUNTIME_DIR/overview-scratch-first.log"
 readonly SECOND_LOG="$ANDROMEDA_RUNTIME_DIR/overview-scratch-second.log"
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
 
 wait_for_workspace() {
   local title=$1 output=$2 workspace=
@@ -173,14 +165,14 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 "$CLIENT" "$FIRST_TITLE" 420 260 > "$FIRST_LOG" 2>&1 &
-wait_for_count 1
+await_count 1
 wait_for_workspace "$FIRST_TITLE" "$FIRST_OUTPUT"
 move_pointer_to_output "$FIRST_OUTPUT"
 "$ANDROMEDA" msg "window-move-to-scratchpad:$FIRST_SCRATCHPAD" > /dev/null
 wait_for_empty_workspace "$FIRST_TITLE"
 
 "$CLIENT" "$SECOND_TITLE" 420 260 > "$SECOND_LOG" 2>&1 &
-wait_for_count 2
+await_count 2
 wait_for_workspace "$SECOND_TITLE" "$SECOND_OUTPUT"
 move_pointer_to_output "$SECOND_OUTPUT"
 "$ANDROMEDA" msg "window-move-to-scratchpad:$SECOND_SCRATCHPAD" > /dev/null

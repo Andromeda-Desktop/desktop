@@ -4,6 +4,8 @@
 # positions when the output comes back before its exclusive-zone panel.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly LAYER_CLIENT="${ANDROMEDA_LAYER_CLIENT:-./build-debug/tests/layer-client}"
 readonly WINDOW_CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly LAYER_HEIGHT=96
@@ -48,28 +50,6 @@ start_panel() {
 
 spawn_client() {
   "$WINDOW_CLIENT" "$1" 500 300 > "$ANDROMEDA_RUNTIME_DIR/$1.log" 2>&1 &
-}
-
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual'"
-  return 1
-}
-
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 80); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected windows, got $count"
-  return 1
 }
 
 field_of() {
@@ -117,16 +97,16 @@ panel_log="$ANDROMEDA_RUNTIME_DIR/restore-panel-first.log"
 start_panel "$panel_log"
 
 spawn_client restore-float
-wait_for_count 1
+await_count 1
 spawn_client restore-pin
-wait_for_count 2
+await_count 2
 for title in restore-float restore-pin; do
   wait_for_output "$title" HEADLESS-1
-  wait_for_field "$title" floating true
+  await_field "$title" floating true
   "$ANDROMEDA" msg "window-focus-warp:$(field_of "$title" id)" > /dev/null
   "$ANDROMEDA" msg window-center > /dev/null
-  wait_for_field "$title" x 1030
-  wait_for_field "$title" y 618
+  await_field "$title" x 1030
+  await_field "$title" y 618
 done
 "$ANDROMEDA" msg "window-focus-warp:$(field_of restore-pin id)" > /dev/null
 "$ANDROMEDA" msg window-toggle-pinned > /dev/null

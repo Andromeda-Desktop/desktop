@@ -5,33 +5,13 @@
 # geometrically nearest one. A directional swap afterwards exchanges two windows between their tiles.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
 spawn_client() {
   local title=$1
   "$CLIENT" "$title" 1200 700 > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
-wait_for_focus() {
-  local want=$1
-  for _ in $(seq 40); do
-    if [[ $("$ANDROMEDA" windows --json | jq -r --arg id "$want" '.[] | select(.id == $id) | .focused') == true ]]; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected $want to be focused: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -46,11 +26,11 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client dwindle-move-left
-wait_for_count 1
+await_count 1
 spawn_client dwindle-move-upper-right
-wait_for_count 2
+await_count 2
 spawn_client dwindle-move-lower-right
-wait_for_count 3
+await_count 3
 sleep 0.1
 
 windows=$("$ANDROMEDA" windows --json)
@@ -67,14 +47,14 @@ if [[ -z $lower_id || $left_x -ge $lower_x || $upper_x -ne $lower_x || $upper_y 
 fi
 
 "$ANDROMEDA" msg "window-focus:$lower_id" > /dev/null
-wait_for_focus "$lower_id"
+await_focus "$lower_id"
 
 upper_id=$(jq -r '.[] | select(.title == "dwindle-move-upper-right") | .id' <<< "$windows")
 left_id=$(jq -r '.[] | select(.title == "dwindle-move-left") | .id' <<< "$windows")
 "$ANDROMEDA" msg window-focus-left > /dev/null
-wait_for_focus "$left_id"
+await_focus "$left_id"
 "$ANDROMEDA" msg window-focus-right > /dev/null
-if ! wait_for_focus "$lower_id"; then
+if ! await_focus "$lower_id"; then
   echo "focus-right did not return to the last-focused tile of the right split (upper is $upper_id)"
   exit 1
 fi
@@ -121,12 +101,12 @@ echo "Dwindle directional swap exchanges windows between tiles"
 # Four corners: the moved window over the new one on the right, A over B on the left. Focusing the upper-right window
 # last makes it the right split's remembered tile, which a swap from the lower-left must still ignore.
 spawn_client dwindle-move-fourth
-wait_for_count 4
+await_count 4
 fourth_id=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "dwindle-move-fourth") | .id')
 "$ANDROMEDA" msg "window-focus:$lower_id" > /dev/null
-wait_for_focus "$lower_id"
+await_focus "$lower_id"
 "$ANDROMEDA" msg "window-focus:$upper_id" > /dev/null
-wait_for_focus "$upper_id"
+await_focus "$upper_id"
 "$ANDROMEDA" msg window-swap-right > /dev/null
 for _ in $(seq 40); do
   windows=$("$ANDROMEDA" windows --json)

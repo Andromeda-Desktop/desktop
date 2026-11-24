@@ -4,21 +4,13 @@
 # focus action, and a foreign-toplevel activation such as a taskbar or dock request.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_LEFT=272
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly FOREIGN_TOPLEVEL="${ANDROMEDA_FOREIGN_TOPLEVEL_CLIENT:-./build-debug/tests/foreign-toplevel-client}"
 
 windows() { "$ANDROMEDA" windows --json; }
-
-wait_for_windows() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got $(windows)"
-  return 1
-}
 
 wait_for_active() {
   local id=$1
@@ -93,7 +85,7 @@ foot --title=follow-second sh -c 'sleep 120' > "$ANDROMEDA_RUNTIME_DIR/follow-se
 foot --title=follow-other-output sh -c 'sleep 120' > "$ANDROMEDA_RUNTIME_DIR/follow-other-output.log" 2>&1 &
 foot --title=follow-other-neighbor sh -c 'sleep 120' > "$ANDROMEDA_RUNTIME_DIR/follow-other-neighbor.log" 2>&1 &
 foot --title=follow-other-third sh -c 'sleep 120' > "$ANDROMEDA_RUNTIME_DIR/follow-other-third.log" 2>&1 &
-wait_for_windows 5
+await_count 5
 
 first_id=$(window_id follow-first)
 second_id=$(window_id follow-second)

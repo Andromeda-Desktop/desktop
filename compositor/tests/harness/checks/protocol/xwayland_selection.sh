@@ -32,19 +32,6 @@ enabled = false
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
-wait_for_window() {
-  local title=$1
-  for _ in $(seq 80); do
-    if [[ $("$ANDROMEDA" windows --json | jq -r --arg title "$title" \
-      '[.[] | select(.title == $title)] | length') == 1 ]]; then
-      return 0
-    fi
-    sleep 0.02
-  done
-  echo "$title did not map: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 window_id() {
   "$ANDROMEDA" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .id'
 }
@@ -180,7 +167,7 @@ await_fullscreen() {
 # Copy before the first X11 consumer exists. Keep both foreground providers
 # alive so initial eager TARGETS and UTF8_STRING transfers have real sources.
 "$NATIVE_CLIENT" "$NATIVE_TITLE" > "$NATIVE_LOG" 2>&1 &
-wait_for_window "$NATIVE_TITLE"
+await_window "$NATIVE_TITLE"
 readonly NATIVE_ID=$(window_id "$NATIVE_TITLE")
 focus_window "$NATIVE_ID"
 publish_native_pair FIRST PRIMARY_FIRST
@@ -188,7 +175,7 @@ publish_native_pair FIRST PRIMARY_FIRST
 mkfifo "$X_CONTROL"
 exec {x_control_fd}<>"$X_CONTROL"
 "$X_CLIENT" "$X_TITLE" <&"$x_control_fd" > "$X_LOG" 2>&1 &
-wait_for_window "$X_TITLE"
+await_window "$X_TITLE"
 readonly X_ID=$(window_id "$X_TITLE")
 focus_window "$X_ID"
 # Establish the startup read after mapping; later returns must recover only through notifications.

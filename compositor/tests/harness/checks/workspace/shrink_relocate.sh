@@ -4,18 +4,11 @@
 # window. Every window must report the one surviving workspace id; the relocation count alone cannot show a skip.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly WORKSPACE="${ANDROMEDA_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
 
 window_count() { "$ANDROMEDA" windows --json | jq 'length'; }
-
-wait_for_count() {
-  for _ in $(seq 60); do
-    [[ $(window_count) -eq $1 ]] && return 0
-    sleep 0.1
-  done
-  echo "timed out waiting for $1 window(s), have $(window_count)"
-  return 1
-}
 
 # Distinct workspace ids the mapped windows claim, as ids rather than names: a window stranded on a destroyed
 # workspace keeps that workspace's id, and ids are never reissued, so the stale one cannot alias a survivor.
@@ -31,7 +24,7 @@ cp "$ANDROMEDA_CONFIG" "$ANDROMEDA_CONFIG.three"
 for index in a b c; do
   foot --title="shrink-$index" sh -c 'sleep 120' > /dev/null 2>&1 &
 done
-wait_for_count 3 || exit 1
+await_count 3 || exit 1
 
 doomed=$(workspace_id_named three)
 if [[ $(window_workspace_ids) != "$doomed" ]]; then

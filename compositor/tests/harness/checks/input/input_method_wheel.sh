@@ -5,6 +5,8 @@
 # harness: keyboard=none
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -17,16 +19,6 @@ readonly SECOND_LOG="$ANDROMEDA_RUNTIME_DIR/input-second.log"
 
 spawn_client() {
   ANDROMEDA_LOG_KEYMAPS=1 "$CLIENT" "$1" 1200 700 > "$ANDROMEDA_RUNTIME_DIR/$1.log" 2>&1 &
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 active_title() {
@@ -47,11 +39,11 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client "input-first"
-wait_for_count 1
+await_count 1
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 sleep 0.1
 spawn_client "input-second"
-wait_for_count 2
+await_count 2
 "$ANDROMEDA" msg workspace-switch:1 > /dev/null
 sleep 0.1
 

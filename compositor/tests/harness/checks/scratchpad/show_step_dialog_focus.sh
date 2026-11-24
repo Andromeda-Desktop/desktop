@@ -4,6 +4,8 @@
 # another process, is modal: it takes the focus its parent is given, and placement actions aimed at it act on the parent.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly PARENT_CLIENT="${ANDROMEDA_SEAT_LOG_CLIENT:-./build-debug/tests/seat-log-client}"
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly PARENT_LOG="$ANDROMEDA_RUNTIME_DIR/focus-parent.log"
@@ -18,15 +20,6 @@ EOF
 windows() { "$ANDROMEDA" windows --json; }
 window_of() { windows | jq -c --arg title "$1" '.[] | select(.title == $title)'; }
 active() { windows | jq -r '.[] | select(.active) | .title'; }
-
-wait_for_window() {
-  for _ in $(seq 80); do
-    [[ -n "$(window_of "$1")" ]] && return 0
-    sleep 0.05
-  done
-  echo "window '$1' never appeared: $(windows)"
-  return 1
-}
 
 expect_active() {
   local actual
@@ -44,11 +37,11 @@ focus_dialog() {
 
 # Three regular members, the middle one able to parent a dialog.
 "$CLIENT" focus-first 300 200 > "$ANDROMEDA_RUNTIME_DIR/focus-first.log" 2>&1 &
-wait_for_window focus-first
+await_window focus-first
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
 
 EXPORT_TOPLEVEL=1 "$PARENT_CLIENT" focus-parent > "$PARENT_LOG" 2>&1 &
-wait_for_window focus-parent
+await_window focus-parent
 handle=
 for _ in $(seq 80); do
   handle=$(sed -n 's/^exported handle=//p' "$PARENT_LOG")
@@ -62,14 +55,14 @@ fi
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
 
 "$CLIENT" focus-last 300 200 > "$ANDROMEDA_RUNTIME_DIR/focus-last.log" 2>&1 &
-wait_for_window focus-last
+await_window focus-last
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
 
 # Show every window, then open the middle member's dialog; it joins the scratchpad with its parent.
 "$ANDROMEDA" msg scratchpad-toggle > /dev/null
 TRANSIENT_FOREIGN_HANDLE="$handle" "$CLIENT" focus-dialog 200 150 > "$ANDROMEDA_RUNTIME_DIR/focus-dialog.log" 2>&1 &
 dialog=$!
-wait_for_window focus-dialog
+await_window focus-dialog
 if [[ $(window_of focus-dialog | jq -r .scratchpad) != default ]]; then
   echo "the dialog did not join the scratchpad: $(windows)"
   exit 1
@@ -117,7 +110,7 @@ expect_active focus-parent "showing a scratchpad whose focused dialog closed whi
 
 # Restoring with the attached dialog focused takes out its parent, and the dialog comes along.
 TRANSIENT_FOREIGN_HANDLE="$handle" "$CLIENT" focus-dialog 200 150 > "$ANDROMEDA_RUNTIME_DIR/focus-dialog-2.log" 2>&1 &
-wait_for_window focus-dialog
+await_window focus-dialog
 focus_dialog
 "$ANDROMEDA" msg window-restore-from-scratchpad > /dev/null
 restored_dialog=$(window_of focus-dialog | jq -r '"\(.scratchpad)|\(.workspace)"')

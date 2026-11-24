@@ -10,6 +10,8 @@
 # tiling on unpin.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly STATE_CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
@@ -88,16 +90,6 @@ field_of() {
   "$ANDROMEDA" windows --json | jq -r --arg t "$1" --arg f "$2" '.[] | select(.title == $t) | .[$f]'
 }
 
-wait_mapped() {
-  local title=$1
-  for _ in $(seq 80); do
-    [[ -n $(field_of "$title" w) ]] && return 0
-    sleep 0.1
-  done
-  echo "window '$title' never mapped"
-  exit 1
-}
-
 wait_gone() {
   local title=$1
   for _ in $(seq 80); do
@@ -121,7 +113,7 @@ first_configured_width() {
 
 "$CLIENT" alone-width > "$ANDROMEDA_RUNTIME_DIR/alone-width.log" 2>&1 &
 alone_width_pid=$!
-wait_mapped alone-width
+await_window alone-width
 alone=$(width_of alone-width)
 opening=$(first_configured_width alone-width)
 if [[ -z $opening ]]; then
@@ -135,7 +127,7 @@ fi
 
 "$CLIENT" neighbor > "$ANDROMEDA_RUNTIME_DIR/neighbor.log" 2>&1 &
 neighbor_pid=$!
-wait_mapped neighbor
+await_window neighbor
 shared=$(width_of alone-width)
 neighbor=$(width_of neighbor)
 
@@ -167,7 +159,7 @@ wait_gone alone-width
 readonly MAX_LOG="$ANDROMEDA_RUNTIME_DIR/alone-max.log"
 env LOG_CONFIGURES=1 "$STATE_CLIENT" alone-max > "$MAX_LOG" 2>&1 &
 alone_max_pid=$!
-wait_mapped alone-max
+await_window alone-max
 
 # Each configure prints its size, then its states, so the lines after the last
 # size line are the configure the client is holding.
@@ -186,7 +178,7 @@ maximized_width=$(sed -n '1s/^configured-size=\([0-9]\{1,\}\)x.*/\1/p' "$MAX_LOG
 
 "$STATE_CLIENT" max-neighbor > "$ANDROMEDA_RUNTIME_DIR/max-neighbor.log" 2>&1 &
 max_neighbor_pid=$!
-wait_mapped max-neighbor
+await_window max-neighbor
 for _ in $(seq 40); do
   current_configure | grep -q '^configured-maximized$' || break
   sleep 0.1
@@ -210,7 +202,7 @@ for title in pinned-default pinned-tiled; do
   log="$ANDROMEDA_RUNTIME_DIR/$title.log"
   env LOG_CONFIGURES=1 "$STATE_CLIENT" "$title" > "$log" 2>&1 &
   pid=$!
-  wait_mapped "$title"
+  await_window "$title"
   if grep -q '^configured-maximized$' "$log"; then
     echo "the pinned window '$title' opened in the alone state:"
     cat "$log"
@@ -237,12 +229,12 @@ done
 # ends it, and the width comes back once that column is gone.
 "$CLIENT" column-wide > "$ANDROMEDA_RUNTIME_DIR/column-wide.log" 2>&1 &
 column_wide_pid=$!
-wait_mapped column-wide
+await_window column-wide
 column_alone=$(width_of column-wide)
 
 "$CLIENT" column-peer > "$ANDROMEDA_RUNTIME_DIR/column-peer.log" 2>&1 &
 column_peer_pid=$!
-wait_mapped column-peer
+await_window column-peer
 column_shared=$(width_of column-wide)
 if ((column_shared != column_alone)); then
   echo "a window joining the only column changed the alone width: alone=$column_alone shared=$column_shared"
@@ -283,7 +275,7 @@ fi
 
 "$CLIENT" column-other > "$ANDROMEDA_RUNTIME_DIR/column-other.log" 2>&1 &
 column_other_pid=$!
-wait_mapped column-other
+await_window column-other
 column_split=$(width_of column-wide)
 if ((column_split >= column_alone)); then
   echo "the alone width survived a new column: alone=$column_alone split=$column_split"
@@ -314,10 +306,10 @@ wait_gone column-wide
 # Floating one of two maximized owners must not leave an orphaned maximize on the float; re-tiling restores it.
 "$CLIENT" max-column-a > "$ANDROMEDA_RUNTIME_DIR/max-column-a.log" 2>&1 &
 max_column_a_pid=$!
-wait_mapped max-column-a
+await_window max-column-a
 "$CLIENT" max-column-b > "$ANDROMEDA_RUNTIME_DIR/max-column-b.log" 2>&1 &
 max_column_b_pid=$!
-wait_mapped max-column-b
+await_window max-column-b
 if [[ $(field_of max-column-a maximized) != true ]]; then
   echo "the alone maximize did not apply in the shared column"
   exit 1
@@ -366,7 +358,7 @@ wait_gone max-column-a
 # take the output-covering state away.
 "$CLIENT" column-edge > "$ANDROMEDA_RUNTIME_DIR/column-edge.log" 2>&1 &
 column_edge_pid=$!
-wait_mapped column-edge
+await_window column-edge
 for _ in $(seq 40); do
   [[ $(field_of column-edge maximized_to_edges) == true ]] && break
   sleep 0.1
@@ -378,7 +370,7 @@ fi
 
 "$CLIENT" column-edge-peer > "$ANDROMEDA_RUNTIME_DIR/column-edge-peer.log" 2>&1 &
 column_edge_peer_pid=$!
-wait_mapped column-edge-peer
+await_window column-edge-peer
 if [[ $(field_of column-edge-peer maximized_to_edges) != false ]]; then
   echo "a window that opened into a shared column took maximize-to-edges"
   exit 1

@@ -3,6 +3,8 @@
 # delayed launches retain their destination, and explicit workspace focus relinquishes launch context.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly FIFO="$ANDROMEDA_RUNTIME_DIR/empty-launch-control"
@@ -29,17 +31,6 @@ field() {
   "$ANDROMEDA" windows --json | jq -r --arg title "$1" --arg key "$2" '[.[] | select(.title == $title)] | if length == 0 then "<absent>" else .[0][$key] end'
 }
 
-wait_field() {
-  local actual=
-  for _ in $(seq 80); do
-    actual=$(field "$1" "$2")
-    [[ $actual == "$3" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $1 $2=$3, got $actual: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 assert_backdrop() {
   local red= image="$ANDROMEDA_RUNTIME_DIR/empty-launch.png"
   "$ANDROMEDA" settle > /dev/null
@@ -57,7 +48,7 @@ spawn() {
 
 assert_backdrop 250 255
 "$CLIENT" empty-home 300 200 > "$ANDROMEDA_RUNTIME_DIR/empty-home.log" 2>&1 &
-wait_field empty-home active true
+await_field empty-home active true
 "$ANDROMEDA" msg scratchpad-toggle > /dev/null
 assert_backdrop 120 135
 "$ANDROMEDA" msg scratchpad-toggle > /dev/null
@@ -78,9 +69,9 @@ for action in window-toggle-floating column-focus-first window-move-to-workspace
 done
 "$ANDROMEDA" msg window-close > /dev/null
 spawn empty-first
-wait_field empty-first scratchpad default
-wait_field empty-first active true
-wait_field empty-home workspace "$home_workspace"
+await_field empty-first scratchpad default
+await_field empty-first active true
+await_field empty-home workspace "$home_workspace"
 first_id=$(field empty-first id)
 "$ANDROMEDA" msg "window-close:$first_id" > /dev/null
 for _ in $(seq 80); do
@@ -89,19 +80,19 @@ for _ in $(seq 80); do
 done
 grep -q '^unmapped$' "$ANDROMEDA_RUNTIME_DIR/empty-first.log"
 assert_backdrop 120 135
-wait_field empty-home active false
+await_field empty-home active false
 spawn empty-second
-wait_field empty-second scratchpad default
-wait_field empty-second active true
+await_field empty-second scratchpad default
+await_field empty-second active true
 
 # A real client disconnect must preserve the empty state too, not just an unmap-only close request.
 second_pid=$(field empty-second pid)
 kill -TERM "$second_pid"
-wait_field empty-second title "<absent>"
+await_field empty-second title "<absent>"
 assert_backdrop 120 135
 spawn empty-second
-wait_field empty-second scratchpad default
-wait_field empty-second active true
+await_field empty-second scratchpad default
+await_field empty-second active true
 
 # The launch is captured before the toplevel's initial commit, then its pad is hidden before map.
 mkfifo "$FIFO"
@@ -116,27 +107,27 @@ grep -q '^map-pending$' "$LOG"
 "$ANDROMEDA" msg scratchpad-toggle > /dev/null
 assert_backdrop 250 255
 printf m >&"$control_fd"
-wait_field empty-delayed scratchpad default
-wait_field empty-delayed active false
+await_field empty-delayed scratchpad default
+await_field empty-delayed active false
 assert_backdrop 250 255
 
 # An unrelated client is not captured merely because the pad is visible. Focusing it changes subsequent launches.
 "$ANDROMEDA" msg scratchpad-toggle > /dev/null
 "$CLIENT" empty-workspace 300 200 > "$ANDROMEDA_RUNTIME_DIR/empty-workspace.log" 2>&1 &
-wait_field empty-workspace active true
-wait_field empty-workspace scratchpad ""
+await_field empty-workspace active true
+await_field empty-workspace scratchpad ""
 spawn empty-workspace-child
-wait_field empty-workspace-child scratchpad ""
-wait_field empty-workspace-child active true
+await_field empty-workspace-child scratchpad ""
+await_field empty-workspace-child active true
 
 # An empty-background click relinquishes scratchpad launch context even while its backdrop stays visible.
 scratch_id=$(field empty-second id)
 "$ANDROMEDA" msg "window-focus:$scratch_id" > /dev/null
-wait_field empty-second active true
+await_field empty-second active true
 "$POINTER" 1280 720 move 1200 650 click 272
-wait_field empty-workspace-child active true
+await_field empty-workspace-child active true
 spawn empty-after-click
-wait_field empty-after-click scratchpad ""
-wait_field empty-after-click active true
+await_field empty-after-click scratchpad ""
+await_field empty-after-click active true
 
 echo "empty toggles, last-member closure, delayed admission, and workspace launch context verified"

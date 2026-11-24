@@ -4,6 +4,8 @@
 # adopts its destination, while a pending launch keeps an emptied refuge alive.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="$ANDROMEDA_UNMAP_CLIENT"
 readonly START_FIFO="$ANDROMEDA_RUNTIME_DIR/evacuated-arrival-start"
 readonly TOKEN_FILE="$ANDROMEDA_RUNTIME_DIR/evacuated-arrival-token"
@@ -27,22 +29,11 @@ field() {
     '.[] | select(.title == $title) | .[$field]'
 }
 
-wait_for_window() {
-  local title=$1 state=
-  for _ in $(seq 60); do
-    state=$("$ANDROMEDA" windows --json)
-    jq -e --arg title "$title" 'any(.[]; .title == $title)' <<< "$state" > /dev/null && return 0
-    sleep 0.05
-  done
-  echo "window '$title' did not map: $state"
-  return 1
-}
-
 spawn() {
   local title=$1 selector=$2 place=${3:-true} id
   "$ANDROMEDA" msg "workspace-switch:$selector" > /dev/null
   "$CLIENT" "$title" 800 600 > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
-  wait_for_window "$title"
+  await_window "$title"
   if [[ $place == true ]]; then
     id=$(field "$title" id)
     "$ANDROMEDA" msg "window-focus:$id" > /dev/null
@@ -115,7 +106,7 @@ if ! jq -e --arg refuge "$REFUGE" '
 fi
 
 printf 'start\n' >&"$start_fd"
-wait_for_window pending-arrival
+await_window pending-arrival
 for _ in $(seq 60); do
   "$ANDROMEDA" settle
   windows=$("$ANDROMEDA" windows --json)

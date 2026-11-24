@@ -4,6 +4,8 @@
 # the group to its predecessor; and a layout without columns refuses tabs.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly RESERVE=32 # [appearance.tab_bar] height 24 plus layout gap 8
 
 accepts() {
@@ -15,17 +17,6 @@ accepts() {
 
 spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_windows() {
-  local expected=$1 count=
-  for _ in $(seq 60); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
 }
 
 field_of() {
@@ -60,11 +51,11 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client tab-a
-wait_for_windows 1
+await_count 1
 spawn_client tab-b
-wait_for_windows 2
+await_count 2
 spawn_client tab-c
-wait_for_windows 3
+await_count 3
 "$ANDROMEDA" settle
 stacked_y=$(field_of tab-a y)
 focused=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.active) | .title')
@@ -110,7 +101,7 @@ wait_for_shown tab-b
 
 # Closing the shown tab shows the tab before it; tab-b is first, so the next one takes its place.
 accepts window-close
-wait_for_windows 2
+await_count 2
 "$ANDROMEDA" settle
 wait_for_shown tab-a
 

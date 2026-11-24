@@ -3,6 +3,8 @@
 # with its dialog rather than the dialog alone, and the dialog takes focus.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly PARENT_CLIENT="${ANDROMEDA_SEAT_LOG_CLIENT:-./build-debug/tests/seat-log-client}"
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly PARENT_LOG="$ANDROMEDA_RUNTIME_DIR/activate-parent.log"
@@ -42,15 +44,6 @@ EOF
 windows() { "$ANDROMEDA" windows --json; }
 window_of() { windows | jq -c --arg title "$1" '.[] | select(.title == $title)'; }
 
-wait_for_window() {
-  for _ in $(seq 80); do
-    [[ -n "$(window_of "$1")" ]] && return 0
-    sleep 0.05
-  done
-  echo "window '$1' never appeared: $(windows)"
-  return 1
-}
-
 # Whether the red window, the green dialog, and the parent (anything bright inside its box but clear of the dialog)
 # are on screen.
 shown() {
@@ -76,7 +69,7 @@ expect() {
 }
 
 EXPORT_TOPLEVEL=1 "$PARENT_CLIENT" activate-parent > "$PARENT_LOG" 2>&1 &
-wait_for_window activate-parent
+await_window activate-parent
 handle=
 for _ in $(seq 80); do
   handle=$(sed -n 's/^exported handle=//p' "$PARENT_LOG")
@@ -90,14 +83,14 @@ fi
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
 
 FILL_COLOR=0xFFFF0000 "$CLIENT" activate-other 200 150 > "$ANDROMEDA_RUNTIME_DIR/activate-other.log" 2>&1 &
-wait_for_window activate-other
+await_window activate-other
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
 
 # With every window shown, the parent opens a dialog that joins the scratchpad.
 "$ANDROMEDA" msg scratchpad-toggle > /dev/null
 FILL_COLOR=0xFF00FF00 TRANSIENT_FOREIGN_HANDLE="$handle" \
   "$CLIENT" activate-dialog 300 200 > "$ANDROMEDA_RUNTIME_DIR/activate-dialog.log" 2>&1 &
-wait_for_window activate-dialog
+await_window activate-dialog
 expect "red green parent" "every window and the dialog did not show"
 
 # Step to the red window, hiding the parent and its dialog.

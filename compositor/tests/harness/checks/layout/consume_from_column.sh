@@ -4,6 +4,8 @@
 # master layout pulls from the neighboring area instead, and dwindle, whose leaves hold one window each, does nothing.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 accepts() {
   if ! out=$("$ANDROMEDA" msg "$1" 2>&1); then
     echo "expected '$1' to be accepted, got: $out"
@@ -13,17 +15,6 @@ accepts() {
 
 spawn_client() {
   foot --title="harness-$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_windows() {
-  local want=$1 count=
-  for _ in $(seq 60); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$want" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want window(s), got $count"
-  return 1
 }
 
 field_of() {
@@ -38,13 +29,13 @@ printf '\n[layout.scrolling]\ndefault_extent_fraction = 0.5\ncenter_focused = "n
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client a
-wait_for_windows 1
+await_count 1
 spawn_client b
-wait_for_windows 2
+await_count 2
 spawn_client c
-wait_for_windows 3
+await_count 3
 spawn_client d
-wait_for_windows 4
+await_count 4
 "$ANDROMEDA" settle
 
 # Give the first column a different extent, so a pull that took the source's width instead of the focused column's
@@ -131,7 +122,7 @@ fi
 accepts workspace-set-layout:master
 "$ANDROMEDA" settle
 spawn_client e
-wait_for_windows 5
+await_count 5
 "$ANDROMEDA" settle
 if [[ $(focus_of) != harness-e ]]; then
   echo "expected the new window focused in the master layout, got $(focus_of)"

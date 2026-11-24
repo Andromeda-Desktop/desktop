@@ -37,17 +37,6 @@ spawn_client() {
   "$CLIENT" "$1" 1200 700 > /dev/null 2>&1 &
 }
 
-wait_for_windows() {
-  local expected=$1 count=
-  for _ in $(seq 60); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
-}
-
 focused() {
   "$ANDROMEDA" windows --json | jq -r '.[] | select(.focused) | .title'
 }
@@ -65,14 +54,14 @@ wait_for_focus() {
 
 # A and B tabbed in one column, B on show; C in a column of its own.
 spawn_client tab-a
-wait_for_windows 1
+await_count 1
 spawn_client tab-b
-wait_for_windows 2
+await_count 2
 "$ANDROMEDA" msg window-consume-left > /dev/null
 "$ANDROMEDA" msg column-toggle-tabbed > /dev/null
 wait_for_focus tab-b
 spawn_client tab-c
-wait_for_windows 3
+await_count 3
 wait_for_focus tab-c
 "$ANDROMEDA" settle
 

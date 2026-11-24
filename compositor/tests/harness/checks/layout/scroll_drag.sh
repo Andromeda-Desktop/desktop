@@ -6,6 +6,8 @@
 # without swallowing ordinary middle clicks outside the overview.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly BTN_MIDDLE=274
@@ -36,15 +38,6 @@ window_count() {
   "$ANDROMEDA" windows --json | jq 'length'
 }
 
-wait_for_count() {
-  for _ in $(seq 80); do
-    [[ $(window_count) -eq $1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for $1 windows, have $(window_count)"
-  return 1
-}
-
 wait_for_a_visible() {
   local field=$1
   local value=-1
@@ -64,7 +57,7 @@ count=0
 for title in A B C D; do
   foot --title="$title" sh -c 'sleep 120' > /dev/null 2>&1 &
   count=$((count + 1))
-  wait_for_count "$count"
+  await_count "$count"
 done
 
 # New windows focus at the strip end. Return to A and wait for its arrangement so dragging left has room to pan.
@@ -228,6 +221,6 @@ if [[ $(window_count) -ne 4 ]]; then
   exit 1
 fi
 wait "$middle_click_pid"
-wait_for_count 3
+await_count 3
 
 echo "bound and bare mouse drags pan overview strips, navigate rows, and preserve release-only middle-click close"

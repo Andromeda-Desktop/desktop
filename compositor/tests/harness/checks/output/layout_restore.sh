@@ -4,6 +4,8 @@
 # mode, even while the windows temporarily share a populated dynamic output.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly WORKSPACE="${ANDROMEDA_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
 readonly UNMAP_CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
@@ -17,17 +19,6 @@ spawn_remap_client() {
   mkfifo "$remap_control"
   exec {remap_fd}<>"$remap_control"
   REMAP_ON_STDIN=1 "$UNMAP_CLIENT" "$1" <&"$remap_fd" > "$remap_log" 2>&1 &
-}
-
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 80); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected windows, got $count"
-  return 1
 }
 
 field_of() {
@@ -235,7 +226,7 @@ for title in "${h1_titles[@]}"; do
     spawn_client "$title"
   fi
   count=$((count + 1))
-  wait_for_count "$count"
+  await_count "$count"
   case $title in
     scroll-*) move_to_workspace "$title" 1 HEADLESS-1 ;;
     dwindle-*) move_to_workspace "$title" 2 HEADLESS-1 ;;
@@ -353,14 +344,14 @@ wait_for_width_change master-c "$master_unmax_width"
 for title in "${h2_layout_titles[@]}"; do
   spawn_client "$title"
   count=$((count + 1))
-  wait_for_count "$count"
+  await_count "$count"
   move_to_workspace "$title" 1 HEADLESS-2
 done
 for workspace in 2 3; do
   title=refuge-ws$workspace
   spawn_client "$title"
   count=$((count + 1))
-  wait_for_count "$count"
+  await_count "$count"
   move_to_workspace "$title" "$workspace" HEADLESS-2
 done
 
@@ -417,7 +408,7 @@ remap_id=$(field_of scroll-a id)
 assert_evacuated_workspaces destruction
 wait_for_geometry_snapshot "$refuge_before" refuge-
 "$ANDROMEDA" msg "window-close:$remap_id" > /dev/null
-wait_for_count "$((count - 1))"
+await_count "$((count - 1))"
 if ! grep -q '^unmapped$' "$remap_log"; then
   echo "scroll-a did not stay alive and unmap while displaced"
   exit 1
@@ -451,7 +442,7 @@ for title in "${mapped_h1_titles[@]}" "${h2_layout_titles[@]}" "${h2_survivor_ti
   wait_for_home "$title" "${expected_home[$title]}"
 done
 printf 'r' >&"$remap_fd"
-wait_for_count "$count"
+await_count "$count"
 wait_for_home scroll-a "${expected_home[scroll-a]}"
 wait_for_geometry_snapshot "$before"
 

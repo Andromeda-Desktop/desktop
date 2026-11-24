@@ -3,6 +3,8 @@
 # path without synthesizing a compositor modifier key.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -17,15 +19,6 @@ pointer() {
 
 spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_count() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for $1 window(s)"
-  return 1
 }
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -43,9 +36,9 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client terminal-drag
-wait_for_count 1
+await_count 1
 spawn_client wide-drag
-wait_for_count 2
+await_count 2
 "$ANDROMEDA" settle
 
 windows=$("$ANDROMEDA" windows --json)

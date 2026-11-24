@@ -3,6 +3,8 @@
 # survivor's card glides to its new place on the overview curve instead of jumping there.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 IMAGE="$ANDROMEDA_RUNTIME_DIR/reflow.png"
@@ -23,15 +25,6 @@ workspace_curve = "linear"
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
-wait_for_windows() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $1 window(s): $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 # Center x of the blue survivor's card.
 blue_center() {
   grim -o HEADLESS-1 "$IMAGE"
@@ -41,9 +34,9 @@ blue_center() {
 }
 
 FILL_COLOR=0xFFFF0000 "$ANDROMEDA_UNMAP_CLIENT" reflow-closing 500 400 > "$ANDROMEDA_RUNTIME_DIR/closing.log" 2>&1 &
-wait_for_windows 1
+await_count 1
 FILL_COLOR=0xFF0000FF "$ANDROMEDA_UNMAP_CLIENT" reflow-survivor 500 400 > /dev/null 2>&1 &
-wait_for_windows 2
+await_count 2
 
 "$ANDROMEDA_POINTER_CLIENT" "$OUTPUT_W" "$OUTPUT_H" move 5 5
 "$ANDROMEDA" msg overview-open > /dev/null
@@ -53,7 +46,7 @@ before=$(blue_center)
 "$ANDROMEDA" clock-freeze > /dev/null
 closing=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "reflow-closing") | .id')
 "$ANDROMEDA" msg "window-close:$closing" > /dev/null
-wait_for_windows 1
+await_count 1
 "$ANDROMEDA" clock-advance 500 > /dev/null
 middle=$(blue_center)
 "$ANDROMEDA" clock-advance 1500 > /dev/null

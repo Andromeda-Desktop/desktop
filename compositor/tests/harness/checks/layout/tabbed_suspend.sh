@@ -3,6 +3,8 @@
 # not, and untabbing the column resumes every tab.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
 accepts() {
@@ -14,17 +16,6 @@ accepts() {
 
 spawn_client() {
   LOG_SUSPENDED=1 "$CLIENT" "$1" 400 300 > "$ANDROMEDA_RUNTIME_DIR/$1.log" 2>&1 &
-}
-
-wait_for_windows() {
-  local expected=$1 count=
-  for _ in $(seq 60); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
 }
 
 # The last suspended-state line a client printed, or "resumed" before it printed any.
@@ -53,9 +44,9 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client tab-a
-wait_for_windows 1
+await_count 1
 spawn_client tab-b
-wait_for_windows 2
+await_count 2
 "$ANDROMEDA" settle
 
 # Stacked, both show.

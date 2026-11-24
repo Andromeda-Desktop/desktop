@@ -2,21 +2,13 @@
 # A parented XDG toplevel without a position rule opens centered over its parent, not over the output.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/transient-placement.log"
 
 windows() {
   "$ANDROMEDA" windows --json
-}
-
-wait_for_window_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $(windows)"
-  return 1
 }
 
 wait_for_position() {
@@ -45,7 +37,7 @@ EOF
 
 # Over the 900x600 parent the 400x300 child lands at 350,260. Centered on the 1280x720 output it would be 440,210.
 TRANSIENT_SUITE=1 TRANSIENT_PARENT_SIZE=900x600 "$CLIENT" transient-child 400 300 > "$CLIENT_LOG" 2>&1 &
-wait_for_window_count 3
+await_count 3
 wait_for_position transient-parent 100 110
 wait_for_position transient-child 350 260
 

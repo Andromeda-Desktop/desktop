@@ -5,6 +5,8 @@
 # snapshot, so no custom mode here.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -35,17 +37,6 @@ field_of() {
     | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
 }
 
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual'"
-  return 1
-}
-
 # The client adopts every configured size, so IPC geometry reports what the
 # compositor asked for, overriding its own 800x600 preference.
 for title in frac-only frac-width-only frac-vs-pixels; do
@@ -53,18 +44,18 @@ for title in frac-only frac-width-only frac-vs-pixels; do
 done
 
 # Both axes: 0.5 of 1280x720.
-wait_for_field frac-only floating true
-wait_for_field frac-only w 640
-wait_for_field frac-only h 360
+await_field frac-only floating true
+await_field frac-only w 640
+await_field frac-only h 360
 
 # One axis only: the unset axis keeps the client's own 600 preference.
-wait_for_field frac-width-only floating true
-wait_for_field frac-width-only w 320
-wait_for_field frac-width-only h 600
+await_field frac-width-only floating true
+await_field frac-width-only w 320
+await_field frac-width-only h 600
 
 # Pixels outrank fractions on both axes.
-wait_for_field frac-vs-pixels floating true
-wait_for_field frac-vs-pixels w 300
-wait_for_field frac-vs-pixels h 200
+await_field frac-vs-pixels floating true
+await_field frac-vs-pixels w 300
+await_field frac-vs-pixels h 200
 
 echo "floating axes size independently, and pixel rules outrank fractions"

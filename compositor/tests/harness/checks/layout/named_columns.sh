@@ -2,6 +2,8 @@
 # Named scrolling-column rules stack real clients in configured order, not launch order.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 failed=0
 
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -11,16 +13,6 @@ readonly CONTROL_FIFO="$ANDROMEDA_RUNTIME_DIR/named-column-control"
 
 spawn_client() {
   "$CLIENT" "$1" 800 600 > "$ANDROMEDA_RUNTIME_DIR/$1.log" 2>&1 &
-}
-
-wait_for_windows() {
-  local count=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $count ]] && return 0
-    sleep 0.1
-  done
-  echo "timed out waiting for $count named-column clients: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -86,11 +78,11 @@ EOF
 
 # Start the lower window first. The rule order must correct the final stack.
 spawn_client named-later
-wait_for_windows 1
+await_count 1
 spawn_client unrelated
-wait_for_windows 2
+await_count 2
 LOG_CONFIGURES=1 "$CLIENT" named-first 800 600 > "$FIRST_LOG" 2>&1 &
-wait_for_windows 3
+await_count 3
 
 for _ in $(seq 60); do
   windows=$("$ANDROMEDA" windows --json)
@@ -110,25 +102,25 @@ fi
 
 # INT_MAX is still an explicit order and must sort before an unordered member.
 spawn_client named-unordered
-wait_for_windows 4
+await_count 4
 spawn_client named-max-order
-wait_for_windows 5
+await_count 5
 
 # Fill the strip and focus its end. The placeholder will initially open there,
 # then its real title must move focus back to the visible named column.
 spawn_client filler-a
-wait_for_windows 6
+await_count 6
 spawn_client filler-b
-wait_for_windows 7
+await_count 7
 spawn_client filler-c
-wait_for_windows 8
+await_count 8
 
 # Some clients publish their useful title after mapping. The late rule must
 # move the window into the named column without changing that column's width.
 mkfifo "$CONTROL_FIFO"
 exec {control_fd}<>"$CONTROL_FIFO"
 TITLE_AFTER_MAP=named-delayed "$CLIENT" named-placeholder 800 600 <&"$control_fd" > "$DELAYED_LOG" 2>&1 &
-wait_for_windows 9
+await_count 9
 printf 'u' >&"$control_fd"
 
 for _ in $(seq 60); do
@@ -177,7 +169,7 @@ fi
 # the whole column.
 column_gap_before=$((unrelated_x - first_x))
 spawn_client named-floating-joiner
-wait_for_windows 10
+await_count 10
 "$ANDROMEDA" msg window-toggle-floating > /dev/null
 for _ in $(seq 60); do
   windows=$("$ANDROMEDA" windows --json)
@@ -198,11 +190,11 @@ fi
 
 # Ordered arrivals join the existing tab group at its beginning or inside it.
 spawn_client named-tab-later
-wait_for_windows 11
+await_count 11
 spawn_client named-tab-first
-wait_for_windows 12
+await_count 12
 spawn_client named-tab-middle
-wait_for_windows 13
+await_count 13
 "$ANDROMEDA" settle
 windows=$("$ANDROMEDA" windows --json)
 if ! jq -e '

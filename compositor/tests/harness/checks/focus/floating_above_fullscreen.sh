@@ -8,18 +8,6 @@ readonly APP_ID=floating-above-fullscreen
 
 windows() { "$ANDROMEDA" windows --json; }
 
-wait_for_window() {
-  local title=$1
-  for _ in $(seq 80); do
-    if windows | jq -e --arg title "$title" 'any(.[]; .title == $title)' > /dev/null; then
-      return 0
-    fi
-    sleep 0.025
-  done
-  echo "window $title did not map: $(windows)"
-  return 1
-}
-
 assert_active() {
   local title=$1
   if ! windows | jq -e --arg title "$title" 'any(.[]; .title == $title and .active)' > /dev/null; then
@@ -108,7 +96,7 @@ CONFIG
 
 env APP_ID="$APP_ID" FILL_COLOR=0xFF0000FF RESIZE_FILL_COLOR=0xFF0000FF \
   "$ANDROMEDA_UNMAP_CLIENT" fullscreen-main 1280 720 > "$ANDROMEDA_RUNTIME_DIR/fullscreen-main.log" 2>&1 &
-wait_for_window fullscreen-main
+await_window fullscreen-main
 capture
 assert_active fullscreen-main
 assert_pixel 300 260 "0 0 255" "the main window did not fill the output"
@@ -116,7 +104,7 @@ assert_pixel 300 260 "0 0 255" "the main window did not fill the output"
 # Without an explicit focus choice, an unrelated float must not steal fullscreen focus.
 env APP_ID=floating-default-focus FILL_COLOR=0xFFFF00FF \
   "$ANDROMEDA_UNMAP_CLIENT" default-focus-float 220 220 > "$ANDROMEDA_RUNTIME_DIR/default-focus-float.log" 2>&1 &
-wait_for_window default-focus-float
+await_window default-focus-float
 capture
 assert_active fullscreen-main
 assert_pixel 1050 260 "0 0 255" "a default-focus arrival appeared above fullscreen"
@@ -124,7 +112,7 @@ assert_pixel 1050 260 "0 0 255" "a default-focus arrival appeared above fullscre
 # Opening an independent float without focus must not disturb fullscreen stacking.
 env APP_ID="$APP_ID" FILL_COLOR=0xFFFF0000 \
   "$ANDROMEDA_UNMAP_CLIENT" unfocused-float 300 220 > "$ANDROMEDA_RUNTIME_DIR/unfocused-float.log" 2>&1 &
-wait_for_window unfocused-float
+await_window unfocused-float
 capture
 assert_active fullscreen-main
 assert_pixel 300 260 "0 0 255" "an unfocused arrival appeared above fullscreen"
@@ -132,7 +120,7 @@ assert_pixel 300 260 "0 0 255" "an unfocused arrival appeared above fullscreen"
 # These are separate native toplevels, matching apps that do not set a transient parent.
 env APP_ID="$APP_ID" FILL_COLOR=0xFF00FF00 \
   "$ANDROMEDA_UNMAP_CLIENT" focused-float 300 220 > "$ANDROMEDA_RUNTIME_DIR/focused-float.log" 2>&1 &
-wait_for_window focused-float
+await_window focused-float
 capture
 assert_active focused-float
 windows | jq -e '[.[] | select(.floating and .parent == "")] | length == 3' > /dev/null

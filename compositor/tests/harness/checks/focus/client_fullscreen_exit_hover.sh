@@ -3,6 +3,8 @@
 # action. The next motion inside a tile revealed beneath the stationary pointer must refresh hover focus.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -11,16 +13,6 @@ readonly CONTROL_FIFO="$ANDROMEDA_RUNTIME_DIR/client-fullscreen-control"
 readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/client-fullscreen.log"
 
 windows() { "$ANDROMEDA" windows --json; }
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq 'length') -eq $want ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $want windows, got: $(windows)"
-  return 1
-}
 
 wait_for_query() {
   local query=$1 message=$2
@@ -64,9 +56,9 @@ mkfifo "$CONTROL_FIFO"
 exec {control_fd}<>"$CONTROL_FIFO"
 FULLSCREEN_ON_STDIN=1 LOG_CONFIGURES=1 "$CLIENT" client-fullscreen-left 1200 700 \
   <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
-wait_for_count 1
+await_count 1
 "$CLIENT" client-fullscreen-right 1200 700 > /dev/null 2>&1 &
-wait_for_count 2
+await_count 2
 
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 322 360
 left_id=$(windows | jq -r '.[] | select(.title == "client-fullscreen-left") | .id')

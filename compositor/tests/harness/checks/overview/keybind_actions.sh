@@ -3,6 +3,8 @@
 # outside overview. Ordinary actions keep targeting the selected card without closing the overview.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly BTN_LEFT=272
@@ -38,16 +40,6 @@ keyboard_enters() {
 
 overview_open_count() {
   jq -s '[.[] | select(.event == "overview" and .data.open == true)] | length' "$OVERVIEW_EVENTS"
-}
-
-wait_for_count() {
-  local expected=$1
-  for _ in $(seq 60); do
-    [[ $(window_count) -eq $expected ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $expected windows, got: $($ANDROMEDA windows --json)"
-  return 1
 }
 
 wait_for_focus() {
@@ -106,9 +98,9 @@ pointer mod none pause 60000 > /dev/null 2>&1 &
 sleep 0.2 # real time: the keyboard holder connects before the clients bind
 
 "$CLIENT" overview-vim-first 1200 700 > "$ANDROMEDA_RUNTIME_DIR/overview-vim-first.log" 2>&1 &
-wait_for_count 1
+await_count 1
 "$CLIENT" overview-vim-second 1200 700 > "$ANDROMEDA_RUNTIME_DIR/overview-vim-second.log" 2>&1 &
-wait_for_count 2
+await_count 2
 
 second_id=$(
   "$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "overview-vim-second") | .id'
@@ -131,10 +123,10 @@ if [[ $stacked != true ]]; then
 fi
 
 "$CLIENT" overview-vim-right 1200 700 > "$ANDROMEDA_RUNTIME_DIR/overview-vim-right.log" 2>&1 &
-wait_for_count 3
+await_count 3
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 "$CLIENT" overview-vim-row 1200 700 > "$ANDROMEDA_RUNTIME_DIR/overview-vim-row.log" 2>&1 &
-wait_for_count 4
+await_count 4
 "$ANDROMEDA" msg workspace-switch:1 > /dev/null
 
 read -r top_id top_title bottom_id bottom_title <<< "$("$ANDROMEDA" windows --json | jq -r \
@@ -197,7 +189,7 @@ wait_for_focus "$top_title"
 chord 38 # L
 wait_for_focus overview-vim-right
 chord 45 # X
-wait_for_count 3
+await_count 3
 wait_for_focus "$top_title"
 
 # Direct vertical focus follows stacked cards within the selected workspace. This transition also proves the close
@@ -278,7 +270,7 @@ fi
 # puts that new column above or below the stacked pair, never beside it. Column insertion animates the strip, so both
 # lanes have to read the same twice before their order decides which arrow points at the new one.
 "$CLIENT" overview-vim-lane 1200 700 > "$ANDROMEDA_RUNTIME_DIR/overview-vim-lane.log" 2>&1 &
-wait_for_count 4
+await_count 4
 lanes=
 previous=
 for _ in $(seq 80); do

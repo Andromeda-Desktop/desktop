@@ -15,6 +15,8 @@ CPP = (".c", ".cc", ".cpp", ".h", ".hpp")
 CPP_DIRS = ("compositor/src/", "shell/src/", "libdesk-ui/src/", "libdesk-app/src/", "libdesk-system/src/",
             "libdesk-term/src/", "apps/", "portal/src/", "indexer/src/", "andromeda-preview/", "session/", "system/")
 LINE_COMMENT = re.compile(r"^\s*//.*$", re.M)
+E2E = "tests/e2e/"
+HARNESS = "compositor/tests/harness/"
 SKIP = re.compile(r"(^|/)(tests?|subprojects|build[^/]*|greeter)/|_test\.|^shell/src/greeter/|^greeter/")
 
 # id: (why and owner, path prefixes, suffixes, pattern, owner paths exempt from the rule)
@@ -135,6 +137,13 @@ RULES = {
                    "use --no-rebuild", ("",), ("justfile",),
                    r"^(?![^#\n]*tools/(?:build|f7)\.sh)[^#\n]*?(?<![\w/.-])(?:ninja\s+-C|meson\s+(?:setup|compile|test"
                    r"|install)\b|meson\s+configure\s+\S+\s+[-\"])(?![^\n]*(?:\buninstall\b|--no-rebuild))", ()),
+    "e2e-wait": ("e2e scripts wait through wait_for and poll_for in tests/e2e/lib.sh", (E2E,), (".sh",),
+                 r"^\s*(wait_for|poll_for)\s*\(\)", ("tests/e2e/lib.sh",)),
+    "harness-wait": ("compositor harness checks wait through await_until and its await_* owners in "
+                     "compositor/tests/harness/lib.sh", (HARNESS + "checks/",), (".sh",),
+                     r"^\s*(wait_for_count|wait_for_windows|wait_for_window_count|wait_for_field|wait_field|"
+                     r"wait_for_active|wait_for_focus|wait_for_window|wait_mapped|wait_for_workspace\w*|"
+                     r"wait_for_log\w*)\s*\(\)", ()),
     "protocol-copy": ("a Wayland protocol XML used by more than one module lives once in protocol/; module protocols/ "
                       "dirs link to it", ("",), ("/protocols/",), r"", ()),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",
@@ -144,7 +153,8 @@ RULES = {
 
 def tracked():
     out = subprocess.run(["git", "-C", ROOT, "ls-files", "--cached", "--others", "--exclude-standard"], capture_output=True, text=True, check=True).stdout
-    return [p for p in out.splitlines() if not SKIP.search(p) and os.path.isfile(os.path.join(ROOT, p))]
+    return [p for p in out.splitlines()
+            if (not SKIP.search(p) or p.startswith((E2E, HARNESS)) and p.endswith(".sh")) and os.path.isfile(os.path.join(ROOT, p))]
 
 
 def _span_end(text, start, open_ch, close_ch):

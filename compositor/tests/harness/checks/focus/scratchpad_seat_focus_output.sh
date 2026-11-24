@@ -5,6 +5,8 @@
 # focus retained on the pointer-selected output.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly POINTER_BACKGROUND=scratchpad-seat-pointer-background
 readonly TARGET_BACKGROUND=scratchpad-seat-target-background
@@ -34,28 +36,6 @@ windows() { "$ANDROMEDA" windows --json; }
 
 field_of() {
   windows | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
-}
-
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 80); do
-    count=$(windows | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected windows, got $count: $(windows)"
-  return 1
-}
-
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual': $(windows)"
-  return 1
 }
 
 window_output() {
@@ -96,18 +76,18 @@ background_signature() {
 }
 
 "$CLIENT" "$POINTER_BACKGROUND" > "$ANDROMEDA_RUNTIME_DIR/$POINTER_BACKGROUND.log" 2>&1 &
-wait_for_count 1
-wait_for_field "$POINTER_BACKGROUND" w 640
-wait_for_field "$POINTER_BACKGROUND" h 360
+await_count 1
+await_field "$POINTER_BACKGROUND" w 640
+await_field "$POINTER_BACKGROUND" h 360
 pointer_output=$(window_output "$POINTER_BACKGROUND")
 
 # The headless outputs are horizontal. Move right to establish a second output
 # without assuming which connector name the harness placed first.
 "$ANDROMEDA" msg output-focus-right > /dev/null
 "$CLIENT" "$TARGET_BACKGROUND" > "$ANDROMEDA_RUNTIME_DIR/$TARGET_BACKGROUND.log" 2>&1 &
-wait_for_count 2
-wait_for_field "$TARGET_BACKGROUND" w 640
-wait_for_field "$TARGET_BACKGROUND" h 360
+await_count 2
+await_field "$TARGET_BACKGROUND" w 640
+await_field "$TARGET_BACKGROUND" h 360
 target_output=$(window_output "$TARGET_BACKGROUND")
 if [[ -z $pointer_output || -z $target_output || $pointer_output == "$target_output" ]]; then
   echo "the fixture did not span two outputs: $(windows)"
@@ -115,22 +95,22 @@ if [[ -z $pointer_output || -z $target_output || $pointer_output == "$target_out
 fi
 
 "$CLIENT" "$SCRATCH" > "$ANDROMEDA_RUNTIME_DIR/$SCRATCH.log" 2>&1 &
-wait_for_count 3
-wait_for_field "$SCRATCH" w 420
-wait_for_field "$SCRATCH" h 260
+await_count 3
+await_field "$SCRATCH" w 420
+await_field "$SCRATCH" h 260
 scratch_id=$(field_of "$SCRATCH" id)
 "$ANDROMEDA" msg "window-focus:$scratch_id" > /dev/null
 "$ANDROMEDA" msg window-move-to-scratchpad:seat > /dev/null
-wait_for_field "$SCRATCH" workspace ""
+await_field "$SCRATCH" workspace ""
 "$ANDROMEDA" msg scratchpad-toggle:seat > /dev/null
-wait_for_field "$SCRATCH" active true
+await_field "$SCRATCH" active true
 
 # Return the pointer to the first output, then restore seat focus to the visible
 # scratchpad without warping, splitting seat focus from the pointer's output.
 "$ANDROMEDA" msg output-focus-left > /dev/null
-wait_for_field "$POINTER_BACKGROUND" active true
+await_field "$POINTER_BACKGROUND" active true
 "$ANDROMEDA" msg "window-focus:$scratch_id" > /dev/null
-wait_for_field "$SCRATCH" active true
+await_field "$SCRATCH" active true
 if [[ $(cursor_output) != "$pointer_output" ]]; then
   echo "pointer and scratchpad seat focus did not split across outputs: $(windows)"
   exit 1
@@ -142,7 +122,7 @@ fi
 printf '\n[output.%s]\nscale = 1.25\n' "$target_output" >> "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
 wait_for_output_scale "$target_output" 1.250000
-wait_for_field "$SCRATCH" active true
+await_field "$SCRATCH" active true
 if [[ $(field_of "$POINTER_BACKGROUND" active) != false
     || $(field_of "$TARGET_BACKGROUND" active) != false ]]; then
   echo "output scale reload moved focus from the visible scratchpad: $(windows)"

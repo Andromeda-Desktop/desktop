@@ -3,6 +3,8 @@
 # centered over the window another process exported.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly OBSERVER="${ANDROMEDA_SEAT_LOG_CLIENT:-./build-debug/tests/seat-log-client}"
 readonly PARENT_LOG="$ANDROMEDA_RUNTIME_DIR/foreign-parent.log"
@@ -10,16 +12,6 @@ readonly CHILD_LOG="$ANDROMEDA_RUNTIME_DIR/foreign-child.log"
 
 windows() {
   "$ANDROMEDA" windows --json
-}
-
-wait_for_window_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $(windows)"
-  return 1
 }
 
 wait_for_position() {
@@ -48,7 +40,7 @@ EOF2
 
 # The observer keeps its own 640x480, so the parent covers 0,0 to 640,480, and prints the handle it exported.
 EXPORT_TOPLEVEL=1 "$OBSERVER" foreign-parent > "$PARENT_LOG" 2>&1 &
-wait_for_window_count 1
+await_count 1
 handle=
 for _ in $(seq 60); do
   handle=$(sed -n 's/^exported handle=//p' "$PARENT_LOG")
@@ -62,7 +54,7 @@ fi
 
 # Another process imports the handle for its 400x300 dialog, which lands centered over the parent, at 120,90.
 TRANSIENT_FOREIGN_HANDLE=$handle "$CLIENT" foreign-child 400 300 > "$CHILD_LOG" 2>&1 &
-wait_for_window_count 2
+await_count 2
 wait_for_position foreign-child 120 90
 
 echo "a dialog parented through xdg-foreign opens centered over the exported window"

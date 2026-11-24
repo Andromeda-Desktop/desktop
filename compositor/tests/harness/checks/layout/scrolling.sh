@@ -4,20 +4,10 @@
 # Reloading the focus policy re-applies it to the focused column, and the floating toggle round trips.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 spawn_client() {
   foot --title="harness-$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_windows() {
-  local want=$1
-  for _ in $(seq 40); do
-    if [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]]; then
-      return 0
-    fi
-    sleep 0.25
-  done
-  echo "timed out waiting for $want window(s), saw: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 wait_for_x() {
@@ -46,10 +36,10 @@ printf '\n[layout.scrolling]\ndefault_extent_fraction = 0.5\ncenter_focused = "n
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client a
-wait_for_windows 1
+await_count 1
 
 spawn_client b
-wait_for_windows 2
+await_count 2
 
 windows=$("$ANDROMEDA" windows --json)
 

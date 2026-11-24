@@ -2,6 +2,8 @@
 # A center-region Mod+Right click proposes no resize edge. It must not begin an empty resize grab or clear maximize state.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_RIGHT=273 # evdev BTN_RIGHT
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -13,15 +15,6 @@ spawn_client() {
 
 pointer() {
   "$POINTER" "$OUTPUT_W" "$OUTPUT_H" "$@"
-}
-
-wait_for_window() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq 1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for one window"
-  return 1
 }
 
 wait_for_floating() {
@@ -71,7 +64,7 @@ check_maximized_size_unchanged() {
 }
 
 spawn_client
-wait_for_window
+await_count 1
 
 "$ANDROMEDA" msg window-toggle-maximize-to-edges > /dev/null
 wait_for_maximized_size

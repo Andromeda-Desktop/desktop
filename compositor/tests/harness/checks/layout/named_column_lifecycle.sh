@@ -2,6 +2,8 @@
 # Late named scrolling-column rules preserve ownership, focus, width, and maximize state across relocation.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly MOVE_FIFO="$ANDROMEDA_RUNTIME_DIR/named-move-control"
 readonly MAX_MOVE_FIFO="$ANDROMEDA_RUNTIME_DIR/named-max-move-control"
@@ -10,16 +12,6 @@ readonly OWNER_WIDTH_FIFO="$ANDROMEDA_RUNTIME_DIR/named-owner-width-control"
 
 spawn_client() {
   "$CLIENT" "$1" 800 600 > "$ANDROMEDA_RUNTIME_DIR/$1.log" 2>&1 &
-}
-
-wait_for_windows() {
-  local expected=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $expected ]] && return 0
-    sleep 0.1
-  done
-  echo "timed out waiting for $expected clients: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 wait_for_query() {
@@ -127,13 +119,13 @@ mkfifo "$MOVE_FIFO"
 exec {move_fd}<>"$MOVE_FIFO"
 APP_ID=named-move-owner TITLE_AFTER_MAP=named-move-late \
   "$CLIENT" named-move-placeholder 800 600 <&"$move_fd" > "$ANDROMEDA_RUNTIME_DIR/named-move-owner.log" 2>&1 &
-wait_for_windows 1
+await_count 1
 printf 'u' >&"$move_fd"
 wait_for_query \
   'any(.[]; .title == "named-move-late" and (.workspace | endswith(":2")) and .active and .focused)' \
   "late named member did not retain focus on workspace 2"
 spawn_client named-move-after
-wait_for_windows 2
+await_count 2
 wait_for_delta named-move-late named-move-after 509 \
   "late workspace placement lost the first member's 0.4 width rule"
 
@@ -143,30 +135,30 @@ exec {max_move_fd}<>"$MAX_MOVE_FIFO"
 APP_ID=named-max-move-owner TITLE_AFTER_MAP=named-max-move-late \
   "$CLIENT" named-max-move-placeholder 800 600 <&"$max_move_fd" \
   > "$ANDROMEDA_RUNTIME_DIR/named-max-move-owner.log" 2>&1 &
-wait_for_windows 3
+await_count 3
 printf 'u' >&"$max_move_fd"
 wait_for_query 'any(.[]; .title == "named-max-move-late" and (.workspace | endswith(":3")))' \
   "late maximized member did not move to workspace 3"
 spawn_client named-max-move-after
-wait_for_windows 4
+await_count 4
 wait_for_delta named-max-move-late named-max-move-after 1272 \
   "late workspace placement lost the first member's maximized column state"
 
 # Reclassification within one workspace must carry that same full-width state
 # into the new named column.
 spawn_client named-max-reclass-owner
-wait_for_windows 5
+await_count 5
 mkfifo "$MAX_RECLASSIFY_FIFO"
 exec {max_reclassify_fd}<>"$MAX_RECLASSIFY_FIFO"
 APP_ID=named-max-reclass-joiner TITLE_AFTER_MAP=named-max-reclass-late \
   "$CLIENT" named-max-reclass-placeholder 800 600 <&"$max_reclassify_fd" \
   > "$ANDROMEDA_RUNTIME_DIR/named-max-reclassify-joiner.log" 2>&1 &
-wait_for_windows 6
+await_count 6
 printf 'u' >&"$max_reclassify_fd"
 wait_for_query 'any(.[]; .title == "named-max-reclass-late" and (.workspace | endswith(":4")))' \
   "maximized reclassified member did not remain on workspace 4"
 spawn_client named-max-reclass-after
-wait_for_windows 7
+await_count 7
 wait_for_delta named-max-reclass-late named-max-reclass-after 1272 \
   "late group reclassification lost the member's maximized column state"
 
@@ -177,11 +169,11 @@ exec {owner_width_fd}<>"$OWNER_WIDTH_FIFO"
 APP_ID=named-owner-width-owner TITLE_AFTER_MAP=named-owner-width-late \
   "$CLIENT" named-owner-width-placeholder 800 600 <&"$owner_width_fd" \
   > "$ANDROMEDA_RUNTIME_DIR/named-owner-width-owner.log" 2>&1 &
-wait_for_windows 8
+await_count 8
 spawn_client named-owner-width-peer
-wait_for_windows 9
+await_count 9
 spawn_client named-owner-width-after
-wait_for_windows 10
+await_count 10
 printf 'u' >&"$owner_width_fd"
 wait_for_delta named-owner-width-late named-owner-width-after 890 \
   "late width rule from the column owner did not resize its named column"

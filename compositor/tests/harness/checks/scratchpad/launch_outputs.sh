@@ -4,6 +4,8 @@
 # another pad replaces it on a scaled output; explicit placement rules override that destination.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly FIFO="$ANDROMEDA_RUNTIME_DIR/pad-launch-control"
@@ -62,30 +64,19 @@ field() {
   "$ANDROMEDA" windows --json | jq -r --arg title "$1" --arg key "$2" '[.[] | select(.title == $title)] | if length == 0 then "<absent>" else .[0][$key] end'
 }
 
-wait_field() {
-  local actual=
-  for _ in $(seq 80); do
-    actual=$(field "$1" "$2")
-    [[ $actual == "$3" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $1 $2=$3, got $actual: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 spawn() {
   "$ANDROMEDA" msg "spawn:exec '$CLIENT' '$1' 200 150 > '$ANDROMEDA_RUNTIME_DIR/$1.log' 2>&1" > /dev/null
 }
 
 "$POINTER" 1920 720 move 400 300
 "$ANDROMEDA" msg scratchpad-toggle:auto > /dev/null
-wait_field pad-auto scratchpad auto
-wait_field pad-auto active true
+await_field pad-auto scratchpad auto
+await_field pad-auto active true
 "$POINTER" 1920 720 move 1600 200
 "$ANDROMEDA" msg scratchpad-toggle:manual > /dev/null
 spawn pad-manual
-wait_field pad-manual scratchpad manual
-wait_field pad-manual active true
+await_field pad-manual scratchpad manual
+await_field pad-manual active true
 x=$(field pad-manual x)
 if ((x < 1280 || x >= 1920)); then
   echo "scratchpad launch ignored scaled output's logical bounds: $("$ANDROMEDA" windows --json)"
@@ -102,26 +93,26 @@ for _ in $(seq 80); do
 done
 grep -q '^map-pending$' "$LOG"
 "$ANDROMEDA" msg scratchpad-toggle:auto > /dev/null
-wait_field pad-auto active true
-wait_field pad-manual active false
+await_field pad-auto active true
+await_field pad-manual active false
 printf m >&"$control_fd"
-wait_field pad-delayed scratchpad manual
-wait_field pad-delayed active false
-wait_field pad-auto active true
+await_field pad-delayed scratchpad manual
+await_field pad-delayed active false
+await_field pad-auto active true
 
 spawn pad-rule-output
-wait_field pad-rule-output scratchpad ""
-wait_field pad-rule-output output HEADLESS-1
+await_field pad-rule-output scratchpad ""
+await_field pad-rule-output output HEADLESS-1
 spawn pad-rule-workspace
-wait_field pad-rule-workspace scratchpad ""
+await_field pad-rule-workspace scratchpad ""
 left_workspace=$("$ANDROMEDA" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-1" and .active) | .id')
-wait_field pad-rule-workspace workspace "$left_workspace"
+await_field pad-rule-workspace workspace "$left_workspace"
 spawn pad-rule-scratch
-wait_field pad-rule-scratch scratchpad auto
+await_field pad-rule-scratch scratchpad auto
 spawn pad-rule-pinned
-wait_field pad-rule-pinned scratchpad ""
-wait_field pad-rule-pinned pinned true
-wait_field pad-auto active true
+await_field pad-rule-pinned scratchpad ""
+await_field pad-rule-pinned pinned true
+await_field pad-auto active true
 
 # A pad removed before an already-created toplevel maps cannot leave dangling placement state.
 "$ANDROMEDA" msg scratchpad-toggle:manual > /dev/null
@@ -136,6 +127,6 @@ grep -q '^map-pending$' "$ANDROMEDA_RUNTIME_DIR/pad-removed.log"
 sed -i '/\[\[scratchpad\]\]/{N; /name = "manual"/d; P; D;}' "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
 printf m >&"$control_fd"
-wait_field pad-removed scratchpad ""
+await_field pad-removed scratchpad ""
 
 echo "rule-free launch, scaled output selection, delayed hidden admission, and rule precedence verified"

@@ -6,22 +6,14 @@
 # from where the windows actually land, so the check does not depend on the headless layout order.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly WINDOW_CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly LOCK_CLIENT="${ANDROMEDA_LOCK_CLIENT:-./build-debug/tests/lock-client}"
 readonly LOCK_LOG="$ANDROMEDA_RUNTIME_DIR/lock-client.log"
 readonly LOCK_FIFO="$ANDROMEDA_RUNTIME_DIR/lock-control"
 
 windows() { "$ANDROMEDA" windows --json; }
-
-wait_for_windows() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq 'length') -eq $want ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $want window(s), got $(windows)"
-  return 1
-}
 
 # Seat activation, which is global, unlike the per-workspace `focused` flag that
 # both windows carry here.
@@ -38,7 +30,7 @@ window_output() {
 cursor_output() { "$ANDROMEDA" workspaces --json | jq -r '.[] | select(.focused) | .output'; }
 
 "$WINDOW_CLIENT" lock-focus-stay > "$ANDROMEDA_RUNTIME_DIR/lock-focus-stay.log" 2>&1 &
-wait_for_windows 1
+await_count 1
 stay_output=$(window_output lock-focus-stay)
 
 "$ANDROMEDA" msg output-focus-right > /dev/null
@@ -47,7 +39,7 @@ for _ in $(seq 40); do
   sleep 0.05
 done
 "$WINDOW_CLIENT" lock-focus-target > "$ANDROMEDA_RUNTIME_DIR/lock-focus-target.log" 2>&1 &
-wait_for_windows 2
+await_count 2
 target_output=$(window_output lock-focus-target)
 if [[ -z $stay_output || $stay_output == "$target_output" ]]; then
   echo "the two windows share output '$stay_output': $(windows)"

@@ -3,21 +3,13 @@
 # stays put through later arranges even with preserve_split off. It is refused outside the Dwindle layout.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
 spawn_client() {
   local title=$1
   "$CLIENT" "$title" 1200 700 > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 # Polls until the two windows are stacked (same x, different y) or side by side (same y, different x).
@@ -43,7 +35,7 @@ wait_for_arrangement() {
 
 # Outside Dwindle the action is refused.
 spawn_client toggle-split-a
-wait_for_count 1
+await_count 1
 if "$ANDROMEDA" msg layout-toggle-split > /dev/null 2>&1; then
   echo "layout-toggle-split was accepted outside the Dwindle layout"
   exit 1
@@ -65,7 +57,7 @@ CFG
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client toggle-split-b
-wait_for_count 2
+await_count 2
 wait_for_arrangement side-by-side toggle-split-a toggle-split-b
 
 "$ANDROMEDA" msg layout-toggle-split > /dev/null
@@ -77,7 +69,7 @@ echo "layout-toggle-split stacks a side by side pair"
 "$ANDROMEDA" settle
 wait_for_arrangement stacked toggle-split-a toggle-split-b
 spawn_client toggle-split-c
-wait_for_count 3
+await_count 3
 "$ANDROMEDA" settle
 wait_for_arrangement stacked toggle-split-a toggle-split-b
 echo "A toggled split survives arrange with preserve_split off"

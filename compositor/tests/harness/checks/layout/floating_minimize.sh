@@ -14,17 +14,6 @@ field_of() {
   "$ANDROMEDA" windows --json | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
 }
 
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual': $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 expect_field() {
   local title=$1 field=$2 expected=$3 actual
   actual=$(field_of "$title" "$field")
@@ -37,7 +26,7 @@ expect_field() {
 # Capability changes must reach both queries and the latest subscriber snapshot.
 wait_for_minimizable() {
   local title=$1 expected=$2
-  wait_for_field "$title" minimizable "$expected"
+  await_field "$title" minimizable "$expected"
   for _ in $(seq 80); do
     if jq -e -s --arg title "$title" --argjson expected "$expected" '
       [.[] | select(.event == "windows")] | last | .data
@@ -79,8 +68,8 @@ MINIMIZE_ON_STDIN=1 "$CLIENT" minimize-a 480 300 <&"$control_fd" > "$A_LOG" 2>&1
 await_lines "$A_LOG" 'mapped$' 1
 "$CLIENT" minimize-b 480 300 > "$B_LOG" 2>&1 &
 await_lines "$B_LOG" 'mapped$' 1
-wait_for_field minimize-a floating true
-wait_for_field minimize-b floating true
+await_field minimize-a floating true
+await_field minimize-b floating true
 A=$(field_of minimize-a id)
 B=$(field_of minimize-b id)
 OUTPUT=$(field_of minimize-a output)
@@ -90,11 +79,11 @@ wait_for_minimizable minimize-b true
 
 # The action hides the focused window, hands focus on, and taskbars see the state.
 msg "window-focus:$A"
-wait_for_field minimize-a active true
+await_field minimize-a active true
 msg window-minimize
-wait_for_field minimize-a minimized true
+await_field minimize-a minimized true
 expect_field minimize-a visible false
-wait_for_field minimize-b active true
+await_field minimize-b active true
 foreign state minimized=1
 wait_for_minimizable minimize-a true
 
@@ -106,87 +95,87 @@ expect_field minimize-b active true
 
 # A taskbar activation shows and focuses it.
 foreign activate
-wait_for_field minimize-a minimized false
+await_field minimize-a minimized false
 expect_field minimize-a visible true
-wait_for_field minimize-a active true
+await_field minimize-a active true
 
 # The client's own minimize request.
 printf z >&"$control_fd"
 await_lines "$A_LOG" 'minimize-requested$' 1
-wait_for_field minimize-a minimized true
-wait_for_field minimize-b active true
+await_field minimize-a minimized true
+await_field minimize-b active true
 
 # window-focus names it.
 msg "window-focus:$A"
-wait_for_field minimize-a minimized false
-wait_for_field minimize-a active true
+await_field minimize-a minimized false
+await_field minimize-a active true
 
 # A taskbar's unminimize shows it without taking focus.
 foreign minimize minimized=1
-wait_for_field minimize-b active true
+await_field minimize-b active true
 foreign unminimize minimized=0
 expect_field minimize-a visible true
 expect_field minimize-b active true
 
 # Activation from another workspace switches back to it.
 msg "window-minimize:$A"
-wait_for_field minimize-a minimized true
+await_field minimize-a minimized true
 msg workspace-switch:2
-wait_for_field minimize-b visible false
+await_field minimize-b visible false
 foreign activate
-wait_for_field minimize-a minimized false
-wait_for_field minimize-a active true
-wait_for_field minimize-a visible true
+await_field minimize-a minimized false
+await_field minimize-a active true
+await_field minimize-a visible true
 
 # Tiling shows the window. A tile minimizes through the action and the client, and focus brings it back.
 msg "window-minimize:$A"
-wait_for_field minimize-a minimized true
+await_field minimize-a minimized true
 msg workspace-set-layout:scrolling
-wait_for_field minimize-a floating false
+await_field minimize-a floating false
 wait_for_minimizable minimize-a true
 expect_field minimize-a minimized false
 expect_field minimize-a visible true
 msg "window-focus:$A"
-wait_for_field minimize-a active true
+await_field minimize-a active true
 column_a=$(field_of minimize-a column)
 column_b=$(field_of minimize-b column)
 msg window-minimize
-wait_for_field minimize-a minimized true
-wait_for_field minimize-a visible false
+await_field minimize-a minimized true
+await_field minimize-a visible false
 # The tile left the strip: a column after it moves up one.
 if (( column_b > column_a )); then
-  wait_for_field minimize-b column $((column_b - 1))
+  await_field minimize-b column $((column_b - 1))
 fi
 msg "window-focus:$A"
-wait_for_field minimize-a minimized false
-wait_for_field minimize-a visible true
-wait_for_field minimize-a column "$column_a"
-wait_for_field minimize-b column "$column_b"
+await_field minimize-a minimized false
+await_field minimize-a visible true
+await_field minimize-a column "$column_a"
+await_field minimize-b column "$column_b"
 printf z >&"$control_fd"
 await_lines "$A_LOG" 'minimize-requested$' 2
-wait_for_field minimize-a minimized true
+await_field minimize-a minimized true
 msg "window-focus:$A"
-wait_for_field minimize-a minimized false
+await_field minimize-a minimized false
 
 # window-restore-minimized brings back the latest first.
 msg workspace-set-layout:floating
-wait_for_field minimize-a floating true
-wait_for_field minimize-b floating true
+await_field minimize-a floating true
+await_field minimize-b floating true
 wait_for_minimizable minimize-a true
 wait_for_minimizable minimize-b true
 msg "window-focus:$B"
 msg window-minimize
-wait_for_field minimize-b minimized true
+await_field minimize-b minimized true
 msg "window-focus:$A"
 msg window-minimize
-wait_for_field minimize-a minimized true
+await_field minimize-a minimized true
 msg window-restore-minimized
-wait_for_field minimize-a minimized false
-wait_for_field minimize-a active true
+await_field minimize-a minimized false
+await_field minimize-a active true
 expect_field minimize-b minimized true
 msg window-restore-minimized
-wait_for_field minimize-b minimized false
-wait_for_field minimize-b active true
+await_field minimize-b minimized false
+await_field minimize-b active true
 msg window-restore-minimized
 "$ANDROMEDA" settle
 expect_field minimize-a minimized false
@@ -194,43 +183,43 @@ expect_field minimize-b active true
 
 # Show desktop minimizes the floating windows and restores them with their focus.
 msg workspace-toggle-show-desktop
-wait_for_field minimize-a minimized true
-wait_for_field minimize-b minimized true
+await_field minimize-a minimized true
+await_field minimize-b minimized true
 msg workspace-toggle-show-desktop
-wait_for_field minimize-a minimized false
-wait_for_field minimize-b minimized false
-wait_for_field minimize-b active true
+await_field minimize-a minimized false
+await_field minimize-b minimized false
+await_field minimize-b active true
 
 # Restoring one another way and minimizing it again leaves nothing to hide, so the toggle restores everything.
 msg workspace-toggle-show-desktop
-wait_for_field minimize-a minimized true
-wait_for_field minimize-b minimized true
+await_field minimize-a minimized true
+await_field minimize-b minimized true
 msg "window-focus:$A"
-wait_for_field minimize-a minimized false
+await_field minimize-a minimized false
 msg window-minimize
-wait_for_field minimize-a minimized true
+await_field minimize-a minimized true
 msg workspace-toggle-show-desktop
-wait_for_field minimize-a minimized false
-wait_for_field minimize-b minimized false
-wait_for_field minimize-b active true
+await_field minimize-a minimized false
+await_field minimize-b minimized false
+await_field minimize-b active true
 
 # A window minimized before showing the desktop comes back with the rest.
 msg "window-minimize:$A"
-wait_for_field minimize-a minimized true
+await_field minimize-a minimized true
 msg workspace-toggle-show-desktop
-wait_for_field minimize-b minimized true
+await_field minimize-b minimized true
 msg workspace-toggle-show-desktop
-wait_for_field minimize-a minimized false
-wait_for_field minimize-b minimized false
+await_field minimize-a minimized false
+await_field minimize-b minimized false
 
 # Pinning changes eligibility without changing the window's floating placement.
 msg "window-focus:$A"
 msg window-toggle-pinned
-wait_for_field minimize-a pinned true
+await_field minimize-a pinned true
 expect_field minimize-a floating true
 wait_for_minimizable minimize-a false
 msg window-toggle-pinned
-wait_for_field minimize-a pinned false
+await_field minimize-a pinned false
 wait_for_minimizable minimize-a true
 
 echo "windows report minimize eligibility, minimize by action, client, and taskbar (tiles leave and rejoin their column), return through every explicit focus path, and show desktop restores every minimized window"

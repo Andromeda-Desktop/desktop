@@ -4,23 +4,16 @@
 # restores the shared weight through a tab stepping out and a new row joining.
 set -euo pipefail
 
-wait_for_windows() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq length) == "$1" ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $1 windows"
-  return 1
-}
+source "$ANDROMEDA_HARNESS_LIB"
 
 "$ANDROMEDA" msg workspace-next
 "$ANDROMEDA" msg workspace-set-layout:scrolling
 "$ANDROMEDA" msg workspace-previous
 "$ANDROMEDA" msg workspace-set-layout:master
 foot --title=group-weight-a sh -c 'sleep 120' > "$ANDROMEDA_RUNTIME_DIR/a.log" 2>&1 &
-wait_for_windows 1
+await_count 1
 foot --title=group-weight-b sh -c 'sleep 120' > "$ANDROMEDA_RUNTIME_DIR/b.log" 2>&1 &
-wait_for_windows 2
+await_count 2
 "$ANDROMEDA" msg layout-master-count-increase
 "$ANDROMEDA" settle
 read -r first last <<< "$("$ANDROMEDA" windows --json | jq -r 'sort_by(.y) | "\(.[0].id) \(.[1].id)"')"
@@ -41,7 +34,7 @@ fi
 "$ANDROMEDA" msg window-move-down
 "$ANDROMEDA" settle
 foot --title=group-weight-incoming sh -c 'sleep 120' > "$ANDROMEDA_RUNTIME_DIR/incoming.log" 2>&1 &
-wait_for_windows 3
+await_count 3
 "$ANDROMEDA" msg window-consume-left
 "$ANDROMEDA" settle
 windows=$("$ANDROMEDA" windows --json)

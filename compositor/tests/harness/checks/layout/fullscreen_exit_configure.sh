@@ -3,6 +3,8 @@
 # of the new state.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly LAYER_CLIENT="${ANDROMEDA_LAYER_CLIENT:-./build-debug/tests/layer-client}"
 readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/fullscreen-exit-configure-client.log"
@@ -32,19 +34,6 @@ if ! grep -q '^ready$' "$PANEL_LOG"; then
 fi
 
 env LOG_CONFIGURES=1 "$CLIENT" "$TITLE" 640 480 > "$CLIENT_LOG" 2>&1 &
-
-wait_for_window() {
-  local expression=$1 message=$2 windows=
-  for _ in $(seq 80); do
-    windows=$("$ANDROMEDA" windows --json)
-    if jq -e "$expression" <<< "$windows" > /dev/null; then
-      return 0
-    fi
-    sleep 0.05
-  done
-  echo "$message: $windows"
-  return 1
-}
 
 wait_for_fullscreen() {
   local expected=$1 message=$2 state=
@@ -99,7 +88,7 @@ wait_for_event_count() {
   return 1
 }
 
-wait_for_window ".[] | select(.title == \"$TITLE\")" "client never mapped"
+await_windows ".[] | select(.title == \"$TITLE\")" "client never mapped"
 wait_for_configure_count 1
 sleep 0.1
 

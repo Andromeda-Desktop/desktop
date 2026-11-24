@@ -9,6 +9,8 @@
 # seat stay on the invoking output; with one they follow the focused window.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly WORKSPACE="${ANDROMEDA_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
 readonly OFFSET=1280
@@ -39,32 +41,6 @@ spawn_client() {
 field_of() {
   "$ANDROMEDA" windows --json | jq -r --arg title "$1" --arg field "$2" \
     '.[] | select(.title == $title) | .[$field]'
-}
-
-wait_for_windows() {
-  local expected=$1 count=
-  for _ in $(seq 40); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    if [[ $count == "$expected" ]]; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  exit 1
-}
-
-wait_for_workspace() {
-  local title=$1 expected=$2 actual=
-  for _ in $(seq 50); do
-    actual=$(field_of "$title" workspace)
-    if [[ $actual == "$expected" ]]; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected '$title' on $expected, got $actual"
-  exit 1
 }
 
 box_of() {
@@ -140,21 +116,21 @@ fi
 accepts "workspace-switch:LEFT/HEADLESS-1"
 
 spawn_client stack-top
-wait_for_windows 1
+await_count 1
 spawn_client stack-bottom
-wait_for_windows 2
+await_count 2
 # One column holding an uneven two-row stack, plus a wider second column. Both
 # survive only if the transfer replays widths and row weights, not defaults.
 accepts "window-focus:$(field_of stack-bottom id)"
 accepts window-consume-or-expel-left
 accepts "window-modify-secondary-extent:-0.2"
 spawn_client wide
-wait_for_windows 3
+await_count 3
 accepts "window-modify-primary-extent:0.15"
 
 accepts "workspace-switch:RIGHT/HEADLESS-2"
 spawn_client lone
-wait_for_windows 4
+await_count 4
 accepts "workspace-switch:LEFT/HEADLESS-1"
 "$ANDROMEDA" settle
 
@@ -168,7 +144,7 @@ if [[ ${top_before#* } == ${bottom_before#* } ]]; then
 fi
 
 accepts workspace-swap-active-output-next
-wait_for_workspace stack-top "$right"
+await_workspace stack-top "$right"
 "$ANDROMEDA" settle
 assert_box stack-top "$right" "$OFFSET" "$top_before"
 assert_box stack-bottom "$right" "$OFFSET" "$bottom_before"
@@ -178,7 +154,7 @@ assert_box lone "$left" "-$OFFSET" "$lone_before"
 # The directional action reaches the same pair from the other side.
 accepts "workspace-switch:RIGHT/HEADLESS-2"
 accepts workspace-swap-active-output-left
-wait_for_workspace stack-top "$left"
+await_workspace stack-top "$left"
 "$ANDROMEDA" settle
 assert_box stack-top "$left" 0 "$top_before"
 assert_box stack-bottom "$left" 0 "$bottom_before"
@@ -200,7 +176,7 @@ wide_dwindle=$(box_of wide)
 lone_dwindle=$(box_of lone)
 
 accepts workspace-swap-active-output-next
-wait_for_workspace stack-top "$right"
+await_workspace stack-top "$right"
 "$ANDROMEDA" settle
 assert_box stack-top "$right" "$OFFSET" "$top_dwindle"
 assert_box stack-bottom "$right" "$OFFSET" "$bottom_dwindle"
@@ -214,7 +190,7 @@ accepts "window-focus:$(field_of lone id)"
 assert_seat_on "$left" lone
 
 accepts workspace-swap-active-output-next
-wait_for_workspace lone "$right"
+await_workspace lone "$right"
 assert_seat_on "$left" wide
 rejects_with workspace-swap-active-output-left "no output to the left"
 
@@ -222,18 +198,18 @@ rejects_with workspace-swap-active-output-left "no output to the left"
 # pointer now travel together, preserving the enabled behavior in both
 # directions.
 accepts workspace-swap-active-output-next
-wait_for_workspace lone "$left"
+await_workspace lone "$left"
 sed -i 's/follows_focus = false/follows_focus = true/' "$ANDROMEDA_CONFIG"
 accepts config-reload
 accepts "window-focus:$(field_of lone id)"
 assert_seat_on "$left" lone
 
 accepts workspace-swap-active-output-next
-wait_for_workspace lone "$right"
+await_workspace lone "$right"
 assert_seat_on "$right" lone
 
 accepts workspace-swap-active-output-left
-wait_for_workspace lone "$left"
+await_workspace lone "$left"
 assert_seat_on "$left" lone
 
 echo "active workspace swap preserved geometry and kept pointer, seat, and remembered focus consistent with follows_focus"

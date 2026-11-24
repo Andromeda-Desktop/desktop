@@ -4,6 +4,8 @@
 # after every monitor goes away and returns.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly LAYER_CLIENT="${ANDROMEDA_LAYER_CLIENT:-./build-debug/tests/layer-client}"
 readonly OUTPUT_LAYOUT_W=2560
@@ -31,20 +33,9 @@ write_config() {
 
 log_mark() { wc -l < "$ANDROMEDA_LOG"; }
 
-wait_for_log_since() {
-  local mark=$1 pattern=$2
-  for _ in $(seq 40); do
-    if tail -n +"$((mark + 1))" "$ANDROMEDA_LOG" | grep -q "$pattern"; then
-      return 0
-    fi
-    sleep 0.25
-  done
-  return 1
-}
-
 expect_log_since() {
   local mark=$1 pattern=$2 message=$3
-  if wait_for_log_since "$mark" "$pattern"; then
+  if await_log_since "$mark" "$pattern"; then
     return 0
   fi
   echo "$message"
@@ -61,17 +52,6 @@ reload_with() {
   for expected in "$@"; do
     expect_log_since "$mark" "${expected#*=}" "output ${expected%%=*} did not ${expected#*=} on reload"
   done
-}
-
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 40); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.25
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
 }
 
 field_of() {
@@ -154,7 +134,7 @@ default_position = { x = 91, y = 73, anchor = "top_left" }'
 "$ANDROMEDA" msg config-reload > /dev/null
 
 foot --title=scratch-restore sh -c 'sleep 120' > /dev/null 2>&1 &
-wait_for_count 1
+await_count 1
 move_pointer_to_output HEADLESS-2
 "$ANDROMEDA" msg "window-move-to-scratchpad:$SCRATCHPAD" > /dev/null
 if ! shows_scratchpad HEADLESS-2; then

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_RIGHT=273
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -26,20 +28,10 @@ window() {
   "$ANDROMEDA" windows --json | jq -c --arg title "$1" '.[] | select(.title == $title)'
 }
 
-wait_for_window() {
-  local title=$1
-  for _ in $(seq 60); do
-    [[ -n $(window "$title") ]] && return 0
-    sleep 0.1
-  done
-  echo "timed out waiting for $title"
-  return 1
-}
-
 foot --title=resize-min-a sh -c 'sleep 120' > /dev/null 2>&1 &
-wait_for_window resize-min-a
+await_window resize-min-a
 foot --title=resize-min-b sh -c 'sleep 120' > /dev/null 2>&1 &
-wait_for_window resize-min-b
+await_window resize-min-b
 
 a=$(window resize-min-a)
 pointer move "$(jq -r '.x + .w - 20 | floor' <<< "$a")" "$(jq -r '.y + .h / 2 | floor' <<< "$a")" \

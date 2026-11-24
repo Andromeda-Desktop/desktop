@@ -3,6 +3,8 @@
 # pointer, a click on it closes that window, and sliding off before letting go cancels the close.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -29,19 +31,10 @@ enabled = false
 EOF2
 "$ANDROMEDA" msg config-reload > /dev/null
 
-wait_for_windows() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $1 window(s): $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 FILL_COLOR=0xFF0000FF "$ANDROMEDA_UNMAP_CLIENT" close-blue 500 400 > /dev/null 2>&1 &
-wait_for_windows 1
+await_count 1
 FILL_COLOR=0xFF00FF00 "$ANDROMEDA_UNMAP_CLIENT" close-green 500 400 > /dev/null 2>&1 &
-wait_for_windows 2
+await_count 2
 "$ANDROMEDA" settle
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle
@@ -98,7 +91,7 @@ if ((still != bw)); then
 fi
 
 pointer move "$cx" "$cy" click "$BTN_LEFT"
-wait_for_windows 1
+await_count 1
 left=$("$ANDROMEDA" windows --json | jq -r '.[0].title')
 if [[ $left != close-green ]]; then
   echo "the close button closed $left instead of the blue window"

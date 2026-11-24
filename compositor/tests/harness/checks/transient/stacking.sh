@@ -2,6 +2,8 @@
 # A parented XDG toplevel stays above a floating, pinned, or fullscreen parent.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/transient-stacking.log"
@@ -13,16 +15,6 @@ windows() {
 field_of() {
   local id=$1 field=$2
   windows | jq -r --arg id "$id" --arg field "$field" '.[] | select(.id == $id) | .[$field]'
-}
-
-wait_for_window_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $(windows)"
-  return 1
 }
 
 wait_for_field() {
@@ -78,7 +70,7 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 TRANSIENT_SUITE=1 "$CLIENT" transient-child 600 500 > "$CLIENT_LOG" 2>&1 &
-wait_for_window_count 3
+await_count 3
 
 snapshot=$(windows)
 parent_id=$(jq -r '.[] | select(.title == "transient-parent") | .id' <<< "$snapshot")

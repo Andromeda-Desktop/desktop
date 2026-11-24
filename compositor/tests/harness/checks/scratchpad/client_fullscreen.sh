@@ -3,6 +3,8 @@
 # the scratchpad tree, above the scratchpad's backdrop dim, instead of dropping beneath it.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly CONTROL_FIFO="$ANDROMEDA_RUNTIME_DIR/scratch-fullscreen-control"
 readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/scratch-fullscreen.log"
@@ -14,16 +16,6 @@ window_center_red() {
   local red
   read -r red _ _ < <("$ANDROMEDA_PIXEL_PROBE" "$1" pixel 640 360)
   echo "$red"
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 wait_for_configured_state() {
@@ -67,7 +59,7 @@ exec {control_fd}<>"$CONTROL_FIFO"
 FILL_COLOR=0xFFFF0000 FULLSCREEN_ON_STDIN=1 LOG_CONFIGURES=1 "$CLIENT" scratch-video 400 300 \
   <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
 
-wait_for_count 1
+await_count 1
 "$ANDROMEDA" msg "scratchpad-toggle:test" > /dev/null
 "$ANDROMEDA" settle
 

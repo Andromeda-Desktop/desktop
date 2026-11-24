@@ -31,16 +31,6 @@ assert_active() {
   fi
 }
 
-wait_for_count() {
-  local expected=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq length) == "$expected" ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $expected windows: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 for scenario in consume consume-from fallback expel; do
   clients=()
   for name in left right; do
@@ -48,7 +38,7 @@ for scenario in consume consume-from fallback expel; do
     "$ANDROMEDA_UNMAP_CLIENT" "consume-$name" 1200 700 > "$log" 2>&1 &
     clients+=("$!")
     await_lines "$log" mapped 1
-    wait_for_count "${#clients[@]}"
+    await_count "${#clients[@]}"
     "$ANDROMEDA" settle > /dev/null
   done
 
@@ -98,7 +88,7 @@ for scenario in consume consume-from fallback expel; do
   for pid in "${clients[@]}"; do
     wait "$pid" || true
   done
-  wait_for_count 0
+  await_count 0
   "$ANDROMEDA" settle > /dev/null
 done
 

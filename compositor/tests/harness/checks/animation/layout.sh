@@ -7,6 +7,8 @@
 # neighbour peek, so those steps assert size and spacing; once two columns fill the viewport the offset is pinned.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly EXPECT_W=624 # 0.5 fraction of the 1260 viewport, gap-aware
 readonly EXPECT_H=700 # 720 output minus 2 * edgePad
 readonly TOTAL_GAP=12 # gap 8 + 2 * border 2
@@ -33,15 +35,6 @@ spawn_client() {
 }
 
 geometry() { "$ANDROMEDA" windows --json | jq -Sc '[.[] | {w, h, x}] | sort_by(.x)'; }
-
-wait_for_count() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for $1 window(s), saw $("$ANDROMEDA" windows --json | jq 'length')"
-  return 1
-}
 
 # Runs every started animation to its end; settle then fails at once if any animation is still running.
 finish() {
@@ -88,11 +81,11 @@ assert_tiled_strip() {
 }
 
 spawn_client layout-red 0xFFFF0000
-wait_for_count 1
+await_count 1
 spawn_client layout-green 0xFF00FF00
-wait_for_count 2
+await_count 2
 spawn_client layout-blue 0xFF0000FF
-wait_for_count 3
+await_count 3
 assert_tiled_strip "initial" 3
 
 # Moving a column animates positions; the strip must reassemble.
@@ -108,7 +101,7 @@ assert_tiled_strip "after workspace round trip" 3
 
 # Closing a window animates its snapshot and the surviving layout from the same spatial transition.
 kill -TERM "${CLIENT_PID[layout-blue]}" 2> /dev/null || true
-wait_for_count 2
+await_count 2
 finish
 # Two 624 columns plus one gap exactly fill the 1260 viewport.
 expected_close='[{"h":700,"w":624,"x":10},{"h":700,"w":624,"x":646}]'

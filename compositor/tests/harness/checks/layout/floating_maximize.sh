@@ -7,6 +7,8 @@
 # usable-area snapshot, so no custom mode here.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/float-maximize.log"
 
@@ -29,28 +31,17 @@ field_of() {
     | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
 }
 
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual'"
-  return 1
-}
-
 assert_box() {
   local w=$1 h=$2 x=$3 y=$4
-  wait_for_field float-maximize w "$w"
-  wait_for_field float-maximize h "$h"
-  wait_for_field float-maximize x "$x"
-  wait_for_field float-maximize y "$y"
+  await_field float-maximize w "$w"
+  await_field float-maximize h "$h"
+  await_field float-maximize x "$x"
+  await_field float-maximize y "$y"
 }
 
 "$CLIENT" float-maximize > "$CLIENT_LOG" 2>&1 &
 
-wait_for_field float-maximize floating true
+await_field float-maximize floating true
 assert_box 640 360 320 180
 
 "$ANDROMEDA" msg "window-focus-warp:$(field_of float-maximize id)" > /dev/null
@@ -67,15 +58,15 @@ assert_box 640 360 320 180
 # Resizing a maximized float drops maximization and keeps the new size, so the
 # next toggle has to maximize. If the state survived, this would restore 640.
 "$ANDROMEDA" msg window-toggle-maximize > /dev/null
-wait_for_field float-maximize w 1260
+await_field float-maximize w 1260
 "$ANDROMEDA" msg window-modify-primary-extent:-0.2 > /dev/null
-wait_for_field float-maximize w 1004
+await_field float-maximize w 1004
 "$ANDROMEDA" msg window-toggle-maximize > /dev/null
-wait_for_field float-maximize w 1260
+await_field float-maximize w 1260
 
 # That maximize captured the resized box, so restoring lands on 1004, not 640.
 "$ANDROMEDA" msg window-toggle-maximize > /dev/null
-wait_for_field float-maximize w 1004
-wait_for_field float-maximize h 700
+await_field float-maximize w 1004
+await_field float-maximize h 700
 
 echo "window-toggle-maximize fills and restores a floating window's usable area"

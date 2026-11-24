@@ -75,15 +75,83 @@ await_lines() {
   return 1
 }
 
-# Query a mapped window by its exact title; wait for it before reading its state.
-window_by_title() { "$ANDROMEDA" windows --json | jq -ce --arg title "$1" '.[] | select(.title == $title)'; }
-await_window() {
-  for _ in $(seq 100); do
-    window_by_title "$1" > /dev/null && return
-    sleep 0.025
+# Owner of every "wait for the compositor state" loop: await_until TRIES STEP CMD... runs CMD every STEP seconds until it
+# succeeds. The owners below poll `andromeda windows --json` for up to 15 s and print the observed state on timeout.
+AWAIT_TRIES=600
+AWAIT_STEP=0.025
+await_until() {
+  local tries=$1 step=$2
+  shift 2
+  for ((; tries > 0; tries--)); do
+    "$@" && return 0
+    sleep "$step"
   done
-  echo "missing window: $1"; return 1
+  return 1
 }
+_aw_windows() { "$ANDROMEDA" windows --json; }
+_aw_match() { _aw_windows | jq -e "$1" > /dev/null; }
+_aw_field() {
+  _aw_windows | jq -r --arg t "$1" --arg f "$2" '[.[] | select(.title == $t) | .[$f]] | if length == 0 then "<absent>" else .[0] end'
+}
+_aw_has() { _aw_windows | jq -e --arg k "$2" "any(.[]; .$1 == \$k${3:+ and $3})" > /dev/null; }
+_aw_field_is() { [[ $(_aw_field "$1" "$2") == "$3" ]]; }
+_aw_count_is() { [[ $(_aw_windows | jq length) -eq $1 ]]; }
+_aw_log_since() { tail -n +"$(($1 + 1))" "$ANDROMEDA_LOG" | grep -q "$2"; }
+_aw_log_count() { (($(grep -c "$2" "$1" 2> /dev/null || true) >= ${3:-1})); }
+
+# Waits until the jq filter $1 holds for the windows array; $2 names the failure.
+await_windows() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_match "$1" && return 0
+  echo "$2: $(_aw_windows)"
+  return 1
+}
+await_count() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_count_is "$1" && return 0
+  echo "expected $1 windows, got: $(_aw_windows)"
+  return 1
+}
+# await_field TITLE FIELD EXPECTED: the window with that exact title has field == EXPECTED (compared as text).
+await_field() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_field_is "$1" "$2" "$3" && return 0
+  echo "expected '$1' field '$2' to be '$3', got '$(_aw_field "$1" "$2")': $(_aw_windows)"
+  return 1
+}
+await_window() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_has title "$1" && return 0
+  echo "missing window: $1: $(_aw_windows)"
+  return 1
+}
+await_active() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_field_is "$1" active true && return 0
+  echo "expected '$1' to be active: $(_aw_windows)"
+  return 1
+}
+# await_focus ID: the window with that id holds its workspace focus.
+await_focus() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_has id "$1" .focused && return 0
+  echo "expected $1 to be focused: $(_aw_windows)"
+  return 1
+}
+await_workspace() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_field_is "$1" workspace "$2" && return 0
+  echo "expected '$1' on '$2', got '$(_aw_field "$1" workspace)'"
+  return 1
+}
+# Waits for a line matching $2 in $ANDROMEDA_LOG after its first $1 lines (a mark taken with wc -l).
+await_log_since() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_log_since "$1" "$2" && return 0
+  echo "timed out waiting for log: $2"
+  tail -8 "$ANDROMEDA_LOG" | sed 's/^/  | /'
+  return 1
+}
+# Waits for at least $3 (default 1) lines matching $2 anywhere in file $1.
+await_log_count() {
+  await_until "$AWAIT_TRIES" "$AWAIT_STEP" _aw_log_count "$1" "$2" "${3:-1}" && return 0
+  echo "expected ${3:-1} '$2' lines in $1: $(tr '\n' '|' < "$1" 2> /dev/null || true)"
+  return 1
+}
+# Query a mapped window by its exact title.
+window_by_title() { "$ANDROMEDA" windows --json | jq -ce --arg title "$1" '.[] | select(.title == $title)'; }
 await_window_closed() {
   for _ in $(seq 100); do
     window_by_title "$1" > /dev/null || return 0

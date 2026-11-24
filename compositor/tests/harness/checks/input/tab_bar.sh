@@ -4,6 +4,8 @@
 # the configured display, so these windows open tabbed without an action.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_LEFT=272
 readonly BTN_MIDDLE=274
 readonly OUTPUT_W=1280
@@ -19,17 +21,6 @@ pointer() {
 
 spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_windows() {
-  local expected=$1 count=
-  for _ in $(seq 60); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
 }
 
 wait_for_shown() {
@@ -76,11 +67,11 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client tab-a
-wait_for_windows 1
+await_count 1
 spawn_client tab-b
-wait_for_windows 2
+await_count 2
 spawn_client tab-c
-wait_for_windows 3
+await_count 3
 "$ANDROMEDA" settle
 wait_for_shown tab-c
 
@@ -95,7 +86,7 @@ wait_for_shown tab-b
 
 read -r x y <<< "$(slot_center 2 3)"
 pointer move "$x" "$y" click "$BTN_MIDDLE"
-wait_for_windows 2
+await_count 2
 "$ANDROMEDA" settle
 if [[ $("$ANDROMEDA" windows --json | jq '[.[] | select(.title == "tab-c")] | length') != 0 ]]; then
   echo "expected a middle click on its slot to close tab-c: $("$ANDROMEDA" windows --json)"
@@ -118,9 +109,9 @@ fi
 
 # Build adjacent groups in the first column, then drop the detached tab onto the lower group's leading slot.
 spawn_client tab-d
-wait_for_windows 3
+await_count 3
 spawn_client tab-e
-wait_for_windows 4
+await_count 4
 "$ANDROMEDA" msg window-move-down > /dev/null
 "$ANDROMEDA" msg column-toggle-tabbed > /dev/null
 "$ANDROMEDA" msg column-focus-last > /dev/null
@@ -129,7 +120,6 @@ read -r sx sy <<< "$("$ANDROMEDA" windows --json | jq -r '
   .[] | select(.title == "tab-b")
   | "\(.x + (.w / 2 | floor)) \(.y - 2 - 8 - 12)"
 ')"
-source "$ANDROMEDA_HARNESS_LIB"
 "$ANDROMEDA" clock-freeze
 pointer_hold "$OUTPUT_W" "$OUTPUT_H" move "$sx" "$sy" press "$BTN_LEFT" \
   move "$((sx + 40))" "$((sy + 200))" -- release "$BTN_LEFT"

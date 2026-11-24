@@ -2,20 +2,10 @@
 # Real clients exercise master count changes, directional and cyclic focus order, and swap ordering through compositor seams.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 spawn_client() {
   foot --title="harness-master-$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_windows() {
-  local want=$1
-  for _ in $(seq 40); do
-    if [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]]; then
-      return 0
-    fi
-    sleep 0.25
-  done
-  echo "timed out waiting for $want window(s), saw: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 wait_for_query() {
@@ -48,13 +38,13 @@ EOF
 # fraction, the divisible width is 1248: master round(0.55 * 1248) = 686, stack = 562. Two rows share
 # 700 - 12 = 688 pixels, so each is 344 pixels high.
 spawn_client a
-wait_for_windows 1
+await_count 1
 
 spawn_client b
-wait_for_windows 2
+await_count 2
 
 spawn_client c
-wait_for_windows 3
+await_count 3
 
 # Focus memory: leaving the stack and coming back lands on the row that was focused last.
 "$ANDROMEDA" msg window-focus-left > /dev/null

@@ -4,6 +4,8 @@
 # through the real virtual pointer and modifier paths.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly BTN_LEFT=272
@@ -17,16 +19,6 @@ pointer() {
 
 spawn_client() {
   "$CLIENT" "$1" 1200 700 > /dev/null 2>&1 &
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 active_title() {
@@ -48,11 +40,11 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client "transition-first"
-wait_for_count 1
+await_count 1
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 "$ANDROMEDA" settle
 spawn_client "transition-second"
-wait_for_count 2
+await_count 2
 "$ANDROMEDA" msg workspace-switch:1 > /dev/null
 "$ANDROMEDA" settle
 
@@ -183,7 +175,7 @@ fi
 # axis. Its rendered pixels are exactly the box the IPC reports.
 "$ANDROMEDA" msg workspace-switch:3 > /dev/null
 spawn_sized axis-tiled 600 300
-wait_for_count 3
+await_count 3
 "$ANDROMEDA" settle
 read -r tiled_x tiled_y tiled_w tiled_h <<< "$(box_of axis-tiled)"
 if ((tiled_y < 60 || tiled_w < 200 || tiled_h < 100)); then
@@ -240,9 +232,9 @@ fi
 "$ANDROMEDA" clock-resume
 settle_to 4
 spawn_sized axis-float 200 200
-wait_for_count 4
+await_count 4
 spawn_sized axis-pinned 200 200
-wait_for_count 5
+await_count 5
 "$ANDROMEDA" settle
 "$ANDROMEDA" msg "window-focus-warp:$(id_of axis-pinned)" > /dev/null
 "$ANDROMEDA" msg window-toggle-pinned > /dev/null
@@ -294,7 +286,7 @@ fi
 "$ANDROMEDA" clock-resume
 settle_to 3
 spawn_sized axis-fullscreen "$OUTPUT_W" "$OUTPUT_H"
-wait_for_count 6
+await_count 6
 "$ANDROMEDA" settle
 "$ANDROMEDA" msg "window-focus-warp:$(id_of axis-fullscreen)" > /dev/null
 "$ANDROMEDA" msg window-toggle-fullscreen > /dev/null

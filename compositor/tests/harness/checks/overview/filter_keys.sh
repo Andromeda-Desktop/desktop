@@ -4,6 +4,8 @@
 # these keys reach a client.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -36,16 +38,6 @@ window_count() {
   "$ANDROMEDA" windows --json | jq 'length'
 }
 
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(window_count) -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 focused_title() {
   "$ANDROMEDA" windows --json | jq -r '[.[] | select(.focused) | .title] | if length == 1 then .[0] else "none" end'
 }
@@ -75,7 +67,7 @@ count=0
 for name in alpha beta gamma; do
   "$CLIENT" "filter-$name" 600 400 > "$LOG_DIR/filter-$name.log" 2>&1 &
   count=$((count + 1))
-  wait_for_count $count
+  await_count $count
 done
 focus_title filter-alpha
 finish
@@ -100,7 +92,7 @@ fi
 # Backspace edits the query; Delete closes the selected match and leaves the others.
 open_overview
 keys tap $K_G tap $K_A tap $K_M tap $K_Z tap $K_BACKSPACE tap $K_DELETE
-wait_for_count 2
+await_count 2
 if "$ANDROMEDA" windows --json | jq -e '.[] | select(.title == "filter-gamma")' > /dev/null; then
   echo "Delete did not close filter-gamma: $("$ANDROMEDA" windows --json)"
   exit 1

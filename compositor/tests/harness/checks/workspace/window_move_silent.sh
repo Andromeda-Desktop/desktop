@@ -5,6 +5,8 @@
 # The named, next, and previous silent forms share one rule.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly WORKSPACE_CLIENT="${ANDROMEDA_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
 
 spawn_client() {
@@ -30,28 +32,6 @@ id_of() {
 # through the same client the other workspace checks use.
 workspace_id_named() {
   "$WORKSPACE_CLIENT" --all | awk -F'\t' -v name="$1" '$2 == name { print $1; exit }'
-}
-
-wait_for_windows() {
-  local expected=$1 count=
-  for _ in $(seq 40); do
-    count=$(windows | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
-}
-
-wait_for_workspace() {
-  local title=$1 expected=$2 actual=
-  for _ in $(seq 50); do
-    actual=$(windows | jq -r --arg title "$title" '.[] | select(.title == $title) | .workspace')
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' on $expected, got $actual"
-  return 1
 }
 
 # `active` is the seat's own record of which view holds keyboard focus. The
@@ -119,31 +99,31 @@ assert_active ONE
 
 spawn_client silent-source
 spawn_client silent-anchor
-wait_for_windows 2
+await_count 2
 accepts "window-focus:$(id_of silent-source)"
 wait_for_active silent-source
 
 # The window lands on TWO, ONE stays active, and the seat takes the window the
 # source workspace hands it instead of travelling with the moved one.
 accepts "window-move-to-workspace-silent:TWO"
-wait_for_workspace silent-source "$two_id"
+await_workspace silent-source "$two_id"
 assert_active ONE
 wait_for_active silent-anchor
 
 # Contrast: the plain form still follows the window onto TWO.
 accepts "window-move-to-workspace:TWO"
-wait_for_workspace silent-anchor "$two_id"
+await_workspace silent-anchor "$two_id"
 assert_active TWO
 
 # An emptied source keeps its now-empty workspace active and clears the
 # keyboard focus, rather than switching to the destination.
 accepts "workspace-switch:ONE"
 spawn_client silent-last
-wait_for_windows 3
+await_count 3
 accepts "window-focus:$(id_of silent-last)"
 wait_for_active silent-last
 accepts "window-move-to-workspace-silent:TWO"
-wait_for_workspace silent-last "$two_id"
+await_workspace silent-last "$two_id"
 assert_active ONE
 wait_for_active none
 
@@ -157,7 +137,7 @@ assert_active ONE
 accepts "workspace-switch:TWO"
 wait_for_active silent-anchor
 accepts "window-move-to-workspace-silent-previous"
-wait_for_workspace silent-anchor "$one_id"
+await_workspace silent-anchor "$one_id"
 assert_active TWO
 wait_for_active_absent silent-anchor
 [[ -n $(active_titles) ]] || { echo "the window left TWO without a surviving seat"; exit 1; }
@@ -167,7 +147,7 @@ wait_for_active_absent silent-anchor
 accepts "workspace-switch:ONE"
 wait_for_active silent-anchor
 accepts "window-move-to-workspace-silent-next"
-wait_for_workspace silent-anchor "$two_id"
+await_workspace silent-anchor "$two_id"
 assert_active ONE
 wait_for_active none
 

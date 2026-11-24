@@ -3,21 +3,13 @@
 # arranged yet when the dialog is placed.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/transient-mapped-together.log"
 
 windows() {
   "$ANDROMEDA" windows --json
-}
-
-wait_for_window_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $(windows)"
-  return 1
 }
 
 wait_for_position() {
@@ -48,7 +40,7 @@ EOF2
 # The output is 1280x720 with an edge pad of 10, so the parent's column is 624 wide and 700 high at 10,10, and its
 # 400x300 dialog lands at 122,210. Placed before the arrange, it would center on the output, at 440,210.
 TRANSIENT_SUITE=mapped-together "$CLIENT" transient-child 400 300 > "$CLIENT_LOG" 2>&1 &
-wait_for_window_count 2
+await_count 2
 wait_for_position transient-parent 10 10
 wait_for_position transient-child 122 210
 

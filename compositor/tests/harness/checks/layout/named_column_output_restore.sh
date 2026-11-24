@@ -3,21 +3,13 @@
 # A named scrolling-column creator keeps width ownership after its output disappears and returns.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly OWNER_FIFO="$ANDROMEDA_RUNTIME_DIR/named-output-owner-control"
 
 spawn_client() {
   "$CLIENT" "$1" 800 600 > "$ANDROMEDA_RUNTIME_DIR/$1.log" 2>&1 &
-}
-
-wait_for_windows() {
-  local expected=$1
-  for _ in $(seq 80); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $expected ]] && return 0
-    sleep 0.1
-  done
-  echo "timed out waiting for $expected clients: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 wait_for_output() {
@@ -83,15 +75,15 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client named-output-refuge
-wait_for_windows 1
+await_count 1
 mkfifo "$OWNER_FIFO"
 exec {owner_fd}<>"$OWNER_FIFO"
 APP_ID=named-output-owner TITLE_AFTER_MAP=named-output-owner-late \
   "$CLIENT" named-output-owner-placeholder 800 600 <&"$owner_fd" \
   > "$ANDROMEDA_RUNTIME_DIR/named-output-owner.log" 2>&1 &
-wait_for_windows 2
+await_count 2
 spawn_client named-output-peer
-wait_for_windows 3
+await_count 3
 
 # The home column temporarily joins a populated, identically named refuge.
 # Settle its late width there, then verify exact restoration retains both the
@@ -105,7 +97,7 @@ created=$("$ANDROMEDA" output-create HEADLESS-1)
 wait_for_output named-output-owner-late HEADLESS-1
 
 spawn_client named-output-after
-wait_for_windows 4
+await_count 4
 wait_for_delta named-output-owner-late named-output-after 890
 
 echo "named-column width ownership survived output loss and exact layout restoration"

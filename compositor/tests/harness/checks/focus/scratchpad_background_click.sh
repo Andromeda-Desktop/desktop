@@ -6,6 +6,8 @@
 # workspace window instead of being retained on the scratchpad.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly BTN_LEFT=272
@@ -49,42 +51,20 @@ field_of() {
   windows | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
 }
 
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 80); do
-    count=$(windows | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected windows, got $count: $(windows)"
-  return 1
-}
-
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual': $(windows)"
-  return 1
-}
-
 "$CLIENT" "$WS" > "$ANDROMEDA_RUNTIME_DIR/$WS.log" 2>&1 &
-wait_for_count 1
-wait_for_field "$WS" active true
+await_count 1
+await_field "$WS" active true
 
 "$CLIENT" "$SCRATCH" 420 260 > "$ANDROMEDA_RUNTIME_DIR/$SCRATCH.log" 2>&1 &
-wait_for_count 2
+await_count 2
 scratch_id=$(field_of "$SCRATCH" id)
 "$ANDROMEDA" msg "window-focus:$scratch_id" > /dev/null
 "$ANDROMEDA" msg "window-move-to-scratchpad:$SCRATCHPAD" > /dev/null
-wait_for_field "$SCRATCH" scratchpad "$SCRATCHPAD"
+await_field "$SCRATCH" scratchpad "$SCRATCHPAD"
 "$ANDROMEDA" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
-wait_for_field "$SCRATCH" active true
+await_field "$SCRATCH" active true
 "$ANDROMEDA" msg "window-focus:$scratch_id" > /dev/null
-wait_for_field "$SCRATCH" active true
+await_field "$SCRATCH" active true
 
 # Precondition for the explicit path: the scratchpad owns focus while the
 # workspace window sits behind it.
@@ -96,7 +76,7 @@ fi
 # Clicking empty background hits no view, so Cursor routes it to
 # refocusExplicit() which must fall back to the workspace window.
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$EMPTY_X" "$EMPTY_Y" click "$BTN_LEFT"
-wait_for_field "$WS" active true
-wait_for_field "$SCRATCH" active false
+await_field "$WS" active true
+await_field "$SCRATCH" active false
 
 echo "background click moves focus from the visible scratchpad to the workspace window"

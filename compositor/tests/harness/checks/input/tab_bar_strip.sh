@@ -4,6 +4,8 @@
 # all of them.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -26,17 +28,6 @@ accepts() {
 
 spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_windows() {
-  local expected=$1 count=
-  for _ in $(seq 60); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
 }
 
 wait_for_shown() {
@@ -94,7 +85,7 @@ count=0
 for title in tab-a tab-b tab-c tab-d; do
   spawn_client "$title"
   count=$((count + 1))
-  wait_for_windows "$count"
+  await_count "$count"
 done
 "$ANDROMEDA" settle
 

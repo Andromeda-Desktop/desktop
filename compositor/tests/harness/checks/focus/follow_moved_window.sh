@@ -4,6 +4,8 @@
 # a launcher click can be followed by another.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly SEAT_LOG="${ANDROMEDA_SEAT_LOG_CLIENT:-./build-debug/tests/seat-log-client}"
 
@@ -19,15 +21,6 @@ spawn() {
     sleep 0.1
   done
   echo "window $1 did not map: $(windows)"
-  exit 1
-}
-
-wait_for_active() {
-  for _ in $(seq 60); do
-    [[ $(field "$1" active) == true ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $1 to be active: $(windows)"
   exit 1
 }
 
@@ -79,7 +72,7 @@ spawn follow-left
 spawn follow-right
 "$ANDROMEDA" settle
 "$ANDROMEDA" msg "window-focus:$(field follow-left id)" > /dev/null
-wait_for_active follow-left
+await_active follow-left
 # Enter carries no logged position, so finish with a motion inside the window.
 pointer move "$(($(field follow-left x) + 31))" "$(($(field follow-left y) + 40))" \
   move "$(($(field follow-left x) + 30))" "$(($(field follow-left y) + 40))"
@@ -90,7 +83,7 @@ left_leaves=$(events follow-left pointer-leave)
 "$ANDROMEDA" msg window-swap-right > /dev/null
 "$ANDROMEDA" settle
 [[ $(field follow-left x) != "$left_x" ]] || { echo "window-swap-right did not move follow-left: $(windows)"; exit 1; }
-wait_for_active follow-left
+await_active follow-left
 (($(events follow-left pointer-leave) == left_leaves)) || { echo "the pointer stayed behind after the swap"; exit 1; }
 expect_motion_at follow-left "$(($(field follow-left w) / 2))" "$(($(field follow-left h) / 2))" "after the swap"
 
@@ -98,7 +91,7 @@ expect_motion_at follow-left "$(($(field follow-left w) / 2))" "$(($(field follo
 "$ANDROMEDA" msg "workspace-switch:2" > /dev/null
 spawn follow-float-kept
 "$ANDROMEDA" settle
-wait_for_active follow-float-kept
+await_active follow-float-kept
 pointer move 151 160 move 150 160
 "$ANDROMEDA" settle
 expect_motion_at follow-float-kept 50 60 "before the floating move"
@@ -113,7 +106,7 @@ expect_motion_at follow-float-kept 150 100 "after the floating move"
 kept_leaves=$(events follow-float-kept pointer-leave)
 spawn follow-float-new
 "$ANDROMEDA" settle
-wait_for_active follow-float-new
+await_active follow-float-new
 (($(events follow-float-new pointer-enter) == 0)) || { echo "the pointer followed the new window"; exit 1; }
 (($(events follow-float-kept pointer-leave) == kept_leaves)) || { echo "the pointer left follow-float-kept"; exit 1; }
 

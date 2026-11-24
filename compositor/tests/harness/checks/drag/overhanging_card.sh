@@ -25,15 +25,6 @@ spawn_client() {
   foot --config=/dev/null --title="overhang-$1" sh -c 'sleep 120' > /dev/null 2>&1 &
 }
 
-wait_for_count() {
-  for _ in $(seq 300); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.05
-  done
-  echo "timed out waiting for $1 window(s)"
-  return 1
-}
-
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
 [appearance]
 border_width = 2
@@ -74,7 +65,7 @@ finish() {
 
 for id in $(seq 1 7); do
   spawn_client "$id"
-  wait_for_count "$id"
+  await_count "$id"
 done
 finish
 

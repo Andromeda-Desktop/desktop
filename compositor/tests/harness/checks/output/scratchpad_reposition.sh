@@ -4,6 +4,8 @@
 # layout position changes. Its output-local geometry and backdrop move with it.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly BASELINE="$(< "$ANDROMEDA_CONFIG")"
@@ -32,17 +34,6 @@ windows() { "$ANDROMEDA" windows --json; }
 
 field_of() {
   windows | jq -r --arg title "$TITLE" --arg field "$1" '.[] | select(.title == $title) | .[$field]'
-}
-
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 80); do
-    count=$(windows | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window, got $count: $(windows)"
-  return 1
 }
 
 wait_for_field() {
@@ -122,7 +113,7 @@ wait_for_output_origin HEADLESS-2 1280 0
 "$POINTER" 2560 720 move 1920 360
 
 "$CLIENT" "$TITLE" > "$ANDROMEDA_RUNTIME_DIR/$TITLE.log" 2>&1 &
-wait_for_count 1
+await_count 1
 "$ANDROMEDA" msg "window-focus:$(field_of id)" > /dev/null
 "$ANDROMEDA" msg "window-move-to-scratchpad:$NAME" > /dev/null
 "$ANDROMEDA" msg "scratchpad-toggle:$NAME" > /dev/null

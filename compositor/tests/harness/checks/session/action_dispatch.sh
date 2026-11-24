@@ -3,6 +3,8 @@
 # "unknown action"), and the behaviors that work on a single headless output are asserted by their transitions.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 # The geometry below assumes the old 2 px default border.
 printf '\n[appearance]\nborder_width = 2\n' >> "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
@@ -30,18 +32,6 @@ spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
 }
 
-wait_for_windows() {
-  local want=$1
-  for _ in $(seq 40); do
-    if [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]]; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected $want window(s), got $("$ANDROMEDA" windows --json | jq 'length')"
-  return 1
-}
-
 # Single-output rejection: this check's instance boots exactly one headless output, so every directional output action must fail with a "no output" message, and
 # the cycling ones with "no other output". This also proves parse + dispatch reach the handler.
 for action in \
@@ -62,7 +52,7 @@ done
 
 # workspace-next / workspace-previous
 spawn_client ws-flip
-wait_for_windows 1
+await_count 1
 
 if [[ $("$ANDROMEDA" windows --json | jq -r '.[0].active') != true ]]; then
   echo "expected the window to be active before the switch"
@@ -123,7 +113,7 @@ fi
 # The cross-workspace variants first use an available vertical neighbor. Only
 # the workspace boundary falls through to workspace navigation.
 spawn_client vertical-local
-wait_for_windows 2
+await_count 2
 local_id=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "vertical-local") | .id')
 accepts "window-focus:$local_id"
 accepts "window-consume-left"
@@ -172,7 +162,7 @@ if [[ $local_moved != true ]]; then
   exit 1
 fi
 accepts "window-close"
-wait_for_windows 1
+await_count 1
 
 accepts "window-focus-or-workspace-down"
 active_now=true
@@ -236,7 +226,7 @@ fi
 # window-toggle-maximize restores, not the destination's default width.
 narrow_w=$after_w
 spawn_client stacked-move
-wait_for_windows 2
+await_count 2
 stacked_id=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "stacked-move") | .id')
 accepts "window-focus:$stacked_id"
 accepts "window-consume-left"
@@ -303,7 +293,7 @@ if [[ $current_workspace != "$start_workspace" ]]; then
   exit 1
 fi
 accepts "window-close"
-wait_for_windows 1
+await_count 1
 
 # The source column remained full width when one stacked row moved away.
 accepts "window-toggle-maximize"
@@ -394,7 +384,7 @@ wait_window_at $((1280 - w - 10)) 10 "window-move-up"
 accepts "window-toggle-floating" # restore tiled
 
 spawn_client window-toggle-unfoucsed
-wait_for_windows 2
+await_count 2
 
 read -r id <<< "$(jq -r '.[0].id' <<< "$("$ANDROMEDA" windows --json)")"
 accepts "window-focus:$id"
@@ -445,7 +435,7 @@ accepts "window-close"
 # workspace-set-layout
 spawn_client dwindle-b
 spawn_client dwindle-c
-wait_for_windows 3
+await_count 3
 
 accepts "workspace-set-layout:dwindle"
 min_h=720
@@ -473,7 +463,7 @@ fi
 # The runtime switch must survive a window open: reconcileDynamic re-resolves
 # the configured layout, and the override keeps dwindle in force.
 spawn_client dwindle-d
-wait_for_windows 4
+await_count 4
 min_h=720
 for _ in $(seq 40); do
   min_h=$(jq '[.[].h] | min' <<< "$("$ANDROMEDA" windows --json)")

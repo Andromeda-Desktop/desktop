@@ -5,6 +5,8 @@
 # working in both layouts.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 BASELINE=$(< "$ANDROMEDA_CONFIG")
 
@@ -57,17 +59,6 @@ wait_for_windows() {
   return 1
 }
 
-wait_for_focus() {
-  local expected=$1 focused=
-  for _ in $(seq 40); do
-    focused=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.active) | .title')
-    [[ $focused == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected focus on $expected, got $focused"
-  return 1
-}
-
 write_config 1.25
 "$ANDROMEDA" msg config-reload > /dev/null
 wait_for_output HEADLESS-1 0 1.250000
@@ -77,13 +68,13 @@ foot --title=auto-scale-left sh -c 'sleep 120' > /dev/null 2>&1 &
 foot --title=auto-scale-right sh -c 'sleep 120' > /dev/null 2>&1 &
 wait_for_windows
 "$POINTER" 2304 720 move 100 100 move 1100 100
-wait_for_focus auto-scale-right
+await_active auto-scale-right
 
 write_config ''
 "$ANDROMEDA" msg config-reload > /dev/null
 wait_for_output HEADLESS-1 0 1.000000
 wait_for_output HEADLESS-2 1280 1.000000
 "$POINTER" 2560 720 move 100 100 move 1360 100
-wait_for_focus auto-scale-right
+await_active auto-scale-right
 
 echo "automatic output placement followed scale changes and the pointer crossed both shared edges"

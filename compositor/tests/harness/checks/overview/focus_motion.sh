@@ -5,6 +5,8 @@
 # after the zoom has landed.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -19,24 +21,15 @@ spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
 }
 
-wait_for_count() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for $1 window(s)"
-  return 1
-}
-
 printf '\n[animation.overview]\nduration_ms = 2000\ncurve = "linear"\n' >> "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client overview-motion-first
-wait_for_count 1
+await_count 1
 spawn_client overview-motion-second
-wait_for_count 2
+await_count 2
 spawn_client overview-motion-third
-wait_for_count 3
+await_count 3
 
 first_id=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "overview-motion-first") | .id')
 if [[ -z $first_id ]]; then

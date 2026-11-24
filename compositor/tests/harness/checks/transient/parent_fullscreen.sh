@@ -3,6 +3,8 @@
 # one maximized to edges, not the tile underneath either.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly LAYER_CLIENT="${ANDROMEDA_LAYER_CLIENT:-./build-debug/tests/layer-client}"
 readonly BASE_CONFIG="$ANDROMEDA_RUNTIME_DIR/transient-fullscreen-base.toml"
@@ -11,16 +13,6 @@ readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/transient-fullscreen.log"
 
 windows() {
   "$ANDROMEDA" windows --json
-}
-
-wait_for_window_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $(windows)"
-  return 1
 }
 
 wait_for_position() {
@@ -76,17 +68,17 @@ fi
 write_config default_fullscreen
 TRANSIENT_SUITE=1 "$CLIENT" transient-child 400 300 > "$CLIENT_LOG" 2>&1 &
 client_pid=$!
-wait_for_window_count 3
+await_count 3
 wait_for_position transient-child 440 210
 
 kill "$client_pid"
 wait "$client_pid" 2> /dev/null || true
-wait_for_window_count 0
+await_count 0
 
 # Maximized to edges fills the usable area below the panel, 1280x680 at 0,40, so the dialog opens at 440,230.
 write_config default_maximize_to_edges
 TRANSIENT_SUITE=1 "$CLIENT" transient-child 400 300 > "$CLIENT_LOG" 2>&1 &
-wait_for_window_count 3
+await_count 3
 wait_for_position transient-child 440 230
 
 echo "a dialog opens centered on what a fullscreen or edge-maximized parent shows"

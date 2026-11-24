@@ -4,6 +4,8 @@
 # focused member, and retains scrolling geometry across direct and adjacent moves.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_LEFT=272
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly WORKSPACE="${ANDROMEDA_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
@@ -24,31 +26,9 @@ spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
 }
 
-wait_for_windows() {
-  local expected=$1 count=
-  for _ in $(seq 40); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
-}
-
 field_of() {
   "$ANDROMEDA" windows --json | jq -r --arg title "$1" --arg field "$2" \
     '.[] | select(.title == $title) | .[$field]'
-}
-
-wait_for_workspace() {
-  local title=$1 expected=$2 actual=
-  for _ in $(seq 50); do
-    actual=$(field_of "$title" workspace)
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' on $expected, got $actual"
-  return 1
 }
 
 wait_for_output() {
@@ -104,15 +84,15 @@ accepts "workspace-switch:ONE/HEADLESS-1"
 
 # Build one two-row column plus an independent source column.
 spawn_client column-top
-wait_for_windows 1
+await_count 1
 spawn_client column-bottom
-wait_for_windows 2
+await_count 2
 bottom_id=$(field_of column-bottom id)
 accepts window-consume-left
 wait_for_column_geometry
 
 spawn_client source-anchor
-wait_for_windows 3
+await_count 3
 accepts "window-focus:$bottom_id"
 accepts window-set-primary-extent:0.667
 for _ in $(seq 50); do
@@ -139,9 +119,9 @@ if [[ $full_width -lt 1200 ]]; then
 fi
 
 accepts "column-move-to-workspace:THREE/HEADLESS-1"
-wait_for_workspace column-top "$three_id"
-wait_for_workspace column-bottom "$three_id"
-wait_for_workspace source-anchor "$one_id"
+await_workspace column-top "$three_id"
+await_workspace column-bottom "$three_id"
+await_workspace source-anchor "$one_id"
 wait_for_column_geometry "$full_width"
 if [[ $(field_of column-bottom active) != true ]]; then
   echo "expected focus to follow the moved column to THREE"
@@ -153,9 +133,9 @@ wait_for_column_geometry "$normal_width"
 
 # Previous and next retain the whole column, member order, width, and focus.
 accepts column-move-to-workspace-previous
-wait_for_workspace column-top "$two_id"
-wait_for_workspace column-bottom "$two_id"
-wait_for_workspace source-anchor "$one_id"
+await_workspace column-top "$two_id"
+await_workspace column-bottom "$two_id"
+await_workspace source-anchor "$one_id"
 wait_for_column_geometry "$normal_width"
 if [[ $(field_of column-bottom active) != true ]]; then
   echo "expected focus to follow the moved column to TWO"
@@ -163,22 +143,22 @@ if [[ $(field_of column-bottom active) != true ]]; then
 fi
 
 accepts column-move-to-workspace-next
-wait_for_workspace column-top "$three_id"
-wait_for_workspace column-bottom "$three_id"
-wait_for_workspace source-anchor "$one_id"
+await_workspace column-top "$three_id"
+await_workspace column-bottom "$three_id"
+await_workspace source-anchor "$one_id"
 wait_for_column_geometry "$normal_width"
 
 # The next action at the final workspace is a silent no-op.
 accepts column-move-to-workspace-next
-wait_for_workspace column-top "$three_id"
-wait_for_workspace column-bottom "$three_id"
+await_workspace column-top "$three_id"
+await_workspace column-bottom "$three_id"
 
 # A qualified selector follows the column across outputs. The immediately
 # following adjacent action must therefore resolve on the destination output.
 accepts "column-move-to-workspace:RIGHT_TWO/HEADLESS-2"
-wait_for_workspace column-top "$right_two_id"
-wait_for_workspace column-bottom "$right_two_id"
-wait_for_workspace source-anchor "$one_id"
+await_workspace column-top "$right_two_id"
+await_workspace column-bottom "$right_two_id"
+await_workspace source-anchor "$one_id"
 wait_for_column_geometry "$normal_width"
 "$ANDROMEDA" settle
 
@@ -201,15 +181,15 @@ if [[ $(field_of column-bottom focused) != true ]]; then
 fi
 
 accepts column-move-to-workspace-previous
-wait_for_workspace column-top "$right_one_id"
-wait_for_workspace column-bottom "$right_one_id"
-wait_for_workspace source-anchor "$one_id"
+await_workspace column-top "$right_one_id"
+await_workspace column-bottom "$right_one_id"
+await_workspace source-anchor "$one_id"
 wait_for_column_geometry "$normal_width"
 
 # A reconstructed column retains multiple groups, including the selection of the
 # group that does not hold workspace focus, and each group's bar override.
 spawn_client transfer-c
-wait_for_windows 4
+await_count 4
 c_id=$(field_of transfer-c id)
 accepts window-consume-left
 accepts column-set-display:tabbed
@@ -220,7 +200,7 @@ accepts "window-focus:$c_id"
 accepts column-set-display:tabbed
 accepts column-show-tab-bar
 spawn_client transfer-d
-wait_for_windows 5
+await_count 5
 d_id=$(field_of transfer-d id)
 accepts window-consume-left
 "$ANDROMEDA" settle
@@ -266,10 +246,10 @@ groups_before=$(transfer_state)
 printf '\n[layout.tabs]\ndefault_display = "tabbed"\n' >> "$ANDROMEDA_CONFIG"
 accepts config-reload
 accepts "column-move-to-workspace:TWO/HEADLESS-1"
-wait_for_workspace transfer-d "$two_id"
+await_workspace transfer-d "$two_id"
 assert_transfer_groups
 accepts column-move-to-output-right
-wait_for_workspace transfer-d "$right_one_id"
+await_workspace transfer-d "$right_one_id"
 assert_transfer_groups
 
 # Whole-workspace output moves rebuild all columns on the requested output.
@@ -277,21 +257,21 @@ accepts workspace-move-to-output-left
 wait_for_output transfer-d HEADLESS-1
 transferred_workspace=$(field_of transfer-d workspace)
 for title in column-top column-bottom transfer-c; do
-  wait_for_workspace "$title" "$transferred_workspace"
+  await_workspace "$title" "$transferred_workspace"
 done
 assert_transfer_groups
-wait_for_workspace source-anchor "$one_id"
+await_workspace source-anchor "$one_id"
 accepts "column-move-to-workspace:THREE/HEADLESS-1"
-wait_for_workspace transfer-d "$three_id"
+await_workspace transfer-d "$three_id"
 
 # A master area can retain a whole-column group and its hidden bar, but not
 # separate groups inside one area. Remove the second group to make it representable.
 accepts "window-focus:$d_id"
 accepts window-close
-wait_for_windows 4
+await_count 4
 accepts "window-focus:$c_id"
 accepts window-close
-wait_for_windows 3
+await_count 3
 accepts "window-focus:$bottom_id"
 "$ANDROMEDA" settle
 whole_group_top=$(field_of column-bottom y)
@@ -299,7 +279,7 @@ accepts "workspace-switch:TWO/HEADLESS-1"
 accepts workspace-set-layout:master
 accepts "workspace-switch:THREE/HEADLESS-1"
 accepts "column-move-to-workspace:TWO/HEADLESS-1"
-wait_for_workspace column-bottom "$two_id"
+await_workspace column-bottom "$two_id"
 "$ANDROMEDA" settle
 if ! "$ANDROMEDA" windows --json | jq -e --argjson top "$whole_group_top" '
   [.[] | select(.title == "column-top")][0] as $a
@@ -318,7 +298,7 @@ fi
 printf '\n[layout.master]\nnew_becomes_master = false\n' >> "$ANDROMEDA_CONFIG"
 accepts config-reload
 spawn_client master-extra
-wait_for_windows 4
+await_count 4
 extra_id=$(field_of master-extra id)
 accepts "window-focus:$bottom_id"
 "$ANDROMEDA" settle
@@ -336,8 +316,8 @@ accepts "workspace-switch:TWO/HEADLESS-1"
 accepts workspace-move-to-output-right
 wait_for_output column-bottom HEADLESS-2
 transferred_workspace=$(field_of column-bottom workspace)
-wait_for_workspace column-top "$transferred_workspace"
-wait_for_workspace master-extra "$transferred_workspace"
+await_workspace column-top "$transferred_workspace"
+await_workspace master-extra "$transferred_workspace"
 "$ANDROMEDA" settle
 if [[ $(master_state) != "$master_before" ]]; then
   echo "whole-workspace output transfer changed master areas, tabs, bar reserve, or selection: $(master_state)"
@@ -352,14 +332,14 @@ accepts "window-focus-warp:$bottom_id"
 accepts workspace-move-to-output-left
 wait_for_output column-bottom HEADLESS-1
 transferred_workspace=$(field_of column-bottom workspace)
-wait_for_workspace column-top "$transferred_workspace"
-wait_for_workspace master-extra "$transferred_workspace"
+await_workspace column-top "$transferred_workspace"
+await_workspace master-extra "$transferred_workspace"
 accepts "window-focus:$extra_id"
 accepts window-close
-wait_for_windows 3
+await_count 3
 accepts "window-focus:$bottom_id"
 accepts "column-move-to-workspace:THREE/HEADLESS-1"
-wait_for_workspace column-bottom "$three_id"
+await_workspace column-bottom "$three_id"
 accepts "workspace-switch:RIGHT_TWO/HEADLESS-2"
 accepts workspace-set-layout:scrolling
 accepts "workspace-switch:THREE/HEADLESS-1"
@@ -367,7 +347,7 @@ accepts "workspace-switch:THREE/HEADLESS-1"
 # A normal source stays normal even when the destination creates tabbed areas.
 accepts column-set-display:normal
 accepts column-move-to-output-right
-wait_for_workspace column-bottom "$right_two_id"
+await_workspace column-bottom "$right_two_id"
 "$ANDROMEDA" settle
 if [[ $(field_of column-top tabbed) != false || $(field_of column-bottom tabbed) != false ]]; then
   echo "destination tabbed default changed a normal source column's display"
@@ -377,7 +357,7 @@ accepts "workspace-switch:TWO/HEADLESS-1"
 accepts workspace-set-layout:master
 accepts "workspace-switch:RIGHT_TWO/HEADLESS-2"
 accepts "column-move-to-workspace:TWO/HEADLESS-1"
-wait_for_workspace column-bottom "$two_id"
+await_workspace column-bottom "$two_id"
 "$ANDROMEDA" settle
 if [[ $(field_of column-top tabbed) != false || $(field_of column-bottom tabbed) != false ]]; then
   echo "destination tabbed default changed a normal source master area"
@@ -390,8 +370,8 @@ accepts "workspace-switch:RIGHT_TWO/HEADLESS-2"
 accepts workspace-set-layout:dwindle
 accepts "workspace-switch:TWO/HEADLESS-1"
 accepts "column-move-to-workspace:RIGHT_TWO/HEADLESS-2"
-wait_for_workspace column-top "$right_two_id"
-wait_for_workspace column-bottom "$right_two_id"
+await_workspace column-top "$right_two_id"
+await_workspace column-bottom "$right_two_id"
 "$ANDROMEDA" settle
 if [[ $(field_of column-top tabbed) != false || $(field_of column-bottom tabbed) != false \
   || $(field_of column-top tab_hidden) != false || $(field_of column-bottom tab_hidden) != false ]]; then

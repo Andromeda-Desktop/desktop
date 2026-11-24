@@ -4,6 +4,8 @@
 # window that opens away from the pointer keeps focus while the pointer stays over the window it was already on.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -17,28 +19,8 @@ spawn_client() {
   "$CLIENT" "$1" 1200 700 > /dev/null 2>&1 &
 }
 
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 active_title() {
   "$ANDROMEDA" windows --json | jq -r '[.[] | select(.active) | .title] | if length == 1 then .[0] else "none" end'
-}
-
-wait_for_active() {
-  local want=$1
-  for _ in $(seq 40); do
-    [[ $(active_title) == "$want" ]] && return 0
-    sleep 0.05
-  done
-  echo "expected '$want' to be active, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -68,23 +50,23 @@ EOF
 # maps and takes keyboard focus on the right.
 pointer move 64 64
 spawn_client "spawn-hover-left"
-wait_for_count 1
+await_count 1
 spawn_client "spawn-hover-right"
-wait_for_count 2
-wait_for_active "spawn-hover-right"
+await_count 2
+await_active "spawn-hover-right"
 sleep 0.1
 
 # A one-pixel move stays inside the left tile. The map-time focus change must let it refresh hover focus once.
 pointer move 65 64
-wait_for_active "spawn-hover-left"
+await_active "spawn-hover-left"
 
 # The pointer was already over the left tile, so a window opening elsewhere keeps the focus it takes.
 spawn_client "spawn-hover-away"
-wait_for_count 3
-wait_for_active "spawn-hover-away"
+await_count 3
+await_active "spawn-hover-away"
 "$ANDROMEDA" settle
 pointer move 66 64
 "$ANDROMEDA" settle
-wait_for_active "spawn-hover-away"
+await_active "spawn-hover-away"
 
 echo "motion focuses a window that appeared under the stationary pointer, but not over one opened elsewhere"

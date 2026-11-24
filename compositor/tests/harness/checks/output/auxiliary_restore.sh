@@ -5,6 +5,8 @@
 # dwindle, and master workspaces so every layout participates in the recovery.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly WORKSPACE="${ANDROMEDA_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
 readonly UNMAP_CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -26,17 +28,6 @@ declare -A workspace_of=(
 
 spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 80); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected windows, got $count"
-  return 1
 }
 
 field_of() {
@@ -97,17 +88,6 @@ assert_workspace_evacuation() {
     done
     temporary[$home]=$workspace
   done
-}
-
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual'"
-  return 1
 }
 
 output_origin() {
@@ -193,7 +173,7 @@ destroy_home_with_workspace_views() {
   if [[ ${1:-} == pinned ]]; then
     assert_workspace_evacuation "$native" "${anchors[@]}"
     for title in "${probes[@]}"; do
-      wait_for_field "$title" workspace "$native"
+      await_field "$title" workspace "$native"
     done
   else
     assert_workspace_evacuation "$native" "${titles[@]}"
@@ -317,7 +297,7 @@ for layout in "${layouts[@]}"; do
     title=$layout-$role
     spawn_client "$title"
     count=$((count + 1))
-    wait_for_count "$count"
+    await_count "$count"
     move_to_workspace "$title" "${workspace_of[$title]}"
   done
 done
@@ -327,13 +307,13 @@ wait_for_workspace_homes "${titles[@]}"
 for title in "${probes[@]}"; do
   focus_window "$title"
   "$ANDROMEDA" msg window-toggle-floating > /dev/null
-  wait_for_field "$title" floating true
+  await_field "$title" floating true
   "$ANDROMEDA" msg window-center > /dev/null
 done
 floating_before=$(wait_for_stable_snapshot all)
 destroy_home_with_workspace_views
 for title in "${probes[@]}"; do
-  wait_for_field "$title" floating true
+  await_field "$title" floating true
 done
 recreate_home
 wait_for_workspace_homes "${titles[@]}"
@@ -341,7 +321,7 @@ wait_for_snapshot all "$floating_before"
 for title in "${probes[@]}"; do
   focus_window "$title"
   "$ANDROMEDA" msg window-toggle-floating > /dev/null
-  wait_for_field "$title" floating false
+  await_field "$title" floating false
 done
 
 # A pinned view remains pinned across recovery. One toggle after return must
@@ -350,13 +330,13 @@ done
 for title in "${probes[@]}"; do
   focus_window "$title"
   "$ANDROMEDA" msg window-toggle-pinned > /dev/null
-  wait_for_field "$title" floating true
+  await_field "$title" floating true
   "$ANDROMEDA" msg window-center > /dev/null
 done
 pinned_before=$(wait_for_stable_snapshot all)
 destroy_home_with_workspace_views pinned
 for title in "${probes[@]}"; do
-  wait_for_field "$title" floating true
+  await_field "$title" floating true
 done
 recreate_home
 wait_for_workspace_homes "${titles[@]}"
@@ -364,7 +344,7 @@ wait_for_snapshot all "$pinned_before"
 for title in "${probes[@]}"; do
   focus_window "$title"
   "$ANDROMEDA" msg window-toggle-pinned > /dev/null
-  wait_for_field "$title" floating false
+  await_field "$title" floating false
 done
 
 # Ordinary floating views stay workspace-owned while a separate scratchpad
@@ -373,12 +353,12 @@ done
 for title in "${probes[@]}"; do
   focus_window "$title"
   "$ANDROMEDA" msg window-toggle-floating > /dev/null
-  wait_for_field "$title" floating true
+  await_field "$title" floating true
   "$ANDROMEDA" msg window-center > /dev/null
 done
 spawn_client legit-scratch
 count=$((count + 1))
-wait_for_count "$count"
+await_count "$count"
 move_to_workspace legit-scratch 1
 move_pointer_to_output HEADLESS-1
 focus_window legit-scratch
@@ -394,18 +374,18 @@ done
 wait_for_home legit-scratch ''
 "$UNMAP_CLIENT" late-float 800 500 > "$ANDROMEDA_RUNTIME_DIR/late-float.log" 2>&1 &
 count=$((count + 1))
-wait_for_count "$count"
+await_count "$count"
 wait_for_home late-float ''
-wait_for_field late-float floating true
+await_field late-float floating true
 
 write_matrix_config false true
 "$ANDROMEDA" msg config-reload > /dev/null
 wait_for_home late-float HEADLESS-2/1
 assert_workspace_evacuation "$(field_of late-float workspace)" "${titles[@]}"
 for title in "${probes[@]}"; do
-  wait_for_field "$title" floating true
+  await_field "$title" floating true
 done
-wait_for_field late-float floating true
+await_field late-float floating true
 wait_for_home legit-scratch ''
 "$ANDROMEDA" msg "scratchpad-focus-next:$SCRATCHPAD" > /dev/null
 
@@ -413,22 +393,22 @@ write_matrix_config true true
 "$ANDROMEDA" msg config-reload > /dev/null
 wait_for_workspace_homes "${titles[@]}"
 for title in "${probes[@]}"; do
-  wait_for_field "$title" floating true
+  await_field "$title" floating true
 done
 wait_for_home legit-scratch ''
 "$ANDROMEDA" msg "scratchpad-focus-next:$SCRATCHPAD" > /dev/null
 "$ANDROMEDA" msg "window-close:$(field_of legit-scratch id)" > /dev/null
 count=$((count - 1))
-wait_for_count "$count"
+await_count "$count"
 # Closing the last member leaves the empty scratchpad open; dismiss it before the next phase.
 "$ANDROMEDA" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
 "$ANDROMEDA" msg "window-close:$(field_of late-float id)" > /dev/null
 count=$((count - 1))
-wait_for_count "$count"
+await_count "$count"
 for title in "${probes[@]}"; do
   focus_window "$title"
   "$ANDROMEDA" msg window-toggle-floating > /dev/null
-  wait_for_field "$title" floating false
+  await_field "$title" floating false
 done
 
 scratchpad_phase() {
@@ -438,7 +418,7 @@ scratchpad_phase() {
     for title in "${probes[@]}"; do
       focus_window "$title"
       "$ANDROMEDA" msg window-toggle-floating > /dev/null
-      wait_for_field "$title" floating true
+      await_field "$title" floating true
       "$ANDROMEDA" msg window-center > /dev/null
     done
   fi
@@ -448,7 +428,7 @@ scratchpad_phase() {
     focus_window "$title"
     "$ANDROMEDA" msg "window-move-to-scratchpad:$SCRATCHPAD" > /dev/null
     wait_for_home "$title" ''
-    wait_for_field "$title" floating true
+    await_field "$title" floating true
   done
   "$ANDROMEDA" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
   assert_visible_scratchpad_cycle HEADLESS-1
@@ -469,14 +449,14 @@ scratchpad_phase() {
     focus_window "$title"
     "$ANDROMEDA" msg "window-restore-from-scratchpad:$SCRATCHPAD" > /dev/null
     wait_for_home "$title" "HEADLESS-1/${workspace_of[$title]}"
-    wait_for_field "$title" floating "$return_floating"
+    await_field "$title" floating "$return_floating"
   done
 
   if [[ $return_floating == true ]]; then
     for title in "${probes[@]}"; do
       focus_window "$title"
       "$ANDROMEDA" msg window-toggle-floating > /dev/null
-      wait_for_field "$title" floating false
+      await_field "$title" floating false
     done
   fi
 }

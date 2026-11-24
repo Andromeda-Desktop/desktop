@@ -7,6 +7,8 @@
 # (layout-scroll-left) for the check to observe the compensation.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 declare -A CLIENT_PID=()
 
 spawn_titled() {
@@ -15,15 +17,6 @@ spawn_titled() {
 }
 
 window_count() { "$ANDROMEDA" windows --json | jq 'length'; }
-
-wait_for_count() {
-  for _ in $(seq 80); do
-    [[ $(window_count) -eq $1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for $1 window(s), have $(window_count)"
-  return 1
-}
 
 field_of() {
   "$ANDROMEDA" windows --json \
@@ -40,7 +33,7 @@ survivors() {
 # each new window is inserted after the focused one.
 for title in A B C D E F; do
   spawn_titled "$title"
-  wait_for_count "${#CLIENT_PID[@]}"
+  await_count "${#CLIENT_PID[@]}"
 done
 
 # Focus C, which scrolls A and B off the left edge and parks the scroll at the
@@ -81,7 +74,7 @@ before=$(survivors)
 
 # Close A without focusing it: focusing would scroll it back into view first.
 kill -TERM "${CLIENT_PID[A]}" 2>/dev/null || true
-wait_for_count 5
+await_count 5
 "$ANDROMEDA" settle
 
 after=$(survivors)

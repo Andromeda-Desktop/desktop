@@ -8,6 +8,8 @@
 # snapshot, so no custom mode here.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/float-maximize-fullscreen.log"
 
@@ -29,17 +31,6 @@ EOF
 field_of() {
   "$ANDROMEDA" windows --json \
     | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
-}
-
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual'"
-  return 1
 }
 
 box_of() {
@@ -66,7 +57,7 @@ assert_box() {
 
 "$CLIENT" float-fs-maximize > "$CLIENT_LOG" 2>&1 &
 
-wait_for_field float-fs-maximize floating true
+await_field float-fs-maximize floating true
 assert_box 640 360 320 180
 
 "$ANDROMEDA" msg "window-focus-warp:$(field_of float-fs-maximize id)" > /dev/null

@@ -6,6 +6,8 @@
 # transition really ran.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly SHOTS="$ANDROMEDA_RUNTIME_DIR/layout-motion"
 mkdir -p "$SHOTS"
@@ -59,18 +61,6 @@ spawn() {
   local fill=0x80800000
   [[ $1 == *-a ]] && fill=0x60600000
   FILL_COLOR=$fill "$CLIENT" "$1" 1200 700 > "$SHOTS/$1.log" 2>&1 &
-}
-
-wait_for_windows() {
-  local want=$1
-  for _ in $(seq 80); do
-    if [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]]; then
-      return 0
-    fi
-    sleep 0.05
-  done
-  echo "timed out waiting for $want window(s), saw: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 window_id() {
@@ -142,15 +132,15 @@ run_mode() {
   finish
 
   spawn "motion-$tag-a"
-  wait_for_windows 1
+  await_count 1
   finish
 
   spawn "motion-$tag-b"
-  wait_for_windows 2
+  await_count 2
   finish
 
   spawn "motion-$tag-c"
-  wait_for_windows 3
+  await_count 3
   finish
 
   "$ANDROMEDA" msg "window-focus:$(window_id "motion-$tag-a")" > /dev/null
@@ -161,7 +151,7 @@ run_mode() {
   finish
 
   close_all
-  wait_for_windows 0
+  await_count 0
   finish
 }
 

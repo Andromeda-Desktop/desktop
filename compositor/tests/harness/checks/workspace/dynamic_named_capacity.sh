@@ -3,6 +3,8 @@
 # every ordinary workspace is occupied, then claims the exact ordinary workspace that later becomes empty.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly BASELINE="$(< "$ANDROMEDA_CONFIG")"
 declare -a CLIENT_PIDS=()
@@ -21,17 +23,6 @@ trap cleanup EXIT
 workspace_snapshot() {
   "$ANDROMEDA" workspaces --json |
     jq -c '[.[] | select(.output == "HEADLESS-1")] | sort_by(.index)'
-}
-
-wait_for_window_count() {
-  local expected=$1 snapshot=
-  for _ in $(seq 240); do
-    snapshot=$("$ANDROMEDA" windows --json)
-    [[ $(jq 'length' <<< "$snapshot") -eq $expected ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $expected capacity clients, got: $snapshot"
-  exit 1
 }
 
 printf '%s\n' "$BASELINE" > "$ANDROMEDA_CONFIG"
@@ -74,7 +65,7 @@ for index in $(seq 2 63); do
   APP_ID="dynamic-capacity-$index" "$CLIENT" "dynamic-capacity-$index" > /dev/null 2>&1 &
   CLIENT_PIDS[$index]=$!
 done
-wait_for_window_count 62
+await_count 62
 
 occupied_ids=$("$ANDROMEDA" windows --json | jq -r 'map(.workspace) | unique | length')
 if [[ $occupied_ids -ne 62 ]]; then
@@ -124,7 +115,7 @@ fi
 kill "${CLIENT_PIDS[32]}"
 wait "${CLIENT_PIDS[32]}" 2>/dev/null || true
 CLIENT_PIDS[32]=
-wait_for_window_count 61
+await_count 61
 
 settled=
 for _ in $(seq 120); do

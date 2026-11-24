@@ -4,6 +4,8 @@
 # initiating release drops the detached tile back into the layout.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly BTN_LEFT=272
 readonly BTN_RIGHT=273
 readonly OUTPUT_W=1280
@@ -16,15 +18,6 @@ pointer() {
 
 spawn_client() {
   foot --title="secondary-button-$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_count() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for $1 window(s)"
-  return 1
 }
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -41,7 +34,7 @@ EOF
 
 for id in $(seq 1 4); do
   spawn_client "$id"
-  wait_for_count "$id"
+  await_count "$id"
 done
 
 for _ in $(seq 1 3); do

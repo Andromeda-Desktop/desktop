@@ -5,6 +5,8 @@
 # choice, so motion keeps it.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
@@ -19,15 +21,6 @@ spawn() {
     sleep 0.1
   done
   echo "window $1 did not map: $(windows)"
-  exit 1
-}
-
-wait_for_active() {
-  for _ in $(seq 60); do
-    [[ $(field "$1" active) == true ]] && return 0
-    sleep 0.05
-  done
-  echo "$2: expected $1 to be active: $(windows)"
   exit 1
 }
 
@@ -55,24 +48,24 @@ spawn always-right
 "$ANDROMEDA" settle
 left_x=$(($(field always-left x) + 40))
 pointer move "$left_x" 300
-wait_for_active always-left 'pointer motion'
+await_active always-left 'pointer motion'
 
 "$ANDROMEDA" msg "window-focus:$(field always-right id)" > /dev/null
 "$ANDROMEDA" settle
-wait_for_active always-right 'keyboard focus while the pointer is still'
+await_active always-right 'keyboard focus while the pointer is still'
 pointer move "$((left_x + 1))" 300
-wait_for_active always-left 'motion inside the window under the pointer after keyboard focus'
+await_active always-left 'motion inside the window under the pointer after keyboard focus'
 
 spawn always-away
 "$ANDROMEDA" settle
-wait_for_active always-away 'a window opening away from a still pointer'
+await_active always-away 'a window opening away from a still pointer'
 pointer move "$left_x" 300
-wait_for_active always-left 'motion inside the window under the pointer after a new window'
+await_active always-left 'motion inside the window under the pointer after a new window'
 
 # A swap brings always-right under the still pointer.
 "$ANDROMEDA" msg window-swap-right > /dev/null
 "$ANDROMEDA" settle
-wait_for_active always-right 'a swap that moves another window under a still pointer'
+await_active always-right 'a swap that moves another window under a still pointer'
 
 # The second window maps beside the first and keeps focus, then a return to this workspace restores that remembered
 # focus and hands it to the window under the pointer.
@@ -80,12 +73,12 @@ wait_for_active always-right 'a swap that moves another window under a still poi
 spawn always-ws-a
 spawn always-ws-b
 "$ANDROMEDA" settle
-wait_for_active always-ws-b 'a window opening beside the still pointer'
+await_active always-ws-b 'a window opening beside the still pointer'
 "$ANDROMEDA" msg "workspace-switch:1" > /dev/null
 "$ANDROMEDA" settle
 "$ANDROMEDA" msg "workspace-switch:2" > /dev/null
 "$ANDROMEDA" settle
-wait_for_active always-ws-a 'a workspace switch that leaves another window under a still pointer'
+await_active always-ws-a 'a workspace switch that leaves another window under a still pointer'
 "$ANDROMEDA" msg "workspace-switch:1" > /dev/null
 "$ANDROMEDA" settle
 
@@ -94,6 +87,6 @@ wait_for_active always-ws-a 'a workspace switch that leaves another window under
 "$ANDROMEDA" settle
 pointer relative 1 0
 "$ANDROMEDA" settle
-wait_for_active always-right 'motion after follows_focus carried the pointer'
+await_active always-right 'motion after follows_focus carried the pointer'
 
 echo "always follows_mouse refocuses on every motion and leaves a still pointer's focus alone"

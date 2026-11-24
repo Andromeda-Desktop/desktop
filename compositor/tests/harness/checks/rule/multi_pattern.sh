@@ -4,6 +4,8 @@
 # entry dropped while reading an array would show up as an unstyled window.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
 if [[ ! -x $CLIENT ]]; then
@@ -37,21 +39,11 @@ field_of() {
   "$ANDROMEDA" windows --json | jq -r --arg t "$1" --arg f "$2" '.[] | select(.title == $t) | .[$f]'
 }
 
-wait_mapped() {
-  local title=$1
-  for _ in $(seq 80); do
-    [[ -n $(field_of "$title" w) ]] && return 0
-    sleep 0.1
-  done
-  echo "window '$title' never mapped"
-  exit 1
-}
-
 open() {
   local title=$1
   shift
   env "$@" "$CLIENT" "$title" > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
-  wait_mapped "$title"
+  await_window "$title"
 }
 
 open multi-first

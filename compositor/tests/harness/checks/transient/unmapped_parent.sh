@@ -2,23 +2,15 @@
 # A parent request sent before the parent maps must still make the child open floating.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/unmapped-transient-parent.log"
-
-wait_for_window_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
 
 TRANSIENT_SUITE=unmapped-parent "$CLIENT" transient-child 600 500 > "$CLIENT_LOG" 2>&1 &
 client_pid=$!
 
-wait_for_window_count 2
+await_count 2
 
 windows=$("$ANDROMEDA" windows --json)
 if ! jq -e '
@@ -33,10 +25,10 @@ fi
 
 kill "$client_pid"
 wait "$client_pid" 2>/dev/null || true
-wait_for_window_count 0
+await_count 0
 
 TRANSIENT_SUITE=unmapped-parent-cleared "$CLIENT" transient-child 600 500 > "$CLIENT_LOG" 2>&1 &
-wait_for_window_count 2
+await_count 2
 
 windows=$("$ANDROMEDA" windows --json)
 if ! jq -e '

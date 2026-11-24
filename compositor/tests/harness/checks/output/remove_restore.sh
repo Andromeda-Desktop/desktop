@@ -4,6 +4,8 @@
 # and workspace once the monitors come back.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly WORKSPACE="${ANDROMEDA_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
 
 BASELINE="$(< "$ANDROMEDA_CONFIG")"$'\n[animation]\nduration_ms = 1'
@@ -19,20 +21,9 @@ write_config() {
 
 log_mark() { wc -l < "$ANDROMEDA_LOG"; }
 
-wait_for_log_since() {
-  local mark=$1 pattern=$2
-  for _ in $(seq 40); do
-    if tail -n +"$((mark + 1))" "$ANDROMEDA_LOG" | grep -q "$pattern"; then
-      return 0
-    fi
-    sleep 0.25
-  done
-  return 1
-}
-
 expect_log_since() {
   local mark=$1 pattern=$2 message=$3
-  if wait_for_log_since "$mark" "$pattern"; then
+  if await_log_since "$mark" "$pattern"; then
     return 0
   fi
   echo "$message"
@@ -44,33 +35,11 @@ spawn_client() {
   foot --title="$1" sh -c 'sleep 120' > /dev/null 2>&1 &
 }
 
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 40); do
-    count=$("$ANDROMEDA" windows --json | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.25
-  done
-  echo "expected $expected window(s), got $count"
-  return 1
-}
-
 field_of() {
   "$ANDROMEDA" windows --json | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
 }
 
 workspace_of() { field_of "$1" workspace; }
-
-wait_for_workspace() {
-  local title=$1 expected=$2 workspace=
-  for _ in $(seq 40); do
-    workspace=$(workspace_of "$title")
-    [[ $workspace == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' on workspace '$expected', got '$workspace'"
-  return 1
-}
 
 # A workspace id carries a serial that an output going away and coming back does not preserve. Names survive it:
 # assert on those.
@@ -133,16 +102,16 @@ write_config ''
 # Two windows per output, each on its own dynamic workspace. HEADLESS-2's pair is spawned in reverse of the order its
 # workspaces are created in.
 spawn_client second-ws2
-wait_for_count 1
+await_count 1
 spawn_client second-ws1
-wait_for_count 2
+await_count 2
 move_to_workspace second-ws1 1/HEADLESS-2
 move_to_workspace second-ws2 2/HEADLESS-2
 spawn_client first-ws1
-wait_for_count 3
+await_count 3
 move_to_workspace first-ws1 1/HEADLESS-1
 spawn_client first-ws2
-wait_for_count 4
+await_count 4
 move_to_workspace first-ws2 2/HEADLESS-1
 
 declare -A HOME=()
@@ -172,7 +141,7 @@ for output in HEADLESS-1 HEADLESS-2; do
   expect_log_since "$mark" "output '$output': disabled by config" "$output was not disabled on reload"
 done
 for window in first-ws1 first-ws2 second-ws1 second-ws2; do
-  wait_for_workspace "$window" ''
+  await_workspace "$window" ''
 done
 
 # HEADLESS-1 comes back first and takes in the windows whose own output is still missing.

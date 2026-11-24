@@ -3,29 +3,9 @@
 # Overlay only unmaps (View stays alive) so we can catch missing unmap-time refocus.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
-
-wait_for_window_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
-wait_for_focus() {
-  local want=$1
-  for _ in $(seq 40); do
-    if [[ $("$ANDROMEDA" windows --json | jq -r --arg id "$want" '.[] | select(.id == $id) | .focused') == true ]]; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected $want to be focused: $("$ANDROMEDA" windows --json)"
-  return 1
-}
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
 
@@ -47,11 +27,11 @@ readonly ANCHOR_LOG="$ANDROMEDA_RUNTIME_DIR/anchor.log"
 readonly NEIGHBOR_LOG="$ANDROMEDA_RUNTIME_DIR/neighbor.log"
 
 "$CLIENT" "float-close-first" > "$FIRST_LOG" 2>&1 &
-wait_for_window_count 1
+await_count 1
 "$CLIENT" "float-close-anchor" > "$ANCHOR_LOG" 2>&1 &
-wait_for_window_count 2
+await_count 2
 "$CLIENT" "float-close-neighbor" > "$NEIGHBOR_LOG" 2>&1 &
-wait_for_window_count 3
+await_count 3
 
 windows=$("$ANDROMEDA" windows --json)
 first_id=$(jq -r '.[] | select(.title == "float-close-first") | .id' <<< "$windows")
@@ -66,11 +46,11 @@ fi
 
 # Focus the middle-created window so MRU restore differs from creation order.
 "$ANDROMEDA" msg "window-focus:$anchor_id" > /dev/null
-wait_for_focus "$anchor_id"
+await_focus "$anchor_id"
 
 APP_ID=float-close-overlay "$CLIENT" "float-close-overlay" > "$ANDROMEDA_RUNTIME_DIR/overlay.log" 2>&1 &
 overlay_pid=$!
-wait_for_window_count 4
+await_count 4
 
 # Window count 4 can race, so wait until the overlay is actually floating.
 overlay_id=""
@@ -94,7 +74,7 @@ if [[ $overlay_floating != true ]]; then
   echo "overlay did not map floating: $("$ANDROMEDA" windows --json)"
   exit 1
 fi
-wait_for_focus "$overlay_id"
+await_focus "$overlay_id"
 
 "$ANDROMEDA" msg "window-close:$overlay_id" > /dev/null
 for _ in $(seq 40); do
@@ -106,12 +86,12 @@ if ! grep -q '^unmapped$' "$ANDROMEDA_RUNTIME_DIR/overlay.log"; then
   exit 1
 fi
 # Must refocus at unmap, and keep overlay alive so destroy fallback cannot hide it.
-wait_for_window_count 3
+await_count 3
 if ! kill -0 "$overlay_pid" 2>/dev/null; then
   echo "overlay client exited instead of keeping the surface alive"
   exit 1
 fi
-wait_for_focus "$anchor_id"
+await_focus "$anchor_id"
 sleep 0.1
 windows=$("$ANDROMEDA" windows --json)
 if [[ $(jq -r --arg id "$anchor_id" '.[] | select(.id == $id) | .focused' <<< "$windows") != true ]]; then

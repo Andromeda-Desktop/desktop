@@ -3,20 +3,13 @@
 # clears every focus ring before refocus puts one back, so a no-op reload would flicker and could move focus. This
 # asserts that an unchanged file is inert and that a changed one still takes effect.
 set -euo pipefail
+
+source "$ANDROMEDA_HARNESS_LIB"
 readonly RECOVERY_ROOT="$ANDROMEDA_CONFIG.recovery-root"
 readonly RECOVERY_INCLUDE="${ANDROMEDA_CONFIG%/*}/reload-recovery.toml"
 
 spawn_client() {
   foot sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-wait_for_count() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for $1 window(s)"
-  return 1
 }
 
 snapshot() { "$ANDROMEDA" windows --json | jq -Sc '[.[] | {w, h, x, focused}] | sort_by(.x)'; }
@@ -37,7 +30,7 @@ settle() {
 
 spawn_client
 spawn_client
-wait_for_count 2 || exit 1
+await_count 2 || exit 1
 settle || exit 1
 
 before=$(snapshot)

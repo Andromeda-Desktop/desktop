@@ -3,6 +3,8 @@
 # the drag must replay the selected view into the default seat grab before the next key is delivered.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly LEFT_BUTTON=272
@@ -18,16 +20,6 @@ spawn_client() {
   "$CLIENT" "$1" 624 700 > "$2" 2>&1 &
 }
 
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 active_title() {
   "$ANDROMEDA" windows --json | jq -r '[.[] | select(.active) | .title] | if length == 1 then .[0] else "none" end'
 }
@@ -41,9 +33,9 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client "data-drag-source" "$SOURCE_LOG"
-wait_for_count 1
+await_count 1
 spawn_client "data-drag-target" "$TARGET_LOG"
-wait_for_count 2
+await_count 2
 sleep 0.1
 
 windows=$("$ANDROMEDA" windows --json)

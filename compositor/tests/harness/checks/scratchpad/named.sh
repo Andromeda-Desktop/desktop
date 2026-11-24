@@ -5,6 +5,8 @@
 # another visible scratchpad only on the output they are summoned to.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly BTN_LEFT=272
@@ -25,28 +27,6 @@ windows() { "$ANDROMEDA" windows --json; }
 
 field_of() {
   windows | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
-}
-
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 80); do
-    count=$(windows | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected windows, got $count: $(windows)"
-  return 1
-}
-
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual': $(windows)"
-  return 1
 }
 
 wait_for_x_range() {
@@ -126,12 +106,12 @@ write_config "$COMMON_CONFIG"
 "$POINTER" 2560 720 move 640 360
 
 "$CLIENT" "$DEFAULT_WINDOW" > "$ANDROMEDA_RUNTIME_DIR/$DEFAULT_WINDOW.log" 2>&1 &
-wait_for_count 1
+await_count 1
 focus_window "$DEFAULT_WINDOW"
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
-wait_for_field "$DEFAULT_WINDOW" scratchpad default
+await_field "$DEFAULT_WINDOW" scratchpad default
 "$ANDROMEDA" msg scratchpad-toggle > /dev/null
-wait_for_field "$DEFAULT_WINDOW" active true
+await_field "$DEFAULT_WINDOW" active true
 "$ANDROMEDA" msg scratchpad-toggle > /dev/null
 
 # Defining any named scratchpad removes the implicit default. Its existing
@@ -144,7 +124,7 @@ name = \"term\"
 [[scratchpad]]
 name = \"music\""
 "$ANDROMEDA" msg config-reload > /dev/null
-wait_for_field "$DEFAULT_WINDOW" scratchpad ""
+await_field "$DEFAULT_WINDOW" scratchpad ""
 if [[ -z $(field_of "$DEFAULT_WINDOW" workspace) ]]; then
   echo "the removed implicit default did not restore its window: $(windows)"
   exit 1
@@ -156,22 +136,22 @@ for title in "$TERM_A" "$TERM_B"; do
   expected_count=$(windows | jq 'length')
   expected_count=$((expected_count + 1))
   "$CLIENT" "$title" > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
-  wait_for_count "$expected_count"
+  await_count "$expected_count"
   focus_window "$title"
   "$ANDROMEDA" msg window-move-to-scratchpad:term > /dev/null
-  wait_for_field "$title" scratchpad term
+  await_field "$title" scratchpad term
 done
 
 "$CLIENT" "$MUSIC" > "$ANDROMEDA_RUNTIME_DIR/$MUSIC.log" 2>&1 &
-wait_for_count 4
+await_count 4
 focus_window "$MUSIC"
 "$ANDROMEDA" msg window-move-to-scratchpad:music > /dev/null
-wait_for_field "$MUSIC" scratchpad music
+await_field "$MUSIC" scratchpad music
 
 # Show term on the left, then invoke it from the right. A visible global
 # scratchpad is summoned rather than hidden when the invoking output changes.
 "$ANDROMEDA" msg scratchpad-toggle:term > /dev/null
-wait_for_field "$TERM_A" active true
+await_field "$TERM_A" active true
 "$POINTER" 2560 720 move 1920 360
 "$ANDROMEDA" msg scratchpad-toggle:term > /dev/null
 wait_for_x_range "$TERM_A" 1280 2560
@@ -181,7 +161,7 @@ wait_for_term_active
 # Showing music on the occupied right output hides term. A focus request for
 # the hidden term pad must not take focus back from music.
 "$ANDROMEDA" msg scratchpad-toggle:music > /dev/null
-wait_for_field "$MUSIC" active true
+await_field "$MUSIC" active true
 "$ANDROMEDA" msg scratchpad-focus-next:term > /dev/null
 for _ in $(seq 5); do
   sleep 0.1
@@ -200,7 +180,7 @@ done
 wait_for_x_range "$TERM_A" 0 1280
 wait_for_x_range "$TERM_B" 0 1280
 "$ANDROMEDA" msg scratchpad-focus-next:music > /dev/null
-wait_for_field "$MUSIC" active true
+await_field "$MUSIC" active true
 "$ANDROMEDA" msg scratchpad-focus-next:term > /dev/null
 wait_for_term_active
 
@@ -210,16 +190,16 @@ wait_for_term_active
 focus_window "$TERM_B"
 "$POINTER" 2560 720 \
   move 400 280 mod logo press "$BTN_LEFT" move 680 400 release "$BTN_LEFT" mod none
-wait_for_field "$TERM_B" x 520
-wait_for_field "$TERM_B" y 300
+await_field "$TERM_B" x 520
+await_field "$TERM_B" y 300
 
 focus_window "$TERM_A"
 "$POINTER" 2560 720 \
   move 400 280 mod logo press "$BTN_LEFT" move 1500 400 release "$BTN_LEFT" mod none
-wait_for_field "$TERM_A" x 1340
-wait_for_field "$TERM_A" y 300
-wait_for_field "$TERM_B" x 1800
-wait_for_field "$TERM_B" y 300
+await_field "$TERM_A" x 1340
+await_field "$TERM_A" y 300
+await_field "$TERM_B" x 1800
+await_field "$TERM_B" y 300
 if [[ $(field_of "$MUSIC" active) == true ]]; then
   echo "dragging term onto HEADLESS-2 did not hide music: $(windows)"
   exit 1
@@ -229,66 +209,66 @@ fi
 # floating box. The whole scratchpad still follows it to the destination.
 focus_window "$TERM_A"
 "$ANDROMEDA" msg window-toggle-maximize-to-edges > /dev/null
-wait_for_field "$TERM_A" x 1280
-wait_for_field "$TERM_A" y 0
-wait_for_field "$TERM_A" w 1280
-wait_for_field "$TERM_A" h 720
+await_field "$TERM_A" x 1280
+await_field "$TERM_A" y 0
+await_field "$TERM_A" w 1280
+await_field "$TERM_A" h 720
 "$POINTER" 2560 720 \
   move 1600 360 mod logo press "$BTN_LEFT" move 500 360 release "$BTN_LEFT" mod none
-wait_for_field "$TERM_A" x 240
-wait_for_field "$TERM_A" y 300
-wait_for_field "$TERM_A" w 360
-wait_for_field "$TERM_A" h 220
-wait_for_field "$TERM_B" x 520
-wait_for_field "$TERM_B" y 300
+await_field "$TERM_A" x 240
+await_field "$TERM_A" y 300
+await_field "$TERM_A" w 360
+await_field "$TERM_A" h 220
+await_field "$TERM_B" x 520
+await_field "$TERM_B" y 300
 
 # Regular floating maximize follows the same drag contract.
 focus_window "$TERM_A"
 "$ANDROMEDA" msg window-toggle-maximize > /dev/null
-wait_for_field "$TERM_A" x 10
-wait_for_field "$TERM_A" y 10
-wait_for_field "$TERM_A" w 1260
-wait_for_field "$TERM_A" h 700
+await_field "$TERM_A" x 10
+await_field "$TERM_A" y 10
+await_field "$TERM_A" w 1260
+await_field "$TERM_A" h 700
 "$POINTER" 2560 720 \
   move 320 360 mod logo press "$BTN_LEFT" move 1500 360 release "$BTN_LEFT" mod none
-wait_for_field "$TERM_A" x 1420
-wait_for_field "$TERM_A" y 300
-wait_for_field "$TERM_A" w 360
-wait_for_field "$TERM_A" h 220
-wait_for_field "$TERM_B" x 1800
-wait_for_field "$TERM_B" y 300
+await_field "$TERM_A" x 1420
+await_field "$TERM_A" y 300
+await_field "$TERM_A" w 360
+await_field "$TERM_A" h 220
+await_field "$TERM_B" x 1800
+await_field "$TERM_B" y 300
 
 # A fullscreen drag must preserve the ordinary floating-maximize state beneath
 # fullscreen. One maximize toggle after exiting must therefore restore the
 # pre-maximize box, rather than maximize an already output-sized window again.
 focus_window "$TERM_A"
 "$ANDROMEDA" msg window-toggle-maximize > /dev/null
-wait_for_field "$TERM_A" x 1290
-wait_for_field "$TERM_A" y 10
-wait_for_field "$TERM_A" w 1260
-wait_for_field "$TERM_A" h 700
+await_field "$TERM_A" x 1290
+await_field "$TERM_A" y 10
+await_field "$TERM_A" w 1260
+await_field "$TERM_A" h 700
 "$ANDROMEDA" msg window-toggle-fullscreen > /dev/null
-wait_for_field "$TERM_A" x 1280
-wait_for_field "$TERM_A" y 0
-wait_for_field "$TERM_A" w 1280
-wait_for_field "$TERM_A" h 720
+await_field "$TERM_A" x 1280
+await_field "$TERM_A" y 0
+await_field "$TERM_A" w 1280
+await_field "$TERM_A" h 720
 "$POINTER" 2560 720 \
   move 1500 360 mod logo press "$BTN_LEFT" move 500 360 release "$BTN_LEFT" mod none
-wait_for_field "$TERM_A" x 0
-wait_for_field "$TERM_A" y 0
-wait_for_field "$TERM_A" w 1280
-wait_for_field "$TERM_A" h 720
-wait_for_field "$TERM_B" x 520
-wait_for_field "$TERM_B" y 300
+await_field "$TERM_A" x 0
+await_field "$TERM_A" y 0
+await_field "$TERM_A" w 1280
+await_field "$TERM_A" h 720
+await_field "$TERM_B" x 520
+await_field "$TERM_B" y 300
 "$ANDROMEDA" msg window-toggle-fullscreen > /dev/null
-wait_for_field "$TERM_A" x 10
-wait_for_field "$TERM_A" y 10
-wait_for_field "$TERM_A" w 1260
-wait_for_field "$TERM_A" h 700
+await_field "$TERM_A" x 10
+await_field "$TERM_A" y 10
+await_field "$TERM_A" w 1260
+await_field "$TERM_A" h 700
 "$ANDROMEDA" msg window-toggle-maximize > /dev/null
-wait_for_field "$TERM_A" x 140
-wait_for_field "$TERM_A" y 300
-wait_for_field "$TERM_A" w 360
-wait_for_field "$TERM_A" h 220
+await_field "$TERM_A" x 140
+await_field "$TERM_A" y 300
+await_field "$TERM_A" w 360
+await_field "$TERM_A" h 220
 
 echo "implicit and named scratchpads retained identity, roamed as groups, and kept one visible pad per output"

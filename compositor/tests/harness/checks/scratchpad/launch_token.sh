@@ -4,6 +4,8 @@
 # can produce the expected placement.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly SOURCE_LOG="$ANDROMEDA_RUNTIME_DIR/pad-token-source.log"
@@ -28,27 +30,15 @@ name = "other"
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
-wait_field() {
-  local actual=
-  for _ in $(seq 80); do
-    actual=$("$ANDROMEDA" windows --json | jq -r --arg title "$1" --arg key "$2" \
-      '[.[] | select(.title == $title)] | if length == 0 then "<absent>" else .[0][$key] end')
-    [[ $actual == "$3" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $1 $2=$3, got $actual: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 mkfifo "$SOURCE_FIFO" "$TARGET_FIFO"
 exec {source_fd}<>"$SOURCE_FIFO"
 exec {target_fd}<>"$TARGET_FIFO"
 REMAP_ON_STDIN=1 ACTIVATION_TOKEN_FILE="$TOKEN_FILE" "$CLIENT" pad-token-source 300 200 \
   <&"$source_fd" > "$SOURCE_LOG" 2>&1 &
-wait_field pad-token-source active true
+await_field pad-token-source active true
 "$ANDROMEDA" msg window-move-to-scratchpad:input > /dev/null
 "$ANDROMEDA" msg scratchpad-toggle:input > /dev/null
-wait_field pad-token-source active true
+await_field pad-token-source active true
 "$POINTER" 1280 720 tap 30 pause 5000 > "$ANDROMEDA_RUNTIME_DIR/pad-token-pointer.log" 2>&1 &
 for _ in $(seq 80); do
   grep -q '^key 30 1$' "$SOURCE_LOG" && break
@@ -72,13 +62,13 @@ for _ in $(seq 80); do
 done
 grep -q '^map-pending$' "$TARGET_LOG"
 printf m >&"$target_fd"
-wait_field pad-token-target scratchpad input
-wait_field pad-token-target active false
-wait_field pad-token-source active false
+await_field pad-token-target scratchpad input
+await_field pad-token-target active false
+await_field pad-token-source active false
 
 "$ANDROMEDA" msg \
   "spawn:exec '$CLIENT' pad-token-other 300 200 > '$ANDROMEDA_RUNTIME_DIR/pad-token-other.log' 2>&1" > /dev/null
-wait_field pad-token-other scratchpad other
-wait_field pad-token-other active true
+await_field pad-token-other scratchpad other
+await_field pad-token-other active true
 
 echo "keyboard-backed XDG launch retains its hidden source pad without inherited-token fallback or focus theft"

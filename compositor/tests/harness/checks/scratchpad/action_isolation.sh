@@ -4,6 +4,8 @@
 # layout-relative actions from reaching the workspace focus retained behind it.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly CLOSE_CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -62,28 +64,6 @@ accepts() {
     echo "expected '$action' to be accepted, got: $out"
     return 1
   fi
-}
-
-wait_for_count() {
-  local expected=$1 count=
-  for _ in $(seq 80); do
-    count=$(windows | jq 'length')
-    [[ $count == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $expected windows, got $count: $(windows)"
-  return 1
-}
-
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual': $(windows)"
-  return 1
 }
 
 wait_for_stack() {
@@ -258,7 +238,7 @@ background_count=0
 for title in "$LEFT" "$TOP" "$BOTTOM"; do
   "$CLIENT" "$title" > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
   background_count=$((background_count + 1))
-  wait_for_count "$background_count"
+  await_count "$background_count"
 done
 
 # Form a two-row right column. Keeping its top row as the remembered workspace
@@ -270,16 +250,16 @@ accepts "window-focus:$(field_of "$TOP" id)"
 
 "$CLIENT" "$SCRATCH" > "$ANDROMEDA_RUNTIME_DIR/$SCRATCH.log" 2>&1 &
 scratch_pid=$!
-wait_for_count 4
-wait_for_field "$SCRATCH" w 420
-wait_for_field "$SCRATCH" h 260
-wait_for_field "$SCRATCH" x 430
-wait_for_field "$SCRATCH" y 230
+await_count 4
+await_field "$SCRATCH" w 420
+await_field "$SCRATCH" h 260
+await_field "$SCRATCH" x 430
+await_field "$SCRATCH" y 230
 scratch_id=$(field_of "$SCRATCH" id)
 "$POINTER" 2880 900 move 640 360
 accepts "window-focus:$scratch_id"
 accepts window-move-to-scratchpad:actions
-wait_for_field "$SCRATCH" workspace ""
+await_field "$SCRATCH" workspace ""
 accepts scratchpad-toggle:actions
 # Drop the straddling window with its pointer on HEADLESS-2. Scratchpad drags
 # roam the named pad without restoring it to the workspace underneath.
@@ -329,7 +309,7 @@ fi
 accepts workspace-switch:ONE/HEADLESS-1
 accepts "window-focus:$(field_of "$TOP" id)"
 accepts "window-focus:$scratch_id"
-wait_for_field "$SCRATCH" active true
+await_field "$SCRATCH" active true
 baseline_background=$(background_signature)
 baseline_scratch=$(scratch_signature)
 
@@ -365,17 +345,17 @@ fi
 # remembered workspace window. The fractional client intentionally ignores
 # close, so replace it with the harness client that unmaps on close.
 kill "$scratch_pid"
-wait_for_count 3
+await_count 3
 "$CLOSE_CLIENT" "$CLOSE_SCRATCH" 420 260 > "$ANDROMEDA_RUNTIME_DIR/$CLOSE_SCRATCH.log" 2>&1 &
-wait_for_count 4
+await_count 4
 close_scratch_id=$(field_of "$CLOSE_SCRATCH" id)
 accepts "window-focus:$close_scratch_id"
 accepts window-move-to-scratchpad:actions
-wait_for_field "$CLOSE_SCRATCH" workspace ""
+await_field "$CLOSE_SCRATCH" workspace ""
 accepts scratchpad-toggle:actions
-wait_for_field "$CLOSE_SCRATCH" active true
+await_field "$CLOSE_SCRATCH" active true
 accepts window-close
-wait_for_count 3
+await_count 3
 if ! grep -q '^unmapped$' "$ANDROMEDA_RUNTIME_DIR/$CLOSE_SCRATCH.log"; then
   echo "window-close did not reach the seat-focused scratchpad: $(< "$ANDROMEDA_RUNTIME_DIR/$CLOSE_SCRATCH.log")"
   exit 1

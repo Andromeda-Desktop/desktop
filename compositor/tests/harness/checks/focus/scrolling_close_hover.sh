@@ -3,6 +3,8 @@
 # follows_mouse enabled, that revealed row must receive focus without requiring another pointer event.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -24,28 +26,8 @@ spawn_client() {
 
 windows() { "$ANDROMEDA" windows --json; }
 
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $(windows | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $(windows)"
-  return 1
-}
-
 field_of() {
   windows | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
-}
-
-wait_for_active() {
-  local title=$1
-  for _ in $(seq 40); do
-    [[ $(field_of "$title" active) == true ]] && return 0
-    sleep 0.05
-  done
-  echo "expected '$title' to be active: $(windows)"
-  return 1
 }
 
 wait_for_row_at_pointer() {
@@ -79,12 +61,12 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client scroll-hover-top
-wait_for_count 1
+await_count 1
 spawn_client scroll-hover-middle
-wait_for_count 2
+await_count 2
 "$ANDROMEDA" msg window-consume-left > /dev/null
 spawn_client scroll-hover-bottom
-wait_for_count 3
+await_count 3
 "$ANDROMEDA" msg window-consume-left > /dev/null
 "$ANDROMEDA" settle
 
@@ -99,7 +81,7 @@ pointer_y=$((bottom_y - 30))
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$pointer_x" "$pointer_y" pause 10000 \
   > "$ANDROMEDA_RUNTIME_DIR/scrolling-close-pointer.log" 2>&1 &
 pointer_pid=$!
-wait_for_active scroll-hover-middle
+await_active scroll-hover-middle
 
 "$ANDROMEDA" msg "window-close:$middle_id" > /dev/null
 for _ in $(seq 40); do
@@ -110,9 +92,9 @@ if ! grep -q '^unmapped$' "$ANDROMEDA_RUNTIME_DIR/scroll-hover-middle.log"; then
   echo "middle row did not unmap: $(< "$ANDROMEDA_RUNTIME_DIR/scroll-hover-middle.log")"
   exit 1
 fi
-wait_for_count 2
+await_count 2
 "$ANDROMEDA" settle
 wait_for_row_at_pointer scroll-hover-bottom "$pointer_y"
-wait_for_active scroll-hover-bottom
+await_active scroll-hover-bottom
 
 echo "scrolling close focused the row revealed beneath a stationary pointer"

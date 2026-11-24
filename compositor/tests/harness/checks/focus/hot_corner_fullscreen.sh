@@ -3,6 +3,8 @@
 # the first window retains its fullscreen state on the same workspace.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -10,17 +12,6 @@ readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
 pointer() {
   "$POINTER" "$OUTPUT_W" "$OUTPUT_H" "$@"
-}
-
-wait_for_windows() {
-  local query=$1 message=$2 windows=
-  for _ in $(seq 60); do
-    windows=$("$ANDROMEDA" windows --json)
-    jq -e "$query" <<< "$windows" > /dev/null && return 0
-    sleep 0.1
-  done
-  echo "$message: $windows"
-  return 1
 }
 
 wait_for_fullscreen() {
@@ -74,7 +65,7 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 "$CLIENT" hot-corner-fullscreen > "$ANDROMEDA_RUNTIME_DIR/hot-corner-fullscreen.log" 2>&1 &
-wait_for_windows \
+await_windows \
   '[.[] | select(.title == "hot-corner-fullscreen" and .focused and .active)] | length == 1' \
   "fullscreen test window did not map with focus"
 "$ANDROMEDA" msg window-toggle-fullscreen > /dev/null
@@ -89,12 +80,12 @@ fi
 pointer move 640 360
 
 "$CLIENT" hot-corner-focused > "$ANDROMEDA_RUNTIME_DIR/hot-corner-focused.log" 2>&1 &
-wait_for_windows \
+await_windows \
   'length == 2 and ([.[] | select(.title == "hot-corner-focused")] | length == 1)' \
   "second test window did not map"
 focused_id=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "hot-corner-focused") | .id')
 "$ANDROMEDA" msg "window-focus:$focused_id" > /dev/null
-wait_for_windows \
+await_windows \
   '([.[] | select(.title == "hot-corner-fullscreen") | [.focused, .active]] == [[false, false]])
     and ([.[] | select(.title == "hot-corner-focused") | [.focused, .active]] == [[true, true]])' \
   "non-fullscreen window did not take focus"

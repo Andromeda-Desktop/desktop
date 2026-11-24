@@ -5,6 +5,10 @@
 # wlr_cursor like a physical mouse, so events take the real input path.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+# A faster poll maps the second window before the first one settles its focus; this check needs the slow step.
+AWAIT_STEP=0.25 AWAIT_TRIES=60
+
 readonly BTN_LEFT=272 # evdev BTN_LEFT
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -26,15 +30,6 @@ spawn_client() {
 # concern, so this wrapper stays.
 pointer() {
   "$POINTER" "$OUTPUT_W" "$OUTPUT_H" "$@"
-}
-
-wait_for_count() {
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.25
-  done
-  echo "timed out waiting for $1 window(s)"
-  return 1
 }
 
 # x of the focused window on the active workspace, or "none".
@@ -66,9 +61,9 @@ wait_for_window_x() {
 }
 
 spawn_client
-wait_for_count 1
+await_count 1
 spawn_client
-wait_for_count 2
+await_count 2
 
 # Two 624-wide columns at x=10 and x=646, both 700 tall from y=10.
 readonly LEFT_X=322   # 10 + 624/2
@@ -145,7 +140,7 @@ sed -i 's/follows_focus = false/follows_focus = true/' "$ANDROMEDA_CONFIG"
 wait_for_focus_at 10
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 spawn_client
-wait_for_count 3
+await_count 3
 pointer move "$RIGHT_X" "$MID_Y"
 "$ANDROMEDA" msg workspace-focus-last > /dev/null
 wait_for_focus_at 10

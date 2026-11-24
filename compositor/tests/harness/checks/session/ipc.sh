@@ -2,24 +2,14 @@
 # The IPC surface answers and returns well-formed JSON of the documented shape.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 printf '\n[screencast]\ndisable_dynamic_confirmation = true\n' >> "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client() {
   foot --title="ipc-client" sh -c 'sleep 120' > /dev/null 2>&1 &
   CLIENT_PID=$!
-}
-
-wait_for_windows() {
-  local want=$1
-  for _ in $(seq 40); do
-    if [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]]; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected $want window(s), got $("$ANDROMEDA" windows --json | jq 'length'): $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 python3 - "$ANDROMEDA_SOCKET" "$ANDROMEDA" <<'PY'
@@ -97,7 +87,7 @@ for action in ("window-focus", "window-close"):
 PY
 
 spawn_client
-wait_for_windows 1
+await_count 1
 
 windows=$("$ANDROMEDA" windows --json)
 if ! jq -e 'type == "array"' <<< "$windows" > /dev/null; then
@@ -562,7 +552,7 @@ buf = await_occupancy(sub, buf, {1: True, 2: False}, "closing the workspace's on
 sub.close()
 action("workspace-switch:1")
 PY
-wait_for_windows 1
+await_count 1
 
 python3 - "$ANDROMEDA_SOCKET" "$ANDROMEDA" <<'PY'
 import json
@@ -664,14 +654,14 @@ PY
 
 # An "ok" reply only says the request was accepted. The window must actually
 # leave the list, which is the close path itself, not tidying up after it.
-wait_for_windows 0
+await_count 0
 
 # settle holds its reply while an animation runs: a close answers only after its windows_out, and the next capture no
 # longer shows the snapshot.
 printf '\n[animation.windows_out]\nduration_ms = 1500\ncurve = "linear"\n' >> "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
 FILL_COLOR=0xFFFF0000 "$ANDROMEDA_UNMAP_CLIENT" ipc-settle 600 400 > "$ANDROMEDA_RUNTIME_DIR/ipc-settle.log" 2>&1 &
-wait_for_windows 1
+await_count 1
 "$ANDROMEDA" settle
 settle_id=$("$ANDROMEDA" windows --json | jq -r '.[0].id')
 "$ANDROMEDA" msg "window-close:$settle_id" > /dev/null
@@ -697,7 +687,7 @@ printf '\n[animation.windows_in]\nduration_ms = 1000\ncurve = "linear"\nstyle = 
 # A frame at the frozen instant before the window opens, so the fade starts on an instant that has already ticked.
 grim "$ANDROMEDA_RUNTIME_DIR/ipc-clock.png"
 FILL_COLOR=0xFFFF0000 "$ANDROMEDA_UNMAP_CLIENT" ipc-clock 600 400 > "$ANDROMEDA_RUNTIME_DIR/ipc-clock.log" 2>&1 &
-wait_for_windows 1
+await_count 1
 sleep 0.3 # real time: frozen animation time must hold while real time passes
 clock_red() {
   grim "$ANDROMEDA_RUNTIME_DIR/ipc-clock.png"

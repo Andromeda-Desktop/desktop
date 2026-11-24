@@ -4,18 +4,10 @@
 # scroll still travelling when the zoom lands carries on as the real workspace slide instead of stopping there.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly SHOT="$ANDROMEDA_RUNTIME_DIR/close-workspace-switch.png"
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
 
 active_workspace() {
   "$ANDROMEDA" workspaces --json | jq -r '.[] | select(.active) | .name'
@@ -50,10 +42,10 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 FILL_COLOR=0xFFCC0000 "$CLIENT" close-switch-red 1200 700 > /dev/null 2>&1 &
-wait_for_count 1
+await_count 1
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 FILL_COLOR=0xFF0000CC "$CLIENT" close-switch-blue 1200 700 > /dev/null 2>&1 &
-wait_for_count 2
+await_count 2
 "$ANDROMEDA" msg workspace-switch:1 > /dev/null
 "$ANDROMEDA" settle
 

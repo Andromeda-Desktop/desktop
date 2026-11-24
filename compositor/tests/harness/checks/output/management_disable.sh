@@ -5,6 +5,8 @@
 # without mutating layout, workspaces, or backend state.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_MANAGEMENT=${ANDROMEDA_OUTPUT_MANAGEMENT_CLIENT:-./build-debug/tests/output-management-client}
 readonly POINTER=${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}
 readonly TEST_SHOT="$XDG_RUNTIME_DIR/output-management-test.png"
@@ -85,18 +87,6 @@ expect_capture_failure() {
 
 log_mark() { wc -l < "$ANDROMEDA_LOG"; }
 
-wait_for_log_since() {
-  local mark=$1 pattern=$2
-  for _ in $(seq 40); do
-    if tail -n +"$((mark + 1))" "$ANDROMEDA_LOG" | grep -q "$pattern"; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "timed out waiting for log: $pattern"
-  return 1
-}
-
 spawn_client
 wait_for_workspace 'HEADLESS-2:1'
 native_refuge=$("$ANDROMEDA" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-1" and .index == 1) | .id')
@@ -118,7 +108,7 @@ mark=$(log_mark)
 wait_for_enabled HEADLESS-2 false
 wait_for_temporary_workspace HEADLESS-1 "$native_refuge"
 displaced_workspace=$("$ANDROMEDA" windows --json | jq -r '.[0].workspace')
-wait_for_log_since "$mark" "output 'HEADLESS-2': disabled by output management, power off"
+await_log_since "$mark" "output 'HEADLESS-2': disabled by output management, power off"
 expect_capture_failure HEADLESS-2 "$XDG_RUNTIME_DIR/output-management-disabled.png"
 
 # Protocol disable is not DPMS. Input on the remaining output must not wake it.
@@ -141,18 +131,18 @@ wait_for_workspace 'HEADLESS-1:1'
 sleeping_refuge=$("$ANDROMEDA" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-2" and .index == 1) | .id')
 mark=$(log_mark)
 "$ANDROMEDA" msg dpms-off:HEADLESS-2 > /dev/null
-wait_for_log_since "$mark" "output 'HEADLESS-2': powered off"
+await_log_since "$mark" "output 'HEADLESS-2': powered off"
 mark=$(log_mark)
 "$OUTPUT_MANAGEMENT" apply disable HEADLESS-1 > /dev/null
 wait_for_enabled HEADLESS-1 false
-wait_for_log_since "$mark" "output 'HEADLESS-2': enabled by output management, power off"
+await_log_since "$mark" "output 'HEADLESS-2': enabled by output management, power off"
 if tail -n +"$((mark + 1))" "$ANDROMEDA_LOG" | grep -q "output 'HEADLESS-2': applied mode="; then
   echo "output-management woke DPMS-off HEADLESS-2"
   exit 1
 fi
 mark=$(log_mark)
 "$POINTER" 1280 720 move 20 20
-wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="
+await_log_since "$mark" "output 'HEADLESS-2': applied mode="
 wait_for_temporary_workspace HEADLESS-2 "$sleeping_refuge"
 
 echo "output-management test was inert, apply restored output state, and DPMS fallback recovery succeeded"

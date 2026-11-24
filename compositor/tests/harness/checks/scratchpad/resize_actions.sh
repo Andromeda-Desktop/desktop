@@ -5,6 +5,8 @@
 # and the background box must remain stable throughout.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly BACKGROUND=scratchpad-resize-background
 readonly SCRATCHPAD=scratchpad-resize-foreground
@@ -32,17 +34,6 @@ windows() { "$ANDROMEDA" windows --json; }
 
 field_of() {
   windows | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
-}
-
-wait_for_field() {
-  local title=$1 field=$2 expected=$3 actual=
-  for _ in $(seq 80); do
-    actual=$(field_of "$title" "$field")
-    [[ $actual == "$expected" ]] && return 0
-    sleep 0.1
-  done
-  echo "expected '$title' field '$field' to be '$expected', got '$actual': $(windows)"
-  return 1
 }
 
 assert_background_box() {
@@ -80,28 +71,28 @@ resize_scratchpad() {
 }
 
 "$CLIENT" "$BACKGROUND" > "$BACKGROUND_LOG" 2>&1 &
-wait_for_field "$BACKGROUND" floating true
-wait_for_field "$BACKGROUND" w 640
-wait_for_field "$BACKGROUND" h 360
+await_field "$BACKGROUND" floating true
+await_field "$BACKGROUND" w 640
+await_field "$BACKGROUND" h 360
 
 # Positive control: the same action must reach the background while it owns
 # focus, then restore the exact baseline used by the isolation assertions.
 "$ANDROMEDA" msg window-set-primary-extent:0.6 > /dev/null
-wait_for_field "$BACKGROUND" w 768
+await_field "$BACKGROUND" w 768
 "$ANDROMEDA" msg window-set-primary-extent:0.5 > /dev/null
-wait_for_field "$BACKGROUND" w 640
+await_field "$BACKGROUND" w 640
 
 "$CLIENT" "$SCRATCHPAD" > "$SCRATCHPAD_LOG" 2>&1 &
-wait_for_field "$SCRATCHPAD" floating true
-wait_for_field "$SCRATCHPAD" w 420
-wait_for_field "$SCRATCHPAD" h 260
+await_field "$SCRATCHPAD" floating true
+await_field "$SCRATCHPAD" w 420
+await_field "$SCRATCHPAD" h 260
 
 scratchpad_id=$(field_of "$SCRATCHPAD" id)
 "$ANDROMEDA" msg "window-focus:$scratchpad_id" > /dev/null
 "$ANDROMEDA" msg window-move-to-scratchpad > /dev/null
-wait_for_field "$SCRATCHPAD" workspace ""
+await_field "$SCRATCHPAD" workspace ""
 "$ANDROMEDA" msg scratchpad-toggle > /dev/null
-wait_for_field "$SCRATCHPAD" active true
+await_field "$SCRATCHPAD" active true
 assert_background_box setup
 
 # Direct setters, relative changes, and preset cycling have separate handlers.

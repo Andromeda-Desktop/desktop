@@ -5,6 +5,8 @@
 # for.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 # The disable and re-enable phases replace the whole config rather than
 # appending, because re-enabling means the key is gone again. Keeping the
 # instance's pristine config in a variable avoids restating the [general] block
@@ -12,17 +14,6 @@ set -euo pipefail
 BASELINE=$(< "$ANDROMEDA_CONFIG")
 
 log_mark() { wc -l < "$ANDROMEDA_LOG"; }
-
-wait_for_log_since() {
-  local mark=$1 pattern=$2
-  for _ in $(seq 40); do
-    if tail -n +"$((mark + 1))" "$ANDROMEDA_LOG" | grep -q "$pattern"; then
-      return 0
-    fi
-    sleep 0.25
-  done
-  return 1
-}
 
 spawn_client() {
   foot --title=output-disable-rehome sh -c 'sleep 120' > /dev/null 2>&1 &
@@ -70,7 +61,7 @@ mark=$(log_mark)
   printf '\n[output.HEADLESS-2]\nenabled = false\n'
 } > "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
-if ! wait_for_log_since "$mark" "output 'HEADLESS-2': disabled by config"; then
+if ! await_log_since "$mark" "output 'HEADLESS-2': disabled by config"; then
   echo "output was not disabled on reload"
   tail -8 "$ANDROMEDA_LOG" | sed 's/^/  | /'
   exit 1
@@ -81,7 +72,7 @@ wait_for_temporary_workspace "$native_refuge"
 mark=$(log_mark)
 printf '%s\n' "$BASELINE" > "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
-if ! wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="; then
+if ! await_log_since "$mark" "output 'HEADLESS-2': applied mode="; then
   echo "output was not re-enabled on reload"
   tail -8 "$ANDROMEDA_LOG" | sed 's/^/  | /'
   exit 1

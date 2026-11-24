@@ -4,6 +4,8 @@
 # columns scroll, while the neighbouring workspace's row steps along the other axis.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly SCREENSHOT="$ANDROMEDA_RUNTIME_DIR/horizontal-overview-overflow.png"
 readonly VERTICAL_SHOT="$ANDROMEDA_RUNTIME_DIR/vertical-overview-overflow.png"
@@ -24,16 +26,6 @@ spawn_client() {
 sample_blue() {
   local image=$1 x=$2 y=$3
   magick "$image" -crop "20x20+$x+$y" -format '%[fx:round(255*mean.b)]' info:
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -61,11 +53,11 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client horizontal-overflow-first
-wait_for_count 1
+await_count 1
 spawn_client horizontal-overflow-second
-wait_for_count 2
+await_count 2
 spawn_client horizontal-overflow-third
-wait_for_count 3
+await_count 3
 
 first_id=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "horizontal-overflow-first") | .id')
 if [[ -z $first_id ]]; then
@@ -115,7 +107,7 @@ EOF
 # cannot be told apart from the backdrop.
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 spawn_client horizontal-overflow-neighbour
-wait_for_count 4
+await_count 4
 "$ANDROMEDA" settle
 "$ANDROMEDA" msg workspace-switch:1 > /dev/null
 "$ANDROMEDA" msg column-focus-first > /dev/null

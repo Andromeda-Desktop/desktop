@@ -4,6 +4,8 @@
 # different window on the other output, the moved window is not shown there, so it must not keep keyboard focus.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly CONTROL="$ANDROMEDA_RUNTIME_DIR/transfer-outputs-control"
@@ -55,15 +57,6 @@ EOF
 windows() { "$ANDROMEDA" windows --json; }
 window_of() { windows | jq -c --arg title "$1" '.[] | select(.title == $title)'; }
 
-wait_for_window() {
-  for _ in $(seq 80); do
-    [[ -n "$(window_of "$1")" ]] && return 0
-    sleep 0.05
-  done
-  echo "window '$1' never appeared: $(windows)"
-  return 1
-}
-
 # Which of the two colours are on screen across both outputs.
 shown() {
   "$ANDROMEDA" settle
@@ -79,7 +72,7 @@ shown() {
 # Scratchpad b shows its green window on its own on the right output.
 "$POINTER" 2560 720 move 1920 360
 FILL_COLOR=0xFF00FF00 "$CLIENT" transfer-green 300 200 > "$ANDROMEDA_RUNTIME_DIR/transfer-green.log" 2>&1 &
-wait_for_window transfer-green
+await_window transfer-green
 "$ANDROMEDA" msg window-move-to-scratchpad:b > /dev/null
 "$ANDROMEDA" msg scratchpad-window-show-next:b > /dev/null
 
@@ -89,7 +82,7 @@ mkfifo "$CONTROL"
 exec {control_fd}<> "$CONTROL"
 FILL_COLOR=0xFFFF0000 TITLE_AFTER_MAP=moved-out "$CLIENT" transfer-red 300 200 \
   < "$CONTROL" > "$RED_LOG" 2>&1 &
-wait_for_window transfer-red
+await_window transfer-red
 "$ANDROMEDA" msg window-move-to-scratchpad:a > /dev/null
 "$ANDROMEDA" msg scratchpad-window-show-next:a > /dev/null
 before=$(shown)

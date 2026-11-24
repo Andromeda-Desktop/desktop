@@ -3,31 +3,11 @@
 # then restore focus to its parent, not the unrelated tile.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly CLIENT_LOG="$ANDROMEDA_RUNTIME_DIR/transient-client.log"
 readonly CONTROL_FIFO="$ANDROMEDA_RUNTIME_DIR/transient-control"
-
-wait_for_window_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
-wait_for_focus() {
-  local want=$1
-  for _ in $(seq 40); do
-    if [[ $("$ANDROMEDA" windows --json | jq -r --arg id "$want" '.[] | select(.id == $id) | .focused') == true ]]; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected $want to be focused: $("$ANDROMEDA" windows --json)"
-  return 1
-}
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
 
@@ -61,7 +41,7 @@ if ! grep -q '^mapped$' "$CLIENT_LOG"; then
   echo "transient child never mapped: $(< "$CLIENT_LOG")"
   exit 1
 fi
-wait_for_window_count 3
+await_count 3
 
 windows=$("$ANDROMEDA" windows --json)
 parent_id=$(jq -r '.[] | select(.title == "transient-parent") | .id' <<< "$windows")
@@ -120,7 +100,7 @@ if ! kill -0 "$client_pid" 2>/dev/null; then
   exit 1
 fi
 
-wait_for_focus "$parent_id"
+await_focus "$parent_id"
 "$ANDROMEDA" settle
 windows=$("$ANDROMEDA" windows --json)
 if [[ $(jq -r --arg id "$unrelated_id" '.[] | select(.id == $id) | .focused' <<< "$windows") != false ]]; then

@@ -3,34 +3,14 @@
 # half of that leaf on the pointer's side instead of the right or bottom half.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 
 spawn_client() {
   local title=$1
   "$CLIENT" "$title" 1200 700 > "$ANDROMEDA_RUNTIME_DIR/$title.log" 2>&1 &
-}
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
-wait_for_focus() {
-  local want=$1
-  for _ in $(seq 40); do
-    if [[ $("$ANDROMEDA" windows --json | jq -r --arg id "$want" '.[] | select(.id == $id) | .focused') == true ]]; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "expected $want to be focused: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -45,11 +25,11 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client dwindle-focused-a
-wait_for_count 1
+await_count 1
 spawn_client dwindle-focused-b
-wait_for_count 2
+await_count 2
 spawn_client dwindle-focused-c
-wait_for_count 3
+await_count 3
 sleep 0.1
 
 windows=$("$ANDROMEDA" windows --json)
@@ -62,9 +42,9 @@ if [[ -z $a_id || -z $a_y || -z $b_x ]]; then
 fi
 
 "$ANDROMEDA" msg "window-focus:$a_id" > /dev/null
-wait_for_focus "$a_id"
+await_focus "$a_id"
 spawn_client dwindle-focused-d
-wait_for_count 4
+await_count 4
 
 for _ in $(seq 40); do
   windows=$("$ANDROMEDA" windows --json)
@@ -99,9 +79,9 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 "$POINTER" 1280 720 move "$((b_x + 20))" "$((b_y + 20))" > "$ANDROMEDA_RUNTIME_DIR/pointer.log" 2>&1
 "$ANDROMEDA" msg "window-focus:$b_id" > /dev/null
-wait_for_focus "$b_id"
+await_focus "$b_id"
 spawn_client dwindle-focused-e
-wait_for_count 5
+await_count 5
 
 for _ in $(seq 40); do
   windows=$("$ANDROMEDA" windows --json)

@@ -3,6 +3,8 @@
 # pointer must take focus without a pointer motion.
 set -euo pipefail
 
+source "$ANDROMEDA_HARNESS_LIB"
+
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -16,28 +18,8 @@ spawn_client() {
   "$CLIENT" "$1" 1200 700 > /dev/null 2>&1 &
 }
 
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $want windows, got: $("$ANDROMEDA" windows --json)"
-  return 1
-}
-
 active_title() {
   "$ANDROMEDA" windows --json | jq -r '[.[] | select(.active) | .title] | if length == 1 then .[0] else "none" end'
-}
-
-wait_for_active() {
-  local want=$1
-  for _ in $(seq 40); do
-    [[ $(active_title) == "$want" ]] && return 0
-    sleep 0.05
-  done
-  echo "expected '$want' to be active, got: $("$ANDROMEDA" windows --json)"
-  return 1
 }
 
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -58,10 +40,10 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
 spawn_client "workspace-hover-left"
-wait_for_count 1
+await_count 1
 spawn_client "workspace-hover-right"
-wait_for_count 2
-wait_for_active "workspace-hover-right"
+await_count 2
+await_active "workspace-hover-right"
 sleep 0.1
 
 # Clear pointer focus on an empty workspace, then return without moving the pointer. Workspace focus history restores
@@ -69,6 +51,6 @@ sleep 0.1
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 pointer move 64 64
 "$ANDROMEDA" msg workspace-switch:1 > /dev/null
-wait_for_active "workspace-hover-left"
+await_active "workspace-hover-left"
 
 echo "the window under a resting pointer takes focus after a workspace switch"
