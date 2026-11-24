@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,9 @@ namespace andromeda {
     // Re-parse. On failure the previous configuration is kept and the generation
     // does not move: a config with a syntax error must not take the session down.
     [[nodiscard]] ConfigReloadResult reload();
+    // reload(), unless every watched file is the one the last successful reload read: the watcher's event for a write
+    // that an explicit reload already applied then changes nothing. nullopt when it skipped.
+    [[nodiscard]] std::optional<ConfigReloadResult> reloadIfChanged();
     // Re-reads the current config file with `overrides` in place of the active runtime overrides and commits the
     // result. A load that fails, or, when `rejectNewDiagnostics`, reports a diagnostic the active configuration did
     // not, changes nothing and lists why in `errors`, one diagnostic per line.
@@ -75,11 +79,26 @@ namespace andromeda {
     void setLayeredKeybinds(bool layered) { m_layeredKeybinds = layered; }
 
   private:
+    // A watched file's identity; an atomic rename gives a new inode, an in-place write a new size or change time.
+    struct FileStamp {
+      bool exists = false;
+      std::uint64_t device = 0;
+      std::uint64_t inode = 0;
+      std::int64_t size = 0;
+      std::int64_t modifiedNs = 0;
+      std::int64_t changedNs = 0;
+      bool operator==(const FileStamp&) const = default;
+    };
+    static FileStamp stamp(const std::filesystem::path& path);
+
     Config m_config;
     toml::table m_overrides;
     toml::table m_effective;
     std::vector<ConfigDiagnostic> m_diagnostics;
     std::vector<std::filesystem::path> m_watchPaths;
+    // Taken before the last successful reload read its files, so a write during that read counts as a change. A watch
+    // path without a stamp (a new include) counts as changed.
+    std::vector<std::pair<std::filesystem::path, FileStamp>> m_loadedStamps;
     // Captured before configured environment variables are applied. Reloads
     // recheck this fixed search order instead of letting the config redirect
     // its own source through HOME or the XDG variables.

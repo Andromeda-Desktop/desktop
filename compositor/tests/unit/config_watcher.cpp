@@ -177,6 +177,51 @@ ANDROMEDA_TEST(anIncludedFileReloadsThroughASymlinkedConfigDirectory) {
   wl_event_loop_destroy(loop);
 }
 
+ANDROMEDA_TEST(aWriteThatAnExplicitReloadAppliedDoesNotReloadAgain) {
+  const SymlinkedConfigTree tree;
+  const std::string root = tree.root().string();
+  ConfigStore& store = andromeda::configStore();
+  store.load(root.c_str());
+
+  wl_event_loop* loop = wl_event_loop_create();
+  CHECK(loop != nullptr);
+  if (loop == nullptr) {
+    return;
+  }
+
+  int events = 0;
+  int reloads = 0;
+  std::unique_ptr<ConfigWatcher> watcher;
+  watcher = std::make_unique<ConfigWatcher>(loop, [&] {
+    ++events;
+    if (const std::optional<andromeda::ConfigReloadResult> result = store.reloadIfChanged(); result && result->success) {
+      ++reloads;
+    }
+    watcher->watch(store.watchPaths());
+  });
+  watcher->watch(store.watchPaths());
+
+  tree.writeRoot(9);
+  CHECK(dispatchUntil(loop, events, 1));
+  CHECK_EQ(reloads, 1);
+  CHECK_EQ(store.config().layout.gap, 9);
+
+  // A managed settings write: the writer reloads at once, then the watcher sees its own write.
+  tree.writeRoot(11);
+  CHECK(store.reload().success);
+  CHECK(dispatchUntil(loop, events, 2));
+  CHECK_EQ(reloads, 1);
+  CHECK_EQ(store.config().layout.gap, 11);
+
+  tree.writeInclude(7);
+  CHECK(dispatchUntil(loop, events, 3));
+  CHECK_EQ(reloads, 2);
+  CHECK_EQ(store.config().appearance.borderWidth, 7);
+
+  watcher.reset();
+  wl_event_loop_destroy(loop);
+}
+
 ANDROMEDA_TEST(aRetargetedSymlinkedConfigDirectoryReloadsFromTheNewTarget) {
   const SymlinkedConfigTree tree;
   const std::string root = tree.root().string();

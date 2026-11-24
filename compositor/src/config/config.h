@@ -1412,6 +1412,8 @@ namespace andromeda {
   void loadConfig(const char* explicitPath);
   [[nodiscard]] ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
   [[nodiscard]] ConfigReloadResult reloadConfig();
+  // What the config watcher calls: no reload when the watched files are the ones the last reload read.
+  [[nodiscard]] std::optional<ConfigReloadResult> reloadConfigIfChanged();
   [[nodiscard]] const std::vector<std::filesystem::path>& configWatchPaths();
   [[nodiscard]] const std::vector<ConfigDiagnostic>& configDiagnostics();
   [[nodiscard]] const std::filesystem::path& configRootPath();

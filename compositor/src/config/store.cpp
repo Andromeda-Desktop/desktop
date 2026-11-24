@@ -6,6 +6,8 @@
 #include "core/log.h"
 #include "andromeda_data_dir.h"
 
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -400,7 +402,37 @@ namespace andromeda {
     return commit(std::move(loaded), std::move(effective), selection.root, missing);
   }
 
+  ConfigStore::FileStamp ConfigStore::stamp(const std::filesystem::path& path) {
+    struct stat st{};
+    if (::stat(path.c_str(), &st) != 0) {
+      return {};
+    }
+    return {
+        .exists = true,
+        .device = st.st_dev,
+        .inode = st.st_ino,
+        .size = st.st_size,
+        .modifiedNs = st.st_mtim.tv_sec * 1'000'000'000LL + st.st_mtim.tv_nsec,
+        .changedNs = st.st_ctim.tv_sec * 1'000'000'000LL + st.st_ctim.tv_nsec,
+    };
+  }
+
+  std::optional<ConfigReloadResult> ConfigStore::reloadIfChanged() {
+    const bool unchanged = std::ranges::all_of(m_watchPaths, [this](const std::filesystem::path& path) {
+      const auto it = std::ranges::find(m_loadedStamps, path, &std::pair<std::filesystem::path, FileStamp>::first);
+      return it != m_loadedStamps.end() && it->second == stamp(path);
+    });
+    if (unchanged && !m_watchPaths.empty()) {
+      return std::nullopt;
+    }
+    return reload();
+  }
+
   ConfigReloadResult ConfigStore::reload() {
+    std::vector<std::pair<std::filesystem::path, FileStamp>> stamps;
+    for (const std::filesystem::path& path : m_watchPaths) {
+      stamps.emplace_back(path, stamp(path));
+    }
     ConfigSelection selection;
     if (m_explicitPath) {
       selection.root = m_rootPath;
@@ -423,11 +455,13 @@ namespace andromeda {
     if (outcome != ConfigParseOutcome::Loaded) {
       if (!m_explicitPath && !selection.found && missing) {
         kLog.info("no config file found: {}, using defaults", selection.root.string());
+        m_loadedStamps = std::move(stamps);
         return commit(std::move(loaded), std::move(effective), selection.root, true);
       }
       kLog.warn("config reload failed; keeping previous configuration");
       return {};
     }
+    m_loadedStamps = std::move(stamps);
     return commit(std::move(loaded), std::move(effective), selection.root, false);
   }
 
@@ -500,6 +534,7 @@ namespace andromeda {
     return configStore().replace(explicitPath, errors);
   }
   ConfigReloadResult reloadConfig() { return configStore().reload(); }
+  std::optional<ConfigReloadResult> reloadConfigIfChanged() { return configStore().reloadIfChanged(); }
 
   const std::vector<std::filesystem::path>& configWatchPaths() { return configStore().watchPaths(); }
 

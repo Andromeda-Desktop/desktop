@@ -2203,8 +2203,9 @@ namespace andromeda {
     }
 
     m_configWatcher = std::make_unique<ConfigWatcher>(wl_display_get_event_loop(m_display), [this] {
-      const ConfigReloadResult result = reloadConfig();
-      handleConfigReload(result);
+      if (const std::optional<ConfigReloadResult> result = reloadConfigIfChanged()) {
+        handleConfigReload(*result);
+      }
     });
     m_configBanner = std::make_unique<ConfigBanner>(*this, m_bannerTree);
     m_fpsOverlay = std::make_unique<FpsOverlay>(*this, m_bannerTree);
