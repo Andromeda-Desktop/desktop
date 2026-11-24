@@ -824,23 +824,25 @@ namespace {
 
   // A zygote child is already running: StartTransientUnit with its pid moves it into its own app scope, so per-app
   // attribution matches an exec launch. Scope names cannot be templates: app-andromeda-<app id>-<random>.scope.
-  bool launchThroughZygote(
+  process::zygote::LaunchResult::Outcome launchThroughZygote(
       const std::vector<std::string>& args, const std::string& activationToken, const std::string& workingDir,
       const std::string& appName
   ) {
+    using enum process::zygote::LaunchResult::Outcome;
     sdbus::IProxy* manager = systemdManager();
     if (manager == nullptr) {
-      return false;
+      return Refused;
     }
-    const auto pid = process::zygote::launch("appd", {.argv = args, .workingDir = workingDir, .activationToken = activationToken});
-    if (!pid) {
-      return false;
+    const auto launched =
+        process::zygote::launch("appd", {.argv = args, .workingDir = workingDir, .activationToken = activationToken});
+    if (launched.outcome != Started) {
+      return launched.outcome;
     }
     std::string uuid = StringUtils::generateUuid();
     std::erase(uuid, '-');
     const std::string unit = std::format("app-andromeda-{}-{}.scope", escapeSystemdUnitName(appName), uuid);
     using Property = sdbus::Struct<std::string, sdbus::Variant>;
-    const std::vector<std::uint32_t> pids(1, static_cast<std::uint32_t>(*pid));
+    const std::vector<std::uint32_t> pids(1, static_cast<std::uint32_t>(launched.pid));
     const std::vector<Property> properties{
         {"Description", sdbus::Variant{args.front()}},
         {"PIDs", sdbus::Variant{pids}},
@@ -858,9 +860,9 @@ namespace {
             }
           });
     } catch (const sdbus::Error& e) {
-      kLog.warn("launch: scope {} for zygote child {} not sent ({})", unit, *pid, e.getMessage());
+      kLog.warn("launch: scope {} for zygote child {} not sent ({})", unit, launched.pid, e.getMessage());
     }
-    return true;
+    return Started;
   }
 
   bool startSystemdService(
@@ -1496,8 +1498,17 @@ namespace process {
           || systemdManager() != nullptr;
     }();
     if (runningUnderSystemdUserManager() && reachable) {
-      return (!appName.empty() && launchThroughZygote(args, activationToken, workingDir, appName))
-          || startSystemdService(args, activationToken, workingDir, appName);
+      using enum process::zygote::LaunchResult::Outcome;
+      switch (appName.empty() ? Refused : launchThroughZygote(args, activationToken, workingDir, appName)) {
+        case Started:
+          return true;
+        case Unknown:
+          kLog.warn("launch: zygote gave no outcome for {}; not starting a second copy", appName);
+          return false;
+        case Refused:
+          break;
+      }
+      return startSystemdService(args, activationToken, workingDir, appName);
     }
 #endif
     return runAsync(args, activationToken, workingDir);

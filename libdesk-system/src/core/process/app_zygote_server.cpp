@@ -8,6 +8,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <csignal>
@@ -15,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <fstream>
 #include <string>
 
@@ -101,6 +103,19 @@ namespace process::zygote {
     sigaction(SIGCHLD, &reap, nullptr);
     std::fprintf(stderr, "zygote: %.*s ready\n", static_cast<int>(appId.size()), appId.data());
 
+    // The outcome of each recent launch by id, oldest first. A client asks for one only after its 1 s wait, and
+    // connections are served in order, so 64 entries outlive any launch a client still waits for.
+    struct LaunchRecord {
+      std::string id;
+      std::int32_t reply;
+    };
+    std::deque<LaunchRecord> outcomes;
+    const auto record = [&outcomes](std::string id, std::int32_t reply) {
+      if (outcomes.size() == 64) {
+        outcomes.pop_front();
+      }
+      outcomes.push_back({.id = std::move(id), .reply = reply});
+    };
     std::array<char, 64 * 1024> buffer{};
     for (;;) {
       const int conn = accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
@@ -116,9 +131,20 @@ namespace process::zygote {
       const ssize_t size = getsockopt(conn, SOL_SOCKET, SO_PEERCRED, &peer, &peerSize) == 0 && peer.uid == getuid()
           ? recv(conn, buffer.data(), buffer.size(), 0)
           : -1;
-      auto request = size > 0 ? decode(std::span(buffer.data(), static_cast<std::size_t>(size))) : std::nullopt;
-      if (!request || !accept(*request) || std::chrono::steady_clock::now() > request->deadline) {
+      auto message = size > 0 ? decode(std::span(buffer.data(), static_cast<std::size_t>(size))) : std::nullopt;
+      if (const auto* status = message ? std::get_if<StatusQuery>(&*message) : nullptr) {
+        const auto found = std::ranges::find(outcomes, status->id, &LaunchRecord::id);
+        const std::int32_t reply = found != outcomes.end() ? found->reply : 0;
+        send(conn, &reply, sizeof(reply), MSG_NOSIGNAL);
+        close(conn);
+        continue;
+      }
+      auto* request = message ? std::get_if<Request>(&*message) : nullptr;
+      if (request == nullptr || !accept(*request) || std::chrono::steady_clock::now() > request->deadline) {
         const std::int32_t refused = -1;
+        if (request != nullptr) {
+          record(request->id, refused);
+        }
         send(conn, &refused, sizeof(refused), MSG_NOSIGNAL);
         close(conn);
         continue;
@@ -149,6 +175,7 @@ namespace process::zygote {
         return std::move(*request);
       }
       const std::int32_t reply = pid > 0 ? pid : -1;
+      record(request->id, reply);
       send(conn, &reply, sizeof(reply), MSG_NOSIGNAL);
       close(conn);
     }
