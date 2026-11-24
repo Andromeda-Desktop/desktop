@@ -31,42 +31,6 @@ namespace compositors::andromeda {
     constexpr std::string_view kSlideStreamRequest = R"({"cmd":"subscribe","events":["workspace_slide"]})";
     constexpr std::string_view kSlideStreamUnknown = "unknown subscription event: workspace_slide";
 
-    [[nodiscard]] bool waitForRequestSocket(int fd, short events, std::chrono::steady_clock::time_point deadline) {
-      while (true) {
-        const auto remaining =
-            std::chrono::ceil<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
-        if (remaining.count() <= 0) {
-          return false;
-        }
-        pollfd socket{.fd = fd, .events = events, .revents = 0};
-        const int result = ::poll(&socket, 1, static_cast<int>(remaining.count()));
-        if (result > 0) {
-          if ((socket.revents & (POLLERR | POLLNVAL)) != 0) {
-            return false;
-          }
-          return (socket.revents & events) != 0 || (events == POLLIN && (socket.revents & POLLHUP) != 0);
-        }
-        if (result == 0 || errno != EINTR) {
-          return false;
-        }
-      }
-    }
-
-    [[nodiscard]] bool writeAll(int fd, std::string_view data) {
-      std::size_t offset = 0;
-      while (offset < data.size()) {
-        const ssize_t written = ::write(fd, data.data() + offset, data.size() - offset);
-        if (written <= 0) {
-          if (written < 0 && errno == EINTR) {
-            continue;
-          }
-          return false;
-        }
-        offset += static_cast<std::size_t>(written);
-      }
-      return true;
-    }
-
     [[nodiscard]] bool isSocketPath(const std::string& path) {
       struct stat st{};
       return !path.empty() && ::stat(path.c_str(), &st) == 0 && S_ISSOCK(st.st_mode);
@@ -75,16 +39,6 @@ namespace compositors::andromeda {
   } // namespace
 
   struct AndromedaRuntime::IpcReply {
-    enum class Status {
-      Unavailable,
-      WriteFailed,
-      ReadFailed,
-      NoResponse,
-      InvalidJson,
-      Replied,
-    };
-
-    Status status = Status::Unavailable;
     std::optional<nlohmann::json> json;
   };
 
@@ -125,92 +79,21 @@ namespace compositors::andromeda {
   AndromedaRuntime::IpcReply AndromedaRuntime::request(std::string_view payload) const {
     ensureResolved();
     if (m_socketPath.empty() || payload.empty()) {
-      return {IpcReply::Status::Unavailable, std::nullopt};
+      return {};
     }
-
-    const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-    if (fd < 0) {
-      return {IpcReply::Status::Unavailable, std::nullopt};
+    const auto reply = ipc::request(m_socketPath, payload, ipc::EndOfRequest::KeepOpen, kReadBufferMaxBytes,
+                                    std::chrono::steady_clock::now() + kRequestTimeout);
+    if (reply.status != ipc::Status::Ok) {
+      return {};
     }
-
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    if (m_socketPath.size() >= sizeof(addr.sun_path)) {
-      ::close(fd);
-      return {IpcReply::Status::Unavailable, std::nullopt};
+    const std::string_view line = std::string_view(reply.data).substr(0, reply.data.find('\n'));
+    if (line.empty()) {
+      return {};
     }
-    std::memcpy(addr.sun_path, m_socketPath.c_str(), m_socketPath.size() + 1);
-
-    const auto deadline = std::chrono::steady_clock::now() + kRequestTimeout;
-    if (::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) < 0) {
-      if (errno != EINPROGRESS || !waitForRequestSocket(fd, POLLOUT, deadline)) {
-        ::close(fd);
-        return {IpcReply::Status::Unavailable, std::nullopt};
-      }
-      int socketError = 0;
-      socklen_t socketErrorSize = sizeof(socketError);
-      if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &socketError, &socketErrorSize) < 0 || socketError != 0) {
-        ::close(fd);
-        return {IpcReply::Status::Unavailable, std::nullopt};
-      }
-    }
-
-    std::size_t offset = 0;
-    while (offset < payload.size()) {
-      if (!waitForRequestSocket(fd, POLLOUT, deadline)) {
-        ::close(fd);
-        return {IpcReply::Status::WriteFailed, std::nullopt};
-      }
-      const ssize_t written = ::send(fd, payload.data() + offset, payload.size() - offset, MSG_NOSIGNAL);
-      if (written <= 0) {
-        if (written < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
-          continue;
-        }
-        ::close(fd);
-        return {IpcReply::Status::WriteFailed, std::nullopt};
-      }
-      offset += static_cast<std::size_t>(written);
-    }
-
-    std::string response;
-    char buffer[4096];
-    while (true) {
-      if (!waitForRequestSocket(fd, POLLIN, deadline)) {
-        ::close(fd);
-        return {IpcReply::Status::ReadFailed, std::nullopt};
-      }
-      const ssize_t count = ::read(fd, buffer, sizeof(buffer));
-      if (count > 0) {
-        response.append(buffer, static_cast<std::size_t>(count));
-        if (response.contains('\n')) {
-          break;
-        }
-        continue;
-      }
-      if (count == 0) {
-        break;
-      }
-      if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
-        continue;
-      }
-      ::close(fd);
-      return {IpcReply::Status::ReadFailed, std::nullopt};
-    }
-
-    ::close(fd);
-
-    const std::size_t newline = response.find('\n');
-    if (newline != std::string::npos) {
-      response.resize(newline);
-    }
-    if (response.empty()) {
-      return {IpcReply::Status::NoResponse, std::nullopt};
-    }
-
     try {
-      return {IpcReply::Status::Replied, nlohmann::json::parse(response)};
+      return {std::make_optional(nlohmann::json::parse(line))};
     } catch (const nlohmann::json::exception&) {
-      return {IpcReply::Status::InvalidJson, std::nullopt};
+      return {};
     }
   }
 
@@ -275,7 +158,7 @@ namespace compositors::andromeda {
     const auto fresh = newFamilies(handler);
     m_eventHandlers.push_back(handler);
     if (m_eventSocketFd >= 0) {
-      if (!writeAll(m_eventSocketFd, subscribeRequests(fresh))) {
+      if (!ipc::writeAll(m_eventSocketFd, subscribeRequests(fresh), std::chrono::steady_clock::now() + kRequestTimeout)) {
         closeSocket(true);
       }
     } else if (available()) {
@@ -366,7 +249,7 @@ namespace compositors::andromeda {
     }
 
     const std::string subscribe = subscribeRequests(newFamilies(nullptr));
-    if (!writeAll(fd, subscribe)) {
+    if (!ipc::writeAll(fd, subscribe, std::chrono::steady_clock::now() + kRequestTimeout)) {
       ::close(fd);
       scheduleReconnect();
       return;
@@ -516,7 +399,7 @@ namespace compositors::andromeda {
       return;
     }
 
-    const std::string fallback = std::string(runtimeDir) + "/andromeda-" + waylandDisplay + ".sock";
+    const std::string fallback = runtimeDir + "/andromeda-" + waylandDisplay + ".sock";
     if (isSocketPath(fallback)) {
       m_socketPath = fallback;
     }

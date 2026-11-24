@@ -79,6 +79,7 @@ daemon_sources = files(
   'src/wayland/wayland.cpp',
   'src/pipewire/pipewire.cpp',
   'src/andromeda/ipc.cpp',
+  'protocols/ipc_channel.cpp',
 )
 
 executable(

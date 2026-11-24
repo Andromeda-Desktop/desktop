@@ -14,13 +14,14 @@
 #include <string_view>
 #include <sys/epoll.h>
 #include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
 #include <utility>
 
 namespace xdpu {
 
   namespace {
+
+    constexpr std::size_t kMaxEventBytes = 1024U * 1024U; // one event line: a window list with many windows
 
     std::string socketPath() {
       if (const char* configured = std::getenv("ANDROMEDA_SOCKET"); configured != nullptr && configured[0] != '\0') {
@@ -51,7 +52,7 @@ namespace xdpu {
     CaptureBlockedHandler captureBlockedHandler;
     int fd = -1;
     int watch = 0;
-    std::string input;
+    ipc::LineReader input{kMaxEventBytes};
     std::string output;
     size_t writeOffset = 0;
 
@@ -67,45 +68,19 @@ namespace xdpu {
         std::fprintf(stderr, "andromeda-ipc: compositor socket path is unavailable\n");
         return;
       }
-      fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-      if (fd < 0) {
-        std::fprintf(stderr, "andromeda-ipc: socket failed: %s\n", std::strerror(errno));
+      const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+      ipc::Fd conn = ipc::connectTo(path, deadline);
+      if (!conn) {
+        std::fprintf(stderr, "andromeda-ipc: cannot connect to %s\n", path.c_str());
         return;
       }
-
-      sockaddr_un address{};
-      if (path.size() >= sizeof(address.sun_path)) {
-        std::fprintf(stderr, "andromeda-ipc: compositor socket path is too long\n");
-        closeFd(fd);
-        fd = -1;
-        return;
-      }
-      address.sun_family = AF_UNIX;
-      path.copy(address.sun_path, path.size());
-      if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) < 0) {
-        std::fprintf(stderr, "andromeda-ipc: connect failed: %s\n", std::strerror(errno));
-        closeFd(fd);
-        fd = -1;
-        return;
-      }
-
       constexpr std::string_view request =
           "{\"cmd\":\"subscribe\",\"events\":[\"screencast\",\"windows\",\"workspaces\"]}\n";
-      size_t sent = 0;
-      while (sent < request.size()) {
-        const ssize_t written = send(fd, request.data() + sent, request.size() - sent, MSG_NOSIGNAL);
-        if (written > 0) {
-          sent += static_cast<size_t>(written);
-          continue;
-        }
-        if (written < 0 && errno == EINTR) {
-          continue;
-        }
+      if (!ipc::writeAll(conn.get(), request, deadline)) {
         std::fprintf(stderr, "andromeda-ipc: subscribe failed: %s\n", std::strerror(errno));
-        closeFd(fd);
-        fd = -1;
         return;
       }
+      fd = conn.release();
 
       const int flags = fcntl(fd, F_GETFL, 0);
       if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
@@ -189,36 +164,19 @@ namespace xdpu {
         return;
       }
 
-      char buffer[4096];
-      while (true) {
-        const ssize_t size = recv(fd, buffer, sizeof(buffer), 0);
-        if (size > 0) {
-          input.append(buffer, static_cast<size_t>(size));
-          continue;
+      do {
+        while (const auto line = input.nextLine()) {
+          handleLine(*line);
         }
-        if (size == 0) {
-          disconnect();
-          return;
-        }
-        if (errno == EINTR) {
-          continue;
-        }
-        if (errno != EAGAIN && errno != EWOULDBLOCK) {
-          std::fprintf(stderr, "andromeda-ipc: receive failed: %s\n", std::strerror(errno));
-          disconnect();
-          return;
-        }
-        break;
+      } while (input.readFrom(fd) > 0);
+      while (const auto line = input.nextLine()) {
+        handleLine(*line);
       }
-
-      while (true) {
-        const size_t newline = input.find('\n');
-        if (newline == std::string::npos) {
-          break;
-        }
-        const std::string line = input.substr(0, newline);
-        input.erase(0, newline + 1);
-        handleLine(line);
+      if (input.state() == ipc::LineReader::State::TooLong) {
+        std::fprintf(stderr, "andromeda-ipc: an event is longer than %zu bytes\n", kMaxEventBytes);
+      }
+      if (input.state() != ipc::LineReader::State::Reading) {
+        disconnect();
       }
     }
 

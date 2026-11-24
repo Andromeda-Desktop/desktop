@@ -181,7 +181,7 @@ namespace andromeda {
       kLog.error("XDG_RUNTIME_DIR not set, IPC socket disabled");
       return;
     }
-    m_socketPath = std::string(runtimeDir) + "/andromeda-" + waylandSocketName + ".sock";
+    m_socketPath = runtimeDir + "/andromeda-" + waylandSocketName + ".sock";
 
     unlink(m_socketPath.c_str());
     m_listenFd = bindUnixListener(m_socketPath, 4, S_IRUSR | S_IWUSR);
