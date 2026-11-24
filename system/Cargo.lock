@@ -112,6 +112,7 @@ dependencies = [
  "anyhow",
  "env_logger",
  "log",
+ "nix",
  "tokio",
 ]
 
@@ -838,6 +839,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+ "memoffset",
 ]
 
 [[package]]

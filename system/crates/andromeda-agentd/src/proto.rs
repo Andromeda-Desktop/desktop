@@ -1,41 +1,9 @@
 use serde_json::{Map, Value, json};
-use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
 use crate::idl::SCHEMA_VERSION;
 
 /// Longest accepted line on either socket, newline excluded.
 pub const MAX_LINE: usize = 1 << 20;
-
-pub enum Line {
-    Complete,
-    TooLong,
-    Eof,
-}
-
-/// Reads one line into `buf` without the newline. A longer line is skipped up to its newline, so memory stays bounded.
-pub async fn read_line<R: AsyncBufRead + Unpin>(reader: &mut R, buf: &mut Vec<u8>) -> std::io::Result<Line> {
-    buf.clear();
-    let mut too_long = false;
-    loop {
-        let chunk = reader.fill_buf().await?;
-        if chunk.is_empty() {
-            return Ok(Line::Eof);
-        }
-        let (take, done) = chunk.iter().position(|&b| b == b'\n').map_or((chunk.len(), false), |i| (i, true));
-        if !too_long {
-            if buf.len() + take > MAX_LINE {
-                too_long = true;
-                buf.clear();
-            } else {
-                buf.extend_from_slice(&chunk[..take]);
-            }
-        }
-        reader.consume(take + usize::from(done));
-        if done {
-            return Ok(if too_long { Line::TooLong } else { Line::Complete });
-        }
-    }
-}
 
 #[derive(Clone, Copy)]
 pub enum Code {

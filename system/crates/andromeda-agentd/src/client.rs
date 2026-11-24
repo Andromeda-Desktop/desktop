@@ -7,7 +7,9 @@ use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::idl::SCHEMA_VERSION;
-use crate::proto::{Code, Line, MAX_LINE, err, error_object, failed, read_line};
+use andromeda_rt::ipc::{ClientSlots, Line, accept_peer, read_line};
+
+use crate::proto::{Code, MAX_LINE, err, error_object, failed};
 use crate::registry::Shared;
 
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -15,10 +17,22 @@ pub const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 const OPS_HINT: &str =
     r#"send one JSON object per line: {"op":"act","action":…,"args":{…}}, {"op":"state","path":…} or {"op":"help"}"#;
 
+/// Clients connected at once; each holds a session task and its buffers.
+const MAX_CLIENTS: usize = 64;
+
 pub async fn serve(shared: Arc<Shared>, listener: UnixListener) -> io::Result<()> {
+    let slots = ClientSlots::new(MAX_CLIENTS);
     loop {
-        let (stream, _) = listener.accept().await?;
-        tokio::spawn(session(Arc::clone(&shared), stream));
+        let peer = accept_peer(&listener).await?;
+        let Some(permit) = slots.try_acquire() else {
+            log::warn!("refused pid {}: {MAX_CLIENTS} clients connected", peer.pid);
+            continue;
+        };
+        let shared = Arc::clone(&shared);
+        tokio::spawn(async move {
+            session(shared, peer.stream).await;
+            drop(permit);
+        });
     }
 }
 
@@ -27,7 +41,7 @@ async fn session(shared: Arc<Shared>, stream: UnixStream) {
     let mut reader = BufReader::new(reader);
     let mut buf = Vec::new();
     loop {
-        let reply = match read_line(&mut reader, &mut buf).await {
+        let reply = match read_line(&mut reader, &mut buf, MAX_LINE).await {
             Ok(Line::Complete) => handle(&shared, &buf).await,
             Ok(Line::TooLong) => invalid(&format!("request line is longer than {MAX_LINE} bytes")),
             Ok(Line::Eof) | Err(_) => return,

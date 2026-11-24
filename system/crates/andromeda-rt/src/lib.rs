@@ -1,6 +1,8 @@
 //! The runtime every andromeda daemon runs on (AR3): one current-thread tokio runtime whose blocking pool has a cap,
 //! and one shutdown token that async code awaits and blocking closures poll.
 
+pub mod ipc;
+
 use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

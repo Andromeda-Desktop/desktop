@@ -11,7 +11,8 @@ publish = false
 anyhow = "1"
 env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
 log = "0.4"
-tokio = { version = "1", features = ["rt", "macros", "time", "sync", "signal"] }
+nix = { version = "0.31", default-features = false, features = ["socket", "user"] }
+tokio = { version = "1", features = ["rt", "macros", "time", "sync", "signal", "net", "io-util"] }
 
 [lints]
 workspace = true

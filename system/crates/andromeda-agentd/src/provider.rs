@@ -15,7 +15,9 @@ use tokio::net::UnixStream;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::idl::{ActionEntry, SCHEMA_VERSION};
-use crate::proto::{Line, read_line};
+use andromeda_rt::ipc::{Line, check_peer, read_line};
+
+use crate::proto::MAX_LINE;
 use crate::registry::{Hello, Seq, Shared};
 
 fn is_provider_socket(name: &OsStr) -> bool {
@@ -105,7 +107,7 @@ async fn link(shared: Arc<Shared>, path: PathBuf) {
 }
 
 /// A provider binds before it listens, so its inotify event can come before it accepts: retry a refused connect a
-/// few times, with backoff, after each event.
+/// few times, with backoff, after each event. The provider must run as this user.
 async fn connect(path: &Path) -> io::Result<UnixStream> {
     let mut delay = Duration::from_millis(10);
     for _ in 0..5 {
@@ -114,10 +116,15 @@ async fn connect(path: &Path) -> io::Result<UnixStream> {
                 tokio::time::sleep(delay).await;
                 delay *= 2;
             }
-            result => return result,
+            result => return checked(result?),
         }
     }
-    UnixStream::connect(path).await
+    checked(UnixStream::connect(path).await?)
+}
+
+fn checked(stream: UnixStream) -> io::Result<UnixStream> {
+    check_peer(&stream)?;
+    Ok(stream)
 }
 
 #[derive(Deserialize)]
@@ -133,7 +140,7 @@ async fn session(shared: &Arc<Shared>, stream: UnixStream, path: &Path) -> End {
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
     let mut buf = Vec::new();
-    let hello = match read_line(&mut reader, &mut buf).await {
+    let hello = match read_line(&mut reader, &mut buf, MAX_LINE).await {
         Ok(Line::Complete) => serde_json::from_slice::<HelloLine>(&buf).ok(),
         _ => None,
     };
@@ -162,7 +169,7 @@ async fn session(shared: &Arc<Shared>, stream: UnixStream, path: &Path) -> End {
     let link = shared.register(hello, tx, close);
     loop {
         let read = tokio::select! {
-            next = read_line(&mut reader, &mut buf) => next,
+            next = read_line(&mut reader, &mut buf, MAX_LINE) => next,
             _ = &mut closed => return End::Closed,
         };
         match read {
