@@ -19,7 +19,8 @@ endif
 
 is_macos = get_option('platform') == 'macos'
 _platform_opt = ['platform=' + get_option('platform')]
-_desk_ui_dep = subproject('libdesk-ui', default_options: _platform_opt).get_variable('desk_ui_dep')
+# libdesk-ui comes only through libdesk-app (apps/AGENTS.md).
+_desk_app_dep = subproject('libdesk-app', default_options: _platform_opt + ['shared_app_lib=true']).get_variable('desk_app_dep')
 # PTY session, VT engine and the TerminalView grid; the Files pane hosts the same view.
 _desk_term_sp = subproject('libdesk-term', default_options: _platform_opt)
 _desk_term_dep = _desk_term_sp.get_variable('desk_term_dep')
@@ -27,10 +28,10 @@ _desk_term_dep = _desk_term_sp.get_variable('desk_term_dep')
 _helpers_arg = is_macos ? ['-DANDROMEDA_HELPERS_BESIDE_EXE'] : []
 _core = static_library('terminal_core', 'src/workspace_watcher.cpp', 'src/workspace_bar.cpp', 'src/window_workspaces.cpp', 'src/session_layout.cpp',
   'src/palette_model.cpp', 'src/browse_model.cpp',
-  dependencies: [_desk_term_dep, dependency('threads'), _desk_ui_dep.partial_dependency(compile_args: true, includes: true, sources: true), dependency('nlohmann_json')],
+  dependencies: [_desk_term_dep, dependency('threads'), _desk_app_dep.partial_dependency(compile_args: true, includes: true, sources: true), dependency('nlohmann_json')],
   cpp_args: _warnings)
 _core_dep = declare_dependency(link_with: _core,
-  include_directories: include_directories('src'), dependencies: [_desk_term_dep, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')])
+  include_directories: include_directories('src'), dependencies: [_desk_term_dep, dependency('threads'), _desk_app_dep, dependency('nlohmann_json')])
 
 # ptyd and agentd cross-build for macOS in step 8.
 if not is_macos
@@ -108,9 +109,8 @@ test('palette_model', executable('palette_model_test', 'tests/palette_model_test
 test('browse_model', executable('browse_model_test', 'tests/browse_model_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 test('terminal_bidi', executable('terminal_bidi_test', 'tests/terminal_bidi_test.cpp',
-  dependencies: _desk_ui_dep, cpp_args: _warnings))
+  dependencies: _desk_app_dep, cpp_args: _warnings))
 
-_desk_app_dep = subproject('libdesk-app', default_options: _platform_opt + ['shared_app_lib=true']).get_variable('desk_app_dep')
 _agentd_path = ['-DANDROMEDA_AGENTD_PATH="' + get_option('prefix') / get_option('libexecdir') / 'andromeda' / 'andromeda-agentd' + '"']
 if not is_macos
 test('agent_host', executable('agent_host_test', 'tests/agent_host_test.cpp', 'src/agent_host.cpp', 'src/agent_kind.cpp',

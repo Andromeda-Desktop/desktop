@@ -80,6 +80,8 @@ RULES = {
                      r"\bstd::fs::\w+\s*\(|\bPath::new\([^;]*\)\.exists\(\)", ()),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
                        ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
+    "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",
+                    ("apps/",), ("meson.build",), r"subproject\('libdesk-ui'|\b_?desk_ui_dep\b", ()),
 }
 
 
