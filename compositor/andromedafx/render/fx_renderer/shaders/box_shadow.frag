@@ -67,6 +67,16 @@ float corner_alpha(
 );
 
 void main() {
+  float clip_corner_alpha = corner_alpha(
+      clip_size - 1.5, clip_position + 0.75, true, clip_radius_top_left, clip_radius_top_right, clip_radius_bottom_left,
+      clip_radius_bottom_right
+  );
+  // The cut under the shape is 0 whatever the shadow is: skip the integral there (a third of a tile shadow on gen9).
+  if (clip_corner_alpha <= 0.0) {
+    gl_FragColor = vec4(0.0);
+    return;
+  }
+
   float shadow_alpha;
   if (blur_sigma <= 0.0) {
     shadow_alpha = v_color.a;
@@ -77,12 +87,6 @@ void main() {
             position + blur_sigma, position + size - blur_sigma, gl_FragCoord.xy, blur_sigma * 0.5, corner_radius
         );
   }
-
-  // Clipping
-  float clip_corner_alpha = corner_alpha(
-      clip_size - 1.5, clip_position + 0.75, true, clip_radius_top_left, clip_radius_top_right, clip_radius_bottom_left,
-      clip_radius_bottom_right
-  );
 
   gl_FragColor = vec4(v_color.rgb, shadow_alpha) * clip_corner_alpha;
 }
