@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "dbus/session_bus.h"
+#include "dbus/reply_log.h"
 
 #include <cstdint>
 #include <optional>
@@ -172,7 +173,7 @@ void DesktopFileOps::apply(const std::string& path, const Properties& changed) {
     job.proxy->callMethodAsync("ResolveConflict")
         .onInterface(kJobInterface)
         .withArguments(std::string("keep_both"), true)
-        .uponReplyInvoke([](std::optional<sdbus::Error>) {});
+        .uponReplyInvoke(logReply(kLog, "ResolveConflict"));
   } else if (finished(value)) {
     const auto undoable = changed.find("Undoable");
     finish(path, value, undoable != changed.end() && undoable->second.get<bool>());
@@ -248,7 +249,7 @@ std::optional<DesktopFileOps::Progress> DesktopFileOps::progress() const {
 
 void DesktopFileOps::cancelProgress() {
   if (const Job* job = shown(); job != nullptr) {
-    job->proxy->callMethodAsync("Cancel").onInterface(kJobInterface).uponReplyInvoke([](std::optional<sdbus::Error>) {});
+    job->proxy->callMethodAsync("Cancel").onInterface(kJobInterface).uponReplyInvoke(logReply(kLog, "Cancel", ReplyFailure::Debug));
   }
 }
 

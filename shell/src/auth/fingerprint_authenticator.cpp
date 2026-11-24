@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "dbus/system_bus.h"
 #include "i18n/i18n.h"
+#include "dbus/reply_log.h"
 
 #include <chrono>
 #include <map>
@@ -272,8 +273,7 @@ void FingerprintAuthenticator::stopVerify() {
 // The proxy stays until the next device reply replaces it: this can run inside one of its own reply handlers.
 void FingerprintAuthenticator::releaseDevice() {
   try {
-    m_device->callMethodAsync("Release").onInterface(kDeviceInterface).uponReplyInvoke([](std::optional<sdbus::Error>) {
-    });
+    m_device->callMethodAsync("Release").onInterface(kDeviceInterface).uponReplyInvoke(logReply(kLog, "Release", ReplyFailure::Debug));
     kLog.info("released fingerprint device");
   } catch (const sdbus::Error& e) {
     kLog.debug("could not release fingerprint device: {}", e.what());

@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
+#include "dbus/reply_log.h"
 
 #include <algorithm>
 #include <set>
@@ -309,7 +310,7 @@ void FileOpsClient::cancel(const std::string& jobPath) {
   if (const auto it = m_jobProxies.find(jobPath); it != m_jobProxies.end()) {
     // Window destructors cancel their jobs, so this must not throw when the bus is already gone.
     try {
-      it->second->callMethodAsync("Cancel").onInterface(kJobInterface).uponReplyInvoke([](std::optional<sdbus::Error>) {});
+      it->second->callMethodAsync("Cancel").onInterface(kJobInterface).uponReplyInvoke(logReply(kLog, "Cancel", ReplyFailure::Debug));
     } catch (const sdbus::Error& e) {
       kLog.debug("cancel {}: {}", jobPath, e.getMessage());
     }

@@ -4,6 +4,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "dbus/session_bus.h"
+#include "dbus/reply_log.h"
 
 #include <glib.h>
 #include <sdbus-c++/sdbus-c++.h>
@@ -230,7 +231,7 @@ void PrintJobs::close(std::uint32_t note) {
     m_proxy->callMethodAsync("CloseNotification")
         .onInterface(kInterface)
         .withArguments(note)
-        .uponReplyInvoke([](std::optional<sdbus::Error>) {});
+        .uponReplyInvoke(logReply(kLog, "CloseNotification", ReplyFailure::Debug));
   } catch (const sdbus::Error& e) {
     kLog.warn("close notification: {}", e.what());
   }

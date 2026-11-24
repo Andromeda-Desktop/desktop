@@ -7,6 +7,7 @@
 #include "dbus/service_notice.h"
 #include "system/rfkill_helper.h"
 #include "util/string_utils.h"
+#include "dbus/reply_log.h"
 
 #include <algorithm>
 #include <chrono>
@@ -554,7 +555,7 @@ void BluetoothService::setPowered(bool enabled) {
     if (!enabled && m_state.discovering) {
       m_impl->adapter->callMethodAsync("StopDiscovery")
           .onInterface(kAdapterInterface)
-          .uponReplyInvoke([](std::optional<sdbus::Error>) {}); // NOLINT(performance-unnecessary-value-param)
+          .uponReplyInvoke(logReply(kLog, "StopDiscovery"));
     }
     m_impl->adapter->setPropertyAsync("Powered")
         .onInterface(kAdapterInterface)

@@ -97,6 +97,9 @@ RULES = {
                     "(C13); the compositor has no libdesk-system and keeps its sd-bus matches",
                     CPP_DIRS, CPP, r"uponSignal\(\"NameOwnerChanged\"\)|member='NameOwnerChanged'",
                     ("libdesk-system/src/dbus/name_owner_watch.", "compositor/src/")),
+    "reply-drop": ("an async D-Bus reply nothing reads goes to logReply (libdesk-system dbus/reply_log.h): failures "
+                   "are logged, not dropped (C13)", CPP_DIRS, CPP,
+                   r"uponReplyInvoke\(\[[^\]]*\]\(std::optional<sdbus::Error>[^)]*\)\s*\{\s*\}", ()),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
                        ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",

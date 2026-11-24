@@ -1,6 +1,7 @@
 #include "shell/bar/widgets/dbus_menu_client.h"
 
 #include "core/log.h"
+#include "dbus/reply_log.h"
 
 #include <cctype>
 #include <chrono>
@@ -139,7 +140,7 @@ void DbusMenuClient::event(std::int32_t id, const char* name) {
         .onInterface(kInterface)
         .withTimeout(kTimeout)
         .withArguments(id, std::string(name), sdbus::Variant{std::int32_t{0}}, now)
-        .uponReplyInvoke([](std::optional<sdbus::Error>) {});
+        .uponReplyInvoke(logReply(kLog, "Event", ReplyFailure::Debug));
   } catch (const sdbus::Error& e) {
     kLog.debug("Event {} on {} failed: {}", name, m_service, e.what());
   }

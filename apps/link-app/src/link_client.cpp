@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
+#include "dbus/reply_log.h"
 
 #include <cctype>
 #include <cerrno>
@@ -867,7 +868,7 @@ namespace linkapp {
             if (!error && upload->offset == 0 && !last) {
               m_proxy->callMethodAsync("DeleteFile").onInterface(kInterface)
                   .withArguments(upload->device, upload->files[upload->index].second)
-                  .uponReplyInvoke([](std::optional<sdbus::Error>) {});
+                  .uponReplyInvoke(logReply(kLog, "DeleteFile", ReplyFailure::Debug));
             }
             return;
           }

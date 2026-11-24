@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "dbus/systemd/systemd_unit_name.h"
+#include "dbus/reply_log.h"
 
 #include <algorithm>
 #include <optional>
@@ -245,7 +246,7 @@ void SystemdUnitsService::setLive(bool live) {
   }
   if (!live) {
     m_signalSlots.clear();
-    m_proxy->callMethodAsync("Unsubscribe").onInterface(kManagerInterface).uponReplyInvoke([](std::optional<sdbus::Error>) {});
+    m_proxy->callMethodAsync("Unsubscribe").onInterface(kManagerInterface).uponReplyInvoke(logReply(kLog, "Unsubscribe", ReplyFailure::Debug));
     return;
   }
   // No UnitNew: systemd emits it each time a property read loads a garbage-collected unit, so

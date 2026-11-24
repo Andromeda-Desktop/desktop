@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
+#include "dbus/reply_log.h"
 
 #include <chrono>
 #include <map>
@@ -140,7 +141,7 @@ void LockClient::sendLock(const std::string& reason) {
 
 void LockClient::call(const char* method) {
   if (m_state.owned()) {
-    m_lock->callMethodAsync(method).onInterface(kLockInterface).uponReplyInvoke([](std::optional<sdbus::Error>) {});
+    m_lock->callMethodAsync(method).onInterface(kLockInterface).uponReplyInvoke(logReply(kLog, method));
   }
 }
 

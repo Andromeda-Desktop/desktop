@@ -1,6 +1,7 @@
 #include "shell/bar/widgets/gtk_menu_client.h"
 
 #include "core/log.h"
+#include "dbus/reply_log.h"
 
 #include <algorithm>
 #include <cctype>
@@ -112,7 +113,7 @@ GtkMenuClient::~GtkMenuClient() {
   *m_alive = false;
   if (m_menus != nullptr && !m_subscribed.empty()) {
     try {
-      m_menus->callMethodAsync("End").onInterface(kMenus).withArguments(m_subscribed).uponReplyInvoke([](std::optional<sdbus::Error>) {});
+      m_menus->callMethodAsync("End").onInterface(kMenus).withArguments(m_subscribed).uponReplyInvoke(logReply(kLog, "End", ReplyFailure::Debug));
     } catch (const sdbus::Error&) {
     }
   }
@@ -316,7 +317,7 @@ void GtkMenuClient::activate(std::int32_t id) {
         .onInterface(kActions)
         .withTimeout(kTimeout)
         .withArguments(action.substr(dot + 1), parameter, std::map<std::string, sdbus::Variant>{})
-        .uponReplyInvoke([](std::optional<sdbus::Error>) {});
+        .uponReplyInvoke(logReply(kLog, "Activate"));
   } catch (const sdbus::Error& e) {
     kLog.debug("org.gtk.Actions.Activate {} on {} failed: {}", action, m_service, e.what());
   }
