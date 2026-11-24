@@ -29,10 +29,11 @@ with_noctalia '
   "$NOCTALIA" msg panel-open notification-center > /dev/null
   settle
   cp "$OUT/now.png" "$OUT/1-open.png"
-  # Column w 360 centred under the island, head capsule 48..96, first card from 104: its body, left of the clear mark.
-  # The banner would sit over this point if the open had not cleared it.
-  "$POINTER" 1280 720 move 560 140 > /dev/null
-  "$POINTER" 1280 720 move 560 140 click 272 > /dev/null
+  # The panel hangs under the bell: its layer centre column, 115 px down (head capsule, then the first card), is the
+  # card body. The banner would sit over this point if the open had not cleared it.
+  read -r cx cy < <("$ANDROMEDA" layers --json | jq -r "[.[] | select(.namespace == \"noctalia-panel\" and .mapped)][0] | \"\(.x + (.w / 2 | floor)) \(.y + 115)\"")
+  "$POINTER" 1280 720 move "$cx" "$cy" > /dev/null
+  "$POINTER" 1280 720 move "$cx" "$cy" click 272 > /dev/null
   defaulted() { grep -q "default" "$OUT/default.txt"; }
   poll_for 5 defaulted || fail "a card body click did not send default (default.txt: $(cat "$OUT/default.txt"))"
   echo PASS
