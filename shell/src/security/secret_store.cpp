@@ -443,15 +443,8 @@ namespace security {
         return result->get<sdbus::ObjectPath>();
       }
 
-      // False when the user dismissed the prompt.
-      bool createItem(
-          const sdbus::ObjectPath& collection, const std::map<std::string, std::string>& attributes,
-          std::span<const std::uint8_t> bytes, const std::string& label
-      ) {
-        const std::map<std::string, sdbus::Variant> properties{
-            {"org.freedesktop.Secret.Item.Label", sdbus::Variant{label}},
-            {"org.freedesktop.Secret.Item.Attributes", sdbus::Variant{attributes}},
-        };
+      // bytes as a Secret of this session: encrypted when the session is. The caller wipes it.
+      Secret outgoing(std::span<const std::uint8_t> bytes) {
         Secret secret{
             m_session, std::vector<std::uint8_t>{}, std::vector<std::uint8_t>(bytes.begin(), bytes.end()),
             std::string{"application/octet-stream"}
@@ -462,6 +455,19 @@ namespace security {
           std::get<1>(secret) = std::move(iv);
           std::get<2>(secret) = std::move(cipher);
         }
+        return secret;
+      }
+
+      // False when the user dismissed the prompt.
+      bool createItem(
+          const sdbus::ObjectPath& collection, const std::map<std::string, std::string>& attributes,
+          std::span<const std::uint8_t> bytes, const std::string& label
+      ) {
+        const std::map<std::string, sdbus::Variant> properties{
+            {"org.freedesktop.Secret.Item.Label", sdbus::Variant{label}},
+            {"org.freedesktop.Secret.Item.Attributes", sdbus::Variant{attributes}},
+        };
+        Secret secret = outgoing(bytes);
         sdbus::ObjectPath item;
         sdbus::ObjectPath prompt;
         try {
@@ -472,6 +478,29 @@ namespace security {
         }
         wipe(secret);
         return prompt == kNoObject || runPrompt(prompt).has_value();
+      }
+
+      // gnome-keyring's private call: the login keyring's password from current to next. False without a login
+      // keyring. Both secrets travel in this session, encrypted when it is (gkd-secret-change.c decodes per session).
+      bool changeLoginPassword(std::span<const std::uint8_t> current, std::span<const std::uint8_t> next) {
+        sdbus::ObjectPath collection;
+        call(*m_service, kServiceInterface, "ReadAlias", std::string{"login"}) >> collection;
+        if (collection == kNoObject) {
+          return false;
+        }
+        Secret original = outgoing(current);
+        Secret master = outgoing(next);
+        try {
+          (void)call(*m_service, "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface", "ChangeWithMasterPassword",
+                     collection, original, master);
+        } catch (...) {
+          wipe(original);
+          wipe(master);
+          throw;
+        }
+        wipe(original);
+        wipe(master);
+        return true;
       }
 
       // False when the user dismissed the prompt.
@@ -784,6 +813,23 @@ namespace security {
 
     std::unique_ptr<SecretStoreBackend> makeSecretServiceBackend() { return std::make_unique<SecretServiceBackend>(); }
   } // namespace
+
+  bool changeLoginKeyringPassword(std::span<const std::uint8_t> current, std::span<const std::uint8_t> next) {
+    try {
+      SecretService service(-1);
+      (void)service.changeLoginPassword(current, next);
+      return true;
+    } catch (const sdbus::Error& e) {
+      // No Secret Service, or another one (KeePassXC, KWallet): no keyring is tied to the login.
+      const std::string_view name = e.getName();
+      if (name == "org.freedesktop.DBus.Error.ServiceUnknown" || name == "org.freedesktop.DBus.Error.UnknownMethod"
+          || name == "org.freedesktop.DBus.Error.UnknownInterface") {
+        return true;
+      }
+      kLog.warn("login keyring password not changed: {}", e.what());
+      return false;
+    }
+  }
 
   SecretStoreAttributes secretStoreAttributes(const SecretId& id) {
     return {

@@ -138,4 +138,8 @@ namespace security {
     std::unique_ptr<Impl> m_impl;
   };
 
+  // Changes the gnome-keyring login keyring's password, as gnome-control-center does. True also when nothing needs
+  // it: no Secret Service, no login keyring, or another service.
+  [[nodiscard]] bool changeLoginKeyringPassword(std::span<const std::uint8_t> current, std::span<const std::uint8_t> next);
+
 } // namespace security

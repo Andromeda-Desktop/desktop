@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "core/sys/sys.h"
+#include "security/secret_store.h"
 
 #include <algorithm>
 #include <cctype>
@@ -12,7 +13,6 @@
 #include <cstring>
 #include <poll.h>
 #include <pty.h>
-#include <sdbus-c++/sdbus-c++.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
@@ -39,13 +39,6 @@ namespace password_change {
       s.clear();
     }
 
-    void clear(std::vector<std::uint8_t>& v) {
-      volatile std::uint8_t* p = v.data();
-      for (std::size_t i = 0; i < v.size(); ++i) {
-        p[i] = 0;
-      }
-      v.clear();
-    }
 
     std::string lower(std::string s) {
       std::ranges::transform(s, s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -267,67 +260,15 @@ namespace password_change {
       return false;
     }
 
-    using Secret = sdbus::Struct<sdbus::ObjectPath, std::vector<std::uint8_t>, std::vector<std::uint8_t>, std::string>;
-
-    // gnome-keyring keeps the login keyring under the old password unless pam_gnome_keyring is in the password
-    // stack; this sets it the way gnome-control-center does. A missing daemon or login keyring is not a failure.
-    bool changeKeyring(const std::string& current, const std::string& next) {
-      try {
-        auto bus = sdbus::createSessionBusConnection();
-        const sdbus::ServiceName service{"org.freedesktop.secrets"};
-        auto secrets = sdbus::createProxy(*bus, service, sdbus::ObjectPath{"/org/freedesktop/secrets"});
-        sdbus::ObjectPath collection;
-        secrets->callMethod("ReadAlias").onInterface("org.freedesktop.Secret.Service").withArguments(std::string{"login"})
-            .storeResultsTo(collection);
-        if (collection == "/") {
-          return true;
-        }
-        sdbus::Variant output;
-        sdbus::ObjectPath session;
-        secrets->callMethod("OpenSession")
-            .onInterface("org.freedesktop.Secret.Service")
-            .withArguments(std::string{"plain"}, sdbus::Variant{std::string{}})
-            .storeResultsTo(output, session);
-        std::vector<std::uint8_t> oldBytes(current.begin(), current.end());
-        std::vector<std::uint8_t> newBytes(next.begin(), next.end());
-        Secret original{session, std::vector<std::uint8_t>{}, oldBytes, std::string{"text/plain"}};
-        Secret master{session, std::vector<std::uint8_t>{}, newBytes, std::string{"text/plain"}};
-        bool ok = true;
-        try {
-          secrets->callMethod("ChangeWithMasterPassword")
-              .onInterface("org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface")
-              .withArguments(collection, original, master);
-        } catch (const sdbus::Error& e) {
-          // Another Secret Service (KeePassXC, KWallet) has no such call: its keyring is not tied to the login.
-          const std::string_view name = e.getName();
-          ok = name == "org.freedesktop.DBus.Error.UnknownMethod" || name == "org.freedesktop.DBus.Error.UnknownInterface";
-          if (!ok) {
-            kLog.warn("login keyring password not changed: {}", e.what());
-          }
-        }
-        clear(oldBytes);
-        clear(newBytes);
-        clear(std::get<2>(original));
-        clear(std::get<2>(master));
-        auto sessionProxy = sdbus::createProxy(*bus, service, session);
-        sessionProxy->callMethod("Close").onInterface("org.freedesktop.Secret.Session");
-        return ok;
-      } catch (const sdbus::Error& e) {
-        if (std::string_view(e.getName()) == "org.freedesktop.DBus.Error.ServiceUnknown") {
-          return true;
-        }
-        kLog.warn("login keyring not reachable: {}", e.what());
-        return false;
-      }
-    }
-
   } // namespace
 
   Result change(std::string& current, std::string& next) {
     Result result = runPasswd(current, next);
     if (result.ok) {
       // With pam_gnome_keyring in the passwd stack, PAM has already changed the keyring; a second change would fail.
-      result.keyringFailed = !pamChangesKeyring("passwd", 0) && !changeKeyring(current, next);
+      result.keyringFailed = !pamChangesKeyring("passwd", 0) && !security::changeLoginKeyringPassword(
+          std::span(reinterpret_cast<const std::uint8_t*>(current.data()), current.size()),
+          std::span(reinterpret_cast<const std::uint8_t*>(next.data()), next.size()));
       kLog.info("password changed (keyring {})", result.keyringFailed ? "kept the old password" : "follows");
     } else {
       kLog.info("password not changed: {}", result.wrongCurrent ? "wrong current password" : result.message);
