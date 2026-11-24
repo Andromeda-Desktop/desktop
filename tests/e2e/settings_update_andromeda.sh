@@ -17,6 +17,7 @@ BEFORE_NOCTALIA='
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
   for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
   grep -q ready "$OUT/mock.log" || { echo "FAIL: mock update did not start"; exit 1; }
+  start_andromeda_system
 ' with_noctalia '
   wait_calls() {  # wait_calls PATTERN COUNT: the mock logged PATTERN at least COUNT times (5 s)
     for _ in $(seq 50); do [ "$(grep -c "$1" "$OUT/calls.txt" || true)" -ge "$2" ] && return 0; sleep 0.1; done
@@ -28,7 +29,7 @@ BEFORE_NOCTALIA='
   sleep 0.5
   grim "$OUT/andromeda-available-dark.png"
   # Position on the 1280x720 headless output (the screenshot shows it).
-  "$POINTER" 1280 720 move 990 170 click 272 > /dev/null   # Update Andromeda
+  "$POINTER" 1280 720 move 975 225 click 272 > /dev/null   # Update Andromeda
   wait_calls "^UpgradeAndromeda" 1
   sleep 1
   grim "$OUT/andromeda-needs-system-dark.png"

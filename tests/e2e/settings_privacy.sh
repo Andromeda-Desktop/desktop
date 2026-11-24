@@ -14,21 +14,22 @@ BEFORE_NOCTALIA='
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
   for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
   grep -q ready "$OUT/mock.log" || { echo "FAIL: mock gaze did not start"; exit 1; }
+  start_andromeda_system
 ' with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   wait_calls() {  # wait_calls PATTERN COUNT (5 s)
     for _ in $(seq 50); do [ "$(grep -c "$1" "$OUT/calls.txt" || true)" -ge "$2" ] && return 0; sleep 0.1; done
     fail "mock never saw $1 x$2"
   }
-  click() { "$POINTER" 1280 720 move "$1" "$2" click 272 > /dev/null; sleep 0.5; }
+  click() { "$POINTER" 1280 720 move "$1" "$2" click 272 > /dev/null; sleep 1.5; }
   "$NOCTALIA" msg settings-open privacy > /dev/null
   wait_calls "^ListFaces" 1
   sleep 0.5
   grim "$OUT/privacy-main.png"
   # Positions on the 1280x720 headless output (screenshots in $OUT show them).
-  click 989 251    # Face Unlock chevron (only the chevron opens the page; the window may open narrow)
+  click 1034 234    # Face Unlock chevron (only the chevron opens the page; the window may open narrow)
   grim "$OUT/privacy-face.png"
-  click 969 250    # Remove on "With glasses"
+  click 1011 291    # Remove on "With glasses"
   grim "$OUT/privacy-remove-alert.png"
   click 709 366    # alert Remove
   wait_calls "^DeleteFace .* With glasses" 1
@@ -44,7 +45,7 @@ BEFORE_NOCTALIA='
   "$NOCTALIA" msg settings-close > /dev/null
   "$NOCTALIA" msg settings-open privacy > /dev/null
   sleep 1
-  click 989 291    # Fingerprint chevron, one row under Face Unlock
+  click 1034 274    # Fingerprint chevron, one row under Face Unlock
   grim "$OUT/privacy-finger.png"
 '
 echo PASS

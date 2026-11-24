@@ -11,16 +11,13 @@ printf '\n[battery]\nprofile_on_ac = "balanced"\nprofile_on_battery = "power-sav
   >> "$RUNTIME/home/.config/andromeda/shell/config.toml"
 
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_power.py"
-SYSTEM_BIN=${ANDROMEDA_SYSTEM:-$(cd "$(dirname "$0")/../.." && pwd)/system/target/debug/andromeda-system}
 # The mock must own its names before the shell starts, so it runs on the bus the shell will use.
 with_noctalia '
   kill %1; wait %1 2> /dev/null || true
   python3 '"$MOCK"' "$OUT/profiles.txt" > "$OUT/mock.log" 2>&1 &
   mock=$!
   for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
-  ANDROMEDA_SYSTEM_TEST=1 '"$SYSTEM_BIN"' > "$OUT/system.log" 2>&1 &
-  system=$!
-  for _ in $(seq 50); do busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" status org.andromeda.System1 > /dev/null 2>&1 && break; sleep 0.1; done
+  start_andromeda_system
   "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
   shell=$!
   for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done

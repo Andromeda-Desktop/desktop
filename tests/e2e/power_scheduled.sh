@@ -13,6 +13,7 @@ MOCK="$(cd "$(dirname "$0")" && pwd)/mock_logind.py"
 BEFORE_NOCTALIA='
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
   for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
+  start_andromeda_system
 ' with_noctalia '
   schedule() {
     dbus-send --bus="$DBUS_SYSTEM_BUS_ADDRESS" --print-reply --dest=org.freedesktop.login1 /org/freedesktop/login1 \

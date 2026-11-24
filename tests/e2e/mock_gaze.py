@@ -130,6 +130,7 @@ class Gaze(dbus.service.Object):
 class Login(dbus.service.Object):
     def __init__(self, bus):
         super().__init__(bus, "/org/freedesktop/login1")
+        self.pipes = []
 
     @dbus.service.signal(LOGIN, signature="b")
     def PrepareForSleep(self, sleeping):
@@ -138,6 +139,14 @@ class Login(dbus.service.Object):
     @dbus.service.method(TEST, in_signature="b")
     def Sleep(self, sleeping):
         self.PrepareForSleep(sleeping)
+
+    @dbus.service.method(LOGIN, in_signature="ssss", out_signature="h")
+    def Inhibit(self, what, who, why, mode):
+        read_end, write_end = os.pipe()
+        self.pipes.append(read_end)
+        fd = dbus.types.UnixFd(write_end)
+        os.close(write_end)
+        return fd
 
     @dbus.service.method(LOGIN, in_signature="u", out_signature="o")
     def GetSessionByPID(self, pid):

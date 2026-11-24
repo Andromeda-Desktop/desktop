@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Session power actions reach logind directly: a mock org.freedesktop.login1 on the test's private system bus records
-# each call while `noctalia msg session suspend|reboot|shutdown|hibernate|suspend-then-hibernate` runs. Hibernate and
+# Session power actions reach logind through andromeda-system: a mock org.freedesktop.login1 on the test's private
+# system bus records each *WithFlags call while `noctalia msg session suspend|reboot|shutdown|hibernate|suspend-then-hibernate` runs. Hibernate and
 # suspend-then-hibernate are also gated on CanHibernate/CanSuspendThenHibernate: with the mock reporting "no", the
 # call to logind must never happen. Writes calls.txt to $OUT (default ./artifacts/power-actions).
 set -euo pipefail
@@ -17,6 +17,7 @@ with_noctalia '
     mock=$!
     for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
     grep -q ready "$OUT/mock.log" || { echo "FAIL: mock logind did not start: $(cat "$OUT/mock.log")"; exit 1; }
+    start_andromeda_system
   }
   expect() {
     local action=$1 want=$2
@@ -39,16 +40,16 @@ with_noctalia '
   }
 
   start_mock
-  expect suspend "Suspend True"
-  expect reboot "Reboot True"
-  expect shutdown "PowerOff True"
-  expect hibernate "Hibernate True"
-  expect suspend-then-hibernate "SuspendThenHibernate True"
-  kill "$mock"; wait "$mock" 2>/dev/null || true
+  expect suspend "SuspendWithFlags 1"
+  expect reboot "RebootWithFlags 1"
+  expect shutdown "PowerOffWithFlags 1"
+  expect hibernate "HibernateWithFlags 1"
+  expect suspend-then-hibernate "SuspendThenHibernateWithFlags 1"
+  kill "$mock" "$system"; wait "$mock" "$system" 2>/dev/null || true
 
   MOCK_CAN_HIBERNATE=no MOCK_CAN_SUSPEND_THEN_HIBERNATE=no start_mock
-  expect_no_call hibernate "Hibernate True"
-  expect_no_call suspend-then-hibernate "SuspendThenHibernate True"
-  kill "$mock"
+  expect_no_call hibernate "HibernateWithFlags 1"
+  expect_no_call suspend-then-hibernate "SuspendThenHibernateWithFlags 1"
+  kill "$mock" "$system"
 '
 echo "PASS: $(tr '\n' ',' < "$OUT/calls.txt"); artifacts: $OUT"

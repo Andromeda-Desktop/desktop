@@ -32,30 +32,6 @@ class Manager(Delayed, dbus.service.Object):
         self.scheduled = ("", 2**64 - 1)
         self.preparing = ""
 
-    def record(self, method, interactive):
-        with open(self.log, "a") as out:
-            out.write(f"{method} {bool(interactive)}\n")
-
-    @dbus.service.method(MANAGER, in_signature="b")
-    def Suspend(self, interactive):
-        self.record("Suspend", interactive)
-
-    @dbus.service.method(MANAGER, in_signature="b")
-    def Reboot(self, interactive):
-        self.record("Reboot", interactive)
-
-    @dbus.service.method(MANAGER, in_signature="b")
-    def PowerOff(self, interactive):
-        self.record("PowerOff", interactive)
-
-    @dbus.service.method(MANAGER, in_signature="b")
-    def Hibernate(self, interactive):
-        self.record("Hibernate", interactive)
-
-    @dbus.service.method(MANAGER, in_signature="b")
-    def SuspendThenHibernate(self, interactive):
-        self.record("SuspendThenHibernate", interactive)
-
     @dbus.service.method(MANAGER, in_signature="ssss", out_signature="h")
     def Inhibit(self, what, who, why, mode):
         self.record_line(f"Inhibit {what} {who} {mode}")
@@ -85,6 +61,30 @@ class Manager(Delayed, dbus.service.Object):
     @dbus.service.method(MANAGER, in_signature="t")
     def PowerOffWithFlags(self, flags):
         self.record_line(f"PowerOffWithFlags {flags}")
+
+    @dbus.service.method(MANAGER, in_signature="t")
+    def HibernateWithFlags(self, flags):
+        self.record_line(f"HibernateWithFlags {flags}")
+
+    @dbus.service.method(MANAGER, in_signature="t")
+    def SuspendThenHibernateWithFlags(self, flags):
+        self.record_line(f"SuspendThenHibernateWithFlags {flags}")
+
+    @dbus.service.method(MANAGER, out_signature="a(susso)")
+    def ListSessions(self):
+        return []
+
+    @dbus.service.method(MANAGER, out_signature="s")
+    def CanReboot(self):
+        return "yes"
+
+    @dbus.service.method(MANAGER, out_signature="s")
+    def CanPowerOff(self):
+        return "yes"
+
+    @dbus.service.method(MANAGER, out_signature="s")
+    def CanSuspend(self):
+        return "yes"
 
     @dbus.service.method(MANAGER, out_signature="a(ssssuu)")
     def ListInhibitors(self):
