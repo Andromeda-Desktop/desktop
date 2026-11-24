@@ -585,6 +585,13 @@ void LiveActivityIsland::ensureSurfaces() {
       prepareFrame(*instPtr, needsUpdate, needsLayout);
     });
     inst->surface->setAnimationManager(&inst->animations);
+    inst->surface->setFrameTickCallback([this, instPtr](float deltaMs) { stepBannerSpring(*instPtr, deltaMs); });
+    // A tick asked for while hidden is dropped: a settling card asks again when it is shown.
+    inst->surface->setPresenceChangedCallback([instPtr](SurfacePresence presence) {
+      if (presence == SurfacePresence::Shown && instPtr->dragSpring) {
+        instPtr->surface->requestFrameTick();
+      }
+    });
     if (!inst->surface->initialize(output.output)) {
       kLog.warn("failed to create the center island surface on {}", output.connectorName);
       continue;
@@ -1302,7 +1309,7 @@ void LiveActivityIsland::finishReveal(Instance& inst) {
   if (inst.morph.shown() == Face::Rest && inst.dsk != nullptr && !inst.dsk->hasElevationProperty()) {
     inst.dsk->setElevation(DskSurfaceClient::Elevation::None);
   }
-  if (inst.morph.shown() != Face::Banner && inst.dragOffset != 0.0F && !inst.dragTimer.active()) {
+  if (inst.morph.shown() != Face::Banner && inst.dragOffset != 0.0F && !inst.dragSpring) {
     applyBannerOffset(inst, 0.0F);
   }
 }
@@ -2577,7 +2584,7 @@ void LiveActivityIsland::bannerDragStart(Instance& inst, float x, float y) {
   if (!m_banner.has_value()) {
     return;
   }
-  inst.dragTimer.stop();
+  inst.dragSpring.reset();
   inst.scrollEnd.stop();
   inst.dragBannerId = m_banner->id;
   inst.dragging = true;
@@ -2764,7 +2771,6 @@ void LiveActivityIsland::startBannerSpring(Instance& inst, bool dismiss) {
   // The card keeps one row or column on the output: a surface with nothing visible gets no frame callbacks, and its
   // client would never draw again.
   const float target = dismiss ? bannerLimit(inst) : 0.0F;
-  auto* instPtr = &inst;
   const bool horizontal = inst.dragAxis == BannerSwipeAxis::Horizontal;
   const bool reduced = MotionService::instance().reduced();
   // A sideways release settles on page with the finger's velocity; reduced motion settles on close without it.
@@ -2773,38 +2779,29 @@ void LiveActivityIsland::startBannerSpring(Instance& inst, bool dismiss) {
                                             : Tokens::springMorph;
   const float velocity = horizontal && reduced ? 0.0F : inst.dragVelocity * 1000.0F;
   inst.dragDismiss = dismiss;
-  // A timer steps the spring: a card swiped off the output gets no frame callbacks, so the frame clock would stall.
-  inst.dragSpring = desk::motion::Spring(
-      inst.dragOffset, target, Style::spring(token), velocity
-  );
-  inst.dragLastAt = std::chrono::steady_clock::now();
-  inst.dragTimer.startRepeating(std::chrono::milliseconds(8), [this, instPtr] {
-    if (instPtr->dsk == nullptr) {
-      instPtr->dragTimer.stop();
-      return;
-    }
-    if (instPtr->dragDismiss && bannerDragStale(*instPtr)) {
-      const Tokens::Spring& back = Tokens::springMorph;
-      instPtr->dragDismiss = false;
-      instPtr->dragSpring = desk::motion::Spring(
-          instPtr->dragSpring.value(), 0.0, Style::spring(back),
-          instPtr->dragSpring.velocity()
-      );
-    }
-    const auto now = std::chrono::steady_clock::now();
-    const double dt = std::chrono::duration<double>(now - instPtr->dragLastAt).count();
-    instPtr->dragLastAt = now;
-    applyBannerOffset(*instPtr, static_cast<float>(instPtr->dragSpring.step(dt)));
-    if (!instPtr->dragSpring.settled()) {
-      return;
-    }
-    // stop() frees this closure: keep what follows out of its captures.
-    LiveActivityIsland* const self = this;
-    Instance* const inst = instPtr;
-    const bool dismissed = inst->dragDismiss;
-    inst->dragTimer.stop();
-    self->finishBannerDrag(*inst, dismissed);
-  });
+  inst.dragSpring.emplace(inst.dragOffset, target, Style::spring(token), velocity);
+  inst.surface->requestFrameTick();
+}
+
+void LiveActivityIsland::stepBannerSpring(Instance& inst, float deltaMs) {
+  if (!inst.dragSpring) {
+    return;
+  }
+  if (inst.dsk == nullptr) {
+    inst.dragSpring.reset();
+    return;
+  }
+  if (inst.dragDismiss && bannerDragStale(inst)) {
+    inst.dragDismiss = false;
+    inst.dragSpring.emplace(inst.dragSpring->value(), 0.0, Style::spring(Tokens::springMorph), inst.dragSpring->velocity());
+  }
+  applyBannerOffset(inst, static_cast<float>(inst.dragSpring->step(deltaMs / 1000.0)));
+  if (!inst.dragSpring->settled()) {
+    inst.surface->requestFrameTick();
+    return;
+  }
+  inst.dragSpring.reset();
+  finishBannerDrag(inst, inst.dragDismiss);
 }
 
 void LiveActivityIsland::finishBannerDrag(Instance& inst, bool dismiss) {

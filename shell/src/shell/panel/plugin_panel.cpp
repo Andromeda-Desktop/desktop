@@ -28,7 +28,7 @@
 namespace {
 
   constexpr Logger kLog("plugin-panel");
-  constexpr int kTickIntervalMs = 1000;
+  constexpr auto kTickInterval = std::chrono::seconds(1);
   constexpr float kDefaultPanelWidth = 480.0F;
   constexpr float kDefaultPanelHeight = 400.0F;
 
@@ -327,7 +327,7 @@ void PluginPanel::startTickTimer() {
     m_tickTimer.stop();
     return;
   }
-  m_tickTimer.startRepeating(std::chrono::milliseconds(kTickIntervalMs), [this] {
+  m_tickTimer.startRepeating(kTickInterval, [this] {
     if (m_runtime != nullptr) {
       (void)m_runtime->enqueueUpdate(makeScriptSnapshot());
     }

@@ -271,8 +271,7 @@ private:
     float dragVelocity = 0.0F;   // px/ms along dragAxis
     Timer scrollEnd;             // the scroll drag releases when its events stop
     std::chrono::steady_clock::time_point dragLastAt;
-    desk::motion::Spring dragSpring;
-    Timer dragTimer;
+    std::optional<desk::motion::Spring> dragSpring; // engaged while a released card settles, stepped by frame ticks
     bool dragging = false;
     bool dragMoved = false;
     bool dragDismiss = false;
@@ -325,6 +324,7 @@ private:
   void setBannerHover(Instance& inst, bool hover);
   void closeBanner();
   void startBannerSpring(Instance& inst, bool dismiss);
+  void stepBannerSpring(Instance& inst, float deltaMs);
   [[nodiscard]] bool bannerDragStale(const Instance& inst) const;
   void finishBannerDrag(Instance& inst, bool dismiss);
   void applyBannerOffset(Instance& inst, float offset);

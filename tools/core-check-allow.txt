@@ -2,14 +2,11 @@
 app-executable apps/link-app/meson.build 1
 app-executable apps/player/meson.build 1
 app-executable apps/viewer/meson.build 1
-clipboard-wait shell/src/clipboard/clipboard_service.cpp 1
 exit-poll apps/terminal/src/agent_host.cpp 1
 exit-poll compositor/src/core/process.cpp 1
 exit-poll libdesk-term/src/pty_session.cpp 1
 exit-poll portal/src/dbus/request.cpp 2
 exit-poll shell/src/shell/lockscreen/lock_helper_process.cpp 1
-radius-scale compositor/src/overview/overview.cpp 2
-radius-scale portal/src/share_picker/main.cpp 3
 raw-spawn apps/terminal/src/agent_host.cpp 1
 raw-spawn compositor/src/cli/debug.cpp 1
 raw-spawn compositor/src/cli/update.cpp 2
@@ -26,6 +23,3 @@ shadow-create compositor/src/scene/hint_rect.cpp 1
 shell-string apps/terminal/src/terminal_window.cpp 1
 shell-string portal/src/dbus/request.cpp 1
 shell-timer shell/src/shell/live_activity/live_activity_island.cpp 1
-shell-timer shell/src/shell/panel/plugin_panel.cpp 1
-shell-timer shell/src/shell/settings/printers_model.cpp 1
-shell-timer shell/src/shell/setup_wizard/setup_wizard_panel.cpp 1

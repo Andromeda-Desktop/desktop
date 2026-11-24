@@ -53,7 +53,7 @@ RULES = {
                    CPP_DIRS, CPP, r"make_unique<DskSurfaceClient>|\bnew DskSurfaceClient\b",
                    ("libdesk-ui/src/wayland/surface.cpp",)),
     "shell-timer": ("shell repeats under 1 s or of unknown interval go through the frame host (C5)",
-                    ("shell/src/shell/",), CPP, r"\bstartRepeating\((?!\s*std::chrono::(seconds|minutes|hours)\b)", ()),
+                    ("shell/src/shell/",), CPP, r"\bstartRepeating\(\s*(?!std::chrono::(?:seconds|minutes|hours)\b)([\w:]*)", ()),
     "const-frame-tick": ("needsFrameTick states a fact, never a constant true (C5)", ("shell/src/",), CPP,
                          r"needsFrameTick\(\)[^{;]*\{\s*return\s+true;", ()),
     "hand-spring": ("springs from tokens via Style::spring, motionSpring in the compositor (C11)", CPP_DIRS, CPP,
@@ -143,6 +143,18 @@ def async_hits(text, rx):
             if any(a <= m.start() <= b for a, b in inside) and not any(a <= m.start() <= b for a, b in blocking)]
 
 
+def outside_function(text, rx, name):
+    """Matches outside the body of function `name` (the one place a rule allows its pattern)."""
+    bodies = [(m.end() - 1, _span_end(text, m.end() - 1, "{", "}"))
+              for m in re.finditer(rf"\b{re.escape(name)}\(\)\s*\{{", text)]
+    return [m.group(0) for m in rx.finditer(text) if not any(a <= m.start() <= b for a, b in bodies)]
+
+
+def whole_seconds(text, name):
+    """True when `name` is a constant defined in `text` as std::chrono seconds, minutes or hours."""
+    return bool(name) and re.search(rf"\b{re.escape(name)}\s*=\s*std::chrono::(?:seconds|minutes|hours)\(", text) is not None
+
+
 def scan():
     found = {}
     files = tracked()
@@ -156,6 +168,10 @@ def scan():
                 text = LINE_COMMENT.sub("", text)
             if rule == "std-fs-async":
                 hits = async_hits(text, rx)
+            elif rule == "clipboard-wait":
+                hits = outside_function(text, rx, "ClipboardService::drainPendingWrites")
+            elif rule == "shell-timer":
+                hits = [m for m in rx.finditer(text) if not whole_seconds(text, m.group(1))]
             else:
                 hits = rx.findall(text) if rule != "app-executable" else [
                     m.group(1) for m in rx.finditer(text) if f"shared_library('{m.group(1)}'" not in text]
