@@ -115,18 +115,14 @@ m=$(mark); keys mod control tap 33 mod none tap 19 tap 18 tap 25 tap 24    # Ctr
 wait_log "$m" 'filter "repo" shows' || fail "the filter did not run"
 filter_ms=$(tail -n +"$((m + 1))" "$OUT/files.log" | grep -oE "filter took [0-9.]+" | grep -oE '[0-9.]+$' | sort -g | tail -n 1)
 report "type-to-filter per key" "$filter_ms" 16 ms
-open_y=$(grep -E "geometry sort-header Size " "$OUT/files.log" | tail -n 1 | awk '{print $NF}')
 esc=$(mark); keys tap 1 tap 1                   # Escape clears, Escape leaves the field
+wait_log "$esc" "search mode off" || fail "Escape did not leave the filter field"
+# The header moves up when the field closes: read only geometry logged after that.
+off=$(awk -v from="$esc" 'NR > from && /search mode off/ {print NR; exit}' "$OUT/files.log")
 for key in Size Name; do
-  # The header moves up when the filter field closes; a line logged between the two Escapes still has the old y.
-  hy=""
-  for _ in $(seq 40); do
-    read -r hx hy <<< "$(tail -n +"$((esc + 1))" "$OUT/files.log" | grep -E "geometry sort-header $key " | tail -n 1 |
-      awk '{print $(NF-1), $NF}')"
-    [[ -n $hy && $hy != "$open_y" ]] && break
-    sleep 0.05
-  done
-  [[ -n ${hx:-} ]] || fail "no geometry for the $key column header"
+  wait_log "$off" "geometry sort-header $key " || fail "no geometry for the $key column header"
+  read -r hx hy <<< "$(tail -n +"$((off + 1))" "$OUT/files.log" | grep -E "geometry sort-header $key " | tail -n 1 |
+    awk '{print $(NF-1), $NF}')"
   m=$(mark); run "$POINTER" 1280 720 move $((WX + hx)) $((WY + hy)) click 272 > /dev/null
   wait_log "$m" "sort took" || fail "a press on the $key header did not sort"
 done
