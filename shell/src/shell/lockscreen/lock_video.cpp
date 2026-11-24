@@ -5,21 +5,14 @@
 
 #include <cstring>
 #include <stdexcept>
-#include <sys/eventfd.h>
-#include <unistd.h>
 #include <utility>
 
 namespace {
 
   constexpr Logger kLog("lock-video");
 
-  void wake(int fd) {
-    const std::uint64_t one = 1;
-    (void)::write(fd, &one, sizeof(one));
-  }
-
   GstFlowReturn onNewSample(GstAppSink* /*sink*/, gpointer data) {
-    wake(*static_cast<int*>(data));
+    static_cast<const sys::WakeFd*>(data)->signal();
     return GST_FLOW_OK;
   }
 
@@ -32,7 +25,7 @@ namespace {
   GstBusSyncReply onBusMessage(GstBus* /*bus*/, GstMessage* message, gpointer data) {
     const GstMessageType type = GST_MESSAGE_TYPE(message);
     if (type == GST_MESSAGE_EOS || type == GST_MESSAGE_ERROR) {
-      wake(*static_cast<int*>(data));
+      static_cast<const sys::WakeFd*>(data)->signal();
     }
     return GST_BUS_PASS;
   }
@@ -94,31 +87,23 @@ namespace {
 
 LockVideo::LockVideo(const std::string& path, bool dmabuf) : m_path(path), m_dmabuf(dmabuf) {
   gstreamer().gst_init(nullptr, nullptr);
-  m_wakeFd = ::eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-  if (m_wakeFd < 0) {
-    throw std::runtime_error("no eventfd");
+  if (!m_wake.valid()) {
+    throw std::runtime_error("no wake fd");
   }
   try {
     start();
   } catch (const std::exception& e) {
     if (!m_dmabuf) {
-      ::close(m_wakeFd);
       throw;
     }
     kLog.info("VA decode unavailable ({}); decoding in software", e.what());
     m_dmabuf = false;
-    try {
-      start();
-    } catch (...) {
-      ::close(m_wakeFd);
-      throw;
-    }
+    start();
   }
 }
 
 LockVideo::~LockVideo() {
   stop();
-  ::close(m_wakeFd);
 }
 
 void LockVideo::start() {
@@ -170,9 +155,9 @@ void LockVideo::start() {
   GstAppSinkCallbacks callbacks{};
   callbacks.new_sample = onNewSample;
   callbacks.propose_allocation = onProposeAllocation;
-  gstApp().gst_app_sink_set_callbacks(GST_APP_SINK_CAST(sink), &callbacks, &m_wakeFd, nullptr);
+  gstApp().gst_app_sink_set_callbacks(GST_APP_SINK_CAST(sink), &callbacks, &m_wake, nullptr);
   GstBus* bus = gstreamer().gst_element_get_bus(pipeline);
-  gstreamer().gst_bus_set_sync_handler(bus, onBusMessage, &m_wakeFd, nullptr);
+  gstreamer().gst_bus_set_sync_handler(bus, onBusMessage, &m_wake, nullptr);
   gstreamer().gst_object_unref(bus);
 
   if (!gstreamer().gst_element_link(source, decoder)
@@ -221,8 +206,7 @@ bool LockVideo::fallBack() {
 }
 
 bool LockVideo::dispatch() {
-  std::uint64_t count = 0;
-  (void)::read(m_wakeFd, &count, sizeof(count));
+  m_wake.drain();
   if (m_pipeline == nullptr) {
     return false;
   }

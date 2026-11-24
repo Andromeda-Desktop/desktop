@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/poll_source.h"
+#include "core/sys/sys.h"
 
 #include <cstdint>
 #include <functional>
@@ -11,7 +12,7 @@ struct MpvLib;
 struct mpv_handle;
 struct mpv_event_property;
 
-// One libmpv instance. mpv wakes the loop through an eventfd; dispatch() drains its events on the loop thread and
+// One libmpv instance. mpv wakes the loop through a sys::WakeFd; dispatch() drains its events on the loop thread and
 // keeps a snapshot of the observed properties.
 class MpvPlayer final : public PollSource {
 public:
@@ -76,7 +77,7 @@ private:
 
   const MpvLib* m_lib = nullptr;
   mpv_handle* m_mpv = nullptr;
-  int m_wakeFd = -1;
+  sys::WakeFd m_wake;
   bool m_voConfigured = false;
   bool m_albumArt = false;
   bool m_seekPending = false;

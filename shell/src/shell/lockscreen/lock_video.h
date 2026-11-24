@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/sys/sys.h"
 #include "ipc/pixel_stream_server.h"
 
 #include <cstdint>
@@ -24,7 +25,7 @@ public:
   LockVideo& operator=(const LockVideo&) = delete;
 
   // Readable when a frame or a pipeline message waits.
-  [[nodiscard]] int wakeFd() const noexcept { return m_wakeFd; }
+  [[nodiscard]] int wakeFd() const noexcept { return m_wake.pollFd(); }
   // Handles pipeline messages: loops at the end, falls back to software after an early VA error.
   // False once the video cannot play any more.
   bool dispatch();
@@ -62,7 +63,7 @@ private:
   bool m_dmabuf = false;
   bool m_paused = false;
   bool m_hadFrame = false;
-  int m_wakeFd = -1;
+  sys::WakeFd m_wake;
   GstElement* m_pipeline = nullptr;
   GstElement* m_sink = nullptr;
   std::uint32_t m_fourcc = 0;

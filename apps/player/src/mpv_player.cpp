@@ -5,8 +5,6 @@
 
 #include <cstdlib>
 #include <format>
-#include <sys/eventfd.h>
-#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -21,9 +19,6 @@ MpvPlayer::~MpvPlayer() {
   if (m_mpv != nullptr) {
     m_lib->setWakeupCallback(m_mpv, nullptr, nullptr);
     m_lib->terminateDestroy(m_mpv);
-  }
-  if (m_wakeFd >= 0) {
-    ::close(m_wakeFd);
   }
 }
 
@@ -116,22 +111,16 @@ bool MpvPlayer::initialize() {
   for (const auto& [id, prop] : props) {
     m_lib->observeProperty(m_mpv, id, prop.first, prop.second);
   }
-  m_wakeFd = ::eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-  // Runs on mpv threads: only the eventfd write is safe here.
+  // Runs on mpv threads: only the wake signal is safe here.
   m_lib->setWakeupCallback(
-      m_mpv,
-      [](void* data) {
-        const std::uint64_t one = 1;
-        [[maybe_unused]] const auto n = ::write(*static_cast<int*>(data), &one, sizeof one);
-      },
-      &m_wakeFd
+      m_mpv, [](void* data) { static_cast<const sys::WakeFd*>(data)->signal(); }, &m_wake
   );
   return true;
 }
 
 void MpvPlayer::doAddPollFds(std::vector<pollfd>& fds) {
-  if (m_wakeFd >= 0) {
-    fds.push_back({.fd = m_wakeFd, .events = POLLIN, .revents = 0});
+  if (m_wake.valid()) {
+    fds.push_back({.fd = m_wake.pollFd(), .events = POLLIN, .revents = 0});
   }
 }
 
@@ -139,8 +128,7 @@ void MpvPlayer::dispatch(const std::vector<pollfd>& /*fds*/, std::size_t /*start
   if (m_mpv == nullptr) {
     return;
   }
-  std::uint64_t count = 0;
-  [[maybe_unused]] const auto n = ::read(m_wakeFd, &count, sizeof count);
+  m_wake.drain();
   bool changed = false;
   bool seeked = false;
   for (;;) {
