@@ -1,4 +1,4 @@
-#include "ui/auth/ryoku_auth_scene.h"
+#include "shell/auth/ryoku_auth_scene.h"
 
 #include "render/core/color.h"
 #include "render/core/render_styles.h"

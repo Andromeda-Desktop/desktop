@@ -1,4 +1,4 @@
-#include "ui/auth/flip_clock.h"
+#include "shell/auth/flip_clock.h"
 
 #include "render/animation/animation_manager.h"
 #include "render/core/render_styles.h"

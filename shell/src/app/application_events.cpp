@@ -7,7 +7,7 @@
 #include "dbus/network/inetwork_service.h"
 #include "dbus/network/network_display.h"
 #include "dbus/upower/upower_service.h"
-#include "ui/auth/auth_column.h"
+#include "shell/auth/auth_column.h"
 #include "ui/palette.h"
 #include "pipewire/sound_player.h"
 #include "render/backend/render_backend.h"

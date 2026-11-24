@@ -1,4 +1,4 @@
-#include "ui/auth/clock_style.h"
+#include "shell/auth/clock_style.h"
 
 #include <algorithm>
 #include <array>

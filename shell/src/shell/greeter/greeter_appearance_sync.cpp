@@ -14,7 +14,7 @@
 #include "render/core/image_file_loader.h"
 #include "shell/lockscreen/lock_screen.h"
 #include "shell/session/session_action_meta.h"
-#include "ui/auth/auth_layout.h"
+#include "shell/auth/auth_layout.h"
 #include "ui/palette.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"

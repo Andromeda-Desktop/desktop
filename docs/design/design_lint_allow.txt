@@ -33,7 +33,7 @@ S1 | shell/src/shell/lockscreen/lock_editor_wallpaper.cpp | kTileHeight = | lock
 S1 | shell/src/shell/lockscreen/lock_editor_wallpaper.cpp | kTrackHeight = | lock editor blur/dim slider track 6 (mock section 3; matches the Control Center slider track)
 S1 | shell/src/shell/lockscreen/lock_editor_bar.cpp | kPanelWidth = | lock editor panel 880 (Lock screen v2 mock section 2)
 S1 | shell/src/shell/lockscreen/lock_editor_bar.cpp | kCardHeight = | lock editor layout card 132 (mock section 2 Layout panel: thumbnail + label)
-S1 | libdesk-ui/src/ui/auth/ryoku_auth_scene.cpp | | Ryoku lock theme (Lock screen v2: "Ryoku, theme only") reproduces its own reference geometry and type, not the rulebook scale
+S1 | shell/src/shell/auth/ryoku_auth_scene.cpp | | Ryoku lock theme (Lock screen v2: "Ryoku, theme only") reproduces its own reference geometry and type, not the rulebook scale
 S1 | shell/src/shell/launcher/launcher_panel_detail.h | kIconSizeDefault = | launcher result row icon 40 (launcher direction C, .agent/mockups/launcher-pill.html)
 S1 | shell/src/shell/launcher/launcher_panel_detail.h | kIconSizeCompact = | launcher compact row icon 28 (launcher direction C mockup)
 S1 | shell/src/shell/launcher/launcher_panel_detail.h | kLauncherAvatarSize = | launcher contact avatar 44 (launcher direction C mockup)
@@ -64,11 +64,11 @@ S1 | shell/src/shell/settings/settings_selection_style.h | kSelectionBadgeSize =
 S1 | shell/src/shell/settings/settings_control_factory.cpp | kModeThumbWidth = | Appearance mode illustration 116 x 74 (mockup A, .agent/mockups/settings.html)
 S1 | shell/src/shell/settings/settings_control_factory.cpp | kModeThumbHeight = | Appearance mode illustration 116 x 74 (mockup A)
 S1 | shell/src/shell/settings/settings_control_factory.cpp | kModeThumbGap = | gap between the Appearance mode illustrations (mockup A)
-S1 | libdesk-ui/src/ui/auth/auth_chrome.cpp | kMenuWidth = | lock/greeter power menu width 256 (.agent/mockups/lockscreen.html)
-S1 | libdesk-ui/src/ui/auth/auth_chrome.cpp | kRowHeight = | lock/greeter power menu row 36 (.agent/mockups/lockscreen.html)
-S1 | libdesk-ui/src/ui/auth/auth_column.cpp | kInitialFontSize = | avatar initial letter 26 in the 64 avatar (.agent/mockups/lockscreen.html)
-S1 | libdesk-ui/src/ui/auth/auth_layout.cpp | kClockWidthPerSize = | a ratio (clock width per font px), not a length
-S1 | libdesk-ui/src/ui/auth/flip_clock.cpp | kDigitFontSize = | flip clock digit 40 on its card (clock styles, Lock screen v2)
+S1 | shell/src/shell/auth/auth_chrome.cpp | kMenuWidth = | lock/greeter power menu width 256 (.agent/mockups/lockscreen.html)
+S1 | shell/src/shell/auth/auth_chrome.cpp | kRowHeight = | lock/greeter power menu row 36 (.agent/mockups/lockscreen.html)
+S1 | shell/src/shell/auth/auth_column.cpp | kInitialFontSize = | avatar initial letter 26 in the 64 avatar (.agent/mockups/lockscreen.html)
+S1 | shell/src/shell/auth/auth_layout.cpp | kClockWidthPerSize = | a ratio (clock width per font px), not a length
+S1 | shell/src/shell/auth/flip_clock.cpp | kDigitFontSize = | flip clock digit 40 on its card (clock styles, Lock screen v2)
 S1 | libdesk-ui/src/ui/controls/button.cpp | kBadgeSize = | button count badge 20: a symbol_l-sized circle
 S1 | libdesk-ui/src/ui/controls/button.cpp | width() + 2.0F * out | the ring offset on both sides, not a size
 S1 | shell/src/shell/settings/settings_content_shortcuts.cpp | kRailWidth = | Shortcuts category rail width (direction B, .agent/DESIGN.md): fits "Media and Hardware" plus its count at body size

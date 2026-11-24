@@ -1063,6 +1063,23 @@ _noctalia_cpp_args = [
 # Production sources and generated protocols compile once. The shell links the
 # archive whole; tests link it normally so only the objects they exercise enter
 # each test executable.
+# Lock, greeter and polkit auth UI; the greeter-mode launcher links it too.
+noctalia_auth_ui_lib = static_library('noctalia_auth_ui',
+  sources: files(
+    'src/shell/auth/analog_clock.cpp',
+    'src/shell/auth/auth_chrome.cpp',
+    'src/shell/auth/auth_clock.cpp',
+    'src/shell/auth/auth_column.cpp',
+    'src/shell/auth/auth_layout.cpp',
+    'src/shell/auth/clock_style.cpp',
+    'src/shell/auth/flip_clock.cpp',
+    'src/shell/auth/ryoku_auth_scene.cpp',
+  ),
+  dependencies: [desk_ui_dep],
+  include_directories: _noctalia_inc,
+  cpp_args: _noctalia_cpp_args,
+)
+
 noctalia_core_lib = static_library('noctalia_core',
   sources: _noctalia_sources + _protocol_sources + _protocol_headers + [_git_revision_h],
   dependencies: _noctalia_dependencies,
@@ -1079,7 +1096,7 @@ noctalia_cold_lib = static_library('noctalia_cold',
 )
 
 noctalia_core_dep = declare_dependency(
-  link_with: [noctalia_core_lib, noctalia_cold_lib],
+  link_with: [noctalia_core_lib, noctalia_cold_lib, noctalia_auth_ui_lib],
   dependencies: _noctalia_test_dependencies,
   include_directories: _noctalia_inc,
   compile_args: _noctalia_compile_definitions,
@@ -1094,7 +1111,8 @@ noctalia_shell_module = shared_module('andromeda-shell',
   dependencies: _noctalia_dependencies,
   include_directories: _noctalia_inc,
   cpp_args: _noctalia_cpp_args,
-  objects: [noctalia_core_lib.extract_all_objects(recursive: false), noctalia_cold_lib.extract_all_objects(recursive: false)],
+  objects: [noctalia_core_lib.extract_all_objects(recursive: false), noctalia_cold_lib.extract_all_objects(recursive: false),
+    noctalia_auth_ui_lib.extract_all_objects(recursive: false)],
   link_args: ['-Wl,-Bsymbolic', '-Wl,-z,defs', '-Wl,--version-script=' + meson.current_source_dir() / 'src/app/shell_module.map'],
   link_depends: files('src/app/shell_module.map'),
   name_prefix: '',
@@ -1112,6 +1130,7 @@ noctalia_exe = executable('andromeda-shell',
     + (dl_dep.found() ? [dl_dep] : []),
   include_directories: _noctalia_inc,
   cpp_args: _noctalia_cpp_args,
+  link_with: noctalia_auth_ui_lib,
   install: true,
 )
 

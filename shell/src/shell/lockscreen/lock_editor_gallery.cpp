@@ -6,8 +6,8 @@
 #include "render/core/renderer.h"
 #include "render/scene/node.h"
 #include "render/scene/rect_node.h"
-#include "ui/auth/auth_clock.h"
-#include "ui/auth/clock_style.h"
+#include "shell/auth/auth_clock.h"
+#include "shell/auth/clock_style.h"
 #include "ui/controls/label.h"
 #include "ui/style.h"
 

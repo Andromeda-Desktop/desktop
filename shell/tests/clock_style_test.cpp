@@ -1,5 +1,5 @@
 #include "tests/test_check.h"
-#include "ui/auth/clock_style.h"
+#include "shell/auth/clock_style.h"
 
 #include <ctime>
 #include <string>

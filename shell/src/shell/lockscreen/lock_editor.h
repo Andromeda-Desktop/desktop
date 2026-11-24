@@ -10,9 +10,9 @@
 #include "shell/lockscreen/lock_editor_free.h"
 #include "shell/lockscreen/lock_editor_gallery.h"
 #include "shell/lockscreen/lock_editor_wallpaper.h"
-#include "ui/auth/clock_glass_sync.h"
+#include "shell/auth/clock_glass_sync.h"
 #include "shell/lockscreen/lock_editor_slots.h"
-#include "ui/auth/auth_column.h"
+#include "shell/auth/auth_column.h"
 #include "wayland/layer_surface.h"
 
 #include <functional>

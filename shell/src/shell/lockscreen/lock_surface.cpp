@@ -31,7 +31,7 @@
 #include "system/weather_service.h"
 #include "time/time_format.h"
 #include "render/animation/motion_service.h"
-#include "ui/auth/auth_clock.h"
+#include "shell/auth/auth_clock.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/image.h"

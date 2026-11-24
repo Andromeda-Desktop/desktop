@@ -1,7 +1,7 @@
 #pragma once
 
 #include "shell/lockscreen/lock_notice_groups.h"
-#include "ui/auth/auth_layout.h"
+#include "shell/auth/auth_layout.h"
 
 #include <array>
 #include <cstdint>

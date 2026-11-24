@@ -1,5 +1,5 @@
 #include "tests/test_check.h"
-#include "ui/auth/auth_layout.h"
+#include "shell/auth/auth_layout.h"
 
 #include <cmath>
 

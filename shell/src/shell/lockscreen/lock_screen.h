@@ -4,7 +4,7 @@
 #include "capture/screencopy_capture.h"
 #include "core/timer_manager.h"
 #include "render/core/lockscreen_transition_types.h"
-#include "ui/auth/auth_column.h"
+#include "shell/auth/auth_column.h"
 #include "shell/lockscreen/lock_cards.h"
 #include "shell/lockscreen/lock_fail_delay.h"
 #include "shell/lockscreen/lock_lifecycle.h"

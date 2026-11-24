@@ -1,4 +1,4 @@
-#include "ui/auth/auth_clock.h"
+#include "shell/auth/auth_clock.h"
 
 #include "core/files/resource_paths.h"
 #include "render/text/font_registry.h"

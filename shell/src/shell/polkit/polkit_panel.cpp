@@ -13,7 +13,7 @@
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
 #include "shell/panel/panel_manager.h"
-#include "ui/auth/auth_column.h"
+#include "shell/auth/auth_column.h"
 #include "ui/builders.h"
 #include "ui/controls/glyph.h"
 #include "ui/controls/image.h"

@@ -50,7 +50,7 @@
 #include "system/weather_service.h"
 #include "theme/live_appearance_sync.h"
 #include "theme/theme_service.h"
-#include "ui/auth/auth_column.h"
+#include "shell/auth/auth_column.h"
 #include "ui/controls/input.h"
 #include "ui/style.h"
 #include "platform/key_repeat_poll_source.h"

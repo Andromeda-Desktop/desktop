@@ -1,6 +1,6 @@
-#include "ui/auth/auth_column.h"
+#include "shell/auth/auth_column.h"
 
-#include "ui/auth/clock_style.h"
+#include "shell/auth/clock_style.h"
 
 #include "render/core/color.h"
 #include "render/core/render_styles.h"

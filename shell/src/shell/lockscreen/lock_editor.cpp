@@ -1,7 +1,7 @@
 #include "time/time_format.h"
 #include "shell/lockscreen/lock_editor.h"
 
-#include "ui/auth/auth_clock.h"
+#include "shell/auth/auth_clock.h"
 
 #include "auth/pam_authenticator.h"
 #include "config/config_service.h"
@@ -21,8 +21,8 @@
 #include "shell/lockscreen/lock_screen.h"
 #include "shell/lockscreen/lock_surface.h"
 #include "shell/wallpaper/wallpaper_geometry.h"
-#include "ui/auth/auth_layout.h"
-#include "ui/auth/clock_style.h"
+#include "shell/auth/auth_layout.h"
+#include "shell/auth/clock_style.h"
 #include "ui/controls/label.h"
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_seat.h"

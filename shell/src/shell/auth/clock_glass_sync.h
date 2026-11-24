@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ui/auth/auth_column.h"
+#include "shell/auth/auth_column.h"
 #include "wayland/dsk_surface_client.h"
 #include "wayland/surface.h"
 #include "wayland/wayland_connection.h"

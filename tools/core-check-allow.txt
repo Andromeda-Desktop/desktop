@@ -46,8 +46,8 @@ radius-scale apps/files/src/tag_manager_sheet.cpp 2
 radius-scale apps/terminal/src/prefs_window.cpp 1
 radius-scale compositor/src/overview/overview.cpp 2
 radius-scale libdesk-term/src/context_row.cpp 2
-radius-scale libdesk-ui/src/ui/auth/auth_chrome.cpp 1
-radius-scale libdesk-ui/src/ui/auth/auth_column.cpp 3
+radius-scale shell/src/shell/auth/auth_chrome.cpp 1
+radius-scale shell/src/shell/auth/auth_column.cpp 3
 radius-scale libdesk-ui/src/ui/builders.cpp 1
 radius-scale libdesk-ui/src/ui/controls/checkbox.cpp 1
 radius-scale libdesk-ui/src/ui/files/file_columns.cpp 1
@@ -135,6 +135,7 @@ shell-timer shell/src/shell/live_activity/live_activity_island.cpp 2
 shell-timer shell/src/shell/panel/plugin_panel.cpp 1
 shell-timer shell/src/shell/settings/printers_model.cpp 1
 shell-timer shell/src/shell/setup_wizard/setup_wizard_panel.cpp 1
+sync-image shell/src/shell/auth/auth_column.cpp 2
 sync-image shell/src/scripting/ui_tree_reconciler_props.cpp 1
 sync-image shell/src/shell/activity/activity_inspector.cpp 1
 sync-image shell/src/shell/activity/activity_table.cpp 1

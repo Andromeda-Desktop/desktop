@@ -1,9 +1,9 @@
 #pragma once
 
 #include "render/animation/animation_manager.h"
-#include "ui/auth/analog_clock.h"
-#include "ui/auth/auth_layout.h"
-#include "ui/auth/flip_clock.h"
+#include "shell/auth/analog_clock.h"
+#include "shell/auth/auth_layout.h"
+#include "shell/auth/flip_clock.h"
 
 #include <array>
 #include <cstddef>

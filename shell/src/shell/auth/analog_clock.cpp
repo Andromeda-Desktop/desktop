@@ -1,4 +1,4 @@
-#include "ui/auth/analog_clock.h"
+#include "shell/auth/analog_clock.h"
 
 #include "render/core/render_styles.h"
 #include "render/scene/node.h"

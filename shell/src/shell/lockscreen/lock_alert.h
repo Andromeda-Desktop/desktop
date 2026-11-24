@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ui/auth/auth_layout.h"
+#include "shell/auth/auth_layout.h"
 
 #include <string>
 

@@ -1,4 +1,4 @@
-#include "ui/auth/auth_chrome.h"
+#include "shell/auth/auth_chrome.h"
 
 #include "render/core/color.h"
 #include "render/core/render_styles.h"

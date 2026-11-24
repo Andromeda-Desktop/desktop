@@ -1,6 +1,6 @@
 #include "shell/settings/settings_registry_internal.h"
 #include "config/app_icon_settings.h"
-#include "ui/auth/clock_style.h"
+#include "shell/auth/clock_style.h"
 
 #include "config/config_types.h"
 #include "config/schema/config_schema.h"

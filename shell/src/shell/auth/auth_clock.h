@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ui/auth/auth_column.h"
-#include "ui/auth/clock_style.h"
+#include "shell/auth/auth_column.h"
+#include "shell/auth/clock_style.h"
 
 #include <cstdint>
 #include <string>
