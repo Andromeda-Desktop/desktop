@@ -58,11 +58,7 @@ action() { # name [gvariant parameter list]
   DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d "$APP" -o /dev/andromeda/Files \
     -m org.freedesktop.Application.ActivateAction "$1" "${2:-[]}" '{}' > /dev/null
 }
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
-}
+WAIT_S=5
 # The listing is async: select again until the app logs the selection with the expected count.
 select_names() { # where-label, count, names gvariant
   local before

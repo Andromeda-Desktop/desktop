@@ -4,7 +4,7 @@
 # Usage: SCHEME=light|dark GLASS=0.0 tests/e2e/glass_clear_text.sh. Captures in $OUT (default ./artifacts/glass-clear-text).
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/glass-clear-text}
-ANDROMEDA=${ANDROMEDA:-$(cd "$(dirname "$0")/../.." && pwd)/compositor/build-live/andromeda}
+ANDROMEDA=${ANDROMEDA:-$(cd "$(dirname "$0")/../.." && pwd)/compositor/build-debug/andromeda}
 SCHEME=${SCHEME:-light}
 GLASS=${GLASS:-0.0}
 source "$(dirname "$0")/lib.sh"

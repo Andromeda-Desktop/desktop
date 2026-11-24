@@ -20,9 +20,9 @@ printf '[Default Applications]\ntext/plain=e2e-open.desktop\n' > "$home/.config/
 
 export ANDROMEDA_LOG_LEVEL=debug INDEX
 with_noctalia '
-  wait_for() { for _ in $(seq 100); do eval "$2" && return 0; sleep 0.05; done; echo "FAIL: $1"; exit 1; }
+  WAIT_S=5
   "$INDEX" serve > "$OUT/index.log" 2>&1 &
-  wait_for "the index daemon did not start" "grep -q watching \"$OUT/index.log\""
+  wait_for "the index daemon did not start" eval "grep -q watching \"$OUT/index.log\""
   wtype -s 3600000 &
   : > "$OUT/result.txt"
 
@@ -34,7 +34,7 @@ with_noctalia '
     while true; do
       before=$(answers "$1")
       "$NOCTALIA" msg panel-open launcher "$1" > /dev/null
-      wait_for "the launcher got no answer from the index" "(( \$(answers \"$1\") > before ))"
+      wait_for "the launcher got no answer from the index" eval "(( \$(answers \"$1\") > before ))"
       grep "files for \"$1\"" "$OUT/noctalia.log" | tail -1 | grep -q "\] 1 files" && break
       (( ($(date +%s%N) - written) < $2 )) || { echo "FAIL: \"$1\" was not found in time"; exit 1; }
       "$NOCTALIA" msg panel-close > /dev/null
@@ -52,7 +52,7 @@ with_noctalia '
   find_file zebra-ledger 1000000000
 
   wtype -k Return
-  wait_for "Enter did not open the file" "[[ -s \"$RUNTIME/opened\" ]]"
+  wait_for "Enter did not open the file" eval "[[ -s \"$RUNTIME/opened\" ]]"
   [[ $(cat "$RUNTIME/opened") == "$file" ]] || { echo "FAIL: opened $(cat "$RUNTIME/opened")"; exit 1; }
 '
 echo "PASS; artifacts: $OUT"

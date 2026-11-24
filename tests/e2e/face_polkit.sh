@@ -13,7 +13,7 @@ rm -rf "$OUT"
 boot_headless 1
 fail() { echo "FAIL: $*" >&2; exit 1; }
 logged() { grep -q "$1" "$OUT/noctalia.log"; }
-wait_for() { local what=$1; shift; for _ in $(seq 150); do "$@" && return; sleep 0.1; done; fail "$what"; }
+WAIT_S=15
 
 # pkexec asks on behalf of its parent, this script, so the agent serves this process.
 subject=$$

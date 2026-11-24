@@ -18,7 +18,6 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; grim "$OUT/fail.png" || true; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   locked() { msg status | grep -q "\"locked\": true"; }
-  wait_for() { local what=$1; shift; for _ in $(seq 100); do "$@" && return; sleep 0.1; done; fail "$what"; }
   not_black() { grim -t ppm - | tail -c 30000 | od -An -tu1 -v | awk "{ for (i = 1; i <= NF; i++) s += \$i } END { exit !(s > 0) }"; }
   shot_differs() { grim -t ppm "$OUT/now.ppm" && ! cmp -s "$OUT/now.ppm" "$1"; }
 

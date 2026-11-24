@@ -21,7 +21,6 @@ export OUT SIDE
 with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
-  wait_for() { local what=$1; shift; for _ in $(seq 100); do "$@" && return; sleep 0.1; done; fail "$what"; }
   msg theme-mode-set light > /dev/null
   [[ $(msg panel-state) == none ]] || fail "a panel is open before the test: $(msg panel-state)"
   msg panel-open control-center quick > /dev/null

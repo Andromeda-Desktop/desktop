@@ -21,7 +21,7 @@ if [[ ${SCALE:-1} == 2 ]]; then
   for _ in $(seq 100); do run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null && break; sleep 0.05; done
 fi
 
-fail() { echo "FAIL: $*"; exit 1; }
+fail() { action terminal.dump 2> /dev/null || true; echo "FAIL: $*"; exit 1; } # the dump shows the screen
 mkdir -p "$WORK/sub" "$OTHER"
 touch "$WORK/notes.txt" "$WORK/build.sh"
 # A known prompt and no user rc files, so the screen check does not depend on the machine.
@@ -49,11 +49,7 @@ action() { # name [gvariant parameter list]
     -m org.freedesktop.Application.ActivateAction "$1" "${2:-[]}" '{}' > /dev/null
 }
 seen() { [[ $(grep -c -- "$1" "$OUT/files.log") -ge $2 ]]; } # the log holds $1 at least $2 times
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  action terminal.dump || true; fail "$what"
-}
+WAIT_S=5
 logged() { grep -q -- "$1" "$OUT/files.log"; }
 type_text() { action terminal.type "[<'$1'>]"; }
 screen_has() { # the newest screen dump holds $1
@@ -80,7 +76,8 @@ echo "PASS the folder follows cd"
 action go "[<'$OTHER'>]"
 wait_for "the shell did not follow the view" logged "terminal follows $OTHER"
 type_text 'pwd > pwd.txt\r'
-wait_for "the shell is not in other: $(cat "$OTHER/pwd.txt" 2> /dev/null)" test "$(cat "$OTHER/pwd.txt" 2> /dev/null)" = "$OTHER"
+in_other() { [[ $(cat "$OTHER/pwd.txt" 2> /dev/null) == "$OTHER" ]]; } # read on every try, not once at the call
+wait_for "the shell is not in other" in_other
 echo "PASS the shell follows the folder"
 
 type_text 'sleep 30\r'

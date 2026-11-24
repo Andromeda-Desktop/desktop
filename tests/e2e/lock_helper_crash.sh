@@ -59,7 +59,6 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   locked() { msg status | grep -q "\"locked\": true"; }
-  wait_for() { local what=$1; shift; for _ in $(seq 100); do "$@" && return; sleep 0.1; done; grim "$OUT/fail.png" || true; fail "$what"; }
   helpers() { grep -c "started lock helper pid" "$OUT/noctalia.log" | grep -qx "$1"; }
   green() { grim -g "400,200 1x1" -t ppm - | tail -c 3 | od -An -tu1 | awk "{ exit !(\$1 < 60 && \$2 > 200) }"; }
   backdrop() { grim -g "40,600 1x1" -t ppm - | tail -c 3 | od -An -tu1 | awk "{ exit !(\$2 > \$1 + 30 && \$2 > \$3 + 30) }"; }

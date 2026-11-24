@@ -10,7 +10,7 @@ boot_headless 1
 printf '\n[global_shortcuts."e2e.app"]\ntoggle = "Ctrl+F9"\n' >> "$RUNTIME/andromeda.toml"
 
 FRONTEND="$ROOT/tests/e2e/global_shortcuts_frontend.py" with_noctalia '
-  wait_for() { for _ in $(seq 100); do eval "$2" && return 0; sleep 0.05; done; echo "FAIL: $1"; exit 1; }
+  WAIT_S=5
   "$ANDROMEDA" msg config-reload > /dev/null
   denied=$(gdbus call --session --dest org.freedesktop.impl.portal.desktop.andromeda.shell \
     --object-path /org/freedesktop/portal/desktop --method org.freedesktop.impl.portal.GlobalShortcuts.CreateSession \
@@ -20,7 +20,7 @@ FRONTEND="$ROOT/tests/e2e/global_shortcuts_frontend.py" with_noctalia '
   wtype -s 3600000 &
   python3 "$FRONTEND" e2e.app toggle "Toggle the thing" > "$OUT/frontend.txt" 2>&1 &
   frontend=$!
-  wait_for "the bind did not answer" "grep -q ^BOUND \"$OUT/frontend.txt\""
+  wait_for "the bind did not answer" eval "grep -q ^BOUND \"$OUT/frontend.txt\""
   grep -qx "BOUND 0 toggle=Ctrl+F9" "$OUT/frontend.txt" || { echo "FAIL: $(cat "$OUT/frontend.txt")"; exit 1; }
   "$NOCTALIA" msg global-shortcuts > "$OUT/list.txt"
   wtype -M ctrl -k F9 -m ctrl

@@ -20,11 +20,6 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   step() { printf "%s\n" "$*" >> "$OUT/steps.txt"; }
-  wait_for() {
-    local what=$1; shift
-    for _ in $(seq 100); do "$@" && return; sleep 0.1; done
-    fail "$what"
-  }
   # Grey caption text on the light sheet needs the threshold to read.
   ocr() { magick "$1" -colorspace Gray -resize 300% -threshold 55% png:- | tesseract - - 2> /dev/null; }
 

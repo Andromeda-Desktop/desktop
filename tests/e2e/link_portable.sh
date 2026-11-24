@@ -36,26 +36,12 @@ if [[ ${1:-} != inner ]]; then
   RUNTIME=$(mktemp -d /tmp/lss.XXXX)
   trap 'rm -rf "$RUNTIME"' EXIT
   mkdir -p "$RUNTIME/home" "$RUNTIME/data" "$RUNTIME/state" "$RUNTIME/config"
-  # No service directories, so the bus never activates the installed andromeda-linkd or a desktop's own services.
-  cat > "$RUNTIME/bus.conf" << 'CONF'
-<busconfig>
-  <type>session</type>
-  <listen>unix:tmpdir=/tmp</listen>
-  <auth>EXTERNAL</auth>
-  <policy context="default">
-    <allow user="*"/>
-    <allow send_destination="*" eavesdrop="true"/>
-    <allow eavesdrop="true"/>
-    <allow own="*"/>
-  </policy>
-</busconfig>
-CONF
   HOST_WAYLAND=${WAYLAND_DISPLAY:+${XDG_RUNTIME_DIR:-/run/user/$UID}/$WAYLAND_DISPLAY}
   env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS COMPOSITOR="$COMPOSITOR" OUT="$OUT" RUNTIME="$RUNTIME" \
     HOST_WAYLAND="$HOST_WAYLAND" \
     HOME="$RUNTIME/home" XDG_RUNTIME_DIR="$RUNTIME" XDG_DATA_HOME="$RUNTIME/data" XDG_STATE_HOME="$RUNTIME/state" \
     XDG_CONFIG_HOME="$RUNTIME/config" NO_AT_BRIDGE=1 GTK_A11Y=none \
-    dbus-run-session --config-file="$RUNTIME/bus.conf" -- "$0" inner
+    dbus-run-session --config-file="$ROOT/tests/e2e/private-bus.conf" -- "$0" inner
   cat "$OUT/steps.txt"
   echo "PASS; artifacts: $OUT"
   exit 0
@@ -63,12 +49,9 @@ fi
 
 trap 'kill $(jobs -p) 2> /dev/null || true' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+source "$ROOT/tests/e2e/wait.sh"
 step() { printf "%s\n" "$*" >> "$OUT/steps.txt"; }
-wait_for() {
-  local what=$1; shift
-  for _ in $(seq "${TRIES:-150}"); do "$@" && return; sleep 0.1; done
-  fail "$what"
-}
+WAIT_S=15
 link() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m "org.andromeda.Link1.$1" "${@:2}"; }
 property() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m org.freedesktop.DBus.Properties.Get org.andromeda.Link1 "$1"; }
 devices() { property Devices; }
@@ -206,7 +189,7 @@ step "pairing: the phone paired with the pairing URI (code $CODE)"
 "$BIN/andromeda-link-session" > "$OUT/session.log" 2>&1 &
 SESSION=$!
 # On Mutter link-session waits for a person to click Share on the portal's dialog: 2 minutes.
-TRIES=$([[ $COMPOSITOR == mutter ]] && echo 1200 || echo 150) \
+WAIT_S=$([[ $COMPOSITOR == mutter ]] && echo 120 || echo 15) \
   wait_for "andromeda-link-session did not start" grep -q running "$OUT/session.log"
 grep -q "clipboard through $CLIPBOARD" "$OUT/session.log" || fail "clipboard backend: $(grep clipboard "$OUT/session.log")"
 grep -q "input through $INPUT" "$OUT/session.log" || fail "input backend: $(grep input "$OUT/session.log")"

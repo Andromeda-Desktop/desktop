@@ -52,7 +52,7 @@ dbus-monitor --address "$BUS" > "$OUT/bus.log" 2>&1 &
 "${env_app[@]}" XDG_RUNTIME_DIR="$RUNTIME" "$FILEOPS" > "$OUT/fileops.log" 2>&1 &
 run "${env_app[@]}" ANDROMEDA_LOG_LEVEL=debug "$FILES" "$HOME_DIR" > "$OUT/files.log" 2>&1 &
 
-wait_for() { local what=$1; shift; for _ in $(seq 400); do "$@" && return 0; sleep 0.05; done; fail "$what"; }
+WAIT_S=20
 on_bus() { DBUS_SESSION_BUS_ADDRESS=$BUS gdbus introspect --session -d "$1" -o "$2" > /dev/null 2>&1; }
 mapped() { [[ $(run "$ANDROMEDA" windows --json | jq "[.. | objects | select(.app_id? == \"$APP\")] | length") -gt 0 ]]; }
 action() {

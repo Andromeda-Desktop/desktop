@@ -27,7 +27,7 @@ BEFORE_NOCTALIA='python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
   for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done'
 with_noctalia '
   XDG_RUNTIME_DIR=$REAL_RUNTIME systemd-run --user --quiet --scope --unit="$SCOPE" \
-    env XDG_RUNTIME_DIR="$RUNTIME" foot --config=/dev/null --title=act-test sh -c "sleep 300" > /dev/null 2>&1 &
+    env XDG_RUNTIME_DIR="$RUNTIME" foot --config=/dev/null --app-id=act-test --title=act-test sh -c "sleep 300" > /dev/null 2>&1 &
   scope_cgroup=""
   for _ in $(seq 50); do
     scope_cgroup=$(XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user show -P ControlGroup "$SCOPE" 2> /dev/null || true)

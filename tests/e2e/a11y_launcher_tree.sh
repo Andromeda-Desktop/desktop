@@ -20,10 +20,9 @@ BEFORE_NOCTALIA='
   python3 -I "$E2E_DIR/a11y_bus_mock.py" "$(head -n1 "$RUNTIME/a11y-address")" >> "$OUT/at-spi.log" 2>&1 &
   for _ in $(seq 100); do gdbus call --session -d org.a11y.Bus -o /org/a11y/bus -m org.a11y.Bus.GetAddress > /dev/null 2>&1 && break; sleep 0.05; done
 ' with_noctalia '
-  wait_for() { for _ in $(seq 100); do eval "$2" && return 0; sleep 0.1; done; echo "FAIL: $1"; exit 1; }
-  wait_for "the shell did not publish its tree" "grep -q \"accessibility tree published\" \"$OUT/noctalia.log\""
+  wait_for "the shell did not publish its tree" eval "grep -q \"accessibility tree published\" \"$OUT/noctalia.log\""
   "$NOCTALIA" msg panel-open launcher foot > /dev/null
-  wait_for "the launcher did not draw" "grep -q \"open to first frame\" \"$OUT/noctalia.log\""
+  wait_for "the launcher did not draw" eval "grep -q \"open to first frame\" \"$OUT/noctalia.log\""
   python3 -I - "$OUT/atspi-tree.txt" <<PY
 import sys, time
 import gi
@@ -68,7 +67,7 @@ if not item.do_action(0):
     sys.exit("FAIL: DoAction on the foot row returned false")
 PY
   windows() { "$ANDROMEDA" windows --json | jq "[.[] | select(.app_id == \"foot\")] | length"; }
-  wait_for "DoAction on the foot row opened no foot window" "(( \$(windows) >= 1 ))"
+  wait_for "DoAction on the foot row opened no foot window" eval "(( \$(windows) >= 1 ))"
   grep "a11y strict" "$OUT/noctalia.log" > "$OUT/unnamed.txt" || true
   echo "unnamed controls: $(wc -l < "$OUT/unnamed.txt") (list in $OUT/unnamed.txt)"
 '

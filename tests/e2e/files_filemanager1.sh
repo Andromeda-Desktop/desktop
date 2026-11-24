@@ -30,13 +30,7 @@ trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 \
   ANDROMEDA_LOG_LEVEL=debug "$FILES" --service > "$OUT/files.log" 2>&1 &
 
-wait_log() {
-  for _ in $(seq 100); do
-    grep -qE "$2" < <(tail -n +"$(($1 + 1))" "$OUT/files.log") && return 0
-    sleep 0.05
-  done
-  return 1
-}
+LOG=$OUT/files.log
 mark() { wc -l < "$OUT/files.log"; }
 call() {
   DBUS_SESSION_BUS_ADDRESS="$BUS" gdbus call --session --dest org.freedesktop.FileManager1 \

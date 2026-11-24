@@ -49,14 +49,14 @@ with zipfile.ZipFile(sys.argv[1], "w") as z:
 PY
 
 with_noctalia '
-  wait_for() { for _ in $(seq 100); do eval "$2" && return 0; sleep 0.05; done; echo "FAIL: $1"; exit 1; }
+  WAIT_S=5
   previews() { "$ANDROMEDA" windows --json | jq "[.[] | select(.app_id == \"andromeda-preview\")] | length"; }
   call() { gdbus call --session --dest org.gnome.NautilusPreviewer --object-path /org/gnome/NautilusPreviewer \
     --method org.gnome.NautilusPreviewer2.$1 "${@:2}" > /dev/null; }
   '"$FILEOPS"' > "$OUT/fileops.log" 2>&1 &
   GST_DEBUG=va*:4 XDG_CACHE_HOME='"$RUNTIME"'/cache ANDROMEDA_PREVIEW_HELPER='"$PREVIEW_HELPER"' '"$PREVIEW"' > "$OUT/preview.log" 2>&1 &
   previewer=$!
-  wait_for "previewer did not take its bus name" "gdbus introspect --session --dest org.gnome.NautilusPreviewer --object-path /org/gnome/NautilusPreviewer > /dev/null 2>&1"
+  wait_for "previewer did not take its bus name" eval "gdbus introspect --session --dest org.gnome.NautilusPreviewer --object-path /org/gnome/NautilusPreviewer > /dev/null 2>&1"
   shown() { grep -c "shown $1" "$OUT/preview.log" || true; }
   # Playback shows 10 different pictures. The window reuses at most 8 idle frame buffers plus those on screen, so a
   # compositor that kept the first pixels of each buffer would show fewer.
@@ -74,28 +74,28 @@ with_noctalia '
       mp4:video flac:"audio Tone"; do
     kind=${pair%%:*} what=${pair##*:}
     call ShowFile "file://$RUNTIME/files/sample.$kind" "" false
-    wait_for "no preview window for $kind" "(( \$(previews) == 1 ))"
-    wait_for "$kind was not decoded and shown" "(( \$(shown \"$what\") >= 1 ))"
+    wait_for "no preview window for $kind" eval "(( \$(previews) == 1 ))"
+    wait_for "$kind was not decoded and shown" eval "(( \$(shown \"$what\") >= 1 ))"
     grim "$OUT/preview-$kind.png"
     if [[ $kind == mp4 ]]; then
       wtype k
-      wait_for "k did not pause the video" "grep -q \"playback paused\" \"$OUT/preview.log\""
+      wait_for "k did not pause the video" eval "grep -q \"playback paused\" \"$OUT/preview.log\""
       wtype k
-      wait_for "k did not resume the video" "grep -q \"playback playing\" \"$OUT/preview.log\""
+      wait_for "k did not resume the video" eval "grep -q \"playback playing\" \"$OUT/preview.log\""
       playing dmabuf
     fi
   done
-  wait_for "no waveform for the FLAC" "grep -q \"waveform [0-9]* bars\" \"$OUT/preview.log\""
+  wait_for "no waveform for the FLAC" eval "grep -q \"waveform [0-9]* bars\" \"$OUT/preview.log\""
   grim "$OUT/preview-flac.png"
   # grep reads all of pw-dump: under pipefail, grep -q exits at the match and the SIGPIPE to pw-dump fails the check.
-  wait_for "no PipeWire stream for the FLAC" "pw-dump 2>/dev/null | grep \"\\\"Quick Look\\\"\" > /dev/null"
+  wait_for "no PipeWire stream for the FLAC" eval "pw-dump 2>/dev/null | grep \"\\\"Quick Look\\\"\" > /dev/null"
 
   if command -v soffice > /dev/null; then
     call ShowFile "file://$RUNTIME/files/sample.odt" "" false
     # A cold LibreOffice start takes seconds: up to 60 s.
     for _ in $(seq 1200); do grep -q "office .*sample.odt converted" "$OUT/preview.log" && break; sleep 0.05; done
     grep -q "office .*sample.odt converted ok" "$OUT/preview.log" || { echo "FAIL: the ODT was not converted"; exit 1; }
-    wait_for "the converted ODT was not shown" "(( \$(shown \"pdf page 1 of\") >= 2 ))"
+    wait_for "the converted ODT was not shown" eval "(( \$(shown \"pdf page 1 of\") >= 2 ))"
     grim "$OUT/preview-odt.png"
   else
     echo "SKIP odt: soffice is not installed"
@@ -104,15 +104,15 @@ with_noctalia '
   # The helper log names the decoder; a host without VA-API decodes in software.
   grep -o "vah264dec" "$OUT/preview.log" | head -n 1 || echo "decoder: software"
   call Close
-  wait_for "preview window stayed after Close" "(( \$(previews) == 0 ))"
+  wait_for "preview window stayed after Close" eval "(( \$(previews) == 0 ))"
 
   # The software path (wl_shm frames), the one the window falls back to when the compositor refuses a dmabuf.
   kill "$previewer"; wait "$previewer" || true
   ANDROMEDA_PREVIEW_MEDIA=sw ANDROMEDA_PREVIEW_HELPER='"$PREVIEW_HELPER"' '"$PREVIEW"' > "$OUT/preview-sw.log" 2>&1 &
   previewer=$!
-  wait_for "software previewer did not take its bus name" "gdbus introspect --session --dest org.gnome.NautilusPreviewer --object-path /org/gnome/NautilusPreviewer > /dev/null 2>&1"
+  wait_for "software previewer did not take its bus name" eval "gdbus introspect --session --dest org.gnome.NautilusPreviewer --object-path /org/gnome/NautilusPreviewer > /dev/null 2>&1"
   call ShowFile "file://$RUNTIME/files/sample.mp4" "" false
-  wait_for "no software video frame" "grep -q \"shown video .* (software)\" \"$OUT/preview-sw.log\""
+  wait_for "no software video frame" eval "grep -q \"shown video .* (software)\" \"$OUT/preview-sw.log\""
   grim "$OUT/preview-mp4-sw.png"
   playing software
   call Close

@@ -27,11 +27,6 @@ BUS=$(sed -n 1p <<< "$bus_info")
 BUS_PID=$(sed -n 2p <<< "$bus_info")
 trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 200); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
-}
 logged() { sed 's/\x1b\[[0-9;]*m//g' "$OUT/player.log" | grep -q "$1"; }
 action() {
   DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d "$APP" -o /dev/andromeda/Player \

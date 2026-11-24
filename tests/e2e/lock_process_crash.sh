@@ -14,7 +14,7 @@ printf '\n[lockscreen]\nface = true\nface_on_request = false\n' >> "$RUNTIME/hom
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_gaze.py"
 with_noctalia '
   fail() { echo "FAIL: $*" >&2; grim "$OUT/fail.png" 2> /dev/null || true; exit 1; }
-  wait_for() { local what=$1; shift; for _ in $(seq 50); do "$@" && return; sleep 0.1; done; fail "$what"; }
+  WAIT_S=5
   count() { grep -c "$1" "$OUT/andromeda.log" || true; }
   reached() { [[ $(count "$1") -ge $2 ]]; }
   ms() { date +%s%3N; }

@@ -21,22 +21,18 @@ apart() {
   echo "HEADLESS-1 at $a, HEADLESS-2 at $b" >> "$OUT/position.txt"
   (( ${a%,*} - ${b%,*} >= 1280 || ${b%,*} - ${a%,*} >= 1280 || ${a#*,} - ${b#*,} >= 720 || ${b#*,} - ${a#*,} >= 720 ))
 }
-wait_log() {
-  for _ in $(seq 50); do grep -q "$1" "$OUT/andromeda.log" && return 0; sleep 0.1; done
-  return 1
-}
 
 sed -i 's/files = \["input.toml"\]/files = ["input.toml", "displays.toml"]/' "$RUNTIME/andromeda.toml"
 run "$ANDROMEDA" msg config-reload > /dev/null
 run "$DESKTOP_CLIENT" mirror HEADLESS-2 HEADLESS-1
-wait_log "output 'HEADLESS-2': mirroring 'HEADLESS-1'"
+wait_for "no log line: output 'HEADLESS-2': mirroring 'HEADLESS-1'" log_since "$OUT/andromeda.log" 0 "output 'HEADLESS-2': mirroring 'HEADLESS-1'"
 run "$OM" apply enable HEADLESS-1 > /dev/null
 cp "$DISPLAYS" "$OUT/displays-after-apply.toml"
 saved=$(awk '/^\[output.HEADLESS-2\]/{on=1; next} /^\[/{on=0} on && /^position/' "$DISPLAYS")
 [[ -z $saved ]] && result "PASS apply does not persist the mirror's reported position" \
   || result "FAIL apply persisted the mirror's position: $saved"
 run "$DESKTOP_CLIENT" clear HEADLESS-2
-wait_log "output 'HEADLESS-2': stopped mirroring"
+wait_for "no log line: output 'HEADLESS-2': stopped mirroring" log_since "$OUT/andromeda.log" 0 "output 'HEADLESS-2': stopped mirroring"
 run "$ANDROMEDA" settle > /dev/null
 apart && result "PASS clearing the mirror leaves HEADLESS-2 beside HEADLESS-1" \
   || result "FAIL clearing the mirror stacked HEADLESS-2 on HEADLESS-1"

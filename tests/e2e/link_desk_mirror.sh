@@ -23,11 +23,7 @@ with_noctalia '
   POINTER='"$POINTER"'
   fail() { grim "$OUT/fail.png" || true; echo "FAIL: $*" >&2; exit 1; }
   step() { printf "%s\n" "$*" | tee -a "$OUT/steps.txt"; }
-  wait_for() {
-    local what=$1; shift
-    for _ in $(seq 200); do "$@" && return; sleep 0.1; done
-    fail "$what"
-  }
+  WAIT_S=20
   link() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m "org.andromeda.Link1.$1" "${@:2}"; }
   shot() { sleep 1.5; grim "$OUT/$1.png"; } # real time: the window repaints
   click() { "$POINTER" 1280 720 move "$1" "$2" click 272 > /dev/null; }

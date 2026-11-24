@@ -137,8 +137,8 @@ RULES = {
                    "use --no-rebuild", ("",), ("justfile",),
                    r"^(?![^#\n]*tools/(?:build|f7)\.sh)[^#\n]*?(?<![\w/.-])(?:ninja\s+-C|meson\s+(?:setup|compile|test"
                    r"|install)\b|meson\s+configure\s+\S+\s+[-\"])(?![^\n]*(?:\buninstall\b|--no-rebuild))", ()),
-    "e2e-wait": ("e2e scripts wait through wait_for and poll_for in tests/e2e/wait.sh", (E2E,), (".sh",),
-                 r"^\s*(wait_for|poll_for)\s*\(\)", ("tests/e2e/wait.sh",)),
+    "e2e-wait": ("e2e scripts wait through wait_for, poll_for, log_since and wait_log in tests/e2e/wait.sh", (E2E,), (".sh",),
+                 r"^\s*(wait_for|poll_for|wait_log|log_since)\s*\(\)", ("tests/e2e/wait.sh",)),
     "index-client": ("andromeda-index queries go through IndexClient (libdesk-system system/index_client.h)",
                      CPP_DIRS, CPP, r"andromeda-index\.sock", ("libdesk-system/src/system/index_client.cpp", "indexer/src/")),
     "harness-wait": ("compositor harness checks wait through await_until and its await_* owners in "

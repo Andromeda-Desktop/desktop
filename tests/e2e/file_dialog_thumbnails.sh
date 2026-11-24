@@ -35,10 +35,10 @@ video_entry=$(python3 -I -c 'import hashlib, sys, urllib.parse; print(hashlib.md
 
 export THUMBNAILER docs video_entry
 ANDROMEDA_SETTINGS_TEST_MODAL=file ANDROMEDA_SETTINGS_TEST_DIR=$docs with_noctalia '
-  wait_for() { for _ in $(seq 100); do eval "$2" && return 0; sleep 0.05; done; echo "FAIL: $1"; exit 1; }
+  WAIT_S=5
   "$THUMBNAILER" > "$OUT/thumbnailer.log" 2>&1 &
   # The private bus has no activation file: the dialog must find the name already owned.
-  wait_for "the thumbnailer did not take its bus name" \
+  wait_for "the thumbnailer did not take its bus name" eval \
     "gdbus introspect --session --dest org.freedesktop.thumbnails.Thumbnailer1 --object-path /org/freedesktop/thumbnails/Thumbnailer1 > /dev/null 2>&1"
   # The hook runs on a second settings-open while the window is open.
   "$NOCTALIA" msg settings-open about > /dev/null
@@ -47,7 +47,7 @@ ANDROMEDA_SETTINGS_TEST_MODAL=file ANDROMEDA_SETTINGS_TEST_DIR=$docs with_noctal
   sleep 0.8
   grim "$OUT/opened.png"
   shared=$HOME/.cache/thumbnails
-  wait_for "Thumbnailer1 wrote no shared entry for clip.mp4" \
+  wait_for "Thumbnailer1 wrote no shared entry for clip.mp4" eval \
     "compgen -G \"$shared/*/$video_entry.png\" > /dev/null"
   sleep 1
   grim "$OUT/file-dialog.png"

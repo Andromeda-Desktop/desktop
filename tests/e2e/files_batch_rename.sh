@@ -69,11 +69,7 @@ action() { # name [gvariant parameter list]
   DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d "$APP" -o /dev/andromeda/Files \
     -m org.freedesktop.Application.ActivateAction "$1" "${2:-[]}" '{}' > /dev/null
 }
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
-}
+WAIT_S=5
 logged() { grep -qF -- "$1" "$OUT/files.log"; }
 preview() { grep -o 'batch preview .*' "$OUT/files.log" | tail -n 1; }
 shot() { run "$ANDROMEDA" settle > /dev/null; sleep 0.4; run grim "$OUT/$1.png"; }

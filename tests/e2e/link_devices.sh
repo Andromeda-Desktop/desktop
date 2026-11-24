@@ -22,12 +22,7 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   step() { printf "%s\n" "$*" >> "$OUT/steps.txt"; }
-  # wait_for DESCRIPTION CMD...: poll a shell IPC answer, which follows D-Bus signals asynchronously.
-  wait_for() {
-    local what=$1; shift
-    for _ in $(seq 150); do "$@" && return; sleep 0.1; done
-    fail "$what"
-  }
+  WAIT_S=15
   phone() { "$BIN/andromeda-link-phone" --state "$RUNTIME/phone" --name "E2E Phone" "$@" 2>> "$OUT/phone.log"; }
   say() { printf "%s\n" "$*" >&3; }
   prop() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m org.freedesktop.DBus.Properties.Get org.andromeda.Link1 "$1"; }

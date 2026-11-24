@@ -9,13 +9,13 @@ source "$(dirname "$0")/lib.sh"
 boot_headless 1
 
 with_noctalia '
-  wait_for() { for _ in $(seq 100); do eval "$2" && return 0; sleep 0.05; done; echo "FAIL: $1"; exit 1; }
+  WAIT_S=5
   windows() { "$ANDROMEDA" windows --json | jq "[.[] | select(.app_id == \"foot\")] | length"; }
   wtype -s 3600000 &
   "$NOCTALIA" msg panel-open launcher foot > /dev/null
-  wait_for "the launcher did not draw" "grep -q \"open to first frame\" \"$OUT/noctalia.log\""
+  wait_for "the launcher did not draw" eval "grep -q \"open to first frame\" \"$OUT/noctalia.log\""
   wtype -k Return
   for i in 1 2 3 4 5 6; do grim "$OUT/launch-$i.png"; sleep 0.08; done
-  wait_for "Enter on foot opened no foot window" "(( \$(windows) >= 1 ))"
+  wait_for "Enter on foot opened no foot window" eval "(( \$(windows) >= 1 ))"
 '
 echo "PASS; artifacts: $OUT"

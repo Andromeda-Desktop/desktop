@@ -54,11 +54,7 @@ action() { # name [gvariant parameter list]
     -m org.freedesktop.Application.ActivateAction "$1" "${2:-[]}" '{}' > /dev/null
 }
 seen() { [[ $(grep -c -- "$1" "$OUT/files.log") -ge $2 ]]; } # the log holds $1 at least $2 times
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
-}
+WAIT_S=5
 tags_of() { getfattr --only-values -n user.xdg.tags "$1" 2> /dev/null || true; }
 has_tags() { [[ $(tags_of "$1") == "$2" ]]; }
 config_names() { jq -r '[.[].name] | join(",")' "$CONFIG" 2> /dev/null; }

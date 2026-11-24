@@ -16,7 +16,6 @@ MOCK="$ROOT/tests/e2e/mock_greetd.py"
 rm -rf "$OUT"
 boot_headless 1
 fail() { echo "FAIL: $*" >&2; exit 1; }
-wait_for() { local what=$1; shift; for _ in $(seq 100); do "$@" && return; sleep 0.1; done; fail "$what"; }
 requests() { cat "$OUT/requests-$case.jsonl" 2> /dev/null || true; }
 count() { requests | grep -c "\"type\": \"$1\"" || true; }
 posted() { requests | grep -c "\"response\": \"$1\"" || true; }

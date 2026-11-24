@@ -14,7 +14,7 @@ boot_headless 1
 with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
-  wait_for() { local what=$1; shift; for _ in $(seq 50); do "$@" && return; sleep 0.1; done; fail "$what"; }
+  WAIT_S=5
   # Keys typed before the editor has the keyboard go to the old focus: wait for its "keyboard focus" line.
   opened() { grep -c "lock-editor.* keyboard focus" "$OUT/noctalia.log" | grep -qx "$1"; }
   closed() { grep -c "lock-editor.* closed" "$OUT/noctalia.log" | grep -qx "$1"; }

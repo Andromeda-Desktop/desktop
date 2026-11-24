@@ -5,9 +5,9 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=${OUT:-$ROOT/artifacts/glass-slider}
-ANDROMEDA=${ANDROMEDA:-$ROOT/compositor/build-live/andromeda}
+ANDROMEDA=${ANDROMEDA:-$ROOT/compositor/build-debug/andromeda}
 NOCTALIA=${NOCTALIA:-$ROOT/shell/build-f7/andromeda-shell}
-POINTER=${POINTER:-$ROOT/compositor/build-live/tests/pointer-client}
+POINTER=${POINTER:-$ROOT/compositor/build-debug/tests/pointer-client}
 SCHEME=${SCHEME:-light}
 GLASS=${GLASS:-0.5}
 source "$(dirname "$0")/lib.sh"

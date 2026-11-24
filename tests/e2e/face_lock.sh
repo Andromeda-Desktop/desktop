@@ -22,7 +22,7 @@ with_noctalia '
   gaze() { busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" call com.gundulabs.Gaze "$@" > /dev/null; }
   test_call() { gaze /com/gundulabs/Gaze dsk.test.Gaze "$@"; }
   sleep_signal() { gaze /org/freedesktop/login1 dsk.test.Gaze Sleep b "$1"; }
-  wait_for() { local what=$1; shift; for _ in $(seq 50); do "$@" && return; sleep 0.1; done; fail "$what"; }
+  WAIT_S=5
   called() { grep -c "^$1" "$OUT/calls.txt" 2> /dev/null || true; }
   locked() { msg status | grep -q "\"locked\": true"; }
   unlocked() { msg status | grep -q "\"locked\": false"; }

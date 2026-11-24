@@ -45,7 +45,6 @@ env_app=(env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_DATA_HOME="$HO
 "${env_app[@]}" XDG_RUNTIME_DIR="$RUNTIME" "$FILEOPS" > "$OUT/fileops.log" 2>&1 &
 run "${env_app[@]}" ANDROMEDA_LOG_LEVEL=debug "$FILES" "$HOME_DIR" > "$OUT/files.log" 2>&1 &
 
-wait_for() { local what=$1; shift; for _ in $(seq 200); do "$@" && return 0; sleep 0.05; done; fail "$what"; }
 on_bus() { DBUS_SESSION_BUS_ADDRESS=$BUS gdbus introspect --session -d "$1" -o "$2" > /dev/null 2>&1; }
 wait_for "the daemon is not on the bus" on_bus org.andromeda.FileOps1 /org/andromeda/FileOps1
 wait_for "Files is not on the bus" on_bus "$APP" /dev/andromeda/Files

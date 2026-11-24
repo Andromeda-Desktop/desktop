@@ -52,13 +52,7 @@ run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_D
   XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug DESK_FRAME_STATS=1 DESK_MOTION_TRACE=1 \
   DESK_FILES_GEOMETRY=1 "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
-wait_log() {
-  for _ in $(seq "${3:-100}"); do
-    grep -qE "$2" < <(tail -n +"$(($1 + 1))" "$OUT/files.log") && return 0
-    sleep 0.05
-  done
-  return 1
-}
+LOG=$OUT/files.log
 mark() { wc -l < "$OUT/files.log"; }
 keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
@@ -77,9 +71,9 @@ report() { # name value budget unit
 }
 echo "# $FILES ($(meson introspect --buildoptions "$(dirname "$FILES")" 2> /dev/null | jq -r '.[] | select(.name == "buildtype") | .value' || echo unknown) build; budgets are for release)" > "$OUT/numbers.txt"
 
-wait_log 0 "first frame at" 200 || fail "the window drew no first frame"
-wait_log 0 "listed [0-9]+ in" 200 || fail "the folder did not list"
-wait_log 0 "statted [0-9]+ in" 400 || fail "the folder stats did not finish"
+wait_log 0 "first frame at" 10 || fail "the window drew no first frame"
+wait_log 0 "listed [0-9]+ in" 10 || fail "the folder did not list"
+wait_log 0 "statted [0-9]+ in" 20 || fail "the folder stats did not finish"
 listed=$(grep -oE "listed [0-9]+ in" "$OUT/files.log" | tail -n 1 | grep -oE '[0-9]+')
 [[ $listed -ge $COUNT ]] || fail "listed $listed of $COUNT entries"
 for _ in $(seq 100); do
@@ -112,7 +106,7 @@ for _ in $(seq 40); do scroll+=(notch 1 pause 8); done
 scroll+=(pause 600)
 run "$POINTER" 1280 720 "${scroll[@]}" > /dev/null
 run "$ANDROMEDA" settle > /dev/null
-wait_log "$m" "anim .* frames" 100 || fail "the scroll reported no frame stats"
+wait_log "$m" "anim .* frames" 5 || fail "the scroll reported no frame stats"
 scroll_p99=$(tail -n +"$((m + 1))" "$OUT/files.log" | grep -oE "anim .* p99_cpu_ms [0-9.]+" | grep -oE '[0-9.]+$' | sort -g | tail -n 1)
 scroll_missed=$(tail -n +"$((m + 1))" "$OUT/files.log" | grep -oE "anim .* missed [0-9]+" | grep -oE '[0-9]+$' | sort -n | tail -n 1)
 report "scroll p99 CPU per frame" "$scroll_p99" 16.7 ms

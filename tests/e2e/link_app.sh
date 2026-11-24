@@ -43,11 +43,7 @@ with_noctalia '
   fail() { grim "$OUT/app-fail.png" || true; echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   step() { printf "%s\n" "$*" >> "$OUT/steps.txt"; }
-  wait_for() {
-    local what=$1; shift
-    for _ in $(seq 200); do "$@" && return; sleep 0.1; done
-    fail "$what"
-  }
+  WAIT_S=20
   say() { printf "%s\n" "$*" >&3; }
   shot() { sleep 1.5; grim "$OUT/app-$1.png"; } # real time: the window repaints
   # -s: wtype waits after its keymap upload, else the compositor drops the first key.

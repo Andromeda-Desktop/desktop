@@ -14,7 +14,7 @@ CG=$RUNTIME/cgroup
 export OC=$CG/user.slice/user-1000.slice/user@1000.service/app.slice/opencode.service
 mkdir -p "$OC"
 printf 'usage_usec 10000000\nuser_usec 1\nsystem_usec 1\n' > "$OC/cpu.stat"
-echo $((480 * 1024 * 1024)) > "$OC/memory.current"
+printf 'anon %d\n' $((480 * 1024 * 1024)) > "$OC/memory.stat"
 printf 'some avg10=4.00 avg60=0.00 avg300=0.00 total=1\n' > "$OC/memory.pressure"
 mkdir -p "$RUNTIME/home/.config/systemd/user"
 : > "$RUNTIME/home/.config/systemd/user/opencode.service"

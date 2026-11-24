@@ -23,7 +23,6 @@ printf '\n[wallpaper]\ndirectory = "%s"\n' "$RUNTIME/walls" >> "$RUNTIME/home/.c
 
 with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
-  wait_for() { local t=$1; shift; for _ in $(seq $((t * 5))); do "$@" && return 0; sleep 0.2; done; return 1; }
   theme_is() { [[ $("$NOCTALIA" msg theme-mode-get 2> /dev/null) == *"$1"* ]]; }
   settle() {
     local i
@@ -39,24 +38,24 @@ with_noctalia '
   key() { local a=(tap 119 tap 119) k; for k in "$@"; do a+=(tap "$k"); done; "$POINTER" 1280 720 "${a[@]}" > /dev/null; }
 
   "$NOCTALIA" msg theme-mode-set light > /dev/null
-  wait_for 5 theme_is light || fail "theme did not become light"
+  poll_for 5 theme_is light || fail "theme did not become light"
   "$NOCTALIA" msg panel-open wallpaper > /dev/null
   settle
   cp "$OUT/now.png" "$OUT/1-light.png"
 
   "$NOCTALIA" msg theme-mode-set dark > /dev/null
-  wait_for 5 theme_is dark || fail "theme did not become dark"
+  poll_for 5 theme_is dark || fail "theme did not become dark"
   settle
   cp "$OUT/now.png" "$OUT/2-dark.png"
 
   # z z z: no file name matches, the state view replaces the grid.
-  for try in 1 2 3; do key 44 44 44; wait_for 3 changed_from "$OUT/2-dark.png" && break; done
+  for try in 1 2 3; do key 44 44 44; poll_for 3 changed_from "$OUT/2-dark.png" && break; done
   settle
   cp "$OUT/now.png" "$OUT/3-no-matches.png"
   cmp -s "$OUT/2-dark.png" "$OUT/3-no-matches.png" && fail "the search did not change the panel"
 
   # Backspace x3 restores the grid, Down enters it, F stores the first wallpaper as a favourite.
-  for try in 1 2 3; do key 14 14 14; wait_for 3 changed_from "$OUT/3-no-matches.png" && break; done
+  for try in 1 2 3; do key 14 14 14; poll_for 3 changed_from "$OUT/3-no-matches.png" && break; done
   settle
   # [wallpaper] favorite in overrides.toml lists the stored favourites.
   favourite_saved() {
@@ -65,7 +64,7 @@ with_noctalia '
     [[ -n $f ]] && python3 -I -c "import sys,tomllib; d=tomllib.load(open(sys.argv[1],\"rb\")); sys.exit(0 if any(\"wall-\" in str(x) for x in d.get(\"wallpaper\",{}).get(\"favorite\",[])) else 1)" "$f"
   }
   favourite_saved && fail "a favourite existed before F"
-  for try in 1 2 3; do key 108 33; wait_for 3 favourite_saved && break; done
+  for try in 1 2 3; do key 108 33; poll_for 3 favourite_saved && break; done
   favourite_saved || fail "F did not store a favourite"
   settle
   cp "$OUT/now.png" "$OUT/4-favourite.png"

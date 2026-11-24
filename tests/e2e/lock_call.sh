@@ -20,11 +20,7 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   step() { printf "%s\n" "$*" >> "$OUT/steps.txt"; }
-  wait_for() {
-    local what=$1; shift
-    for _ in $(seq 150); do "$@" && return; sleep 0.1; done
-    fail "$what"
-  }
+  WAIT_S=15
   phone() { "$BIN/andromeda-link-phone" --state "$RUNTIME/phone" --name "E2E Phone" "$@" 2>> "$OUT/phone.log"; }
   say() { printf "%s\n" "$*" >&3; }
   declines() { grep -c "\"action\":\"decline\"" "$OUT/hold.jsonl" 2> /dev/null || true; }

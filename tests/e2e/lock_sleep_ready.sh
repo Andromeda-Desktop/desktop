@@ -11,7 +11,7 @@ SLEEP_ON_TEST_BUS=1 boot_headless 1
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_gaze.py"
 with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
-  wait_for() { local what=$1; shift; for _ in $(seq 50); do "$@" && return; sleep 0.1; done; fail "$what"; }
+  WAIT_S=5
   logged() { grep -q "$1" "$OUT/noctalia.log"; }
   stamp() { grep -m1 "$1" "$OUT/noctalia.log" | grep -oE "^[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}" \
     | awk -F: "{ printf \"%d\\n\", (\$1 * 3600 + \$2 * 60 + \$3) * 1000 }"; }

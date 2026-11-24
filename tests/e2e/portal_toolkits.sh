@@ -28,7 +28,6 @@ env_all=(env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_CONFIG_HOME="$
 
 run "${env_all[@]}" ANDROMEDA_LOG_LEVEL=debug "$FILES" --picker > "$OUT/picker.log" 2>&1 &
 
-wait_for() { local what=$1; shift; for _ in $(seq 200); do "$@" && return 0; sleep 0.05; done; fail "$what"; }
 on_bus() { DBUS_SESSION_BUS_ADDRESS=$BUS gdbus introspect --session -d "$1" -o "$2" > /dev/null 2>&1; }
 # NameHasOwner, not introspect: a call to an unowned name D-Bus-activates the installed picker.
 owned() { DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d org.freedesktop.DBus -o /org/freedesktop/DBus \

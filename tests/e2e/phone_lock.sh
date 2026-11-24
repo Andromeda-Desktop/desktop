@@ -14,7 +14,7 @@ with_noctalia '
   CONFIG=$HOME/.config/andromeda/shell/config.toml
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
-  wait_for() { local what=$1; shift; for _ in $(seq 50); do "$@" && return; sleep 0.1; done; fail "$what"; }
+  WAIT_S=5
   called() { grep -c "^$1" "$OUT/calls.txt" 2> /dev/null || true; }
   locked() { msg status | grep -q "\"locked\": true"; }
 

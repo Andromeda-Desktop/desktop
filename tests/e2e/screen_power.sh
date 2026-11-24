@@ -10,21 +10,12 @@ boot_headless 2
 export WAYLAND_DEBUG=client
 with_noctalia '
   mark() { wc -l < "$OUT/andromeda.log"; }
-  wait_log() {
-    local from=$1 pattern=$2 count=$3
-    for _ in $(seq 50); do
-      (( $(tail -n +"$((from + 1))" "$OUT/andromeda.log" | grep -c "$pattern") >= count )) && return 0
-      sleep 0.1
-    done
-    echo "FAIL: expected $count lines matching \"$pattern\""
-    exit 1
-  }
   from=$(mark)
   "$NOCTALIA" msg dpms-off > /dev/null 2>&1
-  wait_log "$from" "powered off" 2
+  wait_for "expected 2 lines matching powered off" log_since "$OUT/andromeda.log" "$from" "powered off" 2
   from=$(mark)
   "$NOCTALIA" msg dpms-on > /dev/null 2>&1
-  wait_log "$from" "applied mode" 2
+  wait_for "expected 2 lines matching applied mode" log_since "$OUT/andromeda.log" "$from" "applied mode" 2
 '
 requests=$(grep -c 'zwlr_output_power_v1#[0-9]*.set_mode' "$OUT/noctalia.log" || true)
 echo "set_mode requests from the shell: $requests" | tee "$OUT/power.txt"

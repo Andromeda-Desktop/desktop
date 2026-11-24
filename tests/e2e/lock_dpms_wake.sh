@@ -17,8 +17,6 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; grim "$OUT/fail.png" || true; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   locked() { msg status | grep -q "\"locked\": true"; }
-  wait_for() { local what=$1; shift; for _ in $(seq 100); do "$@" && return; sleep 0.1; done; fail "$what"; }
-  log_since() { tail -n +"$(($1 + 1))" "$OUT/andromeda.log" | grep -q "$2"; }
   shot_differs() { grim -t ppm "$OUT/now.ppm" && ! cmp -s "$OUT/now.ppm" "$1"; }
 
   wtype -s 3600000 &
@@ -29,12 +27,12 @@ with_noctalia '
 
   mark=$(wc -l < "$OUT/andromeda.log")
   msg dpms-off > /dev/null
-  wait_for "the output did not power off" log_since "$mark" "powered off"
+  wait_for "the output did not power off" log_since "$OUT/andromeda.log" "$mark" "powered off"
   sleep 1
 
   mark=$(wc -l < "$OUT/andromeda.log")
   wtype -k Shift_L
-  wait_for "a key press did not wake the output" log_since "$mark" "applied mode="
+  wait_for "a key press did not wake the output" log_since "$OUT/andromeda.log" "$mark" "applied mode="
   sleep 1
   grim -t ppm "$OUT/woke.ppm"
   grim "$OUT/woke.png"

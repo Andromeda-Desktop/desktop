@@ -13,7 +13,7 @@ trap 'kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null; rm -rf "$RUNTIME"' 
 rm -rf "$OUT"
 mkdir -p "$OUT"
 fail() { echo "FAIL: $*" >&2; exit 1; }
-wait_for() { local what=$1; shift; for _ in $(seq 100); do "$@" && return; sleep 0.1; done; fail "$what"; }
+source "$ROOT/tests/e2e/wait.sh"
 
 sock=$RUNTIME/greetd.sock
 MOCK_SCENARIOS=face python3 -I "$ROOT/tests/e2e/mock_greetd.py" "$sock" "$OUT/requests.jsonl" > "$OUT/mock.log" 2>&1 &

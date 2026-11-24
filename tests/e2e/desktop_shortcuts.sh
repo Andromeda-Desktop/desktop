@@ -39,11 +39,7 @@ export POINTER FILEOPS DESK H
 export ANDROMEDA_LOG_LEVEL=debug
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
-  wait_for() { # description, test command...
-    local what=$1; shift
-    for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-    fail "$what"
-  }
+  WAIT_S=5
   logged() { grep -qsE -- "$2" "$1"; }
   settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
   tail -f /dev/null | "$POINTER" 1280 720 keyboard-only mod none hold > /dev/null &

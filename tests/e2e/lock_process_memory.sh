@@ -16,7 +16,7 @@ printf '\n[lockscreen]\nface = true\nface_on_request = false\n' >> "$RUNTIME/hom
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_gaze.py"
 BUDGET_KB=$BUDGET_KB with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
-  wait_for() { local what=$1; shift; for _ in $(seq 50); do "$@" && return; sleep 0.1; done; fail "$what"; }
+  WAIT_S=5
   count() { grep -c "$1" "$OUT/andromeda.log" || true; }
   reached() { [[ $(count "$1") -ge $2 ]]; }
   gaze() { busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" call com.gundulabs.Gaze /com/gundulabs/Gaze dsk.test.Gaze "$@" \

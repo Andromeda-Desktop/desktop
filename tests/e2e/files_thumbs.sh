@@ -44,13 +44,7 @@ run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_D
   XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_CACHE_HOME="$HOME_DIR/.cache" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug \
   DESK_FRAME_STATS=1 DESK_MOTION_TRACE=1 DESK_FILES_GEOMETRY=1 "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
-wait_log() {
-  for _ in $(seq "${3:-100}"); do
-    grep -qE "$2" < <(tail -n +"$(($1 + 1))" "$OUT/files.log") && return 0
-    sleep 0.05
-  done
-  return 1
-}
+LOG=$OUT/files.log
 mark() { wc -l < "$OUT/files.log"; }
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
 report() { # name value budget unit
@@ -60,8 +54,8 @@ report() { # name value budget unit
 }
 echo "# $FILES ($(meson introspect --buildoptions "$(dirname "$FILES")" 2> /dev/null | jq -r '.[] | select(.name == "buildtype") | .value' || echo unknown) build)" > "$OUT/numbers.txt"
 
-wait_log 0 "first frame at" 200 || fail "the window drew no first frame"
-wait_log 0 "listed [0-9]+ in" 200 || fail "the folder did not list"
+wait_log 0 "first frame at" 10 || fail "the window drew no first frame"
+wait_log 0 "listed [0-9]+ in" 10 || fail "the folder did not list"
 for _ in $(seq 100); do
   w=$(win)
   [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
@@ -80,7 +74,7 @@ for _ in $(seq 30); do scroll+=(notch 1 pause 30); done
 scroll+=(pause 600)
 run "$POINTER" 1280 720 "${scroll[@]}" > /dev/null
 run "$ANDROMEDA" settle > /dev/null
-wait_log "$m" "anim .* frames" 100 || fail "the scroll reported no frame stats"
+wait_log "$m" "anim .* frames" 5 || fail "the scroll reported no frame stats"
 uploads=$(tail -n +"$((m + 1))" "$OUT/files.log" | grep -oE "thumbnails uploaded [0-9]+" | grep -oE '[0-9]+$' | paste -sd+ | bc)
 [[ ${uploads:-0} -gt 0 ]] || fail "no thumbnail reached the screen during the scroll"
 p99=$(tail -n +"$((m + 1))" "$OUT/files.log" | grep -oE "anim .* p99_cpu_ms [0-9.]+" | grep -oE '[0-9.]+$' | sort -g | tail -n 1)

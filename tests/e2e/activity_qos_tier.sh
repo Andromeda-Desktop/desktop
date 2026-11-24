@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # P8 (docs/apps.md §8): Settings › Activity shows the compositor's QoS tier of each app. A foot window runs in a real
-# transient app scope; the compositor, the mock systemd and the shell share one private bus at $RUNTIME/bus, so the
+# transient app scope; the compositor, the mock systemd and the shell share boot_headless's private bus, so the
 # shell reads org.andromeda.Compositor1.Apps of this headless compositor, not the session's one.
 # Fails when:
 #   - the tier-test row has no tier while its window shows,
 #   - with Efficiency Mode on, the row hides to a tier other than `hidden-long`,
-#   - with Efficiency Mode off again, the row does not show `hidden` after its workspace is switched away (test hidden
-#     delay 1 s).
+#   - with Efficiency Mode off again, the row leaves `visible` after its workspace is switched away: Balanced on mains
+#     never throttles (docs/qos.md; test hidden delay 1 s).
 # Writes the dumps and logs to $OUT (default ./artifacts/activity-qos-tier).
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/activity-qos-tier}
@@ -16,11 +16,10 @@ SCOPE="app-tier\\x2dtest-$$.scope"
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_systemd1.py"
 fail() { echo "FAIL: $*"; exit 1; }
 
-bus_info=$(dbus-daemon --config-file="$ROOT/tests/e2e/private-bus.conf" --fork --address="unix:path=$RUNTIME/bus" --print-pid=1)
-BUS="unix:path=$RUNTIME/bus"
-trap 'XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user stop "$SCOPE" > /dev/null 2>&1 || true; kill '"$bus_info"' $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
+trap 'XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user stop "$SCOPE" > /dev/null 2>&1 || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 export ANDROMEDA_QOS_TEST_DELAYS_MS=1000,1500
 boot_headless 1
+BUS=$BUS_ADDRESS
 
 onbus() { run env DBUS_SESSION_BUS_ADDRESS="$BUS" DBUS_SYSTEM_BUS_ADDRESS="$BUS" "$@"; }
 onbus env REAL_RUNTIME="$REAL_RUNTIME" python3 "$MOCK" "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
@@ -30,7 +29,7 @@ onbus "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
 for _ in $(seq 100); do onbus "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
 
 XDG_RUNTIME_DIR=$REAL_RUNTIME systemd-run --user --quiet --scope --unit="$SCOPE" \
-  env XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY=wayland-0 foot --config=/dev/null --title=tier-test sleep 600 \
+  env XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY=wayland-0 foot --config=/dev/null --app-id=tier-test --title=tier-test sleep 600 \
   > /dev/null 2>&1 &
 cgroup=""
 for _ in $(seq 50); do
@@ -67,6 +66,12 @@ for _ in $(seq 60); do shown=$(tier); [[ $shown == focused || $shown == visible 
 click "Efficiency Mode"
 
 run "$ANDROMEDA" msg workspace-switch:2 > /dev/null
-for _ in $(seq 60); do shown=$(tier); [[ $shown == hidden ]] && break; sleep 0.1; done
-[[ $shown == hidden ]] || fail "tier-test shows tier '$shown' after its workspace was switched away"
-echo "PASS hidden window: tier hidden"
+# Balanced on mains (no System1 on the test bus) never throttles: past the 1 s hidden delay the row stays visible.
+end=$((SECONDS + 3))
+while ((SECONDS < end)); do
+  shown=$(tier)
+  [[ $shown == hidden* ]] && fail "tier-test shows tier '$shown' on Balanced mains after its workspace was switched away"
+  sleep 0.1
+done
+[[ $shown == visible ]] || fail "tier-test shows tier '$shown' after its workspace was switched away"
+echo "PASS hidden window on Balanced mains: tier visible"

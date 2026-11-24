@@ -14,11 +14,6 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   step() { printf "%s\n" "$*" >> "$OUT/steps.txt"; }
-  wait_for() {
-    local what=$1; shift
-    for _ in $(seq 100); do "$@" && return; sleep 0.1; done
-    fail "$what"
-  }
   CONFIG=$RUNTIME/home/.config/andromeda/shell/config.toml
 
   python3 '"$ROOT"'/tests/e2e/mock_geoclue.py "$OUT/geoclue.log" &

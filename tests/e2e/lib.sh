@@ -6,9 +6,12 @@ DESKTOP_CLIENT=${DESKTOP_CLIENT:-$ROOT/compositor/build-debug/tests/desktop-clie
 RUNTIME=$(mktemp -d /tmp/dsk.XXXX)
 trap 'kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null; rm -rf "$RUNTIME"' EXIT
 
-# boot_headless OUTPUTS: start Andromeda with that many headless outputs; its log goes to $OUT/andromeda.log.
-# SLEEP_ON_TEST_BUS=1: the compositor follows logind sleep on the private bus (the shell's system bus) and holds it.
+# boot_headless OUTPUTS: start Andromeda with that many headless outputs; its log goes to $OUT/andromeda.log. The private
+# bus is its session and system bus, so the host's power profile, keymap and logind never reach a test.
+# SLEEP_ON_TEST_BUS=1: the compositor holds the logind sleep it follows on the private bus.
 boot_headless() {
+  # A subshell drops the EXIT trap and owns its own jobs: stop them when it exits, or they outlive the test.
+  [[ $BASHPID == "$$" ]] || trap 'kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null' EXIT
   mkdir -p "$OUT" "$RUNTIME/home/.config/andromeda/shell"
   # No first-run wizard: it takes the keyboard from the window under test. No greeter sync: it runs pkexec and
   # writes the test's look into the real greeter of this machine.
@@ -16,30 +19,16 @@ boot_headless() {
     > "$RUNTIME/home/.config/andromeda/shell/config.toml"
   # AUTOSTART: TOML string items, for a test that needs a client the compositor spawns itself.
   printf '[general]\nautostart = [%s]\n' "${AUTOSTART:-}" > "$RUNTIME/andromeda.toml"
-  # No service directories, so the private bus never activates a keyring prompt or dconf.
-  cat > "$RUNTIME/bus.conf" <<'CONF'
-<busconfig>
-  <type>session</type>
-  <listen>unix:tmpdir=/tmp</listen>
-  <auth>EXTERNAL</auth>
-  <policy context="default">
-    <allow user="*"/>
-    <allow send_destination="*" eavesdrop="true"/>
-    <allow eavesdrop="true"/>
-    <allow own="*"/>
-  </policy>
-</busconfig>
-CONF
   # One private bus for the whole session: apps the compositor spawns reach the shell on it, as in a real session.
-  dbus-daemon --config-file="$RUNTIME/bus.conf" --nofork --print-address=3 3> "$RUNTIME/bus.address" &
+  dbus-daemon --config-file="$ROOT/tests/e2e/private-bus.conf" --nofork --print-address=3 3> "$RUNTIME/bus.address" &
   for _ in $(seq 100); do [[ -s $RUNTIME/bus.address ]] && break; sleep 0.05; done
   [[ -s $RUNTIME/bus.address ]] || { echo "dbus-daemon did not start" >&2; exit 1; }
   BUS_ADDRESS=$(head -n 1 "$RUNTIME/bus.address")
   # NESTED_PARENT (a parent Wayland socket path): one output as a window on that session, with its GPU and vsync.
   local backend=headless
   [[ -n ${NESTED_PARENT:-} ]] && backend=wayland
-  env -u WAYLAND_DISPLAY -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$BUS_ADDRESS" XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
-    ${NESTED_PARENT:+WAYLAND_DISPLAY=$NESTED_PARENT} ${SLEEP_ON_TEST_BUS:+DBUS_SYSTEM_BUS_ADDRESS=$BUS_ADDRESS ANDROMEDA_TEST_SLEEP_HOLD=1} WLR_BACKENDS=$backend WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS="$1" \
+  env -u WAYLAND_DISPLAY -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$BUS_ADDRESS" DBUS_SYSTEM_BUS_ADDRESS="$BUS_ADDRESS" XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
+    ${NESTED_PARENT:+WAYLAND_DISPLAY=$NESTED_PARENT} ${SLEEP_ON_TEST_BUS:+ANDROMEDA_TEST_SLEEP_HOLD=1} WLR_BACKENDS=$backend WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS="$1" \
     "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" > "$OUT/andromeda.log" 2>&1 &
   # The IPC socket comes after the Wayland socket (server.cpp creates Ipc later); `msg` needs it.
   for _ in $(seq 100); do [[ -S $RUNTIME/wayland-0 && -S $RUNTIME/andromeda-wayland-0.sock ]] && break; sleep 0.05; done
@@ -75,6 +64,19 @@ stable_grim() {
   exit 1
 }
 export -f stable_grim
+
+# start_andromeda_system: start andromeda-system on the private system bus (sets $system). Exported into with_noctalia.
+export ANDROMEDA_SYSTEM=${ANDROMEDA_SYSTEM:-$ROOT/system/target/debug/andromeda-system}
+start_andromeda_system() {
+  ANDROMEDA_SYSTEM_TEST=1 "$ANDROMEDA_SYSTEM" > "$OUT/system.log" 2>&1 &
+  system=$!
+  for _ in $(seq 100); do busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" status org.andromeda.System1 > /dev/null 2>&1 && return 0; sleep 0.1; done
+  echo "FAIL: andromeda-system did not own org.andromeda.System1: $(cat "$OUT/system.log")"
+  exit 1
+}
+export -f start_andromeda_system
+
+source "$ROOT/tests/e2e/wait.sh"
 
 # with_noctalia SCRIPT: run a bash script while Noctalia runs on the session's private bus, used as both session and
 # system bus so the test shell never reaches the real BlueZ, NetworkManager, or logind. The script sees $NOCTALIA, $OUT,

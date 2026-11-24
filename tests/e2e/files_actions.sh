@@ -43,7 +43,6 @@ done
 [[ -n ${w:-} ]] || fail "the Files window did not map"
 WX=$(jq .x <<< "$w"); WY=$(jq .y <<< "$w")
 mark() { wc -l < "$LOG"; }
-wait_log() { for _ in $(seq 100); do grep -qE "$2" < <(tail -n +"$(($1 + 1))" "$LOG") && return 0; sleep 0.05; done; return 1; }
 keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
 at() { local line; line=$(grep -E "geometry $1( |$)" "$LOG" | tail -n 1); [[ -n $line ]] || fail "no geometry for $1"
   read -r x y <<< "$(awk '{print $(NF-1), $NF}' <<< "$line")"; echo "$((WX + x)) $((WY + y))"; }

@@ -33,7 +33,7 @@ BEFORE_NOCTALIA='python3 "$E2E/mock_systemd1.py" "$OUT/calls.txt" > "$OUT/mock.l
   for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && grep -q ready "$OUT/docker.log" && grep -q ready "$OUT/podman.log" && break; sleep 0.1; done'
 with_noctalia '
   click() { bash "$E2E/activity_click.sh" "$@"; }
-  wait_for() { # jq filter on the dump, message
+  wait_dump() { # jq filter on the dump, message
     for _ in $(seq 60); do "$NOCTALIA" msg activity-dump > "$OUT/dump.json"; jq -e "$1" "$OUT/dump.json" > /dev/null && return 0; sleep 0.1; done
     echo "FAIL: $2: $(jq -c "{containers: [.containers[]? | {name, state, memory_bytes}], buttons: [.buttons[]?.text]}" "$OUT/dump.json")"; exit 1
   }
@@ -44,22 +44,22 @@ with_noctalia '
   done
 
   "$NOCTALIA" msg activity-open containers > /dev/null
-  wait_for "[.containers[]? | .name] | sort == [\"build\", \"cache\", \"web\"]" "the three containers are not in the dump"
-  wait_for "any(.containers[]; .name == \"web\" and .memory_bytes > 0 and .cpu_percent > 0)" "web has no memory or CPU from its cgroup"
-  wait_for "any(.engines[]; (.socket | endswith(\"denied.sock\")) and .error == \"permission\")" "the mode-000 engine does not report permission"
-  wait_for "any(.engines[]; (.socket | endswith(\"podman.sock\")) and .idle)" "the socket-only podman engine is not idle"
-  wait_for "any(.buttons[]?; .text == \"Stop Engine\") and any(.buttons[]?; .text == \"Don'"'"'t Start at Login\")" "no engine buttons"
+  wait_dump "[.containers[]? | .name] | sort == [\"build\", \"cache\", \"web\"]" "the three containers are not in the dump"
+  wait_dump "any(.containers[]; .name == \"web\" and .memory_bytes > 0 and .cpu_percent > 0)" "web has no memory or CPU from its cgroup"
+  wait_dump "any(.engines[]; (.socket | endswith(\"denied.sock\")) and .error == \"permission\")" "the mode-000 engine does not report permission"
+  wait_dump "any(.engines[]; (.socket | endswith(\"podman.sock\")) and .idle)" "the socket-only podman engine is not idle"
+  wait_dump "any(.buttons[]?; .text == \"Stop Engine\") and any(.buttons[]?; .text == \"Don'"'"'t Start at Login\")" "no engine buttons"
   grim "$OUT/containers.png"
 
   click web
-  wait_for "any(.buttons[]?; .text == \"Pause\")" "selecting web shows no Pause"
+  wait_dump "any(.buttons[]?; .text == \"Pause\")" "selecting web shows no Pause"
   grim "$OUT/inspector.png"
   click Pause;  calls "pause web" "$OUT/docker-calls.txt"
-  wait_for "any(.buttons[]?; .text == \"Resume\")" "a paused web shows no Resume"
+  wait_dump "any(.buttons[]?; .text == \"Resume\")" "a paused web shows no Resume"
   click Resume; calls "unpause web" "$OUT/docker-calls.txt"
-  wait_for "any(.buttons[]?; .text == \"Pause\")" "a resumed web shows no Pause"
+  wait_dump "any(.buttons[]?; .text == \"Pause\")" "a resumed web shows no Pause"
   click Stop;   calls "stop web" "$OUT/docker-calls.txt"
-  wait_for "any(.containers[]; .name == \"web\" and .state == \"exited\")" "web did not show as exited"
+  wait_dump "any(.containers[]; .name == \"web\" and .state == \"exited\")" "web did not show as exited"
 
   # Checked before its socket stops: a stopped engine is no longer idle and may be asked (nothing listens then).
   [[ ! -s $OUT/podman-calls.txt ]] || { echo "FAIL: the idle podman socket was asked: $(head -3 "$OUT/podman-calls.txt")"; exit 1; }

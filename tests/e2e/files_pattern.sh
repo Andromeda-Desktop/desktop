@@ -45,11 +45,7 @@ action() { # name [gvariant parameter list]
   DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d "$APP" -o /dev/andromeda/Files \
     -m org.freedesktop.Application.ActivateAction "$1" "${2:-[]}" '{}' > /dev/null
 }
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
-}
+WAIT_S=5
 logged() { grep -q -- "$1" "$OUT/files.log"; }
 last_selected() { grep -o "selected [0-9]* of [0-9]* in $DIR" "$OUT/files.log" | tail -n 1; }
 selected_is() { [[ $(last_selected) == "selected $1 of $2 in $DIR" ]]; }

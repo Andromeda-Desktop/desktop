@@ -23,12 +23,8 @@ fi
 RUNTIME=$(mktemp -d /tmp/link-mirror.XXXX)
 trap 'kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null; rm -rf "$RUNTIME"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+source "$ROOT/tests/e2e/wait.sh"
 record() { printf '%s\n' "$1" >> "$OUT/results.jsonl"; }
-wait_for() {
-  local tries=$(( $1 * 10 )) what=$2; shift 2
-  for _ in $(seq "$tries"); do "$@" && return; sleep 0.1; done
-  fail "$what"
-}
 
 ip link set lo up
 ip link add d0 type veth peer name p0
@@ -43,20 +39,7 @@ in_phone ip link set lo up
 in_phone ip addr add 10.81.0.2/24 dev p0
 in_phone ip link set p0 up
 
-cat > "$RUNTIME/bus.conf" <<CONF
-<busconfig>
-  <type>session</type>
-  <listen>unix:path=$RUNTIME/bus</listen>
-  <auth>EXTERNAL</auth>
-  <policy context="default">
-    <allow user="*"/>
-    <allow send_destination="*" eavesdrop="true"/>
-    <allow eavesdrop="true"/>
-    <allow own="*"/>
-  </policy>
-</busconfig>
-CONF
-dbus-daemon --config-file="$RUNTIME/bus.conf" --nofork 2> "$OUT/dbus.log" &
+dbus-daemon --config-file="$ROOT/tests/e2e/private-bus.conf" --address="unix:path=$RUNTIME/bus" --nofork 2> "$OUT/dbus.log" &
 for _ in $(seq 50); do [[ -S $RUNTIME/bus ]] && break; sleep 0.02; done
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$RUNTIME/bus DBUS_SYSTEM_BUS_ADDRESS=unix:path=$RUNTIME/bus
 
@@ -80,7 +63,7 @@ ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["peers"][0]
 hold() {
   phone --mirror-file "$RUNTIME/bars.h264" --mirror-size 720x1280 hold >> "$OUT/hold.jsonl" 2>> "$OUT/hold.log" &
   HOLD=$!
-  wait_for 20 "the phone never connected" grep -q '"event":"connected"' "$OUT/hold.jsonl"
+  WAIT_S=20 wait_for "the phone never connected" grep -q '"event":"connected"' "$OUT/hold.jsonl"
 }
 
 hold
@@ -115,7 +98,7 @@ assert all(c > 200 for c in grey), grey
 assert yellow[0] > 150 and yellow[1] > 150 and yellow[2] < 60, yellow
 assert blue[2] > 150 and blue[0] < 60 and blue[1] < 60, blue
 PY
-wait_for 10 "closing the viewer did not stop the phone" grep -q '"event":"mirror-stop".*viewer closed' "$OUT/hold.jsonl"
+WAIT_S=10 wait_for "closing the viewer did not stop the phone" grep -q '"event":"mirror-stop".*viewer closed' "$OUT/hold.jsonl"
 record "{\"step\":\"decodes-bars\",\"frames\":$FRAMES,\"size\":\"$SIZE\",\"seconds\":$SECONDS_TAKEN}"
 record '{"step":"viewer-close-stops-phone"}'
 
@@ -123,7 +106,7 @@ rm -rf "$OUT/frames"
 RUNS=$(grep -c "mirror\] .*mirroring at" "$OUT/linkd.log")
 viewer --count 600 2>> "$OUT/viewer.log" &
 VIEWER=$!
-wait_for 20 "the second mirror never started" eval '(( $(grep -c "mirror\] .*mirroring at" "$OUT/linkd.log") > RUNS ))'
+WAIT_S=20 wait_for "the second mirror never started" eval '(( $(grep -c "mirror\] .*mirroring at" "$OUT/linkd.log") > RUNS ))'
 BUSY=$(link OpenMirror "'$ID'" 2>&1 || true)
 [[ $BUSY == *"already mirroring"* ]] || fail "a second OpenMirror was not refused: $BUSY"
 record '{"step":"second-open-refused"}'
@@ -135,7 +118,7 @@ link MirrorInput "'$ID'" back "{}" > /dev/null
 link MirrorKeyframe "'$ID'" > /dev/null
 OUTSIDE=$(link MirrorInput "'$ID'" tap "{'x': <int32 20000>, 'y': <int32 5000>}" 2>&1 || true)
 [[ $OUTSIDE == *Rejected* ]] || fail "an out-of-range tap was not refused: $OUTSIDE"
-wait_for 10 "the input did not all reach the phone" eval '(( $(events mirror-input) >= 5 ))'
+WAIT_S=10 wait_for "the input did not all reach the phone" eval '(( $(events mirror-input) >= 5 ))'
 python3 - "$OUT/hold.jsonl" <<'PY' || fail "the phone got other input: $(grep mirror-input "$OUT/hold.jsonl")"
 import json, sys
 got = [json.loads(line) for line in open(sys.argv[1]) if '"mirror-input"' in line]
@@ -153,7 +136,7 @@ record '{"step":"input-reaches-phone","actions":["tap","swipe","scroll","text","
 STOPS=$(grep -c '"event":"mirror-stop"' "$OUT/hold.jsonl" || true)
 pkill -f -- "andromeda-link-mirror $ID --frames" || true
 wait "$VIEWER" 2> /dev/null || true
-wait_for 10 "closing the second viewer did not stop the phone" \
+WAIT_S=10 wait_for "closing the second viewer did not stop the phone" \
   eval '(( $(grep -c "\"event\":\"mirror-stop\"" "$OUT/hold.jsonl") > STOPS ))'
 
 # The window itself, when gtk4paintablesink is installed: a headless Andromeda in this namespace, the viewer in it, and a
@@ -166,7 +149,7 @@ if gst-inspect-1.0 gtk4paintablesink > /dev/null 2>&1; then
   env -u WAYLAND_DISPLAY -u DISPLAY XDG_RUNTIME_DIR="$WL" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
     WLR_HEADLESS_OUTPUTS=1 "${ANDROMEDA:-$ROOT/compositor/build-debug/andromeda}" -c "$WL/andromeda.toml" \
     > "$OUT/andromeda.log" 2>&1 &
-  wait_for 10 "andromeda did not start" test -S "$WL/wayland-0"
+  WAIT_S=10 wait_for "andromeda did not start" test -S "$WL/wayland-0"
   in_session() { env -u DISPLAY XDG_RUNTIME_DIR="$WL" WAYLAND_DISPLAY=wayland-0 "$@"; }
   STOPS=$(grep -c '"event":"mirror-stop"' "$OUT/hold.jsonl" || true)
   in_session "$BIN/andromeda-link-mirror" "$ID" --name Phone >> "$OUT/viewer.log" 2>&1 &
@@ -184,7 +167,7 @@ blue = sum(1 for r, g, b in pixels if b > 180 and r < 60 and g < 60)
 print(yellow, blue)
 assert yellow > 2000 and blue > 2000, (yellow, blue)
 PY
-  wait_for 10 "closing the window did not stop the phone" \
+  WAIT_S=10 wait_for "closing the window did not stop the phone" \
     eval '(( $(grep -c "\"event\":\"mirror-stop\"" "$OUT/hold.jsonl") > STOPS ))'
   DECODER=$(grep -o 'decoding with [a-z0-9_]*' "$OUT/viewer.log" | tail -1 | cut -d' ' -f3)
   record "{\"step\":\"window-shows-bars\",\"decoder\":\"$DECODER\",\"screenshot\":\"window.png\"}"

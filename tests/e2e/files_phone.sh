@@ -34,7 +34,6 @@ BUS=$(sed -n 1p <<< "$bus_info")
 BUS_PID=$(sed -n 2p <<< "$bus_info")
 trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 
-wait_for() { local what=$1; shift; for _ in $(seq 200); do "$@" && return 0; sleep 0.05; done; fail "$what"; }
 logged() { grep -q -- "$1" "$OUT/files.log"; }
 link_logged() { grep -q -- "$1" "$OUT/link.log"; }
 start_link() { # [env assignments]

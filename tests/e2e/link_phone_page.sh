@@ -14,11 +14,7 @@ with_noctalia '
   BIN='"$LINK_BIN"'
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
-  wait_for() {
-    local what=$1; shift
-    for _ in $(seq 150); do "$@" && return; sleep 0.1; done
-    fail "$what"
-  }
+  WAIT_S=15
   phone() { "$BIN/andromeda-link-phone" --state "$RUNTIME/phone" --name "E2E Phone" "$@" 2>> "$OUT/phone.log"; }
   wait_state() {
     local want=$1

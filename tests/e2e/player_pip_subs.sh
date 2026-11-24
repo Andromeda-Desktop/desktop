@@ -24,11 +24,7 @@ BUS=$(sed -n 1p <<< "$bus_info")
 BUS_PID=$(sed -n 2p <<< "$bus_info")
 trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
-}
+WAIT_S=5
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$1\")][0] // empty"; }
 mapped() { local w; w=$(win "$1"); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
 unmapped() { [[ -z $(win "$1") ]]; }

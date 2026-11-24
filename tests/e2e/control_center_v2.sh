@@ -12,8 +12,6 @@ boot_headless 1
 
 with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
-  # wait_for SECONDS COMMAND...: poll COMMAND every 0.2 s.
-  wait_for() { local t=$1; shift; for _ in $(seq $((t * 5))); do "$@" && return 0; sleep 0.2; done; return 1; }
   theme_is() { [[ $("$NOCTALIA" msg theme-mode-get 2> /dev/null) == *"$1"* ]]; }
   # The sheet crop (below the bar clock) differs from the last shot kept in $OUT/last.png.
   panel_changed() {
@@ -41,7 +39,7 @@ PY
   step() {
     "$POINTER" 1280 720 move "$2" "$3" > /dev/null
     "$POINTER" 1280 720 move "$2" "$3" click 272 move 5 715 > /dev/null
-    wait_for 5 panel_changed || fail "$1: the sheet did not change"
+    poll_for 5 panel_changed || fail "$1: the sheet did not change"
     settle
     grim "$OUT/$1.png"; cp "$OUT/$1.png" "$OUT/last.png"
   }
@@ -50,12 +48,12 @@ PY
   # first are lost. The pointer-client calls below create one each; with this one held, their keys arrive at once.
   "$POINTER" 1280 720 keyboard-only mod none pause 300000 > /dev/null 2>&1 &
   holder=$!
-  wait_for 5 grep -q "keyboard: bound" "$OUT/noctalia.log" || fail "the shell did not bind the held keyboard"
+  poll_for 5 grep -q "keyboard: bound" "$OUT/noctalia.log" || fail "the shell did not bind the held keyboard"
   "$NOCTALIA" msg theme-mode-set light > /dev/null
-  wait_for 5 theme_is light || fail "theme did not become light"
+  poll_for 5 theme_is light || fail "theme did not become light"
   grim "$OUT/last.png"; cp "$OUT/last.png" "$OUT/closed.png"
   "$NOCTALIA" msg panel-open control-center quick > /dev/null
-  wait_for 5 panel_changed || fail "the sheet did not open"
+  poll_for 5 panel_changed || fail "the sheet did not open"
   settle
   grim "$OUT/1-page1.png"; cp "$OUT/1-page1.png" "$OUT/last.png"
 
@@ -66,17 +64,17 @@ PY
   key() { local a=(tap 119 tap 119) k; for k in "$@"; do a+=(tap "$k"); done; "$POINTER" 1280 720 "${a[@]}" > /dev/null; }
   # press_until REF KEY: a key can still be lost while the shell takes focus of a new virtual keyboard, so resend
   # until the screen matches REF (at most 3 sends).
-  press_until() { local ref=$1 try; shift; for try in 1 2 3; do key "$@"; wait_for 2 panel_matches "$ref" && return 0; cp "$OUT/now.png" "$OUT/press-miss-$try.png"; done; return 1; }
+  press_until() { local ref=$1 try; shift; for try in 1 2 3; do key "$@"; poll_for 2 panel_matches "$ref" && return 0; cp "$OUT/now.png" "$OUT/press-miss-$try.png"; done; return 1; }
   press_until "$OUT/4-back.png" 1 || fail "Escape did not return from the Wi-Fi page"
   cp "$OUT/4-back.png" "$OUT/last.png"
-  for try in 1 2 3; do key 53; wait_for 2 panel_changed && break; done
+  for try in 1 2 3; do key 53; poll_for 2 panel_changed && break; done
   panel_changed || fail "/ did not open the search"
   cp "$OUT/now.png" "$OUT/last.png"
   key 17 23
-  wait_for 5 panel_changed || fail "typing did not filter the search"
+  poll_for 5 panel_changed || fail "typing did not filter the search"
   cp "$OUT/now.png" "$OUT/last.png"
   key 28
-  wait_for 5 panel_changed || fail "the search did not open the Wi-Fi page"
+  poll_for 5 panel_changed || fail "the search did not open the Wi-Fi page"
   settle
   grim "$OUT/3-wifi-detail.png"
   step 6d-back 940 80
@@ -85,7 +83,7 @@ PY
   # Escape must not keep keyboard focus in its text field.
   "$POINTER" 1280 720 tap 119 tap 119 tap 53 tap 1 tap 53 > /dev/null
   cp "$OUT/4-back.png" "$OUT/last.png"
-  wait_for 5 panel_changed || fail "an unprimed / after Escape did not reopen the search"
+  poll_for 5 panel_changed || fail "an unprimed / after Escape did not reopen the search"
   panel_matches "$OUT/closed.png" && fail "the sheet closed instead of reopening the search"
   # Escape: search -> sheet.
   press_until "$OUT/4-back.png" 1 || fail "Escape did not return from the search to the sheet"
@@ -95,13 +93,13 @@ PY
   press_until "$OUT/closed.png" 1 || fail "a second Escape did not close the sheet"
   "$NOCTALIA" msg panel-open control-center quick > /dev/null
   cp "$OUT/closed.png" "$OUT/last.png"
-  wait_for 5 panel_changed || fail "the sheet did not reopen"
+  poll_for 5 panel_changed || fail "the sheet did not reopen"
   settle
   grim "$OUT/6f-reopened.png"; cp "$OUT/6f-reopened.png" "$OUT/last.png"
 
   "$POINTER" 1280 720 move 1016 152 click 272 move 5 715 > /dev/null
-  wait_for 5 theme_is dark || fail "Dark Mode tile did not switch the theme to dark"
-  wait_for 5 panel_changed || fail "the sheet did not repaint dark"
+  poll_for 5 theme_is dark || fail "Dark Mode tile did not switch the theme to dark"
+  poll_for 5 panel_changed || fail "the sheet did not repaint dark"
   settle
   grim "$OUT/10-dark.png"; cp "$OUT/10-dark.png" "$OUT/last.png"
 
@@ -115,7 +113,7 @@ PY
   step 9-done 1235 64
 
   conf=$HOME/.local/state/andromeda/shell/overrides.toml
-  wait_for 5 bash -c "[[ -n \"$conf\" ]] && grep -q quick_tiles \"$conf\"" || fail "quick_tiles was not saved"
+  poll_for 5 bash -c "[[ -n \"$conf\" ]] && grep -q quick_tiles \"$conf\"" || fail "quick_tiles was not saved"
   tiles=$(sed -n "/quick_tiles/,/]/p" "$conf")
   [[ $tiles == *bluetooth* ]] || fail "saved tiles lost Bluetooth: $tiles"
   [[ $tiles != *wifi* ]] || fail "saved tiles still hold Wi-Fi: $tiles"

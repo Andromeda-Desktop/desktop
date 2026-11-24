@@ -33,11 +33,7 @@ env_all=(env DESK_FILES_TEST=1 DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" 
 
 run "${env_all[@]}" ANDROMEDA_LOG_LEVEL=debug "$FILES" --picker > "$OUT/picker.log" 2>&1 &
 
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
-}
+WAIT_S=5
 on_bus() { DBUS_SESSION_BUS_ADDRESS=$BUS gdbus introspect --session -d "$1" -o "$2" > /dev/null 2>&1; }
 wait_for "the picker is not on the bus" on_bus org.freedesktop.impl.portal.desktop.andromeda.Files /org/freedesktop/portal/desktop
 

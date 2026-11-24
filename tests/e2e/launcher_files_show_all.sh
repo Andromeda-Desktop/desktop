@@ -18,20 +18,20 @@ printf '%%PDF-1.4\n' > "$home/Documents/kiwi-report-scan.pdf"
 
 export ANDROMEDA_LOG_LEVEL=debug INDEX
 with_noctalia '
-  wait_for() { for _ in $(seq 100); do eval "$2" && return 0; sleep 0.05; done; echo "FAIL: $1"; exit 1; }
+  WAIT_S=5
   "$INDEX" serve > "$OUT/index.log" 2>&1 &
-  wait_for "the index daemon did not start" "grep -q watching \"$OUT/index.log\""
+  wait_for "the index daemon did not start" eval "grep -q watching \"$OUT/index.log\""
   wtype -s 3600000 &
 
   "$NOCTALIA" msg panel-open launcher kiwi-report > /dev/null
-  wait_for "the Files section did not get 8 files" "grep -q \"\] 8 files for \\\"kiwi-report\\\"\$\" \"$OUT/noctalia.log\""
+  wait_for "the Files section did not get 8 files" eval "grep -q \"\] 8 files for \\\"kiwi-report\\\"\$\" \"$OUT/noctalia.log\""
   sleep 0.4
   grim "$OUT/sections.png"
 
   # 8 file rows, then "Show all files".
   for _ in $(seq 8); do wtype -k Down; done
   wtype -k Return
-  wait_for "the Files scope did not list 13 files" \
+  wait_for "the Files scope did not list 13 files" eval \
     "grep -q \"\] 13 files for \\\"kiwi-report\\\" in the Files scope\$\" \"$OUT/noctalia.log\""
   sleep 0.4
   grim "$OUT/scope.png"
@@ -39,7 +39,7 @@ with_noctalia '
   # Kind chips: All, Folders, PDFs (Ctrl+Tab steps kinds; Tab steps the mode buttons).
   wtype -M ctrl -k Tab -m ctrl
   wtype -M ctrl -k Tab -m ctrl
-  wait_for "the PDFs chip did not filter to 1 file" \
+  wait_for "the PDFs chip did not filter to 1 file" eval \
     "grep -q \"\] 1 files for \\\"kiwi-report\\\" in the Files scope kind pdf\" \"$OUT/noctalia.log\""
   sleep 0.4
   grim "$OUT/kind.png"

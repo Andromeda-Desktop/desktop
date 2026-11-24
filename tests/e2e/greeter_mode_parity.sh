@@ -9,7 +9,6 @@ source "$(dirname "$0")/lib.sh"
 rm -rf "$OUT"
 boot_headless 2
 fail() { echo "FAIL: $*" >&2; exit 1; }
-wait_for() { local what=$1; shift; for _ in $(seq 100); do "$@" && return; sleep 0.1; done; run grim "$OUT/fail.png" || true; fail "$what"; }
 count() { grep -c "\"type\": \"$1\"" "$OUT/requests.jsonl" 2> /dev/null || true; }
 atleast() { [[ $(count "$1") -ge $2 ]]; }
 posted() { grep -q "\"response\": \"$1\"" "$OUT/requests.jsonl" 2> /dev/null; }

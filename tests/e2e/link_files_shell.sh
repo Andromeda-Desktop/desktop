@@ -29,11 +29,7 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   step() { printf "%s\n" "$*" >> "$OUT/steps.txt"; }
-  wait_for() {
-    local what=$1; shift
-    for _ in $(seq 300); do "$@" && return; sleep 0.1; done
-    fail "$what"
-  }
+  WAIT_S=30
   say() { printf "%s\n" "$*" >&3; }
   DOWNLOADS=$RUNTIME/downloads
   PHONE_DL=$RUNTIME/phone-downloads

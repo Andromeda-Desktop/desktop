@@ -39,6 +39,20 @@ UNITS = {
 }
 
 
+def cpu_list(mask):
+    """An AllowedCPUs byte mask (bit n = CPU n) as a CPU list."""
+    return ",".join(str(i * 8 + b) for i, byte in enumerate(mask) for b in range(8) if int(byte) >> b & 1)
+
+
+def unit_value(key, value):
+    """A SetUnitProperties value as `systemctl set-property` takes it."""
+    if key == "AllowedCPUs":
+        return cpu_list(value)
+    if int(value) == 2**64 - 1:
+        return "infinity"
+    return f"{int(value) // 10000}%" if key == "CPUQuotaPerSecUSec" else str(int(value))
+
+
 class Unit(dbus.service.Object):
     def __init__(self, bus, name, state, cgroup=None):
         super().__init__(bus, unit_path(name))
@@ -126,9 +140,9 @@ class Manager(dbus.service.Object):
 
     @dbus.service.method(MANAGER, in_signature="sba(sv)")
     def SetUnitProperties(self, name, runtime, props):
-        self.record(f"SetUnitProperties {name} {bool(runtime)} " + " ".join(f"{k}={int(v)}" for k, v in props))
+        self.record(f"SetUnitProperties {name} {bool(runtime)} " + " ".join(f"{k}={cpu_list(v) if k == 'AllowedCPUs' else int(v)}" for k, v in props))
         if name in self.mirrored:
-            args = [f"{'CPUQuota' if k == 'CPUQuotaPerSecUSec' else k}={'infinity' if int(v) == 2**64 - 1 else (str(int(v) // 10000) + '%' if k == 'CPUQuotaPerSecUSec' else int(v))}" for k, v in props]
+            args = [f"{'CPUQuota' if k == 'CPUQuotaPerSecUSec' else k}={unit_value(k, v)}" for k, v in props]
             subprocess.run(["systemctl", "--user", "set-property", "--runtime", name, *args], env={**os.environ, "XDG_RUNTIME_DIR": self.mirrored[name]}, check=False)
 
     def set_file_state(self, names, state):
@@ -202,6 +216,8 @@ class Manager(dbus.service.Object):
 
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 bus = dbus.bus.BusConnection(os.environ["DBUS_SESSION_BUS_ADDRESS"])
+# The test bus dies with the test; a job kill reaches only the shell subshell that started this mock.
+bus.set_exit_on_disconnect(True)
 name = dbus.service.BusName("org.freedesktop.systemd1", bus)
 manager = Manager(bus, sys.argv[1])
 print("ready", flush=True)

@@ -11,7 +11,6 @@ boot_headless 1
 
 with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
-  wait_for() { local t=$1; shift; for _ in $(seq $((t * 5))); do "$@" && return 0; sleep 0.2; done; return 1; }
   settle() {
     local i
     for i in $(seq 25); do
@@ -26,7 +25,7 @@ with_noctalia '
   notify-send -w -t 0 -a "$tag" -A "default=Open" "Open $tag" "body" > "$OUT/default.txt" 2>&1 &
   # The banner on screen means the shell has the notification.
   bannered() { grim "$OUT/now.png"; ! cmp -s "$OUT/0-before.png" "$OUT/now.png"; }
-  wait_for 5 bannered || fail "the notification banner did not show"
+  poll_for 5 bannered || fail "the notification banner did not show"
   "$NOCTALIA" msg panel-open notification-center > /dev/null
   settle
   cp "$OUT/now.png" "$OUT/1-open.png"
@@ -35,6 +34,6 @@ with_noctalia '
   "$POINTER" 1280 720 move 560 140 > /dev/null
   "$POINTER" 1280 720 move 560 140 click 272 > /dev/null
   defaulted() { grep -q "default" "$OUT/default.txt"; }
-  wait_for 5 defaulted || fail "a card body click did not send default (default.txt: $(cat "$OUT/default.txt"))"
+  poll_for 5 defaulted || fail "a card body click did not send default (default.txt: $(cat "$OUT/default.txt"))"
   echo PASS
 '

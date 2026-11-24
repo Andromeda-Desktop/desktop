@@ -43,7 +43,6 @@ DBUS_SYSTEM_BUS_ADDRESS=$SYSBUS DBUS_SESSION_BUS_ADDRESS=$BUS FAKE_COMPOSITOR_RE
 exec 7> "$RUNTIME/logind.in"
 run "${env_app[@]}" ANDROMEDA_LOG_LEVEL=debug "$FILES" "$HOME_DIR" > "$OUT/files.log" 2>&1 &
 
-wait_for() { local what=$1; shift; for _ in $(seq 200); do "$@" && return 0; sleep 0.05; done; fail "$what"; }
 on_bus() { DBUS_SESSION_BUS_ADDRESS=$BUS gdbus introspect --session -d "$1" -o "$2" > /dev/null 2>&1; }
 mapped() { [[ $(run "$ANDROMEDA" windows --json | jq "[.. | objects | select(.app_id? == \"$APP\")] | length") -gt 0 ]]; }
 action() {

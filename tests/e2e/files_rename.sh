@@ -40,13 +40,7 @@ done
 [[ -n ${w:-} ]] || fail "the Files window did not map"
 run "$ANDROMEDA" settle > /dev/null
 
-wait_log() {
-  for _ in $(seq 80); do
-    grep -qE "$2" < <(tail -n +"$(($1 + 1))" "$OUT/files.log") && return 0
-    sleep 0.05
-  done
-  return 1
-}
+LOG=$OUT/files.log
 wait_file() {
   for _ in $(seq 80); do
     eval "$1" && return 0

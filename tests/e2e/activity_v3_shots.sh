@@ -68,11 +68,6 @@ with_noctalia '
     mkdir -p "$(dirname "$CG$cg")"; ln -sfn "/sys/fs/cgroup$cg" "$CG$cg"
     call StartWithCgroup string:"$s" string:app.slice string:"$cg"
   done
-  wait_for() { # seconds, message, command...: polls the command every 0.1 s until it passes
-    local tries=$(( $1 * 10 )) msg=$2; shift 2
-    for _ in $(seq "$tries"); do "$@" > /dev/null 2>&1 && return 0; sleep 0.1; done
-    fail "$msg"
-  }
   activity_mapped() { "$ANDROMEDA" windows --json | jq -e '"'"'any(.. | objects; .app_id? == "dev.andromeda.Activity")'"'"'; }
   activity_closed() { ! activity_mapped; }
   dump_has() { "$NOCTALIA" msg activity-dump | jq -e "$1"; }
@@ -82,13 +77,13 @@ with_noctalia '
     "$ANDROMEDA" msg config-reload > /dev/null
     if activity_mapped > /dev/null; then
       keys mod control tap 17 mod none # Ctrl+W: the next open takes the new size rule
-      wait_for 5 "Ctrl+W did not close Activity" activity_closed
+      WAIT_S=5 wait_for "Ctrl+W did not close Activity" activity_closed
     fi
     "$NOCTALIA" msg activity-open "$3" > /dev/null
-    wait_for 5 "Activity did not map" activity_mapped
-    wait_for 10 "no CPU rate for zen-browser" dump_has '"'"'any(.rows[]; .key == "zen-browser" and .cpu_percent > 0)'"'"'
+    WAIT_S=5 wait_for "Activity did not map" activity_mapped
+    WAIT_S=10 wait_for "no CPU rate for zen-browser" dump_has '"'"'any(.rows[]; .key == "zen-browser" and .cpu_percent > 0)'"'"'
     keys $4
-    wait_for 5 "the header does not show $5" dump_has "any(.buttons[]?; .text == \"$5\")"
+    WAIT_S=5 wait_for "the header does not show $5" dump_has "any(.buttons[]?; .text == \"$5\")"
     settle
     grim "$OUT/$1.png"
   }

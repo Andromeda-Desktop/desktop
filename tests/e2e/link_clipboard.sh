@@ -24,11 +24,7 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   step() { printf "%s\n" "$*" >> "$OUT/steps.txt"; }
-  wait_for() {
-    local what=$1; shift
-    for _ in $(seq 150); do "$@" && return; sleep 0.1; done
-    fail "$what"
-  }
+  WAIT_S=15
   say() { printf "%s\n" "$*" >&3; }
   link() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m "org.andromeda.Link1.$1" "${@:2}"; }
   count() { grep -c "\"cbor\":\"[0-9a-f]*$(printf %s "$1" | xxd -p)" "$OUT/transcript.jsonl" || true; }

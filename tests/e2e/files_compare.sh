@@ -64,11 +64,7 @@ action() { # name [gvariant parameter list]
     -m org.freedesktop.Application.ActivateAction "$1" "${2:-[]}" '{}' > /dev/null
 }
 seen() { [[ $(grep -c -- "$1" "$OUT/files.log") -ge $2 ]]; } # the log holds $1 at least $2 times
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
-}
+WAIT_S=5
 logged() { grep -q -- "$1" "$OUT/files.log"; }
 shot() { run "$ANDROMEDA" settle > /dev/null; sleep 0.3; run grim "$OUT/$1.png"; }
 # Pixels that differ between two shots in the left and in the right half of the window.
@@ -113,7 +109,7 @@ for n in 1 2; do
   wait_for "Replace did not answer conflict $n" replace_until "$n"
 done
 wait_for "the sync did not copy onlya.txt" test -f "$B/onlya.txt"
-wait_for "the sync did not replace newer.txt: $(cat "$B/newer.txt")" test "$(cat "$B/newer.txt")" = "pc new"
+wait_for "the sync did not replace newer.txt" eval '[[ $(cat "$B/newer.txt") == "pc new" ]]'
 wait_for "the sync did not copy album/2026/c.jpg" test -f "$B/album/2026/c.jpg"
 wait_for "the sync did not replace album/2026/b.jpg: $(cat "$B/album/2026/b.jpg")" \
   test "$(cat "$B/album/2026/b.jpg")" = "b pc"

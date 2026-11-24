@@ -49,11 +49,7 @@ action() { # name [gvariant parameter list]
   DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d "$APP" -o /dev/andromeda/Files \
     -m org.freedesktop.Application.ActivateAction "$1" "${2:-[]}" '{}' > /dev/null
 }
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
-}
+WAIT_S=5
 logged() { grep -q -- "$1" "$OUT/files.log"; }
 count_logged() { grep -c -- "$1" "$OUT/files.log" || true; }
 sidebar() { grep -o 'sidebar smart \[[^]]*\]' "$OUT/files.log" | tail -n 1; }
@@ -72,7 +68,7 @@ wait_for "the smart folder did not save" \
   logged "smart folder saved Recent Images: Kind is Image · Modified in the last 30 days · in This PC"
 wait_for "the listing is not the one recent image" logged "smart folder Recent Images: 1 results"
 [[ $(jq -r '.[0].kind + " " + (.[0].days|tostring)' "$CONFIG") == "image 30" ]] || fail "smart-folders.json: $(cat "$CONFIG")"
-wait_for "the sidebar does not show it: $(sidebar)" test "$(sidebar)" = "sidebar smart [Recent Images]"
+wait_for "the sidebar does not show it" eval '[[ $(sidebar) == "sidebar smart [Recent Images]" ]]'
 echo "PASS save to sidebar"
 
 touch "$PICS/new.png"
@@ -106,6 +102,6 @@ echo "PASS bad criteria refused"
 
 action smart.go "[<'Recent Images'>]"
 action file.remove-smart-folder
-wait_for "Remove left it in the sidebar: $(sidebar)" test "$(sidebar)" = "sidebar smart [Pictures Notes,Fine]"
+wait_for "Remove left it in the sidebar" eval '[[ $(sidebar) == "sidebar smart [Pictures Notes,Fine]" ]]'
 [[ $(jq -r '[.[].name] | join(",")' "$CONFIG") == "Pictures Notes,Fine" ]] || fail "smart-folders.json keeps it"
 echo "PASS remove"

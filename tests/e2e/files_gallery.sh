@@ -113,20 +113,14 @@ run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_D
   DESK_FRAME_STATS=1 DESK_FILES_GEOMETRY=1 ANDROMEDA_PREVIEW_HELPER="$ROOT/apps/files/build/subprojects/andromeda-preview/andromeda-preview-helper" \
   "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
-wait_log() {
-  for _ in $(seq "${3:-100}"); do
-    grep -qE "$2" < <(tail -n +"$(($1 + 1))" "$OUT/files.log") && return 0
-    sleep 0.05
-  done
-  return 1
-}
+LOG=$OUT/files.log
 mark() { wc -l < "$OUT/files.log"; }
 keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
 shot() { run "$ANDROMEDA" settle > /dev/null; run grim "$OUT/$1.png"; }
 missed_since() { tail -n +"$(($1 + 1))" "$OUT/files.log" | grep -oE "anim .* missed [0-9]+" | grep -oE '[0-9]+$' | paste -sd+ | bc; }
 
-wait_log 0 "first frame at" 200 || fail "the window drew no first frame"
-wait_log 0 "listed [0-9]+ in" 200 || fail "the folder did not list"
+wait_log 0 "first frame at" 10 || fail "the window drew no first frame"
+wait_log 0 "listed [0-9]+ in" 10 || fail "the folder did not list"
 run "$ANDROMEDA" settle > /dev/null
 
 # Opening a photo from the icons shows it in the Gallery; Escape returns to the icons and the folder keeps its view.
@@ -148,15 +142,15 @@ run "$ANDROMEDA" settle > /dev/null
 shot 1-chrome-shown
 
 m=$(mark)
-wait_log "$m" "gallery chrome hidden" 80 || fail "the chrome did not hide 2 s after the pointer stopped"
+wait_log "$m" "gallery chrome hidden" 4 || fail "the chrome did not hide 2 s after the pointer stopped"
 m=$(($(grep -nE "gallery chrome hidden" "$OUT/files.log" | tail -n 1 | cut -d: -f1) - 1))
-wait_log "$m" "anim .* frames" 60 || fail "the hide reported no frame stats"
+wait_log "$m" "anim .* frames" 3 || fail "the hide reported no frame stats"
 shot 2-chrome-hidden
 hide_missed=$(missed_since "$m")
 
 m=$(mark); run "$POINTER" 1280 720 move 600 300 > /dev/null
 wait_log "$m" "gallery chrome shown" || fail "a pointer move did not bring the chrome back"
-wait_log "$m" "anim .* frames" 60 || fail "the show reported no frame stats"
+wait_log "$m" "anim .* frames" 3 || fail "the show reported no frame stats"
 show_missed=$(missed_since "$m")
 
 m=$(mark); keys tap 33                        # F
@@ -167,7 +161,7 @@ wait_log "$m" "gallery chrome shown" || fail "F did not bring the chrome back"
 # Info card (mockup section 15): I opens it; the place comes from the GPS tag through the bundled offline map data.
 m=$(mark); keys tap 23                        # I
 wait_log "$m" "gallery info shown" || fail "I did not open the Info card"
-wait_log "$m" "gallery info for A_kathmandu.jpg map Kathmandu" 100 || fail "the Info card did not place the photo in Kathmandu"
+wait_log "$m" "gallery info for A_kathmandu.jpg map Kathmandu" 5 || fail "the Info card did not place the photo in Kathmandu"
 run "$POINTER" 1280 720 move 640 360 > /dev/null
 shot 3-info
 m=$(mark); keys tap 23
@@ -175,7 +169,7 @@ wait_log "$m" "gallery info hidden" || fail "a second I did not close the Info c
 
 # Favourite: the action button stars the photo; R rotates the JPEG a quarter without loss (Orientation 1 -> 6).
 run "$POINTER" 1280 720 move 600 300 > /dev/null
-wait_log 0 "geometry gallery-action favourite " 60 || fail "no geometry for the Favourite button"
+wait_log 0 "geometry gallery-action favourite " 3 || fail "no geometry for the Favourite button"
 read -r fx fy <<< "$(grep -E "geometry gallery-action favourite " "$OUT/files.log" | tail -n 1 | awk '{print $(NF-1), $NF}')"
 w=$(run "$ANDROMEDA" windows --json | jq -c '[.. | objects | select(.app_id? == "dev.andromeda.Files")][0]')
 m=$(mark); run "$POINTER" 1280 720 move $(($(jq .x <<< "$w") + fx)) $(($(jq .y <<< "$w") + fy)) click 272 > /dev/null
@@ -204,22 +198,22 @@ wait_log "$m" "gallery zoom fit" || fail "a second double-click did not return t
 m=$(mark); keys tap 106                       # Right
 wait_log "$m" "gallery 2 of 15" || fail "Right did not go to the clip (or the Live Photo video was not folded into its photo)"
 m=$(mark); keys tap 57                        # Space
-wait_log "$m" "gallery video playing B_clip.mp4" 100 || fail "Space did not play the video"
-wait_log "$m" "gallery video B_clip.mp4 640x360" 100 || fail "the video showed no frame"
+wait_log "$m" "gallery video playing B_clip.mp4" 5 || fail "Space did not play the video"
+wait_log "$m" "gallery video B_clip.mp4 640x360" 5 || fail "the video showed no frame"
 shot 5-video
-wait_log "$m" "gallery video ended" 120 || fail "the video did not end"
+wait_log "$m" "gallery video ended" 6 || fail "the video did not end"
 
 # Live Photo: its motion plays once on open, muted.
 m=$(mark); keys tap 106
 wait_log "$m" "gallery 3 of 15" || fail "Right did not go to the Live Photo"
-wait_log "$m" "gallery video playing C_live.mov muted" 100 || fail "the Live Photo's motion did not play muted on open"
-wait_log "$m" "gallery video ended" 100 || fail "the Live Photo's motion did not end"
+wait_log "$m" "gallery video playing C_live.mov muted" 5 || fail "the Live Photo's motion did not play muted on open"
+wait_log "$m" "gallery video ended" 5 || fail "the Live Photo's motion did not end"
 shot 6-live-photo
 
 # Slideshow: Space on a photo moves on by itself.
 m=$(mark); keys tap 57
 wait_log "$m" "gallery slideshow on" || fail "Space on a photo did not start the slideshow"
-wait_log "$m" "gallery 4 of 15" 100 || fail "the slideshow did not move to the next photo"
+wait_log "$m" "gallery 4 of 15" 5 || fail "the slideshow did not move to the next photo"
 m=$(mark); keys tap 57
 wait_log "$m" "gallery slideshow off" || fail "a second Space did not stop the slideshow"
 
@@ -244,7 +238,7 @@ m=$(mark)
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
   XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_CACHE_HOME="$HOME_DIR/.cache" LC_ALL=C.UTF-8 \
   "$FILES" --action=gallery "$SRC/IMG_05.png" > /dev/null 2>&1 || fail "the Photos launch did not forward"
-wait_log "$m" "view gallery" 200 || fail "Photos did not open the photo in the Gallery"
+wait_log "$m" "view gallery" 10 || fail "Photos did not open the photo in the Gallery"
 wait_log "$m" "gallery [0-9]+ of " || fail "Photos opened the Gallery without the photo"
 
 # Photos on its own (no file): every image under Pictures, subfolders included, in a window of its own app id; it
@@ -259,7 +253,7 @@ m=$(mark)
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
   XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_CACHE_HOME="$HOME_DIR/.cache" LC_ALL=C.UTF-8 \
   "$FILES" --action=gallery > /dev/null 2>&1 || fail "the plain Photos launch did not forward"
-wait_log "$m" "photos: 3 images" 200 || fail "Photos did not show the 3 images in the Pictures subfolders"
+wait_log "$m" "photos: 3 images" 10 || fail "Photos did not show the 3 images in the Pictures subfolders"
 for _ in $(seq 100); do
   [[ -n $(run "$ANDROMEDA" windows --json | jq -r '.. | objects | select(.app_id? == "dev.andromeda.Photos") | .app_id') ]] && break
   sleep 0.05

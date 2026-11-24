@@ -20,23 +20,9 @@ if [[ ${1:-} != inner ]]; then
   mkdir -p "$OUT"
   RUNTIME=$(mktemp -d /tmp/link-notifications-sync.XXXX)
   trap 'rm -rf "$RUNTIME"' EXIT
-  # No service directories: a call while the test daemon is down must not start the installed one.
-  cat > "$RUNTIME/bus.conf" << 'CONF'
-<busconfig>
-  <type>session</type>
-  <listen>unix:tmpdir=/tmp</listen>
-  <auth>EXTERNAL</auth>
-  <policy context="default">
-    <allow user="*"/>
-    <allow send_destination="*" eavesdrop="true"/>
-    <allow eavesdrop="true"/>
-    <allow own="*"/>
-  </policy>
-</busconfig>
-CONF
   env -u DBUS_SESSION_BUS_ADDRESS OUT="$OUT" RUNTIME="$RUNTIME" BIN="$BIN" E2E="$E2E" ROOT="$ROOT" \
     XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/state" HOME="$RUNTIME/home" \
-    dbus-run-session --config-file="$RUNTIME/bus.conf" -- "$0" inner
+    dbus-run-session --config-file="$ROOT/tests/e2e/private-bus.conf" -- "$0" inner
   cat "$OUT/steps.txt"
   "$BIN/andromeda-link-phone" check-transcript "$ROOT/link/api/messages.cddl" "$OUT/transcript.jsonl" \
     > "$OUT/transcript-check.json" || { echo "FAIL: the transcript violates the schema" >&2; exit 1; }
@@ -46,12 +32,9 @@ fi
 
 trap 'kill $(jobs -p) 2> /dev/null || true' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+source "$ROOT/tests/e2e/wait.sh"
 step() { printf "%s\n" "$*" >> "$OUT/steps.txt"; }
-wait_for() {
-  local what=$1; shift
-  for _ in $(seq 150); do "$@" && return; sleep 0.1; done
-  fail "$what"
-}
+WAIT_S=15
 link() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m "org.andromeda.Link1.$1" "${@:2}"; }
 devices() {
   gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m org.freedesktop.DBus.Properties.Get \

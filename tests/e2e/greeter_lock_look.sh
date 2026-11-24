@@ -9,7 +9,6 @@ source "$(dirname "$0")/lib.sh"
 rm -rf "$OUT"
 boot_headless 1
 fail() { echo "FAIL: $*" >&2; exit 1; }
-wait_for() { local what=$1; shift; for _ in $(seq 100); do "$@" && return; sleep 0.1; done; run grim "$OUT/fail.png" || true; fail "$what"; }
 # Mean brightness of a region "x,y wxh" of $2 (a PPM read with grim); over 8 = something light is drawn there.
 lit() { local w=${1#* } ; w=${w%x*}; local h=${1#*x}; run grim -g "$1" -t ppm - | tail -c $((w * h * 3)) | od -An -tu1 -v \
   | awk '{for(i=1;i<=NF;i++){s+=$i;n++}}END{exit !(s/n > 8)}'; }

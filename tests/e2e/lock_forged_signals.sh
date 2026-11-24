@@ -13,7 +13,7 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   bus() { busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" "$@"; }
-  wait_for() { local what=$1; shift; for _ in $(seq 50); do "$@" && return; sleep 0.1; done; fail "$what"; }
+  WAIT_S=5
   locked() { msg status | grep -q "\"locked\": true"; }
   unlocked() { msg status | grep -q "\"locked\": false"; }
 

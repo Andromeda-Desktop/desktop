@@ -40,13 +40,12 @@ LOG=$OUT/files.log
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
   XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_CACHE_HOME="$HOME_DIR/.cache" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug \
   DESK_FILES_GEOMETRY=1 "$FILES" "$HOME_DIR" > "$LOG" 2>&1 &
-wait_log() { for _ in $(seq "${3:-100}"); do grep -qE "$2" < <(tail -n +"$(($1 + 1))" "$LOG") && return 0; sleep 0.05; done; return 1; }
 mark() { wc -l < "$LOG"; }
 action() { DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d "$APP" -o /dev/andromeda/Files \
   -m org.freedesktop.Application.ActivateAction "$1" "${2:-[]}" '{}' > /dev/null; }
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"${WIN_APP:-$APP}\")][0] // empty"; }
-wait_log 0 "first frame at" 200 || fail "the window drew no first frame"
-wait_log 0 "listed [0-9]+ in" 200 || fail "the folder did not list"
+wait_log 0 "first frame at" 10 || fail "the window drew no first frame"
+wait_log 0 "listed [0-9]+ in" 10 || fail "the folder did not list"
 run "$ANDROMEDA" msg window-float-toggle > /dev/null 2>&1 || true
 run "$ANDROMEDA" settle > /dev/null
 

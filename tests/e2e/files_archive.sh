@@ -49,13 +49,7 @@ WX=$(jq .x <<< "$w")
 WY=$(jq .y <<< "$w")
 run "$ANDROMEDA" settle > /dev/null
 
-wait_log() {
-  for _ in $(seq 60); do
-    grep -qE "$2" < <(tail -n +"$(($1 + 1))" "$OUT/files.log") && return 0
-    sleep 0.05
-  done
-  return 1
-}
+LOG=$OUT/files.log
 mark() { wc -l < "$OUT/files.log"; }
 keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
 shot() { run "$ANDROMEDA" settle > /dev/null; run grim "$OUT/$1.png"; }

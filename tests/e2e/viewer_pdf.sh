@@ -31,11 +31,7 @@ trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" ANDROMEDA_PREVIEW_HELPER="$PREVIEW_HELPER" ANDROMEDA_LOG_LEVEL=debug \
   "$VIEWER" "$RUNTIME/files/sample.pdf" > "$OUT/viewer.log" 2>&1 &
 
-wait_for() { # description, test command...
-  local what=$1; shift
-  for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
-}
+WAIT_S=5
 logged() { grep -q "$1" "$OUT/viewer.log"; }
 mapped() { run "$ANDROMEDA" windows --json | jq -e "[.. | objects | select(.app_id? == \"$APP\")] | length > 0" > /dev/null; }
 action() { # name [gvariant parameter list]
