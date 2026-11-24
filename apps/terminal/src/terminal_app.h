@@ -18,9 +18,9 @@
 #include <string>
 #include <vector>
 
-namespace term {
+class AppNotifier;
 
-  class Notifier;
+namespace term {
 
   // andromeda-terminal: one process; each window runs one shell.
   class TerminalApp final : public DeskApp {
@@ -65,7 +65,7 @@ namespace term {
     WindowWorkspaces m_windowWorkspaces; // each window's holder workspace
     void workspacesChanged(); // updates every window's foot bar
     void addWorkspace(AppWindow& from); // a new window, which is a new workspace
-    std::unique_ptr<Notifier> m_notifier;
+    std::unique_ptr<AppNotifier> m_notifier;
     std::unique_ptr<FileActions> m_fileActions; // browse mode's copy, move, trash, rename, Show in Files
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next
     std::optional<std::uint64_t> m_nextWorkspace;        // the workspace those sessions already belong to

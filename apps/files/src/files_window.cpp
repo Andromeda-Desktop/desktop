@@ -8,6 +8,7 @@
 #include "core/input/key_chord.h"
 #include "details_pane.h"
 #include "job_pill.h"
+#include "job_text.h"
 #include "ui/controls/countdown_ring.h"
 #include "tags.h"
 #include "tag_manager_sheet.h"
@@ -337,7 +338,6 @@ namespace {
     return context;
   }
 
-  std::string noun(std::size_t count) { return count == 1 ? "1 item" : std::format("{} items", count); }
 
   std::vector<fs::path> parseUriList(const std::string& data) {
     std::vector<fs::path> out;
@@ -4663,26 +4663,14 @@ void FilesWindow::onJobChanged(const FileOpsClient::Job& job) {
       }
     }
     refreshCommandBar();
-    const std::string what = job.kind == "trash" ? "Moved to Trash"
-        : job.kind == "copy"                    ? "Copied"
-        : job.kind == "move"                    ? "Moved"
-        : job.kind == "restore"                 ? "Restored"
-        : job.kind == "undo"                    ? "Undone"
-        : job.kind == "rename"                  ? "Renamed"
-        : job.kind == "new_folder"              ? "Created"
-        : job.kind == "link"                    ? "Linked"
-        : job.kind == "extract"                 ? "Extracted"
-        : job.kind == "compress"                ? "Compressed"
-        : job.kind == "tags"                    ? "Tagged"
-                                                : "Done";
-    showToast(std::format("{} {}", what, noun(job.doneFiles > 0 ? job.doneFiles : 1)), undoable);
+    showToast(jobResultText(job), undoable);
   } else if (job.state == "failed" && job.kind == "extract" && m_extracts.contains(job.path) &&
              (job.error.ends_with("password needed") || job.error.ends_with("wrong password"))) {
     openExtractSheet(m_extracts.at(job.path).archive, job.error.ends_with("wrong password")
                                                            ? ExtractSheet::State::WrongPassword
                                                            : ExtractSheet::State::PasswordNeeded);
   } else if (job.state == "failed") {
-    showToast(job.error.empty() ? std::string("The operation failed") : job.error, false);
+    showToast(jobResultText(job), false);
   }
   // A finished, failed or cancelled extract leaves the map; only a done one runs its follow-up.
   if (const auto extract = m_extracts.find(job.path);

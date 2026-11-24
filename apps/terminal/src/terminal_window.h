@@ -43,8 +43,8 @@ class Input;
 class Renderer;
 class SelectionList;
 class Surface;
+class AppNotifier;
 class ThumbnailService;
-
 
 namespace term {
 
@@ -60,7 +60,6 @@ namespace term {
     return AppWindow::Material::Solid;
   }
 
-  class Notifier;
   namespace agent {
     class Host;
   }
@@ -107,7 +106,7 @@ namespace term {
     // origins: one session each, in order; the last one is shown. close: closes this window later, outside the
     // current callback (DeskApp::closeWindow). newWindow: opens another window (Ctrl+Shift+N) with this
     // activation token. joinWorkspace: puts each held shell this window shows (held id, folder) in its workspace.
-    TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents, ThumbnailService& thumbnails,
+    TerminalWindow(AppLoop& loop, AppWindow& window, AppNotifier& notifier, AgentHosts agents, ThumbnailService& thumbnails,
                    SettingsStore& settings,
                    const std::vector<WindowOrigin>& origins,
                    std::function<void()> close, std::function<void(LayoutSave)> sessionsChanged,
@@ -249,7 +248,7 @@ namespace term {
 
     AppLoop& m_loop;
     AppWindow& m_window;
-    Notifier& m_notifier;
+    AppNotifier& m_notifier;
     AgentHosts m_agents;
     ThumbnailService& m_thumbnails;
     SettingsStore& m_settings;

@@ -31,6 +31,7 @@
 #include <string>
 #include <vector>
 
+class AppNotifier;
 class FilesWindow;
 
 // andromeda-files: one process per user (DeskApp single instance); every window shares the folder models, the
@@ -113,6 +114,7 @@ private:
   DirectoryWatcher m_watcher;
   ThumbnailService m_thumbnails;
   std::unique_ptr<FileOpsClient> m_fileOps;
+  std::unique_ptr<AppNotifier> m_notifier;
   Clipboard m_clipboard;
   std::vector<std::string> m_undo;
   std::vector<std::string> m_redo;

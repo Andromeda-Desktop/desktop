@@ -1,6 +1,6 @@
 // Random notify, close, reply, failure and server-close sequences through NoticeKeys and a fake notification server:
 // once every reply is in, a key shows at most one notification, none after a close, and the newest after a notify.
-#include "notice_keys.h"
+#include "app/notice_keys.h"
 
 #include <cstdio>
 #include <deque>
@@ -9,8 +9,6 @@
 #include <random>
 #include <set>
 #include <string>
-
-using namespace term;
 
 namespace {
 

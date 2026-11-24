@@ -1,9 +1,11 @@
 #include "files_app.h"
 
+#include "app/app_notifier.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
 #include "dbus/session_bus.h"
 #include "files_window.h"
+#include "job_text.h"
 #include "tag_manager_sheet.h"
 #include "terminal_pane.h"
 #include "select_pattern_sheet.h"
@@ -109,6 +111,7 @@ void FilesApp::startup() {
   if (bus() != nullptr) {
     m_fileOps = std::make_unique<FileOpsClient>(*bus());
     m_fileOps->setJobChangedCallback([this](const FileOpsClient::Job& job) { onJobChanged(job); });
+    m_notifier = std::make_unique<AppNotifier>(*this);
   } else {
     kLog.warn("no session bus: file operations are off");
   }
@@ -843,10 +846,16 @@ void FilesApp::onJobChanged(const FileOpsClient::Job& job) {
     starred().moved(job.moves);
     pins().moved(job.moves);
   }
-  if (job.finished()) {
-    m_jobLeases.erase(job.path);
-  } else if (!m_jobLeases.contains(job.path)) {
-    m_jobLeases.emplace(job.path, lease());
+  if (!job.finished()) {
+    if (!m_jobLeases.contains(job.path)) {
+      m_jobLeases.emplace(job.path, lease());
+    }
+  } else if (const auto held = m_jobLeases.find(job.path); held != m_jobLeases.end()) {
+    // With no window open, the toast cannot show: the result goes to a desktop notification.
+    if (windows().empty() && job.state != "cancelled" && m_notifier != nullptr) {
+      m_notifier->notify({.body = jobResultText(job)}, {}, [this](const std::string& token, int /*button*/) { activate(token); });
+    }
+    m_jobLeases.erase(held);
   }
   for (auto& [appWindow, window] : m_windows) {
     window->onJobChanged(job);

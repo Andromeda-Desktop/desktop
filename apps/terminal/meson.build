@@ -101,9 +101,6 @@ test('session_list', executable('session_list_test', 'tests/session_list_test.cp
 test('workspace_model', executable('workspace_model_test', 'tests/workspace_model_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 
-test('notice_keys', executable('notice_keys_test', 'tests/notice_keys_test.cpp',
-  include_directories: include_directories('src'), cpp_args: _warnings))
-
 test('terminal_find', executable('terminal_find_test', 'tests/terminal_find_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 test('palette_model', executable('palette_model_test', 'tests/palette_model_test.cpp',
@@ -130,10 +127,10 @@ test('theme_store', executable('theme_store_test', 'tests/theme_store_test.cpp',
 # Session services per platform: D-Bus on Linux; Cocoa frameworks on macOS (.agent/TASK-terminal-macos.md step 7).
 if is_macos
   add_languages('objcpp', native: false)
-  _platform_src = files('src/notifier_macos.mm', 'src/control_socket.cpp', 'src/file_actions_macos.mm')
-  _platform_deps = [dependency('appleframeworks', modules: ['Foundation', 'UserNotifications', 'AppKit'])]
+  _platform_src = files('src/control_socket.cpp', 'src/file_actions_macos.mm')
+  _platform_deps = [dependency('appleframeworks', modules: ['Foundation', 'AppKit'])]
 else
-  _platform_src = files('src/notifier_dbus.cpp', 'src/control_dbus.cpp', 'src/file_actions_dbus.cpp')
+  _platform_src = files('src/control_dbus.cpp', 'src/file_actions_dbus.cpp')
   _platform_deps = []
 endif
 

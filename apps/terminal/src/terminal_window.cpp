@@ -3,9 +3,9 @@
 #include "agent_host.h"
 
 #include "app/app_loop.h"
+#include "app/app_notifier.h"
 #include "app/app_window.h"
 #include "file_actions.h"
-#include "notifier.h"
 #include "link_finder.h"
 #include "shell_integration.h"
 #include "core/deferred_call.h"
@@ -116,7 +116,7 @@ namespace term {
     }
   } // namespace
 
-  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents,
+  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, AppNotifier& notifier, AgentHosts agents,
                                  ThumbnailService& thumbnails, SettingsStore& settings,
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close,
                                  std::function<void(LayoutSave)> sessionsChanged,
@@ -524,7 +524,8 @@ namespace term {
                 return;
               }
               m_notifier.notify(
-                  notice, notice.key.empty() ? std::string{} : std::format("{}/{}", id, notice.key), std::move(clicked),
+                  {.title = notice.title, .body = notice.body, .urgency = notice.urgency, .buttons = notice.buttons},
+                  notice.key.empty() ? std::string{} : std::format("{}/{}", id, notice.key), std::move(clicked),
                   std::move(closed));
             },
         .focus = [this](const std::string& token) { m_window.activate(token); },

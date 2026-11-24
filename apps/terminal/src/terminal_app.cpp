@@ -5,7 +5,7 @@
 #include "agent_host.h"
 #include "holder_client.h"
 #include "kitty_images.h"
-#include "notifier.h"
+#include "app/app_notifier.h"
 #include "terminal_control.h"
 #include "terminal_window.h"
 
@@ -78,7 +78,7 @@ namespace term {
   AppWindow& TerminalApp::createWindow() {
     AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 820, .height = 520, .sidebarWidth = Tokens::componentSidebarWidth, .material = appMaterial(m_settings.settings().material), .contentCard = true, .sidebarToggle = true});
     if (m_notifier == nullptr) {
-      m_notifier = std::make_unique<Notifier>(bus());
+      m_notifier = std::make_unique<AppNotifier>(*this);
     }
     if (m_fileActions == nullptr) {
       m_fileActions = std::make_unique<FileActions>(bus());
