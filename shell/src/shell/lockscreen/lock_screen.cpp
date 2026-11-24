@@ -170,30 +170,14 @@ bool LockScreen::initialize(
 
   if (m_systemBus != nullptr) {
     m_fingerprint = std::make_unique<FingerprintAuthenticator>(*m_systemBus);
-    m_fingerprint->setAuthenticatedCallback([this] {
-      if (m_passwordOnly) {
-        return;
-      }
-      m_status = i18n::tr("lockscreen.unlocked");
-      m_statusIsError = false;
-      updatePromptOnSurfaces();
-      unlock();
-    });
+    m_fingerprint->setAuthenticatedCallback([this] { acceptBiometric(); });
     m_fingerprint->setStatusCallback([this](const std::string& message, bool isError) {
       handleBiometricStatus(message, isError);
     });
     m_fingerprint->setAvailabilityCallback([this] { updatePromptOnSurfaces(); });
     m_face = std::make_unique<FaceAuthenticator>(*m_systemBus, m_user);
     m_face->setAvailabilityCallback([this] { updatePromptOnSurfaces(); });
-    m_face->setAuthenticatedCallback([this]() {
-      if (m_passwordOnly) {
-        return;
-      }
-      m_status = i18n::tr("lockscreen.unlocked");
-      m_statusIsError = false;
-      updatePromptOnSurfaces();
-      unlock();
-    });
+    m_face->setAuthenticatedCallback([this] { acceptBiometric(); });
     m_face->setStatusCallback([this](const std::string& message, bool isError) {
       handleBiometricStatus(message, isError);
     });
@@ -1734,6 +1718,18 @@ void LockScreen::onKeyboardLayoutChanged() {
     return;
   }
   updateIndicatorsOnSurfaces();
+}
+
+void LockScreen::acceptBiometric() {
+  // The same gate as a password result: a match queued before a password check, or one for a lock that is not
+  // (or no longer) up, unlocks nothing.
+  if (m_passwordOnly || m_authenticating || !m_lifecycle.locked() || unlocking()) {
+    return;
+  }
+  m_status = i18n::tr("lockscreen.unlocked");
+  m_statusIsError = false;
+  updatePromptOnSurfaces();
+  unlock();
 }
 
 void LockScreen::invalidatePendingAuthentication() {

@@ -896,10 +896,10 @@ void BluetoothService::setConnectWhenEnabled(bool enabled) {
 void BluetoothService::setConnectionNotifications(bool enabled) { m_connectionNotifications = enabled; }
 
 void BluetoothService::requestConnectPass() {
-  if (!m_connectWhenEnabled || !m_state.powered || m_connectPassActive) {
+  if (!m_connectWhenEnabled || !m_state.powered || m_connectPass != ConnectPass::Idle) {
     return;
   }
-  m_connectPassActive = true;
+  m_connectPass = ConnectPass::Arming;
   // The controller is not ready to connect the instant Powered flips.
   m_connectPassTimer.start(std::chrono::seconds(2), [this] { startConnectPass(); });
 }
@@ -907,7 +907,7 @@ void BluetoothService::requestConnectPass() {
 void BluetoothService::cancelConnectPass() {
   m_connectPassTimer.stop();
   m_connectQueue.clear();
-  m_connectPassActive = false;
+  m_connectPass = ConnectPass::Idle;
   // Replies to Connect() calls already sent must not advance a newer pass.
   ++m_connectPassGeneration;
 }
@@ -917,6 +917,7 @@ void BluetoothService::startConnectPass() {
     cancelConnectPass();
     return;
   }
+  m_connectPass = ConnectPass::Draining;
   m_connectQueue.clear();
   for (const auto& dev : m_devices) {
     m_connectQueue.push_back(dev.path);
@@ -934,16 +935,22 @@ void BluetoothService::connectNextQueued() {
     if (dev == nullptr || !dev->paired || !dev->trusted || dev->connected || dev->connecting) {
       continue;
     }
-    const std::uint64_t generation = m_connectPassGeneration;
+    const std::uint64_t generation = ++m_connectPassGeneration;
     if (dispatchConnect(path, [this, generation] {
           if (generation == m_connectPassGeneration) {
+            m_connectPassTimer.stop();
             connectNextQueued();
           }
         })) {
+      // Longer than any Connect that ends on its own; a reply that never comes moves the pass on.
+      m_connectPassTimer.start(std::chrono::seconds(45), [this, path] {
+        kLog.debug("connect pass: no reply from {} in 45 s; next device", path);
+        connectNextQueued();
+      });
       return;
     }
   }
-  m_connectPassActive = false;
+  m_connectPass = ConnectPass::Idle;
 }
 
 void BluetoothService::emitState(BluetoothStateChangeOrigin origin) {

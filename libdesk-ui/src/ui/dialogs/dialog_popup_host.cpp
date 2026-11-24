@@ -121,20 +121,18 @@ bool DialogPopupHost::openPopup(std::uint32_t width, std::uint32_t height) {
   m_surface = std::move(surface);
   m_popupHosts->beginAttachedPopup(m_parentSurface);
   m_attachedToHost = true;
-  m_openInProgress = true;
+  m_phase = PopupPhase::Opening;
   const bool initialized = m_surface->initialize(
       PopupParent{.surface = parentContext->surface, .output = parentContext->output}, popupConfig
   );
-  m_openInProgress = false;
-  if (!initialized) {
-    destroyPopup();
-    return false;
-  }
-  if (m_closeRequestedDuringOpen) {
+  const bool closedWhileOpening = m_phase == PopupPhase::OpeningClosed;
+  m_phase = PopupPhase::Open;
+  if (!initialized || closedWhileOpening) {
     destroyPopup();
     return false;
   }
   if (m_surface == nullptr) {
+    m_phase = PopupPhase::Closed;
     return false;
   }
   popup_chrome::setContentInputRegion(*m_surface, m_chrome);
@@ -167,18 +165,16 @@ bool DialogPopupHost::openPopupAsChild(PopupSurfaceConfig config, const PopupPar
   popup_chrome::applyToConfig(config, m_chrome, chromeAttachment());
 
   m_surface = std::move(surface);
-  m_openInProgress = true;
+  m_phase = PopupPhase::Opening;
   const bool initialized = m_surface->initialize(parent, config);
-  m_openInProgress = false;
-  if (!initialized) {
-    destroyPopup();
-    return false;
-  }
-  if (m_closeRequestedDuringOpen) {
+  const bool closedWhileOpening = m_phase == PopupPhase::OpeningClosed;
+  m_phase = PopupPhase::Open;
+  if (!initialized || closedWhileOpening) {
     destroyPopup();
     return false;
   }
   if (m_surface == nullptr) {
+    m_phase = PopupPhase::Closed;
     return false;
   }
   popup_chrome::setContentInputRegion(*m_surface, m_chrome);
@@ -186,8 +182,8 @@ bool DialogPopupHost::openPopupAsChild(PopupSurfaceConfig config, const PopupPar
 }
 
 void DialogPopupHost::destroyPopup() {
-  if (m_openInProgress) {
-    m_closeRequestedDuringOpen = true;
+  if (m_phase == PopupPhase::Opening || m_phase == PopupPhase::OpeningClosed) {
+    m_phase = PopupPhase::OpeningClosed;
     return;
   }
   // Topmost-first teardown: any picker popup parented to this one must go before
@@ -196,7 +192,7 @@ void DialogPopupHost::destroyPopup() {
   closeChildPopups();
   m_animations.cancel(m_acceptFadeAnim);
   m_acceptFadeAnim = 0;
-  m_closeRequestedDuringOpen = false;
+  m_phase = PopupPhase::Closed;
   if (m_attachedToHost && m_popupHosts != nullptr) {
     m_popupHosts->endAttachedPopup(m_parentSurface);
     m_attachedToHost = false;
@@ -223,7 +219,7 @@ void DialogPopupHost::destroyPopup() {
 }
 
 void DialogPopupHost::resizePopup(PopupSurfaceConfig config) {
-  if (m_surface == nullptr || m_acceptFadeAnim != 0) {
+  if (m_surface == nullptr || m_phase == PopupPhase::Fading) {
     return;
   }
   m_chrome = popup_chrome::computeGeometry(
@@ -238,7 +234,7 @@ void DialogPopupHost::resizePopup(PopupSurfaceConfig config) {
 }
 
 void DialogPopupHost::closeAfterAccept(std::function<void()> then) {
-  if (m_surface == nullptr || m_sceneRoot == nullptr || m_openInProgress || m_acceptFadeAnim != 0) {
+  if (m_surface == nullptr || m_sceneRoot == nullptr || m_phase != PopupPhase::Open) {
     destroyPopup();
     if (then) {
       then();
@@ -246,6 +242,7 @@ void DialogPopupHost::closeAfterAccept(std::function<void()> then) {
     return;
   }
   m_acceptThen = std::move(then);
+  m_phase = PopupPhase::Fading;
   // The sheet fades out; input stops at once so the accepted sheet takes no second click.
   m_acceptFadeAnim = m_animations.animateSpring(
       1.0F, 0.0F, Style::spring(Tokens::springFadeOut),
@@ -257,7 +254,7 @@ void DialogPopupHost::closeAfterAccept(std::function<void()> then) {
       [this, alive = std::weak_ptr<bool>(m_alive)] {
         // Out of the animation tick: destroyPopup frees the surface whose frame runs this.
         DeferredCall::callLater([this, alive] {
-          if (!alive.expired() && m_acceptFadeAnim != 0) {
+          if (!alive.expired() && m_phase == PopupPhase::Fading) {
             destroyPopup();
           }
         });
@@ -300,7 +297,7 @@ PopupSurfaceConfig DialogPopupHost::defaultPopupConfig(
 }
 
 bool DialogPopupHost::onPointerEvent(const PointerEvent& event) {
-  if (m_surface == nullptr || m_acceptFadeAnim != 0) {
+  if (m_surface == nullptr || m_phase == PopupPhase::Fading) {
     return false;
   }
 
@@ -367,7 +364,7 @@ bool DialogPopupHost::onPointerEvent(const PointerEvent& event) {
 }
 
 void DialogPopupHost::onKeyboardEvent(const KeyboardEvent& event) {
-  if (m_surface == nullptr || m_acceptFadeAnim != 0) {
+  if (m_surface == nullptr || m_phase == PopupPhase::Fading) {
     return;
   }
 

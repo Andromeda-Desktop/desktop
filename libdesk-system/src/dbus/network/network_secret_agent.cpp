@@ -1,6 +1,7 @@
 #include "dbus/network/network_secret_agent.h"
 
 #include "core/log.h"
+#include "core/timer_manager.h"
 #include "dbus/system_bus.h"
 
 #include <cstdint>
@@ -70,8 +71,13 @@ struct NetworkSecretAgent::Impl {
   std::unique_ptr<sdbus::IProxy> agentManager;
   bool registered = false;
   RequestCallback requestCallback;
-  std::optional<sdbus::Result<SecretsDict>> pendingResult;
-  std::string pendingSettingName;
+  // The one GetSecrets the UI asks about; it ends by an answer, a cancel or the deadline, so NM never waits for good.
+  struct Prompt {
+    sdbus::Result<SecretsDict> result;
+    std::string settingName;
+  };
+  std::optional<Prompt> pending;
+  Timer pendingDeadline;
 
   explicit Impl(SystemBus& b) : bus(b) {}
 
@@ -121,7 +127,7 @@ struct NetworkSecretAgent::Impl {
       );
       return;
     }
-    if (pendingResult.has_value()) {
+    if (pending.has_value()) {
       kLog.debug("GetSecrets while another is pending -> NoSecrets");
       result.returnError(
           sdbus::Error{
@@ -137,8 +143,8 @@ struct NetworkSecretAgent::Impl {
     request.settingName = settingName;
     kLog.info("GetSecrets prompt ssid=\"{}\" path={}", request.ssid, std::string(std::move(connectionPath)));
 
-    pendingResult = std::move(result);
-    pendingSettingName = settingName;
+    pending = Prompt{.result = std::move(result), .settingName = settingName};
+    pendingDeadline.start(std::chrono::minutes(5), [this] { cancelPending("no answer in 5 minutes"); });
 
     if (requestCallback) {
       requestCallback(request);
@@ -149,26 +155,29 @@ struct NetworkSecretAgent::Impl {
   }
 
   void cancelPending(const std::string& reason) {
-    if (!pendingResult.has_value()) {
+    std::optional<Prompt> prompt = takePending();
+    if (!prompt.has_value()) {
       return;
     }
-    pendingResult->returnError(
+    prompt->result.returnError(
         sdbus::Error{sdbus::Error::Name{"org.freedesktop.NetworkManager.SecretManager.UserCanceled"}, reason}
     );
-    pendingResult.reset();
-    pendingSettingName.clear();
   }
 
   void submitPending(const std::string& secret) {
-    if (!pendingResult.has_value()) {
+    std::optional<Prompt> prompt = takePending();
+    if (!prompt.has_value()) {
       return;
     }
     SecretsDict secrets;
-    const auto* key = pendingSettingName == kEnterpriseSettingName ? kEapPasswordKey : kPskKey;
-    secrets[pendingSettingName][key] = sdbus::Variant{secret};
-    pendingResult->returnResults(secrets);
-    pendingResult.reset();
-    pendingSettingName.clear();
+    const auto* key = prompt->settingName == kEnterpriseSettingName ? kEapPasswordKey : kPskKey;
+    secrets[prompt->settingName][key] = sdbus::Variant{secret};
+    prompt->result.returnResults(secrets);
+  }
+
+  std::optional<Prompt> takePending() {
+    pendingDeadline.stop();
+    return std::exchange(pending, std::nullopt);
   }
 };
 
@@ -257,5 +266,5 @@ void NetworkSecretAgent::cancelSecret() {
 }
 
 bool NetworkSecretAgent::hasPendingRequest() const noexcept {
-  return m_impl != nullptr && m_impl->pendingResult.has_value();
+  return m_impl != nullptr && m_impl->pending.has_value();
 }

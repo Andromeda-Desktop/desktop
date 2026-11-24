@@ -147,10 +147,13 @@ private:
   // Device path -> Connected value a user-started Connect/Disconnect/Pair/Forget is heading for. The
   // matching Connected transition consumes the entry so feedback for the user's own action stays quiet.
   std::unordered_map<std::string, bool> m_localDeviceRequests;
-  Timer m_connectPassTimer;
-  std::deque<std::string> m_connectQueue;
-  std::uint64_t m_connectPassGeneration = 0;
-  bool m_connectPassActive = false;
+  // Connect pass after power-on. Arming: waits for the controller. Draining: one Connect out at a time, each with a
+  // reply deadline, so a lost reply cannot stall the pass.
+  enum class ConnectPass : std::uint8_t { Idle, Arming, Draining };
+  ConnectPass m_connectPass = ConnectPass::Idle;
+  Timer m_connectPassTimer; // Arming: the controller delay; Draining: the deadline of the Connect out
+  std::deque<std::string> m_connectQueue; // Draining only
+  std::uint64_t m_connectPassGeneration = 0; // a reply for an older step or pass is stale
   bool m_connectWhenEnabled = false;
   bool m_connectionNotifications = true;
   bool m_hasStateSnapshot = false;

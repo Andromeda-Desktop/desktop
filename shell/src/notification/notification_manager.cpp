@@ -1047,19 +1047,15 @@ namespace {
 } // namespace
 
 void NotificationManager::schedulePersistHistory() {
-  if (m_persistScheduled) {
+  if (m_persistTimer.active()) {
     return;
   }
-  m_persistScheduled = true;
-  m_persistTimer.start(std::chrono::milliseconds(500), [this] {
-    m_persistScheduled = false;
-    persistHistoryAsync();
-  });
+  m_persistTimer.start(std::chrono::milliseconds(500), [this] { persistHistoryAsync(); });
 }
 
 void NotificationManager::persistHistoryAsync() {
   const auto path = historyPath();
-  if (path.empty() || !m_historyWritable || !m_historyKey) {
+  if (path.empty() || m_historyStore != HistoryStore::Writable || !m_historyKey) {
     return;
   }
   SharedWorker::instance().post<bool>(
@@ -1112,11 +1108,10 @@ bool NotificationManager::hasEncryptedHistory() const {
 
 void NotificationManager::persistHistoryToDisk() {
   const auto path = historyPath();
-  if (path.empty() || !m_historyWritable || !m_historyKey) {
+  if (path.empty() || m_historyStore != HistoryStore::Writable || !m_historyKey) {
     return;
   }
   m_persistTimer.stop();
-  m_persistScheduled = false;
   if (writeHistory(path, m_history, m_nextId, m_changeSerial, *m_historyKey, nextHistoryGeneration())
       && m_historyKeyProvider != nullptr) {
     m_historyKeyProvider->noteEncryptedDataExists();
@@ -1126,8 +1121,8 @@ void NotificationManager::persistHistoryToDisk() {
 void NotificationManager::syncHistoryPersistence(security::StorageKeyProvider& provider) {
   m_historyKeyProvider = &provider;
   m_historyKey.reset();
-  m_historyWritable = false;
-  m_historyNeedsRecovery = provider.state() == security::StorageKeyState::MissingKey;
+  m_historyStore = provider.state() == security::StorageKeyState::MissingKey ? HistoryStore::NeedsRecovery
+                                                                             : HistoryStore::Locked;
   if (provider.state() != security::StorageKeyState::Ready) {
     loadPersistedHistory();
     return;
@@ -1142,7 +1137,7 @@ void NotificationManager::syncHistoryPersistence(security::StorageKeyProvider& p
   if (hasEncryptedHistory()) {
     provider.noteEncryptedDataExists();
   }
-  if (m_historyWritable) {
+  if (m_historyStore == HistoryStore::Writable) {
     persistHistoryAsync();
   }
 }
@@ -1163,12 +1158,11 @@ void NotificationManager::loadPersistedHistory() {
   std::uint64_t serial = 0;
   std::deque<NotificationHistoryEntry> loaded;
   if (!loadNotificationHistoryFromFile(path, loaded, nextId, serial, *m_historyKey)) {
-    m_historyNeedsRecovery = true;
+    m_historyStore = HistoryStore::NeedsRecovery;
     kLog.warn("notification persistence disabled; saved history was preserved");
     return;
   }
-  m_historyWritable = true;
-  m_historyNeedsRecovery = false;
+  m_historyStore = HistoryStore::Writable;
   if (!m_historyLoaded) {
     std::erase_if(loaded, [](const NotificationHistoryEntry& entry) { return !shouldRetainHistoryEntry(entry); });
     if (m_historyCleared) {
@@ -1210,7 +1204,9 @@ void NotificationManager::retryHistoryPersistence() {
 
 bool NotificationManager::clearEncryptedHistoryForRecovery() {
   m_historyKey.reset();
-  m_historyWritable = false;
+  if (m_historyStore == HistoryStore::Writable) {
+    m_historyStore = HistoryStore::Locked;
+  }
   const auto path = historyPath();
   if (path.empty()) {
     return false;
@@ -1230,7 +1226,7 @@ bool NotificationManager::clearEncryptedHistoryForRecovery() {
   }
   clearHistory();
   m_historyLoaded = true;
-  m_historyNeedsRecovery = false;
+  m_historyStore = HistoryStore::Locked;
   if (m_stateCallback) {
     m_stateCallback();
   }

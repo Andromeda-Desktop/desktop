@@ -222,9 +222,9 @@ public:
   void loadPersistedHistory();
   void syncHistoryPersistence(security::StorageKeyProvider& provider);
   [[nodiscard]] bool hasEncryptedHistory() const;
-  [[nodiscard]] bool historyNeedsRecovery() const noexcept { return m_historyNeedsRecovery; }
+  [[nodiscard]] bool historyNeedsRecovery() const noexcept { return m_historyStore == HistoryStore::NeedsRecovery; }
   bool clearEncryptedHistoryForRecovery();
-  [[nodiscard]] bool historyPersistenceReady() const noexcept { return m_historyWritable; }
+  [[nodiscard]] bool historyPersistenceReady() const noexcept { return m_historyStore == HistoryStore::Writable; }
   void retryHistoryPersistence();
   /// Writes pending history to disk immediately (e.g. shutdown).
   void flushPersistedHistory();
@@ -261,11 +261,12 @@ private:
 
   int m_historyRetentionHours = 0;
   bool m_keepDismissedInHistory = true;
-  bool m_persistScheduled = false;
-  bool m_historyLoaded = false;
-  bool m_historyWritable = false;
-  bool m_historyNeedsRecovery = false;
-  bool m_historyCleared = false;
+  // Locked: no key yet. NeedsRecovery: the saved history cannot be read (key missing or file unreadable) and stays
+  // untouched. Writable: the saved history is read and changes are saved.
+  enum class HistoryStore : std::uint8_t { Locked, NeedsRecovery, Writable };
+  HistoryStore m_historyStore = HistoryStore::Locked;
+  bool m_historyLoaded = false;  // the saved entries are merged into m_history (or cleared by a recovery)
+  bool m_historyCleared = false; // the user cleared the history this session: saved entries loaded later are dropped
   security::StorageKeyProvider* m_historyKeyProvider = nullptr;
   // Shared with the SharedWorker save.
   std::shared_ptr<const security::SecureKey> m_historyKey;

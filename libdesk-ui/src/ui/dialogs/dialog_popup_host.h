@@ -59,7 +59,9 @@ public:
   void requestUpdateOnly();
 
   [[nodiscard]] bool isOpen() const noexcept { return m_surface != nullptr; }
-  [[nodiscard]] bool isInitializing() const noexcept { return m_openInProgress; }
+  [[nodiscard]] bool isInitializing() const noexcept {
+    return m_phase == PopupPhase::Opening || m_phase == PopupPhase::OpeningClosed;
+  }
   [[nodiscard]] Surface* surface() const noexcept { return m_surface.get(); }
   [[nodiscard]] Surface* parentSurface() const noexcept { return m_parentSurface; }
   [[nodiscard]] std::uint32_t width() const noexcept;
@@ -195,9 +197,11 @@ protected:
   bool m_attachedToHost = false;
   Surface* m_parentSurface = nullptr;
   bool m_pointerInside = false;
-  bool m_openInProgress = false;
-  bool m_closeRequestedDuringOpen = false;
-  AnimationManager::Id m_acceptFadeAnim = 0;
+  // Opening: inside the surface initialize roundtrip, where a close is only noted (OpeningClosed) and runs after it.
+  // Fading: the accepted sheet fades out (m_acceptFadeAnim) and takes no input.
+  enum class PopupPhase : std::uint8_t { Closed, Opening, OpeningClosed, Open, Fading };
+  PopupPhase m_phase = PopupPhase::Closed;
+  AnimationManager::Id m_acceptFadeAnim = 0; // Fading only
   std::function<void()> m_acceptThen; // runs once the popup is gone, whatever ends the fade
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 
