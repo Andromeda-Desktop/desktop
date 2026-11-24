@@ -8,6 +8,7 @@
 #include "protocols/heap.h"
 #include "core/ui_phase.h"
 #include "greeter/greetd_client.h"
+#include "protocols/xdg_dirs.h"
 #include "render/gl_shared_context.h"
 #include "render/render_context.h"
 #include "render/scene/node.h"
@@ -227,10 +228,8 @@ namespace {
   // Installed wayland sessions, andromeda first, then by file name; a file name found twice keeps the first
   // XDG_DATA_DIRS entry.
   std::vector<SessionEntry> listSessions() {
-    const char* env = std::getenv("XDG_DATA_DIRS");
-    std::stringstream dirs(env != nullptr && env[0] != '\0' ? env : "/usr/local/share:/usr/share");
     std::vector<std::filesystem::path> entries;
-    for (std::string dir; std::getline(dirs, dir, ':');) {
+    for (const std::string& dir : xdg::dataDirs()) {
       std::error_code ec;
       for (const auto& entry : std::filesystem::directory_iterator(std::filesystem::path(dir) / "wayland-sessions", ec)) {
         if (entry.path().extension() == ".desktop"

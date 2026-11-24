@@ -1,6 +1,7 @@
 #include "files_window.h"
 #include "core/blocking_pool.h"
 #include "i18n/i18n.h"
+#include "protocols/xdg_dirs.h"
 #include "server_url.h"
 #include "app_chooser_sheet.h"
 #include "conflict_sheet.h"
@@ -163,8 +164,8 @@ namespace {
     if (start == std::string::npos) {
       return {};
     }
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    const fs::path dir = fs::path(runtime != nullptr && *runtime != '\0' ? runtime : "/tmp") / "andromeda-files";
+    const std::string runtime = xdg::runtimeDir();
+    const fs::path dir = fs::path(runtime.empty() ? "/tmp" : runtime) / "andromeda-files";
     fs::create_directories(dir, ec);
     fs::permissions(dir, fs::perms::owner_all, ec);
     // One file per process, replaced by rename: a helper still reading the previous one keeps its inode.
@@ -751,9 +752,8 @@ std::vector<fs::path> FilesWindow::dragOutOfArchive(const std::vector<fs::path>&
   if (m_dragExtract.has_value()) {
     fs::remove_all(m_dragExtract->dir, ec);
   }
-  const char* cache = std::getenv("XDG_CACHE_HOME");
-  const char* home = std::getenv("HOME");
-  const fs::path base = cache != nullptr && *cache != '\0' ? fs::path(cache) : fs::path(home != nullptr ? home : "/tmp") / ".cache";
+  const std::string cache = xdg::cacheHome();
+  const fs::path base = cache.empty() ? fs::path("/tmp/.cache") : fs::path(cache);
   const fs::path dir = base / "andromeda" / "files" / "drag-out" /
                        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
   fs::create_directories(dir, ec);

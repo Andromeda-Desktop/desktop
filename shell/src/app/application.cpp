@@ -2,6 +2,7 @@
 #include "application.h"
 #include "protocols/crash_capture.h"
 #include "protocols/heap.h"
+#include "protocols/xdg_dirs.h"
 #include "shell/lockscreen/lock_client.h"
 #include "a11y/atspi_bridge.h"
 
@@ -168,8 +169,8 @@ namespace {
 
   // The open panel at a compositor crash, for the next shell process (docs/resilience.md §7).
   std::filesystem::path runtimePath(std::string_view name) {
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    return runtime != nullptr && *runtime != '\0' ? std::filesystem::path(runtime) / name : std::filesystem::path{};
+    const std::string runtime = xdg::runtimeDir();
+    return runtime.empty() ? std::filesystem::path{} : std::filesystem::path(runtime) / name;
   }
 
   // A handoff older than this belongs to a log-out, not a crash.

@@ -1,6 +1,7 @@
 #include "overview/app_icons.h"
 
 #include "core/main_loop_worker.h"
+#include "protocols/xdg_dirs.h"
 #include "scene/text_buffer.h"
 
 #include <array>
@@ -32,23 +33,12 @@ namespace andromeda::ov {
       return out;
     }
 
-    std::string env(const char* name, std::string_view fallback) {
-      const char* value = std::getenv(name);
-      return value != nullptr && *value != '\0' ? std::string(value) : std::string(fallback);
-    }
-
     // XDG data dirs, user first.
     std::vector<fs::path> dataDirs() {
       std::vector<fs::path> dirs;
-      dirs.emplace_back(env("XDG_DATA_HOME", env("HOME", "") + "/.local/share"));
-      const std::string list = env("XDG_DATA_DIRS", "/usr/local/share:/usr/share");
-      size_t start = 0;
-      while (start <= list.size()) {
-        const size_t end = std::min(list.find(':', start), list.size());
-        if (end > start) {
-          dirs.emplace_back(list.substr(start, end - start));
-        }
-        start = end + 1;
+      dirs.emplace_back(xdg::dataHome());
+      for (const std::string& dir : xdg::dataDirs()) {
+        dirs.emplace_back(dir);
       }
       return dirs;
     }
@@ -101,7 +91,7 @@ namespace andromeda::ov {
     }
 
     std::string gtkIconTheme() {
-      const fs::path settings = fs::path(env("XDG_CONFIG_HOME", env("HOME", "") + "/.config")) / "gtk-3.0/settings.ini";
+      const fs::path settings = fs::path(xdg::configHome()) / "gtk-3.0/settings.ini";
       std::ifstream in(settings);
       std::string line;
       while (std::getline(in, line)) {
@@ -129,7 +119,7 @@ namespace andromeda::ov {
       themes.emplace_back("Adwaita");
       themes.emplace_back("hicolor");
       std::vector<fs::path> roots;
-      roots.emplace_back(env("HOME", "") + "/.icons");
+      roots.emplace_back(xdg::home() + "/.icons");
       for (const fs::path& dir : dirs) {
         roots.push_back(dir / "icons");
       }

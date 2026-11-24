@@ -1,6 +1,7 @@
 #include "provider/provider.h"
 
 #include "core/log.h"
+#include "protocols/xdg_dirs.h"
 #include "server/server.h"
 
 #include <array>
@@ -29,12 +30,12 @@ namespace andromeda {
   } // namespace
 
   Provider::Provider(Server& server, const std::string& waylandSocketName) : m_server(&server), m_context(server) {
-    const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR");
-    if (runtimeDir == nullptr || runtimeDir[0] == '\0') {
+    const std::string runtimeDir = xdg::runtimeDir();
+    if (runtimeDir.empty()) {
       kLog.error("XDG_RUNTIME_DIR not set, provider socket disabled");
       return;
     }
-    m_socketPath = std::string(runtimeDir) + "/andromeda-provider-" + waylandSocketName + ".sock";
+    m_socketPath = runtimeDir + "/andromeda-provider-" + waylandSocketName + ".sock";
     sockaddr_un addr{};
     addr.sun_family = AF_UNIX;
     if (m_socketPath.size() >= sizeof(addr.sun_path)) {

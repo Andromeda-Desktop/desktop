@@ -2,6 +2,7 @@
 
 #include "config/config_service.h"
 #include "core/log.h"
+#include "protocols/xdg_dirs.h"
 #include "util/file_utils.h"
 
 #include <algorithm>
@@ -200,17 +201,11 @@ namespace noctalia::config {
   }
 
   std::vector<std::filesystem::path> systemConfigDirs(std::string_view configDir) {
-    const char* env = std::getenv("XDG_CONFIG_DIRS");
-    const std::string_view list = env != nullptr && env[0] != '\0' ? env : "/etc/xdg";
     std::error_code ec;
     const auto user = std::filesystem::weakly_canonical(std::filesystem::path(configDir), ec);
     std::vector<std::filesystem::path> dirs;
-    for (const auto part : std::views::split(list, ':')) {
-      const std::filesystem::path base(std::string_view(part.begin(), part.end()));
-      if (!base.is_absolute()) {
-        continue;
-      }
-      auto dir = base / "andromeda" / "shell";
+    for (const std::string& base : xdg::configDirs()) {
+      auto dir = std::filesystem::path(base) / "andromeda" / "shell";
       if (std::filesystem::weakly_canonical(dir, ec) != user) {
         dirs.insert(dirs.begin(), std::move(dir));
       }

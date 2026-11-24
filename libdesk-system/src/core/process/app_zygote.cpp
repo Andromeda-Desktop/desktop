@@ -1,5 +1,6 @@
 #include "core/process/app_zygote.h"
 
+#include "protocols/xdg_dirs.h"
 #include "util/string_utils.h"
 
 #include <sys/socket.h>
@@ -58,8 +59,8 @@ namespace process::zygote {
   } // namespace
 
   std::filesystem::path socketPath(std::string_view appId) {
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    if (runtime == nullptr || runtime[0] != '/') {
+    const std::string runtime = xdg::runtimeDir();
+    if (runtime.empty()) {
       return {};
     }
     return std::filesystem::path(runtime) / "andromeda" / "zygote" / (std::string(appId) + ".sock");

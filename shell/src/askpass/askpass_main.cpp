@@ -1,6 +1,7 @@
 // andromeda-askpass: SUDO_ASKPASS helper. Asks the running shell for the password over its IPC socket and prints
 // it to stdout. Exit 1 with empty stdout on cancel, timeout or when no shell runs.
 
+#include "protocols/xdg_dirs.h"
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -42,16 +43,16 @@ namespace {
 } // namespace
 
 int main() {
-  // getenv, not secure_getenv, under setgid: the environment only picks the socket, and the shell checks the peer.
-  const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-  if (runtime == nullptr || runtime[0] == '\0') {
+  // getenv (in xdg::runtimeDir), not secure_getenv, under setgid: the environment only picks the socket, and the shell checks the peer.
+  const std::string runtime = xdg::runtimeDir();
+  if (runtime.empty()) {
     return noShell();
   }
   const char* display = std::getenv("WAYLAND_DISPLAY");
   if (display == nullptr || display[0] == '\0') {
     display = "wayland-0";
   }
-  const std::string path = std::string(runtime) + "/noctalia-" + display + ".sock";
+  const std::string path = runtime + "/noctalia-" + display + ".sock";
 
   sockaddr_un addr{};
   addr.sun_family = AF_UNIX;

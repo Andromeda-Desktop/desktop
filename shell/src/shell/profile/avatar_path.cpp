@@ -4,6 +4,7 @@
 #include "config/config_types.h"
 #include "core/log.h"
 #include "dbus/accounts/accounts_service.h"
+#include "protocols/xdg_dirs.h"
 #include "render/core/image_encoder.h"
 #include "render/core/image_file_loader.h"
 #include "util/file_utils.h"
@@ -24,13 +25,8 @@ namespace {
   constexpr int kAvatarSourceWarnSize = 4 * kAccountsAvatarMaxSize;
 
   [[nodiscard]] std::filesystem::path avatarCacheDirectory() {
-    const char* cacheHome = std::getenv("XDG_CACHE_HOME");
-    const char* home = std::getenv("HOME");
-    if (cacheHome != nullptr && cacheHome[0] != '\0') {
+    if (const std::string cacheHome = xdg::cacheHome(); !cacheHome.empty()) {
       return std::filesystem::path(cacheHome) / "andromeda" / "shell";
-    }
-    if (home != nullptr && home[0] != '\0') {
-      return std::filesystem::path(home) / ".cache" / "andromeda" / "shell";
     }
     return {};
   }

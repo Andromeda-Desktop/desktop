@@ -1,5 +1,6 @@
 #include "system/system_font.h"
 
+#include "protocols/xdg_dirs.h"
 #include "system/dconf_read.h"
 #include "util/string_utils.h"
 
@@ -16,11 +17,7 @@ namespace system_font {
     constexpr std::string_view kFallbackFamily = "Inter";
 
     std::filesystem::path configDir() {
-      if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg != nullptr && xdg[0] == '/') {
-        return xdg;
-      }
-      const char* home = std::getenv("HOME");
-      return std::filesystem::path(home != nullptr ? home : "") / ".config";
+      return xdg::configHome();
     }
 
     std::vector<std::filesystem::path> settingsIniFiles() {

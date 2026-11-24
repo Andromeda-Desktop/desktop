@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 
 #include "core/log.h"
+#include "protocols/xdg_dirs.h"
 #include "util/private_state_file.h"
 
 namespace andromeda {
@@ -40,11 +41,8 @@ namespace andromeda {
   }
 
   std::filesystem::path LayerShellPermissions::defaultPath() {
-    if (const char* state = std::getenv("XDG_STATE_HOME"); state != nullptr && *state != '\0') {
+    if (const std::string state = xdg::stateHome(); !state.empty()) {
       return std::filesystem::path(state) / "andromeda/layer-shell-permissions.json";
-    }
-    if (const char* home = std::getenv("HOME"); home != nullptr && *home != '\0') {
-      return std::filesystem::path(home) / ".local/state/andromeda/layer-shell-permissions.json";
     }
     return {};
   }

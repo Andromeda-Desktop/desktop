@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/shared_worker.h"
+#include "protocols/xdg_dirs.h"
 #include "shell/tray/tray_identifier.h"
 #include "util/string_utils.h"
 
@@ -19,18 +20,10 @@ namespace {
 
   std::vector<std::string> xdgDataDirs() {
     std::vector<std::string> dataDirs;
-    if (const char* env = std::getenv("XDG_DATA_HOME"); env != nullptr && env[0] != '\0') {
-      dataDirs.emplace_back(env);
-    } else if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-      dataDirs.emplace_back(std::string(home) + "/.local/share");
+    if (std::string dataHome = xdg::dataHome(); !dataHome.empty()) {
+      dataDirs.push_back(std::move(dataHome));
     }
-    const char* env = std::getenv("XDG_DATA_DIRS");
-    const std::string dirs = (env != nullptr && env[0] != '\0') ? env : "/usr/local/share:/usr/share";
-    for (const auto part : std::views::split(dirs, ':')) {
-      if (std::string dir(part.begin(), part.end()); !dir.empty()) {
-        dataDirs.push_back(std::move(dir));
-      }
-    }
+    std::ranges::copy(xdg::dataDirs(), std::back_inserter(dataDirs));
     return dataDirs;
   }
 

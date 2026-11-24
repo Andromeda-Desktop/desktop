@@ -1,5 +1,6 @@
 #pragma once
 
+#include "xdg_dirs.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -252,10 +253,5 @@ private:
 
 // $XDG_STATE_HOME/andromeda/app-energy: written by the compositor only.
 inline std::string appEnergyPath() {
-  const char* state = std::getenv("XDG_STATE_HOME");
-  if (state != nullptr && *state == '/') {
-    return std::string(state) + "/andromeda/app-energy";
-  }
-  const char* home = std::getenv("HOME");
-  return std::string(home != nullptr ? home : "") + "/.local/state/andromeda/app-energy";
+  return xdg::stateHome() + "/andromeda/app-energy";
 }

@@ -1,3 +1,4 @@
+#include "protocols/xdg_dirs.h"
 #include "system/dconf_read.h"
 
 #include <array>
@@ -156,11 +157,7 @@ namespace {
   }
 
   fs::path configHome() {
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg != nullptr && xdg[0] == '/') {
-      return xdg;
-    }
-    const char* home = std::getenv("HOME");
-    return fs::path(home != nullptr ? home : "") / ".config";
+    return xdg::configHome();
   }
 
   std::optional<fs::path> profilePath() {

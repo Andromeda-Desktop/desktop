@@ -1,6 +1,7 @@
 #include "app/state_store.h"
 
 #include "core/log.h"
+#include "protocols/xdg_dirs.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -39,14 +40,8 @@ StateStore::~StateStore() {
 }
 
 std::filesystem::path StateStore::pathFor(std::string_view appId) {
-  std::filesystem::path base;
-  if (const char* state = std::getenv("XDG_STATE_HOME"); state != nullptr && state[0] == '/') {
-    base = state;
-  } else if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-    base = std::filesystem::path(home) / ".local/state";
-  } else {
-    base = "/tmp";
-  }
+  const std::string state = xdg::stateHome();
+  const std::filesystem::path base = state.empty() ? std::filesystem::path("/tmp") : std::filesystem::path(state);
   return base / "andromeda" / std::string(appId) / "state.json";
 }
 

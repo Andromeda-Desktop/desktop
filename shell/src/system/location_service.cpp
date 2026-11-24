@@ -8,6 +8,7 @@
 #include "ipc/ipc_service.h"
 #include "net/http_client.h"
 #include "net/uri.h"
+#include "protocols/xdg_dirs.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -436,11 +437,8 @@ std::filesystem::path LocationService::transportCacheDir() {
 }
 
 std::filesystem::path LocationService::stateCacheFilePath() {
-  if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] != '\0') {
-    return std::filesystem::path(xdg) / "andromeda" / "shell" / "location.json";
-  }
-  if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-    return std::filesystem::path(home) / ".cache" / "andromeda" / "shell" / "location.json";
+  if (const std::string cache = xdg::cacheHome(); !cache.empty()) {
+    return std::filesystem::path(cache) / "andromeda" / "shell" / "location.json";
   }
   return std::filesystem::path("/tmp") / "noctalia-location-cache.json";
 }

@@ -4,6 +4,7 @@
 #include "core/log.h"
 #include "output/output.h"
 #include "overview/overview.h"
+#include "protocols/xdg_dirs.h"
 #include "scene/color.h"
 #include "server/ipc_commands.h"
 #include "server/server.h"
@@ -175,8 +176,8 @@ namespace andromeda {
   } // namespace
 
   Ipc::Ipc(Server& server, const std::string& waylandSocketName) : m_server(&server) {
-    const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR");
-    if (runtimeDir == nullptr || runtimeDir[0] == '\0') {
+    const std::string runtimeDir = xdg::runtimeDir();
+    if (runtimeDir.empty()) {
       kLog.error("XDG_RUNTIME_DIR not set, IPC socket disabled");
       return;
     }

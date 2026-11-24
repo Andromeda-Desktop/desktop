@@ -2,6 +2,7 @@
 #include "crawler.h"
 #include "index_db.h"
 #include "live_index.h"
+#include "protocols/xdg_dirs.h"
 #include "query_server.h"
 
 #include "protocols/heap.h"
@@ -22,17 +23,13 @@
 
 namespace {
 
-  std::filesystem::path envPath(const char* name, const char* homeFallback) {
-    if (const char* v = std::getenv(name); v != nullptr && v[0] != '\0') {
-      return v;
-    }
-    const char* home = std::getenv("HOME");
-    return std::filesystem::path(home != nullptr ? home : "/tmp") / homeFallback;
+  std::filesystem::path dbPath() { return std::filesystem::path(xdg::stateHome()) / "andromeda" / "index.db"; }
+
+  // Empty without a runtime directory: clients (IndexClient::socketPath) have no path either.
+  std::filesystem::path socketPath() {
+    const std::string runtime = xdg::runtimeDir();
+    return runtime.empty() ? std::filesystem::path() : std::filesystem::path(runtime) / "andromeda-index.sock";
   }
-
-  std::filesystem::path dbPath() { return envPath("XDG_STATE_HOME", ".local/state") / "andromeda" / "index.db"; }
-
-  std::filesystem::path socketPath() { return envPath("XDG_RUNTIME_DIR", ".cache") / "andromeda-index.sock"; }
 
   int usage() {
     std::fprintf(stderr, "usage: andromeda-index crawl [root] | serve [root] | watch [root] | query <text> [limit]\n");
@@ -74,7 +71,7 @@ int main(int argc, char** argv) {
   }
   const std::string command = argv[1];
   if (command == "crawl") {
-    const std::filesystem::path root = argc > 2 ? std::filesystem::path(argv[2]) : envPath("HOME", "");
+    const std::filesystem::path root = argc > 2 ? std::filesystem::path(argv[2]) : std::filesystem::path(xdg::home());
     return crawlInto(dbPath(), root) ? 0 : 1;
   }
   if (command == "watch" || command == "serve") {
@@ -86,7 +83,7 @@ int main(int argc, char** argv) {
     std::signal(SIGPIPE, SIG_IGN);
     // One heap for both threads, so malloc_trim gives back what the content worker freed.
     mallopt(M_ARENA_MAX, 1);
-    const std::filesystem::path root = argc > 2 ? std::filesystem::path(argv[2]) : envPath("HOME", "");
+    const std::filesystem::path root = argc > 2 ? std::filesystem::path(argv[2]) : std::filesystem::path(xdg::home());
     // The socket listens before the first crawl, so early clients wait in the backlog instead of failing.
     const int listenFd = serve ? QueryServer::listenSocket(socketPath()) : -1;
     if (serve && listenFd < 0) {

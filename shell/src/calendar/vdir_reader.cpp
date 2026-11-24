@@ -2,6 +2,7 @@
 
 #include "calendar/ical_parser.h"
 #include "core/log.h"
+#include "protocols/xdg_dirs.h"
 #include "util/string_utils.h"
 
 #include <algorithm>
@@ -182,13 +183,7 @@ namespace calendar {
   } // namespace
 
   std::filesystem::path defaultVdirPath() {
-    if (const char* xdgData = std::getenv("XDG_DATA_HOME"); xdgData != nullptr && *xdgData != '\0') {
-      return std::filesystem::path(xdgData) / "calendars";
-    }
-    if (const char* home = std::getenv("HOME"); home != nullptr && *home != '\0') {
-      return std::filesystem::path(home) / ".local" / "share" / "calendars";
-    }
-    return std::filesystem::path(".local/share/calendars");
+    return std::filesystem::path(xdg::dataHome()) / "calendars";
   }
 
   std::vector<VdirCollection> discoverVdirCollections(const std::filesystem::path& rootPath, int maxDepth) {

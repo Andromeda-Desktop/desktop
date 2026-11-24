@@ -1,5 +1,6 @@
 #pragma once
 
+#include "protocols/xdg_dirs.h"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -179,13 +180,7 @@ namespace FileUtils {
       return std::filesystem::path("/tmp");
     }
 
-    std::filesystem::path configHome = homePath / ".config";
-    if (const char* xdgConfig = std::getenv("XDG_CONFIG_HOME"); xdgConfig != nullptr && xdgConfig[0] != '\0') {
-      const std::filesystem::path candidate(xdgConfig);
-      if (candidate.is_absolute()) {
-        configHome = candidate;
-      }
-    }
+    const std::filesystem::path configHome = xdg::configHome();
 
     std::ifstream userDirs(configHome / "user-dirs.dirs");
     std::string line;
@@ -235,13 +230,13 @@ namespace FileUtils {
     struct XdgBase {
       std::string_view token;
       std::string_view envVar;
-      std::string_view homeDefault;
+      std::string (*dir)();
     };
     static constexpr std::array<XdgBase, 4> kBases = {{
-        {"$XDG_CONFIG_HOME", "XDG_CONFIG_HOME", ".config"},
-        {"$XDG_DATA_HOME", "XDG_DATA_HOME", ".local/share"},
-        {"$XDG_STATE_HOME", "XDG_STATE_HOME", ".local/state"},
-        {"$XDG_CACHE_HOME", "XDG_CACHE_HOME", ".cache"},
+        {"$XDG_CONFIG_HOME", "XDG_CONFIG_HOME", xdg::configHome},
+        {"$XDG_DATA_HOME", "XDG_DATA_HOME", xdg::dataHome},
+        {"$XDG_STATE_HOME", "XDG_STATE_HOME", xdg::stateHome},
+        {"$XDG_CACHE_HOME", "XDG_CACHE_HOME", xdg::cacheHome},
     }};
     for (const XdgBase& b : kBases) {
       if (!path.starts_with(b.token))
@@ -249,11 +244,8 @@ namespace FileUtils {
       if (path.size() != b.token.size() && path[b.token.size()] != '/')
         continue;
       std::string base;
-      if (const char* env = std::getenv(std::string(b.envVar).c_str()); env != nullptr && env[0] != '\0') {
-        base = env;
-      } else if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-        base = std::string(home) + "/" + std::string(b.homeDefault);
-      } else {
+      base = b.dir();
+      if (base.empty()) {
         return path;
       }
       return base + path.substr(b.token.size());
@@ -289,15 +281,8 @@ namespace FileUtils {
     if (noctalia != nullptr && noctalia[0] != '\0') {
       return std::string(noctalia) + "/andromeda/shell";
     }
-    const char* xdg = std::getenv("XDG_CONFIG_HOME");
-    if (xdg != nullptr && xdg[0] != '\0') {
-      return std::string(xdg) + "/andromeda/shell";
-    }
-    const char* home = std::getenv("HOME");
-    if (home != nullptr && home[0] != '\0') {
-      return std::string(home) + "/.config/andromeda/shell";
-    }
-    return {};
+    const std::string base = xdg::configHome();
+    return base.empty() ? base : base + "/andromeda/shell";
   }
 
   [[nodiscard]] inline std::string stateDir() {
@@ -305,15 +290,8 @@ namespace FileUtils {
     if (noctalia != nullptr && noctalia[0] != '\0') {
       return std::string(noctalia) + "/andromeda/shell";
     }
-    const char* xdg = std::getenv("XDG_STATE_HOME");
-    if (xdg != nullptr && xdg[0] != '\0') {
-      return std::string(xdg) + "/andromeda/shell";
-    }
-    const char* home = std::getenv("HOME");
-    if (home != nullptr && home[0] != '\0') {
-      return std::string(home) + "/.local/state/andromeda/shell";
-    }
-    return {};
+    const std::string base = xdg::stateHome();
+    return base.empty() ? base : base + "/andromeda/shell";
   }
 
   [[nodiscard]] inline std::string dataDir() {
@@ -321,15 +299,8 @@ namespace FileUtils {
     if (noctalia != nullptr && noctalia[0] != '\0') {
       return std::string(noctalia) + "/andromeda/shell";
     }
-    const char* xdg = std::getenv("XDG_DATA_HOME");
-    if (xdg != nullptr && xdg[0] != '\0') {
-      return std::string(xdg) + "/andromeda/shell";
-    }
-    const char* home = std::getenv("HOME");
-    if (home != nullptr && home[0] != '\0') {
-      return std::string(home) + "/.local/share/andromeda/shell";
-    }
-    return {};
+    const std::string base = xdg::dataHome();
+    return base.empty() ? base : base + "/andromeda/shell";
   }
 
   // Git-source repo caches. Host-managed, re-fetchable, so they live under the

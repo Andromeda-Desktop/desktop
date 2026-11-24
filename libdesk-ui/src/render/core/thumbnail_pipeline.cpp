@@ -4,6 +4,7 @@
 #include "core/freedesktop_thumbnails.h"
 #include "core/log.h"
 #include "core/sys/sys.h"
+#include "protocols/xdg_dirs.h"
 #include "render/core/codec_libraries.h"
 #include "render/core/image_decoder.h"
 #include "util/file_utils.h"
@@ -40,11 +41,8 @@ namespace thumbnail_pipeline {
     bool decodesInProcess(const std::string& path) { return std::ranges::contains(kWuffsExtensions, lowerExtension(path)); }
 
     std::filesystem::path thumbnailCacheDir() {
-      if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] != '\0') {
-        return std::filesystem::path(xdg) / "andromeda" / "shell" / "thumbnails";
-      }
-      if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-        return std::filesystem::path(home) / ".cache" / "andromeda" / "shell" / "thumbnails";
+      if (const std::string cache = xdg::cacheHome(); !cache.empty()) {
+        return std::filesystem::path(cache) / "andromeda" / "shell" / "thumbnails";
       }
       return std::filesystem::path("/tmp") / "andromeda" / "shell" / "thumbnails";
     }

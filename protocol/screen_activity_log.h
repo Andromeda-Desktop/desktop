@@ -1,5 +1,6 @@
 #pragma once
 
+#include "xdg_dirs.h"
 #include <algorithm>
 #include <charconv>
 #include <cstdlib>
@@ -73,12 +74,7 @@ private:
 
 // $XDG_STATE_HOME/andromeda/screen-activity: written by the compositor only.
 inline std::string screenActivityPath() {
-  const char* state = std::getenv("XDG_STATE_HOME");
-  if (state != nullptr && *state == '/') {
-    return std::string(state) + "/andromeda/screen-activity";
-  }
-  const char* home = std::getenv("HOME");
-  return std::string(home != nullptr ? home : "") + "/.local/state/andromeda/screen-activity";
+  return xdg::stateHome() + "/andromeda/screen-activity";
 }
 
 namespace screen_activity_detail {

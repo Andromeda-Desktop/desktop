@@ -1,5 +1,6 @@
 #include "render/core/shader_program.h"
 
+#include "protocols/xdg_dirs.h"
 #include "render/core/startup_metrics.h"
 
 #include <GLES3/gl3.h>
@@ -37,12 +38,7 @@ namespace {
     }
     GLint formats = 0;
     glGetIntegerv(GL_NUM_PROGRAM_BINARY_FORMATS, &formats);
-    std::filesystem::path base;
-    if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] == '/') {
-      base = xdg;
-    } else if (const char* home = std::getenv("HOME"); home != nullptr && home[0] == '/') {
-      base = std::filesystem::path(home) / ".cache";
-    }
+    const std::filesystem::path base = xdg::cacheHome();
     if (formats <= 0 || base.empty()) {
       return std::nullopt;
     }

@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "dbus/session_bus.h"
 #include "notification/notification_manager.h"
+#include "protocols/xdg_dirs.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -81,8 +82,8 @@ namespace {
   }
 
   fs::path iconDir() {
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    return fs::path(runtime != nullptr ? runtime : "/tmp") / "andromeda-shell" / "portal-icons";
+    const std::string runtime = xdg::runtimeDir();
+    return fs::path(runtime.empty() ? "/tmp" : runtime) / "andromeda-shell" / "portal-icons";
   }
 
   // Icon name or file path for NotificationManager; `file` gets the written file, if any. A bad icon drops only

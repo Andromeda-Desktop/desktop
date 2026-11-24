@@ -23,6 +23,7 @@
 #include "output/mirror.h"
 #include "output/output.h"
 #include "overview/overview.h"
+#include "protocols/xdg_dirs.h"
 #include "qos/controller.h"
 #include "qos/holds.h"
 #include "scene/effect_registry.h"
@@ -1015,11 +1016,8 @@ namespace andromeda {
     if (!m_lockFileManaged || m_sessionExit != SessionExit::Idle) {
       return;
     }
-    const char* state = std::getenv("XDG_STATE_HOME");
-    const char* home = std::getenv("HOME");
-    const std::filesystem::path dir = state != nullptr && *state != '\0' ? std::filesystem::path(state) / "andromeda"
-        : home != nullptr ? std::filesystem::path(home) / ".local/state/andromeda"
-                          : std::filesystem::path();
+    const std::string state = xdg::stateHome();
+    const std::filesystem::path dir = state.empty() ? std::filesystem::path() : std::filesystem::path(state) / "andromeda";
     if (dir.empty()) {
       return;
     }

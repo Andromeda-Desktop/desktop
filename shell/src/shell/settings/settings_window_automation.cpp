@@ -3,6 +3,7 @@
 #include "core/process/process.h"
 #include "core/shared_worker.h"
 #include "i18n/i18n.h"
+#include "protocols/xdg_dirs.h"
 #include "shell/settings/settings_content_automation.h"
 #include "shell/settings/settings_content_services.h"
 #include "shell/settings/settings_page_rows.h"
@@ -31,11 +32,7 @@ namespace {
   const AppPermissions::Kind kBackgroundKind{.table = "background", .id = "background"};
 
   bool startsAtLogin(const std::string& app) {
-    const char* config = std::getenv("XDG_CONFIG_HOME");
-    const char* home = std::getenv("HOME");
-    const std::filesystem::path dir = config != nullptr && *config != '\0' ? std::filesystem::path(config)
-        : home != nullptr                                                   ? std::filesystem::path(home) / ".config"
-                                                                            : std::filesystem::path{};
+    const std::filesystem::path dir = xdg::configHome();
     std::error_code ec;
     return !dir.empty() && std::filesystem::exists(dir / "autostart" / (app + ".desktop"), ec);
   }

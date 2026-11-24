@@ -5,6 +5,7 @@
 #include "core/process/app_zygote.h"
 #include "core/process/async_process_manager.h"
 #include "core/sys/sys.h"
+#include "protocols/xdg_dirs.h"
 #include "util/string_utils.h"
 
 #include <sdbus-c++/sdbus-c++.h>
@@ -134,22 +135,11 @@ namespace {
   }
 
   void appendFlatpakDataRoots(std::vector<std::filesystem::path>& roots) {
-    const char* home = std::getenv("HOME");
-    const char* xdgDataHome = std::getenv("XDG_DATA_HOME");
-    if (xdgDataHome != nullptr && xdgDataHome[0] != '\0') {
-      roots.emplace_back(xdgDataHome);
-    } else if (home != nullptr && home[0] != '\0') {
-      roots.emplace_back(std::filesystem::path(home) / ".local/share");
+    if (const std::string data = xdg::dataHome(); !data.empty()) {
+      roots.emplace_back(data);
     }
-
-    const char* xdgDataDirs = std::getenv("XDG_DATA_DIRS");
-    std::string dirs = (xdgDataDirs != nullptr && xdgDataDirs[0] != '\0') ? xdgDataDirs : "/usr/local/share:/usr/share";
-    std::stringstream ss(dirs);
-    std::string dir;
-    while (std::getline(ss, dir, ':')) {
-      if (!dir.empty()) {
-        roots.emplace_back(dir);
-      }
+    for (const std::string& dir : xdg::dataDirs()) {
+      roots.emplace_back(dir);
     }
 
     roots.emplace_back("/var/lib");
@@ -1574,9 +1564,9 @@ namespace process {
     // A shell under the user manager may still not reach it (a nested session with its own runtime dir and bus):
     // systemd-run needs the manager's socket, the bus call its name.
     static const bool reachable = [] {
-      const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+      const std::string runtime = xdg::runtimeDir();
       std::error_code error;
-      return (runtime != nullptr && std::filesystem::exists(std::filesystem::path(runtime) / "systemd/private", error))
+      return (!runtime.empty() && std::filesystem::exists(std::filesystem::path(runtime) / "systemd/private", error))
           || systemdManager() != nullptr;
     }();
     if (runningUnderSystemdUserManager() && reachable) {

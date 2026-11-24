@@ -5,6 +5,7 @@
 #include "config/managed_settings.h"
 #include "core/log.h"
 #include "andromeda_data_dir.h"
+#include "protocols/xdg_dirs.h"
 
 #include <sys/stat.h>
 
@@ -47,11 +48,8 @@ namespace andromeda {
 
     std::filesystem::path userConfigPath() {
       std::filesystem::path path(".config/andromeda/config.toml");
-      if (const char* xdgConfigHome = std::getenv("XDG_CONFIG_HOME");
-          xdgConfigHome != nullptr && xdgConfigHome[0] != '\0') {
-        path = std::filesystem::path(xdgConfigHome) / "andromeda/config.toml";
-      } else if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-        path = std::filesystem::path(home) / ".config/andromeda/config.toml";
+      if (const std::string config = xdg::configHome(); !config.empty()) {
+        path = std::filesystem::path(config) / "andromeda/config.toml";
       }
       adoptUmbrielConfig(path);
       return path;
@@ -88,21 +86,8 @@ namespace andromeda {
 
     std::vector<std::filesystem::path> defaultConfigCandidates() {
       std::vector<std::filesystem::path> candidates{userConfigPath()};
-      const char* configuredDirs = std::getenv("XDG_CONFIG_DIRS");
-      const std::string_view configDirs = configuredDirs != nullptr && configuredDirs[0] != '\0'
-          ? std::string_view(configuredDirs)
-          : std::string_view("/etc/xdg");
-      size_t offset = 0;
-      while (offset <= configDirs.size()) {
-        const size_t separator = configDirs.find(':', offset);
-        const std::string_view directory = configDirs.substr(offset, separator - offset);
-        if (!directory.empty()) {
-          candidates.push_back(std::filesystem::path(directory) / "andromeda/config.toml");
-        }
-        if (separator == std::string_view::npos) {
-          break;
-        }
-        offset = separator + 1;
+      for (const std::string& directory : xdg::configDirs()) {
+        candidates.push_back(std::filesystem::path(directory) / "andromeda/config.toml");
       }
 
       candidates.push_back(std::filesystem::path(kDataDir) / "andromeda/config.toml");

@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "i18n/i18n.h"
+#include "protocols/xdg_dirs.h"
 #include "ui/controls/flex.h"
 #include "ui/files/this_pc.h"
 
@@ -95,10 +96,7 @@ NetworkPage::~NetworkPage() {
 }
 
 fs::path NetworkPage::serversPath() {
-  const char* xdg = std::getenv("XDG_CONFIG_HOME");
-  const char* home = std::getenv("HOME");
-  const fs::path base = xdg != nullptr && *xdg != '\0' ? fs::path(xdg) : fs::path(home != nullptr ? home : "") / ".config";
-  return base / "andromeda" / "files" / "servers.json";
+  return fs::path(xdg::configHome()) / "andromeda" / "files" / "servers.json";
 }
 
 std::vector<NetworkPage::Server> NetworkPage::loadServers() {

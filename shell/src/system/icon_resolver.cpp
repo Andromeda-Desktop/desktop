@@ -1,3 +1,4 @@
+#include "protocols/xdg_dirs.h"
 #include "system/icon_resolver.h"
 #include "util/parse_number.h"
 
@@ -176,21 +177,11 @@ namespace {
   std::vector<std::string> xdgDataDirs() {
     std::vector<std::string> dirs;
 
-    const char* dataHome = std::getenv("XDG_DATA_HOME");
-    if (dataHome != nullptr && dataHome[0] != '\0') {
-      pushUnique(dirs, dataHome);
-    } else if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-      pushUnique(dirs, std::string(home) + "/.local/share");
+    if (std::string dataHome = xdg::dataHome(); !dataHome.empty()) {
+      pushUnique(dirs, std::move(dataHome));
     }
-
-    const char* dataDirs = std::getenv("XDG_DATA_DIRS");
-    if (dataDirs != nullptr && dataDirs[0] != '\0') {
-      for (auto dir : splitList(dataDirs, ':')) {
-        pushUnique(dirs, std::move(dir));
-      }
-    } else {
-      pushUnique(dirs, "/usr/local/share");
-      pushUnique(dirs, "/usr/share");
+    for (std::string dir : xdg::dataDirs()) {
+      pushUnique(dirs, std::move(dir));
     }
 
     return dirs;

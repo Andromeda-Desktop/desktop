@@ -4,6 +4,7 @@
 #include "core/log.h"
 #include "pipewire/pipewire_context.h"
 #include "core/freedesktop_key_file.h"
+#include "protocols/xdg_dirs.h"
 
 #include <algorithm>
 #include <array>
@@ -63,21 +64,11 @@ namespace {
 
   std::vector<fs::path> soundBaseDirs() {
     std::vector<fs::path> dataDirs;
-    if (const char* dataHome = std::getenv("XDG_DATA_HOME"); dataHome != nullptr && *dataHome != '\0') {
+    if (const std::string dataHome = xdg::dataHome(); !dataHome.empty()) {
       dataDirs.emplace_back(fs::path(dataHome) / "sounds");
-    } else if (const char* userHome = std::getenv("HOME"); userHome != nullptr && *userHome != '\0') {
-      dataDirs.emplace_back(fs::path(userHome) / ".local/share/sounds");
     }
-    if (const char* dataDirsEnv = std::getenv("XDG_DATA_DIRS"); dataDirsEnv != nullptr && *dataDirsEnv != '\0') {
-      for (const auto directory : std::string_view(dataDirsEnv) | std::views::split(':')) {
-        std::string_view piece(directory);
-        if (!piece.empty()) {
-          dataDirs.emplace_back(fs::path(piece) / "sounds");
-        }
-      }
-    } else {
-      dataDirs.emplace_back("/usr/local/share/sounds");
-      dataDirs.emplace_back("/usr/share/sounds");
+    for (const std::string& dir : xdg::dataDirs()) {
+      dataDirs.emplace_back(fs::path(dir) / "sounds");
     }
     return dataDirs;
   }

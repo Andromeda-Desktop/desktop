@@ -1,6 +1,7 @@
 #include "cli/ipc_client.h"
 
 #include "protocols/ipc_channel.h"
+#include "protocols/xdg_dirs.h"
 #include "server/ipc_commands.h"
 
 #include <chrono>
@@ -19,10 +20,10 @@ namespace andromeda {
       if (const char* sock = std::getenv("ANDROMEDA_SOCKET"); sock != nullptr && sock[0] != '\0') {
         return sock;
       }
-      const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR");
+      const std::string runtimeDir = xdg::runtimeDir();
       const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
-      if (runtimeDir != nullptr && runtimeDir[0] != '\0' && waylandDisplay != nullptr && waylandDisplay[0] != '\0') {
-        return std::string(runtimeDir) + "/andromeda-" + waylandDisplay + ".sock";
+      if (!runtimeDir.empty() && waylandDisplay != nullptr && waylandDisplay[0] != '\0') {
+        return runtimeDir + "/andromeda-" + waylandDisplay + ".sock";
       }
       return {};
     }

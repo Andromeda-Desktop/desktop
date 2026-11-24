@@ -7,6 +7,7 @@
 #include "launcher/calc_engine.h"
 #include "net/http_client.h"
 #include "clipboard/clipboard_service.h"
+#include "protocols/xdg_dirs.h"
 
 #include <algorithm>
 #include <cctype>
@@ -55,11 +56,7 @@ namespace {
     if (const char* dir = std::getenv("QALCULATE_USER_DIR"); dir != nullptr && *dir != '\0') {
       return dir;
     }
-    if (const char* dataHome = std::getenv("XDG_DATA_HOME"); dataHome != nullptr && *dataHome != '\0') {
-      return std::filesystem::path(dataHome) / "qalculate";
-    }
-    const char* home = std::getenv("HOME");
-    return std::filesystem::path(home != nullptr ? home : "") / ".local/share/qalculate";
+    return std::filesystem::path(xdg::dataHome()) / "qalculate";
   }
 
   using CreateEngine = CalcEngine* (*)();

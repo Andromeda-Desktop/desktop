@@ -11,6 +11,7 @@
 #include "i18n/i18n.h"
 #include "platform/surface.h"
 #include "protocols/uri.h"
+#include "protocols/xdg_dirs.h"
 #include "render/text/cairo_text_renderer.h"
 #include "ui/controls/input.h"
 #include "ui/tooltip/tooltip_manager.h"
@@ -177,11 +178,7 @@ int DeskApp::run(int argc, char* argv[]) {
 }
 
 std::filesystem::path DeskApp::fontWarmupDir() {
-  const char* xdg = std::getenv("XDG_CACHE_HOME");
-  const char* home = std::getenv("HOME");
-  const std::filesystem::path cache = xdg != nullptr && xdg[0] == '/' ? std::filesystem::path(xdg)
-      : home != nullptr                                              ? std::filesystem::path(home) / ".cache"
-                                                                     : std::filesystem::path();
+  const std::filesystem::path cache = xdg::cacheHome();
   return cache.empty() ? cache : cache / "andromeda" / "font-warmup";
 }
 

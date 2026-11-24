@@ -1,6 +1,7 @@
 #include "shell/settings/settings_content_input.h"
 
 #include "i18n/i18n.h"
+#include "protocols/xdg_dirs.h"
 #include "shell/settings/settings_content.h"
 #include "shell/settings/settings_content_common.h"
 #include "shell/settings/settings_selection_style.h"
@@ -215,22 +216,14 @@ namespace settings {
     std::vector<std::string> scanCursorThemes() {
       namespace fs = std::filesystem;
       std::vector<fs::path> roots;
-      const char* home = std::getenv("HOME");
-      const char* dataHome = std::getenv("XDG_DATA_HOME");
-      if (dataHome != nullptr && *dataHome != '\0') {
+      if (const std::string dataHome = xdg::dataHome(); !dataHome.empty()) {
         roots.emplace_back(fs::path(dataHome) / "icons");
-      } else if (home != nullptr) {
-        roots.emplace_back(fs::path(home) / ".local/share/icons");
       }
-      if (home != nullptr) {
+      if (const std::string home = xdg::home(); !home.empty()) {
         roots.emplace_back(fs::path(home) / ".icons");
       }
-      const char* dataDirs = std::getenv("XDG_DATA_DIRS");
-      std::string_view dirs = dataDirs != nullptr && *dataDirs != '\0' ? dataDirs : "/usr/local/share:/usr/share";
-      while (!dirs.empty()) {
-        const std::size_t colon = dirs.find(':');
-        roots.emplace_back(fs::path(dirs.substr(0, colon)) / "icons");
-        dirs = colon == std::string_view::npos ? std::string_view{} : dirs.substr(colon + 1);
+      for (const std::string& dir : xdg::dataDirs()) {
+        roots.emplace_back(fs::path(dir) / "icons");
       }
       std::vector<std::string> themes;
       std::error_code ec;

@@ -18,6 +18,7 @@
 #include "net/http_client.h"
 #include "net/url_open.h"
 #include "notification/notification_manager.h"
+#include "protocols/xdg_dirs.h"
 #include "security/secret_store.h"
 #include "time/time_format.h"
 
@@ -1511,15 +1512,8 @@ CalendarService::CredentialOperationResult CalendarService::operationResult(secu
 }
 
 std::filesystem::path CalendarService::cacheFilePath() {
-  const char* xdgCache = std::getenv("XDG_CACHE_HOME");
-  std::filesystem::path base;
-  if (xdgCache != nullptr && xdgCache[0] != '\0') {
-    base = xdgCache;
-  } else if (const char* home = std::getenv("HOME"); home != nullptr) {
-    base = std::filesystem::path(home) / ".cache";
-  } else {
-    base = "/tmp";
-  }
+  const std::string cache = xdg::cacheHome();
+  const std::filesystem::path base = cache.empty() ? std::filesystem::path("/tmp") : std::filesystem::path(cache);
   return base / "andromeda" / "shell" / "calendar" / "events.enc";
 }
 

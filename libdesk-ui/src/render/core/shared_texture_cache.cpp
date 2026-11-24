@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "core/sys/sys.h"
+#include "protocols/xdg_dirs.h"
 #include "render/backend/render_backend.h"
 #include "render/core/image_file_loader.h"
 #include "render/core/image_source_log.h"
@@ -62,11 +63,8 @@ namespace {
     };
 
     std::filesystem::path directory() {
-      if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] != '\0') {
-        return std::filesystem::path(xdg) / "andromeda" / "textures";
-      }
-      if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-        return std::filesystem::path(home) / ".cache" / "andromeda" / "textures";
+      if (const std::string cache = xdg::cacheHome(); !cache.empty()) {
+        return std::filesystem::path(cache) / "andromeda" / "textures";
       }
       return {};
     }

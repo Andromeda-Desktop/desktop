@@ -2,6 +2,7 @@
 
 #include "dbus/systemd/systemd_unit_name.h"
 #include "core/freedesktop_key_file.h"
+#include "protocols/xdg_dirs.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -65,24 +66,11 @@ namespace {
 
 AutostartDirs autostartDirsFromEnv() {
   AutostartDirs dirs;
-  const char* configHome = std::getenv("XDG_CONFIG_HOME");
-  const char* home = std::getenv("HOME");
-  if (configHome != nullptr && *configHome != '\0') {
-    dirs.user = std::string(configHome) + "/autostart";
-  } else if (home != nullptr) {
-    dirs.user = std::string(home) + "/.config/autostart";
+  if (const std::string configHome = xdg::configHome(); !configHome.empty()) {
+    dirs.user = configHome + "/autostart";
   }
-  const char* configDirs = std::getenv("XDG_CONFIG_DIRS");
-  std::string_view list = configDirs != nullptr && *configDirs != '\0' ? configDirs : "/etc/xdg";
-  while (!list.empty()) {
-    const std::size_t end = list.find(':');
-    if (const std::string_view dir = list.substr(0, end); !dir.empty()) {
-      dirs.system.push_back(std::string(dir) + "/autostart");
-    }
-    if (end == std::string_view::npos) {
-      break;
-    }
-    list.remove_prefix(end + 1);
+  for (const std::string& dir : xdg::configDirs()) {
+    dirs.system.push_back(dir + "/autostart");
   }
   return dirs;
 }

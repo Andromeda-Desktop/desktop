@@ -6,6 +6,7 @@
 // the core. Header-only: each binary or dlopen module that includes it owns one ring and one handler.
 // Frames are raw `module+offset`; symbolization happens later, never in the handler.
 
+#include "xdg_dirs.h"
 #include <atomic>
 #include <cerrno>
 #include <csignal>
@@ -473,14 +474,12 @@ namespace andromeda::crash {
   // user whose home is /, /var/lib/andromeda-greeter/crashes (session/greetd/andromeda-greeter.tmpfiles). Creates it;
   // empty when none is writable.
   inline std::string crashDirectory() {
-    std::string candidates[3];
-    if (const char* state = std::getenv("XDG_STATE_HOME"); state != nullptr && state[0] == '/') {
-      candidates[0] = std::string(state) + "/andromeda/crashes";
+    std::string candidates[2];
+    // HOME=/ is a system user (the greeter): it uses the greeter directory.
+    if (const std::string state = xdg::stateHome(); !state.empty() && xdg::home() != "/") {
+      candidates[0] = state + "/andromeda/crashes";
     }
-    if (const char* home = std::getenv("HOME"); home != nullptr && home[0] == '/' && home[1] != '\0') {
-      candidates[1] = std::string(home) + "/.local/state/andromeda/crashes";
-    }
-    candidates[2] = "/var/lib/andromeda-greeter/crashes";
+    candidates[1] = "/var/lib/andromeda-greeter/crashes";
     for (const auto& dir : candidates) {
       std::error_code ec;
       if (!dir.empty() && (std::filesystem::create_directories(dir, ec), !ec) && ::access(dir.c_str(), W_OK) == 0) {

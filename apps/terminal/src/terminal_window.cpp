@@ -8,6 +8,7 @@
 #include "app/app_window.h"
 #include "file_actions.h"
 #include "link_finder.h"
+#include "protocols/xdg_dirs.h"
 #include "shell_integration.h"
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
@@ -1327,8 +1328,8 @@ namespace term {
       return;
     }
     const std::string text = view->scrollbackText();
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    std::string path = std::string(runtime != nullptr && *runtime != '\0' ? runtime : "/tmp") + "/andromeda-scrollback-XXXXXX";
+    const std::string runtime = xdg::runtimeDir();
+    std::string path = (runtime.empty() ? std::string("/tmp") : runtime) + "/andromeda-scrollback-XXXXXX";
     const int fd = mkstemp(path.data()); // 0600
     if (fd < 0) {
       kLog.warn("scrollback file: {}", std::strerror(errno));

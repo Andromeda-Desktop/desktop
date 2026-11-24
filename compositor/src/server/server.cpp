@@ -3,6 +3,7 @@
 #include "core/cpu_boost.h"
 #include "core/systemd_units.h"
 #include "core/scanout_keeper.h"
+#include "protocols/xdg_dirs.h"
 #include "qos/controller.h"
 #include "server/server.h"
 #include "server/event_pacer.h"
@@ -950,11 +951,8 @@ namespace andromeda {
     });
     m_fifoManager = std::make_unique<FifoManager>(m_display);
     {
-      const char* state = std::getenv("XDG_STATE_HOME");
-      const char* home = std::getenv("HOME");
-      const std::filesystem::path dir = state != nullptr && *state != '\0' ? std::filesystem::path(state) / "andromeda"
-          : home != nullptr ? std::filesystem::path(home) / ".local/state/andromeda"
-                            : std::filesystem::path();
+      const std::string state = xdg::stateHome();
+      const std::filesystem::path dir = state.empty() ? std::filesystem::path() : std::filesystem::path(state) / "andromeda";
       m_xdgSessions =
           std::make_unique<XdgSessionManager>(*this, m_display, dir.empty() ? dir : dir / "xdg-sessions.json");
     }
@@ -1287,7 +1285,7 @@ namespace andromeda {
     fx_renderer_cancel_kick(m_renderer, onOutputManagerContextHome, this);
     xkb_keymap_unref(m_compiledKeymap);
     if (m_lockFileManaged) {
-      unlink((std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/andromeda/running").c_str());
+      unlink((xdg::runtimeDir() + "/andromeda/running").c_str());
     }
     m_inputCapture.reset();
     m_globalShortcutService.reset();
@@ -1530,7 +1528,7 @@ namespace andromeda {
   }
 
   std::string Server::waylandSocketPath(std::string_view suffix) const {
-    return std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/" + m_socketName + std::string(suffix);
+    return xdg::runtimeDir() + "/" + m_socketName + std::string(suffix);
   }
 
   bool Server::recoverWaylandSocket() {
@@ -1767,7 +1765,7 @@ namespace andromeda {
   }
 
   std::string Server::lockFilePath() {
-    return std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/andromeda/locked";
+    return xdg::runtimeDir() + "/andromeda/locked";
   }
 
   // The previous compositor stopped while the session was locked: the lock blank covers every output from its first
@@ -1843,15 +1841,11 @@ namespace andromeda {
     m_lockFileManaged = !m_nested && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
     if (m_lockFileManaged) {
       // Present from start to clean exit: finding it means the previous compositor crashed.
-      const std::string running = std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/andromeda/running";
+      const std::string running = xdg::runtimeDir() + "/andromeda/running";
       if (access(running.c_str(), F_OK) == 0) {
         m_desktopShell->setRestarted();
         // The first save after start overwrites session.json; restore reads the list from before the crash.
-        const char* stateHome = std::getenv("XDG_STATE_HOME");
-        const char* home = std::getenv("HOME");
-        const std::filesystem::path dir = stateHome != nullptr && *stateHome != '\0'
-            ? std::filesystem::path(stateHome) / "andromeda"
-            : std::filesystem::path(home != nullptr ? home : "") / ".local/state/andromeda";
+        const std::filesystem::path dir = std::filesystem::path(xdg::stateHome()) / "andromeda";
         std::error_code error;
         std::filesystem::copy_file(
             dir / "session.json", dir / "session-crash.json", std::filesystem::copy_options::overwrite_existing, error
@@ -1927,7 +1921,7 @@ namespace andromeda {
 
     setenv(
         "ANDROMEDA_SOCKET",
-        (std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/andromeda-" + m_socketName + ".sock").c_str(), true
+        (xdg::runtimeDir() + "/andromeda-" + m_socketName + ".sock").c_str(), true
     );
     setenv("XDG_CURRENT_DESKTOP", "andromeda", 1);
     setenv("XDG_SESSION_DESKTOP", "andromeda", 1);
@@ -2092,7 +2086,7 @@ namespace andromeda {
     if (!greeterMode()) {
       m_ipc = std::make_unique<Ipc>(*this, m_socketName);
       m_provider = std::make_unique<Provider>(*this, m_socketName);
-      if (const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR"); runtimeDir != nullptr && runtimeDir[0] != '\0') {
+      if (const std::string runtimeDir = xdg::runtimeDir(); !runtimeDir.empty()) {
         m_socketRecovery = std::make_unique<SocketRecovery>(wl_display_get_event_loop(m_display), runtimeDir);
         if (m_waylandLockIno != 0 || m_waylandSocketAdopted) {
           m_socketRecovery->watch(m_socketName, [this] { return recoverWaylandSocket(); });

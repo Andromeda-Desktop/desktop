@@ -1,6 +1,7 @@
 #include "theme/toolkit_theme_files.h"
 
 #include "core/log.h"
+#include "protocols/xdg_dirs.h"
 #include "ui/style.h"
 #include "util/file_utils.h"
 
@@ -70,11 +71,7 @@ namespace toolkit_theme {
     // First match of `relative` in $XDG_DATA_HOME, then $XDG_DATA_DIRS.
     std::optional<std::filesystem::path> findData(std::string_view relative) {
       std::vector<std::string> dirs{FileUtils::expandXdgBaseDir("$XDG_DATA_HOME")};
-      const char* env = std::getenv("XDG_DATA_DIRS");
-      std::stringstream list(env != nullptr && *env != '\0' ? env : "/usr/local/share:/usr/share");
-      for (std::string dir; std::getline(list, dir, ':');) {
-        dirs.push_back(dir);
-      }
+      std::ranges::copy(xdg::dataDirs(), std::back_inserter(dirs));
       for (const std::string& dir : dirs) {
         const std::filesystem::path path = std::filesystem::path(dir) / relative;
         if (std::filesystem::exists(path)) {

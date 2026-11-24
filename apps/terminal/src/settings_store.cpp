@@ -1,6 +1,7 @@
 #include "settings_store.h"
 
 #include "core/log.h"
+#include "protocols/xdg_dirs.h"
 
 #include <gio/gio.h>
 
@@ -17,11 +18,8 @@ namespace term {
     constexpr Logger kLog("settings");
 
     std::filesystem::path configPath() {
-      const char* xdg = std::getenv("XDG_CONFIG_HOME");
-      const char* home = std::getenv("HOME");
-      const std::filesystem::path base = xdg != nullptr && xdg[0] == '/' ? std::filesystem::path(xdg)
-                                         : home != nullptr               ? std::filesystem::path(home) / ".config"
-                                                                         : std::filesystem::path("/tmp");
+      const std::string config = xdg::configHome();
+      const std::filesystem::path base = config.empty() ? std::filesystem::path("/tmp") : std::filesystem::path(config);
       return base / "andromeda" / "terminal.toml";
     }
 

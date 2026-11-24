@@ -5,6 +5,7 @@
 #include "i18n/i18n.h"
 #include "net/http_client.h"
 #include "net/uri.h"
+#include "protocols/xdg_dirs.h"
 #include "shell/panel/panel_manager.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"
@@ -26,11 +27,8 @@ namespace {
   constexpr std::string_view kFluentRawUrl = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/";
 
   std::filesystem::path cacheRoot() {
-    if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] != '\0') {
-      return std::filesystem::path(xdg) / "andromeda" / "klipy";
-    }
-    if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-      return std::filesystem::path(home) / ".cache" / "andromeda" / "klipy";
+    if (const std::string cache = xdg::cacheHome(); !cache.empty()) {
+      return std::filesystem::path(cache) / "andromeda" / "klipy";
     }
     return std::filesystem::path("/tmp") / "andromeda-klipy";
   }

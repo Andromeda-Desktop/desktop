@@ -2,6 +2,7 @@
 
 #include "core/blocking_pool.h"
 #include "i18n/i18n.h"
+#include "protocols/xdg_dirs.h"
 #include "state_file.h"
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
@@ -105,10 +106,7 @@ std::string SmartFolder::sentence() const {
 namespace smart_folders {
 
   fs::path configPath() {
-    const char* xdg = std::getenv("XDG_CONFIG_HOME");
-    const char* home = std::getenv("HOME");
-    const fs::path base = xdg != nullptr && *xdg != '\0' ? fs::path(xdg) : fs::path(home != nullptr ? home : "") / ".config";
-    return base / "andromeda" / "files" / "smart-folders.json";
+    return fs::path(xdg::configHome()) / "andromeda" / "files" / "smart-folders.json";
   }
 
   std::vector<SmartFolder> load() {

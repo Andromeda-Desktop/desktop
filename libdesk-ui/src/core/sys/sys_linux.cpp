@@ -2,6 +2,7 @@
 
 #include "protocols/crash_capture.h"
 #include "protocols/heap.h"
+#include "protocols/xdg_dirs.h"
 
 #include <cerrno>
 #include <chrono>
@@ -241,8 +242,7 @@ namespace sys {
   }
 
   std::string userRuntimeDir() {
-    const char* dir = std::getenv("XDG_RUNTIME_DIR");
-    return dir != nullptr ? std::string(dir) : std::string();
+    return xdg::runtimeDir();
   }
 
   std::string userPath() {

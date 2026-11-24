@@ -1,6 +1,7 @@
 #include "cli/debug.h"
 
 #include "core/process.h"
+#include "protocols/xdg_dirs.h"
 
 #include <algorithm>
 #include <array>
@@ -176,11 +177,8 @@ namespace andromeda {
 
     // <XDG_STATE_HOME or ~/.local/state>/andromeda, as protocol/crash_capture.h.
     fs::path stateHome() {
-      if (const char* state = std::getenv("XDG_STATE_HOME"); state != nullptr && state[0] == '/') {
+      if (const std::string state = xdg::stateHome(); !state.empty()) {
         return fs::path(state) / "andromeda";
-      }
-      if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-        return fs::path(home) / ".local/state/andromeda";
       }
       return {};
     }

@@ -1,3 +1,4 @@
+#include "protocols/xdg_dirs.h"
 #include "shell_integration.h"
 #include "core/sys/sys.h"
 
@@ -23,8 +24,10 @@ namespace term {
       return launch;
     }
     if (name == "fish") {
-      const char* dataDirs = getenv("XDG_DATA_DIRS");
-      const std::string rest = dataDirs != nullptr && *dataDirs != '\0' ? dataDirs : "/usr/local/share:/usr/share";
+      std::string rest;
+      for (const std::string& data : xdg::dataDirs()) {
+        rest += (rest.empty() ? "" : ":") + data;
+      }
       return {.argv = {shell, "-l"},
               .env = {"XDG_DATA_DIRS=" + dir + ":" + rest, "ANDROMEDA_FISH_DATA_DIR=" + dir}};
     }

@@ -2,6 +2,8 @@
 
 #include "compositors/andromeda/andromeda_event_handler.h"
 #include "core/log.h"
+#include "protocols/ipc_channel.h"
+#include "protocols/xdg_dirs.h"
 
 #include <algorithm>
 #include <array>
@@ -508,9 +510,9 @@ namespace compositors::andromeda {
       return;
     }
 
-    const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR");
+    const std::string runtimeDir = xdg::runtimeDir();
     const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
-    if (runtimeDir == nullptr || runtimeDir[0] == '\0' || waylandDisplay == nullptr || waylandDisplay[0] == '\0') {
+    if (runtimeDir.empty() || waylandDisplay == nullptr || waylandDisplay[0] == '\0') {
       return;
     }
 

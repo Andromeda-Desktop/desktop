@@ -1,4 +1,5 @@
 #include "log.h"
+#include "xdg_dirs.h"
 
 #include <algorithm>
 #include <atomic>
@@ -531,13 +532,10 @@ std::optional<LogLevel> parseLogLevel(std::string_view value) {
 }
 
 void initLogFile(std::string_view name, TtyStdio stdio) {
-  const char* cacheHome = std::getenv("XDG_CACHE_HOME");
-  const char* home = std::getenv("HOME");
+  const std::string cacheHome = xdg::cacheHome();
   std::filesystem::path logPath;
-  if (cacheHome != nullptr && cacheHome[0] != '\0') {
+  if (!cacheHome.empty()) {
     logPath = std::filesystem::path(cacheHome) / "andromeda" / name;
-  } else if (home != nullptr && home[0] != '\0') {
-    logPath = std::filesystem::path(home) / ".cache/andromeda" / name;
   }
   std::error_code ec;
   if (!logPath.empty()) {

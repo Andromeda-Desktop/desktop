@@ -1,6 +1,7 @@
 #include "dbus/andromeda/software_update_service.h"
 #include "app/main_loop.h"
 #include "application.h"
+#include "protocols/xdg_dirs.h"
 #include "shell/lockscreen/lock_client.h"
 #include "application_internal.h"
 #include "compositors/compositor_detect.h"
@@ -146,11 +147,7 @@ namespace {
 
   // App ids of the windows open before the last compositor crash (written by the compositor, docs/resilience.md §5).
   std::vector<std::string> crashSessionAppIds() {
-    const char* state = std::getenv("XDG_STATE_HOME");
-    const char* home = std::getenv("HOME");
-    const std::filesystem::path path = state != nullptr && *state != '\0'
-        ? std::filesystem::path(state) / "andromeda/session-crash.json"
-        : std::filesystem::path(home != nullptr ? home : "") / ".local/state/andromeda/session-crash.json";
+    const std::filesystem::path path = std::filesystem::path(xdg::stateHome()) / "andromeda/session-crash.json";
     std::ifstream in(path);
     const nlohmann::json session = nlohmann::json::parse(in, nullptr, false);
     std::vector<std::string> ids;
@@ -1006,7 +1003,7 @@ void Application::initNotificationAndOsd() {
   m_notificationManager.setSoundPlayer(m_soundPlayer.get());
 
   // session/noctalia.service writes this marker when the previous run failed.
-  if (const char* runtime = std::getenv("XDG_RUNTIME_DIR"); runtime != nullptr && runtime[0] != '\0') {
+  if (const std::string runtime = xdg::runtimeDir(); !runtime.empty()) {
     std::error_code ec;
     if (std::filesystem::remove(std::filesystem::path(runtime) / "noctalia-crashed", ec)) {
       m_notificationManager.addInternal(

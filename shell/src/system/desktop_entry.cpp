@@ -5,6 +5,7 @@
 #include "core/log.h"
 #include "core/shared_worker.h"
 #include "i18n/language_tag.h"
+#include "protocols/xdg_dirs.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"
 
@@ -32,10 +33,8 @@ namespace {
 
   bool isUserDesktopEntry(const fs::path& filepath) {
     fs::path dataHome;
-    if (const char* configured = std::getenv("XDG_DATA_HOME"); configured != nullptr && configured[0] != '\0') {
+    if (const std::string configured = xdg::dataHome(); !configured.empty()) {
       dataHome = configured;
-    } else if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-      dataHome = fs::path(home) / ".local/share";
     } else {
       return false;
     }
@@ -417,29 +416,9 @@ namespace {
       }
     };
 
-    const char* home = std::getenv("XDG_DATA_HOME");
-    if (home != nullptr && home[0] != '\0') {
-      appendDir(home);
-    } else {
-      const char* userHome = std::getenv("HOME");
-      if (userHome != nullptr) {
-        appendDir(std::string(userHome) + "/.local/share");
-      }
-    }
-
-    const char* dataDirs = std::getenv("XDG_DATA_DIRS");
-    if (dataDirs != nullptr && dataDirs[0] != '\0') {
-      std::string_view sv(dataDirs);
-      std::size_t start = 0;
-      while (start < sv.size()) {
-        auto colon = sv.find(':', start);
-        if (colon == std::string_view::npos) {
-          appendDir(std::string(sv.substr(start)));
-          break;
-        }
-        appendDir(std::string(sv.substr(start, colon - start)));
-        start = colon + 1;
-      }
+    appendDir(xdg::dataHome());
+    for (std::string dir : xdg::dataDirs()) {
+      appendDir(std::move(dir));
     }
 
     // Keep canonical system directories as a safety net for partial env setups.

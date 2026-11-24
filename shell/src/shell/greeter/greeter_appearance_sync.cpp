@@ -1,3 +1,4 @@
+#include "protocols/xdg_dirs.h"
 #include "time/time_format.h"
 #include "shell/greeter/greeter_appearance_sync.h"
 
@@ -510,9 +511,9 @@ namespace {
       // The secure helper accepts only this lexical path, derived from PKEXEC_UID.
       runtimeDirectory = std::filesystem::path("/run/user") / std::to_string(::getuid());
     } else {
-      const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR");
-      runtimeDirectory = runtimeDir != nullptr && runtimeDir[0] != '\0' ? std::filesystem::path(runtimeDir)
-                                                                        : std::filesystem::temp_directory_path();
+      const std::string runtimeDir = xdg::runtimeDir();
+      runtimeDirectory =
+          runtimeDir.empty() ? std::filesystem::temp_directory_path() : std::filesystem::path(runtimeDir);
     }
     std::error_code ec;
     if (!std::filesystem::is_directory(runtimeDirectory, ec) || ec) {

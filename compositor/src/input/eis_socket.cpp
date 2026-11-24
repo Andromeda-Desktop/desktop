@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "protocols/ipc_channel.h"
+#include "protocols/xdg_dirs.h"
 
 #include <algorithm>
 #include <array>
@@ -253,12 +254,12 @@ namespace andromeda {
     }
 
     void initialize() {
-      const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-      if (runtime == nullptr) {
+      const std::string runtime = xdg::runtimeDir();
+      if (runtime.empty()) {
         kLog.error("XDG_RUNTIME_DIR is unavailable for input emulation");
         return;
       }
-      std::string directory = std::string(runtime) + "/andromeda-eis.XXXXXX";
+      std::string directory = runtime + "/andromeda-eis.XXXXXX";
       if (mkdtemp(directory.data()) == nullptr) {
         kLog.error("failed to create private input socket directory: {}", std::strerror(errno));
         return;

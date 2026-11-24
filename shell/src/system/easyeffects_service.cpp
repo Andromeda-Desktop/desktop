@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "core/shared_worker.h"
 #include "ipc/ipc_service.h"
+#include "protocols/xdg_dirs.h"
 #include "util/string_utils.h"
 
 #include <algorithm>
@@ -145,40 +146,18 @@ namespace {
   }
 
   std::filesystem::path homePath() {
-    const char* home = std::getenv("HOME");
-    return home != nullptr && home[0] != '\0' ? std::filesystem::path(home) : std::filesystem::path{};
-  }
-
-  void
-  appendColonSeparatedRoots(std::vector<std::filesystem::path>& roots, std::string_view dirs, std::string_view appDir) {
-    std::size_t start = 0;
-    while (start <= dirs.size()) {
-      const std::size_t end = dirs.find(':', start);
-      const std::string_view item(dirs.data() + start, (end == std::string::npos ? dirs.size() : end) - start);
-      if (!item.empty()) {
-        roots.emplace_back(std::filesystem::path(item) / appDir);
-      }
-      if (end == std::string::npos) {
-        break;
-      }
-      start = end + 1;
-    }
+    return xdg::home();
   }
 
   std::vector<std::filesystem::path> easyeffectsConfigRoots() {
     std::vector<std::filesystem::path> roots;
 
-    const char* xdgConfigHome = std::getenv("XDG_CONFIG_HOME");
-    if (xdgConfigHome != nullptr && xdgConfigHome[0] != '\0') {
-      roots.emplace_back(std::filesystem::path(xdgConfigHome) / "easyeffects");
-    } else if (const auto home = homePath(); !home.empty()) {
-      roots.emplace_back(home / ".config/easyeffects");
+    if (const std::string config = xdg::configHome(); !config.empty()) {
+      roots.emplace_back(std::filesystem::path(config) / "easyeffects");
     }
-
-    const char* xdgConfigDirs = std::getenv("XDG_CONFIG_DIRS");
-    const std::string dirs =
-        (xdgConfigDirs != nullptr && xdgConfigDirs[0] != '\0') ? xdgConfigDirs : std::string{"/etc/xdg"};
-    appendColonSeparatedRoots(roots, dirs, "easyeffects");
+    for (const std::string& dir : xdg::configDirs()) {
+      roots.emplace_back(std::filesystem::path(dir) / "easyeffects");
+    }
 
     if (const auto home = homePath(); !home.empty()) {
       roots.emplace_back(home / ".var/app/com.github.wwmm.easyeffects/config/easyeffects");
@@ -190,17 +169,12 @@ namespace {
   std::vector<std::filesystem::path> easyeffectsDataRoots() {
     std::vector<std::filesystem::path> roots;
 
-    const char* xdgDataHome = std::getenv("XDG_DATA_HOME");
-    if (xdgDataHome != nullptr && xdgDataHome[0] != '\0') {
-      roots.emplace_back(std::filesystem::path(xdgDataHome) / "easyeffects");
-    } else if (const auto home = homePath(); !home.empty()) {
-      roots.emplace_back(home / ".local/share/easyeffects");
+    if (const std::string data = xdg::dataHome(); !data.empty()) {
+      roots.emplace_back(std::filesystem::path(data) / "easyeffects");
     }
-
-    const char* xdgDataDirs = std::getenv("XDG_DATA_DIRS");
-    const std::string dirs =
-        (xdgDataDirs != nullptr && xdgDataDirs[0] != '\0') ? xdgDataDirs : std::string{"/usr/local/share:/usr/share"};
-    appendColonSeparatedRoots(roots, dirs, "easyeffects");
+    for (const std::string& dir : xdg::dataDirs()) {
+      roots.emplace_back(std::filesystem::path(dir) / "easyeffects");
+    }
 
     if (const auto home = homePath(); !home.empty()) {
       roots.emplace_back(home / ".var/app/com.github.wwmm.easyeffects/data/easyeffects");
@@ -237,7 +211,7 @@ namespace {
   }
 
   std::filesystem::path easyEffectsServerPath() {
-    if (const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR"); runtimeDir != nullptr && runtimeDir[0] != '\0') {
+    if (const std::string runtimeDir = xdg::runtimeDir(); !runtimeDir.empty()) {
       return std::filesystem::path(runtimeDir) / "EasyEffectsServer";
     }
     return std::filesystem::path("/run/user") / std::to_string(::getuid()) / "EasyEffectsServer";

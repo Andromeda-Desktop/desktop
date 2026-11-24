@@ -12,6 +12,7 @@
 #include "hyprland-focus-grab-v1-client-protocol.h"
 #include "idle-inhibit-unstable-v1-client-protocol.h"
 #include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
+#include "protocols/xdg_dirs.h"
 #include "text-input-unstable-v3-client-protocol.h"
 #include "util/string_utils.h"
 #include "viewporter-client-protocol.h"
@@ -1450,8 +1451,8 @@ bool WaylandConnection::serverPresent() const {
   if (socket.is_absolute()) {
     return std::filesystem::exists(socket);
   }
-  const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-  return runtime != nullptr && std::filesystem::exists(std::filesystem::path(runtime) / socket);
+  const std::string runtime = xdg::runtimeDir();
+  return !runtime.empty() && std::filesystem::exists(std::filesystem::path(runtime) / socket);
 }
 
 std::unique_ptr<TextInputService> WaylandConnection::createTextInputService() {

@@ -1,6 +1,7 @@
 #include "app/single_instance_lock.h"
 
 #include "core/log.h"
+#include "protocols/xdg_dirs.h"
 
 #include <cerrno>
 #include <cstdlib>
@@ -54,13 +55,13 @@ void SingleInstanceLock::release() noexcept {
 }
 
 std::string SingleInstanceLock::resolveLockPath() {
-  const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-  if (runtime == nullptr || runtime[0] == '\0') {
+  std::string runtime = xdg::runtimeDir();
+  if (runtime.empty()) {
     runtime = "/tmp";
   }
   const char* display = std::getenv("WAYLAND_DISPLAY");
   if (display == nullptr || display[0] == '\0') {
     display = "wayland-0";
   }
-  return std::string(runtime) + "/noctalia-" + display + ".lock";
+  return runtime + "/noctalia-" + display + ".lock";
 }

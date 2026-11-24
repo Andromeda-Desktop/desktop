@@ -1,6 +1,7 @@
 #include "ipc/ipc_client.h"
 
 #include "protocols/ipc_channel.h"
+#include "protocols/xdg_dirs.h"
 
 #include <cerrno>
 #include <chrono>
@@ -21,15 +22,15 @@ namespace {
   constexpr std::size_t kMaxReplyBytes = 64 * 1024 * 1024;
 
   std::string resolveSocketPath() {
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    if (runtime == nullptr || runtime[0] == '\0') {
+    const std::string runtime = xdg::runtimeDir();
+    if (runtime.empty()) {
       return {};
     }
     const char* display = std::getenv("WAYLAND_DISPLAY");
     if (display == nullptr || display[0] == '\0') {
       display = "wayland-0";
     }
-    return std::string(runtime) + "/noctalia-" + display + ".sock";
+    return runtime + "/noctalia-" + display + ".sock";
   }
 
 } // namespace

@@ -1,8 +1,11 @@
 #include "andromeda/ipc.h"
 
 #include "loop/loop.h"
+#include "protocols/ipc_channel.h"
+#include "protocols/xdg_dirs.h"
 
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -23,12 +26,12 @@ namespace xdpu {
       if (const char* configured = std::getenv("ANDROMEDA_SOCKET"); configured != nullptr && configured[0] != '\0') {
         return configured;
       }
-      const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+      const std::string runtime = xdg::runtimeDir();
       const char* display = std::getenv("WAYLAND_DISPLAY");
-      if (runtime == nullptr || runtime[0] == '\0' || display == nullptr || display[0] == '\0') {
+      if (runtime.empty() || display == nullptr || display[0] == '\0') {
         return {};
       }
-      return std::string(runtime) + "/andromeda-" + display + ".sock";
+      return runtime + "/andromeda-" + display + ".sock";
     }
 
     void closeFd(int fd) {

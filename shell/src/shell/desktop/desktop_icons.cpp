@@ -1,3 +1,4 @@
+#include "protocols/xdg_dirs.h"
 #include "shell/desktop/desktop_icons.h"
 #include "core/input/cursor_shape.h"
 
@@ -915,11 +916,7 @@ std::string DesktopIcons::outputKey() const {
 }
 
 std::filesystem::path DesktopIcons::slotsFile() const {
-  const char* state = std::getenv("XDG_STATE_HOME");
-  const std::filesystem::path base = state != nullptr && *state != '\0'
-                                         ? std::filesystem::path(state)
-                                         : std::filesystem::path(g_get_home_dir()) / ".local" / "state";
-  return base / "andromeda" / "desktop-icons.json";
+  return std::filesystem::path(xdg::stateHome()) / "andromeda" / "desktop-icons.json";
 }
 
 void DesktopIcons::loadSlots() {

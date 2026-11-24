@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "core/process/process.h"
 #include "net/uri.h"
+#include "protocols/xdg_dirs.h"
 #include "render/gl_shared_context.h"
 #include "shell/lockscreen/lock_screen.h"
 #include "shell/lockscreen/lock_shader.h"
@@ -41,9 +42,7 @@ namespace lock_thumbnail {
     }
 
     std::filesystem::path cacheHome() {
-      const char* xdg = std::getenv("XDG_CACHE_HOME");
-      return xdg != nullptr && *xdg != '\0' ? std::filesystem::path(xdg)
-                                             : FileUtils::expandUserPath("~/.cache");
+      return xdg::cacheHome();
     }
 
     bool writePng(const std::vector<std::uint8_t>& rgba, const std::string& out) {

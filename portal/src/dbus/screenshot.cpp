@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "dbus/request.h"
 #include "loop/loop.h"
+#include "protocols/xdg_dirs.h"
 #include "wayland/shm_format.h"
 #include "wayland/wayland.h"
 
@@ -91,8 +92,8 @@ namespace xdpu {
     }
 
     std::optional<std::filesystem::path> runtimeDir() {
-      const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-      if (runtime == nullptr || *runtime == '\0') {
+      const std::string runtime = xdg::runtimeDir();
+      if (runtime.empty()) {
         return std::filesystem::path{"/tmp"} / "xdg-desktop-portal-andromeda";
       }
       return std::filesystem::path{runtime} / "xdg-desktop-portal-andromeda";

@@ -5,6 +5,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "preview_service.h"
+#include "protocols/xdg_dirs.h"
 #include "render/core/texture_manager.h"
 #include "i18n/i18n.h"
 #include "ui/builders.h"
@@ -787,11 +788,9 @@ namespace preview {
       m_peaks = hit->second;
       return;
     }
-    const char* cacheHome = std::getenv("XDG_CACHE_HOME");
-    const char* home = std::getenv("HOME");
-    const std::filesystem::path dir = cacheHome != nullptr && *cacheHome != '\0'
-        ? std::filesystem::path(cacheHome) / "andromeda" / "peaks"
-        : std::filesystem::path(home != nullptr ? home : "/tmp") / ".cache" / "andromeda" / "peaks";
+    const std::string cacheHome = xdg::cacheHome();
+    const std::filesystem::path dir =
+        std::filesystem::path(cacheHome.empty() ? "/tmp/.cache" : cacheHome) / "andromeda" / "peaks";
     const auto file = dir / std::format("{:016x}", std::hash<std::string>{}(key));
     if (std::FILE* in = std::fopen(file.c_str(), "rb"); in != nullptr) {
       std::vector<std::uint8_t> bytes(kPeakCount);

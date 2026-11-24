@@ -1,3 +1,4 @@
+#include "protocols/xdg_dirs.h"
 #include "trash.h"
 
 #include <algorithm>
@@ -47,11 +48,8 @@ namespace {
 } // namespace
 
 fs::path homeTrashDir() {
-  if (const char* data = std::getenv("XDG_DATA_HOME"); data != nullptr && data[0] == '/') {
-    return fs::path(data) / "Trash";
-  }
-  const char* home = std::getenv("HOME");
-  return fs::path(home != nullptr ? home : "/") / ".local/share/Trash";
+  const std::string data = xdg::dataHome();
+  return fs::path(data.empty() ? "/.local/share" : data) / "Trash";
 }
 
 namespace {

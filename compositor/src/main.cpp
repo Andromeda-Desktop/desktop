@@ -12,6 +12,7 @@
 #include "core/scanout_keeper.h"
 #include "protocols/heap.h"
 #include "config/action_groups.h"
+#include "protocols/xdg_dirs.h"
 #include "server/ipc.h"
 #include "server/ipc_commands.h"
 #include "config/change.h"
@@ -501,8 +502,8 @@ int main(int argc, char** argv) {
   }
 
   if (const std::optional<uint32_t> session = andromeda::agentSession()) {
-    const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR");
-    if (andromeda::greeterMode() || startupCmd != nullptr || runtimeDir == nullptr || *runtimeDir == '\0') {
+    const std::string runtimeDir = xdg::runtimeDir();
+    if (andromeda::greeterMode() || startupCmd != nullptr || runtimeDir.empty()) {
       std::println(stderr, "error: --agent-session takes no --greeter or -s and needs XDG_RUNTIME_DIR");
       return EXIT_FAILURE;
     }
@@ -568,7 +569,7 @@ int main(int argc, char** argv) {
       return EXIT_FAILURE;
     }
     if (const std::optional<uint32_t> session = andromeda::agentSession()) {
-      std::println("agent-session ready {}/wayland-agent-{}", std::getenv("XDG_RUNTIME_DIR"), *session);
+      std::println("agent-session ready {}/wayland-agent-{}", xdg::runtimeDir(), *session);
       std::fflush(stdout);
     }
 

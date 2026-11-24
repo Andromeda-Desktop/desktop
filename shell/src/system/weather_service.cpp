@@ -4,6 +4,7 @@
 #include "core/log.h"
 #include "i18n/i18n.h"
 #include "net/http_client.h"
+#include "protocols/xdg_dirs.h"
 #include "time/time_format.h"
 
 #include <algorithm>
@@ -690,11 +691,8 @@ bool WeatherService::coordinatesValid() const noexcept {
 std::filesystem::path WeatherService::transportCacheDir() { return std::filesystem::path("/tmp") / "noctalia-weather"; }
 
 std::filesystem::path WeatherService::stateCacheFilePath() {
-  if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] != '\0') {
-    return std::filesystem::path(xdg) / "andromeda" / "shell" / "weather.json";
-  }
-  if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-    return std::filesystem::path(home) / ".cache" / "andromeda" / "shell" / "weather.json";
+  if (const std::string cache = xdg::cacheHome(); !cache.empty()) {
+    return std::filesystem::path(cache) / "andromeda" / "shell" / "weather.json";
   }
   return std::filesystem::path("/tmp") / "noctalia-weather-cache.json";
 }

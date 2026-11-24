@@ -1,3 +1,4 @@
+#include "protocols/xdg_dirs.h"
 #include "ui/files/file_icon.h"
 #include "core/blocking_pool.h"
 #include "core/sys/sys.h"
@@ -117,9 +118,8 @@ namespace {
   };
 
   fs::path iconRasterPath(const std::string& asset, int px) {
-    const char* xdg = std::getenv("XDG_CACHE_HOME");
-    const char* home = std::getenv("HOME");
-    const fs::path root = xdg != nullptr && xdg[0] == '/' ? fs::path(xdg) : fs::path(home != nullptr ? home : "/tmp") / ".cache";
+    const std::string cache = xdg::cacheHome();
+    const fs::path root = cache.empty() ? fs::path("/tmp/.cache") : fs::path(cache);
     std::string name = asset;
     std::ranges::replace(name, '/', '_');
     return root / "andromeda" / "files-icons" / std::format("{}-{}.rgba", name, px);

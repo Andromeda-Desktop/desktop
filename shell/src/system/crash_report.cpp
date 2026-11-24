@@ -1,6 +1,7 @@
 #include "system/crash_report.h"
 
 #include "core/process/process.h"
+#include "protocols/xdg_dirs.h"
 
 #include <cstdlib>
 #include <string>
@@ -10,12 +11,7 @@
 namespace crash_report {
 
   std::filesystem::path directory() {
-    const char* state = std::getenv("XDG_STATE_HOME");
-    const char* home = std::getenv("HOME");
-    const std::filesystem::path base = state != nullptr && *state != '\0'
-        ? std::filesystem::path(state)
-        : std::filesystem::path(home != nullptr ? home : "") / ".local/state";
-    return base / "andromeda/crash-reports";
+    return std::filesystem::path(xdg::stateHome()) / "andromeda/crash-reports";
   }
 
   void save(int pid) {

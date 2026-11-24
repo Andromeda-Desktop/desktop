@@ -1,3 +1,4 @@
+#include "protocols/xdg_dirs.h"
 #include "system/container_service.h"
 
 #include <algorithm>
@@ -187,9 +188,9 @@ namespace {
 
 std::vector<std::string> ContainerService::defaultSockets() {
   std::vector<std::string> candidates{unixPath("DOCKER_HOST"), unixPath("CONTAINER_HOST")};
-  if (const char* runtime = std::getenv("XDG_RUNTIME_DIR"); runtime != nullptr && *runtime != '\0') {
-    candidates.push_back(std::string(runtime) + "/docker.sock");
-    candidates.push_back(std::string(runtime) + "/podman/podman.sock");
+  if (const std::string runtime = xdg::runtimeDir(); !runtime.empty()) {
+    candidates.push_back(runtime + "/docker.sock");
+    candidates.push_back(runtime + "/podman/podman.sock");
   }
   candidates.emplace_back("/run/docker.sock");
   candidates.emplace_back("/run/podman/podman.sock");

@@ -3,6 +3,7 @@
 #include "cli/help.h"
 #include "cli/schema_msg.h"
 #include "core/log.h"
+#include "protocols/xdg_dirs.h"
 
 #include <algorithm>
 #include <chrono>
@@ -432,13 +433,13 @@ std::string IpcService::executeParsed(const std::string& command, const std::str
 
 // Only the per-user runtime directory: a world-writable fallback such as /tmp lets another user take the path first.
 std::string IpcService::resolveSocketPath() {
-  const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-  if (runtime == nullptr || runtime[0] == '\0') {
+  const std::string runtime = xdg::runtimeDir();
+  if (runtime.empty()) {
     return {};
   }
   const char* display = std::getenv("WAYLAND_DISPLAY");
   if (display == nullptr || display[0] == '\0') {
     display = "wayland-0";
   }
-  return std::string(runtime) + "/noctalia-" + display + ".sock";
+  return runtime + "/noctalia-" + display + ".sock";
 }

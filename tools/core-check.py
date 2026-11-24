@@ -137,13 +137,21 @@ RULES = {
                    "use --no-rebuild", ("",), ("justfile",),
                    r"^(?![^#\n]*tools/(?:build|f7)\.sh)[^#\n]*?(?<![\w/.-])(?:ninja\s+-C|meson\s+(?:setup|compile|test"
                    r"|install)\b|meson\s+configure\s+\S+\s+[-\"])(?![^\n]*(?:\buninstall\b|--no-rebuild))", ()),
-    "e2e-wait": ("e2e scripts wait through wait_for and poll_for in tests/e2e/lib.sh", (E2E,), (".sh",),
-                 r"^\s*(wait_for|poll_for)\s*\(\)", ("tests/e2e/lib.sh",)),
+    "e2e-wait": ("e2e scripts wait through wait_for and poll_for in tests/e2e/wait.sh", (E2E,), (".sh",),
+                 r"^\s*(wait_for|poll_for)\s*\(\)", ("tests/e2e/wait.sh",)),
+    "index-client": ("andromeda-index queries go through IndexClient (libdesk-system system/index_client.h)",
+                     CPP_DIRS, CPP, r"andromeda-index\.sock", ("libdesk-system/src/system/index_client.cpp", "indexer/src/")),
     "harness-wait": ("compositor harness checks wait through await_until and its await_* owners in "
                      "compositor/tests/harness/lib.sh", (HARNESS + "checks/",), (".sh",),
                      r"^\s*(wait_for_count|wait_for_windows|wait_for_window_count|wait_for_field|wait_field|"
                      r"wait_for_active|wait_for_focus|wait_for_window|wait_mapped|wait_for_workspace\w*|"
                      r"wait_for_log\w*)\s*\(\)", ()),
+    "poll-deadlines": ("per-source poll deadlines live in libdesk-ui PollSchedule (prepare/dispatch/forget); a loop "
+                       "keeps no PollSource*-to-time map", CPP_DIRS, CPP,
+                       r"<\s*(?:const\s+)?PollSource\s*\*\s*,[^;>]*time_point", ("libdesk-ui/src/core/poll_schedule",)),
+    "xdg-dirs": ("HOME-relative XDG base dirs come from protocol/xdg_dirs.h (xdg::configHome, runtimeDir, dataDirs...)",
+                 CPP_DIRS + ("protocol/",), CPP,
+                 r"getenv\(\"XDG_(?:(?:CONFIG|DATA|STATE|CACHE)_HOME|RUNTIME_DIR|(?:DATA|CONFIG)_DIRS)\"\)", ()),
     "protocol-copy": ("a Wayland protocol XML used by more than one module lives once in protocol/; module protocols/ "
                       "dirs link to it", ("",), ("/protocols/",), r"", ()),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",
