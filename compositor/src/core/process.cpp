@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <spawn.h>
 #include <string>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -47,6 +48,54 @@ namespace andromeda {
     sigprocmask(SIG_SETMASK, &empty, nullptr);
   }
 
+  pid_t forkChild(const std::function<void()>& child) {
+    const pid_t pid = fork();
+    if (pid == 0) {
+      resetChildSignalState();
+      restoreFileDescriptorLimit();
+      child();
+      _exit(127);
+    }
+    return pid;
+  }
+
+  pid_t spawnProgram(const std::vector<std::string>& argv, std::initializer_list<ChildFd> fds) {
+    std::vector<char*> args;
+    args.reserve(argv.size() + 1);
+    for (const auto& arg : argv) {
+      args.push_back(const_cast<char*>(arg.c_str()));
+    }
+    args.push_back(nullptr);
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    for (const ChildFd& fd : fds) {
+      if (fd.source < 0) {
+        const int mode = fd.target == STDIN_FILENO ? O_RDONLY : O_WRONLY;
+        posix_spawn_file_actions_addopen(&actions, fd.target, "/dev/null", mode, 0);
+      } else {
+        posix_spawn_file_actions_adddup2(&actions, fd.source, fd.target);
+      }
+    }
+    posix_spawnattr_t attributes;
+    posix_spawnattr_init(&attributes);
+    sigset_t signals;
+    sigemptyset(&signals);
+    posix_spawnattr_setsigmask(&attributes, &signals);
+    sigaddset(&signals, SIGCHLD);
+    sigaddset(&signals, SIGPIPE);
+    posix_spawnattr_setsigdefault(&attributes, &signals);
+    posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF);
+    pid_t pid = -1;
+    const int error = posix_spawnp(&pid, args[0], &actions, &attributes, args.data(), environ);
+    posix_spawnattr_destroy(&attributes);
+    posix_spawn_file_actions_destroy(&actions);
+    if (error != 0) {
+      errno = error;
+      return -1;
+    }
+    return pid;
+  }
+
   void execShell(const char* command) { execl("/bin/sh", "/bin/sh", "-c", command, static_cast<char*>(nullptr)); }
 
   int startShellCommand(const std::string& command) {
@@ -57,10 +106,7 @@ namespace andromeda {
     // Only the success marker reaches the pipe. A SIGCHLD handler may reap
     // the shell before we read it, so waitpid cannot reliably report success.
     const std::string script = "( " + command + " ) >&2 && printf x";
-    const pid_t pid = fork();
-    if (pid == 0) {
-      resetChildSignalState();
-      restoreFileDescriptorLimit();
+    const pid_t pid = forkChild([&] {
       unsetenv("LIBEI_SOCKET");
       close(completion[0]);
       if (dup2(completion[1], STDOUT_FILENO) < 0 || !closeChildFileDescriptors()) {
@@ -68,7 +114,7 @@ namespace andromeda {
       }
       execShell(script.c_str());
       _exit(1);
-    }
+    });
     const int forkError = errno;
     close(completion[1]);
     if (pid < 0) {

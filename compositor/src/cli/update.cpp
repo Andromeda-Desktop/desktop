@@ -1,5 +1,7 @@
 #include "cli/update.h"
 
+#include "core/process.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <print>
@@ -8,7 +10,6 @@
 #include <systemd/sd-bus.h>
 #include <fcntl.h>
 #include <poll.h>
-#include <spawn.h>
 #include <csignal>
 #include <sys/auxv.h>
 #include <sys/wait.h>
@@ -306,18 +307,11 @@ namespace andromeda {
           return;
         }
         constexpr int kNotifyFd = 3;
-        posix_spawn_file_actions_t actions;
-        posix_spawn_file_actions_init(&actions);
-        posix_spawn_file_actions_adddup2(&actions, ready[1], kNotifyFd);
-        std::string name = std::string("--system-bus-name=") + unique;
-        std::string notify = "--notify-fd=" + std::to_string(kNotifyFd);
-        std::array<char*, 5> argv{
-            const_cast<char*>("pkttyagent"), name.data(), const_cast<char*>("--fallback"), notify.data(), nullptr
-        };
-        if (posix_spawnp(&m_pid, "pkttyagent", &actions, nullptr, argv.data(), environ) != 0) {
-          m_pid = 0;
-        }
-        posix_spawn_file_actions_destroy(&actions);
+        m_pid = std::max<pid_t>(0, spawnProgram(
+            {"pkttyagent", std::string("--system-bus-name=") + unique, "--fallback",
+             "--notify-fd=" + std::to_string(kNotifyFd)},
+            {{kNotifyFd, ready[1]}}
+        ));
         close(ready[1]);
         if (m_pid > 0) {
           // EOF: the agent registered and closed the fd, or it exited.
@@ -415,19 +409,11 @@ namespace andromeda {
       if (pipe2(fds, O_CLOEXEC) < 0) {
         return fail(std::string("flatpak could not start: ") + std::strerror(errno));
       }
-      posix_spawn_file_actions_t actions;
-      posix_spawn_file_actions_init(&actions);
-      posix_spawn_file_actions_adddup2(&actions, fds[1], STDOUT_FILENO);
-      posix_spawn_file_actions_adddup2(&actions, fds[1], STDERR_FILENO);
-      std::array<char*, 5> argv{
-          const_cast<char*>("flatpak"), const_cast<char*>("update"), const_cast<char*>("--noninteractive"),
-          const_cast<char*>("-y"), nullptr
-      };
-      pid_t pid = 0;
-      const int spawned = posix_spawnp(&pid, "flatpak", &actions, nullptr, argv.data(), environ);
-      posix_spawn_file_actions_destroy(&actions);
+      const pid_t pid = spawnProgram(
+          {"flatpak", "update", "--noninteractive", "-y"}, {{STDOUT_FILENO, fds[1]}, {STDERR_FILENO, fds[1]}}
+      );
       close(fds[1]);
-      if (spawned != 0) {
+      if (pid < 0) {
         close(fds[0]);
         return fail("flatpak could not start");
       }

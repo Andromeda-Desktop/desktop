@@ -44,12 +44,7 @@ namespace andromeda {
 
   GreeterChild::GreeterChild(wl_event_loop* loop, const char* command, std::function<void()> onExit)
       : m_onExit(std::move(onExit)) {
-    m_pid = fork();
-    if (m_pid == 0) {
-      resetChildSignalState();
-      execShell(command);
-      _exit(127);
-    }
+    m_pid = forkChild([command] { execShell(command); });
     if (m_pid < 0) {
       kLog.error("greeter: fork failed");
       return;

@@ -2484,10 +2484,7 @@ namespace andromeda {
     m_sessionExitResultFd = resultPipe[0];
     const std::string command = shellQuote(m_systemctlExecutable)
         + " --user start --job-mode=replace-irreversibly --no-block andromeda-shutdown.target 1>&2 && printf x";
-    const pid_t pid = fork();
-    if (pid == 0) {
-      resetChildSignalState();
-      restoreFileDescriptorLimit();
+    const pid_t pid = forkChild([&] {
       close(resultPipe[0]);
       if (dup2(resultPipe[1], STDOUT_FILENO) < 0
           || fcntl(STDOUT_FILENO, F_SETFD, 0) < 0
@@ -2497,7 +2494,7 @@ namespace andromeda {
       }
       execShell(command.c_str());
       _exit(1);
-    }
+    });
     if (pid < 0) {
       kLog.error("cannot fork the session shutdown request: {}", std::strerror(errno));
       stop();
@@ -2616,21 +2613,7 @@ namespace andromeda {
     const bool scopeOverBus = scopeRequired && m_systemdUnits != nullptr && m_systemdUnits->active()
         && pipe2(gate.data(), O_CLOEXEC) == 0;
     const auto requested = std::chrono::steady_clock::now();
-    pid_t pid = fork();
-    if (pid < 0) {
-      if (scopeOverBus) {
-        close(gate[0]);
-        close(gate[1]);
-      }
-      if (launchToken != nullptr) {
-        wlr_xdg_activation_token_v1_destroy(launchToken);
-      }
-      wlr_log(WLR_ERROR, "fork failed");
-      return;
-    }
-    if (pid == 0) {
-      resetChildSignalState();
-      restoreFileDescriptorLimit();
+    const pid_t pid = forkChild([&] {
       if (scopeOverBus) {
         close(gate[1]);
         if (!awaitApplicationScope(gate[0], scopeUnit.c_str())) {
@@ -2671,6 +2654,17 @@ namespace andromeda {
       }
       execShell(command);
       _exit(1);
+    });
+    if (pid < 0) {
+      if (scopeOverBus) {
+        close(gate[0]);
+        close(gate[1]);
+      }
+      if (launchToken != nullptr) {
+        wlr_xdg_activation_token_v1_destroy(launchToken);
+      }
+      wlr_log(WLR_ERROR, "fork failed");
+      return;
     }
     if (launchToken != nullptr) {
       static_cast<ActivationTokenWatch*>(launchToken->data)->launchPid = pid;

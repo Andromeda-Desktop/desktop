@@ -1,5 +1,7 @@
 #include "cli/debug.h"
 
+#include "core/process.h"
+
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -17,15 +19,12 @@
 #include <optional>
 #include <print>
 #include <regex>
-#include <spawn.h>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
-
-extern char** environ;
 
 namespace andromeda {
 
@@ -84,26 +83,11 @@ namespace andromeda {
       if (pipe2(fds, O_CLOEXEC) < 0) {
         return std::nullopt;
       }
-      posix_spawn_file_actions_t actions;
-      posix_spawn_file_actions_init(&actions);
-      posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
-      posix_spawn_file_actions_adddup2(&actions, fds[1], STDOUT_FILENO);
-      if (withStderr) {
-        posix_spawn_file_actions_adddup2(&actions, fds[1], STDERR_FILENO);
-      } else {
-        posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
-      }
-      std::vector<char*> argv;
-      argv.reserve(args.size() + 1);
-      for (const auto& arg : args) {
-        argv.push_back(const_cast<char*>(arg.c_str()));
-      }
-      argv.push_back(nullptr);
-      pid_t pid = 0;
-      const int spawned = posix_spawnp(&pid, argv[0], &actions, nullptr, argv.data(), environ);
-      posix_spawn_file_actions_destroy(&actions);
+      const pid_t pid = spawnProgram(
+          args, {{STDIN_FILENO, -1}, {STDOUT_FILENO, fds[1]}, {STDERR_FILENO, withStderr ? fds[1] : -1}}
+      );
       close(fds[1]);
-      if (spawned != 0) {
+      if (pid < 0) {
         close(fds[0]);
         return std::nullopt;
       }
