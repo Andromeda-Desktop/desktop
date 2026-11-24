@@ -15,11 +15,13 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace andromeda::index {
 
@@ -40,6 +42,28 @@ namespace andromeda::index {
     }
 
     constexpr int kExtractTimeoutMs = 30'000;
+    // Digits of kMaxText and the newline, with room to spare.
+    constexpr std::size_t kMaxHeader = 16;
+
+    // The request word andromeda-index-extract reads before the path.
+    std::string_view helperKindName(DocumentKind kind) {
+      switch (kind) {
+      case DocumentKind::Html:
+        return "html";
+      case DocumentKind::Pdf:
+        return "pdf";
+      case DocumentKind::Zip:
+        return "zip";
+      case DocumentKind::Photo:
+        return "photo";
+      case DocumentKind::Audio:
+        return "audio";
+      case DocumentKind::None:
+      case DocumentKind::Text:
+        break;
+      }
+      return {};
+    }
 
     // The andromeda-index-extract process for one pass: paths go in on a pipe, text comes back framed by its size.
     class Extractor {
@@ -99,16 +123,17 @@ namespace andromeda::index {
 
       [[nodiscard]] bool ok() const { return m_pid > 0; }
 
-      // The text of path; the outer nullopt when the helper crashed or took longer than kExtractTimeoutMs.
-      std::optional<std::optional<std::string>> extract(const std::string& path) {
-        const std::string line = path + "\n";
+      // The text of path; the outer nullopt when the helper crashed, took longer than kExtractTimeoutMs or broke
+      // the reply format (a header that is neither "-" nor a size of at most kMaxText).
+      std::optional<std::optional<std::string>> extract(DocumentKind kind, const std::string& path) {
+        const std::string line = std::string(helperKindName(kind)) + ' ' + path + '\n';
         if (write(m_in, line.data(), line.size()) != static_cast<ssize_t>(line.size())) {
           return std::nullopt;
         }
         std::string header;
         while (!header.ends_with('\n')) {
           char c = 0;
-          if (!readExact(&c, 1)) {
+          if (header.size() > kMaxHeader || !readExact(&c, 1)) {
             return std::nullopt;
           }
           header += c;
@@ -116,7 +141,12 @@ namespace andromeda::index {
         if (header == "-\n") {
           return std::optional<std::string>();
         }
-        std::string text(static_cast<std::size_t>(std::atoll(header.c_str())), '\0');
+        std::size_t size = 0;
+        const auto [end, error] = std::from_chars(header.data(), header.data() + header.size() - 1, size);
+        if (error != std::errc() || end != header.data() + header.size() - 1 || size > kMaxText) {
+          return std::nullopt;
+        }
+        std::string text(size, '\0');
         if (!readExact(text.data(), text.size())) {
           return std::nullopt;
         }
@@ -164,7 +194,7 @@ namespace andromeda::index {
         return Read::Skipped;
       }
       db.markExtracting(task.id, task.mtime);
-      const auto text = extractor->extract(task.path);
+      const auto text = extractor->extract(documentKind(task.path), task.path);
       // A crash or a hang: the file is recorded as unreadable and the next file gets a new helper.
       db.storeContent(task.id, task.mtime, text ? *text : std::nullopt);
       if (!text) {

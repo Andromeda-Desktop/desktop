@@ -1,0 +1,26 @@
+[package]
+name = "andromeda-index-extract"
+version = "0.1.0"
+edition = "2024"
+# As system/Cargo.toml: the resolver then keeps dependencies buildable with Ubuntu 26.04 rustc 1.93.
+rust-version = "1.89"
+license = "GPL-3.0-or-later"
+publish = false
+
+[dependencies]
+andromeda-sandbox = { path = "../../system/crates/andromeda-sandbox" }
+lofty = "0.25"
+memchr = "2"
+nom-exif = "3.8"
+poppler-rs = "0.26"
+zip = { version = "9.4", default-features = false, features = ["deflate-flate2"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"

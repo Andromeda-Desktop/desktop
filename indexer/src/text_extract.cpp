@@ -4,17 +4,13 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cerrno>
 #include <fstream>
 
-// Text and HTML documents, read in the daemon: no library beyond libc, and no helper process to start.
+// Text documents, read in the daemon: no library beyond libc, and no helper process to start.
 namespace andromeda::index {
 
   namespace {
-    // Markup read from one archive entry; a larger entry (or a zip bomb) is cut here.
-    constexpr std::size_t kMaxMarkup = 4 * 1024 * 1024;
-
     std::optional<std::string> readHead(const std::string& path, std::size_t maxBytes) {
       std::ifstream in(path, std::ios::binary);
       if (!in) {
@@ -95,64 +91,8 @@ namespace andromeda::index {
       return text;
     }
 
-
-    bool tagIs(std::string_view markup, std::size_t at, std::string_view name) {
-      if (at + name.size() > markup.size()) {
-        return false;
-      }
-      for (std::size_t i = 0; i < name.size(); ++i) {
-        if (std::tolower(static_cast<unsigned char>(markup[at + i])) != name[i]) {
-          return false;
-        }
-      }
-      return true;
-    }
   } // namespace
 
-  std::string stripTags(std::string_view markup, std::size_t maxBytes) {
-    constexpr std::array<std::pair<std::string_view, char>, 6> kEntities = {
-        {{"&amp;", '&'}, {"&lt;", '<'}, {"&gt;", '>'}, {"&quot;", '"'}, {"&apos;", '\''}, {"&nbsp;", ' '}}};
-    std::string out;
-    out.reserve(std::min(markup.size(), maxBytes));
-    std::size_t i = 0;
-    while (i < markup.size() && out.size() < maxBytes) {
-      const char c = markup[i];
-      if (c == '<') {
-        // Script and style bodies are code, not text.
-        for (const std::string_view skipped : {std::string_view("script"), std::string_view("style")}) {
-          if (tagIs(markup, i + 1, skipped)) {
-            const std::size_t close = markup.find(std::string("</") + std::string(skipped), i);
-            i = close == std::string_view::npos ? markup.size() : close;
-            break;
-          }
-        }
-        const std::size_t end = markup.find('>', i);
-        i = end == std::string_view::npos ? markup.size() : end + 1;
-        if (!out.empty() && out.back() != ' ') {
-          out += ' ';
-        }
-        continue;
-      }
-      if (c == '&') {
-        const auto entity = std::ranges::find_if(kEntities, [&](const auto& e) { return markup.substr(i).starts_with(e.first); });
-        if (entity != kEntities.end()) {
-          out += entity->second;
-          i += entity->first.size();
-          continue;
-        }
-      }
-      out += c;
-      ++i;
-    }
-    return out;
-  }
-
-  std::optional<std::string> extractPlain(const std::string& path) {
-    if (documentKind(path) == DocumentKind::Text) {
-      return plainText(path);
-    }
-    const auto markup = readHead(path, kMaxMarkup);
-    return markup ? std::optional(stripTags(*markup, kMaxText)) : std::nullopt;
-  }
+  std::optional<std::string> extractPlain(const std::string& path) { return plainText(path); }
 
 } // namespace andromeda::index

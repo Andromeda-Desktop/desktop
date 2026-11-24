@@ -37,7 +37,7 @@ license=(GPL-3.0-or-later MIT)
 # The debug packages hold every binary's symbols, several times the desktop's size: only a release build
 # (ANDROMEDA_SYMBOLS=1) makes them, for crash reports; they stay out of the package repository.
 if [[ -n ${ANDROMEDA_SYMBOLS:-} ]]; then options=(debug); else options=(!debug); fi
-makedepends=(git meson ninja wayland-protocols xorg-xwayland poppler-glib libzip libcups exiv2 taglib nlohmann-json stb
+makedepends=(git meson ninja wayland-protocols xorg-xwayland poppler-glib libcups nlohmann-json stb
   wlroots0.20 wayland libinput libei libxkbcommon libdrm pixman mesa cairo pango lcms2 jemalloc tomlplusplus
   curl fontconfig freetype2 glib2 harfbuzz libglvnd libical libjxl libpipewire libqalculate librsvg
   libsndfile libsodium libwebp libwireplumber libxml2 md4c pam polkit qrencode sdbus-cpp xdg-desktop-portal gtk4 cargo protobuf
@@ -60,6 +60,7 @@ prepare() {
   [[ -z ${ANDROMEDA_APP:-} ]] || return 0
   cargo fetch --locked --manifest-path desktop/system/Cargo.toml
   cargo fetch --locked --manifest-path desktop/andromeda-preview/helper/Cargo.toml
+  cargo fetch --locked --manifest-path desktop/indexer/extract/Cargo.toml
   # An incremental build reuses src/greetd: makepkg's checkout resets tracked files, clean drops files a patch added.
   git -C greetd clean -fdq -e target
   local patch
@@ -246,7 +247,7 @@ package_andromeda() {
   depends=(andromeda-compositor-git andromeda-shell-git xdg-desktop-portal-andromeda-git
     andromeda-greeter-git andromeda-preview-git andromeda-files-git andromeda-player-git andromeda-viewer-git
     andromeda-terminal-git andromeda-link andromeda-link-app-git gnome-keyring scrcpy android-tools gst-plugin-va gst-libav libpulse pipewire-pulse sqlite
-    poppler-glib libzip exiv2 taglib glycin sdbus-cpp mpv ffmpeg)
+    poppler-glib glycin sdbus-cpp mpv ffmpeg)
   optdepends=('andromeda-power-git: laptop power saving (PCIe ASPM, runtime PM, USB autosuspend); can upset some devices')
   backup=(etc/mpv/mpv.conf)
   install -Dm644 desktop/session/mpv/mpv.conf "$pkgdir/etc/mpv/mpv.conf"
@@ -269,7 +270,7 @@ _app_libs=(cairo pango fontconfig freetype2 glib2 harfbuzz libglvnd libjxl librs
 
 package_andromeda-preview-git() {
   pkgdesc='Andromeda Quick Look: previews, thumbnailers and the sandboxed media helper used by Files and Viewer'
-  depends=("${_app_libs[@]}" glycin gstreamer gst-plugin-va gst-libav libpulse poppler-glib libzip exiv2 taglib mpv
+  depends=("${_app_libs[@]}" glycin gstreamer gst-plugin-va gst-libav libpulse poppler-glib mpv
     ffmpeg)
   optdepends=('libreoffice-fresh: Quick Look for Office documents')
   # Quick Look serves org.gnome.NautilusPreviewer, the bus name sushi owns.
