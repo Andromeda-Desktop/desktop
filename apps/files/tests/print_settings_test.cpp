@@ -31,8 +31,8 @@ int main() {
   }
   {
     const auto [ranges, error] = parsePageRanges("1-3, 7", 4);
-    expect(ranges.empty() && error && error->message.contains("Page 7") && error->message.contains("4 pages"),
-           "a page past the end names the page and the page count");
+    expect(ranges.empty() && error && error->reason == RangeError::Reason::PastEnd && error->page == 7,
+           "a page past the end names the page");
   }
   {
     const auto [ranges, error] = parsePageRanges("6, 1-2, 2-3", 6);

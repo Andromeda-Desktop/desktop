@@ -28,8 +28,8 @@ std::optional<int> number(std::string_view s) {
 
 std::pair<std::vector<PageRange>, std::optional<RangeError>> parsePageRanges(const std::string& text, int pageCount) {
   std::vector<PageRange> ranges;
-  const auto fail = [&](std::string message) {
-    return std::pair{std::vector<PageRange>{}, std::optional<RangeError>{RangeError{std::move(message)}}};
+  const auto fail = [](RangeError error) {
+    return std::pair{std::vector<PageRange>{}, std::optional<RangeError>{std::move(error)}};
   };
   std::string_view rest = text;
   while (true) {
@@ -40,12 +40,11 @@ std::pair<std::vector<PageRange>, std::optional<RangeError>> parsePageRanges(con
       const std::optional<int> first = number(part.substr(0, dash));
       const std::optional<int> last = dash == std::string_view::npos ? first : number(part.substr(dash + 1));
       if (!first || !last)
-        return fail("Use page numbers and ranges, for example 1-2, 4.");
+        return fail({.reason = RangeError::Reason::NotNumbers});
       if (*first < 1 || *last < *first)
-        return fail("“" + std::string(part) + "” is not a valid range.");
+        return fail({.reason = RangeError::Reason::Invalid, .part = std::string(part)});
       if (*last > pageCount)
-        return fail("Page " + std::to_string(*last) + " does not exist. This document has " + std::to_string(pageCount) +
-                    (pageCount == 1 ? " page." : " pages."));
+        return fail({.reason = RangeError::Reason::PastEnd, .page = *last});
       ranges.push_back({*first, *last});
     }
     if (comma == std::string_view::npos)
@@ -53,7 +52,7 @@ std::pair<std::vector<PageRange>, std::optional<RangeError>> parsePageRanges(con
     rest.remove_prefix(comma + 1);
   }
   if (ranges.empty())
-    return fail("Type the pages to print, for example 1-2, 4.");
+    return fail({.reason = RangeError::Reason::Empty});
   // CUPS takes page-ranges only ascending and without overlap; each page prints once, in page order.
   std::ranges::sort(ranges, {}, &PageRange::first);
   std::vector<PageRange> merged{ranges.front()};

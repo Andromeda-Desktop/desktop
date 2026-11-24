@@ -35,11 +35,15 @@ struct PrintOptions {
   std::vector<std::pair<std::string, std::string>> printerOptions; // the printer's own IPP options
 };
 
+// Why a page range text does not parse; the caller words it for the user.
 struct RangeError {
-  std::string message;
+  enum class Reason : std::uint8_t { NotNumbers, Invalid, PastEnd, Empty };
+  Reason reason = Reason::Empty;
+  std::string part; // Invalid: the range as typed
+  int page = 0;     // PastEnd: the page past the end
 };
 
-// Parses "1-3, 5" against a document of pageCount pages. Returns the ranges or a reason for the user.
+// Parses "1-3, 5" against a document of pageCount pages. Returns the ranges or why they do not parse.
 [[nodiscard]] std::pair<std::vector<PageRange>, std::optional<RangeError>> parsePageRanges(const std::string& text,
                                                                                          int pageCount);
 

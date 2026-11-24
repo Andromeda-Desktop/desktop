@@ -172,6 +172,20 @@ namespace {
     }
     return {};
   }
+
+  std::string rangeErrorText(const RangeError& error, int pageCount) {
+    switch (error.reason) {
+    case RangeError::Reason::NotNumbers:
+      return i18n::tr("files.print.range-not-numbers");
+    case RangeError::Reason::Invalid:
+      return i18n::tr("files.print.range-invalid", "range", error.part);
+    case RangeError::Reason::PastEnd:
+      return i18n::trp("files.print.range-past-end", pageCount, "page", error.page);
+    case RangeError::Reason::Empty:
+      return i18n::tr("files.print.range-empty");
+    }
+    return {};
+  }
 } // namespace
 
 PrintSheet::PrintSheet(AppLoop& loop, PrintPortal::PrintRequest request, Callbacks callbacks)
@@ -327,8 +341,9 @@ bool PrintSheet::rangeValid() const { return m_allPages || (m_rangeError.empty()
 int PrintSheet::pageLimit() const { return m_pageCount > 0 ? m_pageCount : std::numeric_limits<int>::max(); }
 
 void PrintSheet::validateRange() {
-  m_rangeError = m_rangeText.empty() ? std::string()
-                                     : parsePageRanges(m_rangeText, pageLimit()).second.value_or(RangeError{}).message;
+  const std::optional<RangeError> error =
+      m_rangeText.empty() ? std::nullopt : parsePageRanges(m_rangeText, pageLimit()).second;
+  m_rangeError = error ? rangeErrorText(*error, pageLimit()) : std::string();
 }
 
 void PrintSheet::showRange() {
