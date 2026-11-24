@@ -1,6 +1,7 @@
 #pragma once
 
 #include "browse_model.h"
+#include "render/scene/node.h"
 
 #include <filesystem>
 #include <functional>
@@ -35,12 +36,7 @@ namespace term {
       std::function<void()> relayout;
       std::function<void(InputArea*)> focus; // moves keyboard focus (the bulk rename editor and back)
     };
-    struct Rect {
-      float x = 0.0F;
-      float y = 0.0F;
-      float width = 0.0F;
-      float height = 0.0F;
-    };
+    using Rect = LayoutRect;
 
     BrowseView(std::filesystem::path dir, ThumbnailService& thumbnails, Host host);
     ~BrowseView();

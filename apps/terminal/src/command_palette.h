@@ -1,6 +1,7 @@
 #pragma once
 
 #include "palette_model.h"
+#include "render/scene/node.h"
 
 #include <cstdint>
 #include <functional>
@@ -31,12 +32,7 @@ namespace term {
       std::function<void()> close;                              // Escape, or focus left the field
       std::function<void()> relayout;                           // the rows changed
     };
-    struct Rect {
-      float x = 0.0F;
-      float y = 0.0F;
-      float width = 0.0F;
-      float height = 0.0F;
-    };
+    using Rect = LayoutRect;
 
     // recent: ids of the last picks, newest first.
     CommandPalette(AnimationManager& animations, std::vector<palette::Item> items, std::vector<std::string> recent,
