@@ -23,6 +23,7 @@ namespace ui {
     std::string title;
     std::optional<TextEllipsize> titleEllipsize; // Middle keeps a file name's extension
     std::string body;
+    std::string excerpt; // verbatim monospace text under the body, such as a pasted command
     std::vector<AlertButtonProps> buttons;
     std::size_t defaultIndex = 0;
     Button** defaultButton = nullptr; // receives the default button, for the host's initial focus

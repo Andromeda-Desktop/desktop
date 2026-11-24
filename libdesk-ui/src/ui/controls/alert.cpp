@@ -28,6 +28,15 @@ namespace ui {
           .maxLines = 8,
       }));
     }
+    if (!props.excerpt.empty()) {
+      text->addChild(ui::label({
+          .text = props.excerpt,
+          .fontSize = Tokens::typeFootnote.size * s,
+          .fontFamily = std::string(Tokens::fontMono),
+          .color = colorSpecFromRole(ColorRole::Label2),
+          .maxLines = 6,
+      }));
+    }
 
     const bool sideBySide = props.buttons.size() <= 2;
     auto buttons = sideBySide ? ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .fillWidth = true})

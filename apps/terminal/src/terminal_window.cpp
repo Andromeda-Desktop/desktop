@@ -24,6 +24,7 @@
 #include "ui/builders.h"
 #include "ui/controls/selection_list.h"
 #include "ui/controls/status_row.h"
+#include "ui/controls/alert.h"
 #include "ui/controls/box.h"
 #include "ui/controls/button.h"
 #include "ui/controls/glyph.h"
@@ -1446,34 +1447,13 @@ namespace term {
         std::exchange(*answer, nullptr)(allow);
       }
     };
-    m_window.presentSheet(
-        [this, choose](float s) {
-          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
-                                 .width = Tokens::componentTerminalFindWidth * s});
-          box->addChild(ui::label({.text = std::string("Allow clipboard access?"),
-                                   .fontSize = Tokens::typeTitle3.size * s,
-                                   .fontWeight = FontWeight::SemiBold,
-                                   .color = colorSpecFromRole(ColorRole::Label1)}));
-          box->addChild(ui::label({.text = std::string("A program in this session wants to read the clipboard. Your choice "
-                                                       "lasts until the session closes."),
-                                   .fontSize = Tokens::typeBody.size * s,
-                                   .color = colorSpecFromRole(ColorRole::Label2),
-                                   .maxWidth = (Tokens::componentTerminalFindWidth - Tokens::spaceP20 * 2.0F) * s,
-                                   .maxLines = 3}));
-          auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
-          buttons->addChild(ui::button({.text = std::string("Deny"),
-                                        .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Default,
-                                        .onClick = [choose] { choose(false); },
-                                        .configure = [this](Button& b) { m_window.input().setFocus(b.inputArea()); }}));
-          buttons->addChild(ui::button({.text = std::string("Allow"),
-                                        .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Primary,
-                                        .onClick = [choose] { choose(true); }}));
-          box->addChild(std::move(buttons));
-          return box;
-        },
-        [choose] { choose(false); });
+    m_window.presentAlert({.title = "Allow clipboard access?",
+                           .body = "A program in this session wants to read the clipboard. Your choice lasts until the "
+                                   "session closes.",
+                           .buttons = {{.text = "Deny", .onClick = [choose] { choose(false); }},
+                                       {.text = "Allow", .variant = ButtonVariant::Primary,
+                                        .onClick = [choose] { choose(true); }}}},
+                          [choose] { choose(false); });
   }
 
   void TerminalWindow::askClose(std::vector<std::uint64_t> ids, bool window) {
@@ -1490,69 +1470,40 @@ namespace term {
       close(ids);
       return;
     }
-    m_window.presentSheet(
-        [this, ids, running, close, window](float s) {
-          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
-                                 .width = Tokens::componentTerminalFindWidth * s});
-          const bool one = ids.size() == 1;
-          box->addChild(ui::label({.text = window ? std::string("Close this window?")
-                                          : one   ? std::string("Close this session?")
-                                                  : std::format("Close {} sessions?", ids.size()),
-                                   .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
-                                   .color = colorSpecFromRole(ColorRole::Label1)}));
-          box->addChild(ui::label({.text = running == 1 ? std::string("A command is still running. Closing stops it.")
-                                                        : std::format("Commands still run in {} sessions. Closing stops them.", running),
-                                   .fontSize = Tokens::typeBody.size * s, .color = colorSpecFromRole(ColorRole::Label2),
-                                   .maxLines = 3}));
-          auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
-          buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
-          buttons->addChild(ui::button({.text = std::string("Close"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Destructive,
-                                        .onClick =
-                                            [this, ids, close] {
-                                              m_window.dismissSheet();
-                                              close(ids);
-                                            },
-                                        .configure = [this](Button& b) { m_window.input().setFocus(b.inputArea()); }}));
-          box->addChild(std::move(buttons));
-          return box;
-        },
+    const bool one = ids.size() == 1;
+    m_window.presentAlert(
+        {.title = window ? std::string("Close this window?")
+                  : one  ? std::string("Close this session?")
+                         : std::format("Close {} sessions?", ids.size()),
+         .body = running == 1 ? std::string("A command is still running. Closing stops it.")
+                              : std::format("Commands still run in {} sessions. Closing stops them.", running),
+         .buttons = {{.text = "Cancel", .onClick = [this] { m_window.dismissSheet(); }},
+                     {.text = "Close", .variant = ButtonVariant::Destructive,
+                      .onClick =
+                          [this, ids, close] {
+                            m_window.dismissSheet();
+                            close(ids);
+                          }}},
+         .defaultIndex = 1},
         [this] { m_window.dismissSheet(); });
   }
 
   void TerminalWindow::askPaste(const std::string& text, std::function<void()> paste) {
     const auto lines = std::ranges::count(text, '\n') + (text.ends_with('\n') ? 0 : 1);
-    std::string preview = text.substr(0, 400);
-    m_window.presentSheet(
-        [this, lines, preview, paste](float s) {
-          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
-                                 .width = Tokens::componentTerminalFindWidth * s});
-          box->addChild(ui::label({.text = lines == 1 ? std::string("Paste and run this line?")
-                                                      : std::format("Paste {} lines?", lines),
-                                   .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
-                                   .color = colorSpecFromRole(ColorRole::Label1)}));
-          box->addChild(ui::label({.text = std::string("The program does not guard pastes, so each line runs as a command."),
-                                   .fontSize = Tokens::typeBody.size * s, .color = colorSpecFromRole(ColorRole::Label2),
-                                   .maxLines = 3}));
-          box->addChild(ui::label({.text = preview, .fontSize = Tokens::typeFootnote.size * s, .fontFamily = std::string(Tokens::fontMono),
-                                   .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 6}));
-          auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
-          buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
-          // Paste starts with the focus, so Enter pastes; Tab reaches Cancel and Escape cancels.
-          buttons->addChild(ui::button({.text = std::string("Paste"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Destructive,
+    // Paste is the default, so Enter pastes; Tab reaches Cancel and Escape cancels.
+    m_window.presentAlert({.title = lines == 1 ? std::string("Paste and run this line?")
+                                               : std::format("Paste {} lines?", lines),
+                           .body = "The program does not guard pastes, so each line runs as a command.",
+                           .excerpt = text.substr(0, 400),
+                           .buttons = {{.text = "Cancel", .onClick = [this] { m_window.dismissSheet(); }},
+                                       {.text = "Paste", .variant = ButtonVariant::Destructive,
                                         .onClick =
                                             [this, paste] {
                                               m_window.dismissSheet();
                                               paste();
-                                            },
-                                        .configure = [this](Button& b) { m_window.input().setFocus(b.inputArea()); }}));
-          box->addChild(std::move(buttons));
-          return box;
-        },
-        [this] { m_window.dismissSheet(); });
+                                            }}},
+                           .defaultIndex = 1},
+                          [this] { m_window.dismissSheet(); });
   }
 
   void TerminalWindow::syncTitle() {
