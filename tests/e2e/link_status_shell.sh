@@ -68,7 +68,8 @@ before, shown, gone, changed = (Image.open(p).convert("RGB") for p in sys.argv[1
 w = before.size[0]
 # From the notification bell rightwards, clear of the media label, whose text scrolls.
 bar = lambda im: im.crop((w - 280, 0, w, 40))
-diff = lambda a, b: ImageChops.difference(bar(a), bar(b)).getbbox() is not None
+# A channel step of a few levels is glass noise, not a drawn change.
+diff = lambda a, b: ImageChops.difference(bar(a), bar(b)).point(lambda v: 255 if v > 8 else 0).getbbox() is not None
 json.dump({"bar_changed_when_shown": diff(before, shown), "bar_changed_on_status": diff(shown, changed),
            "bar_restored_when_gone": not diff(before, gone)}, sys.stdout)
 PY
