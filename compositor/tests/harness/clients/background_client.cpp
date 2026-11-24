@@ -39,6 +39,11 @@ namespace {
     xdg_surface* xdgSurface = nullptr;
     xdg_toplevel* toplevel = nullptr;
     wl_buffer* buffer = nullptr;
+    int width = kSize;
+    int height = kSize;
+    // FILL_CONFIGURE=1: draw at the configured size, as an app fills its tile.
+    int configuredWidth = 0;
+    int configuredHeight = 0;
     bool mapped = false;
     bool suspended = false;
     wl_surface* popupSurface = nullptr;
@@ -47,6 +52,7 @@ namespace {
   void addDskListener(State& state, wl_surface* surface, const char* label);
 
   void requestFrame(State& state);
+  bool createBuffer(State& state);
 
   void frameDone(void* data, wl_callback* callback, uint32_t timeMs) {
     wl_callback_destroy(callback);
@@ -65,7 +71,7 @@ namespace {
   void requestFrame(State& state) {
     wl_callback_add_listener(wl_surface_frame(state.surface), &kFrameListener, &state);
     wl_surface_attach(state.surface, state.buffer, 0, 0);
-    wl_surface_damage_buffer(state.surface, 0, 0, kSize, kSize);
+    wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
     wl_surface_commit(state.surface);
   }
 
@@ -109,6 +115,17 @@ namespace {
   void xdgConfigure(void* data, xdg_surface* surface, uint32_t serial) {
     auto& state = *static_cast<State*>(data);
     xdg_surface_ack_configure(surface, serial);
+    if (state.configuredWidth > 0
+        && state.configuredHeight > 0
+        && (state.configuredWidth != state.width || state.configuredHeight != state.height)) {
+      state.width = state.configuredWidth;
+      state.height = state.configuredHeight;
+      wl_buffer_destroy(state.buffer);
+      if (!createBuffer(state)) {
+        std::println(stderr, "cannot create a {}x{} buffer", state.width, state.height);
+        std::exit(1);
+      }
+    }
     if (state.mapped) {
       return;
     }
@@ -122,8 +139,12 @@ namespace {
   }
   constexpr xdg_surface_listener kXdgListener = {.configure = xdgConfigure};
 
-  void toplevelConfigure(void* data, xdg_toplevel*, int32_t, int32_t, wl_array* states) {
+  void toplevelConfigure(void* data, xdg_toplevel*, int32_t width, int32_t height, wl_array* states) {
     auto& state = *static_cast<State*>(data);
+    if (const char* fill = std::getenv("FILL_CONFIGURE"); fill != nullptr && std::strcmp(fill, "1") == 0) {
+      state.configuredWidth = width;
+      state.configuredHeight = height;
+    }
     const auto* configured = static_cast<const uint32_t*>(states->data);
     const bool suspended =
         std::ranges::find(configured, configured + states->size / sizeof(uint32_t), XDG_TOPLEVEL_STATE_SUSPENDED)
@@ -189,8 +210,8 @@ namespace {
   constexpr wl_registry_listener kRegistryListener = {.global = registryGlobal, .global_remove = registryRemove};
 
   bool createBuffer(State& state) {
-    constexpr int stride = kSize * 4;
-    constexpr size_t size = stride * kSize;
+    const int stride = state.width * 4;
+    const size_t size = static_cast<size_t>(stride) * state.height;
     const int fd = memfd_create("andromeda-background-client", MFD_CLOEXEC);
     if (fd < 0 || ftruncate(fd, static_cast<off_t>(size)) < 0) {
       return false;
@@ -201,8 +222,9 @@ namespace {
       return false;
     }
     std::fill_n(static_cast<uint32_t*>(pixels), size / sizeof(uint32_t), 0xFF55AA77);
+    munmap(pixels, size);
     wl_shm_pool* pool = wl_shm_create_pool(state.shm, fd, static_cast<int>(size));
-    state.buffer = wl_shm_pool_create_buffer(pool, 0, kSize, kSize, stride, WL_SHM_FORMAT_ARGB8888);
+    state.buffer = wl_shm_pool_create_buffer(pool, 0, state.width, state.height, stride, WL_SHM_FORMAT_ARGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
     return state.buffer != nullptr;

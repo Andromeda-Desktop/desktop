@@ -1105,9 +1105,9 @@ namespace andromeda {
     commitFloatingSize();
     (void)settleTiledSizeRequest();
     applyCornerRadius();
-    // Re-apply the owner's frame and clip after each client commit. A tiled commit is not a resize request: Chromium
+    // Re-apply the owner's frame and clip after each client commit, also mid-slide: the commit resets the buffer size. A tiled commit is not a resize request: Chromium
     // can change its geometry without changing configure, but the layout still owns its box.
-    if (mapped() && tiled() && m_workspace != nullptr && m_workspace->active()) {
+    if (mapped() && tiled() && m_workspace != nullptr && (m_workspace->active() || m_workspace->switchTransitionActive())) {
       m_workspace->syncViewPresentation(this);
     } else if (mapped() && !tiled()) {
       if (scheduledFullscreen() && m_onActiveWorkspace) {

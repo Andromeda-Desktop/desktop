@@ -86,7 +86,7 @@ ADOPTED_UNIT="app-andromeda-$ADOPTED-$(sed 's/.*) //' "/proc/$ADOPTED/stat" | cu
 await "unscoped app: own scope" "$ADOPTED_UNIT" 3000 scope_of
 
 systemd-run --user --scope --quiet --unit="$UNIT" \
-  env FORK_CHILD=1 WAYLAND_DISPLAY="$RUNTIME/wayland-0" XDG_RUNTIME_DIR="$RUNTIME" "$CLIENT" qos-freeze > "$OUT/client.log" 2>&1 &
+  env FORK_CHILD=1 FILL_CONFIGURE=1 WAYLAND_DISPLAY="$RUNTIME/wayland-0" XDG_RUNTIME_DIR="$RUNTIME" "$CLIENT" qos-freeze > "$OUT/client.log" 2>&1 &
 for _ in $(seq 100); do grep -q '^child ' "$OUT/client.log" 2>/dev/null && break; sleep 0.05; done
 CHILD=$(sed -n 's/^child //p' "$OUT/client.log")
 [[ -n $CHILD ]] || fail "client never forked: $(cat "$OUT/client.log")"
@@ -133,7 +133,7 @@ kill "$SWITCHER"
 wait "$SWITCHER" 2>/dev/null || true
 await "switcher closed: frozen again" 11 2000 freeze
 # Q6: shown from frozen, the app draws a new frame within 50 ms of the switch request (thaw + frame callback).
-frames() { grep -c '^frame$' "$OUT/client.log" || true; }
+frames() { grep -c '^frame ' "$OUT/client.log" || true; }
 resumes() { grep -c '^resumed$' "$OUT/client.log" || true; }
 before=$(frames)
 resumed_before=$(resumes)
