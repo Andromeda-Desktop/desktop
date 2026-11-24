@@ -17,7 +17,6 @@ namespace andromeda {
 
   namespace {
     constexpr Logger kLog("provider");
-    constexpr size_t kMaxLineSize = 65536;
     // A client that stops reading is dropped rather than buffered without bound; the broker reconnects and gets a
     // fresh snapshot.
     constexpr size_t kMaxBacklog = 4 * 1024 * 1024;
@@ -98,9 +97,13 @@ namespace andromeda {
 
   void Provider::acceptConnections() {
     while (true) {
-      const int fd = accept4(m_listenFd, nullptr, nullptr, SOCK_CLOEXEC | SOCK_NONBLOCK);
-      if (fd < 0) {
+      auto peer = ipc::acceptPeer(m_listenFd, SOCK_NONBLOCK);
+      if (!peer) {
         if (errno == EINTR) {
+          continue;
+        }
+        if (errno == EACCES) {
+          kLog.warn("refused a provider connection from another user or a peer without a pidfd");
           continue;
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -108,13 +111,12 @@ namespace andromeda {
         }
         break;
       }
-      ucred peer{};
-      socklen_t size = sizeof(peer);
-      if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &size) != 0 || peer.uid != geteuid()) {
-        kLog.warn("refused a provider connection from uid {}", peer.uid);
-        close(fd);
+      auto slot = m_slots.acquire();
+      if (!slot) {
+        kLog.warn("refused a provider connection from pid {}: {} clients connected", peer->pid, m_slots.used());
         continue;
       }
+      const int fd = peer->conn.release();
       // Clients already connected get what changed since the last idle notification before the newcomer's snapshot
       // is taken from the same state.
       for (const Family family : kFamilies) {
@@ -123,6 +125,7 @@ namespace andromeda {
       auto connection = std::make_unique<Connection>();
       connection->owner = this;
       connection->fd = fd;
+      connection->slot = std::move(*slot);
       connection->source = wl_event_loop_add_fd(
           wl_display_get_event_loop(m_server->display()), fd, WL_EVENT_READABLE, onConnectionEvent, connection.get()
       );
@@ -161,29 +164,23 @@ namespace andromeda {
   }
 
   void Provider::readLines(Connection& connection) {
-    char chunk[4096];
     while (!connection.dead) {
-      const ssize_t size = recv(connection.fd, chunk, sizeof(chunk), 0);
-      if (size < 0 && errno == EINTR) {
-        continue;
+      const size_t size = connection.input.readFrom(connection.fd);
+      while (!connection.dead) {
+        const auto line = connection.input.nextLine();
+        if (!line) {
+          break;
+        }
+        handleLine(connection, *line);
       }
-      if (size < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        return;
-      }
-      if (size <= 0) {
-        connection.dead = true;
-        return;
-      }
-      connection.input.append(chunk, static_cast<size_t>(size));
-      size_t newline = 0;
-      while (!connection.dead && (newline = connection.input.find('\n')) != std::string::npos) {
-        const std::string line = connection.input.substr(0, newline);
-        connection.input.erase(0, newline + 1);
-        handleLine(connection, line);
-      }
-      if (connection.input.size() > kMaxLineSize) {
+      if (connection.input.state() == ipc::LineReader::State::TooLong) {
         kLog.warn("provider client sent a line over {} bytes, disconnecting", kMaxLineSize);
         connection.dead = true;
+      } else if (connection.input.state() == ipc::LineReader::State::Closed) {
+        connection.dead = true;
+      }
+      if (size == 0) {
+        return;
       }
     }
   }

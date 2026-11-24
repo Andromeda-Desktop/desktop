@@ -1,10 +1,12 @@
 #pragma once
 
 #include "compositor_actions.h"
+#include "protocols/ipc_channel.h"
 
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
@@ -70,11 +72,14 @@ namespace andromeda {
     void notifyChanged(Family family);
 
   private:
+    static constexpr size_t kMaxLineSize = 65536;
+
     struct Connection {
       Provider* owner = nullptr;
       int fd = -1;
+      std::optional<ipc::ClientSlots::Slot> slot;
       wl_event_source* source = nullptr;
-      std::string input;
+      ipc::LineReader input{kMaxLineSize};
       std::string output;
       size_t writeOffset = 0;
       uint64_t seq = 0;
@@ -100,6 +105,7 @@ namespace andromeda {
     std::string m_socketPath;
     int m_listenFd = -1;
     wl_event_source* m_listenSource = nullptr;
+    ipc::ClientSlots m_slots{16};
     std::vector<std::unique_ptr<Connection>> m_connections;
     // Snapshot state: {"windows": [...], "workspaces": [...], "outputs": [...]} as last sent.
     nlohmann::json m_state = nlohmann::json::object();
