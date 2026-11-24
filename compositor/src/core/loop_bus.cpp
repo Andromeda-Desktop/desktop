@@ -354,4 +354,22 @@ namespace andromeda::bus {
     }
   }
 
+  bool readDict(sd_bus_message* message, const std::function<bool(std::string_view name)>& entry) {
+    if (sd_bus_message_enter_container(message, SD_BUS_TYPE_ARRAY, "{sv}") <= 0) {
+      return false;
+    }
+    while (sd_bus_message_enter_container(message, SD_BUS_TYPE_DICT_ENTRY, "sv") > 0) {
+      const char* name = nullptr;
+      if (sd_bus_message_read(message, "s", &name) < 0) {
+        return false;
+      }
+      if (!entry(name) && sd_bus_message_skip(message, "v") < 0) {
+        return false;
+      }
+      sd_bus_message_exit_container(message);
+    }
+    sd_bus_message_exit_container(message);
+    return true;
+  }
+
 } // namespace andromeda::bus

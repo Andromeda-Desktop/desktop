@@ -108,28 +108,24 @@ namespace andromeda::qos {
 
   // Reads an a{sv} of Power properties; keeps the current value of each property the dict lacks.
   void OnBatteryWatch::readProperties(sd_bus_message* message) {
-    if (sd_bus_message_enter_container(message, SD_BUS_TYPE_ARRAY, "{sv}") <= 0) {
-      return;
-    }
     std::optional<bool> onBattery = m_onBattery;
     Profile profile = m_profile;
-    while (sd_bus_message_enter_container(message, SD_BUS_TYPE_DICT_ENTRY, "sv") > 0) {
-      const char* name = nullptr;
+    const bool read = bus::readDict(message, [&](std::string_view name) {
       bool value = false;
       const char* text = nullptr;
-      if (sd_bus_message_read(message, "s", &name) < 0) {
-        return;
-      }
-      if (std::strcmp(name, "OnBattery") == 0 && readBoolVariant(message, value)) {
+      if (name == "OnBattery" && readBoolVariant(message, value)) {
         onBattery = value;
-      } else if (std::strcmp(name, "Profile") == 0 && sd_bus_message_read(message, "v", "s", &text) >= 0) {
-        profile = parseProfile(text);
-      } else if (sd_bus_message_skip(message, "v") < 0) {
-        return;
+        return true;
       }
-      sd_bus_message_exit_container(message);
+      if (name == "Profile" && sd_bus_message_read(message, "v", "s", &text) >= 0) {
+        profile = parseProfile(text);
+        return true;
+      }
+      return false;
+    });
+    if (read) {
+      set(onBattery, profile);
     }
-    set(onBattery, profile);
   }
 
   int OnBatteryWatch::onGetReply(sd_bus_message* reply, void* data, sd_bus_error* /*error*/) {

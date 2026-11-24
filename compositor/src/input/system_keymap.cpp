@@ -2,7 +2,6 @@
 
 #include "core/log.h"
 
-#include <cstring>
 #include <memory>
 #include <systemd/sd-bus.h>
 #include <utility>
@@ -25,28 +24,19 @@ namespace andromeda {
         );
         return false;
       }
-      if (sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}") <= 0) {
-        return false;
-      }
-      while (sd_bus_message_enter_container(reply, SD_BUS_TYPE_DICT_ENTRY, "sv") > 0) {
-        const char* key = nullptr;
-        if (sd_bus_message_read(reply, "s", &key) < 0) {
-          return false;
-        }
-        std::string* field = std::strcmp(key, "X11Layout") == 0 ? &names.layout
-            : std::strcmp(key, "X11Variant") == 0               ? &names.variant
-            : std::strcmp(key, "X11Options") == 0               ? &names.options
-            : std::strcmp(key, "X11Model") == 0                 ? &names.model
-                                                                : nullptr;
+      return bus::readDict(reply, [&](std::string_view key) {
+        std::string* field = key == "X11Layout" ? &names.layout
+            : key == "X11Variant"               ? &names.variant
+            : key == "X11Options"               ? &names.options
+            : key == "X11Model"                 ? &names.model
+                                                : nullptr;
         const char* text = nullptr;
-        if (field != nullptr && sd_bus_message_read(reply, "v", "s", &text) >= 0) {
-          *field = text != nullptr ? text : "";
-        } else if (sd_bus_message_skip(reply, "v") < 0) {
+        if (field == nullptr || sd_bus_message_read(reply, "v", "s", &text) < 0) {
           return false;
         }
-        sd_bus_message_exit_container(reply);
-      }
-      return true;
+        *field = text != nullptr ? text : "";
+        return true;
+      });
     }
 
   } // namespace

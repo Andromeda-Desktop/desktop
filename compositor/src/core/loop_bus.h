@@ -4,6 +4,7 @@
 #include <functional>
 #include <list>
 #include <memory>
+#include <string_view>
 
 struct sd_bus;
 struct sd_bus_message;
@@ -49,5 +50,9 @@ namespace andromeda::bus {
     std::list<sd_bus_slot*> m_slots;
     std::function<void(sd_bus*)> m_changed;
   };
+
+  // Reads an a{sv} (GetAll, PropertiesChanged). For each entry, entry(name) reads the variant and returns true, or
+  // returns false and the variant is skipped. False when the message holds no a{sv} or an entry is malformed.
+  bool readDict(sd_bus_message* message, const std::function<bool(std::string_view name)>& entry);
 
 } // namespace andromeda::bus
