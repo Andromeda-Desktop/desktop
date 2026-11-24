@@ -401,17 +401,8 @@ void MediaWidget::syncState(Renderer& renderer, const std::optional<MprisPlayerI
 
 std::string MediaWidget::buildDisplayText(const MprisPlayerInfo& player, bool hideArtist, bool artistFirst) {
   std::string artists = hideArtist ? std::string() : joinedArtists(player.artists);
-  if (!player.title.empty() && !artists.empty()) {
-    if (artistFirst) {
-      return artists + " - " + player.title;
-    }
-    return player.title + " - " + artists;
-  }
-  if (!player.title.empty()) {
-    return player.title;
-  }
-  if (!artists.empty()) {
-    return artists;
+  if (!player.title.empty() || !artists.empty()) {
+    return trackLine(player.title, artists, artistFirst);
   }
   if (!player.identity.empty()) {
     return player.identity;

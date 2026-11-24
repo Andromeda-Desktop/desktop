@@ -20,11 +20,10 @@ namespace {
   constexpr auto kTrackSettleDelay = std::chrono::milliseconds{400};
 
   OsdContent makeTrackContent(const MprisPlayerInfo& player) {
-    const std::string artist = joinedArtists(player.artists);
     return OsdContent{
         .kind = OsdKind::Media,
         .icon = "disc",
-        .value = artist.empty() ? player.title : player.title + " - " + artist,
+        .value = trackLine(player.title, joinedArtists(player.artists)),
         .showProgress = false,
     };
   }

@@ -86,8 +86,7 @@ void LockPhoneRow::sync(const MprisService* mpris) {
     const auto& players = mpris->players();
     if (const auto it = players.find(std::string(kPhonePlayerPrefix) + phone->id);
         it != players.end() && !it->second.title.empty()) {
-      const std::string artists = joinedArtists(it->second.artists);
-      playing = artists.empty() ? it->second.title : it->second.title + " — " + artists;
+      playing = trackLine(it->second.title, joinedArtists(it->second.artists));
     }
   }
   (void)m_player->setText(playing);

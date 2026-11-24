@@ -12,6 +12,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -55,6 +56,9 @@ struct MprisPlayerInfo {
 
 // Joins artist names with ", ".
 [[nodiscard]] std::string joinedArtists(const std::vector<std::string>& artists);
+
+// One line for a track: "title — artists" (artists first on request), or whichever part is not empty.
+[[nodiscard]] std::string trackLine(std::string_view title, std::string_view artists, bool artistFirst = false);
 
 // Identity of the track a player is on, independent of the display strings that churn while a
 // player seeks or buffers. Prefers the track id plus a source URL normalized against playback

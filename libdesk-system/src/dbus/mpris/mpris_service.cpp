@@ -35,6 +35,15 @@ std::string joinedArtists(const std::vector<std::string>& artists) {
   return joined;
 }
 
+std::string trackLine(std::string_view title, std::string_view artists, bool artistFirst) {
+  if (title.empty() || artists.empty()) {
+    return std::string(title.empty() ? artists : title);
+  }
+  const std::string_view first = artistFirst ? artists : title;
+  const std::string_view second = artistFirst ? title : artists;
+  return std::string(first).append(" — ").append(second);
+}
+
 namespace {
 
   constexpr auto kDbusInterface = busname::kDaemon;
