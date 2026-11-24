@@ -31,11 +31,14 @@ namespace {
   void feedInvariants(const Feed& feed, unsigned seed, int step) {
     const auto& items = feed.items();
     expect(items.size() <= Feed::kMax, "at most kMax items", seed, step);
-    std::set<std::string> keys;
+    std::vector<std::string_view> keys;
+    keys.reserve(items.size());
     for (std::size_t i = 0; i < items.size(); ++i) {
-      expect(keys.insert(items[i].key).second, "one item per key", seed, step);
+      keys.push_back(items[i].key);
       if (i > 0) expect(items[i - 1].atMs >= items[i].atMs, "newest first", seed, step);
     }
+    std::ranges::sort(keys);
+    expect(std::ranges::adjacent_find(keys) == keys.end(), "one item per key", seed, step);
     const std::int64_t now = items.empty() ? 0 : items.front().atMs;
     const std::size_t split = feed.earlierStart(now);
     for (std::size_t i = 0; i < items.size(); ++i) {

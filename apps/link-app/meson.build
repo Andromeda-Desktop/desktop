@@ -23,8 +23,9 @@ _translations = '-DANDROMEDA_TRANSLATIONS_DIR="' + meson.current_source_dir() / 
 
 _model = static_library('link_model', 'src/link_model.cpp', dependencies: [dependency('nlohmann_json'), _desk_app_dep], cpp_args: _warnings)
 
+# Thousands of random steps per model: at -O0 the checks alone neared meson's 30 s timeout on a loaded machine.
 test('link_model', executable('link_model_test', 'tests/link_model_test.cpp', link_with: _model, dependencies: [dependency('nlohmann_json'), _desk_app_dep],
-  include_directories: include_directories('src'), cpp_args: _warnings + [_translations]))
+  include_directories: include_directories('src'), cpp_args: _warnings + [_translations], override_options: ['optimization=2']))
 
 _app_dir = get_option('prefix') / get_option('libdir') / 'andromeda'
 # The app is a library (desk_app_main) so andromeda-appd can load it in a forked child; the executable only calls it.
