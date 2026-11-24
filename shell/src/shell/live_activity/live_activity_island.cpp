@@ -585,10 +585,14 @@ void LiveActivityIsland::ensureSurfaces() {
       prepareFrame(*instPtr, needsUpdate, needsLayout);
     });
     inst->surface->setAnimationManager(&inst->animations);
-    inst->surface->setFrameTickCallback([this, instPtr](float deltaMs) { stepBannerSpring(*instPtr, deltaMs); });
-    // A tick asked for while hidden is dropped: a settling card asks again when it is shown.
-    inst->surface->setPresenceChangedCallback([instPtr](SurfacePresence presence) {
-      if (presence == SurfacePresence::Shown && instPtr->dragSpring) {
+    inst->surface->setFrameTickCallback([this, instPtr](float deltaMs) {
+      stepBannerSpring(*instPtr, deltaMs);
+      stepBars(*instPtr, deltaMs);
+    });
+    // A tick asked for while hidden is dropped: a settling card or moving bars ask again when shown.
+    inst->surface->setPresenceChangedCallback([this, instPtr](SurfacePresence presence) {
+      if (presence == SurfacePresence::Shown
+          && (instPtr->dragSpring || (m_barsPlaying && barsDrawn(*instPtr, realSpectrum())))) {
         instPtr->surface->requestFrameTick();
       }
     });
@@ -1332,8 +1336,8 @@ void LiveActivityIsland::prepareFrame(Instance& inst, bool needsUpdate, bool nee
     applyReveal(inst, inst.reveal);
   }
   syncBarShapes(inst);
-  if (!m_barsTimer.active() && barsNeedTimer()) {
-    syncBars();
+  if (m_barsPlaying && barsLoop(inst, realSpectrum())) {
+    inst.surface->requestFrameTick();
   }
 }
 
@@ -2398,7 +2402,7 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
   // The pill follows the bar's auto-hide fade; an expanded face stays.
   const float shown = lerp(inst.space.restless ? 0.0F : inst.space.opacity, 1.0F, 1.0F - restMix);
   inst.sceneRoot->setOpacity(shown);
-  // A faded-out pill draws nothing at all; syncBarShapes and barsNeedTimer stop its loops (restHidden).
+  // A faded-out pill draws nothing at all; syncBarShapes and barsDrawn stop its loops (restHidden).
   inst.sceneRoot->setVisible(!restHidden(inst));
   if (lane) {
     syncLanePill(inst, shown > 0.01F && !restHidden(inst));
@@ -2867,26 +2871,31 @@ bool LiveActivityIsland::pressActivityButton(bool secondary) {
 void LiveActivityIsland::syncBars() {
   const MprisService* mpris = m_mpris ? m_mpris() : nullptr;
   const auto player = mpris != nullptr ? mpris->activePlayer() : std::nullopt;
-  const bool playing = player.has_value() && player->playbackStatus == "Playing"
+  m_barsPlaying = player.has_value() && player->playbackStatus == "Playing"
       && std::ranges::any_of(m_instances, [](const auto& inst) { return !restHidden(*inst); });
   PipeWireSpectrum* spectrum = m_spectrum ? m_spectrum() : nullptr;
-  if (!playing) {
+  if (!m_barsPlaying) {
     if (spectrum != nullptr && m_spectrumListener != 0) {
       spectrum->removeChangeListener(m_spectrumListener);
     }
     m_spectrumListener = 0;
-    m_barsTimer.stop();
     return;
   }
   if (spectrum != nullptr && m_spectrumListener == 0) {
+    // Real bars draw at the spectrum's rate: one frame tick per change, none while the bands stay put.
     m_spectrumListener = spectrum->addChangeListener(static_cast<int>(std::tuple_size_v<decltype(Instance::barBox)>), [this] {
-      if (!m_barsTimer.active() && realSpectrum()) {
-        syncBars();
-      }
+      requestBarTicks();
     });
   }
-  if (!m_barsTimer.active() && barsNeedTimer()) {
-    m_barsTimer.startRepeating(std::chrono::milliseconds(33), [this] { tickBars(); });
+  requestBarTicks();
+}
+
+void LiveActivityIsland::requestBarTicks() {
+  const bool real = realSpectrum();
+  for (auto& inst : m_instances) {
+    if (barsDrawn(*inst, real)) {
+      inst->surface->requestFrameTick();
+    }
   }
 }
 
@@ -2898,20 +2907,22 @@ void LiveActivityIsland::syncHoverProgress(Instance& inst) {
   inst.hoverProgress->setProgress(known ? std::clamp(static_cast<float>(*position) / static_cast<float>(player->lengthUs), 0.0F, 1.0F) : 0.0F);
 }
 
-void LiveActivityIsland::tickBars() {
-  m_barsPhase += 0.033F;
-  for (auto& inst : m_instances) {
-    if (inst->morph.shown() == Face::HoverMedia && inst->hoverProgress != nullptr) {
-      syncHoverProgress(*inst);
-    }
+void LiveActivityIsland::stepBars(Instance& inst, float deltaMs) {
+  const bool real = realSpectrum();
+  if (!m_barsPlaying || !barsDrawn(inst, real)) {
+    return;
   }
-  PipeWireSpectrum* spectrum = m_spectrum ? m_spectrum() : nullptr;
-  const bool real = spectrum != nullptr && m_spectrumListener != 0 && !spectrum->idle();
-  for (auto& inst : m_instances) {
-    if (inst->bars == nullptr) {
-      continue;
-    }
-    for (std::size_t i = 0; i < inst->barBox.size(); ++i) {
+  inst.barsPhase += deltaMs / 1000.0F;
+  if (inst.morph.shown() == Face::HoverMedia && inst.hoverProgress != nullptr) {
+    syncHoverProgress(inst);
+  }
+  bool settled = true;
+  if (inst.bars != nullptr) {
+    PipeWireSpectrum* spectrum = m_spectrum ? m_spectrum() : nullptr;
+    // Each bar closes 40 % of its gap every 33 ms, whatever the tick rate.
+    const float follow = 1.0F - std::pow(0.6F, deltaMs / 33.0F);
+    const float phase = inst.barsPhase;
+    for (std::size_t i = 0; i < inst.barBox.size(); ++i) {
       const auto n = static_cast<float>(i);
       float target = 0.0F;
       if (real) {
@@ -2919,21 +2930,23 @@ void LiveActivityIsland::tickBars() {
         target = i < values.size() ? std::clamp(values[i], 0.0F, 1.0F) : 0.0F;
       } else {
         // No audio source: a smooth pseudo-random level that moves only while playing.
-        target = 0.5F + 0.5F * std::sin(m_barsPhase * (5.1F + n * 1.7F) + n * 2.1F) * (0.65F + 0.35F * std::sin(m_barsPhase * 2.3F + n));
+        target = 0.5F + 0.5F * std::sin(phase * (5.1F + n * 1.7F) + n * 2.1F) * (0.65F + 0.35F * std::sin(phase * 2.3F + n));
       }
-      inst->barLevel[i] += (std::clamp(target, 0.0F, 1.0F) - inst->barLevel[i]) * 0.4F;
-      const float barsH = barsHeight(*inst);
-      const float h = 4.0F + inst->barLevel[i] * (barsH - 4.0F);
-      // Paint-only resize: a layout pass here would rebuild the whole island content 30 times a second.
-      inst->barBox[i]->setFrameSize(kBarWidth, h);
-      inst->barBox[i]->setPosition(n * (kBarWidth + kBarGap), std::round((barsH - h) * 0.5F));
-    }
-    if (inst->morph.shown() == Face::Rest && inst->mediaGroup != nullptr && inst->mediaGroup->visible() && !restHidden(*inst)) {
-      inst->surface->requestRedraw();
+      target = std::clamp(target, 0.0F, 1.0F);
+      inst.barLevel[i] += (target - inst.barLevel[i]) * follow;
+      settled = settled && std::abs(target - inst.barLevel[i]) < 0.005F;
+      const float barsH = barsHeight(inst);
+      const float h = 4.0F + inst.barLevel[i] * (barsH - 4.0F);
+      // Paint-only resize: a layout pass here would rebuild the whole island content every tick.
+      inst.barBox[i]->setFrameSize(kBarWidth, h);
+      inst.barBox[i]->setPosition(n * (kBarWidth + kBarGap), std::round((barsH - h) * 0.5F));
     }
   }
-  if (!barsNeedTimer()) {
-    m_barsTimer.stop();
+  if (inst.morph.shown() == Face::Rest && inst.mediaGroup != nullptr && inst.mediaGroup->visible() && !restHidden(inst)) {
+    inst.surface->requestRedraw();
+  }
+  if (barsLoop(inst, real) || !settled) {
+    inst.surface->requestFrameTick();
   }
 }
 
@@ -2942,16 +2955,16 @@ bool LiveActivityIsland::realSpectrum() const {
   return spectrum != nullptr && m_spectrumListener != 0 && !spectrum->idle();
 }
 
-// The shell wakes every 33 ms only for a real spectrum, the hover progress, or client-drawn bars; the looping
-// compositor shapes need no wake-up.
-bool LiveActivityIsland::barsNeedTimer() const {
-  const bool real = realSpectrum();
-  return std::ranges::any_of(m_instances, [this, real](const auto& inst) {
-    return inst->morph.shown() == Face::HoverMedia
-        || (inst->morph.shown() != Face::Rest && real)
-        || (inst->morph.shown() == Face::Rest && inst->mediaGroup != nullptr && inst->mediaGroup->visible()
-            && (real || !inst->barShapeKey) && !restUnderFullscreen(*inst) && !restHidden(*inst));
-  });
+// The client draws this instance's bars: real spectrum levels, the hover face, or Rest without compositor bar shapes.
+bool LiveActivityIsland::barsDrawn(const Instance& inst, bool real) const {
+  return inst.morph.shown() == Face::HoverMedia || (inst.morph.shown() != Face::Rest && real)
+      || (inst.morph.shown() == Face::Rest && inst.mediaGroup != nullptr && inst.mediaGroup->visible()
+          && (real || !inst.barShapeKey) && !restUnderFullscreen(inst) && !restHidden(inst));
+}
+
+// The bars move without new data (fake levels, the hover progress), so the instance asks for every frame tick.
+bool LiveActivityIsland::barsLoop(const Instance& inst, bool real) const {
+  return barsDrawn(inst, real) && (inst.morph.shown() == Face::HoverMedia || !real);
 }
 
 void LiveActivityIsland::syncBarShapes(Instance& inst) {

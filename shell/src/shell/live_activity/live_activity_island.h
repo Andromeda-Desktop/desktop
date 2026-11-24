@@ -215,6 +215,7 @@ private:
     Node* bars = nullptr;
     std::array<Box*, 3> barBox{};
     std::array<float, 3> barLevel{};
+    float barsPhase = 0.0F; // seconds of fake-bar motion
     Label* date = nullptr;
     Label* weekday = nullptr; // lane pill caption above the day number
     Glyph* callGlyph = nullptr;
@@ -370,7 +371,8 @@ private:
   void endHover(Instance& inst);
   void loadArt(Instance& inst, Renderer& renderer, const std::string& artUrl);
   void syncBars();
-  void tickBars();
+  void stepBars(Instance& inst, float deltaMs);
+  void requestBarTicks();
   void syncBarShapes(Instance& inst);
   [[nodiscard]] static bool laneGlass(const Instance& inst);
   [[nodiscard]] static bool rowGlass(const Instance& inst);
@@ -394,7 +396,8 @@ private:
   // The settled rest pill faded out with the bar's auto-hide: nothing draws, loops or takes input.
   [[nodiscard]] static bool restHidden(const Instance& inst);
   [[nodiscard]] bool realSpectrum() const;
-  [[nodiscard]] bool barsNeedTimer() const;
+  [[nodiscard]] bool barsDrawn(const Instance& inst, bool real) const;
+  [[nodiscard]] bool barsLoop(const Instance& inst, bool real) const;
   void syncHoverProgress(Instance& inst);
   using Queue = IslandQueue<BannerItem, OsdContent>;
   void apply(Queue::Step step);
@@ -424,8 +427,7 @@ private:
   std::uint64_t m_spectrumListener = 0;
   std::unordered_set<std::string> m_pendingArt;
   std::string m_minute;
-  Timer m_barsTimer;
-  float m_barsPhase = 0.0F;
+  bool m_barsPlaying = false;
   Timer m_osdTimer;
   Timer m_bannerTimer;
   std::chrono::steady_clock::time_point m_bannerDeadline;
