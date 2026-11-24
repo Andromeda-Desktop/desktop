@@ -7,7 +7,6 @@
 #include "net/uri.h"
 #include "notification/notification_manager.h"
 #include "shell/settings/settings_pages.h"
-#include "render/core/image_decoder.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"
 
@@ -339,43 +338,39 @@ namespace notification_dbus {
       return std::nullopt;
     }
 
-    std::optional<NotificationImageData> decodeImageDataFromImagePath(std::string_view imagePath) {
-      // Many screenshot tools (e.g. HyprCap) provide a single temp file via "image-path" which gets
-      // overwritten on every new capture. Snapshot it into `imageData` so history thumbnails stay
-      // immutable.
+    // The bytes of an image-path hint's file, read at once: screenshot tools overwrite one temp file on every capture.
+    std::vector<std::uint8_t> readImagePathBytes(std::string_view imagePath) {
       const std::string normalizedPath = uri::normalizeFileUrl(imagePath);
       if (normalizedPath.empty() || normalizedPath.front() != '/') {
-        return std::nullopt;
+        return {};
       }
       if (access(normalizedPath.c_str(), R_OK) != 0) {
-        return std::nullopt;
+        return {};
       }
       // A notification image is a thumbnail: a larger file is not read into memory in the Notify call.
       constexpr std::uintmax_t kMaxImagePathBytes = 16ULL * 1024ULL * 1024ULL;
       std::error_code sizeError;
       if (const auto size = std::filesystem::file_size(normalizedPath, sizeError); sizeError || size > kMaxImagePathBytes) {
-        return std::nullopt;
+        return {};
       }
+      return FileUtils::readBinaryFile(normalizedPath);
+    }
 
-      const auto bytes = FileUtils::readBinaryFile(normalizedPath);
-      if (bytes.empty()) {
-        return std::nullopt;
+    std::vector<std::uint8_t> notifyImagePathBytes(const std::map<std::string, sdbus::Variant>& hints) {
+      for (const char* key : {"image-path", "image_path"}) {
+        const auto path = hintValue<std::string>(hints, key);
+        if (!path.has_value() || path->empty()) {
+          continue;
+        }
+        const std::string truncated = StringUtils::truncateUtf8(*path, kMaxStringLen);
+        if (truncated.empty()) {
+          continue;
+        }
+        if (auto bytes = readImagePathBytes(truncated); !bytes.empty()) {
+          return bytes;
+        }
       }
-
-      const auto decoded = decodeRasterImage(bytes.data(), bytes.size());
-      if (!decoded) {
-        return std::nullopt;
-      }
-
-      NotificationImageData out;
-      out.width = decoded->width;
-      out.height = decoded->height;
-      out.rowStride = decoded->width * 4;
-      out.hasAlpha = true;
-      out.bitsPerSample = 8;
-      out.channels = 4;
-      out.data = decoded->pixels;
-      return out;
+      return {};
     }
 
   } // namespace
@@ -393,23 +388,6 @@ namespace notification_dbus {
       }
     }
 
-    // Fallback: some notifiers only provide a path to a changing screenshot file (e.g. HyprCap).
-    // If we can decode it immediately, persist pixels via `imageData`.
-    for (const char* key : {"image-path", "image_path"}) {
-      const auto path = hintValue<std::string>(hints, key);
-      if (!path.has_value() || path->empty()) {
-        continue;
-      }
-      const std::string truncated = StringUtils::truncateUtf8(*path, kMaxStringLen);
-      if (truncated.empty()) {
-        continue;
-      }
-      if (std::optional<NotificationImageData> decoded = decodeImageDataFromImagePath(truncated);
-          decoded.has_value()) {
-        return decoded;
-      }
-    }
-
     return std::nullopt;
   }
 
@@ -421,7 +399,10 @@ namespace notification_dbus {
     const int32_t timeout = normalizeNotifyExpireTimeout(expire_timeout);
     const auto sanitizedActions = sanitizeNotifyActions(actions);
 
-    return manager.addOrReplace(
+    std::optional<NotificationImageData> image = notifyImageDataFromHints(hints);
+    // Notifiers that send only an image path (e.g. HyprCap): the file is read now and decoded on the worker.
+    std::vector<std::uint8_t> encoded = image.has_value() ? std::vector<std::uint8_t>{} : notifyImagePathBytes(hints);
+    const uint32_t id = manager.addOrReplace(
         NotificationRequest{
             .replacesId = replaces_id,
             .appName = StringUtils::truncateUtf8(app_name, kMaxStringLen),
@@ -435,13 +416,17 @@ namespace notification_dbus {
             .suppressSound = notifyBoolHint(hints, "suppress-sound"),
             .actions = sanitizedActions,
             .icon = notifyIcon(app_name, app_icon, hints),
-            .imageData = notifyImageDataFromHints(hints),
+            .imageData = std::move(image),
             .category = notifyCategoryFromHints(hints),
             .desktopEntry = notifyDesktopEntryFromHints(hints),
             .group = notifyGroupFromHints(hints),
             .settingsPage = notifySettingsPageFromHints(hints),
         }
     );
+    if (!encoded.empty()) {
+      manager.attachImageLater(id, std::move(encoded));
+    }
+    return id;
   }
 
 } // namespace notification_dbus

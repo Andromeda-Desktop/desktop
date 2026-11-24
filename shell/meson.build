@@ -1229,6 +1229,7 @@ if build_tests
     'battery_hook_state',
     'battery_warning_threshold',
     'bluetooth_uuid_names',
+    'bounded_cache',
     'button_layout',
     'cairo_text_renderer',
     'caldav_client',

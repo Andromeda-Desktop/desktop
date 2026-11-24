@@ -1,6 +1,7 @@
 #pragma once
 
 #include "render/core/texture_handle.h"
+#include "util/bounded_cache.h"
 
 #include <chrono>
 #include <cstdint>
@@ -74,8 +75,6 @@ private:
     std::size_t operator()(const CacheKey& k) const noexcept;
   };
 
-  using LruList = std::list<CacheKey>;
-
   struct CacheEntry {
     TextureHandle texture;
     int pixelWidth = 0;
@@ -86,16 +85,9 @@ private:
     float inkOffsetYPx = 0.0F;
     TextMetrics metrics;
     std::size_t bytes = 0;
-    LruList::iterator lruIt;
-    std::chrono::steady_clock::time_point lastUsed;
   };
 
-  using CacheMap = std::unordered_map<CacheKey, CacheEntry, CacheKeyHash>;
-
   CacheEntry* lookupOrRasterize(float contentScale, char32_t codepoint, float fontSize);
-  void touch(CacheMap::iterator it);
-  void evict(CacheMap::iterator it);
-  void evictIfNeeded();
 
   FT_Library m_ftLibrary = nullptr;
   FT_Face m_face = nullptr;
@@ -104,10 +96,5 @@ private:
   RenderBackend* m_backend = nullptr;
   TextureManager* m_textureManager = nullptr;
 
-  CacheMap m_cache;
-  LruList m_lru;
-  std::size_t m_cacheBytes = 0;
-
-  static constexpr std::size_t kMaxCacheEntries = 512;
-  static constexpr std::size_t kMaxCacheBytes = 8 * 1024 * 1024;
+  BoundedCache<CacheKey, CacheEntry, CacheKeyHash> m_cache;
 };

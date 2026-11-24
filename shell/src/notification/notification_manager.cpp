@@ -5,6 +5,7 @@
 #include "notification/notification_filter.h"
 #include "notification/notification_history_store.h"
 #include "pipewire/sound_player.h"
+#include "render/core/image_decoder.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"
 
@@ -245,6 +246,58 @@ bool NotificationManager::updateBody(uint32_t id, std::string body) {
   return true;
 }
 
+void NotificationManager::attachImageLater(uint32_t id, std::vector<std::uint8_t> encoded) {
+  const std::uint64_t ticket = ++m_nextImageTicket;
+  m_imageTickets[id] = ticket;
+  SharedWorker::instance().post<std::optional<NotificationImageData>>(
+      m_alive,
+      [encoded = std::move(encoded)]() -> std::optional<NotificationImageData> {
+        auto decoded = decodeRasterImage(encoded.data(), encoded.size());
+        if (!decoded) {
+          return std::nullopt;
+        }
+        NotificationImageData out;
+        out.width = decoded->width;
+        out.height = decoded->height;
+        out.rowStride = decoded->width * 4;
+        out.data = std::move(decoded->pixels);
+        return out;
+      },
+      [this, id, ticket](std::optional<NotificationImageData> image) {
+        const auto it = m_imageTickets.find(id);
+        if (it == m_imageTickets.end() || it->second != ticket) {
+          return;
+        }
+        m_imageTickets.erase(it);
+        if (image.has_value()) {
+          attachImage(id, std::move(*image));
+        }
+      }
+  );
+}
+
+void NotificationManager::attachImage(uint32_t id, NotificationImageData image) {
+  const auto live = m_idToIndex.find(id);
+  const auto entry = m_historyIndex.find(id);
+  if (live == m_idToIndex.end() && entry == m_historyIndex.end()) {
+    return;
+  }
+  if (entry != m_historyIndex.end()) {
+    m_history[entry->second].notification.imageData = image;
+    m_history[entry->second].eventSerial = ++m_changeSerial;
+    schedulePersistHistory();
+  } else {
+    ++m_changeSerial;
+  }
+  if (live != m_idToIndex.end()) {
+    Notification& n = m_notifications[live->second];
+    n.imageData = std::move(image);
+    for (auto& [token, cb] : m_eventCallbacks) {
+      cb(n, NotificationEvent::Updated);
+    }
+  }
+}
+
 int NotificationManager::addEventCallback(EventCallback callback) {
   int token = m_nextCallbackToken++;
   m_eventCallbacks.emplace_back(token, std::move(callback));
@@ -411,6 +464,7 @@ uint32_t NotificationManager::addOrReplace(NotificationRequest request) {
       n.actions = std::move(actions);
       n.icon = std::move(icon);
       n.imageData = std::move(imageData);
+      m_imageTickets.erase(n.id);
       n.category = std::move(category);
       n.desktopEntry = std::move(desktopEntry);
       n.group = std::move(group);

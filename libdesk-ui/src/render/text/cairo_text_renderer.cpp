@@ -278,7 +278,11 @@ std::size_t CairoTextRenderer::FontMetricsKeyHash::operator()(const FontMetricsK
 
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 
-CairoTextRenderer::CairoTextRenderer() = default;
+CairoTextRenderer::CairoTextRenderer()
+    : m_cache(
+          {.entries = 512, .bytes = 32 * 1024 * 1024}, [](const CacheEntry& e) { return e.bytes; },
+          [this](CacheKey& key, CacheEntry& entry) { releaseEntry(key, entry, true); }
+      ) {}
 
 CairoTextRenderer::~CairoTextRenderer() { cleanup(); }
 
@@ -305,11 +309,6 @@ void CairoTextRenderer::initialize(RenderBackend* backend, TextureManager* textu
 
   setGrayscaleFontOptions(m_pangoContext);
 
-  // Reserve bucket count up front so CacheMap iterators remain stable for the
-  // lifetime of every entry — we rely on that stability to keep LRU list
-  // entries (which hold map iterators) valid.
-  m_cache.max_load_factor(1.0F);
-  m_cache.reserve(kMaxCacheEntries + 16);
 
   m_metricsCache.max_load_factor(1.0F);
   m_metricsCache.reserve(kMaxMetricsEntries + 16);
@@ -370,16 +369,7 @@ void CairoTextRenderer::cleanup() {
 
 void CairoTextRenderer::clearCaches() {
   releaseTransient();
-  for (auto& [key, entry] : m_cache) {
-    for (auto& tile : entry.tiles) {
-      if (m_textureManager != nullptr) {
-        m_textureManager->unload(tile.texture);
-      }
-    }
-  }
-  wipeAndClear(m_cache);
-  m_lru.clear();
-  m_cacheBytes = 0;
+  m_cache.clear();
   wipeAndClear(m_metricsCache);
   m_fontMetricsCache.clear();
   dropShaped(m_shaped);
@@ -392,16 +382,7 @@ void CairoTextRenderer::clearCaches() {
 }
 
 void CairoTextRenderer::invalidateGlyphTextures() {
-  for (auto& [key, entry] : m_cache) {
-    for (auto& tile : entry.tiles) {
-      if (m_textureManager != nullptr) {
-        m_textureManager->unload(tile.texture);
-      }
-    }
-  }
-  wipeAndClear(m_cache);
-  m_lru.clear();
-  m_cacheBytes = 0;
+  m_cache.clear();
   if (m_backend != nullptr) {
     m_backend->flushBatches();
   }
@@ -410,7 +391,9 @@ void CairoTextRenderer::invalidateGlyphTextures() {
 }
 
 bool CairoTextRenderer::holdsText(std::string_view text) const {
-  return std::ranges::any_of(m_cache, [&](const auto& entry) { return entry.first.text == text; })
+  bool held = false;
+  m_cache.forEach([&](const CacheKey& key, const CacheEntry&) { held = held || key.text == text; });
+  return held
       || std::ranges::any_of(m_metricsCache, [&](const auto& entry) { return entry.first.text == text; });
 }
 
@@ -452,9 +435,7 @@ PangoLayout* CairoTextRenderer::takeShaped(const MetricsKey& key) {
 
 void CairoTextRenderer::abandonGlyphTextures() noexcept {
   m_transient.clear();
-  wipeAndClear(m_cache);
-  m_lru.clear();
-  m_cacheBytes = 0;
+  m_cache.clear([this](CacheKey& key, CacheEntry& entry) { releaseEntry(key, entry, false); });
   m_atlas.abandon();
   m_colorAtlas.abandon();
 }
@@ -1165,11 +1146,6 @@ void CairoTextRenderer::rasterizeLayout(
 
 // ── Cache management ────────────────────────────────────────────────────────
 
-void CairoTextRenderer::touch(CacheMap::iterator it) {
-  // Splice the LRU node to the front (most-recently-used).
-  m_lru.splice(m_lru.begin(), m_lru, it->second.lruIt);
-  it->second.lastUsed = std::chrono::steady_clock::now();
-}
 
 bool CairoTextRenderer::buildAtlasQuads(
     TextGlyphAtlas& atlas, PangoLayout* layout, int originXPx, int extraTopPx, CacheEntry& entry
@@ -1251,33 +1227,13 @@ bool CairoTextRenderer::buildAtlasQuads(
   return false;
 }
 
-void CairoTextRenderer::evict(CacheMap::iterator it) {
-  for (auto& tile : it->second.tiles) {
-    if (m_textureManager != nullptr) {
+void CairoTextRenderer::releaseEntry(CacheKey& key, CacheEntry& entry, bool unload) noexcept {
+  if (unload && m_textureManager != nullptr) {
+    for (auto& tile : entry.tiles) {
       m_textureManager->unload(tile.texture);
     }
   }
-  m_cacheBytes -= it->second.bytes;
-  m_lru.erase(it->second.lruIt);
-  auto node = m_cache.extract(it);
-  util::secureWipe(node.key().text);
-}
-
-void CairoTextRenderer::evictIfNeeded() {
-  // Never evict the most-recently-used entry (LRU front). This protects the
-  // just-inserted entry from self-eviction in the case where a single text
-  // block (e.g. a multi-megabyte code preview) is larger than kMaxCacheBytes
-  // on its own — we'd otherwise walk the LRU from back to front, evict every
-  // older entry, then evict our own new entry and return a dangling pointer.
-  while (m_lru.size() > 1 && (m_cache.size() > kMaxCacheEntries || m_cacheBytes > kMaxCacheBytes)) {
-    const CacheKey* keyPtr = m_lru.back();
-    auto mapIt = m_cache.find(*keyPtr);
-    if (mapIt == m_cache.end()) {
-      m_lru.pop_back();
-      continue;
-    }
-    evict(mapIt);
-  }
+  util::secureWipe(key.text);
 }
 
 TextAlphaRaster
@@ -1362,23 +1318,17 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   key.align = align;
   key.ellipsize = ellipsize;
   key.useMarkup = useMarkup;
-  auto it = m_cache.find(key);
-  if (it != m_cache.end()
-      && (it->second.ink == CacheEntry::Ink::Atlas || it->second.ink == CacheEntry::Ink::ColorAtlas)
-      && it->second.atlasGeneration != atlasOf(it->second).generation()) {
-    evict(it);
-    it = m_cache.end();
-  }
-  if (it != m_cache.end()) {
-    touch(it);
-    return &it->second;
+  if (CacheEntry* hit = m_cache.find(key)) {
+    if ((hit->ink != CacheEntry::Ink::Atlas && hit->ink != CacheEntry::Ink::ColorAtlas)
+        || hit->atlasGeneration == atlasOf(*hit).generation()) {
+      return hit;
+    }
+    m_cache.erase(key);
   }
 
   key.colorRgba = packColorRgb(color);
-  it = m_cache.find(key);
-  if (it != m_cache.end()) {
-    touch(it);
-    return &it->second;
+  if (CacheEntry* hit = m_cache.find(key)) {
+    return hit;
   }
 
   MetricsKey mkey;
@@ -1420,25 +1370,10 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   }
   m_metricsCache.emplace(std::move(mkey), entry.metrics);
 
-  auto [ins, inserted] = m_cache.emplace(std::move(key), std::move(entry));
-  m_lru.push_front(&ins->first);
-  ins->second.lruIt = m_lru.begin();
-  ins->second.lastUsed = std::chrono::steady_clock::now();
-  m_cacheBytes += ins->second.bytes;
-
-  evictIfNeeded();
-  return &ins->second;
+  return &m_cache.put(std::move(key), std::move(entry));
 }
 
-void CairoTextRenderer::evictUnusedBefore(std::chrono::steady_clock::time_point cutoff) {
-  while (m_lru.size() > 1) {
-    const auto mapIt = m_cache.find(*m_lru.back());
-    if (mapIt == m_cache.end() || mapIt->second.lastUsed >= cutoff) {
-      return;
-    }
-    evict(mapIt);
-  }
-}
+void CairoTextRenderer::evictUnusedBefore(std::chrono::steady_clock::time_point cutoff) { m_cache.evictUnusedBefore(cutoff); }
 
 // ── draw ────────────────────────────────────────────────────────────────────
 

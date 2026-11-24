@@ -8,6 +8,7 @@
 #include "render/gl_shared_context.h"
 
 #include <algorithm>
+#include <tuple>
 #include <cerrno>
 #include <cstdint>
 #include <unistd.h>
@@ -18,7 +19,8 @@ namespace {
   constexpr Logger kLog("async-tex");
   constexpr std::size_t kMinWorkers = 2;
   constexpr std::size_t kMaxWorkers = 4;
-  constexpr std::size_t kMaxUnusedResidentEntries = 128;
+  constexpr std::size_t kMaxUnusedEntries = 128;
+  constexpr std::size_t kMaxUnusedBytes = 64 * 1024 * 1024;
 
 } // namespace
 
@@ -60,7 +62,18 @@ void AsyncTextureCache::ReadySubscription::disconnect() {
   m_id = 0;
 }
 
-AsyncTextureCache::AsyncTextureCache() {
+AsyncTextureCache::AsyncTextureCache()
+    : m_unused(
+          {.entries = kMaxUnusedEntries, .bytes = kMaxUnusedBytes}, [](const std::size_t& bytes) { return bytes; },
+          [this](RequestKey& key, std::size_t&) {
+            const auto it = m_entries.find(key);
+            if (it->second.handle.id != 0) {
+              makeCurrent();
+              m_textureManager->unload(it->second.handle);
+            }
+            m_entries.erase(it);
+          }
+      ) {
   m_textureManager = createDefaultTextureManager();
 
   if (!m_wake.valid()) {
@@ -143,7 +156,7 @@ TextureHandle AsyncTextureCache::acquire(const std::string& path, int targetSize
   } else {
     ++entry.refCount;
   }
-  touchEntry(entry);
+  std::ignore = m_unused.extract(key);
 
   if (entry.handle.id != 0 || entry.failed) {
     return entry.handle;
@@ -196,12 +209,11 @@ void AsyncTextureCache::release(const std::string& path, int targetSize, bool mi
   }
 
   if (it->second.handle.id != 0 || it->second.failed) {
-    // Keep a bounded set of recently used zero-ref textures resident so
-    // virtualized views can immediately rebind them while users scrub back and
-    // forth. Owners that truly tear down the view can explicitly trim unused
-    // entries once those consumers are gone.
-    touchEntry(it->second);
-    pruneUnusedEntries(kMaxUnusedResidentEntries);
+    // Recently used zero-ref textures stay resident so virtualized views rebind them at once while users scrub.
+    if (m_unused.find(key) == nullptr) {
+      const TextureHandle& handle = it->second.handle;
+      m_unused.put(key, static_cast<std::size_t>(handle.width) * static_cast<std::size_t>(handle.height) * 4U);
+    }
     return;
   }
 
@@ -282,17 +294,18 @@ void AsyncTextureCache::dispatch(const std::vector<pollfd>& fds, std::size_t sta
     }
     entryIt->second.handle.sourceWidth = job.sourceWidth;
     entryIt->second.handle.sourceHeight = job.sourceHeight;
-    touchEntry(entryIt->second);
     notifyReady(job.key, entryIt->second.handle);
   }
 }
 
-void AsyncTextureCache::trimUnused(std::size_t maxUnusedEntries) { pruneUnusedEntries(maxUnusedEntries); }
+void AsyncTextureCache::trimUnused(std::size_t maxUnusedEntries) { m_unused.trim({.entries = maxUnusedEntries}); }
 
 void AsyncTextureCache::abandonGpuResources() noexcept {
   if (m_textureManager != nullptr) {
     m_textureManager->abandonGpuResources();
   }
+  // An unused entry has no consumer to reload it.
+  m_unused.clear([this](RequestKey& key, std::size_t&) { m_entries.erase(key); });
   for (auto& [key, entry] : m_entries) {
     (void)key;
     entry.handle = {};
@@ -342,7 +355,6 @@ void AsyncTextureCache::reloadResidentTextures() {
     }
     entry.handle.sourceWidth = loaded->sourceWidth;
     entry.handle.sourceHeight = loaded->sourceHeight;
-    touchEntry(entry);
     notifyReady(key, entry.handle);
   }
 }
@@ -425,8 +437,6 @@ void AsyncTextureCache::makeCurrent() {
   }
 }
 
-void AsyncTextureCache::touchEntry(Entry& entry) { entry.lastTouch = ++m_touchSerial; }
-
 void AsyncTextureCache::removeReadyListener(std::uint64_t id) { m_readyListeners.erase(id); }
 
 void AsyncTextureCache::notifyReady(const RequestKey& key, TextureHandle handle) {
@@ -442,36 +452,6 @@ void AsyncTextureCache::notifyReady(const RequestKey& key, TextureHandle handle)
     if (m_readyListeners.contains(id)) {
       callback(handle);
     }
-  }
-}
-
-void AsyncTextureCache::pruneUnusedEntries(std::size_t maxUnusedEntries) {
-  using It = std::unordered_map<RequestKey, Entry, RequestKeyHash>::iterator;
-  std::vector<It> unused;
-
-  for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
-    if (it->second.refCount == 0 && (it->second.handle.id != 0 || it->second.failed)) {
-      unused.push_back(it);
-    }
-  }
-
-  if (unused.size() <= maxUnusedEntries) {
-    return;
-  }
-
-  std::ranges::sort(unused, [](const It& a, const It& b) { return a->second.lastTouch < b->second.lastTouch; });
-
-  const std::size_t toEvict = unused.size() - maxUnusedEntries;
-  bool madeCurrent = false;
-  for (std::size_t i = 0; i < toEvict; ++i) {
-    if (unused[i]->second.handle.id != 0) {
-      if (!madeCurrent) {
-        makeCurrent();
-        madeCurrent = true;
-      }
-      m_textureManager->unload(unused[i]->second.handle);
-    }
-    m_entries.erase(unused[i]);
   }
 }
 

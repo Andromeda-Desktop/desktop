@@ -5,6 +5,7 @@
 #include "dbus/link/link_phone_state.h"
 #include "notification/notification.h"
 #include "dbus/name_owner_watch.h"
+#include "util/bounded_cache.h"
 
 #include <chrono>
 #include <cstdint>
@@ -288,8 +289,18 @@ private:
     std::vector<LinkPhoto> photos;
   };
   std::map<std::string, PhotoList> m_photoLists;
-  // Decoded thumbnails by device and path; null while the request runs.
-  std::map<std::pair<std::string, std::string>, std::shared_ptr<const NotificationImageData>> m_thumbnails;
+  using PhotoKey = std::pair<std::string, std::string>; // device id, photo path
+  struct PhotoKeyHash {
+    std::size_t operator()(const PhotoKey& key) const noexcept {
+      return std::hash<std::string>{}(key.first) * 31U ^ std::hash<std::string>{}(key.second);
+    }
+  };
+  // Decoded thumbnails; null when the phone sent no image or it did not decode.
+  BoundedCache<PhotoKey, std::shared_ptr<const NotificationImageData>, PhotoKeyHash> m_thumbnails{
+      {.entries = 256, .bytes = 32 * 1024 * 1024},
+      [](const std::shared_ptr<const NotificationImageData>& image) { return image != nullptr ? image->data.size() : 0; }
+  };
+  std::set<PhotoKey> m_thumbnailsLoading;
   // Counts requests per phone so that a reply of an older request is dropped.
   std::map<std::string, std::uint64_t> m_photoGeneration;
   Timer m_connectTimer;
@@ -326,4 +337,6 @@ private:
   std::uint64_t m_pairingRequest = 0;
   std::optional<LinkPairingOutcome> m_outcome;
   bool m_available = false;
+  // Last member: expires first, so a worker reply never reaches a dying service.
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

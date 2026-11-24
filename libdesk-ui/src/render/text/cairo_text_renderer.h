@@ -3,6 +3,7 @@
 #include "render/core/renderer.h"
 #include "render/core/texture_handle.h"
 #include "render/text/text_glyph_atlas.h"
+#include "util/bounded_cache.h"
 
 #include <atomic>
 #include <cstddef>
@@ -183,12 +184,6 @@ private:
     std::size_t operator()(const FontMetricsKey& k) const noexcept;
   };
 
-  // LruList is a list of pointers into map keys — we break the otherwise
-  // circular type dependency (CacheEntry ↔ CacheMap) this way. CacheKey* is
-  // stable because unordered_map never moves key-value nodes under insert
-  // (we also reserve bucket capacity upfront to avoid rehashing).
-  using LruList = std::list<const CacheKey*>;
-
   // A very tall text block can exceed the backend texture limit (typically
   // 4096 or 8192). We slice the Pango layout into N vertically-stacked tiles,
   // each its own texture sized within that limit. draw() emits one quad per tile;
@@ -213,11 +208,8 @@ private:
     std::vector<float> quadPositions; // Atlas: x, y per vertex, raster px from the surface top-left
     std::vector<float> quadTexcoords;
     std::uint64_t atlasGeneration = 0; // atlasOf(entry).generation() the quads were built against
-    LruList::iterator lruIt;
-    std::chrono::steady_clock::time_point lastUsed;
   };
 
-  using CacheMap = std::unordered_map<CacheKey, CacheEntry, CacheKeyHash>;
   using MetricsMap = std::unordered_map<MetricsKey, TextMetrics, MetricsKeyHash>;
   using ShapedMap = std::unordered_map<MetricsKey, PangoLayout*, MetricsKeyHash>;
   using FontMetricsMap = std::unordered_map<FontMetricsKey, TextMetrics, FontMetricsKeyHash>;
@@ -251,9 +243,7 @@ private:
       float contentScale, std::string_view text, float fontSize, const TextFont& font, float maxWidth, int maxLines,
       TextAlign align, const Color& color, TextEllipsize ellipsize = TextEllipsize::End, bool useMarkup = false
   );
-  void touch(CacheMap::iterator it);
-  void evict(CacheMap::iterator it);
-  void evictIfNeeded();
+  void releaseEntry(CacheKey& key, CacheEntry& entry, bool unload) noexcept;
   // The layout measure() shaped for `key`, now owned by the caller; nullptr when none is kept.
   PangoLayout* takeShaped(const MetricsKey& key);
   void dropShaped(ShapedMap& map);
@@ -273,9 +263,8 @@ private:
   RenderBackend* m_backend = nullptr;
   TextureManager* m_textureManager = nullptr;
 
-  CacheMap m_cache;
-  LruList m_lru;
-  std::size_t m_cacheBytes = 0;
+  // Evicting unloads the tiles and wipes the key text.
+  BoundedCache<CacheKey, CacheEntry, CacheKeyHash> m_cache;
   int m_glMaxTextureSize = 0; // lazy-queried on first rasterize
 
   MetricsMap m_metricsCache;
@@ -294,8 +283,6 @@ private:
   std::uint64_t m_textEpoch = 0; // the s_textEpoch this renderer's caches were last cleared for
   inline static std::atomic<std::uint64_t> s_textEpoch{0};
 
-  static constexpr std::size_t kMaxCacheEntries = 512;
-  static constexpr std::size_t kMaxCacheBytes = 32 * 1024 * 1024;
   static constexpr std::size_t kMaxMetricsEntries = 1024;
   static constexpr std::size_t kMaxShapedLayouts = 256;
   static constexpr std::size_t kMaxFontMetricsEntries = 64;

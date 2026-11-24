@@ -5,6 +5,7 @@
 #include "core/idle_worker_slots.h"
 #include "render/core/texture_handle.h"
 #include "ui/signal.h"
+#include "util/bounded_cache.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -78,7 +79,7 @@ public:
   void trimUnused(std::size_t maxUnusedEntries = 0);
   // Frees every unused entry each time `release` emits (RenderContext::unusedCacheRelease).
   void releaseUnusedOn(Signal<>& release) {
-    m_releaseConn = release.connect([this] { pruneUnusedEntries(0); });
+    m_releaseConn = release.connect([this] { trimUnused(0); });
   }
   void abandonGpuResources() noexcept;
   void reloadResidentTextures();
@@ -109,7 +110,6 @@ private:
     TextureHandle handle;
     int refCount = 0;
     bool failed = false;
-    std::uint64_t lastTouch = 0;
   };
 
   struct DecodedJob {
@@ -131,8 +131,6 @@ private:
   void signalMain();
   void pushResult(DecodedJob job);
   void makeCurrent();
-  void touchEntry(Entry& entry);
-  void pruneUnusedEntries(std::size_t maxUnusedEntries);
   void removeReadyListener(std::uint64_t id);
   void notifyReady(const RequestKey& key, TextureHandle handle);
 
@@ -156,7 +154,9 @@ private:
 
   // Main thread only state.
   std::unordered_map<RequestKey, Entry, RequestKeyHash> m_entries;
-  std::uint64_t m_touchSerial = 0;
+  // Zero-ref entries that keep their texture (or failure) resident, value: texture bytes. Evicting unloads the
+  // texture and erases the entry from m_entries.
+  BoundedCache<RequestKey, std::size_t, RequestKeyHash> m_unused;
   std::unordered_map<std::uint64_t, ReadyListener> m_readyListeners;
   std::uint64_t m_nextReadyListenerId = 0;
   std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);

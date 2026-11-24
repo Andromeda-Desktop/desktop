@@ -81,7 +81,15 @@ std::size_t CairoGlyphRenderer::CacheKeyHash::operator()(const CacheKey& k) cons
   return seed;
 }
 
-CairoGlyphRenderer::CairoGlyphRenderer() = default;
+CairoGlyphRenderer::CairoGlyphRenderer()
+    : m_cache(
+          {.entries = 512, .bytes = 8 * 1024 * 1024}, [](const CacheEntry& e) { return e.bytes; },
+          [this](CacheKey&, CacheEntry& e) {
+            if (m_textureManager != nullptr) {
+              m_textureManager->unload(e.texture);
+            }
+          }
+      ) {}
 CairoGlyphRenderer::~CairoGlyphRenderer() { cleanup(); }
 
 void CairoGlyphRenderer::initialize(const std::string& fontPath, RenderBackend* backend, TextureManager* textures) {
@@ -106,37 +114,14 @@ void CairoGlyphRenderer::initialize(const std::string& fontPath, RenderBackend* 
   cairo_font_options_set_antialias(m_fontOptions, CAIRO_ANTIALIAS_GRAY);
   cairo_font_options_set_hint_style(m_fontOptions, CAIRO_HINT_STYLE_NONE);
   cairo_font_options_set_hint_metrics(m_fontOptions, CAIRO_HINT_METRICS_OFF);
-
-  m_cache.max_load_factor(1.0F);
-  m_cache.reserve(kMaxCacheEntries + 16);
 }
 
-void CairoGlyphRenderer::invalidateGlyphTextures() {
-  for (auto& [key, entry] : m_cache) {
-    if (m_textureManager != nullptr) {
-      m_textureManager->unload(entry.texture);
-    }
-  }
-  m_cache.clear();
-  m_lru.clear();
-  m_cacheBytes = 0;
-}
+void CairoGlyphRenderer::invalidateGlyphTextures() { m_cache.clear(); }
 
-void CairoGlyphRenderer::abandonGlyphTextures() noexcept {
-  m_cache.clear();
-  m_lru.clear();
-  m_cacheBytes = 0;
-}
+void CairoGlyphRenderer::abandonGlyphTextures() noexcept { m_cache.clear(nullptr); }
 
 void CairoGlyphRenderer::cleanup() {
-  for (auto& [key, entry] : m_cache) {
-    if (m_textureManager != nullptr) {
-      m_textureManager->unload(entry.texture);
-    }
-  }
   m_cache.clear();
-  m_lru.clear();
-  m_cacheBytes = 0;
 
   if (m_fontOptions != nullptr) {
     cairo_font_options_destroy(m_fontOptions);
@@ -156,32 +141,6 @@ void CairoGlyphRenderer::cleanup() {
   }
   m_backend = nullptr;
   m_textureManager = nullptr;
-}
-
-void CairoGlyphRenderer::touch(CacheMap::iterator it) {
-  m_lru.splice(m_lru.begin(), m_lru, it->second.lruIt);
-  it->second.lastUsed = std::chrono::steady_clock::now();
-}
-
-void CairoGlyphRenderer::evict(CacheMap::iterator it) {
-  if (m_textureManager != nullptr) {
-    m_textureManager->unload(it->second.texture);
-  }
-  m_cacheBytes -= it->second.bytes;
-  m_lru.erase(it->second.lruIt);
-  m_cache.erase(it);
-}
-
-void CairoGlyphRenderer::evictIfNeeded() {
-  while (!m_lru.empty() && (m_cache.size() > kMaxCacheEntries || m_cacheBytes > kMaxCacheBytes)) {
-    auto& backKey = m_lru.back();
-    auto mapIt = m_cache.find(backKey);
-    if (mapIt == m_cache.end()) {
-      m_lru.pop_back();
-      continue;
-    }
-    evict(mapIt);
-  }
 }
 
 CairoGlyphRenderer::TextMetrics
@@ -225,10 +184,8 @@ CairoGlyphRenderer::lookupOrRasterize(float contentScale, char32_t codepoint, fl
   key.sizeQ = quantizeSize(fontSize);
   key.scaleQ = quantizeScale(contentScale);
 
-  auto it = m_cache.find(key);
-  if (it != m_cache.end()) {
-    touch(it);
-    return &it->second;
+  if (CacheEntry* hit = m_cache.find(key)) {
+    return hit;
   }
 
   const float rasterSize = std::max(1.0F, fontSize * contentScale);
@@ -319,25 +276,10 @@ CairoGlyphRenderer::lookupOrRasterize(float contentScale, char32_t codepoint, fl
   const float invScale = 1.0F / contentScale;
   entry.metrics = metrics_from_extents(extents, invScale);
 
-  auto [ins, inserted] = m_cache.emplace(key, entry);
-  m_lru.push_front(ins->first);
-  ins->second.lruIt = m_lru.begin();
-  ins->second.lastUsed = std::chrono::steady_clock::now();
-  m_cacheBytes += ins->second.bytes;
-
-  evictIfNeeded();
-  return &ins->second;
+  return &m_cache.put(key, entry);
 }
 
-void CairoGlyphRenderer::evictUnusedBefore(std::chrono::steady_clock::time_point cutoff) {
-  while (m_lru.size() > 1) {
-    const auto mapIt = m_cache.find(m_lru.back());
-    if (mapIt == m_cache.end() || mapIt->second.lastUsed >= cutoff) {
-      return;
-    }
-    evict(mapIt);
-  }
-}
+void CairoGlyphRenderer::evictUnusedBefore(std::chrono::steady_clock::time_point cutoff) { m_cache.evictUnusedBefore(cutoff); }
 
 void CairoGlyphRenderer::drawGlyph(
     float contentScale, float surfaceWidth, float surfaceHeight, float x, float baselineY, char32_t codepoint,

@@ -148,7 +148,9 @@ std::string NotificationCenterPanel::contentKey() const {
   }
   std::string key;
   for (const NotificationHistoryEntry& entry : m_notifications->history()) {
-    key += std::format("{}:{};", entry.notification.id, nc::ageText(entry.notification));
+    key += std::format(
+        "{}:{}:{};", entry.notification.id, nc::ageText(entry.notification), entry.notification.imageData.has_value()
+    );
   }
   for (const std::string& group : m_openGroups) {
     key += "+" + group;

@@ -113,6 +113,9 @@ public:
   // itself back to the top of the notification list or reset its own age. Returns false once the
   // notification is no longer live, which is how such a caller learns to stop.
   bool updateBody(uint32_t id, std::string body);
+  // Decodes `encoded` on the shared worker, then sets it as the image of notification `id` and its history entry.
+  // A newer addOrReplace of `id` before the decode ends drops it.
+  void attachImageLater(uint32_t id, std::vector<std::uint8_t> encoded);
 
   void setActionInvokeCallback(ActionInvokeCallback callback);
   // Actions and inline replies on Portal-origin notifications go to the notification portal.
@@ -272,6 +275,10 @@ private:
   std::shared_ptr<const security::SecureKey> m_historyKey;
   // Debounces history saves; each change used to rewrite every entry on the main thread.
   Timer m_persistTimer;
+  // The newest pending attachImageLater per notification id.
+  std::unordered_map<uint32_t, std::uint64_t> m_imageTickets;
+  std::uint64_t m_nextImageTicket = 0;
+  void attachImage(uint32_t id, NotificationImageData image);
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   Timer m_historyRetentionTimer;
 

@@ -9,7 +9,8 @@
 #include "net/url_open.h"
 #include "notification/notification_manager.h"
 #include "pipewire/sound_player.h"
-#include "render/core/image_file_loader.h"
+#include "core/shared_worker.h"
+#include "render/core/image_decoder.h"
 #include "util/string_utils.h"
 #include "clipboard/clipboard_service.h"
 
@@ -846,9 +847,8 @@ void LinkService::disconnect(const std::string& deviceId, std::function<void(boo
 void LinkService::forgetPhotos(const std::string& deviceId) {
   m_photoLists.erase(deviceId);
   ++m_photoGeneration[deviceId];
-  for (auto it = m_thumbnails.begin(); it != m_thumbnails.end();) {
-    it = it->first.first == deviceId ? m_thumbnails.erase(it) : std::next(it);
-  }
+  m_thumbnails.eraseIf([&](const PhotoKey& key, const auto&) { return key.first == deviceId; });
+  std::erase_if(m_thumbnailsLoading, [&](const PhotoKey& key) { return key.first == deviceId; });
 }
 
 void LinkService::requestPhotos(const std::string& deviceId, std::uint16_t count) {
@@ -891,11 +891,13 @@ const std::vector<LinkPhoto>* LinkService::photos(const std::string& deviceId) c
 
 std::shared_ptr<const NotificationImageData>
 LinkService::photoThumbnail(const std::string& deviceId, const std::string& path, std::uint16_t size) {
-  const auto key = std::make_pair(deviceId, path);
-  if (const auto it = m_thumbnails.find(key); it != m_thumbnails.end()) {
-    return it->second;
+  PhotoKey key{deviceId, path};
+  if (const auto* image = m_thumbnails.find(key)) {
+    return *image;
   }
-  m_thumbnails[key] = nullptr;
+  if (!m_thumbnailsLoading.insert(key).second) {
+    return nullptr;
+  }
   const std::uint64_t generation = m_photoGeneration[deviceId];
   m_link->callMethodAsync("Thumbnail")
       .onInterface(kLinkInterface)
@@ -903,37 +905,38 @@ LinkService::photoThumbnail(const std::string& deviceId, const std::string& path
       .uponReplyInvoke([this, key, generation](std::optional<sdbus::Error> error, std::vector<std::uint8_t> png) {
         logFailure("Thumbnail", error);
         if (m_photoGeneration[key.first] != generation) {
+          m_thumbnailsLoading.erase(key);
           return;
         }
-        if (error.has_value() || png.empty()) {
-          m_thumbnails.erase(key);
-          return;
-        }
-        // The decoder takes a file: write the PNG, decode it, and remove it.
-        char name[] = "/tmp/noctalia-link-thumbnail-XXXXXX";
-        const int fd = mkstemp(name);
-        if (fd < 0) {
-          m_thumbnails.erase(key);
-          return;
-        }
-        const bool wrote = write(fd, png.data(), png.size()) == static_cast<ssize_t>(png.size());
-        close(fd);
-        auto decoded = wrote ? loadImageFile(name) : std::unexpected(std::string("write failed"));
-        std::filesystem::remove(name);
-        if (!decoded) {
-          kLog.debug("thumbnail did not decode: {}", decoded.error());
-          m_thumbnails.erase(key);
-          return;
-        }
-        auto image = std::make_shared<NotificationImageData>();
-        image->width = decoded->width;
-        image->height = decoded->height;
-        image->rowStride = decoded->width * 4;
-        image->channels = 4;
-        image->hasAlpha = true;
-        image->data = std::move(decoded->rgba);
-        m_thumbnails[key] = std::move(image);
-        notify();
+        // Phone data is untrusted: the memory-safe decoder, on the worker.
+        SharedWorker::instance().post<std::shared_ptr<const NotificationImageData>>(
+            m_alive,
+            [png = std::move(png)]() -> std::shared_ptr<const NotificationImageData> {
+              auto decoded = decodeWuffsImage(png.data(), png.size());
+              if (!decoded) {
+                return nullptr;
+              }
+              auto image = std::make_shared<NotificationImageData>();
+              image->width = decoded->width;
+              image->height = decoded->height;
+              image->rowStride = decoded->width * 4;
+              image->channels = 4;
+              image->hasAlpha = true;
+              image->data = std::move(decoded->pixels);
+              return image;
+            },
+            [this, key, generation](std::shared_ptr<const NotificationImageData> image) {
+              m_thumbnailsLoading.erase(key);
+              if (m_photoGeneration[key.first] != generation) {
+                return;
+              }
+              if (image == nullptr) {
+                kLog.debug("thumbnail did not decode");
+              }
+              m_thumbnails.put(key, std::move(image));
+              notify();
+            }
+        );
       });
   return nullptr;
 }

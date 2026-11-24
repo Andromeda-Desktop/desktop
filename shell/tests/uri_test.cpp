@@ -7,6 +7,7 @@
 #include "render/core/image_encoder.h"
 #include "render/core/image_file_loader.h"
 #include "tests/test_check.h"
+#include "tests/test_deferred.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -112,6 +113,11 @@ int main() {
       const std::map<std::string, sdbus::Variant> hints{{key, sdbus::Variant(test.input)}};
       const auto id = notification_dbus::ingestNotify(manager, "uri-test", 0, "", test.input, "", {}, hints, 0);
       expectedSnapshots.emplace(id, test.expected);
+      ok = check(
+               runDeferredUntil([&] { return manager.all().back().imageData.has_value(); }),
+               std::string("no notification snapshot decoded for ") + key + ": " + test.input
+           )
+          && ok;
       const auto& notification = manager.all().back();
       TEST_CHECK(notification.id == id);
       const auto& snapshot = notification.imageData;
