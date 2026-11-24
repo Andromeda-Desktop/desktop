@@ -78,6 +78,8 @@ RULES = {
                    "portal/src/dbus/request.cpp", "indexer/src/content_worker.cpp")),
     "exit-poll": ("child exit by pidfd in libdesk-system process; the compositor reaps in core/process (C12)", CPP_DIRS,
                   CPP, r"\bWNOHANG\b", ("libdesk-system/src/core/process/", "compositor/src/core/process.cpp")),
+    "toml-include": ("toml++ through protocol/toml.h (its warning pragmas)", ("compositor/src/", "shell/src/", "libdesk-",
+                     "apps/"), CPP, r"#include\s*<toml\+\+/toml\.hpp>", ("libdesk-ui/protocols/toml.h",)),
     "heap-trim": ("heap trim via heap::releaseFree (protocol/heap.h) or sys::releaseFreeHeap in libdesk-ui (C12)",
                   CPP_DIRS, CPP, r"\bmalloc_trim\s*\(", ()),
     "sync-image": ("Image::load decides sync or async decode (C14)", ("shell/src/",), CPP,
