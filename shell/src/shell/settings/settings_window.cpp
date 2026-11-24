@@ -701,8 +701,8 @@ void SettingsWindow::destroyWindow() {
   m_configExportDialogModal.reset();
   m_editorSheetModal.reset();
   m_modalHost.detach();
-  if (m_mimeAppsWatchId != 0) {
-    m_fileWatcher->unwatch(std::exchange(m_mimeAppsWatchId, 0));
+  if (m_mimeAppsWatchId >= 0) {
+    m_fileWatcher->unwatch(std::exchange(m_mimeAppsWatchId, -1));
   }
   if (m_surface != nullptr) {
     // Drop stale pointer coords before tearing down the scene. Otherwise the next open

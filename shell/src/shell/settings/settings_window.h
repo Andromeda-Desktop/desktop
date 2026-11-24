@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/files/file_watcher.h"
 #include "core/timer_manager.h"
 #include "dbus/locale/locale_service.h"
 #include "dbus/timedate/timedate_service.h"
@@ -81,7 +82,6 @@ class IdleManager;
 class Input;
 class Label;
 class RenderContext;
-class FileWatcher;
 class SystemBus;
 class ThumbnailService;
 class UPowerService;
@@ -523,7 +523,7 @@ private:
   std::unique_ptr<LocaleService> m_localeService;
   FileWatcher* m_fileWatcher = nullptr;
   // Live while the Default Apps section is showing.
-  std::uint64_t m_mimeAppsWatchId = 0;
+  FileWatcher::WatchId m_mimeAppsWatchId = -1;
   // Set by openToBarWidget (e.g. middle-click on a bar widget) / openToPlugin and consumed after
   // the Settings scene is available so the requested editor can be mounted into it.
   std::string m_pendingOpenWidgetInspectorName;

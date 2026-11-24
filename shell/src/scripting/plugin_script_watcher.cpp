@@ -48,7 +48,7 @@ namespace scripting {
 
     const auto addWatch = [this](const std::filesystem::path& path) {
       const auto id = m_watcher->watch(path, m_callback, FileWatcher::WatchTrigger::WriteCompleted);
-      if (id != 0) {
+      if (id >= 0) {
         m_watchIds.push_back(id);
       }
     };

@@ -345,7 +345,8 @@ private:
   VirtualKeyboardService m_virtualKeyboardService;
   ConfigService m_configService;
   HttpClient m_httpClient;
-  FileWatcher m_fileWatcher;
+  DirectoryWatcher m_dirWatcher;
+  FileWatcher m_fileWatcher{m_dirWatcher};
   // The desktop interface font family; the shell draws with it while shell.font_family is empty.
   std::optional<std::string> m_systemFontFamily;
   noctalia::theme::ThemeService m_themeService{m_configService, m_httpClient};
@@ -591,7 +592,6 @@ private:
       .lockKeys{m_lockKeysService},
       .ipc{m_ipcService},
       .httpClient{m_httpClient},
-      .fileWatch{m_fileWatcher},
       .location{m_locationService},
       .weather{m_weatherService},
       .calendar{m_calendarService},

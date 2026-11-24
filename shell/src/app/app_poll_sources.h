@@ -8,7 +8,6 @@
 #include "compositors/keyboard_layout_poll_source.h"
 #include "compositors/workspace_poll_source.h"
 #include "config/config_poll_source.h"
-#include "core/files/file_watcher.h"
 #include "core/process/process_poll_source.h"
 #include "dbus/notification/notification_poll_source.h"
 #include "ipc/ipc_poll_source.h"
@@ -57,7 +56,6 @@ struct AppPollSources {
   std::unique_ptr<PolkitPollSource> polkit;
   IpcPollSource ipc;
   HttpClientPollSource httpClient;
-  FileWatchPollSource fileWatch;
   LocationPollSource location;
   WeatherPollSource weather;
   CalendarPollSource calendar;

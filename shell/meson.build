@@ -428,7 +428,6 @@ _noctalia_source_paths = [
   'src/config/cli.cpp',
   'src/config/legacy_home_move.cpp',
   'src/core/build_info.cpp',
-  'src/core/files/file_watcher.cpp',
   'src/core/shared_worker.cpp',
   'src/core/inotify/inotify.cpp',
   'src/dbus/file_manager1.cpp',

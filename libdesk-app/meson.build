@@ -145,7 +145,7 @@ executable('desk-app-sample', 'examples/sample_app.cpp',
 )
 
 _dbus_run_session = find_program('dbus-run-session')
-foreach _t : ['app_lifecycle', 'shown_timer', 'notice_keys', 'command_table', 'state_store', 'file_model', 'type_ahead', 'thumbnail_pipeline', 'batch_rename', 'file_model_bench', 'thumbnail_service']
+foreach _t : ['app_lifecycle', 'shown_timer', 'file_watcher', 'notice_keys', 'command_table', 'state_store', 'file_model', 'type_ahead', 'thumbnail_pipeline', 'batch_rename', 'file_model_bench', 'thumbnail_service']
   test(_t, executable(_t + '_test', 'tests/' + _t + '_test.cpp', dependencies: desk_app_dep, cpp_args: _warnings))
 endforeach
 # The zygote's g_thread_new interposer restarts Pango's worker in each child; the executable must export it.

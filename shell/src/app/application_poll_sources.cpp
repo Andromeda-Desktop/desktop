@@ -76,7 +76,7 @@ std::vector<PollSource*> Application::currentPollSources() {
   if (m_poll.memoryPressure != nullptr) {
     sources.push_back(m_poll.memoryPressure.get());
   }
-  sources.push_back(&m_poll.fileWatch);
+  sources.push_back(&m_dirWatcher);
   sources.push_back(&m_poll.ipc);
   sources.push_back(&m_askpassBroker);
   sources.push_back(&m_dmenuIpc);

@@ -205,6 +205,7 @@ _desk_ui_sources = files(
   'src/core/freedesktop_key_file.cpp',
   'src/core/files/directory_scanner.cpp',
   'src/core/files/file_info.cpp',
+  'src/core/files/file_watcher.cpp',
   'src/core/files/media_info.cpp',
   'src/core/files/volumes.cpp',
   'src/core/files/file_model.cpp',

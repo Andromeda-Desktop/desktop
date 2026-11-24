@@ -1,6 +1,6 @@
 #include "config/config_service.h"
 #include "core/deferred_call.h"
-#include "core/toml.h"
+#include "protocols/toml.h"
 #include "scripting/plugin_manager.h"
 #include "scripting/plugin_registry.h"
 #include "scripting/plugin_script_watcher.h"
@@ -22,6 +22,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <poll.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -541,7 +542,8 @@ int main() {
   }
 
   {
-    FileWatcher watcher;
+    DirectoryWatcher dirs;
+    FileWatcher watcher{dirs};
     scripting::PluginScriptWatcher scriptWatcher;
     int reloads = 0;
     scriptWatcher.start(&watcher, modulePluginDir / "main.luau", [&] { ++reloads; });
@@ -550,8 +552,12 @@ int main() {
     ok = expect(writeText(modulePaths.front(), "return 43\n"), "failed to modify watched module") && ok;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (reloads == 0 && std::chrono::steady_clock::now() < deadline) {
-      watcher.dispatch();
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      pollfd fd{.fd = dirs.fd(), .events = POLLIN, .revents = 0};
+      ::poll(&fd, 1, 50);
+      dirs.processEvents();
+      for (auto& fn : DeferredCall::takePending()) {
+        fn();
+      }
     }
     ok = expect(reloads == 1, "editing a required module did not trigger script reload") && ok;
   }

@@ -758,11 +758,11 @@ void PluginWidget::setupImageWatch() {
 }
 
 void PluginWidget::teardownImageWatch() {
-  if (m_imageWatchId == 0 || m_fileWatcher == nullptr) {
+  if (m_imageWatchId < 0 || m_fileWatcher == nullptr) {
     return;
   }
   m_fileWatcher->unwatch(m_imageWatchId);
-  m_imageWatchId = 0;
+  m_imageWatchId = -1;
 }
 
 void PluginWidget::reloadImage() {

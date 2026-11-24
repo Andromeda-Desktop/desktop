@@ -1,14 +1,11 @@
 #include "theme/dev_tokens.h"
 
 #include "core/log.h"
-#include "core/timer_manager.h"
 #include "design_tokens.h"
 #include "theme/builtin_palettes.h"
 
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
-#include <memory>
 #include <map>
 #include <optional>
 #include <string_view>
@@ -279,21 +276,16 @@ namespace noctalia::theme::dev_tokens {
     if (auto real = std::filesystem::canonical(path, ec); !ec) {
       path = std::move(real);
     }
-    // The watcher drops events inside its own debounce window; reading the file after a quiet period
-    // makes the last save always apply.
-    auto settle = std::make_shared<Timer>();
     watcher.watch(
         path,
-        [path, settle, onApplied = std::move(onApplied)] {
-          settle->start(std::chrono::milliseconds(200), [path, onApplied] {
-            std::string error;
-            if (applyFile(path, error)) {
-              kLog.info("reloaded design tokens from {}", path.string());
-              onApplied();
-            } else {
-              kLog.warn("{}: {}; keeping the last good tokens", path.string(), error);
-            }
-          });
+        [path, onApplied = std::move(onApplied)] {
+          std::string error;
+          if (applyFile(path, error)) {
+            kLog.info("reloaded design tokens from {}", path.string());
+            onApplied();
+          } else {
+            kLog.warn("{}: {}; keeping the last good tokens", path.string(), error);
+          }
         },
         FileWatcher::WatchTrigger::WriteCompleted
     );

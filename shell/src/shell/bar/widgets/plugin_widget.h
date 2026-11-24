@@ -166,6 +166,6 @@ private:
   bool m_imageForceReload = false;
   bool m_hasOnIpc = false;
   bool m_hasOnIpcKnown = false;
-  FileWatcher::WatchId m_imageWatchId = 0;
+  FileWatcher::WatchId m_imageWatchId = -1;
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
