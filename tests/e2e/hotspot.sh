@@ -13,6 +13,7 @@ MOCK="$(cd "$(dirname "$0")" && pwd)/mock_nm.py"
 with_noctalia '
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
   for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
+  start_andromeda_system # DeactivateConnection goes through org.andromeda.System1
   step() {
     "$NOCTALIA" msg hotspot-toggle > /dev/null
     for _ in $(seq 30); do [[ $("$NOCTALIA" msg hotspot-status) == "$1" ]] && break; sleep 0.1; done
@@ -20,7 +21,7 @@ with_noctalia '
   }
   echo "$("$NOCTALIA" msg hotspot-status)" > "$OUT/status.txt"
   step on; step off; step on
-  kill %2
+  kill %2 "$system"
 '
 cat "$OUT/calls.txt"
 [[ $(tr "\n" " " < "$OUT/status.txt") == "off on off on " ]] || { echo "FAIL: status $(tr "\n" " " < "$OUT/status.txt")"; exit 1; }

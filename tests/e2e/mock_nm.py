@@ -69,7 +69,7 @@ class Manager(Object):
     def activate(self, profile):
         self.activations += 1
         path = f"{BASE}/ActiveConnection/{self.activations}"
-        self.actives.append(Object(self.bus, path, {NM + ".Connection.Active": {"Connection": dbus.ObjectPath(profile), "Type": "802-11-wireless"}}))
+        self.actives.append(Object(self.bus, path, {NM + ".Connection.Active": {"Connection": dbus.ObjectPath(profile), "Type": "802-11-wireless", "State": dbus.UInt32(2)}}))
         self.props[NM]["ActiveConnections"] = dbus.Array([a.__dbus_object_path__ for a in self.actives], signature="o")
         self.PropertiesChanged(NM, {"ActiveConnections": self.props[NM]["ActiveConnections"]}, [])
         return dbus.ObjectPath(path)
