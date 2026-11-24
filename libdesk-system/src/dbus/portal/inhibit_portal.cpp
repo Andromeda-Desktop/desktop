@@ -3,7 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "dbus/session_bus.h"
-#include "dbus/system_bus.h"
+#include "dbus/logind/logind_service.h"
 
 #include <utility>
 
@@ -22,13 +22,7 @@ namespace {
 
 } // namespace
 
-InhibitPortal::InhibitPortal(SessionBus& bus, SystemBus* systemBus) : m_bus(bus) {
-  if (systemBus != nullptr) {
-    m_logind = sdbus::createProxy(
-        systemBus->connection(), sdbus::ServiceName{"org.freedesktop.login1"},
-        sdbus::ObjectPath{"/org/freedesktop/login1"}
-    );
-  }
+InhibitPortal::InhibitPortal(SessionBus& bus, LogindService* logind) : m_bus(bus), m_logind(logind) {
   m_object = sdbus::createObject(m_bus.connection(), kObjectPath);
   m_object
       ->addVTable(
@@ -83,23 +77,26 @@ void InhibitPortal::inhibit(
                   sdbus::registerMethod("Close").implementedAs([this, handle]() { close(handle); })
   ).forInterface(kRequestInterface);
 
+  entry.serial = ++m_nextSerial;
   const std::string who = appId.empty() ? std::string("an app") : appId;
   for (const auto& [flag, what] : {std::pair{kFlagIdle, "idle"}, std::pair{kFlagSuspend, "sleep"}}) {
     if ((flags & flag) == 0 || m_logind == nullptr) {
       continue;
     }
-    try {
-      sdbus::UnixFd fd;
-      m_logind->callMethod("Inhibit")
-          .onInterface("org.freedesktop.login1.Manager")
-          .withArguments(std::string(what), who, std::string("Inhibited through the portal"), std::string("block"))
-          .storeResultsTo(fd);
-      entry.inhibitors.push_back(std::move(fd));
-    } catch (const sdbus::Error& e) {
-      kLog.warn("logind {} inhibit for {} failed: {}", what, who, e.what());
-    }
+    m_logind->inhibit(
+        what, who, "Inhibited through the portal", "block",
+        [this, alive = std::weak_ptr<int>(m_aliveToken), handle, serial = entry.serial](ipc::Fd fd) {
+          if (alive.expired() || !fd) {
+            return;
+          }
+          const auto it = m_handles.find(handle);
+          if (it != m_handles.end() && it->second.serial == serial) {
+            it->second.inhibitors.push_back(std::move(fd));
+          }
+        }
+    );
   }
-  kLog.info("{} inhibits flags {} ({} logind locks)", who, flags, entry.inhibitors.size());
+  kLog.info("{} inhibits flags {}", who, flags);
   m_handles.insert_or_assign(handle, std::move(entry));
   if ((flags & (kFlagLogout | kFlagSuspend)) != 0 && m_changeCallback) {
     m_changeCallback();

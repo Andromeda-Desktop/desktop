@@ -8,8 +8,10 @@
 #include <string>
 #include <vector>
 
+#include "protocols/ipc_channel.h"
+
 class SessionBus;
-class SystemBus;
+class LogindService;
 
 // Serves org.freedesktop.impl.portal.Inhibit under org.freedesktop.impl.portal.desktop.andromeda.shell. Each request holds
 // logind block inhibitors (idle, sleep) until xdg-desktop-portal closes it; the shell's idle chain already honours
@@ -17,7 +19,7 @@ class SystemBus;
 // tells monitors Query End, then Ending (session-state 2, 3), so apps can save first.
 class InhibitPortal {
 public:
-  InhibitPortal(SessionBus& bus, SystemBus* systemBus);
+  InhibitPortal(SessionBus& bus, LogindService* logind);
   ~InhibitPortal();
 
   InhibitPortal(const InhibitPortal&) = delete;
@@ -38,7 +40,9 @@ public:
 private:
   struct Handle {
     std::unique_ptr<sdbus::IObject> object;
-    std::vector<sdbus::UnixFd> inhibitors;
+    // Filled as logind replies; a reply for a closed or replaced request closes its fd.
+    std::vector<ipc::Fd> inhibitors;
+    std::uint64_t serial = 0;
     std::string appId;
     std::string reason;
     std::uint32_t flags = 0;
@@ -52,7 +56,9 @@ private:
 
   SessionBus& m_bus;
   std::unique_ptr<sdbus::IObject> m_object;
-  std::unique_ptr<sdbus::IProxy> m_logind;
+  LogindService* m_logind;
+  std::uint64_t m_nextSerial = 0;
+  std::shared_ptr<int> m_aliveToken = std::make_shared<int>(0);
   std::map<std::string, Handle> m_handles;
   SessionState m_state = SessionState::Running;
   std::function<void()> m_changeCallback;

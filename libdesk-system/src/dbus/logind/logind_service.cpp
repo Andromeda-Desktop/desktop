@@ -16,7 +16,7 @@
 namespace {
   constexpr Logger kLog("logind");
 
-  const sdbus::ServiceName kLogindBusName{"org.freedesktop.login1"};
+  const sdbus::ServiceName kLogindBusName{std::string(LogindService::kBusName)};
   const sdbus::ObjectPath kLogindObjectPath{"/org/freedesktop/login1"};
   constexpr auto kLogindManagerInterface = "org.freedesktop.login1.Manager";
   constexpr auto kLogindSessionInterface = "org.freedesktop.login1.Session";
@@ -177,37 +177,47 @@ void LogindService::acquireIdleInhibit() {
   }
   m_idleInhibit = IdleInhibit::Pending;
 
+  inhibit("idle", "noctalia", "Caffeine", "block", [this](ipc::Fd fd) {
+    const bool cancelled = m_idleInhibit == IdleInhibit::PendingCancelled;
+    m_idleInhibit = IdleInhibit::None;
+    if (!fd || cancelled) {
+      return;
+    }
+    m_idleInhibitFd = fd.release();
+    m_idleInhibit = IdleInhibit::Held;
+    kLog.info("logind idle inhibit acquired");
+    if (m_idleInhibitCallback) {
+      m_idleInhibitCallback();
+    }
+  });
+}
+
+void LogindService::inhibit(
+    std::string what, std::string who, std::string why, std::string mode, InhibitCallback callback
+) {
   const std::weak_ptr<int> aliveToken = m_aliveToken;
   m_managerProxy->callMethodAsync("Inhibit")
       .onInterface(kLogindManagerInterface)
-      .withArguments(std::string("idle"), std::string("noctalia"), std::string("Caffeine"), std::string("block"))
-      .uponReplyInvoke([this, aliveToken](std::optional<sdbus::Error> e, sdbus::UnixFd fd) {
+      .withArguments(what, std::move(who), std::move(why), std::move(mode))
+      .uponReplyInvoke([aliveToken, what, callback = std::move(callback)](
+                           std::optional<sdbus::Error> e, sdbus::UnixFd reply
+                       ) {
         if (aliveToken.expired()) {
           return;
         }
-        const bool cancelled = m_idleInhibit == IdleInhibit::PendingCancelled;
-        m_idleInhibit = IdleInhibit::None;
-        const int rawFd = e.has_value() ? -1 : fd.release();
+        ipc::Fd fd;
         if (e.has_value()) {
-          kLog.warn("failed to acquire logind idle inhibit: {}", e->what());
-        } else if (cancelled) {
-          if (rawFd >= 0) {
-            ::close(rawFd);
-          }
-          return;
-        } else if (rawFd < 0) {
-          kLog.warn("logind idle inhibit returned invalid fd");
-        } else if (!setCloexec(rawFd)) {
-          kLog.warn("failed to set CLOEXEC on logind idle inhibit fd");
-          ::close(rawFd);
+          kLog.warn("logind {} inhibit failed: {}", what, e->what());
         } else {
-          m_idleInhibitFd = rawFd;
-          m_idleInhibit = IdleInhibit::Held;
-          kLog.info("logind idle inhibit acquired");
-          if (m_idleInhibitCallback) {
-            m_idleInhibitCallback();
+          fd = ipc::Fd(reply.release());
+          if (!fd) {
+            kLog.warn("logind {} inhibit returned no fd", what);
+          } else if (!setCloexec(fd.get())) {
+            kLog.warn("failed to set CLOEXEC on logind {} inhibit fd", what);
+            fd = ipc::Fd();
           }
         }
+        callback(std::move(fd));
       });
 }
 

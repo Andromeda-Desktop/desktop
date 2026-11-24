@@ -171,7 +171,7 @@ namespace {
       try {
         m_systemBus = std::make_unique<SystemBus>();
         m_systemBusPoll = std::make_unique<SystemBusPollSource>(*m_systemBus);
-        if (m_systemBus->nameHasOwner("org.freedesktop.login1")) {
+        if (m_systemBus->nameHasOwner(LogindService::kBusName)) {
           m_logind = std::make_unique<LogindService>(*m_systemBus);
         }
         m_upower = std::make_unique<UPowerService>(*m_systemBus);

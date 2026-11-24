@@ -4,6 +4,10 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
+
+#include "protocols/ipc_channel.h"
 
 class SystemBus;
 
@@ -16,6 +20,10 @@ class LogindService {
 public:
   using SessionLockCallback = std::function<void()>;
   using IdleInhibitCallback = std::function<void()>;
+  // Gets the lock fd (CLOEXEC; closing it releases the lock), or an empty Fd when logind refused.
+  using InhibitCallback = std::function<void(ipc::Fd)>;
+
+  static constexpr std::string_view kBusName = "org.freedesktop.login1";
 
   explicit LogindService(SystemBus& bus);
   ~LogindService();
@@ -34,6 +42,11 @@ public:
   void setIdleInhibitCallback(IdleInhibitCallback callback);
   void acquireIdleInhibit();
   void releaseIdleInhibit();
+
+  // The one owner of logind Inhibit (mode "block" or "delay"). Direct, not through System1: logind applies a lock
+  // to its caller's session. Async: logind can hang. The callback never runs after this service is gone; a caller
+  // that can die first checks its own lifetime.
+  void inhibit(std::string what, std::string who, std::string why, std::string mode, InhibitCallback callback);
 
 private:
   void ensureSessionLockMonitor();

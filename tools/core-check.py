@@ -88,6 +88,11 @@ RULES = {
                   ("protocol/ipc_channel.", "system/crates/andromeda-rt/src/ipc.rs")),
     "bus-name": ("the System1 and bus-daemon names come from busname:: (protocol/bus_names.h) (C13)", CPP_DIRS, CPP,
                  r"\"(org\.andromeda\.System1|org\.freedesktop\.DBus|/org/freedesktop/DBus)\"", ()),
+    "logind-direct": ("logind is reached through LogindService (Inhibit, session lock) or System1 (C13); own owners: "
+                      "compositor sleep watch, greeter (GIO launcher), Files vault guard (own GIO main loop)", CPP_DIRS, CPP,
+                      r"\"org\.freedesktop\.login1[\".]",
+                      ("libdesk-system/src/dbus/logind/logind_service.", "compositor/src/server/sleep_watch.cpp",
+                       "shell/src/greeter/", "apps/files/src/vaults.cpp")),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
                        ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",

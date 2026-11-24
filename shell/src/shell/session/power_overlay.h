@@ -6,8 +6,8 @@
 #include "render/scene/input_dispatcher.h"
 #include "shell/session/session_end_phase.h"
 #include "wayland/layer_surface.h"
+#include "protocols/ipc_channel.h"
 
-#include <sdbus-c++/sdbus-c++.h>
 
 #include <array>
 #include <functional>
@@ -30,7 +30,7 @@ class PowerConfigService;
 class SessionActionRunner;
 class SessionGuard;
 class InhibitPortal;
-class SystemBus;
+class LogindService;
 class RenderContext;
 class WaylandConnection;
 struct KeyboardEvent;
@@ -54,7 +54,7 @@ public:
   void registerIpc(IpcService& ipc);
   // Takes logind's handle-power-key block, so the key comes to us (as gnome-settings-daemon does) and follows the
   // Settings › Power choice: the power menu (logind "poweroff"), Sleep, Hibernate, Lock or nothing.
-  void setPowerKeyHandling(SystemBus* bus, const PowerConfigService* power, std::function<bool()> locked);
+  void setPowerKeyHandling(LogindService* logind, const PowerConfigService* power, std::function<bool()> locked);
   // Other users' sessions show in the session-end alert; the guard is watched while a session end runs.
   void setSessionGuard(SessionGuard* guard) { m_guard = guard; }
   // Apps that asked the Inhibit portal to delay logout join the blocker list with their reason.
@@ -142,8 +142,8 @@ private:
   bool m_holding = false;
   float m_holdProgress = 0.0F;
   AnimationManager::Id m_holdAnim = 0;
-  std::unique_ptr<sdbus::IProxy> m_logind;
-  sdbus::UnixFd m_powerKeyInhibit;
+  ipc::Fd m_powerKeyInhibit;
+  std::shared_ptr<int> m_aliveToken = std::make_shared<int>(0);
   const PowerConfigService* m_power = nullptr;
   std::function<bool()> m_locked;
   // The choices were already open when this power-key press began: a tap closes them.

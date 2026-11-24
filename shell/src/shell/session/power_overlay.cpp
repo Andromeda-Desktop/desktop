@@ -4,9 +4,9 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/ui_phase.h"
+#include "dbus/logind/logind_service.h"
 #include "dbus/logind/power_config_service.h"
 #include "dbus/portal/inhibit_portal.h"
-#include "dbus/system_bus.h"
 #include "i18n/i18n.h"
 #include "ipc/ipc_service.h"
 #include "render/render_context.h"
@@ -114,37 +114,28 @@ std::vector<std::string> PowerOverlay::takeReopenApps() {
   return apps;
 }
 
-void PowerOverlay::setPowerKeyHandling(SystemBus* bus, const PowerConfigService* power, std::function<bool()> locked) {
+void PowerOverlay::setPowerKeyHandling(
+    LogindService* logind, const PowerConfigService* power, std::function<bool()> locked
+) {
   m_power = power;
   m_locked = std::move(locked);
-  if (bus == nullptr || m_logind != nullptr) {
+  if (logind == nullptr) {
     return;
   }
-  try {
-    m_logind = sdbus::createProxy(
-        bus->connection(), sdbus::ServiceName{"org.freedesktop.login1"}, sdbus::ObjectPath{"/org/freedesktop/login1"}
-    );
-    // Direct, not through System1: logind applies a handle-* inhibitor only while its owner's session is active.
-    // Async: a slow logind must not hold the shell's first frame. The proxy owns the call, so it dies with this.
-    m_logind->callMethodAsync("Inhibit")
-        .onInterface("org.freedesktop.login1.Manager")
-        .withArguments(
-            std::string("handle-power-key"), std::string("Andromeda"),
-            std::string("The power key opens the power menu"), std::string("block")
-        )
-        .uponReplyInvoke([this](std::optional<sdbus::Error> error, sdbus::UnixFd fd) {
-          if (error.has_value()) {
-            // Without the block logind keeps acting on the key itself.
-            kLog.warn("power key stays with logind: {}", error->getMessage());
-            return;
-          }
-          m_powerKeyInhibit = std::move(fd);
-        });
-  } catch (const sdbus::Error& e) {
-    // Without the block logind keeps acting on the key itself.
-    kLog.warn("power key stays with logind: {}", e.getMessage());
-    m_logind.reset();
-  }
+  logind->inhibit(
+      "handle-power-key", "Andromeda", "The power key opens the power menu", "block",
+      [this, alive = std::weak_ptr<int>(m_aliveToken)](ipc::Fd fd) {
+        if (alive.expired()) {
+          return;
+        }
+        if (!fd) {
+          // Without the block logind keeps acting on the key itself.
+          kLog.warn("power key stays with logind");
+          return;
+        }
+        m_powerKeyInhibit = std::move(fd);
+      }
+  );
 }
 
 void PowerOverlay::powerKeyDown() {

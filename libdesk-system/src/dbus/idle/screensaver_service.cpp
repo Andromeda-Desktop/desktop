@@ -2,6 +2,7 @@
 #include "protocols/bus_names.h"
 
 #include "core/log.h"
+#include "dbus/logind/logind_service.h"
 #include "dbus/system_bus.h"
 
 #include <algorithm>
@@ -162,7 +163,7 @@ void ScreenSaverService::registerLogindIdleMonitor(SystemBus* systemBus) {
   if (systemBus == nullptr) {
     return;
   }
-  if (!systemBus->nameHasOwner("org.freedesktop.login1")) {
+  if (!systemBus->nameHasOwner(LogindService::kBusName)) {
     kLog.debug("logind unavailable; systemd idle inhibit monitor disabled");
     return;
   }

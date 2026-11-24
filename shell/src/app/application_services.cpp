@@ -1575,7 +1575,7 @@ void Application::initSystemBusServices() {
   }
 
   if (m_systemBus != nullptr) {
-    if (m_systemBus->nameHasOwner("org.freedesktop.login1")) {
+    if (m_systemBus->nameHasOwner(LogindService::kBusName)) {
       try {
         m_logindService = std::make_unique<LogindService>(*m_systemBus);
         m_powerConfigService = std::make_unique<PowerConfigService>(*m_systemBus);
@@ -1596,7 +1596,7 @@ void Application::initSystemBusServices() {
           m_settingsWindow.onPowerChanged();
           syncScheduledShutdown();
         });
-        m_powerOverlay.setPowerKeyHandling(m_systemBus.get(), m_powerConfigService.get(), [this] {
+        m_powerOverlay.setPowerKeyHandling(m_logindService.get(), m_powerConfigService.get(), [this] {
           return m_lockScreen.isActive();
         });
         m_sessionGuard.initialize(m_systemBus.get(), &m_ipcService);
@@ -2419,7 +2419,7 @@ void Application::initSessionBusServices() {
     }
 
     try {
-      m_inhibitPortal = std::make_unique<InhibitPortal>(*m_bus, m_systemBus.get());
+      m_inhibitPortal = std::make_unique<InhibitPortal>(*m_bus, m_logindService.get());
       m_inhibitPortal->setChangeCallback([this] {
         m_powerOverlay.onToplevelChange();
         syncAppActivity();
