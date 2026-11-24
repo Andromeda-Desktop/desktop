@@ -58,6 +58,7 @@ namespace {
 
 int main() {
   Gate gate;
+  FakeTextures textures; // outlives the service, which unloads its textures on destruction
   ThumbnailService service(
       [&gate](const std::string& path, int) {
         std::unique_lock lock(gate.mutex);
@@ -92,7 +93,6 @@ int main() {
   }
   gate.cv.notify_all();
 
-  FakeTextures textures;
   const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
   while (!p1Ready && std::chrono::steady_clock::now() < until) {
     std::vector<pollfd> fds;
