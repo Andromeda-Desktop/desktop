@@ -180,6 +180,14 @@ void ThumbnailService::reload(const std::string& path) {
   for (auto& [key, entry] : m_entries) {
     if (key.path == path && entry.refCount > 0) {
       entry.failed = false;
+      {
+        // A running decode may have read the old bytes: its result shows, then this decode replaces it.
+        std::scoped_lock lock(m_queueMutex);
+        if (m_running.contains(key)) {
+          m_rerun.insert(key);
+          continue;
+        }
+      }
       enqueueDecodeIfNeeded(key);
     }
   }
@@ -277,10 +285,12 @@ bool ThumbnailService::uploadPending(TextureManager& textures) {
     }
     auto& job = *it;
     bool dropped = false;
+    bool rerun = false;
     {
       std::scoped_lock lock(m_queueMutex);
       m_inFlight.erase(job.key);
       m_running.erase(job.key);
+      rerun = m_rerun.erase(job.key) > 0;
       if (auto c = m_canceled.find(job.key); c != m_canceled.end()) {
         m_canceled.erase(c);
         dropped = true;
@@ -293,6 +303,9 @@ bool ThumbnailService::uploadPending(TextureManager& textures) {
     auto entryIt = m_entries.find(job.key);
     if (entryIt == m_entries.end() || entryIt->second.refCount == 0) {
       continue;
+    }
+    if (rerun) {
+      enqueueDecodeIfNeeded(job.key);
     }
     if (job.failed || job.rgba.empty() || job.width <= 0 || job.height <= 0) {
       entryIt->second.failed = true;

@@ -112,5 +112,45 @@ int main() {
          "a released queued request never runs, a Visible acquire lifts a Prefetch one");
   expect(textures.uploads == 3, "the released running request is not uploaded: " + std::to_string(textures.uploads));
   expect(service.peek("running").id.value() == 0, "the released running request has no texture");
+
+  // A reload while the decode runs (the file changed under it, as a gallery rotate does) ends with the new pixels.
+  Gate held;
+  int version = 1; // the width the next decode reads; guarded by held.mutex
+  FakeTextures reloadTextures;
+  ThumbnailService reloading(
+      [&held, &version](const std::string&, int) {
+        std::unique_lock lock(held.mutex);
+        const int width = version;
+        held.entered = true;
+        held.cv.notify_all();
+        held.cv.wait_for(lock, std::chrono::seconds(3), [&] { return held.open; });
+        return std::optional<thumbnail_pipeline::Pixels>(
+            thumbnail_pipeline::Pixels{.rgba = std::vector<std::uint8_t>(static_cast<std::size_t>(width) * 4, 255),
+                                       .width = width, .height = 1});
+      },
+      1
+  );
+  (void)reloading.acquire("photo");
+  {
+    std::unique_lock lock(held.mutex);
+    expect(held.cv.wait_for(lock, std::chrono::seconds(3), [&] { return held.entered; }), "the worker takes the photo");
+    version = 2;
+  }
+  reloading.reload("photo");
+  {
+    std::scoped_lock lock(held.mutex);
+    held.open = true;
+  }
+  held.cv.notify_all();
+  const auto reloadUntil = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+  while (reloading.peek("photo").width != 2 && std::chrono::steady_clock::now() < reloadUntil) {
+    std::vector<pollfd> fds;
+    const std::size_t start = reloading.addPollFds(fds);
+    ::poll(fds.data(), fds.size(), 100);
+    reloading.dispatch(fds, start);
+    (void)reloading.uploadPending(reloadTextures);
+  }
+  expect(reloading.peek("photo").width == 2,
+         "a reload during the decode shows the changed file: width " + std::to_string(reloading.peek("photo").width));
   return g_failures == 0 ? 0 : 1;
 }

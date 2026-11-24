@@ -194,6 +194,7 @@ private:
   float m_stageCx = 0.0F;
   float m_stageCy = 0.0F;
   int m_photoTexW = 0;
+  float m_photoAspect = 0.0F; // width / height of the shown stage texture
   float m_pinchStartZoom = 1.0F;
   bool m_wantHundred = false; // a double-click asked for 100 % before the full-size decode told the photo's size
   float m_hundredSteps = 1.0F; // wheel zoom since that double-click, kept on top of the true 100 %

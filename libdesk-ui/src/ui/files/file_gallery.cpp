@@ -911,6 +911,20 @@ void FileGallery::doLayout(Renderer& renderer) {
     return m_thumbs != nullptr ? m_thumbs->peek(path, px) : TextureHandle{};
   };
   TextureHandle photo = texture(current, photoPx);
+  if (photo.id != 0) {
+    const float aspect = static_cast<float>(photo.width) / static_cast<float>(std::max(1, photo.height));
+    // A new aspect (another photo, or this one turned) changes the fit, which zoom multiplies: start again at fit.
+    if (std::abs(aspect - m_photoAspect) > 0.01F) {
+      m_photoAspect = aspect;
+      m_photoTexW = photo.width;
+      const bool zoomedIn = m_zoom > 1.0F;
+      resetZoom();
+      if (zoomedIn) {
+        showChrome(); // the navigator leaves for the filmstrip, as a zoom back to fit does
+      }
+      kLog.debug("gallery photo aspect {:.2f}", aspect); // tests/e2e/files_gallery.sh
+    }
+  }
   if (const TextureHandle full = zoomed ? texture(current, kZoomPx) : TextureHandle{}; full.id != 0) {
     photo = full;
     m_photoTexW = full.width;

@@ -168,6 +168,7 @@ private:
   std::unordered_set<RequestKey, RequestKeyHash> m_inFlight;
   std::unordered_set<RequestKey, RequestKeyHash> m_canceled;
   std::unordered_set<RequestKey, RequestKeyHash> m_running; // popped by a worker, result not yet taken
+  std::unordered_set<RequestKey, RequestKeyHash> m_rerun; // running ones whose file changed: decode again
   std::unordered_set<RequestKey, RequestKeyHash> m_visibleQueued; // keys with a copy in m_jobQueue
 
   mutable std::mutex m_resultMutex;

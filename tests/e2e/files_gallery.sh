@@ -180,6 +180,7 @@ shot 3b-starred
 m=$(mark); keys tap 19                        # R
 for _ in $(seq 40); do [[ $(orientation) == 6 ]] && break; sleep 0.05; done
 [[ $(orientation) == 6 ]] || fail "R did not rotate the JPEG to Orientation 6"
+wait_log "$m" "gallery photo aspect 0\.67" || fail "the gallery did not show the turned photo"
 shot 3c-rotated
 
 # Zoom (mockup section 15 right): double-click = 100 % at the pointer, the wheel zooms, a drag pans, double-click fits.
