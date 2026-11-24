@@ -770,6 +770,12 @@ namespace andromeda {
       m_desktopEnabled = finished.restore->desktopEnabled;
       m_dpmsOff = finished.restore->dpmsOff;
     }
+    // The lock focuses only active outputs: tell it once the commit settled the connector's enabled state.
+    if (run.stageGeometry && finished.result != CommitResult::Pending) {
+      if (SessionLock* lock = m_server->sessionLock()) {
+        lock->handleOutputStateChanged(*this);
+      }
+    }
     if (Ipc* ipc = m_server->ipc()) {
       ipc->notifyConfiguredWork();
     }
@@ -1667,9 +1673,6 @@ namespace andromeda {
       m_server->scheduleDisplacedViewRestore();
     }
     m_server->scheduleSuspensionSync();
-    if (SessionLock* lock = m_server->sessionLock()) {
-      lock->handleOutputStateChanged(*this);
-    }
     m_server->updateOutputManagerConfig();
     return true;
   }
