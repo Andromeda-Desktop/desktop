@@ -63,11 +63,16 @@ with_noctalia '
   settle
   panel=$("$ANDROMEDA" layers --json | jq -c "[.[] | select(.namespace | test(\"panel|launcher\"))] | max_by(.w * .h)")
   PX=$(jq .x <<< "$panel"); PY=$(jq .y <<< "$panel"); PW=$(jq .w <<< "$panel"); PH=$(jq .h <<< "$panel")
-  "$POINTER" 1280 720 move 2 2 move $((PX + PW / 2)) $((PY + PH / 2)) > /dev/null
-  wait_for "the launcher logged no selected row" logged "$OUT/noctalia.log" "launcher selected row Drop Catch at "
+  # Walk the pointer down the middle of the panel until it enters the selected row: the layout above it varies.
+  EY=""
+  for y in $(seq $((PY + 24)) 24 $((PY + PH - 12))); do
+    "$POINTER" 1280 720 move 2 2 move $((PX + PW / 2)) "$y" > /dev/null
+    poll_for 1 logged "$OUT/noctalia.log" "launcher selected row Drop Catch at " && { EY=$y; break; }
+  done
+  [[ -n $EY ]] || fail "the launcher logged no selected row"
   # The log gives the enter point in surface coordinates: the surface origin is the pointer minus it.
   read -r at rx ry rw rh <<< "$(grep -E "launcher selected row Drop Catch at " "$OUT/noctalia.log" | tail -n 1 | awk "{print \$(NF-4), \$(NF-3), \$(NF-2), \$(NF-1), \$NF}")"
-  OX=$((PX + PW / 2 - ${at%,*})); OY=$((PY + PH / 2 - ${at#*,}))
+  OX=$((PX + PW / 2 - ${at%,*})); OY=$((EY - ${at#*,}))
   SX=$((OX + ${rx%.*} + ${rw%.*} / 4)); SY=$((OY + ${ry%.*} + ${rh%.*} / 2))
   # Drop well left of the launcher, on empty desktop.
   TX=$((DX + 200)); TY=$((DY + 420))

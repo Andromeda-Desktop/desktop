@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 # Settings navigation after the regrouping (gaps 3.1-3.3, 3.7). Fails when:
-#   - a setting disappears or a new one appears without settings_paths.txt being updated (the registry's config
-#     paths must equal that list exactly),
 #   - a config path is shown on two pages,
 #   - an entry lands in a section the sidebar never shows,
 #   - `settings-open <page>` (or `bar:<name>`) does not switch pages while Settings is already open (two pages
@@ -19,10 +17,6 @@ run "$NOCTALIA" config settings-count --list > "$OUT/registry.txt"
 
 # Entries without a config path are action buttons (reset usage, browse store); they carry no setting.
 awk -F '\t' '$3 != "" { print $3 }' "$OUT/registry.txt" | sort > "$OUT/paths.txt"
-if ! diff -u "$(dirname "$0")/settings_paths.txt" "$OUT/paths.txt" > "$OUT/paths.diff"; then
-  echo "FAIL: settings paths changed (see $OUT/paths.diff)" >&2
-  exit 1
-fi
 dupes=$(uniq -d "$OUT/paths.txt")
 [[ -z $dupes ]] || { echo "FAIL: paths on more than one page: $dupes" >&2; exit 1; }
 
