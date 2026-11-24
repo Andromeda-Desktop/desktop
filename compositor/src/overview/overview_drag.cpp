@@ -24,7 +24,7 @@ namespace andromeda {
     m_dragClaimY = m_dragY;
     m_dragSamples.clear();
     m_dropThumb = nullptr;
-    m_reflows.erase(view);
+    eraseReflows(view);
     m_dragSourceWorkspace = view->workspace();
     m_dragSourceColumn = -1;
     m_dragSourceRow = -1;
@@ -380,7 +380,7 @@ namespace andromeda {
   void Overview::startDropReturn(View& view, const ov::Rect& from, const SpringConfig& spring, double vx, double vy) {
     const auto& animation = config().animation;
     const bool fade = config().appearance.reduceMotion;
-    m_reflows.erase(&view);
+    eraseReflows(&view);
     if (!animation.enabled || (!fade && !animation.overview.enabled)) {
       m_return.reset();
       return;

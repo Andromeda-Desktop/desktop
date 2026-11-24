@@ -563,7 +563,7 @@ namespace andromeda {
       }
       const Workspace* workspace = group != nullptr ? group->workspaceAt(card.workspace) : nullptr;
       const ov::Rect placed =
-          workspace != nullptr ? toLocal(reflowRect(workspace, toLayout(card.rect), reflowed)) : card.rect;
+          workspace != nullptr ? toLocal(reflowRect({.owner = workspace}, toLayout(card.rect), reflowed)) : card.rect;
       // A thumb stays in its slot and grows on the appear scale's spring, as other desktops' windows do, while it fades:
       // riding the zoom made it slide in from the frame.
       ov::Rect rect = card.kind == ov::CardKind::Thumb ? placed : travelRect(ov::cardDeskRect(in, card, row), placed);
@@ -580,7 +580,7 @@ namespace andromeda {
                static_cast<double>(box.y)},
           .kind = card.kind,
           .shown = true,
-          .opacity = workspace != nullptr ? reflowOpacity(workspace) : 1.0F,
+          .opacity = workspace != nullptr ? reflowOpacity({.owner = workspace}) : 1.0F,
           .placed = placed,
           .rect = rect,
       };
@@ -743,7 +743,8 @@ namespace andromeda {
       copy.opacity = 0.0F;
       if (place != nullptr) {
         const wlr_box& world = card.view->presentedBox();
-        const ov::Rect placed = toLocal(reflowRect(card.view, toLayout(place->rect), reflowed));
+        const ov::Rect placed =
+            toLocal(reflowRect({.owner = card.view, .role = CardRole::ThumbCopy}, toLayout(place->rect), reflowed));
         const ov::Rect rect = inThumb(*place, placed).value_or(placed);
         copy.box = layoutBox(rect, outputBox);
         copy.scale = world.width > 0 ? rect.w / world.width : 1.0;
@@ -765,7 +766,7 @@ namespace andromeda {
         continue;
       }
       const wlr_box& world = card.view->presentedBox();
-      const ov::Rect placed = toLocal(reflowRect(card.view, toLayout(place->rect), reflowed));
+      const ov::Rect placed = toLocal(reflowRect({.owner = card.view}, toLayout(place->rect), reflowed));
       ov::Rect rect;
       double opacity = 1.0;
       if (growsFromDesk(state, card)) {
@@ -797,8 +798,8 @@ namespace andromeda {
       if (filter != card.filter.target()) {
         drive(card.filter, filter, filter > card.filter.current() ? Tokens::springFade : Tokens::springFadeOut);
       }
-      card.opacity =
-          static_cast<float>(opacity * card.filter.current()) * (&card != dragCard() ? reflowOpacity(card.view) : 1.0F);
+      card.opacity = static_cast<float>(opacity * card.filter.current())
+          * (&card != dragCard() ? reflowOpacity({.owner = card.view}) : 1.0F);
       card.cut = place->clip;
       layoutCard(card, liveTarget);
     }
@@ -980,13 +981,13 @@ namespace andromeda {
     }
   }
 
-  ov::Rect Overview::reflowRect(const void* key, const ov::Rect& target, bool began) {
+  ov::Rect Overview::reflowRect(ReflowKey key, const ov::Rect& target, bool began) {
     const auto& animation = config().animation;
     const bool reduced = config().appearance.reduceMotion;
     const auto jumpFrom = [&target](const ov::Rect& last) {
       return std::array<double, 4>{last.x - target.x, last.y - target.y, last.w - target.w, last.h - target.h};
     };
-    const auto startFade = [this](const void* fadeKey, const ov::Rect& from) {
+    const auto startFade = [this](ReflowKey fadeKey, const ov::Rect& from) {
       auto it = m_reflows.find(fadeKey);
       Crossfade* fade = it != m_reflows.end() ? std::get_if<Crossfade>(&it->second) : nullptr;
       if (fade == nullptr) {
@@ -1002,7 +1003,7 @@ namespace andromeda {
       fade->opacity.steerSpring(0.0, motionSpring(Tokens::springFadeOut));
       scheduleFrames();
     };
-    if (m_return.has_value() && m_return->view.get() == key) {
+    if (m_return.has_value() && ReflowKey{.owner = m_return->view.get()} == key) {
       const DropReturn back = *m_return;
       m_return.reset();
       if (back.fade) {
@@ -1069,7 +1070,12 @@ namespace andromeda {
     return shown;
   }
 
-  float Overview::reflowOpacity(const void* key) const {
+  void Overview::eraseReflows(const View* view) {
+    m_reflows.erase({.owner = view});
+    m_reflows.erase({.owner = view, .role = CardRole::ThumbCopy});
+  }
+
+  float Overview::reflowOpacity(ReflowKey key) const {
     const auto motion = m_reflows.find(key);
     const auto* fade = motion != m_reflows.end() ? std::get_if<Crossfade>(&motion->second) : nullptr;
     return fade != nullptr ? static_cast<float>(std::clamp(fade->opacity.current(), 0.0, 1.0)) : 1.0F;
@@ -1961,6 +1967,7 @@ namespace andromeda {
         hideDropHint();
       }
       dropCard(view);
+      eraseReflows(view);
     } else if (card == nullptr && state != nullptr && view->workspace() != nullptr) {
       createCard(*state, view, view->workspace()->index());
     }
@@ -2003,6 +2010,7 @@ namespace andromeda {
       snapshotCardForClose(*card);
     }
     dropCard(view);
+    eraseReflows(view);
     // The overview keeps the focus chrome while it owns the seat, so a closed focused window hands focus to the nearest
     // survivor now rather than at zoom-out. Ask before layout detachment so the closing view still identifies its row
     // and column; the replacement is its predecessor, or the next neighbor at the leading edge.
@@ -2052,6 +2060,7 @@ namespace andromeda {
     OutputState* source = card->owner;
     if (target == nullptr) {
       dropCard(view);
+      eraseReflows(view);
       if (source != nullptr) {
         layoutOutput(*source);
         source->output->requestFrame();

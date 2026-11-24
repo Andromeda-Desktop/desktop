@@ -406,6 +406,8 @@ namespace andromeda {
     // Lay the card's chrome copy over `world`, the view's presented box, at `zoom`, or drop it with the view's chrome.
     void layoutCardChrome(Card& card, const wlr_box& world, int borderInset, double zoom, float alpha) const;
     static void syncCardBuffer(CardSurface& entry);
+    // Destroys `view`'s card but keeps its reflow motion, so a rebuilt card goes on moving; a card that leaves the
+    // overview also calls eraseReflows.
     void dropCard(View* view);
     void rebuildCard(View* view);
     [[nodiscard]] OutputState* stateFor(const Output* output);
@@ -619,8 +621,19 @@ namespace andromeda {
     // Reflow: a card or workspace card whose placed rect jumped in a structural change (or a reduced-motion row jump)
     // glides from where it was drawn: an offset from its new place springs to zero on the glide's own spring, so a
     // second jump keeps its speed. Under reduced motion it crossfades instead (rulebook 7.8): out where it was on
-    // `fade_out`, then in at its place on `fade`. Keys are View and Workspace pointers, rects are layout coordinates
-    // before the open progress, so a card rebuilt or dropped on another output still moves.
+    // `fade_out`, then in at its place on `fade`. A key is a Workspace, or a View with the role of its card (a window
+    // and its copy in the shown workspace's thumb have different places); rects are layout coordinates before the
+    // open progress, so a card rebuilt or dropped on another output still moves.
+    struct ReflowKey {
+      const void* owner = nullptr;
+      CardRole role = CardRole::Window;
+      constexpr bool operator==(const ReflowKey&) const = default;
+    };
+    struct ReflowKeyHash {
+      std::size_t operator()(const ReflowKey& key) const noexcept {
+        return std::hash<const void*>{}(key.owner) ^ static_cast<std::size_t>(key.role);
+      }
+    };
     struct Glide {
       std::array<AnimatedValue, 4> offset; // x, y, w, h minus the target's
       SpringConfig spring;
@@ -631,11 +644,13 @@ namespace andromeda {
       Phase phase = Phase::Out;
       AnimatedValue opacity{1.0};
     };
-    std::unordered_map<const void*, ov::Rect> m_shownRects;
-    std::unordered_map<const void*, std::variant<Glide, Crossfade>> m_reflows;
-    ov::Rect reflowRect(const void* key, const ov::Rect& target, bool began);
+    std::unordered_map<ReflowKey, ov::Rect, ReflowKeyHash> m_shownRects;
+    std::unordered_map<ReflowKey, std::variant<Glide, Crossfade>, ReflowKeyHash> m_reflows;
+    ov::Rect reflowRect(ReflowKey key, const ov::Rect& target, bool began);
+    // Drops the motion of `view`'s card and of its thumb copy.
+    void eraseReflows(const View* view);
     // Opacity factor a crossfade puts on `key`'s card: 1 unless it is fading.
-    [[nodiscard]] float reflowOpacity(const void* key) const;
+    [[nodiscard]] float reflowOpacity(ReflowKey key) const;
     // Steers `value` to `to` on the rulebook `spring`; instant with animations off.
     static void drive(AnimatedValue& value, double to, const Tokens::Spring& spring);
     // A released card waiting for the first layout that knows its slot. That layout turns it into the card's reflow:
