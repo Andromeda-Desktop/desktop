@@ -457,13 +457,25 @@ void Application::initIpc() {
     return "ok\n"; // No active notification carries a default action; nothing to do.
   });
 
-  // The toast's buttons, reply field, and close button, for the newest notification that offers them.
+  // The buttons, reply field, and close button of the newest notification that offers them: a toast, else an expired
+  // one whose actions the center still offers.
   const auto latestWithAction = [this](const std::string& key) -> const Notification* {
-    for (const auto& notification : std::views::reverse(m_notificationManager.all())) {
+    const auto offers = [&key](const Notification& notification) {
       for (std::size_t i = 0; i + 1 < notification.actions.size(); i += 2) {
         if (notification.actions[i] == key) {
-          return &notification;
+          return true;
         }
+      }
+      return false;
+    };
+    for (const auto& notification : std::views::reverse(m_notificationManager.all())) {
+      if (offers(notification)) {
+        return &notification;
+      }
+    }
+    for (const auto& entry : std::views::reverse(m_notificationManager.history())) {
+      if (offers(entry.notification) && m_notificationManager.canInvokeActions(entry.notification.id)) {
+        return &entry.notification;
       }
     }
     return nullptr;

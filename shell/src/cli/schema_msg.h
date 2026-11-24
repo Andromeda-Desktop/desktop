@@ -718,7 +718,7 @@ namespace noctalia::cli {
     };
     inline constexpr Command notificationActionLatest{
         "notification-action-latest",
-        "Invoke an action of the most recent active notification that has it",
+        "Invoke an action of the most recent notification that still offers it (a toast or a center entry)",
         {},
         {},
         {},

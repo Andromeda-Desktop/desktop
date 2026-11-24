@@ -1030,6 +1030,7 @@ namespace launcher_detail {
       accessible.name = result.title;
       accessible.description = result.subtitle;
       accessible.selected = selected;
+      accessible.actionName = "activate";
     }
 
   protected:
