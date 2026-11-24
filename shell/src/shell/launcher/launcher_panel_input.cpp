@@ -26,7 +26,7 @@ bool LauncherPanel::handleGlobalKey(std::uint32_t sym, std::uint32_t modifiers, 
 
   const bool nextCategory = KeybindMatcher::matches(KeybindAction::CategoryNext, sym, modifiers);
   if ((nextCategory || KeybindMatcher::matches(KeybindAction::CategoryPrevious, sym, modifiers))
-      && !m_categoryFilterSlots.empty()) {
+      && !m_categoryFilterSlots.empty() && !filesScope() && modeProviderId().empty()) {
     const std::size_t count = m_categoryFilterSlots.size();
     setActiveCategorySlot((m_activeCategorySlotIndex + (nextCategory ? 1 : count - 1)) % count);
     return true;
