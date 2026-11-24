@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -61,6 +62,10 @@ namespace i18n {
       {"zh-Hans", "简体中文"},
       {"zh-Hant", "繁體中文"},
   }};
+
+  // Merges the string leaves of the JSON object in `path` into `out` as dotted keys.
+  // Returns false when the file is missing or is not a JSON object.
+  bool mergeCatalogFile(const std::filesystem::path& path, Catalog& out);
 
   // Loads translation catalogs and resolves dotted keys against them.
   // English is always loaded as a fallback alongside the active language.

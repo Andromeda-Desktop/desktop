@@ -1,5 +1,7 @@
 #pragma once
 
+#include "i18n/i18n_service.h"
+
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -16,7 +18,7 @@ namespace scripting {
     translate(std::string_view key, const std::unordered_map<std::string, std::string>& subst = {}) const;
 
   private:
-    std::unordered_map<std::string, std::string> m_values;
+    i18n::Catalog m_values;
   };
 
 } // namespace scripting

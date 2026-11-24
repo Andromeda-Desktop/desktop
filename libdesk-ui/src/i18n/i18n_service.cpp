@@ -50,8 +50,7 @@ namespace i18n {
     return s_instance;
   }
 
-  bool Service::loadCatalog(std::string_view lang, Catalog& out) const {
-    const std::filesystem::path path = paths::assetPath("translations/" + std::string(lang) + ".json");
+  bool mergeCatalogFile(const std::filesystem::path& path, Catalog& out) {
     std::ifstream file(path);
     if (!file.is_open()) {
       return false;
@@ -62,14 +61,21 @@ namespace i18n {
         kLog.warn("catalog {} is not a JSON object", path.string());
         return false;
       }
-      Catalog fresh;
-      flatten(json, {}, fresh);
-      out = std::move(fresh);
+      flatten(json, {}, out);
       return true;
     } catch (const std::exception& e) {
       kLog.error("failed to parse {}: {}", path.string(), e.what());
       return false;
     }
+  }
+
+  bool Service::loadCatalog(std::string_view lang, Catalog& out) const {
+    Catalog fresh;
+    if (!mergeCatalogFile(paths::assetPath("translations/" + std::string(lang) + ".json"), fresh)) {
+      return false;
+    }
+    out = std::move(fresh);
+    return true;
   }
 
   void Service::init(std::string_view preferredLang) {
