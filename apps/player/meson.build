@@ -49,11 +49,12 @@ executable('andromeda-player',
     'src/video_surface.cpp',
   ),
   dependencies: [_desk_app_dep, _mpv_headers, dependency('libavformat'), dependency('libavutil'), dependency('wayland-egl'), dependency('egl'), dependency('dl')],
-  cpp_args: _warnings,
+  cpp_args: _warnings + ['-DANDROMEDA_TRANSLATIONS_DIR="' + meson.current_source_dir() / 'translations' + '"'],
   install: true,
 )
 
 install_data('data/dev.andromeda.Player.desktop', install_dir: get_option('datadir') / 'applications')
+install_data('translations/en.json', install_dir: get_option('datadir') / 'andromeda' / 'translations' / 'player')
 # DBusActivatable=true in the .desktop file: the bus starts the app by its id, then calls Activate or Open.
 configure_file(
   input: 'data/dev.andromeda.Player.service.in',

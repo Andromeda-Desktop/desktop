@@ -1,0 +1,41 @@
+{
+  "commands": {
+    "player-play-pause": "Play/Pause",
+    "player-forward": "Forward 10 Seconds",
+    "player-volume-up": "Volume Up",
+    "player-volume-down": "Volume Down",
+    "player-back": "Back 10 Seconds",
+    "go-back": "Back",
+    "go-forward": "Forward",
+    "player-next": "Next",
+    "player-previous": "Previous",
+    "view-pip": "Picture in Picture",
+    "player-subtitles": "Next Subtitle Track",
+    "view-fullscreen": "Full Screen",
+    "view-leave-fullscreen": "Leave Full Screen",
+    "player-mute": "Mute"
+  },
+  "menu": {
+    "playback": "Playback"
+  },
+  "library": {
+    "now-playing": "Now Playing",
+    "albums": "Albums",
+    "artists": "Artists",
+    "songs": "Songs",
+    "playlists": "Playlists",
+    "song-count": "{count} song",
+    "song-count-plural": "{count} songs",
+    "play": "Play",
+    "shuffle": "Shuffle"
+  },
+  "pip": {
+    "title": "Picture in Picture",
+    "playing": "Playing in Picture in Picture"
+  },
+  "empty": {
+    "title": "No video",
+    "hint": "Open a video from Files"
+  },
+  "subtitles-off": "Off"
+}

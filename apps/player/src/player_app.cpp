@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "i18n/i18n.h"
 #include "idle-inhibit-unstable-v1-client-protocol.h"
 #include "mpris_server.h"
 #include "music_library.h"
@@ -58,7 +59,9 @@ namespace {
   }
 } // namespace
 
-PlayerApp::PlayerApp() : DeskApp({.id = kAppId, .name = "Player"}) {}
+PlayerApp::PlayerApp() : DeskApp({.id = kAppId, .name = "Player"}) {
+  i18n::Service::instance().addDomain("player", ANDROMEDA_TRANSLATIONS_DIR);
+}
 
 PlayerApp::~PlayerApp() {
   if (m_inhibitor != nullptr) {
@@ -71,6 +74,7 @@ PlayerApp::~PlayerApp() {
 }
 
 void PlayerApp::startup() {
+  commands().setGroupTitle("Playback", i18n::tr("player.menu.playback"));
   loop().addSource(&m_mpv);
   m_artCache.initialize(&loop().gl());
   m_artCache.setMakeCurrentCallback([this] { (void)loop().renderContext().backend().makeCurrentNoSurface(); });
@@ -91,20 +95,20 @@ void PlayerApp::startup() {
         }
     );
   }
-  commands().add({.id = "player.play-pause", .label = "Play/Pause", .group = "Playback",
+  commands().add({.id = "player.play-pause", .label = i18n::tr("player.commands.player-play-pause"), .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_space, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.togglePause(); }});
-  commands().add({.id = "player.forward", .label = "Forward 10 Seconds", .group = "Playback",
+  commands().add({.id = "player.forward", .label = i18n::tr("player.commands.player-forward"), .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_Right, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.seekBy(10.0); }});
   // mpv volume-max is 130; the level is saved across launches (onPlayerChanged).
-  commands().add({.id = "player.volume-up", .label = "Volume Up", .group = "Playback",
+  commands().add({.id = "player.volume-up", .label = i18n::tr("player.commands.player-volume-up"), .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_Up, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.setVolume(std::min(130.0, m_mpv.state().volume + 5.0)); }});
-  commands().add({.id = "player.volume-down", .label = "Volume Down", .group = "Playback",
+  commands().add({.id = "player.volume-down", .label = i18n::tr("player.commands.player-volume-down"), .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_Down, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.setVolume(std::max(0.0, m_mpv.state().volume - 5.0)); }});
-  commands().add({.id = "player.back", .label = "Back 10 Seconds", .group = "Playback",
+  commands().add({.id = "player.back", .label = i18n::tr("player.commands.player-back"), .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_Left, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.seekBy(-10.0); }});
   const char* music = g_get_user_special_dir(G_USER_DIRECTORY_MUSIC);
@@ -116,37 +120,37 @@ void PlayerApp::startup() {
       m_window->requestRebuild();
     }
   });
-  commands().add({.id = "go.back", .label = "Back", .group = "Go",
+  commands().add({.id = "go.back", .label = i18n::tr("player.commands.go-back"), .group = "Go",
                   .shortcut = KeyChord{.sym = XKB_KEY_Left, .modifiers = KeyMod::Alt},
                   .enabled = [this] { return m_openAlbum.has_value() || m_openPlaylist.has_value() || !m_openArtist.empty(); },
                   .run = [this] { libraryBack(); }});
-  commands().add({.id = "go.forward", .label = "Forward", .group = "Go",
+  commands().add({.id = "go.forward", .label = i18n::tr("player.commands.go-forward"), .group = "Go",
                   .shortcut = KeyChord{.sym = XKB_KEY_Right, .modifiers = KeyMod::Alt},
                   .enabled = [this] { return !m_forward.empty(); }, .run = [this] { libraryForward(); }});
-  commands().add({.id = "player.next", .label = "Next", .group = "Playback",
+  commands().add({.id = "player.next", .label = i18n::tr("player.commands.player-next"), .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_n, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.next(); }});
-  commands().add({.id = "player.previous", .label = "Previous", .group = "Playback",
+  commands().add({.id = "player.previous", .label = i18n::tr("player.commands.player-previous"), .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_b, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.previous(); }});
-  commands().add({.id = "view.pip", .label = "Picture in Picture", .group = "View",
+  commands().add({.id = "view.pip", .label = i18n::tr("player.commands.view-pip"), .group = "View",
                   .shortcut = KeyChord{.sym = XKB_KEY_p, .modifiers = 0}, .enabled = {},
                   .run = [this] { DeferredCall::callLater([this] { togglePip(); }); }});
-  commands().add({.id = "player.subtitles", .label = "Next Subtitle Track", .group = "Playback",
+  commands().add({.id = "player.subtitles", .label = i18n::tr("player.commands.player-subtitles"), .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_c, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.cycleSubtitles(); }});
-  commands().add({.id = "view.fullscreen", .label = "Full Screen", .group = "View",
+  commands().add({.id = "view.fullscreen", .label = i18n::tr("player.commands.view-fullscreen"), .group = "View",
                   .shortcut = KeyChord{.sym = XKB_KEY_f, .modifiers = 0}, .enabled = {},
                   .run = [this] {
                     if (m_window != nullptr) {
                       m_window->toggleFullscreen();
                     }
                   }});
-  commands().add({.id = "view.leave-fullscreen", .label = "Leave Full Screen", .group = "View",
+  commands().add({.id = "view.leave-fullscreen", .label = i18n::tr("player.commands.view-leave-fullscreen"), .group = "View",
                   .shortcut = KeyChord{.sym = XKB_KEY_Escape, .modifiers = 0},
                   .enabled = [this] { return m_window != nullptr && m_window->fullscreen(); },
                   .run = [this] { m_window->toggleFullscreen(); }});
-  commands().add({.id = "player.mute", .label = "Mute", .group = "Playback",
+  commands().add({.id = "player.mute", .label = i18n::tr("player.commands.player-mute"), .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_m, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.toggleMute(); }});
 }
@@ -227,7 +231,7 @@ void PlayerApp::togglePip() {
   }
   AppWindow& pip = addWindow({
       .appId = info().id + ".PiP",
-      .title = "Picture in Picture",
+      .title = i18n::tr("player.pip.title"),
       .stateKey = "pip",
       .width = 400,
       .height = 225,
@@ -575,10 +579,10 @@ void PlayerApp::updateSidebar() {
   m_window->setSidebarBuilder([this](Renderer&, float width, float) {
     const float s = m_window->uiScale();
     auto list = ui::column({.align = FlexAlign::Stretch, .gap = 2.0F * s, .padding = Style::spaceSm * s, .width = width});
-    const auto row = [&](const char* label, const char* glyph, LibraryView view) {
+    const auto row = [&](std::string label, const char* glyph, LibraryView view) {
       const bool current = m_view == view;
       list->addChild(ui::button({
-          .text = std::string(label),
+          .text = std::move(label),
           .glyph = std::string(glyph),
           .glyphSize = 16.0F * s,
           .selected = current,
@@ -590,12 +594,12 @@ void PlayerApp::updateSidebar() {
       }));
     };
     if (!m_mpv.state().idle) {
-      row("Now Playing", "player-play", LibraryView::NowPlaying);
+      row(i18n::tr("player.library.now-playing"), "player-play", LibraryView::NowPlaying);
     }
-    row("Albums", "disc", LibraryView::Albums);
-    row("Artists", "microphone-2", LibraryView::Artists);
-    row("Songs", "music", LibraryView::Songs);
-    row("Playlists", "playlist", LibraryView::Playlists);
+    row(i18n::tr("player.library.albums"), "disc", LibraryView::Albums);
+    row(i18n::tr("player.library.artists"), "microphone-2", LibraryView::Artists);
+    row(i18n::tr("player.library.songs"), "music", LibraryView::Songs);
+    row(i18n::tr("player.library.playlists"), "playlist", LibraryView::Playlists);
     return list;
   });
 }
@@ -725,7 +729,7 @@ std::unique_ptr<Node> PlayerApp::buildLibrary(Renderer& renderer, float s, float
         .onClick = std::move(onClick),
     }));
   };
-  const auto songs = [](std::size_t n) { return std::format("{} {}", n, n == 1 ? "song" : "songs"); };
+  const auto songs = [](std::size_t n) { return i18n::trp("player.library.song-count", static_cast<long>(n)); };
   const auto trackRow = [&](const MusicTrack& t, std::size_t number, std::function<void()> onClick) {
     row(std::format("{:>2}   {}   {}", number, t.title, clock(t.duration)), std::move(onClick));
   };
@@ -792,10 +796,10 @@ std::unique_ptr<Node> PlayerApp::buildLibrary(Renderer& renderer, float s, float
                                                   songs(album.tracks.size())),
                               .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label2)}));
     auto actions = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * s});
-    actions->addChild(ui::button({.text = std::string("Play"), .glyph = std::string("player-play"),
+    actions->addChild(ui::button({.text = i18n::tr("player.library.play"), .glyph = std::string("player-play"),
                                   .variant = ButtonVariant::Primary,
                                   .onClick = [this, a = *m_openAlbum] { playAlbumAt(a, 0); }}));
-    actions->addChild(ui::button({.text = std::string("Shuffle"), .glyph = std::string("arrows-shuffle"),
+    actions->addChild(ui::button({.text = i18n::tr("player.library.shuffle"), .glyph = std::string("arrows-shuffle"),
                                   .onClick = [this, a = *m_openAlbum] { playAlbumShuffled(a); }}));
     info->addChild(std::move(actions));
     header->addChild(std::move(info));
@@ -821,7 +825,7 @@ std::unique_ptr<Node> PlayerApp::buildLibrary(Renderer& renderer, float s, float
   switch (m_view) {
   case LibraryView::NowPlaying:
   case LibraryView::Albums:
-    heading("Albums", {});
+    heading(i18n::tr("player.library.albums"), {});
     albumRows({});
     break;
   case LibraryView::Artists:
@@ -830,7 +834,7 @@ std::unique_ptr<Node> PlayerApp::buildLibrary(Renderer& renderer, float s, float
       albumRows(m_openArtist);
       break;
     }
-    heading("Artists", {});
+    heading(i18n::tr("player.library.artists"), {});
     {
       std::vector<std::string> artists;
       for (const MusicAlbum& album : albums) {
@@ -847,7 +851,7 @@ std::unique_ptr<Node> PlayerApp::buildLibrary(Renderer& renderer, float s, float
     }
     break;
   case LibraryView::Songs: {
-    heading("Songs", songs(tracks.size()));
+    heading(i18n::tr("player.library.songs"), songs(tracks.size()));
     // Songs in library order (artist, album, disc, track): a click plays from there to the end.
     for (std::size_t a = 0, n = 0; a < albums.size(); ++a) {
       for (const std::size_t i : albums[a].tracks) {
@@ -859,7 +863,7 @@ std::unique_ptr<Node> PlayerApp::buildLibrary(Renderer& renderer, float s, float
     break;
   }
   case LibraryView::Playlists:
-    heading("Playlists", {});
+    heading(i18n::tr("player.library.playlists"), {});
     for (std::size_t p = 0; p < m_library->playlists().size(); ++p) {
       const MusicPlaylist& playlist = m_library->playlists()[p];
       row(std::format("{}  ·  {}", playlist.name, songs(playlist.entries.size())), [this, p] {
@@ -985,7 +989,7 @@ std::unique_ptr<Node> PlayerApp::buildContent(Renderer& renderer, float width, f
     away->setFill(colorSpecFromRole(ColorRole::SolidRegular));
     away->addChild(ui::glyph({.glyph = std::string("picture-in-picture"), .glyphSize = 48.0F * s,
                               .color = colorSpecFromRole(ColorRole::Label3)}));
-    away->addChild(ui::label({.text = std::string("Playing in Picture in Picture"), .fontSize = Style::fontSizeBody * s,
+    away->addChild(ui::label({.text = i18n::tr("player.pip.playing"), .fontSize = Style::fontSizeBody * s,
                               .color = colorSpecFromRole(ColorRole::Label2)}));
     pane->addChild(std::move(away));
   } else if (libraryShown() && !(m_view == LibraryView::NowPlaying && !st.idle)) {
@@ -998,9 +1002,9 @@ std::unique_ptr<Node> PlayerApp::buildContent(Renderer& renderer, float width, f
     empty->setFill(colorSpecFromRole(ColorRole::SolidRegular));
     empty->addChild(ui::glyph({.glyph = std::string("movie"), .glyphSize = 48.0F * s,
                                .color = colorSpecFromRole(ColorRole::Label3)}));
-    empty->addChild(ui::label({.text = std::string("No video"),
+    empty->addChild(ui::label({.text = i18n::tr("player.empty.title"),
                                .fontSize = Tokens::typeTitle3.size * s, .color = colorSpecFromRole(ColorRole::Label1)}));
-    empty->addChild(ui::label({.text = std::string("Open a video from Files"), .fontSize = Style::fontSizeBody * s,
+    empty->addChild(ui::label({.text = i18n::tr("player.empty.hint"), .fontSize = Style::fontSizeBody * s,
                                .color = colorSpecFromRole(ColorRole::Label2)}));
     pane->addChild(std::move(empty));
   }
@@ -1052,7 +1056,7 @@ std::unique_ptr<Node> PlayerApp::buildContent(Renderer& renderer, float width, f
                            .width = 56.0F * s}));
   if (st.subtitleTracks > 0) {
     bar->addChild(ui::button({
-        .text = st.subtitle.empty() ? std::string("Off") : st.subtitle,
+        .text = st.subtitle.empty() ? i18n::tr("player.subtitles-off") : st.subtitle,
         .glyph = std::string("badge-cc"),
         .glyphSize = 18.0F * s,
         .variant = ButtonVariant::Ghost,
