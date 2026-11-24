@@ -214,6 +214,9 @@ int main(int argc, char** argv) {
   // Some placeholders and browse folders derive from the home and XDG directories.
   ::setenv("HOME", "/nonexistent-home", 1);
   ::setenv("XDG_CONFIG_HOME", "/nonexistent-home/.config", 1);
+  // Sound theme options list the host's installed themes.
+  ::setenv("XDG_DATA_HOME", "/nonexistent-home/.local/share", 1);
+  ::setenv("XDG_DATA_DIRS", "/nonexistent-data", 1);
   ::unsetenv("XDG_PICTURES_DIR");
   const std::vector<std::string_view> args(argv + 1, argv + argc);
   if (args.size() == 2 && args[0] == "--write-fixture") {
