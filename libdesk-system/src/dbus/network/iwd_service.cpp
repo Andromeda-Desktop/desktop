@@ -113,8 +113,8 @@ IwdService::~IwdService() = default;
 
 void IwdService::setChangeCallback(ChangeCallback callback) { m_changeCallback = std::move(callback); }
 
-void IwdService::setSecretAgent(IwdSecretAgent* agent) {
-  m_secretAgent = agent;
+void IwdService::setSecretAgent(std::unique_ptr<IwdSecretAgent> agent) {
+  m_secretAgent = std::move(agent);
   if (m_secretAgent != nullptr) {
     m_secretAgent->setRequestCallback([this](const IwdSecretAgent::SecretRequest& request) {
       (void)request;

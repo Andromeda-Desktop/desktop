@@ -24,7 +24,7 @@ namespace {
 
   constexpr Logger kLog("network");
 
-  const sdbus::ServiceName kNmBusName{"org.freedesktop.NetworkManager"};
+  const sdbus::ServiceName kNmBusName{std::string(NetworkManagerService::kBusName)};
   const sdbus::ObjectPath kNmObjectPath{"/org/freedesktop/NetworkManager"};
   constexpr auto kNmInterface = "org.freedesktop.NetworkManager";
   constexpr auto kNmDeviceInterface = "org.freedesktop.NetworkManager.Device";

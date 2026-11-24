@@ -1348,6 +1348,7 @@ if build_tests
     'log',
     'math_provider',
     'monitor_selector',
+    'network_backend',
     'network_display',
     'network_manager_security',
     'focus',

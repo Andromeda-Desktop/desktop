@@ -45,7 +45,7 @@ public:
   void forgetSsid(const std::string& ssid) override;
   [[nodiscard]] bool hasSavedConnection(const std::string& ssid) const override;
 
-  void setSecretAgent(class IwdSecretAgent* agent);
+  void setSecretAgent(std::unique_ptr<class IwdSecretAgent> agent);
 
 private:
   void subscribeObject(
@@ -64,7 +64,7 @@ private:
   std::unordered_map<std::string, std::string> m_deviceNames;
   std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> m_objectProxies;
   std::unique_ptr<sdbus::IProxy> m_connectProxy; // keeps an in-flight async Connect alive
-  IwdSecretAgent* m_secretAgent = nullptr;
+  std::unique_ptr<IwdSecretAgent> m_secretAgent;
   std::string m_pendingPsk;
   bool m_hasStateSnapshot = false;
   bool m_refreshInFlight = false;

@@ -63,6 +63,7 @@ _sources = files(
   'src/dbus/network/network_lock_client.cpp',
   'src/dbus/network/iwd_secret_agent.cpp',
   'src/dbus/network/iwd_service.cpp',
+  'src/dbus/network/network_backend.cpp',
   'src/dbus/network/network_display.cpp',
   'src/dbus/network/network_manager_service.cpp',
   'src/dbus/network/network_secret_agent.cpp',

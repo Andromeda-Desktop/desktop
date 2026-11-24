@@ -23,6 +23,8 @@ namespace sdbus {
 
 class NetworkManagerService : public INetworkService {
 public:
+  static constexpr std::string_view kBusName = "org.freedesktop.NetworkManager";
+
   using ChangeCallback = std::function<void(const NetworkState&, NetworkChangeOrigin)>;
 
   explicit NetworkManagerService(SystemBus& bus);

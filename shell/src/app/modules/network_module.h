@@ -1,8 +1,8 @@
 #pragma once
 
 #include "app/service_host.h"
-#include "dbus/network/inetwork_service.h"
-#include "dbus/network/iwd_secret_agent.h"
+#include "dbus/name_owner_watch.h"
+#include "dbus/network/network_backend.h"
 #include "dbus/network/network_secret_agent.h"
 
 #include <functional>
@@ -10,7 +10,8 @@
 
 class SystemBus;
 
-// NetworkManager, else wpa_supplicant, else iwd. The service is null when none is available.
+// NetworkManager while it owns its bus name, else wpa_supplicant, else iwd (NetworkBackend). The service is null only
+// when the NetworkManager service cannot be built.
 class NetworkModule final : public ServiceModule {
 public:
   struct Hooks {
@@ -29,9 +30,11 @@ public:
   [[nodiscard]] NetworkSecretAgent* secretAgent() const noexcept { return m_secretAgent.get(); }
 
 private:
+  [[nodiscard]] std::unique_ptr<INetworkService> makeStandalone();
+
   SystemBus& m_bus;
   Hooks m_hooks;
-  std::unique_ptr<INetworkService> m_service;
+  std::unique_ptr<NetworkBackend> m_service;
   std::unique_ptr<NetworkSecretAgent> m_secretAgent;
-  std::unique_ptr<IwdSecretAgent> m_iwdSecretAgent;
+  NameOwnerWatch m_nmOwner;
 };
