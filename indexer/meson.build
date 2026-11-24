@@ -18,9 +18,11 @@ core = static_library('index-core',
   'src/document_kind.cpp',
   'src/text_extract.cpp',
   'src/content_worker.cpp',
+  'protocols/ipc_channel.cpp',
+  include_directories: include_directories('.'),
   dependencies: [sqlite_dep, dependency('threads')],
 )
-core_dep = declare_dependency(link_with: core, include_directories: include_directories('src'), dependencies: [sqlite_dep, dependency('threads')])
+core_dep = declare_dependency(link_with: core, include_directories: include_directories('src', '.'), dependencies: [sqlite_dep, dependency('threads')])
 
 index_exe = executable('andromeda-index', 'src/main.cpp', dependencies: core_dep, install: true)
 extract_exe = executable('andromeda-index-extract', 'src/extract_main.cpp', 'src/extract.cpp', 'src/metadata_extract.cpp', dependencies: [core_dep, extract_deps],

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "index_db.h"
+#include "protocols/ipc_channel.h"
 
 #include <poll.h>
 
@@ -44,9 +45,16 @@ namespace andromeda::index {
     // Reads what the client sent and answers each full line; false when the client is gone or misbehaves.
     bool serve(int fd);
 
+    struct Client {
+      ipc::Fd conn;
+      ipc::LineReader reader;
+      ipc::ClientSlots::Slot slot;
+    };
+
     const IndexDb& m_db;
     int m_listen = -1;
-    std::unordered_map<int, std::string> m_clients; // fd -> unanswered partial line
+    ipc::ClientSlots m_slots{32};
+    std::unordered_map<int, Client> m_clients; // by conn fd
   };
 
 } // namespace andromeda::index

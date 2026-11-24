@@ -38,9 +38,7 @@ namespace andromeda::index {
   QueryServer::QueryServer(const IndexDb& db, int listenFd) : m_db(db), m_listen(listenFd) {}
 
   QueryServer::~QueryServer() {
-    for (const auto& [fd, pending] : m_clients) {
-      close(fd);
-    }
+    m_clients.clear();
     if (m_listen >= 0) {
       close(m_listen);
     }
@@ -71,7 +69,7 @@ namespace andromeda::index {
 
   void QueryServer::addPollFds(std::vector<pollfd>& fds) const {
     fds.push_back({.fd = m_listen, .events = POLLIN, .revents = 0});
-    for (const auto& [fd, pending] : m_clients) {
+    for (const auto& [fd, client] : m_clients) {
       fds.push_back({.fd = fd, .events = POLLIN, .revents = 0});
     }
   }
@@ -84,7 +82,6 @@ namespace andromeda::index {
       if (p.fd == m_listen) {
         accept();
       } else if (!serve(p.fd)) {
-        close(p.fd);
         m_clients.erase(p.fd);
       }
     }
@@ -92,47 +89,38 @@ namespace andromeda::index {
 
   void QueryServer::accept() {
     while (true) {
-      const int fd = accept4(m_listen, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
-      if (fd < 0) {
+      auto peer = ipc::acceptPeer(m_listen, SOCK_NONBLOCK);
+      if (!peer) {
+        if (errno == EACCES) {
+          continue; // another user, or a peer without a pidfd
+        }
         return;
       }
-      m_clients.emplace(fd, std::string{});
+      auto slot = m_slots.acquire();
+      if (!slot) {
+        continue; // the client sees end of file
+      }
+      const int fd = peer->conn.get();
+      m_clients.emplace(fd, Client{.conn = std::move(peer->conn), .reader = ipc::LineReader(kMaxLine), .slot = std::move(*slot)});
     }
   }
 
   bool QueryServer::serve(int fd) {
-    std::string& pending = m_clients[fd];
-    std::array<char, 4096> buffer{};
+    ipc::LineReader& reader = m_clients.at(fd).reader;
     // A client that half-closes after its request still gets the answer.
-    bool closed = false;
-    while (true) {
-      const ssize_t n = read(fd, buffer.data(), buffer.size());
-      if (n == 0) {
-        closed = true;
-        break;
-      }
-      if (n < 0) {
-        if (errno != EAGAIN && errno != EWOULDBLOCK) {
-          return false;
-        }
-        break;
-      }
-      pending.append(buffer.data(), static_cast<std::size_t>(n));
-    }
     std::string out;
-    std::size_t start = 0;
-    for (std::size_t end = pending.find('\n'); end != std::string::npos; end = pending.find('\n', start)) {
-      out += answer(std::string_view(pending).substr(start, end - start));
-      start = end + 1;
-    }
-    pending.erase(0, start);
-    if (pending.size() > kMaxLine) {
+    do {
+      while (auto line = reader.nextLine()) {
+        out += answer(*line);
+      }
+    } while (reader.readFrom(fd) > 0);
+    if (reader.state() == ipc::LineReader::State::TooLong) {
       return false;
     }
     // Answers are at most kMaxLimit rows and fit the socket buffer; a client that does not read is dropped
     // rather than allowed to block the daemon.
     const bool sent = out.empty() || send(fd, out.data(), out.size(), MSG_NOSIGNAL | MSG_DONTWAIT) == static_cast<ssize_t>(out.size());
-    return sent && !closed;
+    return sent && reader.state() == ipc::LineReader::State::Reading;
   }
 
   std::string QueryServer::answer(std::string_view line) const {
