@@ -1,4 +1,5 @@
 #include "core/deferred_call.h"
+#include "core/shared_worker.h"
 #include "notification/notification_history_store.h"
 #include "notification/notification_manager.h"
 #include "notification_history_test_utils.h"
@@ -43,6 +44,14 @@ namespace {
     for (auto& call : DeferredCall::takePending()) {
       call();
     }
+  }
+
+  // SharedWorker runs one FIFO thread: once a sentinel job answers, every save queued before it has landed.
+  void drainWorker() {
+    auto alive = std::make_shared<int>(0);
+    bool done = false;
+    SharedWorker::instance().post<bool>(alive, [] { return true; }, [&done](bool) { done = true; });
+    TEST_CHECK(runDeferredUntil([&done] { return done; }));
   }
 
   void privateFile(const fs::path& path) {
@@ -235,7 +244,7 @@ namespace {
     TEST_CHECK(manager.all().front().id == liveId);
     manager.syncHistoryPersistence(provider);
     TEST_CHECK(manager.history().size() == 2);
-    drain();
+    drainWorker();
     const auto good = contents(path);
     write(keyFile, std::string(64, '2'));
     provider.retry();
@@ -249,7 +258,7 @@ namespace {
     manager.syncHistoryPersistence(provider);
     TEST_CHECK(!manager.historyNeedsRecovery());
     TEST_CHECK(manager.history().size() == 3);
-    drain();
+    drainWorker();
 
     fs::remove(keyFile);
     provider.retry();
