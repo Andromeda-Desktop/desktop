@@ -123,7 +123,7 @@ namespace andromeda {
 
   SnapAssist::SnapAssist(Server& server, wlr_scene_tree* parent)
       : m_server(server), m_tree(wlr_scene_tree_create(parent)),
-        m_icons(std::make_unique<ov::AppIcons>(wl_display_get_event_loop(server.display()), [this] {
+        m_iconListener(server.appIcons().subscribe([this] {
           if (m_mode.open()) {
             build(*m_mode.picture());
           }
@@ -139,7 +139,10 @@ namespace andromeda {
   }
 
   // The scene owns the tree and frees it with the rest of the chrome at teardown.
-  SnapAssist::~SnapAssist() { m_server.unregisterAnimatable(this); }
+  SnapAssist::~SnapAssist() {
+    m_server.appIcons().unsubscribe(m_iconListener);
+    m_server.unregisterAnimatable(this);
+  }
 
   SnapAssist::Picture::Picture(Picture&& other) noexcept
       : content(std::exchange(other.content, nullptr)), cards(std::move(other.cards)) {}
@@ -353,7 +356,7 @@ namespace andromeda {
       });
       wlr_buffer* icon = nullptr;
       if (const char* appId = view->appId(); appId != nullptr) {
-        icon = m_icons->get(appId, static_cast<int>(kIcon * scale));
+        icon = m_server.appIcons().get(appId, static_cast<int>(kIcon * scale));
       }
       int x = card.box.x;
       const int labelY = card.box.y + slotH + kLabelGap;

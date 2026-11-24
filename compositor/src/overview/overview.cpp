@@ -23,7 +23,7 @@ namespace andromeda {
   Overview::Overview(Server& server) : m_server(&server) {
     m_server->registerAnimatable(this);
     // An icon that finished loading joins the capsules on the next chrome layout.
-    m_appIcons = std::make_unique<ov::AppIcons>(wl_display_get_event_loop(server.display()), [this] {
+    m_iconListener = server.appIcons().subscribe([this] {
       if (!m_active) {
         return;
       }
@@ -36,6 +36,7 @@ namespace andromeda {
   }
 
   Overview::~Overview() {
+    m_server->appIcons().unsubscribe(m_iconListener);
     m_server->unregisterAnimatable(this);
     m_zoomAnim.snap(0.0);
     teardown();
@@ -919,7 +920,7 @@ namespace andromeda {
       m_chromeWindows.push_back({
           .key = card.view,
           .title = title != nullptr ? std::string_view(title) : std::string_view(),
-          .icon = appId != nullptr ? m_appIcons->get(appId, std::max(18, iconPx)) : nullptr,
+          .icon = appId != nullptr ? m_server->appIcons().get(appId, std::max(18, iconPx)) : nullptr,
           .box = visible,
           .within = within,
           .opacity = card.opacity,

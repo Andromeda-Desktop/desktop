@@ -104,7 +104,7 @@ namespace andromeda {
     std::unique_ptr<GlassPanel> m_scrim;
     wlr_scene_shadow* m_lensShadow = nullptr;
     wlr_scene_rect* m_lens = nullptr;
-    std::unique_ptr<ov::AppIcons> m_icons;
+    std::uint64_t m_iconListener = 0;
     SnapAssistMode<Picture> m_mode;
     std::vector<Member> m_members; // the group being formed, anchor first
     struct Group {

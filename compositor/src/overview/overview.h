@@ -613,7 +613,7 @@ namespace andromeda {
     std::vector<ov::ChromeWorkspace> m_chromeWorkspaces;
     std::vector<std::string> m_chromeNames; // owns the names m_chromeWorkspaces views
     std::vector<ov::ChromeWindow> m_chromeWindows;
-    std::unique_ptr<ov::AppIcons> m_appIcons;
+    std::uint64_t m_iconListener = 0;
     // Reflow: a card or workspace card whose placed rect jumped in a structural change (or a reduced-motion row jump)
     // glides from where it was drawn: an offset from its new place springs to zero on the glide's own spring, so a
     // second jump keeps its speed. Under reduced motion it crossfades instead (rulebook 7.8): out where it was on

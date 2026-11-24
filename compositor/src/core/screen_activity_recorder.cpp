@@ -79,7 +79,7 @@ namespace andromeda {
   } // namespace
 
   ScreenActivityRecorder::ScreenActivityRecorder(wl_event_loop* loop, bool persist)
-      : m_packageEnergy(loop), m_persist(persist), m_worker(loop) {
+      : m_packageEnergy(loop), m_persist(persist), m_worker(loop, "andro-activity") {
     if (m_persist) {
       m_log.parse(readFile(screenActivityPath()));
       m_energy.parse(readFile(appEnergyPath()));

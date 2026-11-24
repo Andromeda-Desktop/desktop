@@ -192,8 +192,16 @@ namespace andromeda::ov {
 
   } // namespace
 
-  AppIcons::AppIcons(wl_event_loop* loop, std::function<void()> changed)
-      : m_changed(std::move(changed)), m_worker(std::make_unique<MainLoopWorker>(loop)) {}
+  AppIcons::AppIcons(wl_event_loop* loop) : m_worker(std::make_unique<MainLoopWorker>(loop, "andro-icons")) {}
+
+  std::uint64_t AppIcons::subscribe(std::function<void()> changed) {
+    m_listeners.emplace_back(m_nextListener, std::move(changed));
+    return m_nextListener++;
+  }
+
+  void AppIcons::unsubscribe(std::uint64_t id) {
+    std::erase_if(m_listeners, [id](const auto& listener) { return listener.first == id; });
+  }
 
   AppIcons::~AppIcons() {
     m_worker.reset();
@@ -222,8 +230,9 @@ namespace andromeda::ov {
         [this, key](Surface surface) {
           if (surface != nullptr) {
             m_entries[key] = imageBuffer(surface.get());
-            if (m_changed) {
-              m_changed();
+            const auto listeners = m_listeners;
+            for (const auto& [id, changed] : listeners) {
+              changed();
             }
           }
         }

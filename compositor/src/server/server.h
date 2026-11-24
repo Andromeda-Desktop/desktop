@@ -227,6 +227,8 @@ namespace andromeda {
     [[nodiscard]] bool stopping() const { return m_stopping; }
 
     [[nodiscard]] wl_display* display() const { return m_display; }
+    // The one app icon cache.
+    ov::AppIcons& appIcons();
     [[nodiscard]] wlr_compositor* compositor() const { return m_compositor; }
     // Null when general.xwayland is off or the Xwayland server could not be created.
     [[nodiscard]] Xwayland* xwayland() const { return m_xwayland.get(); }
@@ -1182,7 +1184,7 @@ namespace andromeda {
       std::chrono::steady_clock::time_point at;
     };
     std::optional<LaunchFrom> m_launchFrom;
-    std::unique_ptr<ov::AppIcons> m_launchIcons; // created on the first launch; outlives m_launchFeedback
+    std::unique_ptr<ov::AppIcons> m_appIcons; // created on first use; outlives its users (overview, snap assist, launch)
     std::vector<std::pair<std::string, std::unique_ptr<LaunchFeedback>>> m_launchFeedback; // by launch token
     void setLaunchFrom(wlr_surface* surface, const wlr_box& box);
     void dropLaunchFrom();

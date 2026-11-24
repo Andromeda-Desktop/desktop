@@ -294,7 +294,7 @@ namespace andromeda {
       return;
     }
     if (m_keymapWorker == nullptr) {
-      m_keymapWorker = std::make_unique<MainLoopWorker>(wl_display_get_event_loop(m_display));
+      m_keymapWorker = std::make_unique<MainLoopWorker>(wl_display_get_event_loop(m_display), "andro-keymap");
       m_keymapQuery = std::make_unique<SystemKeymapQuery>(wl_display_get_event_loop(m_display));
     }
     m_keymapQuery->query([this](XkbNames names) {

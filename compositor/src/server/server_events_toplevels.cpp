@@ -241,6 +241,13 @@ namespace andromeda {
     }
   } // namespace server_events
 
+  ov::AppIcons& Server::appIcons() {
+    if (!m_appIcons) {
+      m_appIcons = std::make_unique<ov::AppIcons>(wl_display_get_event_loop(m_display));
+    }
+    return *m_appIcons;
+  }
+
   void Server::onNewXdgToplevel(wl_listener* listener, void* data) {
     Server* self;
     self = wl_container_of(listener, self, m_newXdgToplevel);
@@ -514,12 +521,9 @@ namespace andromeda {
       return;
     }
     kLog.debug("launch feedback for token '{}'", token);
-    if (!m_launchIcons) {
-      m_launchIcons = std::make_unique<ov::AppIcons>(wl_display_get_event_loop(m_display), nullptr);
-    }
     m_launchFeedback.emplace_back(
         token, std::make_unique<LaunchFeedback>(
-                   *this, m_launchFrom->output.get(), shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY), *m_launchIcons, appId,
+                   *this, m_launchFrom->output.get(), shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY), appIcons(), appId,
                    m_launchFrom->from, m_launchFrom->output->usableArea()
                )
     );
