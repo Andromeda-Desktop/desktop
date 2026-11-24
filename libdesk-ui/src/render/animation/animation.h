@@ -7,18 +7,11 @@
 #include <functional>
 #include <optional>
 
-enum class Easing : std::uint8_t {
-  Linear,
-  EaseInQuad,
-  EaseOutQuad,
-  EaseInOutQuad,
-  EaseInCubic,
-  EaseOutCubic,
-  EaseInOutCubic,
-  EaseOutBack,
-};
+using desk::motion::Easing;
 
-float applyEasing(Easing easing, float t);
+[[nodiscard]] inline float applyEasing(Easing easing, float t) {
+  return static_cast<float>(desk::motion::applyEasing({.easing = easing}, t));
+}
 
 // What a spring animates; sets its idle threshold (rulebook 7.1 rule 9).
 enum class Unit : std::uint8_t {

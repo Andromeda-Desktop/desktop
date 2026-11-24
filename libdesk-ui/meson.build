@@ -223,7 +223,6 @@ _desk_ui_sources = files(
   'src/motion/desk_motion.cpp',
   'src/platform/popup_place.cpp',
   'src/platform/surface.cpp',
-  'src/render/animation/animation.cpp',
   'src/render/animation/animation_manager.cpp',
   'src/render/animation/motion_service.cpp',
   'src/render/backend/gles_framebuffer.cpp',
