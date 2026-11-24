@@ -1,4 +1,5 @@
 #include "shell/session/power_inhibitors.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 
@@ -42,7 +43,7 @@ std::vector<LogindInhibitor> listLogindInhibitors() {
   try {
     const auto connection = sdbus::createSystemBusConnection();
     const auto login = sdbus::createProxy(
-        *connection, sdbus::ServiceName{"org.andromeda.System1"}, sdbus::ObjectPath{"/org/andromeda/System1/Login"}
+        *connection, sdbus::ServiceName{busname::kSystem1}, sdbus::ObjectPath{"/org/andromeda/System1/Login"}
     );
     std::vector<sdbus::Struct<std::string, std::string, std::string, std::string, std::uint32_t, std::uint32_t>> reply;
     login->callMethod("ListInhibitors").onInterface("org.andromeda.System1.Login").storeResultsTo(reply);

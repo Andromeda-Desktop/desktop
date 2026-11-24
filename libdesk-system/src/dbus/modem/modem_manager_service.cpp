@@ -1,4 +1,5 @@
 #include "dbus/modem/modem_manager_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -20,9 +21,9 @@ namespace {
 
   const sdbus::ServiceName kMmBusName{"org.freedesktop.ModemManager1"};
   const sdbus::ObjectPath kRootPath{"/org/freedesktop/ModemManager1"};
-  const sdbus::ServiceName kDaemonBusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kDaemonPath{"/org/freedesktop/DBus"};
-  constexpr auto kDaemonInterface = "org.freedesktop.DBus";
+  const sdbus::ServiceName kDaemonBusName{busname::kDaemon};
+  const sdbus::ObjectPath kDaemonPath{busname::kDaemonPath};
+  constexpr auto kDaemonInterface = busname::kDaemon;
   constexpr auto kModemInterface = "org.freedesktop.ModemManager1.Modem";
   constexpr auto kModem3gppInterface = "org.freedesktop.ModemManager1.Modem.Modem3gpp";
   // SignalQuality on the base Modem interface is maintained by ModemManager itself.

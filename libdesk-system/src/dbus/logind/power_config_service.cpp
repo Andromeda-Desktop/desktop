@@ -1,4 +1,5 @@
 #include "dbus/logind/power_config_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "core/process/process.h"
@@ -22,7 +23,7 @@
 namespace {
   constexpr Logger kLog("power-config");
 
-  const sdbus::ServiceName kSystem1BusName{"org.andromeda.System1"};
+  const sdbus::ServiceName kSystem1BusName{busname::kSystem1};
   const sdbus::ObjectPath kLoginObjectPath{"/org/andromeda/System1/Login"};
   constexpr auto kLoginInterface = "org.andromeda.System1.Login";
   constexpr auto kHelperPath = "/usr/lib/andromeda/andromeda-power-config";

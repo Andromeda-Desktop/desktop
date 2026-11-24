@@ -1,4 +1,5 @@
 #include "dbus/sensor/presence_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -12,7 +13,7 @@
 
 namespace {
   constexpr Logger kLog("presence");
-  const sdbus::ServiceName kBusName{"org.andromeda.System1"};
+  const sdbus::ServiceName kBusName{busname::kSystem1};
   const sdbus::ObjectPath kPath{"/org/andromeda/System1/Sensors"};
   constexpr auto kInterface = "org.andromeda.System1.Sensors";
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";

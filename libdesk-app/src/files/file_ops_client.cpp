@@ -1,4 +1,5 @@
 #include "files/file_ops_client.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -62,10 +63,10 @@ FileOpsClient::FileOpsClient(SessionBus& bus) : m_bus(bus) {
           syncJobs(it->second.get<std::vector<sdbus::ObjectPath>>());
         }
       });
-  m_busWatch = sdbus::createProxy(m_bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"},
-                                  sdbus::ObjectPath{"/org/freedesktop/DBus"});
+  m_busWatch = sdbus::createProxy(m_bus.connection(), sdbus::ServiceName{busname::kDaemon},
+                                  sdbus::ObjectPath{busname::kDaemonPath});
   m_busWatch->uponSignal("NameOwnerChanged")
-      .onInterface("org.freedesktop.DBus")
+      .onInterface(busname::kDaemon)
       .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
         if (name != kName) {
           return;

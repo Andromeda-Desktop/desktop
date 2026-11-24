@@ -1,4 +1,5 @@
 #include "config/config_service.h"
+#include "protocols/bus_names.h"
 #include "core/process/process.h"
 #include "core/shared_worker.h"
 #include "i18n/i18n.h"
@@ -85,8 +86,8 @@ namespace {
     if (bus == nullptr) {
       return out;
     }
-    GVariant* names = g_dbus_connection_call_sync(bus, "org.freedesktop.DBus", "/org/freedesktop/DBus",
-                                                  "org.freedesktop.DBus", "ListNames", nullptr, G_VARIANT_TYPE("(as)"),
+    GVariant* names = g_dbus_connection_call_sync(bus, busname::kDaemon, busname::kDaemonPath,
+                                                  busname::kDaemon, "ListNames", nullptr, G_VARIANT_TYPE("(as)"),
                                                   G_DBUS_CALL_FLAGS_NONE, kTimeoutMs, nullptr, nullptr);
     if (names != nullptr) {
       GVariantIter* iter = nullptr;

@@ -1,4 +1,5 @@
 #include "dbus/idle/screensaver_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -14,7 +15,7 @@ namespace {
   constexpr Logger kLog("screensaver");
 
   const sdbus::ServiceName kBusName{"org.freedesktop.ScreenSaver"};
-  const sdbus::ServiceName kSystem1BusName{"org.andromeda.System1"};
+  const sdbus::ServiceName kSystem1BusName{busname::kSystem1};
   const sdbus::ObjectPath kLoginObjectPath{"/org/andromeda/System1/Login"};
   constexpr auto kInterface = "org.freedesktop.ScreenSaver";
   constexpr auto kLoginInterface = "org.andromeda.System1.Login";
@@ -108,10 +109,10 @@ void ScreenSaverService::registerScreenSaver() {
   }
 
   m_dbusProxy = sdbus::createProxy(
-      *m_connection, sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+      *m_connection, sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
   );
   m_dbusProxy->uponSignal("NameOwnerChanged")
-      .onInterface("org.freedesktop.DBus")
+      .onInterface(busname::kDaemon)
       .call([this](const std::string& /*name*/, const std::string& oldOwner, const std::string& newOwner) {
         if (!newOwner.empty()) {
           return;

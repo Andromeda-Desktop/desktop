@@ -1,4 +1,5 @@
 #include "server/apps_bus.h"
+#include "protocols/bus_names.h"
 
 #include "config/config.h"
 #include "config/managed_settings.h"
@@ -142,11 +143,11 @@ namespace andromeda {
     sd_bus_message* list = nullptr;
     const bool published =
         sd_bus_add_object_vtable(bus, m_bus.keep(), kPath, kInterface, kVtable, this) >= 0
-        && sd_bus_match_signal_async(bus, m_bus.keep(), "org.freedesktop.DBus", "/org/freedesktop/DBus",
-                                     "org.freedesktop.DBus", "NameOwnerChanged", onOwnerChanged, nullptr, this)
+        && sd_bus_match_signal_async(bus, m_bus.keep(), busname::kDaemon, busname::kDaemonPath,
+                                     busname::kDaemon, "NameOwnerChanged", onOwnerChanged, nullptr, this)
             >= 0
-        && sd_bus_message_new_method_call(bus, &list, "org.freedesktop.DBus", "/org/freedesktop/DBus",
-                                          "org.freedesktop.DBus", "ListNames") >= 0
+        && sd_bus_message_new_method_call(bus, &list, busname::kDaemon, busname::kDaemonPath,
+                                          busname::kDaemon, "ListNames") >= 0
         && m_bus.call(list, [this](sd_bus_message* reply) {
              if (reply != nullptr) {
                onNames(reply, this, nullptr);

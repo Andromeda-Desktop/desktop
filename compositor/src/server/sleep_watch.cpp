@@ -1,4 +1,5 @@
 #include "server/sleep_watch.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 
@@ -16,7 +17,7 @@ namespace andromeda {
     constexpr const char* kLogind = "org.freedesktop.login1";
     constexpr const char* kLogindPath = "/org/freedesktop/login1";
     constexpr const char* kLogindManager = "org.freedesktop.login1.Manager";
-    constexpr const char* kSystem1 = "org.andromeda.System1";
+    constexpr const char* kSystem1 = busname::kSystem1;
     constexpr const char* kLoginPath = "/org/andromeda/System1/Login";
     constexpr const char* kLogin = "org.andromeda.System1.Login";
     // System1 releases its delay this long before logind's InhibitDelayMaxUSec; the own lock uses the same budget.

@@ -1,4 +1,5 @@
 #include "notification_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -30,9 +31,9 @@ static constexpr auto kSignalActivationToken = "ActivationToken";
 
 namespace {
 
-  const sdbus::ServiceName kDbusBusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kDbusObjectPath{"/org/freedesktop/DBus"};
-  constexpr auto kDbusInterface = "org.freedesktop.DBus";
+  const sdbus::ServiceName kDbusBusName{busname::kDaemon};
+  const sdbus::ObjectPath kDbusObjectPath{busname::kDaemonPath};
+  constexpr auto kDbusInterface = busname::kDaemon;
 
   constexpr uint32_t kNameFlagAllowReplacement = 1U;
   constexpr uint32_t kNameFlagDoNotQueue = 4U;

@@ -1,4 +1,5 @@
 #include "dbus/andromeda/system_health_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/andromeda/session_activity_watch.h"
@@ -13,7 +14,7 @@ namespace {
 
   constexpr Logger kLog("system-health");
 
-  const sdbus::ServiceName kName{"org.andromeda.System1"};
+  const sdbus::ServiceName kName{busname::kSystem1};
   const sdbus::ObjectPath kExplainPath{"/org/andromeda/System1/Explain"};
   const sdbus::ObjectPath kRulesPath{"/org/andromeda/System1/Rules"};
   const sdbus::ObjectPath kKnobsPath{"/org/andromeda/System1/Knobs"};

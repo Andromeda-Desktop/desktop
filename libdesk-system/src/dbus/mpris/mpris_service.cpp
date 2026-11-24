@@ -1,4 +1,5 @@
 #include "dbus/mpris/mpris_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -36,7 +37,7 @@ std::string joinedArtists(const std::vector<std::string>& artists) {
 
 namespace {
 
-  constexpr auto kDbusInterface = "org.freedesktop.DBus";
+  constexpr auto kDbusInterface = busname::kDaemon;
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
   constexpr auto kMprisRootInterface = "org.mpris.MediaPlayer2";
   constexpr auto kMprisPlayerInterface = "org.mpris.MediaPlayer2.Player";
@@ -47,8 +48,8 @@ namespace {
   constexpr auto kVolumeWriteGuard = std::chrono::milliseconds{400};
   constexpr double kVolumeWriteGuardEpsilon = 0.02;
   constexpr auto kMetadataStabilizeWindow = std::chrono::milliseconds{900};
-  const sdbus::ServiceName kDbusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kDbusPath{"/org/freedesktop/DBus"};
+  const sdbus::ServiceName kDbusName{busname::kDaemon};
+  const sdbus::ObjectPath kDbusPath{busname::kDaemonPath};
   const sdbus::ObjectPath kMprisPath{"/org/mpris/MediaPlayer2"};
   const sdbus::ServiceName kNoctaliaMprisBusName{"dev.noctalia.Mpris"};
   const sdbus::ObjectPath kNoctaliaMprisObjectPath{"/dev/noctalia/Mpris"};

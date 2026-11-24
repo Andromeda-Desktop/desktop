@@ -1,4 +1,5 @@
 #include "dbus/tray/tray_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -24,9 +25,9 @@ namespace {
   const sdbus::ObjectPath kWatcherObjectPath{"/StatusNotifierWatcher"};
   constexpr auto kWatcherInterface = "org.kde.StatusNotifierWatcher";
 
-  const sdbus::ServiceName kDbusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kDbusPath{"/org/freedesktop/DBus"};
-  constexpr auto kDbusInterface = "org.freedesktop.DBus";
+  const sdbus::ServiceName kDbusName{busname::kDaemon};
+  const sdbus::ObjectPath kDbusPath{busname::kDaemonPath};
+  constexpr auto kDbusInterface = busname::kDaemon;
   constexpr auto kItemInterface = "org.kde.StatusNotifierItem";
   constexpr auto kMenuInterface = "com.canonical.dbusmenu";
   constexpr auto kDefaultItemPath = "/StatusNotifierItem";

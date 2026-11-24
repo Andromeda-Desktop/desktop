@@ -1,4 +1,5 @@
 #include "app/main_loop.h"
+#include "protocols/bus_names.h"
 #include "config/app_icon_settings.h"
 #include "application.h"
 #include "a11y/atspi_bridge.h"
@@ -441,10 +442,10 @@ void Application::installNotificationBusNameWatch() {
   }
 
   m_notificationBusNameWatchProxy = sdbus::createProxy(
-      m_bus->connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+      m_bus->connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
   );
   m_notificationBusNameWatchProxy->uponSignal("NameOwnerChanged")
-      .onInterface("org.freedesktop.DBus")
+      .onInterface(busname::kDaemon)
       .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& /*newOwner*/) {
         if (name != notification_dbus::kFreedesktopNotificationsBusName) {
           return;
@@ -465,10 +466,10 @@ void Application::installSecretServiceNameWatch() {
   }
 
   m_secretServiceNameWatchProxy = sdbus::createProxy(
-      m_bus->connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+      m_bus->connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
   );
   m_secretServiceNameWatchProxy->uponSignal("NameOwnerChanged")
-      .onInterface("org.freedesktop.DBus")
+      .onInterface(busname::kDaemon)
       .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
         if (name != kSecretServiceBusName) {
           return;
@@ -500,7 +501,7 @@ void Application::installSecretServiceNameWatch() {
   try {
     bool hasOwner = false;
     m_secretServiceNameWatchProxy->callMethod("NameHasOwner")
-        .onInterface("org.freedesktop.DBus")
+        .onInterface(busname::kDaemon)
         .withArguments(std::string{kSecretServiceBusName})
         .storeResultsTo(hasOwner);
     m_secretServiceOwned = hasOwner;
@@ -1580,7 +1581,7 @@ void Application::initSystemBusServices() {
         m_powerConfigService = std::make_unique<PowerConfigService>(*m_systemBus);
         // logind changes BlockInhibited on every inhibitor start and stop; System1 relays the change.
         m_system1Login = sdbus::createProxy(
-            m_systemBus->connection(), sdbus::ServiceName{"org.andromeda.System1"},
+            m_systemBus->connection(), sdbus::ServiceName{busname::kSystem1},
             sdbus::ObjectPath{"/org/andromeda/System1/Login"}
         );
         m_system1Login->uponSignal("ManagerPropertiesChanged")

@@ -1,4 +1,5 @@
 #include "system/brightness_service.h"
+#include "protocols/bus_names.h"
 #include "protocols/crash_capture.h"
 #include "util/thread_name.h"
 
@@ -149,7 +150,7 @@ namespace {
     std::set<std::pair<std::string, int>> reportedDisplays;
   };
 
-  const sdbus::ServiceName kSystem1BusName{"org.andromeda.System1"};
+  const sdbus::ServiceName kSystem1BusName{busname::kSystem1};
   constexpr auto kSystem1LoginInterface = "org.andromeda.System1.Login";
 
   std::string joinBrightnessDisplayIds(const BrightnessService& service) {

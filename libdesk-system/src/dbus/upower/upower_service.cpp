@@ -1,4 +1,5 @@
 #include "dbus/upower/upower_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -21,7 +22,7 @@
 namespace {
 
   // andromeda-system (docs/system-health.md) wraps UPower; the shell reads only its API.
-  const sdbus::ServiceName kSystemBusName{"org.andromeda.System1"};
+  const sdbus::ServiceName kSystemBusName{busname::kSystem1};
   const sdbus::ObjectPath kRootPath{"/org/andromeda/System1"};
   const sdbus::ObjectPath kPowerPath{"/org/andromeda/System1/Power"};
   constexpr auto kObjectManagerInterface = "org.freedesktop.DBus.ObjectManager";

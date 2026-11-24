@@ -1,4 +1,5 @@
 #include "dbus/appmenu/app_menu_registrar.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -14,9 +15,9 @@ namespace {
   const sdbus::ServiceName kBusName{"com.canonical.AppMenu.Registrar"};
   const sdbus::ObjectPath kObjectPath{"/com/canonical/AppMenu/Registrar"};
   constexpr auto kInterface = "com.canonical.AppMenu.Registrar";
-  const sdbus::ServiceName kDbusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kDbusPath{"/org/freedesktop/DBus"};
-  constexpr auto kDbusInterface = "org.freedesktop.DBus";
+  const sdbus::ServiceName kDbusName{busname::kDaemon};
+  const sdbus::ObjectPath kDbusPath{busname::kDaemonPath};
+  constexpr auto kDbusInterface = busname::kDaemon;
 
 } // namespace
 

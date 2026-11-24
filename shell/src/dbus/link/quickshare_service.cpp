@@ -1,4 +1,5 @@
 #include "dbus/link/quickshare_service.h"
+#include "protocols/bus_names.h"
 
 #include "cli/schema_msg.h"
 #include "core/log.h"
@@ -26,9 +27,9 @@ namespace {
   const sdbus::ServiceName kLinkBusName{"org.andromeda.Link1"};
   const sdbus::ObjectPath kLinkPath{"/org/andromeda/Link1"};
   constexpr auto kInterface = "org.andromeda.Link1.QuickShare";
-  const sdbus::ServiceName kBusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kBusPath{"/org/freedesktop/DBus"};
-  constexpr auto kBusInterface = "org.freedesktop.DBus";
+  const sdbus::ServiceName kBusName{busname::kDaemon};
+  const sdbus::ObjectPath kBusPath{busname::kDaemonPath};
+  constexpr auto kBusInterface = busname::kDaemon;
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
   const sdbus::ServiceName kFileManagerName{"org.freedesktop.FileManager1"};
   const sdbus::ObjectPath kFileManagerPath{"/org/freedesktop/FileManager1"};

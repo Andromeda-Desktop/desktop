@@ -1,4 +1,5 @@
 #include "shell/lockscreen/lock_client.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -12,9 +13,9 @@ namespace {
 
   constexpr Logger kLog("lock-client");
 
-  const sdbus::ServiceName kDaemonBusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kDaemonPath{"/org/freedesktop/DBus"};
-  constexpr auto kDaemonInterface = "org.freedesktop.DBus";
+  const sdbus::ServiceName kDaemonBusName{busname::kDaemon};
+  const sdbus::ObjectPath kDaemonPath{busname::kDaemonPath};
+  constexpr auto kDaemonInterface = busname::kDaemon;
   constexpr auto kLockBusName = "org.andromeda.Lock1";
   const sdbus::ObjectPath kLockPath{"/org/andromeda/Lock1"};
   constexpr auto kLockInterface = "org.andromeda.Lock1";

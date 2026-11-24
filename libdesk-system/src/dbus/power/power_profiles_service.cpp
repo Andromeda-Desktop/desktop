@@ -1,4 +1,5 @@
 #include "dbus/power/power_profiles_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -32,7 +33,7 @@ namespace {
   constexpr Logger kLog("power");
 
   // andromeda-system (docs/system-health.md) wraps power-profiles-daemon; the shell reads only its API.
-  const sdbus::ServiceName kPowerProfilesBusName{"org.andromeda.System1"};
+  const sdbus::ServiceName kPowerProfilesBusName{busname::kSystem1};
   const sdbus::ObjectPath kPowerProfilesObjectPath{"/org/andromeda/System1/Power"};
   const sdbus::ObjectPath kKnobsPath{"/org/andromeda/System1/Knobs"};
   constexpr auto kPowerProfilesInterface = "org.andromeda.System1.Power";

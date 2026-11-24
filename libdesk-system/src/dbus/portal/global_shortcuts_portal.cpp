@@ -1,4 +1,5 @@
 #include "dbus/portal/global_shortcuts_portal.h"
+#include "protocols/bus_names.h"
 
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -54,7 +55,7 @@ namespace {
 GlobalShortcutsPortal::GlobalShortcutsPortal(SessionBus& bus, GlobalShortcutsBackend& backend)
     : m_bus(bus), m_backend(backend) {
   m_dbus = sdbus::createProxy(
-      m_bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+      m_bus.connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
   );
   m_frontendWatch = m_bus.connection().addMatch(
       kFrontendOwnerRule,
@@ -137,7 +138,7 @@ bool GlobalShortcutsPortal::fromFrontend(const sdbus::MethodCall& call) {
   try {
     std::string owner;
     m_dbus->callMethod("GetNameOwner")
-        .onInterface("org.freedesktop.DBus")
+        .onInterface(busname::kDaemon)
         .withArguments(std::string{kFrontendName})
         .storeResultsTo(owner);
     return owner == sender;

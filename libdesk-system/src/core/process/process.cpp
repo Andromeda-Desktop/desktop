@@ -1,4 +1,5 @@
 #include "core/process/process.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "core/process/app_zygote.h"
@@ -734,11 +735,11 @@ namespace {
         // A private session bus (dbus-run-session) only lists systemd1 as activatable, and activating it fails after
         // the launch was sent; systemd-run reaches the user manager over its own socket instead.
         auto bus = sdbus::createProxy(
-            *connection, sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+            *connection, sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
         );
         bool owned = false;
         bus->callMethod("NameHasOwner")
-            .onInterface("org.freedesktop.DBus")
+            .onInterface(busname::kDaemon)
             .withArguments(std::string("org.freedesktop.systemd1"))
             .storeResultsTo(owned);
         if (!owned) {

@@ -1,4 +1,5 @@
 #include "dbus/network/network_secret_agent.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "core/timer_manager.h"
@@ -32,9 +33,9 @@ namespace {
   const sdbus::ServiceName kNmBusName{"org.freedesktop.NetworkManager"};
   const sdbus::ObjectPath kAgentManagerObjectPath{"/org/freedesktop/NetworkManager/AgentManager"};
   constexpr auto kAgentManagerInterface = "org.freedesktop.NetworkManager.AgentManager";
-  const sdbus::ServiceName kDbusBusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kDbusObjectPath{"/org/freedesktop/DBus"};
-  constexpr auto kDbusInterface = "org.freedesktop.DBus";
+  const sdbus::ServiceName kDbusBusName{busname::kDaemon};
+  const sdbus::ObjectPath kDbusObjectPath{busname::kDaemonPath};
+  constexpr auto kDbusInterface = busname::kDaemon;
 
   constexpr std::uint32_t kNmSecretAgentGetSecretsFlagAllowInteraction = 0x1;
 

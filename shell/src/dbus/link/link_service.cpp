@@ -1,4 +1,5 @@
 #include "dbus/link/link_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "core/process/process.h"
@@ -41,9 +42,9 @@ namespace {
   const sdbus::ServiceName kLinkBusName{"org.andromeda.Link1"};
   const sdbus::ObjectPath kLinkPath{"/org/andromeda/Link1"};
   constexpr auto kLinkInterface = "org.andromeda.Link1";
-  const sdbus::ServiceName kDaemonBusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kDaemonPath{"/org/freedesktop/DBus"};
-  constexpr auto kDaemonInterface = "org.freedesktop.DBus";
+  const sdbus::ServiceName kDaemonBusName{busname::kDaemon};
+  const sdbus::ObjectPath kDaemonPath{busname::kDaemonPath};
+  constexpr auto kDaemonInterface = busname::kDaemon;
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
   // The daemon's window length; it reports the close itself through Pairing.
   constexpr auto kPairingWindow = std::chrono::seconds(120);

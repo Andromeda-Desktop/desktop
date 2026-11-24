@@ -1,4 +1,5 @@
 #include "core/scanout_keeper.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "wlr.h"
@@ -18,7 +19,7 @@ namespace andromeda::scanout_keeper {
 
   namespace {
     constexpr Logger kLog("scanout");
-    constexpr const char* kService = "org.andromeda.System1";
+    constexpr const char* kService = busname::kSystem1;
     constexpr const char* kPath = "/org/andromeda/System1/Display";
     constexpr const char* kInterface = "org.andromeda.System1.Display";
     constexpr uint64_t kHoldTimeoutUs = 500'000;

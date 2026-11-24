@@ -1,4 +1,5 @@
 #include "core/package_energy.h"
+#include "protocols/bus_names.h"
 
 #include <cmath>
 #include <cstdint>
@@ -23,7 +24,7 @@ namespace andromeda {
     sd_bus_message* message = nullptr;
     if (m_bus.get() == nullptr
         || sd_bus_message_new_method_call(
-               m_bus.get(), &message, "org.andromeda.System1", "/org/andromeda/System1/Power",
+               m_bus.get(), &message, busname::kSystem1, "/org/andromeda/System1/Power",
                "org.andromeda.System1.Power", method
            ) < 0) {
       done(NAN);

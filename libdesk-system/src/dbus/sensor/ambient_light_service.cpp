@@ -1,4 +1,5 @@
 #include "dbus/sensor/ambient_light_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -13,7 +14,7 @@
 
 namespace {
   constexpr Logger kLog("ambient-light");
-  const sdbus::ServiceName kBusName{"org.andromeda.System1"};
+  const sdbus::ServiceName kBusName{busname::kSystem1};
   const sdbus::ObjectPath kPath{"/org/andromeda/System1/Sensors"};
   constexpr auto kInterface = "org.andromeda.System1.Sensors";
   constexpr auto kSampleInterval = std::chrono::seconds(3);

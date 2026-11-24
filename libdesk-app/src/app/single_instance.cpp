@@ -1,4 +1,5 @@
 #include "app/single_instance.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -75,9 +76,9 @@ SingleInstance::Role SingleInstance::claim(const std::vector<std::string>& uris,
 bool SingleInstance::forwardIfRunning(const std::vector<std::string>& uris, const std::string& action) {
   bool owned = false;
   auto dbus = sdbus::createProxy(
-      m_bus->connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+      m_bus->connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
   );
-  dbus->callMethod("NameHasOwner").onInterface("org.freedesktop.DBus").withArguments(m_appId).storeResultsTo(owned);
+  dbus->callMethod("NameHasOwner").onInterface(busname::kDaemon).withArguments(m_appId).storeResultsTo(owned);
   return owned && forward(uris, action);
 }
 

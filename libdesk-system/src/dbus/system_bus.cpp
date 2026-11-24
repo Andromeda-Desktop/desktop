@@ -1,4 +1,5 @@
 #include "dbus/system_bus.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 
@@ -9,9 +10,9 @@
 
 namespace {
   constexpr Logger kLog("system_bus");
-  constexpr auto kDbusInterface = "org.freedesktop.DBus";
+  constexpr auto kDbusInterface = busname::kDaemon;
   const sdbus::ServiceName kDbusName{kDbusInterface};
-  const sdbus::ObjectPath kDbusPath{"/org/freedesktop/DBus"};
+  const sdbus::ObjectPath kDbusPath{busname::kDaemonPath};
 
   constexpr int kMaxEventsPerDispatch = 16;
   constexpr auto kMaxDispatchBudget = std::chrono::milliseconds(4);

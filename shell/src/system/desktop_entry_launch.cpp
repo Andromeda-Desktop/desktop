@@ -1,4 +1,5 @@
 #include "system/desktop_entry_launch.h"
+#include "protocols/bus_names.h"
 
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -308,10 +309,10 @@ namespace {
     void start() {
       m_connection = sdbus::createSessionBusConnection();
       m_dbus = sdbus::createProxy(
-          *m_connection, sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+          *m_connection, sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
       );
       m_dbus->uponSignal("NameOwnerChanged")
-          .onInterface("org.freedesktop.DBus")
+          .onInterface(busname::kDaemon)
           .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
             if (name.starts_with(':')) {
               return;
@@ -325,7 +326,7 @@ namespace {
           });
       m_connection->enterEventLoopAsync();
       std::vector<std::string> names;
-      m_dbus->callMethod("ListNames").onInterface("org.freedesktop.DBus").storeResultsTo(names);
+      m_dbus->callMethod("ListNames").onInterface(busname::kDaemon).storeResultsTo(names);
       const std::lock_guard lock(m_mutex);
       for (auto& name : names) {
         if (!name.starts_with(':')) {

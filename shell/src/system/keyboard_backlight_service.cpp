@@ -1,4 +1,5 @@
 #include "system/keyboard_backlight_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -25,7 +26,7 @@ namespace {
   constexpr Logger kLog("keyboard-backlight");
 
   // andromeda-system (docs/system-health.md) wraps UPower's keyboard backlights; the shell reads only its API.
-  const sdbus::ServiceName kUpowerBusName{"org.andromeda.System1"};
+  const sdbus::ServiceName kUpowerBusName{busname::kSystem1};
   const sdbus::ObjectPath kUpowerPath{"/org/andromeda/System1"};
   constexpr auto kObjectManagerInterface = "org.freedesktop.DBus.ObjectManager";
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";

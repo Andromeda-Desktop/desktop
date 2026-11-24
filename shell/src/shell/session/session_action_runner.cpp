@@ -1,4 +1,5 @@
 #include "shell/session/session_action_runner.h"
+#include "protocols/bus_names.h"
 #include "core/blocking_pool.h"
 #include "util/thread_name.h"
 
@@ -65,7 +66,7 @@ namespace {
 
   std::unique_ptr<sdbus::IProxy> loginProxy(sdbus::IConnection& connection) {
     return sdbus::createProxy(
-        connection, sdbus::ServiceName{"org.andromeda.System1"}, sdbus::ObjectPath{"/org/andromeda/System1/Login"}
+        connection, sdbus::ServiceName{busname::kSystem1}, sdbus::ObjectPath{"/org/andromeda/System1/Login"}
     );
   }
 

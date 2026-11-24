@@ -1,4 +1,5 @@
 #include "dbus/andromeda/software_update_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -58,10 +59,10 @@ SoftwareUpdateService::SoftwareUpdateService(SessionBus& session, SystemBus* sys
   if (m_system != nullptr) {
     m_helper = sdbus::createProxy(m_system->connection(), kHelperService, kHelperPath);
     m_busDaemon = sdbus::createProxy(
-        m_system->connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+        m_system->connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
     );
     m_busDaemon->uponSignal("NameOwnerChanged")
-        .onInterface("org.freedesktop.DBus")
+        .onInterface(busname::kDaemon)
         .call([this](const std::string& name, const std::string& /*old*/, const std::string& owner) {
           // The helper exited (crash, kill) while our upgrade ran: no Finished will come.
           if (name == kHelperName && owner.empty() && m_run.state() == RunState::Running) {

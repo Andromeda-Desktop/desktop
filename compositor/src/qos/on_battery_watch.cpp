@@ -1,4 +1,5 @@
 #include "qos/on_battery_watch.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 
@@ -11,7 +12,7 @@ namespace andromeda::qos {
   namespace {
 
     constexpr Logger kLog("qos");
-    constexpr const char* kName = "org.andromeda.System1";
+    constexpr const char* kName = busname::kSystem1;
     constexpr const char* kPath = "/org/andromeda/System1/Power";
     constexpr const char* kInterface = "org.andromeda.System1.Power";
 

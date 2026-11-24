@@ -1,4 +1,5 @@
 #include "dbus/network/network_manager_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/network/network_manager_security.h"
@@ -39,10 +40,10 @@ namespace {
   constexpr auto kNmAccessPointInterface = "org.freedesktop.NetworkManager.AccessPoint";
   constexpr auto k_nmIp4ConfigInterface = "org.freedesktop.NetworkManager.IP4Config";
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
-  const sdbus::ServiceName kDbusBusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kDbusObjectPath{"/org/freedesktop/DBus"};
-  constexpr auto kDbusInterface = "org.freedesktop.DBus";
-  const sdbus::ServiceName kSystem1BusName{"org.andromeda.System1"};
+  const sdbus::ServiceName kDbusBusName{busname::kDaemon};
+  const sdbus::ObjectPath kDbusObjectPath{busname::kDaemonPath};
+  constexpr auto kDbusInterface = busname::kDaemon;
+  const sdbus::ServiceName kSystem1BusName{busname::kSystem1};
   const sdbus::ObjectPath kSystem1NetworkPath{"/org/andromeda/System1/Network"};
   constexpr auto kSystem1NetworkInterface = "org.andromeda.System1.Network";
 

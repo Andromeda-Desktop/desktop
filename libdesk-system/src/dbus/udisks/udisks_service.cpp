@@ -1,4 +1,5 @@
 #include "dbus/udisks/udisks_service.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -18,7 +19,7 @@ namespace {
   constexpr auto kFilesystem = "org.freedesktop.UDisks2.Filesystem";
   // PowerOff goes through System1, which checks udisks2's polkit action on this user; Mount stays direct
   // because udisks2 picks the mount directory and file owner from its caller.
-  const sdbus::ServiceName kSystem1BusName{"org.andromeda.System1"};
+  const sdbus::ServiceName kSystem1BusName{busname::kSystem1};
   const sdbus::ObjectPath kSystem1StoragePath{"/org/andromeda/System1/Storage"};
   constexpr auto kSystem1DrivesInterface = "org.andromeda.System1.Drives";
 

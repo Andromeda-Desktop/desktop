@@ -1,4 +1,5 @@
 #include "dbus/polkit/polkit_agent.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "core/process/process.h"
@@ -521,10 +522,10 @@ struct PolkitAgent::Impl {
       authority = sdbus::createProxy(bus.connection(), kAuthorityName, kAuthorityPath);
       // polkitd forgets its agents when it restarts (a package upgrade), so a new owner gets the registration again.
       busWatch = sdbus::createProxy(
-          bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+          bus.connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
       );
       busWatch->uponSignal("NameOwnerChanged")
-          .onInterface("org.freedesktop.DBus")
+          .onInterface(busname::kDaemon)
           .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
             guard("NameOwnerChanged", [&] {
               if (name != kAuthorityName) {
@@ -960,7 +961,7 @@ void PolkitAgent::registerWithGaze() {
   try {
     m_gaze = sdbus::createProxy(m_bus.connection(), gazeName, sdbus::ObjectPath{"/com/gundulabs/Gaze"});
     m_dbus = sdbus::createProxy(
-        m_bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+        m_bus.connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
     );
     using ScoredFace = sdbus::Struct<std::string, double, double, bool, double, double, bool>;
     m_gaze->uponSignal("VerifyStatus")
@@ -980,7 +981,7 @@ void PolkitAgent::registerWithGaze() {
         });
     // gazed keeps the list in memory, so a restarted gazed needs it again.
     m_dbus->uponSignal("NameOwnerChanged")
-        .onInterface("org.freedesktop.DBus")
+        .onInterface(busname::kDaemon)
         .call([add, gazeName](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
           if (name == gazeName && !newOwner.empty()) {
             add();

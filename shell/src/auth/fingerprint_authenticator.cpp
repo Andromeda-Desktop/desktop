@@ -1,4 +1,5 @@
 #include "auth/fingerprint_authenticator.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -65,10 +66,10 @@ using fingerprint_auth::Phase;
 FingerprintAuthenticator::FingerprintAuthenticator(SystemBus& bus) : m_bus(bus) {
   try {
     m_busDaemon = sdbus::createProxy(
-        m_bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+        m_bus.connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
     );
     m_busDaemon->uponSignal("NameOwnerChanged")
-        .onInterface("org.freedesktop.DBus")
+        .onInterface(busname::kDaemon)
         .call([this](const std::string& name, const std::string& oldOwner, const std::string& /*newOwner*/) {
           if (name != kFprintBusName || oldOwner.empty()) {
             return;

@@ -86,6 +86,8 @@ RULES = {
                   "andromeda_rt::ipc (AR4)", CPP_DIRS + ("protocol/",), CPP + (".rs",),
                   r"SOL_SOCKET\s*,\s*SO_PEER(CRED|PIDFD)\b|sockopt::Peer(Credentials|Pidfd)\b",
                   ("protocol/ipc_channel.", "system/crates/andromeda-rt/src/ipc.rs")),
+    "bus-name": ("the System1 and bus-daemon names come from busname:: (protocol/bus_names.h) (C13)", CPP_DIRS, CPP,
+                 r"\"(org\.andromeda\.System1|org\.freedesktop\.DBus|/org/freedesktop/DBus)\"", ()),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
                        ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",

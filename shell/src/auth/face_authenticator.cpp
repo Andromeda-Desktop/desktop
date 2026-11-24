@@ -1,4 +1,5 @@
 #include "auth/face_authenticator.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -24,9 +25,9 @@ namespace {
   // gazed classifies any service it does not know as a screen lock: no confirmation, lock-screen start delay.
   constexpr auto kPamService = "andromeda-lock";
 
-  const sdbus::ServiceName kDbusBusName{"org.freedesktop.DBus"};
-  const sdbus::ObjectPath kDbusPath{"/org/freedesktop/DBus"};
-  constexpr auto kDbusInterface = "org.freedesktop.DBus";
+  const sdbus::ServiceName kDbusBusName{busname::kDaemon};
+  const sdbus::ObjectPath kDbusPath{busname::kDaemonPath};
+  constexpr auto kDbusInterface = busname::kDaemon;
 
 
   constexpr auto kRetryDelay = std::chrono::milliseconds(500);

@@ -1,4 +1,5 @@
 #include "shell/session/session_guard.h"
+#include "protocols/bus_names.h"
 
 #include "core/log.h"
 #include "dbus/andromeda/software_update_service.h"
@@ -28,7 +29,7 @@ void SessionGuard::initialize(SystemBus* bus, IpcService* ipc) {
   }
   try {
     m_logind = sdbus::createProxy(
-        bus->connection(), sdbus::ServiceName{"org.andromeda.System1"},
+        bus->connection(), sdbus::ServiceName{busname::kSystem1},
         sdbus::ObjectPath{"/org/andromeda/System1/Login"}
     );
   } catch (const sdbus::Error& e) {
