@@ -372,7 +372,7 @@ namespace {
                                .justify = FlexJustify::Center,
                                .gap = Tokens::spaceP4 * scale,
                                .fill = colorSpecFromRole(ColorRole::Fill2),
-                               .radius = Tokens::radiusR4 * scale,
+                               .radius = Style::scaledRadius(Tokens::radiusR4, scale),
                                .border = colorSpecFromRole(ColorRole::Stroke),
                                .borderWidth = 0.5F * scale,
                                .height = kThumbHeight * scale});
@@ -388,7 +388,7 @@ namespace {
         const auto index = static_cast<std::size_t>(&source - m_request.sources.data());
         thumb->addChild(ui::image({.out = &m_images[index],
                                    .fit = ImageFit::Contain,
-                                   .radius = Tokens::radiusR4 * scale,
+                                   .radius = Style::scaledRadius(Tokens::radiusR4, scale),
                                    .width = width - 2.0F * kRingBand * scale,
                                    .height = kThumbHeight * scale,
                                    .configure = [this, &renderer, index](Image& image) {
@@ -469,7 +469,7 @@ namespace {
                           .paddingV = Tokens::spaceP8 * scale,
                           .paddingH = Tokens::spaceP12 * scale,
                           .fill = colorSpecFromRole(ColorRole::GlassCard),
-                          .radius = Tokens::radiusR8 * scale,
+                          .radius = Style::scaledRadius(Tokens::radiusR8, scale),
                           .border = colorSpecFromRole(ColorRole::GlassCardEdge),
                           .borderWidth = std::max(1.0F, 0.5F * scale),
                           .minHeight = Tokens::spaceP48 * scale,

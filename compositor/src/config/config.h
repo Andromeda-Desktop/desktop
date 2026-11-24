@@ -1433,6 +1433,10 @@ namespace andromeda {
     const auto& appearance = config().appearance;
     return static_cast<int>(std::lround(appearance.cornerRadius * appearance.cornerScale * zoom));
   }
+  // A design-token radius at appearance.corner_scale, times `factor` (a zoom or a progress).
+  [[nodiscard]] inline int scaledRadius(float token, double factor = 1.0) {
+    return static_cast<int>(std::lround(token * config().appearance.cornerScale * factor));
+  }
   // A rulebook spring (docs/design/rulebook.md 7.2) at animation.speed, scaled the way applyAnimationSpeed scales one.
   [[nodiscard]] inline SpringConfig motionSpring(const Tokens::Spring& token) {
     const double speed = config().animation.speed;
