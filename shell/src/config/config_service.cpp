@@ -985,26 +985,23 @@ void ConfigService::checkReload() {
   // Editors save in several steps (truncate then write, rename the old file away then write the
   // new one, write a temp file then rename it over). Reload once the burst settles so a half-saved
   // or briefly missing file is never applied.
-  m_pendingConfigReload = m_pendingConfigReload || configChanged;
-  m_pendingOverridesReload = m_pendingOverridesReload || overridesChanged;
+  m_pendingWatchReload = std::max(m_pendingWatchReload, overridesChanged ? WatchReload::Overrides : WatchReload::Config);
   m_watchReloadTimer.start(kWatchReloadDebounce, [this] { applyPendingWatchReload(); });
 }
 
 void ConfigService::applyPendingWatchReload() {
-  const bool overridesChanged = std::exchange(m_pendingOverridesReload, false);
-  const bool configChanged = std::exchange(m_pendingConfigReload, false) || overridesChanged;
+  const WatchReload reload = std::exchange(m_pendingWatchReload, WatchReload::None);
+  if (reload == WatchReload::None) {
+    return;
+  }
 
   const auto oldDefault = m_defaultWallpaperPath;
   const auto oldLast = m_lastWallpaperPath;
   const auto oldMonitors = m_monitorWallpaperPaths;
 
-  if (overridesChanged) {
+  if (reload == WatchReload::Overrides) {
     kLog.info("reloading {}", m_overridesPath);
     loadOverridesFromFile();
-  }
-
-  if (!configChanged) {
-    return;
   }
 
   kLog.info("config changed, reloading");

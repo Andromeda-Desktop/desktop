@@ -316,8 +316,9 @@ private:
   int m_overridesWatchWd = -1;
   // Watch events are coalesced into one reload after a short quiet period.
   Timer m_watchReloadTimer;
-  bool m_pendingConfigReload = false;
-  bool m_pendingOverridesReload = false;
+  // Overrides reloads the config too, so it ranks above Config.
+  enum class WatchReload : std::uint8_t { None, Config, Overrides };
+  WatchReload m_pendingWatchReload = WatchReload::None;
   struct SymlinkTargetWatch {
     std::string filename;
     bool overrides = false;
