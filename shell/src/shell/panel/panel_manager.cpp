@@ -1794,6 +1794,10 @@ void PanelManager::prewarmNext() {
     panel.onClose();
     m_animations.cancelAll();
   }
+  if (m_prewarmQueue.empty()) {
+    kLog.info("panel prewarm done");
+    return;
+  }
   m_prewarmTimer.start(std::chrono::milliseconds(0), [this] { prewarmNext(); });
 }
 

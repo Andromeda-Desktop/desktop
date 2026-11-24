@@ -11,13 +11,14 @@ boot_headless 1
 with_noctalia '
   layer_present() { "$ANDROMEDA" layers | grep -q "$1"; }
   "$ANDROMEDA" msg "shell:panel-open launcher" > /dev/null
-  for _ in $(seq 50); do layer_present noctalia-panel && break; sleep 0.1; done
-  layer_present noctalia-panel || { echo "FAIL: shell action did not open the launcher panel"; exit 1; }
+  WAIT_S=5 wait_for "shell action did not open the launcher panel" layer_present noctalia-panel
   "$NOCTALIA" msg panel-close > /dev/null
 
   pid=$(pgrep -f "^$NOCTALIA\$" | head -1)
   wakeups() { cat /proc/"$pid"/task/*/status | awk "/^voluntary_ctxt_switches/ {s += \$2} END {print s}"; }
-  sleep 2 # real time: let the panel close settle
+  # Startup work ends with the panel prewarm, which waits for the launcher to close.
+  WAIT_S=15 wait_for "the panel prewarm did not finish" grep -q "panel prewarm done" "$OUT/noctalia.log"
+  sleep 2 # real time: the launcher icon prefetch runs 1 s after a panel closes
   before=$(wakeups)
   sleep 5 # real time: idle measurement window
   idle=$(( ($(wakeups) - before) / 5 ))
