@@ -5,6 +5,7 @@
 #include "core/log.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -16,7 +17,6 @@
 #include <string_view>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <utility>
@@ -26,21 +26,19 @@ namespace {
 
   constexpr Logger kLog("ipc");
   constexpr std::size_t kMaxCommandBytes = 64 * 1024;
-  constexpr int kRecvTimeoutMs = 100;
+  // A client's whole request must arrive within this: the socket is served on the main loop.
+  constexpr auto kReadTimeout = std::chrono::milliseconds(100);
+  constexpr auto kWriteTimeout = std::chrono::seconds(1);
   constexpr char kCallerCwdSeparator = '\x1e';
   constexpr std::size_t kMaxSubscribers = 32;
   constexpr std::string_view kJsonFlag = "--json ";
 
   void sendAll(int fd, std::string_view text) {
-    std::size_t sent = 0;
-    while (sent < text.size()) {
-      const auto n = ::send(fd, text.data() + sent, text.size() - sent, MSG_NOSIGNAL);
-      if (n <= 0) {
-        break;
-      }
-      sent += static_cast<std::size_t>(n);
-    }
+    (void)ipc::writeAll(fd, text, std::chrono::steady_clock::now() + kWriteTimeout);
   }
+
+  // The askpass handshake keeps the write side open: its first line is the whole request.
+  bool askpassLine(std::string_view data) { return data.starts_with("askpass") && data.contains('\n'); }
 
   [[nodiscard]] std::optional<std::string> parseCallerCwdPrefix(std::string& line) {
     const auto separator = line.find(kCallerCwdSeparator);
@@ -190,19 +188,16 @@ bool IpcService::hasHandler(std::string_view command) const noexcept {
 
 void IpcService::dispatch() {
   while (true) {
-    const int connFd = ::accept4(m_listenFd, nullptr, nullptr, SOCK_CLOEXEC);
-    if (connFd < 0) {
+    auto peer = ipc::acceptPeer(m_listenFd, 0);
+    if (!peer) {
+      if (errno == EACCES) {
+        kLog.warn("IPC: refused a connection from another user or a peer without a pidfd");
+        continue;
+      }
       break; // EAGAIN / EWOULDBLOCK — no more pending connections
     }
-    ucred peer{};
-    socklen_t size = sizeof(peer);
-    if (::getsockopt(connFd, SOL_SOCKET, SO_PEERCRED, &peer, &size) != 0 || peer.uid != ::geteuid()) {
-      kLog.warn("IPC: refused a connection from uid {}", peer.uid);
-      ::close(connFd);
-      continue;
-    }
-    if (!handleConnection(connFd, peer.pid)) {
-      ::close(connFd);
+    if (handleConnection(*peer)) {
+      (void)peer->conn.release();
     }
   }
 }
@@ -339,51 +334,23 @@ void IpcService::dropSubscriber(int fd) {
   }
 }
 
-bool IpcService::handleConnection(int connFd, pid_t peerPid) {
-  // Set receive timeout so a slow client doesn't stall the main loop
-  timeval tv{};
-  tv.tv_sec = 0;
-  tv.tv_usec = kRecvTimeoutMs * 1000;
-  ::setsockopt(connFd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
+bool IpcService::handleConnection(ipc::Peer& peer) {
+  const int connFd = peer.conn.get();
   // Read until the client closes its write side. Newlines are valid command
   // payload, so they cannot be used as the frame delimiter.
-  std::string command;
-  char buf[4096];
-  bool reachedEof = false;
-  while (command.size() < kMaxCommandBytes) {
-    const std::size_t limit = std::min(sizeof(buf), kMaxCommandBytes - command.size());
-    const auto n = ::read(connFd, buf, limit);
-    if (n > 0) {
-      command.append(buf, static_cast<std::size_t>(n));
-      // The askpass handshake keeps the write side open: its first line is the whole request.
-      if (command.starts_with("askpass") && command.find('\n') != std::string::npos) {
-        break;
-      }
-      continue;
-    }
-    if (n == 0) {
-      reachedEof = true;
-      break;
-    }
-    if (errno == EINTR) {
-      continue;
-    }
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      break;
-    }
+  auto read = ipc::readAll(connFd, kMaxCommandBytes, std::chrono::steady_clock::now() + kReadTimeout, askpassLine);
+  if (read.status == ipc::Status::Failed) {
     kLog.warn("IPC read failed: {}", std::strerror(errno));
-    break;
   }
-
-  if (command.size() >= kMaxCommandBytes && !reachedEof) {
+  if (read.status == ipc::Status::TooLong) {
     sendAll(connFd, "error: IPC command too large\n");
     return false;
   }
+  std::string command = std::move(read.data);
 
   // Legacy external clients may still send one newline-terminated command and
   // keep the socket open while waiting for the response.
-  if (!reachedEof) {
+  if (read.status != ipc::Status::Ok || askpassLine(command)) {
     if (const auto newline = command.find('\n'); newline != std::string::npos) {
       command.resize(newline);
     }
@@ -409,7 +376,7 @@ bool IpcService::handleConnection(int connFd, pid_t peerPid) {
       sendAll(connFd, "error: askpass is not available\n");
       return false;
     }
-    return m_askpassHandler(connFd, peerPid);
+    return m_askpassHandler(peer);
   }
   if (line == "subscribe" || line.starts_with("subscribe ")) {
     return subscribe(connFd, line.size() > 9 ? line.substr(10) : std::string(), json);

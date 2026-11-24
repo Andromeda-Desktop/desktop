@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/poll_source.h"
+#include "protocols/ipc_channel.h"
 #include "shell/polkit/askpass_request.h"
 
 #include <chrono>
@@ -27,9 +28,9 @@ public:
   // Called after every change of hasPendingRequest().
   void setStateCallback(StateCallback callback);
 
-  // Takes ownership of `fd` and returns true, or writes the reason to `fd` and returns false (the caller closes
-  // it). `peerPid` comes from SO_PEERCRED. A second request while one is open is refused.
-  bool begin(int fd, pid_t peerPid);
+  // Takes the peer's connection and pidfd and returns true, or writes the reason to the connection and returns
+  // false (the caller closes it). A second request while one is open is refused.
+  bool begin(ipc::Peer& peer);
   static void refuse(int fd, std::string_view reason);
 
   // A connection is in the handshake or shown.

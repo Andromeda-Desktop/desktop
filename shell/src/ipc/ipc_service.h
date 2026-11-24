@@ -2,6 +2,7 @@
 
 #include "cli/schema_msg.h"
 #include "ipc/ipc_invocation_context.h"
+#include "protocols/ipc_channel.h"
 
 #include <functional>
 #include <memory>
@@ -127,7 +128,8 @@ public:
 
   // Takes a connection that sent `askpass`: returns true when it keeps `fd`; on false the service closes it.
   // `peerPid` comes from SO_PEERCRED.
-  using AskpassHandler = std::function<bool(int fd, pid_t peerPid)>;
+  // Returns true when it keeps the connection; it may take the peer's pidfd.
+  using AskpassHandler = std::function<bool(ipc::Peer& peer)>;
   void setAskpassHandler(AskpassHandler handler) { m_askpassHandler = std::move(handler); }
 
 private:
@@ -145,7 +147,7 @@ private:
   };
 
   // Returns true when it kept `connFd` as a subscriber.
-  bool handleConnection(int connFd, pid_t peerPid);
+  bool handleConnection(ipc::Peer& peer);
   bool subscribe(int connFd, const std::string& args, bool json);
   void dropSubscriber(int fd);
   std::string buildHelp() const;

@@ -8,14 +8,10 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <string>
-#include <sys/syscall.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #include <utility>
-
-#ifndef SO_PEERPIDFD
-#define SO_PEERPIDFD 77
-#endif
 
 namespace {
 
@@ -23,15 +19,10 @@ namespace {
   constexpr std::size_t kMaxHandshakeBytes = 16;
   constexpr auto kReadyTimeout = std::chrono::seconds(2);
 
+  constexpr auto kWriteTimeout = std::chrono::seconds(1);
+
   void sendAll(int fd, std::string_view text) {
-    std::size_t sent = 0;
-    while (sent < text.size()) {
-      const auto n = ::send(fd, text.data() + sent, text.size() - sent, MSG_NOSIGNAL);
-      if (n <= 0) {
-        break;
-      }
-      sent += static_cast<std::size_t>(n);
-    }
+    (void)ipc::writeAll(fd, text, std::chrono::steady_clock::now() + kWriteTimeout);
   }
 
   // A pidfd polls readable once its process has exited.
@@ -41,15 +32,6 @@ namespace {
     }
     pollfd pfd{.fd = pidfd, .events = POLLIN, .revents = 0};
     return ::poll(&pfd, 1, 0) == 0;
-  }
-
-  int peerPidfd(int fd, pid_t peerPid) {
-    int pidfd = -1;
-    socklen_t size = sizeof(pidfd);
-    if (::getsockopt(fd, SOL_SOCKET, SO_PEERPIDFD, &pidfd, &size) == 0 && pidfd >= 0) {
-      return pidfd;
-    }
-    return static_cast<int>(::syscall(SYS_pidfd_open, peerPid, 0));
   }
 
   void closeFd(int fd) {
@@ -79,19 +61,17 @@ void AskpassBroker::setStateCallback(StateCallback callback) { m_stateCallback =
 
 void AskpassBroker::refuse(int fd, std::string_view reason) { sendAll(fd, std::string("error: ").append(reason) + '\n'); }
 
-bool AskpassBroker::begin(int fd, pid_t peerPid) {
+bool AskpassBroker::begin(ipc::Peer& peerConnection) {
+  const int fd = peerConnection.conn.get();
+  const pid_t peerPid = peerConnection.pid;
   if (m_pending) {
     refuse(fd, "another password request is open");
     return false;
   }
-  // The pidfd pins the peer first, so the /proc reads below cannot land on a reused pid unnoticed.
-  const int peer = peerPidfd(fd, peerPid);
-  // The credentials at connect(): a process that inherits the fd later cannot change them.
-  ucred cred{};
-  socklen_t credSize = sizeof(cred);
-  auto caller = ::getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &credSize) == 0
-      ? verifyAskpassCaller(m_proc, peerPid, cred.gid)
-      : std::unexpected(std::string("internal error"));
+  // The pidfd pins the peer, so the /proc reads below cannot land on a reused pid unnoticed; the gid is the
+  // credentials at connect(): a process that inherits the fd later cannot change them.
+  const int peer = peerConnection.pidfd.get();
+  auto caller = verifyAskpassCaller(m_proc, peerPid, peerConnection.gid);
   const int parent = caller ? m_openPidfd(caller->parentPid) : -1;
   std::string error;
   if (!caller) {
@@ -108,13 +88,12 @@ bool AskpassBroker::begin(int fd, pid_t peerPid) {
   if (!error.empty()) {
     kLog.warn("askpass: refused pid {}: {}", peerPid, error);
     refuse(fd, error);
-    closeFd(peer);
     closeFd(parent);
     return false;
   }
   m_pending = Pending{
       .fd = fd,
-      .peerPidfd = peer,
+      .peerPidfd = peerConnection.pidfd.release(),
       .parentPidfd = parent,
       .peerPid = peerPid,
       .caller = std::move(*caller),

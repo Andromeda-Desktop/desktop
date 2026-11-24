@@ -214,7 +214,7 @@ int main() {
     AskpassBroker* active = &broker;
     int changes = 0;
     broker.setStateCallback([&changes] { ++changes; });
-    ipc.setAskpassHandler([&active](int fd, pid_t pid) { return active->begin(fd, pid); });
+    ipc.setAskpassHandler([&active](ipc::Peer& peer) { return active->begin(peer); });
     const auto pump = [&](const std::function<bool()>& done) {
       for (int i = 0; i < 50 && !done(); ++i) {
         pollOnce({&ipcSource, active});

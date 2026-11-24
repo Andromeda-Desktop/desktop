@@ -4,6 +4,7 @@
 #include "core/log.h"
 #include "launcher/dmenu_socket_path.h"
 #include "launcher/dmenu_stdin_provider.h"
+#include "protocols/ipc_channel.h"
 #include "shell/launcher/launcher_panel.h"
 #include "shell/panel/panel_manager.h"
 
@@ -18,6 +19,9 @@ namespace {
 
   constexpr Logger kLog("dmenu");
   constexpr std::size_t kRecvChunk = 8192;
+  // Each session holds its whole input until end of file.
+  constexpr std::size_t kMaxSessions = 8;
+  constexpr std::size_t kMaxInputBytes = 16 * 1024 * 1024;
 
 } // namespace
 
@@ -143,12 +147,20 @@ void DmenuIpcService::dispatch(const std::vector<pollfd>& fds, std::size_t start
 
 void DmenuIpcService::acceptConnections() {
   while (true) {
-    const int connFd = ::accept4(m_listenFd, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
-    if (connFd < 0) {
+    auto peer = ipc::acceptPeer(m_listenFd, SOCK_NONBLOCK);
+    if (!peer) {
+      if (errno == EACCES) {
+        kLog.warn("dmenu: refused a connection from another user or a peer without a pidfd");
+        continue;
+      }
       break;
     }
+    if (m_sessions.size() >= kMaxSessions) {
+      kLog.warn("dmenu: refused pid {}: {} sessions open", peer->pid, m_sessions.size());
+      continue;
+    }
     auto session = std::make_unique<Session>();
-    session->connFd = connFd;
+    session->connFd = peer->conn.release();
     session->token = m_nextToken++;
     m_sessions.push_back(std::move(session));
   }
@@ -160,6 +172,11 @@ void DmenuIpcService::drainSession(Session& session) {
     const auto n = ::read(session.connFd, buf, sizeof(buf));
     if (n > 0) {
       session.buffer.append(buf, static_cast<std::size_t>(n));
+      if (session.buffer.size() > kMaxInputBytes) {
+        kLog.warn("dmenu: input over {} bytes; closing the session", kMaxInputBytes);
+        discardSession(session.connFd);
+        return;
+      }
       continue;
     }
     if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
