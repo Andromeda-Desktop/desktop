@@ -2,7 +2,7 @@
 # The calendar and wallpaper-scan workers start with work and exit after 30 s idle. A vdir calendar with one event
 # today and a directory of three wallpapers are configured: the calendar tab shows the event (read back with
 # tesseract), the wallpaper panel lists the images, and 40 s after both panels close the shell is down to its main
-# thread among unnamed "noctalia" threads; a fourth image added then is found by a fresh worker. Writes calendar.png,
+# no "dsk-worker" thread left (librsvg keeps its own unnamed pool); a fourth image added then is found by a fresh worker. Writes calendar.png,
 # calendar.txt, wallpaper.png, wallpaper-rescan.png, and threads.txt to $OUT
 # (default ./artifacts/idle-workers-on-demand).
 set -euo pipefail
@@ -36,7 +36,7 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   pid=$(pgrep -f "^$NOCTALIA\$" | head -1)
-  unnamed() { cat /proc/$pid/task/*/comm | grep -cx noctalia; }
+  workers() { awk "\$0 == \"dsk-worker\" {n++} END {print n + 0}" /proc/$pid/task/*/comm; }
 
   msg panel-open control-center calendar > /dev/null
   sleep 2 # real time: the vdir load and the first paint
@@ -49,15 +49,15 @@ with_noctalia '
 
   msg panel-open wallpaper > /dev/null
   sleep 2 # real time: the directory scan and thumbnails
-  busy=$(unnamed)
+  busy=$(workers)
   grim "$OUT/wallpaper.png"
   msg panel-close > /dev/null
 
   sleep 40 # real time: past the 30 s idle exit
-  idle=$(unnamed)
+  idle=$(workers)
   { echo "busy=$busy idle=$idle"; cat /proc/$pid/task/*/comm | sort | uniq -c | sort -rn; } > "$OUT/threads.txt"
-  (( busy > 1 )) || fail "no worker started while scanning (busy=$busy)"
-  (( idle == 1 )) || fail "$idle unnamed threads idle, want the main thread only"
+  (( busy >= 1 )) || fail "no worker started while scanning (busy=$busy)"
+  (( idle == 0 )) || fail "$idle dsk-worker threads idle, want none"
 
   magick -size 640x360 xc:yellow "$RUNTIME/walls/yellow.png"
   msg panel-open wallpaper > /dev/null
