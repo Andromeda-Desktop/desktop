@@ -19,6 +19,7 @@ struct ThemePalette {
   Color label1; // >= 7:1
   Color label2; // >= 4.5:1 and dimmer than label1
   Color accent; // >= 3:1
+  Color selection; // view mixed 40 % toward accent
   // Derived: 0 is a raised surface, 8 is label2, every other entry >= 7:1; 1-6 share one OKLCH lightness, their hues
   // turned up to 15 degrees toward the accent. Author's: each entry but 0 lifted to >= 4.5:1 by lightness only.
   std::array<Color, 16> ansi;

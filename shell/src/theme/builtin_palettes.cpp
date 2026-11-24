@@ -1,6 +1,7 @@
 #include "theme/builtin_palettes.h"
 
 #include "theme/fixed_palette.h"
+#include "ui/theme_palette.h"
 #include "ui/style.h"
 
 #include <string_view>
@@ -49,58 +50,50 @@ namespace noctalia::theme {
       };
     }
 
-    constexpr TerminalAnsiColors kAndromedaAnsiDark{
-        .black = hex("#1e1e22"), .red = hex("#ff453a"), .green = hex("#32d74b"), .yellow = hex("#ffd60a"),
-        .blue = hex("#4a80ff"), .magenta = hex("#bf5af2"), .cyan = hex("#64d2ff"), .white = hex("#f5f5f7"),
-    };
-    constexpr TerminalAnsiColors kAndromedaAnsiLight{
-        .black = hex("#1d1d1f"), .red = hex("#d70015"), .green = hex("#248a3d"), .yellow = hex("#b25000"),
-        .blue = hex("#2f6bff"), .magenta = hex("#8944ab"), .cyan = hex("#0071a4"), .white = hex("#f2f2f6"),
-    };
-
-    BuiltinPalette kAndromeda =
-        {
-            .name = "Andromeda",
-            .dark =
-                FixedPaletteMode{
-                    .palette = tokenFixedPalette(Tokens::schemeDark),
-                    .terminal =
-                        TerminalPalette{
-                            .normal = kAndromedaAnsiDark,
-                            .bright = kAndromedaAnsiDark,
-                            .foreground = hex("#f5f5f7"),
-                            .background = hex("#1e1e22"),
-                            .selectionFg = hex("#ffffff"),
-                            .selectionBg = hex("#4a80ff"),
-                            .cursorText = hex("#1e1e22"),
-                            .cursor = hex("#f5f5f7"),
-                        },
-                },
-            .light =
-                FixedPaletteMode{
-                    .palette = tokenFixedPalette(Tokens::schemeLight),
-                    .terminal =
-                        TerminalPalette{
-                            .normal = kAndromedaAnsiLight,
-                            .bright = kAndromedaAnsiLight,
-                            .foreground = hex("#1d1d1f"),
-                            .background = hex("#ffffff"),
-                            .selectionFg = hex("#ffffff"),
-                            .selectionBg = hex("#2f6bff"),
-                            .cursorText = hex("#ffffff"),
-                            .cursor = hex("#1d1d1f"),
-                        },
-                },
+    // The Andromeda Terminal's palette for the same scheme (libdesk-term themePalette): one derivation, not a copy.
+    template <typename Scheme> TerminalPalette tokenTerminalPalette(const Scheme& t) {
+      const ThemePalette p = deriveThemePalette(
+          {.surface = opaque(t.view), .text = over(t.label1, t.view), .accent = over(t.accent, t.view)}
+      );
+      const auto ansi = [&p](std::size_t base) {
+        return TerminalAnsiColors{
+            .black = p.ansi[base],
+            .red = p.ansi[base + 1],
+            .green = p.ansi[base + 2],
+            .yellow = p.ansi[base + 3],
+            .blue = p.ansi[base + 4],
+            .magenta = p.ansi[base + 5],
+            .cyan = p.ansi[base + 6],
+            .white = p.ansi[base + 7],
         };
+      };
+      return TerminalPalette{
+          .normal = ansi(0),
+          .bright = ansi(8),
+          .foreground = p.label1,
+          .background = p.view,
+          .selectionFg = p.label1,
+          .selectionBg = p.selection,
+          .cursorText = p.view,
+          .cursor = p.accent,
+      };
+    }
+
+    BuiltinPalette kAndromeda{.name = "Andromeda"};
 
   } // namespace
 
   void refreshBuiltinPalettes() {
-    kAndromeda.dark.palette = tokenFixedPalette(Tokens::schemeDark);
-    kAndromeda.light.palette = tokenFixedPalette(Tokens::schemeLight);
+    kAndromeda.dark = {.palette = tokenFixedPalette(Tokens::schemeDark), .terminal = tokenTerminalPalette(Tokens::schemeDark)};
+    kAndromeda.light = {
+        .palette = tokenFixedPalette(Tokens::schemeLight), .terminal = tokenTerminalPalette(Tokens::schemeLight)
+    };
   }
 
-  const BuiltinPalette& andromedaPalette() { return kAndromeda; }
+  const BuiltinPalette& andromedaPalette() {
+    [[maybe_unused]] static const bool filled = (refreshBuiltinPalettes(), true);
+    return kAndromeda;
+  }
 
   GeneratedPalette expandBuiltinPalette(const BuiltinPalette& palette) {
     auto generated = expandFixedPalettes(palette.dark.palette, palette.light.palette);

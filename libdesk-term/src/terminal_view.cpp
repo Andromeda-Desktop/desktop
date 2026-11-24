@@ -491,7 +491,7 @@ namespace term {
     m_background = over(derived.view, 0);
     m_foreground = over(derived.label1, 0);
     m_faint = over(derived.label2, 0);
-    m_selection = mix(m_background, over(derived.accent, 0), 0.4F);
+    m_selection = over(derived.selection, 0);
     m_cursorColor = over(derived.accent, 0);
     m_bandInks = {.path = derived.ansi[4], .label1 = derived.label1, .label2 = derived.label2, .accent = derived.accent};
     m_findHit = themed(ColorRole::TermFindHit);

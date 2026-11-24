@@ -60,6 +60,7 @@ ThemePalette deriveThemePalette(const ThemeAnchors& anchors) {
   p.label1 = ensureContrast(withOpaqueAlpha(anchors.text), p.view, text, toward);
   p.label2 = ensureContrast(mixOpaque(p.label1, p.view, 0.35F), p.view, std::min(4.5, reach), toward);
   p.accent = ensureContrast(withOpaqueAlpha(anchors.accent), p.view, std::min(3.0, reach), toward);
+  p.selection = mixOpaque(p.view, p.accent, 0.4F);
 
   if (anchors.ansi) {
     for (std::size_t i = 0; i < p.ansi.size(); ++i) {
