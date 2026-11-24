@@ -1,6 +1,7 @@
 #include "core/input/key_chord.h"
 
 #include "core/input/key_modifiers.h"
+#include "protocols/key_names.h"
 #include "util/string_utils.h"
 
 #include <array>
@@ -12,44 +13,6 @@
 #include <xkbcommon/xkbcommon.h>
 
 namespace {
-  std::string canonicalKeyName(std::string raw) {
-    const std::string lower = StringUtils::toLower(raw);
-    if (lower == "esc") {
-      return "Escape";
-    }
-    if (lower == "del") {
-      return "Delete";
-    }
-    if (lower == "enter") {
-      return "Return";
-    }
-    if (lower == "kp_enter") {
-      return "KP_Enter";
-    }
-    if (lower == "space" || lower == "spacebar") {
-      return "space";
-    }
-    if (lower == "left") {
-      return "Left";
-    }
-    if (lower == "right") {
-      return "Right";
-    }
-    if (lower == "up") {
-      return "Up";
-    }
-    if (lower == "down") {
-      return "Down";
-    }
-    if (lower == "tab") {
-      return "Tab";
-    }
-    if (lower == "iso_left_tab" || lower == "shift_tab") {
-      return "ISO_Left_Tab";
-    }
-    return raw;
-  }
-
   std::string keysymName(std::uint32_t sym) {
     if (sym == 0) {
       return {};
@@ -91,21 +54,26 @@ std::optional<KeyChord> parseKeyChordSpec(std::string_view rawSpec) {
 
   std::uint32_t modifiers = 0;
   for (std::size_t i = 0; i + 1 < tokens.size(); ++i) {
-    const std::string mod = StringUtils::toLower(tokens[i]);
-    if (mod == "ctrl" || mod == "control" || mod == "ctl") {
-      modifiers |= KeyMod::Ctrl;
-    } else if (mod == "shift") {
-      modifiers |= KeyMod::Shift;
-    } else if (mod == "alt" || mod == "option") {
-      modifiers |= KeyMod::Alt;
-    } else if (mod == "super" || mod == "meta" || mod == "logo" || mod == "win" || mod == "mod4") {
-      throw std::runtime_error("modifier \"super/windows\" is not allowed");
-    } else {
+    const auto mod = key_names::modifier(tokens[i]);
+    if (!mod) {
       return std::nullopt;
+    }
+    switch (*mod) {
+    case key_names::Modifier::Ctrl:
+      modifiers |= KeyMod::Ctrl;
+      break;
+    case key_names::Modifier::Shift:
+      modifiers |= KeyMod::Shift;
+      break;
+    case key_names::Modifier::Alt:
+      modifiers |= KeyMod::Alt;
+      break;
+    case key_names::Modifier::Super:
+      throw std::runtime_error("modifier \"super/windows\" is not allowed");
     }
   }
 
-  const std::string keyName = canonicalKeyName(tokens.back());
+  const std::string keyName(key_names::keysymName(tokens.back()));
   const xkb_keysym_t sym = xkb_keysym_from_name(keyName.c_str(), XKB_KEYSYM_CASE_INSENSITIVE);
   if (sym == XKB_KEY_NoSymbol) {
     return std::nullopt;

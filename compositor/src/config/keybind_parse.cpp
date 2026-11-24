@@ -1,5 +1,7 @@
 #include "config/keybind_parse.h"
 
+#include "protocols/key_names.h"
+
 // <cmath> must precede the Wayland headers to avoid a libstdc++ 16 include-order failure.
 // clang-format off
 #include <cmath>
@@ -53,19 +55,27 @@ namespace andromeda {
     }
 
     bool applyModifier(std::string_view token, Keybind& output) {
-      const std::string modifier = toLower(token);
-      if (modifier == "mod") {
+      if (toLower(token) == "mod") {
         output.useMod = true;
-      } else if (modifier == "shift") {
-        output.modifiers |= WLR_MODIFIER_SHIFT;
-      } else if (modifier == "ctrl" || modifier == "control") {
-        output.modifiers |= WLR_MODIFIER_CTRL;
-      } else if (modifier == "alt") {
-        output.modifiers |= WLR_MODIFIER_ALT;
-      } else if (modifier == "super" || modifier == "logo" || modifier == "win") {
-        output.modifiers |= WLR_MODIFIER_LOGO;
-      } else {
+        return true;
+      }
+      const auto modifier = key_names::modifier(token);
+      if (!modifier) {
         return false;
+      }
+      switch (*modifier) {
+      case key_names::Modifier::Shift:
+        output.modifiers |= WLR_MODIFIER_SHIFT;
+        break;
+      case key_names::Modifier::Ctrl:
+        output.modifiers |= WLR_MODIFIER_CTRL;
+        break;
+      case key_names::Modifier::Alt:
+        output.modifiers |= WLR_MODIFIER_ALT;
+        break;
+      case key_names::Modifier::Super:
+        output.modifiers |= WLR_MODIFIER_LOGO;
+        break;
       }
       return true;
     }
@@ -657,7 +667,7 @@ namespace andromeda {
       return true;
     }
 
-    const std::string keyName(tokens.back());
+    const std::string keyName(key_names::keysymName(tokens.back()));
     const xkb_keysym_t keysym = xkb_keysym_from_name(keyName.c_str(), XKB_KEYSYM_CASE_INSENSITIVE);
     if (keysym == XKB_KEY_NoSymbol) {
       return false;

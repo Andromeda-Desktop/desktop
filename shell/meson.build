@@ -1199,6 +1199,7 @@ if build_tests
   _cpp_test_names = [
     'crash_records',
     'damage_region',
+    'key_chord_names',
     'update_run',
     'dconf_read',
     'accent_pick',

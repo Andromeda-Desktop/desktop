@@ -1,6 +1,7 @@
 #include "input/global_shortcuts.h"
 
 #include "check.h"
+#include "protocols/key_names.h"
 
 #include <map>
 #include <random>
@@ -272,3 +273,17 @@ ANDROMEDA_TEST(randomEventSequencesKeepTheShortcutInvariants) {
 }
 
 int main() { return RUN_TESTS(); }
+
+ANDROMEDA_TEST(portalTriggersUseSharedKeyNames) {
+  for (const auto& [alias, modifier] : key_names::kModifiers) {
+    const uint32_t expected = modifier == key_names::Modifier::Shift ? mod::kShift
+        : modifier == key_names::Modifier::Ctrl                      ? mod::kCtrl
+        : modifier == key_names::Modifier::Alt                       ? mod::kAlt
+                                                                     : mod::kLogo;
+    CHECK(parsePortalTrigger(std::string(alias) + "+m") == chord(expected, XKB_KEY_m));
+  }
+  for (const auto& [alias, name] : key_names::kKeyAliases) {
+    const xkb_keysym_t expected = xkb_keysym_from_name(std::string(name).c_str(), XKB_KEYSYM_NO_FLAGS);
+    CHECK(parsePortalTrigger("CTRL+" + std::string(alias)) == chord(mod::kCtrl, xkb_keysym_to_lower(expected)));
+  }
+}

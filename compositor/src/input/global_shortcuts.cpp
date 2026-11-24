@@ -1,5 +1,7 @@
 #include "input/global_shortcuts.h"
 
+#include "protocols/key_names.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -25,22 +27,23 @@ namespace andromeda {
     }
 
     std::optional<uint32_t> portalModifier(std::string_view token) {
-      const std::string name = upper(token);
-      if (name == "CTRL" || name == "CONTROL") {
-        return shortcut_mod::kCtrl;
-      }
-      if (name == "ALT") {
-        return shortcut_mod::kAlt;
-      }
-      if (name == "SHIFT") {
-        return shortcut_mod::kShift;
-      }
-      if (name == "LOGO" || name == "SUPER") {
-        return shortcut_mod::kLogo;
-      }
       // The XDG shortcuts spec lists NUM (Num Lock); matching ignores lock state, so it adds nothing.
-      if (name == "NUM") {
+      if (upper(token) == "NUM") {
         return 0U;
+      }
+      const auto modifier = key_names::modifier(token);
+      if (!modifier) {
+        return std::nullopt;
+      }
+      switch (*modifier) {
+      case key_names::Modifier::Shift:
+        return shortcut_mod::kShift;
+      case key_names::Modifier::Ctrl:
+        return shortcut_mod::kCtrl;
+      case key_names::Modifier::Alt:
+        return shortcut_mod::kAlt;
+      case key_names::Modifier::Super:
+        return shortcut_mod::kLogo;
       }
       return std::nullopt;
     }
@@ -71,7 +74,7 @@ namespace andromeda {
       }
       chord.modifiers |= *modifier;
     }
-    const std::string name(tokens.back());
+    const std::string name(key_names::keysymName(tokens.back()));
     const xkb_keysym_t keysym = xkb_keysym_from_name(name.c_str(), XKB_KEYSYM_CASE_INSENSITIVE);
     if (keysym == XKB_KEY_NoSymbol || modifierKeysym(keysym)) {
       return std::nullopt;

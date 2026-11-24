@@ -104,6 +104,9 @@ RULES = {
                    r"uponReplyInvoke\(\[[^\]]*\]\(std::optional<sdbus::Error>[^)]*\)\s*\{\s*\}", ()),
     "uri-codec": ("file URIs, percent escapes and text/uri-list go through protocol/uri.h (C17)", CPP_DIRS,
                   CPP + (".mm",), r"\bg_filename_(to|from)_uri\s*\(|\"text/uri-list\"|\"file://\"\s*\+", ()),
+    "key-names": ("chord modifier and key aliases come from key_names:: (protocol/key_names.h); each grammar keeps "
+                  "only its own extra tokens (C17)", CPP_DIRS, CPP,
+                  r"==\s*\"(ctrl|control|ctl|shift|alt|option|super|logo|win|meta|mod4|esc|del|enter)\"", ()),
     "app-executable": ("apps start through appd: the app is a library, the executable only calls it (C7)",
                        ("apps/",), ("meson.build",), r"^executable\('(andromeda-[\w-]+)'", ()),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",

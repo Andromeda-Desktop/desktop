@@ -1,5 +1,7 @@
 #include "keybindings.h"
 
+#include "protocols/key_names.h"
+
 #include <xkbcommon/xkbcommon.h>
 
 #include <algorithm>
@@ -115,7 +117,7 @@ namespace term {
         if (part.size() == 1) {
           sym = xkb_utf32_to_keysym(static_cast<std::uint32_t>(static_cast<unsigned char>(part[0])));
         } else if (!part.empty()) {
-          sym = xkb_keysym_from_name(part.c_str(), XKB_KEYSYM_CASE_INSENSITIVE);
+          sym = xkb_keysym_from_name(std::string(key_names::keysymName(part)).c_str(), XKB_KEYSYM_CASE_INSENSITIVE);
         }
         if (sym == XKB_KEY_NoSymbol) {
           return std::nullopt;
@@ -123,15 +125,11 @@ namespace term {
         chord.sym = normalSym(sym);
         return chord;
       }
-      if (part == "ctrl" || part == "control") {
-        chord.modifiers |= kCtrl;
-      } else if (part == "shift") {
-        chord.modifiers |= kShift;
-      } else if (part == "alt") {
-        chord.modifiers |= kAlt;
-      } else {
+      const auto mod = key_names::modifier(part);
+      if (!mod || *mod == key_names::Modifier::Super) {
         return std::nullopt; // Super belongs to the desktop
       }
+      chord.modifiers |= *mod == key_names::Modifier::Ctrl ? kCtrl : *mod == key_names::Modifier::Shift ? kShift : kAlt;
       spec.remove_prefix(plus + 1);
     }
   }

@@ -1,9 +1,11 @@
 #include "config/keybind_parse.h"
 
 #include "check.h"
+#include "protocols/key_names.h"
 
 // clang-format off
 // See the note in keybind_parse.cpp: <cmath> must precede the wayland chain.
+#include <cctype>
 #include <cmath>
 #include <linux/input-event-codes.h>
 #include <xkbcommon/xkbcommon.h>
@@ -1354,3 +1356,21 @@ ANDROMEDA_TEST(parsesFloatingSnapActions) {
 }
 
 int main() { return RUN_TESTS(); }
+
+ANDROMEDA_TEST(sharedKeyNamesParse) {
+  for (const auto& [alias, modifier] : key_names::kModifiers) {
+    const uint32_t expected = modifier == key_names::Modifier::Shift ? WLR_MODIFIER_SHIFT
+        : modifier == key_names::Modifier::Ctrl                      ? WLR_MODIFIER_CTRL
+        : modifier == key_names::Modifier::Alt                       ? WLR_MODIFIER_ALT
+                                                                     : WLR_MODIFIER_LOGO;
+    std::string upper(alias);
+    std::ranges::transform(upper, upper.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    CHECK_EQ(chord(std::string(alias) + "+a").modifiers, expected);
+    CHECK_EQ(chord(upper + "+a").modifiers, expected);
+  }
+  for (const auto& [alias, name] : key_names::kKeyAliases) {
+    const xkb_keysym_t expected = xkb_keysym_from_name(std::string(name).c_str(), XKB_KEYSYM_NO_FLAGS);
+    CHECK(expected != XKB_KEY_NoSymbol);
+    CHECK_EQ(chord("Ctrl+" + std::string(alias)).keysym, xkb_keysym_to_lower(expected));
+  }
+}
