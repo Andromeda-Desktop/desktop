@@ -17,12 +17,13 @@ endif
 
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
-_model = static_library('link_model', 'src/link_model.cpp', dependencies: dependency('nlohmann_json'), cpp_args: _warnings)
-
-test('link_model', executable('link_model_test', 'tests/link_model_test.cpp', link_with: _model, dependencies: dependency('nlohmann_json'),
-  include_directories: include_directories('src'), cpp_args: _warnings))
-
 _desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
+_translations = '-DANDROMEDA_TRANSLATIONS_DIR="' + meson.current_source_dir() / 'translations' + '"'
+
+_model = static_library('link_model', 'src/link_model.cpp', dependencies: [dependency('nlohmann_json'), _desk_app_dep], cpp_args: _warnings)
+
+test('link_model', executable('link_model_test', 'tests/link_model_test.cpp', link_with: _model, dependencies: [dependency('nlohmann_json'), _desk_app_dep],
+  include_directories: include_directories('src'), cpp_args: _warnings + [_translations]))
 
 executable('andromeda-link-app',
   'src/link_app.cpp',
@@ -32,7 +33,7 @@ executable('andromeda-link-app',
   link_with: _model,
   dependencies: [_desk_app_dep, dependency('libqrencode'), dependency('libavcodec'), dependency('libavutil'), dependency('libavfilter'),
                  dependency('libswscale'), dependency('libva'), dependency('tomlplusplus').partial_dependency(includes: true)],
-  cpp_args: _warnings,
+  cpp_args: _warnings + [_translations],
   install: true,
 )
 
@@ -42,6 +43,7 @@ test('mirror_decoder', executable('mirror_decoder_test', 'tests/mirror_decoder_t
   cpp_args: _warnings + ['-fsanitize=address', '-fno-omit-frame-pointer'], link_args: ['-fsanitize=address']),
   env: ['ASAN_OPTIONS=detect_leaks=0'])
 
+install_data('translations/en.json', install_dir: get_option('datadir') / 'andromeda' / 'translations' / 'link')
 install_data('data/dev.andromeda.Link.desktop', install_dir: get_option('datadir') / 'applications')
 foreach size : ['16', '24', '32', '48', '64', '128', '256', '512']
   install_data('data/icons/hicolor' / size + 'x' + size / 'apps/dev.andromeda.Link.png',

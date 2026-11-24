@@ -1,4 +1,5 @@
 #include "link_model.h"
+#include "i18n/i18n.h"
 
 #include <algorithm>
 #include <array>
@@ -226,13 +227,13 @@ namespace linkapp {
   }
 
   std::string lastSeenText(std::int64_t lastSeenS, std::int64_t nowS) {
-    if (lastSeenS <= 0) return "Not connected";
+    if (lastSeenS <= 0) return i18n::tr("link.last-seen.never");
     const std::int64_t ago = std::max<std::int64_t>(0, nowS - lastSeenS);
-    if (ago < 60) return "Last seen just now";
-    if (ago < 3600) return std::format("Last seen {} min ago", ago / 60);
+    if (ago < 60) return i18n::tr("link.last-seen.just-now");
+    if (ago < 3600) return i18n::tr("link.last-seen.minutes", "count", ago / 60);
     const std::string day = dayLabel(lastSeenS * 1000, nowS * 1000);
-    if (day == "Today") return std::format("Last seen {} h ago", ago / 3600);
-    return "Last seen " + (day == "Yesterday" ? std::string("yesterday") : day);
+    if (day == i18n::tr("link.day.today")) return i18n::tr("link.last-seen.hours", "count", ago / 3600);
+    return day == i18n::tr("link.day.yesterday") ? i18n::tr("link.last-seen.yesterday") : i18n::tr("link.last-seen.day", "day", day);
   }
 
   std::string dayLabel(std::int64_t atMs, std::int64_t nowMs) {
@@ -250,13 +251,17 @@ namespace linkapp {
     a.tm_min = now.tm_min = a.tm_sec = now.tm_sec = 0;
     a.tm_isdst = now.tm_isdst = -1;
     const auto days = static_cast<long>(std::lround(std::difftime(std::mktime(&now), std::mktime(&a)) / 86400.0));
-    static constexpr std::array kDays{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-    static constexpr std::array kMonths{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-    if (days == 0) return "Today";
-    if (days == 1) return "Yesterday";
-    if (days > 1 && days < 7) return kDays[static_cast<std::size_t>(at.tm_wday)];
-    if (at.tm_year == now.tm_year) return std::format("{} {}", at.tm_mday, kMonths[static_cast<std::size_t>(at.tm_mon)]);
-    return std::format("{} {} {}", at.tm_mday, kMonths[static_cast<std::size_t>(at.tm_mon)], at.tm_year + 1900);
+    static constexpr std::array kDays{"link.day.sunday", "link.day.monday", "link.day.tuesday", "link.day.wednesday",
+                                      "link.day.thursday", "link.day.friday", "link.day.saturday"};
+    static constexpr std::array kMonths{"link.month.jan", "link.month.feb", "link.month.mar", "link.month.apr",
+                                        "link.month.may", "link.month.jun", "link.month.jul", "link.month.aug",
+                                        "link.month.sep", "link.month.oct", "link.month.nov", "link.month.dec"};
+    if (days == 0) return i18n::tr("link.day.today");
+    if (days == 1) return i18n::tr("link.day.yesterday");
+    if (days > 1 && days < 7) return i18n::tr(kDays[static_cast<std::size_t>(at.tm_wday)]);
+    const std::string month = i18n::tr(kMonths[static_cast<std::size_t>(at.tm_mon)]);
+    if (at.tm_year == now.tm_year) return std::format("{} {}", at.tm_mday, month);
+    return std::format("{} {} {}", at.tm_mday, month, at.tm_year + 1900);
   }
 
   void Activity::offered(const std::string& id, const std::string& deviceId,
@@ -693,17 +698,17 @@ namespace linkapp {
     FeedItem item{.kind = FeedItem::Kind::Photos, .key = "p:new", .deviceId = deviceId};
     std::size_t n = 0;
     for (const Photo& photo : photos) {
-      if (photo.atS <= seenS || dayLabel(photo.atS * 1000, nowMs) != "Today") continue;
+      if (photo.atS <= seenS || dayLabel(photo.atS * 1000, nowMs) != i18n::tr("link.day.today")) continue;
       if (n++ == 0) item.atMs = photo.atS * 1000;
       if (item.photos.size() < kStripPhotos) item.photos.push_back(photo.path);
     }
     if (n == 0) return std::nullopt;
-    item.who = n == 1 ? std::string("1 new photo") : std::format("{} new photos", n);
+    item.who = i18n::trp("link.feed.new-photos", static_cast<long>(n));
     return item;
   }
 
   std::vector<std::string> Files::crumbs() const {
-    std::vector<std::string> out{"Phone"};
+    std::vector<std::string> out{i18n::tr("link.files.phone-root")};
     for (std::size_t at = 1; at < m_path.size();) {
       const std::size_t end = std::min(m_path.find('/', at), m_path.size());
       out.push_back(m_path.substr(at, end - at));
@@ -806,7 +811,7 @@ namespace linkapp {
     case E::Opened:
       if (!current || mirror.kind != K::Asking) return false;
       if (event.width == 0 || event.height == 0) {
-        mirror = {.kind = K::Failed, .session = mirror.session, .error = "The phone sent no screen size."};
+        mirror = {.kind = K::Failed, .session = mirror.session, .error = i18n::tr("link.client.no-screen-size")};
         return true;
       }
       mirror.kind = K::Showing;

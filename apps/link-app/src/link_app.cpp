@@ -1,6 +1,7 @@
 #include "link_app.h"
 
 #include "app/app_window.h"
+#include "i18n/i18n.h"
 #include "wayland/drag_and_drop.h"
 #include "wayland/wayland_connection.h"
 #include "core/log.h"
@@ -48,13 +49,13 @@ namespace linkapp {
     struct MaterialChoice {
       AppWindow::Material material;
       const char* key;
-      const char* name;
+      const char* title;
     };
     constexpr std::array kMaterials{
-        MaterialChoice{AppWindow::Material::Solid, "solid", "Solid"},
-        MaterialChoice{AppWindow::Material::Glass, "glass", "Glass"},
-        MaterialChoice{AppWindow::Material::GlassSidebar, "glass_sidebar", "Glass sidebar"},
-        MaterialChoice{AppWindow::Material::GlassContent, "glass_content", "Glass content"},
+        MaterialChoice{AppWindow::Material::Solid, "solid", "link.appearance.solid"},
+        MaterialChoice{AppWindow::Material::Glass, "glass", "link.appearance.glass"},
+        MaterialChoice{AppWindow::Material::GlassSidebar, "glass_sidebar", "link.appearance.glass-sidebar"},
+        MaterialChoice{AppWindow::Material::GlassContent, "glass_content", "link.appearance.glass-content"},
     };
 
     std::filesystem::path settingsPath() {
@@ -88,16 +89,21 @@ namespace linkapp {
     struct PageInfo {
       Page page;
       const char* name;
+      const char* title;
       const char* glyph;
     };
 
     constexpr std::int32_t kAndroidPower = 26; // KeyEvent.KEYCODE_POWER
     constexpr std::int32_t kPairEntry = 1'000'000; // the phone menu's Pair entry; phone entries are their index
     constexpr std::array kPages{
-        PageInfo{Page::Waiting, "Waiting", "bell"},        PageInfo{Page::Messages, "Messages", "message"},
-        PageInfo{Page::Calls, "Calls", "phone"},           PageInfo{Page::Photos, "Photos", "photo"},
-        PageInfo{Page::Files, "Files", "folder"},          PageInfo{Page::Activity, "Activity", "arrows-down-up"},
-        PageInfo{Page::Mirror, "Mirror", "device-mobile"}, PageInfo{Page::Settings, "Settings", "settings"},
+        PageInfo{Page::Waiting, "Waiting", "link.pages.waiting", "bell"},
+        PageInfo{Page::Messages, "Messages", "link.pages.messages", "message"},
+        PageInfo{Page::Calls, "Calls", "link.pages.calls", "phone"},
+        PageInfo{Page::Photos, "Photos", "link.pages.photos", "photo"},
+        PageInfo{Page::Files, "Files", "link.pages.files", "folder"},
+        PageInfo{Page::Activity, "Activity", "link.pages.activity", "arrows-down-up"},
+        PageInfo{Page::Mirror, "Mirror", "link.pages.mirror", "device-mobile"},
+        PageInfo{Page::Settings, "Settings", "link.pages.settings", "settings"},
     };
 
     std::int64_t nowMs() {
@@ -114,8 +120,8 @@ namespace linkapp {
     // A list row's time: the clock today, else "Yesterday", a short weekday, or the date.
     std::string when(std::int64_t ms) {
       const std::string day = dayLabel(ms, nowMs());
-      if (day == "Today") return clock(ms);
-      const bool weekday = day != "Yesterday" && std::ranges::none_of(day, [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; });
+      if (day == i18n::tr("link.day.today")) return clock(ms);
+      const bool weekday = day != i18n::tr("link.day.yesterday") && std::ranges::none_of(day, [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; });
       return weekday ? day.substr(0, 3) : day;
     }
 
@@ -190,12 +196,12 @@ namespace linkapp {
                                    .frameVisible = false, .flexGrow = 1.0F, .onChange = std::move(change),
                                    .onSubmit = [send](const std::string&) { send(); }}));
       capsule->addChild(ui::button({.glyph = std::string("send"), .glyphSize = Tokens::sizeSymbolInline * s,
-                                    .variant = ButtonVariant::Primary, .tooltip = std::string("Send"), .radius = key / 2.0F,
+                                    .variant = ButtonVariant::Primary, .tooltip = i18n::tr("link.common.send"), .radius = key / 2.0F,
                                     .width = key, .height = key, .onClick = std::move(send)}));
       return capsule;
     }
 
-    constexpr const char* kLockedText = "Unlock your phone to see the text";
+    std::string lockedText() { return i18n::tr("link.feed.locked"); }
 
   } // namespace
 
@@ -227,7 +233,7 @@ namespace linkapp {
     const std::size_t earlier = feed.earlierStart(nowMs());
     if (index == 0 || index == earlier) {
       block->addChild(ui::row({.paddingV = Tokens::spaceP8 * s, .paddingH = (Tokens::spaceP16 + Tokens::sizeControlM + Tokens::spaceP12) * s},
-                              text(index < earlier ? "Now" : "Earlier today", Tokens::typeFootnote, ColorRole::Label2, s)));
+                              text(index < earlier ? i18n::tr("link.feed.now") : i18n::tr("link.feed.earlier-today"), Tokens::typeFootnote, ColorRole::Label2, s)));
     } else {
       block->addChild(ui::separator({}));
     }
@@ -245,7 +251,7 @@ namespace linkapp {
     auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP2 * s, .flexGrow = 1.0F});
     const bool offer = item.kind == FeedItem::Kind::Offer;
     const std::string who = offer ? (item.files.size() == 1 ? item.files.front().first
-                                                            : std::format("{} files", item.files.size()))
+                                                            : i18n::trp("link.common.files-count", static_cast<long>(item.files.size())))
                                   : item.kind == FeedItem::Kind::Text ? m_client.messages().nameFor(item.who)
                                                                       : item.who;
     auto head = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
@@ -253,12 +259,12 @@ namespace linkapp {
     name->setFlexGrow(1.0F);
     head->addChild(std::move(name));
     const bool photos = item.kind == FeedItem::Kind::Photos;
-    head->addChild(text(offer ? byteSize(item.total) : photos ? std::string("Today") : clock(item.atMs), Tokens::typeFootnote,
+    head->addChild(text(offer ? byteSize(item.total) : photos ? i18n::tr("link.day.today") : clock(item.atMs), Tokens::typeFootnote,
                         ColorRole::Label2, s));
     body->addChild(std::move(head));
-    const std::string line = offer    ? std::string("From your phone")
-                             : photos ? std::string("Drag one to the desktop, or open Photos")
-                             : locked ? std::string(kLockedText)
+    const std::string line = offer    ? i18n::tr("link.feed.from-phone")
+                             : photos ? i18n::tr("link.feed.drag-hint")
+                             : locked ? lockedText()
                                       : item.body;
     body->addChild(text(line, Tokens::typeParagraph, (locked && !offer) || photos ? ColorRole::Label2 : ColorRole::Label1, s, 2));
     if (photos) {
@@ -297,9 +303,9 @@ namespace linkapp {
     const FeedItem copy = item;
     const auto canReply = item.kind == FeedItem::Kind::Text || std::ranges::any_of(item.actions, &FeedAction::reply);
     if (offer && item.transfer == Transfer::Offered) {
-      actions->addChild(ui::button({.text = std::string("Decline"), .variant = ButtonVariant::Tonal,
+      actions->addChild(ui::button({.text = i18n::tr("link.common.decline"), .variant = ButtonVariant::Tonal,
                                     .onClick = [this, copy] { m_client.decline(copy); }}));
-      actions->addChild(ui::button({.text = std::string("Save to Downloads"), .variant = ButtonVariant::Primary,
+      actions->addChild(ui::button({.text = i18n::tr("link.common.save-to-downloads"), .variant = ButtonVariant::Primary,
                                     .onClick = [this, copy] { m_client.accept(copy); }}));
     } else if (offer) {
       const float progress = item.total > 0 ? static_cast<float>(item.bytes) / static_cast<float>(item.total) : 0.0F;
@@ -307,7 +313,7 @@ namespace linkapp {
                                          .height = Tokens::spaceP4 * s, .flexGrow = 1.0F}));
     } else if (canReply && !locked) {
       const std::string key = item.key;
-      auto capsule = replyCapsule(m_drafts[key], "Reply", Tokens::sizeControlM * s, s,
+      auto capsule = replyCapsule(m_drafts[key], i18n::tr("link.feed.reply"), Tokens::sizeControlM * s, s,
                                   [this, key](const std::string& value) { m_drafts[key] = value; },
                                   [this, copy, key] {
                                     const std::string value = m_drafts[key];
@@ -332,7 +338,7 @@ namespace linkapp {
                                       .glyphSize = Tokens::sizeSymbolInline * s, .variant = ButtonVariant::Tonal,
                                       .onClick = [this, copy, id = action.id] { m_client.action(copy, id); }}));
         if (call && m_hooks.textTo) {
-          actions->addChild(ui::button({.text = std::string("Text"), .glyph = std::string("message"),
+          actions->addChild(ui::button({.text = i18n::tr("link.feed.text"), .glyph = std::string("message"),
                                         .glyphSize = Tokens::sizeSymbolInline * s, .variant = ButtonVariant::Ghost,
                                         .onClick = [this, number = action.id] { m_hooks.textTo(number); }}));
         }
@@ -387,7 +393,7 @@ namespace linkapp {
     head->addChild(text(when(t.atMs), Tokens::typeFootnote, quiet, s));
     body->addChild(std::move(head));
     auto line = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-    auto last = text(locked && t.unread > 0 ? std::string(kLockedText) : t.last, Tokens::typeFootnote, quiet, s);
+    auto last = text(locked && t.unread > 0 ? lockedText() : t.last, Tokens::typeFootnote, quiet, s);
     last->setFlexGrow(1.0F);
     line->addChild(std::move(last));
     if (t.unread > 0) {
@@ -462,7 +468,7 @@ namespace linkapp {
       block->addChild(std::move(bubble));
     } else {
       auto bubble = ui::column({.paddingV = Tokens::spaceP8 * s, .paddingH = padH, .fill = fill, .radius = radius});
-      bubble->addChild(ui::label({.text = hidden ? std::string(kLockedText) : row.text, .fontSize = Tokens::typeParagraph.size * s,
+      bubble->addChild(ui::label({.text = hidden ? lockedText() : row.text, .fontSize = Tokens::typeParagraph.size * s,
                                   .fontWeight = static_cast<FontWeight>(Tokens::typeParagraph.weight),
                                   .color = colorSpecFromRole(hidden ? ColorRole::Label2 : ColorRole::Label1),
                                   .maxWidth = std::max(0.0F, (width - 2.0F * inset) * Tokens::componentLinkBubbleMax - 2.0F * padH)}));
@@ -470,10 +476,10 @@ namespace linkapp {
     }
     const bool failed = row.kind == K::Failed || row.note == N::NotSent;
     if (row.runEnd || failed) {
-      const std::string meta = row.kind == K::Sending || row.note == N::Sending ? std::string("Sending…")
-                               : row.kind == K::Failed                         ? std::string("Not sent · Click to try again")
-                               : row.note == N::NotSent                        ? std::string("Not sent")
-                               : row.note == N::Delivered                      ? std::string("Delivered")
+      const std::string meta = row.kind == K::Sending || row.note == N::Sending ? i18n::tr("link.messages.sending")
+                               : row.kind == K::Failed                         ? i18n::tr("link.messages.not-sent-retry")
+                               : row.note == N::NotSent                        ? i18n::tr("link.messages.not-sent")
+                               : row.note == N::Delivered                      ? i18n::tr("link.messages.delivered")
                                                                                : clock(row.atMs);
       block->addChild(ui::row({.paddingV = Tokens::spaceP2 * s, .paddingH = padH},
                               text(meta, Tokens::typeFootnote, failed ? ColorRole::DangerText : ColorRole::Label2, s)));
@@ -505,11 +511,11 @@ namespace linkapp {
     const auto& calls = m_client.calls();
     const CallEntry& c = calls[at(index)];
     const std::int64_t now = nowMs();
-    const auto today = [&](std::size_t row) { return dayLabel(calls[at(row)].atMs, now) == "Today"; };
+    const auto today = [&](std::size_t row) { return dayLabel(calls[at(row)].atMs, now) == i18n::tr("link.day.today"); };
     const float indent = Tokens::sizeControlM * s + Tokens::spaceP12 * s;
     auto block = ui::column({.align = FlexAlign::Stretch});
     if (index == 0 || today(index - 1) != today(index)) {
-      auto head = text(today(index) ? "Today" : "Earlier", Tokens::typeFootnote, ColorRole::Label2, s);
+      auto head = text(today(index) ? i18n::tr("link.day.today") : i18n::tr("link.calls.earlier"), Tokens::typeFootnote, ColorRole::Label2, s);
       head->setFontWeight(FontWeight::SemiBold);
       auto line = ui::row({.paddingV = Tokens::spaceP8 * s}, std::move(head));
       line->setPadding(Tokens::spaceP16 * s, 0.0F, Tokens::spaceP8 * s, indent);
@@ -530,8 +536,10 @@ namespace linkapp {
                      missed ? ColorRole::DangerText : ColorRole::Label1, s);
     name->setFontWeight(FontWeight::Medium);
     body->addChild(std::move(name));
-    const char* kind = missed ? "Missed" : c.kind == K::Outgoing ? "Outgoing" : "Incoming";
-    body->addChild(text(missed || c.seconds == 0 ? std::string(kind) : std::format("{} · {}", kind, duration(c.seconds)),
+    const std::string kind = missed                    ? i18n::tr("link.calls.missed")
+                             : c.kind == K::Outgoing ? i18n::tr("link.calls.outgoing")
+                                                     : i18n::tr("link.calls.incoming");
+    body->addChild(text(missed || c.seconds == 0 ? kind : std::format("{} · {}", kind, duration(c.seconds)),
                         Tokens::typeFootnote, ColorRole::Label2, s));
     row->addChild(std::move(body));
     row->addChild(text(today(index) ? clock(c.atMs) : when(c.atMs) + " " + clock(c.atMs), Tokens::typeFootnote,
@@ -539,7 +547,7 @@ namespace linkapp {
     const std::string device = m_client.presence().phone.id;
     const std::string number = c.number;
     row->addChild(ui::button({.glyph = std::string("phone"), .glyphSize = Tokens::sizeSymbol * s, .variant = ButtonVariant::Ghost,
-                              .tooltip = std::string("Call"),
+                              .tooltip = i18n::tr("link.common.call"),
                               .onClick = [this, device, number] { m_client.dial(device, number); }}));
     block->addChild(std::move(row));
     return block;
@@ -608,14 +616,14 @@ namespace linkapp {
     while (cut < e.text.size() && (static_cast<unsigned char>(e.text[cut]) & 0xC0U) == 0x80U) --cut; // a UTF-8 boundary
     const std::string first = e.text.substr(0, cut);
     const Presence& presence = m_client.presence();
-    const std::string phone = presence.phone.id == e.deviceId ? presence.phone.name : std::string("the phone");
+    const std::string phone = presence.phone.id == e.deviceId ? presence.phone.name : i18n::tr("link.activity.the-phone");
     auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP2 * s, .flexGrow = 1.0F});
     auto title = text(first, Tokens::typeBody, ColorRole::Label1, s);
     title->setFontWeight(FontWeight::Medium);
     body->addChild(std::move(title));
-    body->addChild(text(std::format("Copied on {} · {}", phone, clock(e.atMs)), Tokens::typeFootnote, ColorRole::Label2, s));
+    body->addChild(text(i18n::tr("link.activity.copied-on", "phone", phone, "time", clock(e.atMs)), Tokens::typeFootnote, ColorRole::Label2, s));
     row->addChild(std::move(body));
-    row->addChild(ui::button({.text = std::string("Copy"), .variant = ButtonVariant::Ghost, .onClick = [clip = e.text] {
+    row->addChild(ui::button({.text = i18n::tr("desk.edit.copy"), .variant = ButtonVariant::Ghost, .onClick = [clip = e.text] {
                                 if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
                                   clipboard->setClipboardText(clip);
                                 }
@@ -638,18 +646,18 @@ namespace linkapp {
     row->addChild(std::move(symbol));
 
     const std::string name = e.files.size() == 1 ? e.files.front().first
-                             : e.files.empty()   ? std::string("Files from this desktop")
-                                                 : std::format("{} files", e.files.size());
+                             : e.files.empty()   ? i18n::tr("link.activity.desktop-files")
+                                                 : i18n::trp("link.common.files-count", static_cast<long>(e.files.size()));
     std::string status;
     switch (e.state) {
-    case Transfer::Offered: status = "Offered · " + byteSize(e.total); break;
+    case Transfer::Offered: status = i18n::tr("link.activity.offered", "size", byteSize(e.total)); break;
     case Transfer::Running: {
       const auto pct = e.total > 0 ? e.bytes * 100 / e.total : 0;
       status = std::format("{} %", pct);
       if (const double rate = transferRate(e, now); rate > 0.0) {
         const auto left = static_cast<std::uint64_t>(static_cast<double>(e.total - std::min(e.bytes, e.total)) / rate);
         status += std::format(" · {}/s · {}", byteSize(static_cast<std::uint64_t>(rate)),
-                              left < 60 ? std::string("under a minute left") : std::format("{} min left", (left + 59) / 60));
+                              left < 60 ? i18n::tr("link.activity.under-a-minute") : i18n::tr("link.activity.minutes-left", "count", (left + 59) / 60));
       }
       break;
     }
@@ -658,17 +666,17 @@ namespace linkapp {
         const std::string& path = e.paths.front();
         const auto slash = path.find_last_of('/');
         const std::string dir = slash == std::string::npos ? std::string() : path.substr(0, slash);
-        status = std::format("Saved to {} · {}", dir.substr(dir.find_last_of('/') + 1), clock(e.endMs));
+        status = i18n::tr("link.activity.saved-to", "folder", dir.substr(dir.find_last_of('/') + 1), "time", clock(e.endMs));
       } else {
-        status = std::format("{} · {} · {}", e.incoming ? "Saved" : "Sent", byteSize(e.total), clock(e.endMs));
+        status = i18n::tr(e.incoming ? "link.activity.saved-line" : "link.activity.sent-line", "size", byteSize(e.total), "time", clock(e.endMs));
       }
       break;
     case Transfer::Failed:
-      status = e.status == "cancelled"   ? std::string("Cancelled")
-               : e.status == "no-space"  ? std::string("Failed: not enough space")
-               : e.status == "too-large" ? std::string("Failed: the file is too large")
-               : e.status == "busy"      ? std::string("Failed: the phone is busy")
-                                         : std::string("Failed: the transfer broke off");
+      status = e.status == "cancelled"   ? i18n::tr("link.activity.cancelled")
+               : e.status == "no-space"  ? i18n::tr("link.activity.failed-no-space")
+               : e.status == "too-large" ? i18n::tr("link.activity.failed-too-large")
+               : e.status == "busy"      ? i18n::tr("link.activity.failed-busy")
+                                         : i18n::tr("link.activity.failed-broke-off");
       break;
     }
     auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP2 * s, .flexGrow = 1.0F});
@@ -687,23 +695,23 @@ namespace linkapp {
     const std::string id = e.id;
     switch (e.state) {
     case Transfer::Offered:
-      actions->addChild(ui::button({.text = std::string("Decline"), .variant = ButtonVariant::Tonal,
+      actions->addChild(ui::button({.text = i18n::tr("link.common.decline"), .variant = ButtonVariant::Tonal,
                                     .onClick = [this, id] { m_client.declineTransfer(id); }}));
-      actions->addChild(ui::button({.text = std::string("Save"), .variant = ButtonVariant::Primary,
+      actions->addChild(ui::button({.text = i18n::tr("link.common.save"), .variant = ButtonVariant::Primary,
                                     .onClick = [this, id] { m_client.acceptTransfer(id); }}));
       break;
     case Transfer::Running:
-      actions->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal,
+      actions->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Tonal,
                                     .onClick = [this, id] { m_client.cancelTransfer(id); }}));
       break;
     case Transfer::Done:
       if (e.incoming && e.paths.size() == 1) {
-        actions->addChild(ui::button({.text = std::string("Open"), .variant = ButtonVariant::Ghost,
+        actions->addChild(ui::button({.text = i18n::tr("link.common.open"), .variant = ButtonVariant::Ghost,
                                       .onClick = [this, path = e.paths.front()] { m_open(path); }}));
       }
       if (!e.paths.empty()) {
-        actions->addChild(ui::button({.text = std::string("Show in Folder"), .variant = ButtonVariant::Ghost,
-                                      .onClick = [this, paths = e.paths] { m_client.showInFolder(paths); }}));
+        actions->addChild(ui::button({.text = i18n::tr("link.common.show-in-folder"), .variant = ButtonVariant::Ghost,
+                                        .onClick = [this, paths = e.paths] { m_client.showInFolder(paths); }}));
       }
       break;
     case Transfer::Failed: break;
@@ -712,7 +720,9 @@ namespace linkapp {
     return row;
   }
 
-  LinkApp::LinkApp() : DeskApp({.id = kAppId, .name = "Link"}) {}
+  LinkApp::LinkApp() : DeskApp({.id = kAppId, .name = "Link"}) {
+    i18n::Service::instance().addDomain("link", ANDROMEDA_TRANSLATIONS_DIR);
+  }
 
   LinkApp::~LinkApp() {
     if (m_dropSurface != nullptr) {
@@ -802,9 +812,9 @@ namespace linkapp {
     const bool saved = save != nullptr && save->state == FileSave::State::Done;
     enum : std::int32_t { kOpen, kDelete };
     std::vector<ContextMenuControlEntry> entries{
-        {.id = kOpen, .label = entry.folder ? "Open" : saved ? "Show in Folder" : "Save to Downloads"},
+        {.id = kOpen, .label = entry.folder ? i18n::tr("link.common.open") : saved ? i18n::tr("link.common.show-in-folder") : i18n::tr("link.common.save-to-downloads")},
         {.separator = true},
-        {.id = kDelete, .label = "Delete…"}};
+        {.id = kDelete, .label = i18n::tr("link.files.delete-menu")}};
     m_window->openContextMenu(std::move(entries), sceneX, sceneY, [this, index, entry](std::int32_t id) {
       if (id == kOpen) m_files->open(index);
       if (id == kDelete) confirmDelete(entry);
@@ -815,22 +825,22 @@ namespace linkapp {
     const std::string phone = m_client->presence().phone.name;
     const std::string path = m_client->files().childPath(entry.name);
     const std::string body = entry.folder
-                                 ? std::format("The folder and everything in it are deleted from {}. This cannot be undone.", phone)
-                                 : std::format("It is deleted from {}. This cannot be undone.", phone);
+                                 ? i18n::tr("link.files.delete-folder-body", "phone", phone)
+                                 : i18n::tr("link.files.delete-file-body", "phone", phone);
     m_window->presentSheet(
         [this, name = entry.name, body, path](float s) -> std::unique_ptr<Node> {
           auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP24 * s,
                                  .width = Tokens::componentDialogAlertWidth * s});
-          box->addChild(text(std::format("Delete “{}”?", name), Tokens::typeTitle3, ColorRole::Label1, s, 2));
+          box->addChild(text(i18n::tr("link.files.delete-title", "name", name), Tokens::typeTitle3, ColorRole::Label1, s, 2));
           box->addChild(text(body, Tokens::typeParagraph, ColorRole::Label2, s, 4));
           auto buttons = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
           buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F);
-          buttons->addChild(ui::button({.text = std::string("Delete"), .variant = ButtonVariant::Destructive,
+          buttons->addChild(ui::button({.text = i18n::tr("link.files.delete"), .variant = ButtonVariant::Destructive,
                                         .onClick = [this, path] {
                                           m_window->dismissSheet();
                                           m_client->deleteFile(path);
                                         }}));
-          buttons->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal,
+          buttons->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Tonal,
                                         .onClick = [this] { m_window->dismissSheet(); }}));
           box->addChild(std::move(buttons));
           return box;
@@ -839,7 +849,7 @@ namespace linkapp {
   }
 
   AppWindow& LinkApp::createWindow() {
-    AppWindow& window = addWindow({.appId = info().id, .title = "Waiting", .width = 1200, .height = 780, .minWidth = 760,
+    AppWindow& window = addWindow({.appId = info().id, .title = i18n::tr("link.pages.waiting"), .width = 1200, .height = 780, .minWidth = 760,
                                    .sidebarWidth = Tokens::componentSidebarWidth,
                                    .material = m_material = loadMaterial(), .contentCard = true});
     m_window = &window;
@@ -873,19 +883,19 @@ namespace linkapp {
       });
       m_transfers = std::make_unique<TransferAdapter>(*m_client, m_scale, [this](const std::string& path) { openLocalFile(path); });
       m_client->setOnPaired([this](const std::string& id) { choosePhone(id); });
-      DeskApp::commands().add({.id = "edit.find", .label = "Find", .group = "Edit",
+      DeskApp::commands().add({.id = "edit.find", .label = i18n::tr("link.commands.find"), .group = "Edit",
                                .shortcut = KeyChord{.sym = XKB_KEY_f, .modifiers = KeyMod::Ctrl},
                                .enabled = [this] { return m_searchInput != nullptr; },
                                .run = [this] { m_window->input().setFocus(m_searchInput->inputArea()); }});
-      DeskApp::commands().add({.id = "photo.previous", .label = "Previous Photo", .group = "View",
+      DeskApp::commands().add({.id = "photo.previous", .label = i18n::tr("link.commands.previous-photo"), .group = "View",
                                .shortcut = KeyChord{.sym = XKB_KEY_Left, .modifiers = 0},
                                .enabled = [this] { return m_viewing && m_page == Page::Photos && photoStep(-1); },
                                .run = [this] { viewPhoto(photoStep(-1)); }});
-      DeskApp::commands().add({.id = "photo.next", .label = "Next Photo", .group = "View",
+      DeskApp::commands().add({.id = "photo.next", .label = i18n::tr("link.commands.next-photo"), .group = "View",
                                .shortcut = KeyChord{.sym = XKB_KEY_Right, .modifiers = 0},
                                .enabled = [this] { return m_viewing && m_page == Page::Photos && photoStep(1); },
                                .run = [this] { viewPhoto(photoStep(1)); }});
-      DeskApp::commands().add({.id = "view.close", .label = "Close", .group = "View",
+      DeskApp::commands().add({.id = "view.close", .label = i18n::tr("link.commands.close"), .group = "View",
                       .shortcut = KeyChord{.sym = XKB_KEY_Escape, .modifiers = 0},
                       .enabled = [this] { return dismissable(); }, .run = [this] { dismiss(); }});
       m_client->setOnChanged([this] {
@@ -927,15 +937,15 @@ namespace linkapp {
       const std::vector<std::string> crumbs = m_client->files().crumbs();
       cue->addChild(ui::glyph({.glyph = std::string(copy ? "folder-down" : "arrow-up"), .glyphSize = Tokens::sizeSymbol * 2.0F * s,
                                .color = colorSpecFromRole(ColorRole::AccentText)}));
-      cue->addChild(text(copy ? std::format("Drop to copy into {}", crumbs.empty() ? std::string("Phone") : crumbs.back())
-                              : std::format("Drop to send to {}", m_client->presence().phone.name),
+      cue->addChild(text(copy ? i18n::tr("link.files.drop-copy", "folder", crumbs.empty() ? i18n::tr("link.files.phone-root") : crumbs.back())
+                              : i18n::tr("link.files.drop-send", "phone", m_client->presence().phone.name),
                          Tokens::typeTitle3, ColorRole::Label1, s));
       root->addChild(std::move(cue));
       return std::unique_ptr<Node>(std::move(root));
     });
     // The header's one Ghost action: "Clear all" on Waiting, "Clear finished" on Activity.
     const auto clear = [this](bool finished) {
-      return ui::button({.text = std::string(finished ? "Clear finished" : "Clear all"), .variant = ButtonVariant::Ghost,
+      return ui::button({.text = i18n::tr(finished ? "link.common.clear-finished" : "link.common.clear-all"), .variant = ButtonVariant::Ghost,
                          .onClick = [this, finished] { finished ? m_client->clearFinished() : m_client->clearAll(); }});
     };
     window.setHeaderAccessoryBuilder([this, clear]() -> std::unique_ptr<Node> {
@@ -1055,7 +1065,7 @@ namespace linkapp {
     if (m_window == nullptr || bus() == nullptr) return;
     if (m_chooser == nullptr) m_chooser = std::make_unique<desk::FileChooser>(bus());
     m_window->exportHandle([this, deviceId](const std::string& parent) {
-      m_chooser->openFiles(parent, "Send Files", [this, deviceId](std::vector<std::filesystem::path> paths) {
+      m_chooser->openFiles(parent, i18n::tr("link.common.send-files-title"), [this, deviceId](std::vector<std::filesystem::path> paths) {
         if (!paths.empty()) m_client->sendFiles(deviceId, paths);
       });
     });
@@ -1145,24 +1155,23 @@ namespace linkapp {
     const bool replacing = !m_hotspotSheet.empty();
     m_hotspotSheet = std::move(shown);
     const Presence presence = m_client->presence();
-    const std::string phone = presence.phone.id == ask->deviceId ? presence.phone.name : std::string("your phone");
+    const std::string phone = presence.phone.id == ask->deviceId ? presence.phone.name : i18n::tr("link.hotspot.your-phone");
     const std::string ssid = ask->ssid;
     // Rulebook §9.10 alert: title-3, body 13 / 20 label_2, 24 above 3 buttons stacked full width.
     (m_window->*(replacing ? &AppWindow::replaceSheet : &AppWindow::presentSheet))(
         [this, phone, ssid](float s) -> std::unique_ptr<Node> {
           auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP24 * s,
                                  .width = Tokens::componentDialogAlertWidth * s});
-          box->addChild(text(std::format("Join {}’s hotspot?", phone), Tokens::typeTitle3, ColorRole::Label1, s, 2));
-          box->addChild(text(std::format("Wi-Fi Direct is not available, so this computer joins “{}” for files and "
-                                         "mirroring, and leaves it when idle.", ssid),
+          box->addChild(text(i18n::tr("link.hotspot.title", "phone", phone), Tokens::typeTitle3, ColorRole::Label1, s, 2));
+          box->addChild(text(i18n::tr("link.hotspot.body", "ssid", ssid),
                              Tokens::typeParagraph, ColorRole::Label2, s, 4));
           auto buttons = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
           buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F);
-          buttons->addChild(ui::button({.text = std::string("Use Hotspot"), .variant = ButtonVariant::Primary,
+          buttons->addChild(ui::button({.text = i18n::tr("link.hotspot.use"), .variant = ButtonVariant::Primary,
                                         .onClick = [this] { m_client->answerHotspot(true); }}));
-          buttons->addChild(ui::button({.text = std::string("Always Allow"), .variant = ButtonVariant::Tonal,
+          buttons->addChild(ui::button({.text = i18n::tr("link.hotspot.always"), .variant = ButtonVariant::Tonal,
                                         .onClick = [this] { m_client->answerHotspot(true, true); }}));
-          buttons->addChild(ui::button({.text = std::string("Not Now"), .variant = ButtonVariant::Tonal,
+          buttons->addChild(ui::button({.text = i18n::tr("link.hotspot.not-now"), .variant = ButtonVariant::Tonal,
                                         .onClick = [this] { m_client->answerHotspot(false); }}));
           box->addChild(std::move(buttons));
           return box;
@@ -1176,7 +1185,7 @@ namespace linkapp {
     const Presence::Kind kind = m_client->presence().kind;
     const bool pairing = kind == Presence::Kind::NotPaired;
     if (pairing && m_client->pair().kind == Pair::Kind::Idle) m_client->startPairing();
-    m_window->setTitle(pairing || pairShown() ? "Pair a Phone" : kPages[static_cast<std::size_t>(m_page)].name);
+    m_window->setTitle(pairing || pairShown() ? i18n::tr("link.pair.title") : i18n::tr(kPages[static_cast<std::size_t>(m_page)].title));
     const bool live = kind == Presence::Kind::Connected || kind == Presence::Kind::Locked;
     if (m_page == Page::Files && live && m_client->files().load() == Files::Load::Idle) m_client->openFolder("/");
     const bool commands = m_page == Page::Settings && m_settingsView == SettingsView::Commands && !pairing && !pairShown() &&
@@ -1231,12 +1240,12 @@ namespace linkapp {
     const std::vector<FeedItem> none;
     const auto& items = m_client ? m_client->feed().items() : none;
     // "<n> <noun> · <newest who>" and the newest time for one kind of feed item.
-    const auto summary = [&](FeedItem::Kind kind, const char* noun) -> std::pair<std::string, std::string> {
+    const auto summary = [&](FeedItem::Kind kind, const char* key) -> std::pair<std::string, std::string> {
       const auto count = std::ranges::count(items, kind, &FeedItem::kind);
       if (count == 0) return {};
       const auto newest = std::ranges::find(items, kind, &FeedItem::kind);
       const std::string who = kind == FeedItem::Kind::Offer ? std::string() : " · " + newest->who;
-      return {std::format("{} {}{}", count, noun, who), clock(newest->atMs)};
+      return {i18n::tr(key, "count", count) + who, clock(newest->atMs)};
     };
     for (const PageInfo& info : kPages) {
       if (info.page == Page::Settings) continue;
@@ -1244,41 +1253,41 @@ namespace linkapp {
       std::pair<std::string, std::string> line;
       switch (info.page) {
       case Page::Waiting:
-        if (!items.empty()) line.first = items.size() == 1 ? "1 item" : std::format("{} items", items.size());
-        else if (m_client && m_client->presence().kind == Presence::Kind::Away) line.first = "Phone not connected";
+        if (!items.empty()) line.first = i18n::trp("link.sidebar.items", static_cast<long>(items.size()));
+        else if (m_client && m_client->presence().kind == Presence::Kind::Away) line.first = i18n::tr("link.sidebar.phone-not-connected");
         break;
       case Page::Messages: {
         static const Messages kNone;
         const Messages& messages = m_client ? m_client->messages() : kNone;
         const auto newest = std::ranges::find_if(messages.threads(), [](const Thread& t) { return t.unread > 0; });
         if (newest != messages.threads().end()) {
-          line = {std::format("{} unread · {}", messages.unread(), newest->name), clock(newest->atMs)};
+          line = {i18n::tr("link.sidebar.unread", "count", messages.unread(), "name", newest->name), clock(newest->atMs)};
         } else if (!messages.threads().empty()) {
-          line.first = "All read";
+          line.first = i18n::tr("link.sidebar.all-read");
         }
         break;
       }
-      case Page::Calls: line = summary(FeedItem::Kind::MissedCall, "missed"); break;
+      case Page::Calls: line = summary(FeedItem::Kind::MissedCall, "link.sidebar.missed"); break;
       case Page::Activity:
         if (m_client) {
           const Activity& activity = m_client->activity();
           const std::size_t offered = activity.offeredCount();
           const auto running = std::ranges::count(activity.items(), Transfer::Running, &TransferEntry::state);
           if (offered > 0) {
-            line.first = std::format("{} offered", offered);
+            line.first = i18n::tr("link.sidebar.offered", "count", offered);
           } else if (running > 0) {
-            line.first = running == 1 ? std::string("1 transfer running") : std::format("{} transfers running", running);
+            line.first = i18n::trp("link.sidebar.transfers-running", running);
           }
         }
         break;
-      case Page::Files: line.first = "Phone storage"; break;
-      case Page::Mirror: line.first = "Show the phone screen"; break;
+      case Page::Files: line.first = i18n::tr("link.sidebar.phone-storage"); break;
+      case Page::Mirror: line.first = i18n::tr("link.sidebar.show-screen"); break;
       case Page::Photos: {
         if (!m_client) break;
         const auto days = m_client->photos().days(nowMs());
-        if (days.empty() || days.front().second != "Today") break;
+        if (days.empty() || days.front().second != i18n::tr("link.day.today")) break;
         const std::size_t today = days.size() > 1 ? days[1].first : m_client->photos().items().size();
-        line.first = today == 1 ? std::string("1 new photo today") : std::format("{} new photos today", today);
+        line.first = i18n::trp("link.sidebar.new-photos-today", static_cast<long>(today));
         break;
       }
       case Page::Settings: break;
@@ -1297,14 +1306,14 @@ namespace linkapp {
         line.second = count ? std::to_string(*count) : std::string();
         hot = count.value_or(0) > 0;
       }
-      row->setData({.symbol = info.glyph, .name = info.name, .status = line.first, .time = line.second, .unseen = hot,
+      row->setData({.symbol = info.glyph, .name = i18n::tr(info.title), .status = line.first, .time = line.second, .unseen = hot,
                     .selected = info.page == m_page && !pairShown()});
       row->setOnClick([this, page = info.page] { show(page); });
       if (info.page == m_page && !pairShown()) selected = row.get();
       list->addChild(std::move(row));
     }
     auto settings = std::make_unique<StatusRow>(s);
-    settings->setData({.symbol = "settings", .name = "Settings", .selected = m_page == Page::Settings && !pairShown()});
+    settings->setData({.symbol = "settings", .name = i18n::tr("link.pages.settings"), .selected = m_page == Page::Settings && !pairShown()});
     settings->setOnClick([this] { show(Page::Settings); });
     if (m_page == Page::Settings && !pairShown()) selected = settings.get();
     list->addChild(std::move(settings));
@@ -1331,11 +1340,11 @@ namespace linkapp {
     std::string line;
     switch (presence.kind) {
     case Presence::Kind::NoDaemon:
-      name = "Link is not running";
+      name = i18n::tr("link.phone-card.not-running");
       break;
     case Presence::Kind::NotPaired:
-      name = "No phone yet";
-      line = "Pair one to start";
+      name = i18n::tr("link.phone-card.no-phone");
+      line = i18n::tr("link.phone-card.pair-one");
       break;
     case Presence::Kind::Away:
       line = lastSeenText(presence.phone.lastSeen, nowMs() / 1000);
@@ -1353,7 +1362,7 @@ namespace linkapp {
     if (m_client && !m_client->phones().empty()) {
       Button* choose = nullptr;
       head->addChild(ui::button({.out = &choose, .glyph = std::string("selector"), .glyphSize = Tokens::sizeSymbol * s,
-                                 .variant = ButtonVariant::Ghost, .tooltip = std::string("Choose phone"),
+                                 .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("link.phone-card.choose"),
                                  .radius = Tokens::sizeControlS * s / 2.0F, .width = Tokens::sizeControlS * s,
                                  .height = Tokens::sizeControlS * s}));
       choose->setOnClick([this, choose] {
@@ -1367,7 +1376,7 @@ namespace linkapp {
         float x = 0.0F;
         float y = 0.0F;
         entries.push_back({.separator = true});
-        entries.push_back({.id = kPairEntry, .label = "Pair Another Phone…"});
+        entries.push_back({.id = kPairEntry, .label = i18n::tr("link.phone-card.pair-another")});
         Node::absolutePosition(choose, x, y);
         m_window->openContextMenu(std::move(entries), x, y + choose->height(), [this](std::int32_t i) {
           if (i == kPairEntry) {
@@ -1397,17 +1406,17 @@ namespace linkapp {
       // RoundKey (handoff.yaml): 32 circle fill_1, on = accent; an away phone keeps the row, dimmed.
       const float key = Tokens::sizeControlM * s;
       const bool live = presence.kind != Presence::Kind::Away;
-      const auto round = [&](const char* glyph, const char* tip, bool on, std::function<void()> click) {
+      const auto round = [&](const char* glyph, const std::string& tip, bool on, std::function<void()> click) {
         return ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s, .enabled = live,
-                           .variant = on && live ? ButtonVariant::Primary : ButtonVariant::Tonal, .tooltip = std::string(tip),
+                           .variant = on && live ? ButtonVariant::Primary : ButtonVariant::Tonal, .tooltip = tip,
                            .radius = key / 2.0F, .width = key, .height = key, .onClick = std::move(click)});
       };
       const std::string id = presence.phone.id;
       const bool dnd = presence.phone.dnd == 1;
       auto keys = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::SpaceBetween, .paddingV = Tokens::spaceP4 * s});
-      keys->addChild(round("bell", "Ring phone", false, [this, id] { m_client->ring(id); }));
-      keys->addChild(round("device-mobile", "Mirror", false, [this] { show(Page::Mirror); }));
-      keys->addChild(round("clipboard", "Send clipboard", false, [this, id] {
+      keys->addChild(round("bell", i18n::tr("link.phone-card.ring"), false, [this, id] { m_client->ring(id); }));
+      keys->addChild(round("device-mobile", i18n::tr("link.pages.mirror"), false, [this] { show(Page::Mirror); }));
+      keys->addChild(round("clipboard", i18n::tr("link.phone-card.send-clipboard"), false, [this, id] {
         if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
           clipboard->requestClipboardText([this, id](std::optional<std::string> text) {
             if (text.has_value() && !text->empty()) m_client->shareText(id, *text);
@@ -1423,11 +1432,11 @@ namespace linkapp {
                                             .paddingV = Tokens::spaceP4 * s})
                                  : nullptr;
       const bool dndPending = mine && command->phase == LinkClient::SystemCommand::Phase::Pending && command->command == "set-dnd";
-      auto dndKey = round("circle-minus", "Do not disturb", dndPending ? command->value == 1 : dnd,
+      auto dndKey = round("circle-minus", i18n::tr("link.phone-card.dnd"), dndPending ? command->value == 1 : dnd,
                           [this, id, dnd] { m_client->setDnd(id, !dnd); });
       if (dndPending) dndKey->setEnabled(false);
       (hasToggles ? settings : keys)->addChild(std::move(dndKey));
-      keys->addChild(round("arrow-up", "Send files", false, [this, id] { chooseAndSend(id); }));
+      keys->addChild(round("arrow-up", i18n::tr("link.phone-card.send-files"), false, [this, id] { chooseAndSend(id); }));
       card->addChild(std::move(keys));
       if (hasToggles) {
         // Turning off the radio Link runs on would end the connection: the key stays on and says why, and linkd's
@@ -1439,11 +1448,11 @@ namespace linkapp {
           bool carries;
         };
         const std::array<Toggle, 3> toggles{{
-            {"set-wifi", phone.wifi, "wifi", "wifi-off", "Wi-Fi", "Link reaches the phone over Wi-Fi",
+            {"set-wifi", phone.wifi, "wifi", "wifi-off", "link.phone-card.wifi", "link.phone-card.wifi-carries",
              phone.transport == "wifi" || phone.transport == "nearby"},
-            {"set-bluetooth", phone.bluetooth, "bluetooth", "bluetooth-off", "Bluetooth",
-             "Link reaches the phone over Bluetooth", phone.transport == "bluetooth"},
-            {"set-torch", phone.torch, "bulb", "bulb-off", "Torch", "", false},
+            {"set-bluetooth", phone.bluetooth, "bluetooth", "bluetooth-off", "link.phone-card.bluetooth",
+             "link.phone-card.bluetooth-carries", phone.transport == "bluetooth"},
+            {"set-torch", phone.torch, "bulb", "bulb-off", "link.phone-card.torch", "", false},
         }};
         for (const Toggle& toggle : toggles) {
           const bool pending =
@@ -1451,7 +1460,7 @@ namespace linkapp {
           // A pending command shows the state it asks for, and takes no second press.
           const bool on = pending ? command->value == 1 : toggle.state == 1;
           const bool locked = on && toggle.carries;
-          auto button = round(on ? toggle.on : toggle.off, locked ? toggle.locked : toggle.tip, on,
+          auto button = round(on ? toggle.on : toggle.off, i18n::tr(locked ? toggle.locked : toggle.tip), on,
                               [this, id, command = std::string(toggle.command), on] {
                                 m_client->sendSystemCommand(id, command, on ? 0 : 1);
                               });
@@ -1468,7 +1477,7 @@ namespace linkapp {
         auto reason = text(command->error, Tokens::typeFootnote, ColorRole::Label1, s, 2);
         reason->setFlexGrow(1.0F);
         error->addChild(std::move(reason));
-        error->addChild(ui::button({.text = "Try Again", .fontSize = Tokens::typeFootnote.size * s,
+        error->addChild(ui::button({.text = i18n::tr("link.common.try-again"), .fontSize = Tokens::typeFootnote.size * s,
                                     .variant = ButtonVariant::Ghost,
                                     .onClick = [this, id, cmd = command->command, value = command->value] {
                                       m_client->sendSystemCommand(id, cmd, value);
@@ -1535,7 +1544,7 @@ namespace linkapp {
     row->addChild(std::move(body));
     row->addChild(ui::button({.glyph = std::string(p.playing ? "player-pause" : "player-play"), .glyphSize = Tokens::sizeSymbol * s,
                               .enabled = p.takes("play-pause"), .customPalette = playPalette(),
-                              .tooltip = std::string(p.playing ? "Pause" : "Play"), .radius = key / 2.0F, .width = key,
+                              .tooltip = i18n::tr(p.playing ? "link.player.pause" : "link.player.play"), .radius = key / 2.0F, .width = key,
                               .height = key, .onClick = [this, id] { m_client->playerCommand(id, "play-pause"); }}));
     return row;
   }
@@ -1553,7 +1562,7 @@ namespace linkapp {
     auto title = text(p->title, Tokens::typeBody, ColorRole::Label1, s);
     title->setFontWeight(FontWeight::SemiBold);
     names->addChild(std::move(title));
-    names->addChild(text(p->artist.empty() ? std::format("On {}", p->app) : std::format("{}, on {}", p->artist, p->app),
+    names->addChild(text(p->artist.empty() ? i18n::tr("link.player.on-app", "app", p->app) : i18n::tr("link.player.artist-on-app", "artist", p->artist, "app", p->app),
                          Tokens::typeFootnote, ColorRole::Label2, s));
     head->addChild(std::move(names));
     pop->addChild(std::move(head));
@@ -1575,23 +1584,23 @@ namespace linkapp {
     auto keys = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP16 * s});
     const auto step = [&](const char* glyph, const char* tip, const char* command) {
       return ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s, .enabled = p->takes(command),
-                         .variant = ButtonVariant::Ghost, .tooltip = std::string(tip), .radius = key / 2.0F, .width = key,
+                         .variant = ButtonVariant::Ghost, .tooltip = i18n::tr(tip), .radius = key / 2.0F, .width = key,
                          .height = key, .onClick = [this, id, command] { m_client->playerCommand(id, command); }});
     };
-    keys->addChild(step("player-skip-back", "Previous", "previous"));
+    keys->addChild(step("player-skip-back", "link.player.previous", "previous"));
     keys->addChild(ui::button({.out = &m_playerView.play, .glyph = std::string(p->playing ? "player-pause" : "player-play"),
                                .glyphSize = Tokens::sizeSymbolL * s, .enabled = p->takes("play-pause"),
-                               .customPalette = playPalette(), .tooltip = std::string(p->playing ? "Pause" : "Play"),
+                               .customPalette = playPalette(), .tooltip = i18n::tr(p->playing ? "link.player.pause" : "link.player.play"),
                                .radius = play / 2.0F, .width = play, .height = play,
                                .onClick = [this, id] { m_client->playerCommand(id, "play-pause"); }}));
-    keys->addChild(step("player-skip-forward", "Next", "next"));
+    keys->addChild(step("player-skip-forward", "link.player.next", "next"));
     pop->addChild(std::move(keys));
 
     const int volume = m_client->presence().phone.mediaVolume;
     auto vol = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     vol->addChild(ui::button({.out = &m_playerView.mute, .glyph = std::string(volume == 0 ? "volume-off" : "volume"),
                               .glyphSize = Tokens::sizeSymbol * s, .enabled = volume >= 0, .variant = ButtonVariant::Ghost,
-                              .tooltip = std::string(volume == 0 ? "Unmute" : "Mute"), .radius = key / 2.0F, .width = key,
+                              .tooltip = i18n::tr(volume == 0 ? "link.player.unmute" : "link.player.mute"), .radius = key / 2.0F, .width = key,
                               .height = key, .onClick = [this, id] {
                                 const int now = m_client->presence().phone.mediaVolume;
                                 if (now > 0) m_unmutedVolume = now;
@@ -1602,7 +1611,7 @@ namespace linkapp {
     m_playerView.volume->setOnDragEnd([this, id] {
       if (m_playerView.volume != nullptr) m_client->setMediaVolume(id, static_cast<int>(m_playerView.volume->value()));
     });
-    vol->addChild(ui::label({.out = &m_playerView.level, .text = volume < 0 ? std::string() : volume == 0 ? std::string("Muted") : std::format("{} %", volume),
+    vol->addChild(ui::label({.out = &m_playerView.level, .text = volume < 0 ? std::string() : volume == 0 ? i18n::tr("link.player.muted") : std::format("{} %", volume),
                              .fontSize = Tokens::typeCaption.size * s, .color = colorSpecFromRole(ColorRole::Label2)}));
     pop->addChild(std::move(vol));
     if (p->playing && !m_playerTick.active()) m_playerTick.startRepeating(m_window->shownTimers(), std::chrono::seconds(1), [this] { syncPlayer(); });
@@ -1640,7 +1649,7 @@ namespace linkapp {
     const int volume = m_client->presence().phone.mediaVolume;
     if (!m_playerView.volume->dragging()) m_playerView.volume->setValue(static_cast<double>(std::max(0, volume)));
     m_playerView.mute->setGlyph(volume == 0 ? "volume-off" : "volume");
-    m_playerView.level->setText(volume < 0 ? std::string() : volume == 0 ? std::string("Muted") : std::format("{} %", volume));
+    m_playerView.level->setText(volume < 0 ? std::string() : volume == 0 ? i18n::tr("link.player.muted") : std::format("{} %", volume));
     m_window->invalidatePopover();
     if (p->playing && !m_playerTick.active()) {
       m_playerTick.startRepeating(m_window->shownTimers(), std::chrono::seconds(1), [this] { syncPlayer(); });
@@ -1654,12 +1663,12 @@ namespace linkapp {
     if (pair.kind == Pair::Kind::Failed) {
       auto actions = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
       if (!m_client->phones().empty()) {
-        actions->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal,
+        actions->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Tonal,
                                       .onClick = [this] { m_client->cancelPairing(); }}));
       }
-      actions->addChild(ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Primary,
+      actions->addChild(ui::button({.text = i18n::tr("link.common.try-again"), .variant = ButtonVariant::Primary,
                                     .onClick = [this] { m_client->startPairing(); }}));
-      return emptyState("device-mobile-off", "Pairing did not start", pair.error, s, std::move(actions));
+      return emptyState("device-mobile-off", i18n::tr("link.pair.failed"), pair.error, s, std::move(actions));
     }
     auto page = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP32 * s,
                          .flexGrow = 1.0F});
@@ -1695,12 +1704,11 @@ namespace linkapp {
 
     auto steps = ui::column({.align = FlexAlign::Start, .gap = Tokens::spaceP12 * s,
                              .maxWidth = Tokens::componentLinkPairText * s});
-    steps->addChild(text("Scan with Andromeda Link", Tokens::typeTitle2, ColorRole::Label1, s));
-    auto how = text("Open Link on your Android phone, tap Pair, and point the camera at this code. With no shared network, "
-                    "Bluetooth on both devices is enough.", Tokens::typeParagraph, ColorRole::Label2, s, 4);
+    steps->addChild(text(i18n::tr("link.pair.scan"), Tokens::typeTitle2, ColorRole::Label1, s));
+    auto how = text(i18n::tr("link.pair.how"), Tokens::typeParagraph, ColorRole::Label2, s, 4);
     how->setMaxWidth(Tokens::componentLinkPairText * s);
     steps->addChild(std::move(how));
-    steps->addChild(text("Or enter this code on the phone:", Tokens::typeParagraph, ColorRole::Label1, s));
+    steps->addChild(text(i18n::tr("link.pair.code"), Tokens::typeParagraph, ColorRole::Label1, s));
     auto code = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     for (const char digit : pair.code) {
       auto tile = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center,
@@ -1713,7 +1721,7 @@ namespace linkapp {
     if (!m_client->phones().empty()) {
       auto cancel = ui::row({});
       cancel->setPadding(Tokens::spaceP12 * s, 0.0F, 0.0F, 0.0F);
-      cancel->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal,
+      cancel->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Tonal,
                                    .onClick = [this] { m_client->cancelPairing(); }}));
       steps->addChild(std::move(cancel));
     }
@@ -1730,28 +1738,27 @@ namespace linkapp {
     m_mirrorArea = nullptr;
     m_renderer = &renderer;
     const float s = m_scale = m_window->uiScale();
-    if (m_client == nullptr) return emptyState("plug-connected-x", "No session bus", "Link needs a D-Bus session.", s);
+    if (m_client == nullptr) return emptyState("plug-connected-x", i18n::tr("link.errors.no-bus-title"), i18n::tr("link.errors.no-bus-body"), s);
     const Presence presence = m_client->presence();
     if (presence.kind != Presence::Kind::NoDaemon && pairShown()) return pair(renderer, s);
     switch (presence.kind) {
     case Presence::Kind::NoDaemon:
       if (m_page == Page::Settings) return settings(presence);
-      return emptyState("plug-connected-x", "Link is not running", "Start the Link service to reach your phone.", s);
+      return emptyState("plug-connected-x", i18n::tr("link.phone-card.not-running"), i18n::tr("link.errors.start-service"), s);
     case Presence::Kind::NotPaired:
       return pair(renderer, s);
     case Presence::Kind::Away: {
       if (m_page == Page::Settings && m_settingsView == SettingsView::Commands) return commands(presence, width, height);
       if (m_page == Page::Settings) return settings(presence);
       const std::string id = presence.phone.id;
-      std::string seen;
-      if (presence.phone.lastSeen > 0) {
-        seen = lastSeenText(presence.phone.lastSeen, nowMs() / 1000);
-        if (!presence.phone.transport.empty()) seen += presence.phone.transport == "bluetooth" ? " over Bluetooth" : " on Wi-Fi";
-        seen += ". ";
-      }
-      return emptyState("device-mobile", presence.phone.name + " is not connected",
-                        seen + "Open Link on the phone, or connect over Bluetooth.", s,
-                        ui::button({.text = std::string("Connect"), .variant = ButtonVariant::Primary,
+      const std::string seen = lastSeenText(presence.phone.lastSeen, nowMs() / 1000);
+      const std::string_view transport = presence.phone.transport;
+      const char* hint = presence.phone.lastSeen <= 0 ? "link.away.hint"
+                         : transport.empty()          ? "link.away.hint-seen"
+                         : transport == "bluetooth"   ? "link.away.hint-seen-bluetooth"
+                                                      : "link.away.hint-seen-wifi";
+      return emptyState("device-mobile", i18n::tr("link.away.title", "phone", presence.phone.name), i18n::tr(hint, "seen", seen), s,
+                        ui::button({.text = i18n::tr("link.away.connect"), .variant = ButtonVariant::Primary,
                                     .onClick = [this, id] { m_client->connect(id); }}));
     }
     case Presence::Kind::Connected:
@@ -1767,10 +1774,10 @@ namespace linkapp {
     if (m_page == Page::Settings) return settings(presence);
     if (m_page != Page::Waiting) {
       const PageInfo& info = kPages[static_cast<std::size_t>(m_page)];
-      return emptyState(info.glyph, info.name, "This page comes in a later build step.", s);
+      return emptyState(info.glyph, i18n::tr(info.title), i18n::tr("link.errors.later-step"), s);
     }
     if (m_client->feed().items().empty()) {
-      return emptyState("bell", "Nothing waiting", "Texts, missed calls and files from your phone show here.", s);
+      return emptyState("bell", i18n::tr("link.waiting.empty-title"), i18n::tr("link.waiting.empty-body"), s);
     }
     auto view = ui::virtualListView({.out = &m_feedList, .state = &m_feedScroll, .contentScale = s, .adapter = m_feed.get(),
                                      .flexGrow = 1.0F});
@@ -1823,20 +1830,20 @@ namespace linkapp {
     const float listWidth = Tokens::componentLinkThreadList * s;
 
     std::vector<std::unique_ptr<Node>> listCaption;
-    listCaption.push_back(text("Messages", Tokens::typeHeadline, ColorRole::Label1, s));
+    listCaption.push_back(text(i18n::tr("link.pages.messages"), Tokens::typeHeadline, ColorRole::Label1, s));
     listCaption.back()->setFlexGrow(1.0F);
     listCaption.push_back(ui::button({.glyph = std::string("plus"), .glyphSize = Tokens::sizeSymbol * s, .variant = ButtonVariant::Ghost,
-                                      .tooltip = std::string("New message"), .onClick = [this] { openCompose({}); }}));
+                                      .tooltip = i18n::tr("link.messages.new-tooltip"), .onClick = [this] { openCompose({}); }}));
     std::unique_ptr<Node> list;
     if (messages.load() == Messages::Load::Loading) {
       list = ui::spacer();
     } else if (messages.threads().empty()) {
-      list = emptyState("message", "No texts", "Texts on your phone show here.", s);
+      list = emptyState("message", i18n::tr("link.messages.empty-title"), i18n::tr("link.messages.empty-body"), s);
     } else {
       auto padded = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s, .flexGrow = 1.0F});
       if (m_search) {
         auto scope = ui::row({.paddingV = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP12 * s});
-        scope->addChild(text(std::format("Names and the newest text of {} threads", messages.threads().size()), Tokens::typeFootnote,
+        scope->addChild(text(i18n::tr("link.messages.search-scope", "count", messages.threads().size()), Tokens::typeFootnote,
                              ColorRole::Label2, s));
         padded->addChild(std::move(scope));
       }
@@ -1850,19 +1857,19 @@ namespace linkapp {
     const float convWidth = std::max(0.0F, width - listWidth - Tokens::componentWindowCardGap * s);
     const Thread* thread = m_thread ? messages.thread(*m_thread) : nullptr;
     std::vector<std::unique_ptr<Node>> head;
-    head.push_back(text(thread ? thread->name : m_compose ? std::string("New Message") : std::string(), Tokens::typeHeadline,
+    head.push_back(text(thread ? thread->name : m_compose ? i18n::tr("link.messages.new-title") : std::string(), Tokens::typeHeadline,
                         ColorRole::Label1, s));
     head.back()->setFlexGrow(1.0F);
     std::unique_ptr<Node> body;
     if (m_compose) {
       body = compose(s);
     } else if (thread == nullptr) {
-      body = emptyState("message", "No conversation", "Pick a thread to read it.", s);
+      body = emptyState("message", i18n::tr("link.messages.none-title"), i18n::tr("link.messages.none-body"), s);
     } else {
       const std::string number = thread->address;
       const std::string device = m_client->presence().phone.id;
       head.push_back(ui::button({.glyph = std::string("phone"), .glyphSize = Tokens::sizeSymbol * s, .variant = ButtonVariant::Ghost,
-                                 .tooltip = std::string("Call"), .onClick = [this, device, number] { m_client->dial(device, number); }}));
+                                 .tooltip = i18n::tr("link.common.call"), .onClick = [this, device, number] { m_client->dial(device, number); }}));
       m_conversation->setRows(messages.conversation(thread->id, nowMs()));
       auto column = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
       VirtualListView* log = nullptr;
@@ -1879,7 +1886,7 @@ namespace linkapp {
         m_client->sendText(id, value);
       };
       auto reply = ui::row({.align = FlexAlign::Center, .padding = Tokens::spaceP8 * s});
-      reply->addChild(replyCapsule(m_threadDrafts[id], "Text message", Tokens::sizeControlL * s, s,
+      reply->addChild(replyCapsule(m_threadDrafts[id], i18n::tr("link.messages.placeholder"), Tokens::sizeControlL * s, s,
                                    [this, id](const std::string& value) { m_threadDrafts[id] = value; }, send));
       column->addChild(std::move(reply));
       body = std::move(column);
@@ -1895,8 +1902,8 @@ namespace linkapp {
     auto column = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
     auto to = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP8 * s,
                        .paddingH = Tokens::spaceP16 * s});
-    to->addChild(text("To", Tokens::typeBody, ColorRole::Label2, s));
-    to->addChild(ui::input({.value = m_compose->to, .placeholder = std::string("Name or number"), .fontSize = Tokens::typeBody.size * s,
+    to->addChild(text(i18n::tr("link.messages.to"), Tokens::typeBody, ColorRole::Label2, s));
+    to->addChild(ui::input({.value = m_compose->to, .placeholder = i18n::tr("link.messages.name-or-number"), .fontSize = Tokens::typeBody.size * s,
                             .frameVisible = false, .flexGrow = 1.0F,
                             .onChange = [this](const std::string& value) {
                               m_compose->to = value;
@@ -1925,7 +1932,7 @@ namespace linkapp {
     }
     if (!m_compose->sent.empty()) {
       list->addChild(ui::row({.paddingV = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s},
-                             text(std::format("Sent to {}", m_compose->sent), Tokens::typeFootnote, ColorRole::Label2, s)));
+                             text(i18n::tr("link.messages.sent-to", "to", m_compose->sent), Tokens::typeFootnote, ColorRole::Label2, s)));
     }
     column->addChild(std::move(list));
     const auto send = [this] {
@@ -1936,7 +1943,7 @@ namespace linkapp {
       m_window->requestRebuild();
     };
     auto reply = ui::row({.align = FlexAlign::Center, .padding = Tokens::spaceP8 * s});
-    reply->addChild(replyCapsule(m_compose->body, "Text message", Tokens::sizeControlL * s, s,
+    reply->addChild(replyCapsule(m_compose->body, i18n::tr("link.messages.placeholder"), Tokens::sizeControlL * s, s,
                                  [this](const std::string& value) { m_compose->body = value; }, send));
     column->addChild(std::move(reply));
     return column;
@@ -1973,11 +1980,11 @@ namespace linkapp {
     if (const FileSave* save = entry.folder ? nullptr : files.save(files.childPath(entry.name))) {
       switch (save->state) {
       case FileSave::State::Running:
-        size = save->total > 0 ? std::format("Saving {} %", save->got * 100 / save->total) : std::string("Saving…");
+        size = save->total > 0 ? i18n::tr("link.files.saving-percent", "percent", save->got * 100 / save->total) : i18n::tr("link.files.saving");
         break;
-      case FileSave::State::Done: size = "In Downloads"; break;
+      case FileSave::State::Done: size = i18n::tr("link.files.in-downloads"); break;
       case FileSave::State::Failed:
-        size = "Not saved";
+        size = i18n::tr("link.files.not-saved");
         sizeRole = ColorRole::DangerText;
         break;
       }
@@ -2020,7 +2027,7 @@ namespace linkapp {
     const Files& files = m_client->files();
     std::vector<std::unique_ptr<Node>> caption;
     caption.push_back(ui::button({.glyph = std::string("chevron-left"), .enabled = files.path() != "/", .variant = ButtonVariant::Ghost,
-                                  .tooltip = std::string("Back"), .onClick = [this] { m_client->openFolder(m_client->files().parent()); }}));
+                                  .tooltip = i18n::tr("link.common.back"), .onClick = [this] { m_client->openFolder(m_client->files().parent()); }}));
     auto crumbs = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .clipChildren = true, .flexGrow = 1.0F});
     const std::vector<std::string> names = files.crumbs();
     for (std::size_t i = 0; i < names.size(); ++i) {
@@ -2041,26 +2048,26 @@ namespace linkapp {
       }
     }
     caption.push_back(std::move(crumbs));
-    caption.push_back(ui::button({.text = std::string("Send files"), .glyph = std::string("arrow-up"),
+    caption.push_back(ui::button({.text = i18n::tr("link.phone-card.send-files"), .glyph = std::string("arrow-up"),
                                   .variant = ButtonVariant::Tonal,
                                   .onClick = [this] { chooseAndSend(m_client->presence().phone.id); }}));
 
     std::unique_ptr<Node> body;
     if (files.load() == Files::Load::Failed) {
-      body = emptyState("folder-off", "This folder did not open", files.error(), s,
-                        ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Secondary,
+      body = emptyState("folder-off", i18n::tr("link.files.open-failed"), files.error(), s,
+                        ui::button({.text = i18n::tr("link.common.try-again"), .variant = ButtonVariant::Secondary,
                                     .onClick = [this] { m_client->openFolder(m_client->files().path()); }}));
     } else if (files.load() == Files::Load::Ready && files.entries().empty()) {
-      body = emptyState("folder", "Empty folder", "This folder on the phone has nothing in it.", s);
+      body = emptyState("folder", i18n::tr("link.files.empty-title"), i18n::tr("link.files.empty-body"), s);
     } else {
       auto page = ui::column({.align = FlexAlign::Stretch});
       page->setPadding(Tokens::spaceP8 * s, Tokens::spaceP24 * s, 0.0F, Tokens::spaceP24 * s);
       auto head = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .height = Tokens::sizeControlM * s});
       head->addChild(ui::row({.width = Tokens::componentLinkFileSymbol * s}));
-      for (const char* label : {"Name", "Size", "Modified"}) {
-        auto cell = ui::label({.text = std::string(label), .fontSize = Tokens::typeFootnote.size * s,
+      for (const char* label : {"link.files.name", "link.files.size", "link.files.modified"}) {
+        auto cell = ui::label({.text = i18n::tr(label), .fontSize = Tokens::typeFootnote.size * s,
                                .fontWeight = static_cast<FontWeight>(500), .color = colorSpecFromRole(ColorRole::Label2)});
-        if (std::string_view(label) == "Name") {
+        if (std::string_view(label) == "link.files.name") {
           cell->setFlexGrow(1.0F);
           head->addChild(std::move(cell));
           continue;
@@ -2088,14 +2095,14 @@ namespace linkapp {
       const bool copying = op.kind == FileOp::Kind::Copying;
       std::string line = op.error;
       if (copying) {
-        line = std::format("Copying “{}”", op.name);
-        if (op.count > 1) line += std::format(" · {} of {}", op.index + 1, op.count);
+        line = i18n::tr("link.files.copying", "name", op.name);
+        if (op.count > 1) line += i18n::tr("link.files.copying-of", "index", op.index + 1, "count", op.count);
         if (op.total > 0) line += std::format(" · {} %", op.sent * 100 / op.total);
       }
       auto words = text(line, Tokens::typeFootnote, copying ? ColorRole::Label2 : ColorRole::DangerText, s, 2);
       words->setFlexGrow(1.0F);
       bar->addChild(std::move(words));
-      bar->addChild(ui::button({.text = std::string(copying ? "Cancel" : "Dismiss"), .variant = ButtonVariant::Ghost,
+      bar->addChild(ui::button({.text = i18n::tr(copying ? "common.actions.cancel" : "link.files.dismiss"), .variant = ButtonVariant::Ghost,
                                 .onClick = [this, copying] { copying ? m_client->cancelCopy() : m_client->dismissFileOp(); }}));
       column->addChild(std::move(bar));
       body = std::move(column);
@@ -2108,8 +2115,7 @@ namespace linkapp {
   std::string LinkApp::mirrorStat() const {
     const Mirror& mirror = m_client->mirror();
     const std::string transport = m_client->presence().phone.transport == "bluetooth" ? "Bluetooth" : "Wi-Fi";
-    const char* keys = m_mirrorArea != nullptr && m_mirrorArea->focused() ? "Typing goes to the phone · Esc is Back"
-                                                                          : "Click the screen to type";
+    const std::string keys = i18n::tr(m_mirrorArea != nullptr && m_mirrorArea->focused() ? "link.mirror.typing" : "link.mirror.click-to-type");
     return std::format("{} × {} · {} fps · {} · {}", mirror.width, mirror.height, m_client->mirrorFps(), transport, keys);
   }
 
@@ -2157,16 +2163,16 @@ namespace linkapp {
         [this, phone](float s) -> std::unique_ptr<Node> {
           auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP24 * s,
                                  .width = Tokens::componentDialogAlertWidth * s});
-          box->addChild(text(std::format("Lock {}?", phone), Tokens::typeTitle3, ColorRole::Label1, s, 2));
-          box->addChild(text("The phone locks and its screen turns off.",
+          box->addChild(text(i18n::tr("link.mirror.lock-title", "phone", phone), Tokens::typeTitle3, ColorRole::Label1, s, 2));
+          box->addChild(text(i18n::tr("link.mirror.lock-body"),
                              Tokens::typeParagraph, ColorRole::Label2, s, 4));
           auto buttons = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
           buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F);
-          buttons->addChild(ui::button({.text = std::string("Lock"), .variant = ButtonVariant::Primary, .onClick = [this] {
+          buttons->addChild(ui::button({.text = i18n::tr("link.mirror.lock"), .variant = ButtonVariant::Primary, .onClick = [this] {
                                           m_window->dismissSheet();
                                           m_client->mirrorKey(kAndroidPower);
                                         }}));
-          buttons->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal,
+          buttons->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Tonal,
                                         .onClick = [this] { m_window->dismissSheet(); }}));
           box->addChild(std::move(buttons));
           return box;
@@ -2227,12 +2233,12 @@ namespace linkapp {
     const Mirror& mirror = m_client->mirror();
     const std::string phone = m_client->presence().phone.name;
     std::vector<std::unique_ptr<Node>> caption;
-    caption.push_back(text("Mirror", Tokens::typeHeadline, ColorRole::Label1, s));
+    caption.push_back(text(i18n::tr("link.pages.mirror"), Tokens::typeHeadline, ColorRole::Label1, s));
     auto name = text(phone, Tokens::typeFootnote, ColorRole::Label2, s);
     name->setFlexGrow(1.0F);
     caption.push_back(std::move(name));
     if (mirror.kind == Mirror::Kind::Showing || mirror.kind == Mirror::Kind::Asking) {
-      caption.push_back(ui::button({.text = std::string("Stop"), .variant = ButtonVariant::Ghost, .onClick = [this] { m_client->stopMirror(); }}));
+      caption.push_back(ui::button({.text = i18n::tr("link.mirror.stop"), .variant = ButtonVariant::Ghost, .onClick = [this] { m_client->stopMirror(); }}));
     }
 
     const float bodyH = height - Tokens::componentWindowCaption * s;
@@ -2240,20 +2246,20 @@ namespace linkapp {
                              .fill = colorSpecFromRole(ColorRole::View), .flexGrow = 1.0F});
     stage->setPaletteTone(PaletteTone::Dark);
     const auto start = [this](const char* label) {
-      return ui::button({.text = std::string(label), .variant = ButtonVariant::Primary, .onClick = [this] { m_client->startMirror(); }});
+      return ui::button({.text = i18n::tr(label), .variant = ButtonVariant::Primary, .onClick = [this] { m_client->startMirror(); }});
     };
     switch (mirror.kind) {
     case Mirror::Kind::Idle:
-      stage->addChild(emptyState("device-mobile", "Show " + phone + "'s screen", "The phone asks before it shares its screen.", s, start("Start")));
+      stage->addChild(emptyState("device-mobile", i18n::tr("link.mirror.idle-title", "phone", phone), i18n::tr("link.mirror.idle-body"), s, start("link.mirror.start")));
       break;
     case Mirror::Kind::Asking:
-      stage->addChild(emptyState("device-mobile", "Allow on the phone", "Tap Start now on " + phone + " to share its screen.", s));
+      stage->addChild(emptyState("device-mobile", i18n::tr("link.mirror.asking-title"), i18n::tr("link.mirror.asking-body", "phone", phone), s));
       break;
     case Mirror::Kind::Ended:
-      stage->addChild(emptyState("device-mobile-off", "Screen sharing stopped", phone + " stopped sharing its screen.", s, start("Start Again")));
+      stage->addChild(emptyState("device-mobile-off", i18n::tr("link.mirror.ended-title"), i18n::tr("link.mirror.ended-body", "phone", phone), s, start("link.mirror.start-again")));
       break;
     case Mirror::Kind::Failed:
-      stage->addChild(emptyState("device-mobile-off", "No screen to show", mirror.error, s, start("Try Again")));
+      stage->addChild(emptyState("device-mobile-off", i18n::tr("link.mirror.failed-title"), mirror.error, s, start("link.common.try-again")));
       break;
     case Mirror::Kind::Showing: {
       auto stat = text(mirrorStat(), Tokens::typeFootnote, ColorRole::Label2, s);
@@ -2335,22 +2341,22 @@ namespace linkapp {
                            std::function<void()> secondary = nullptr, bool on = false) {
         bar->addChild(ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s,
                                   .variant = on ? ButtonVariant::Primary : ButtonVariant::Ghost,
-                                  .tooltip = std::string(tip),
+                                  .tooltip = i18n::tr(tip),
                                   .onClick = std::move(press), .onRightClick = std::move(secondary)}));
       };
-      key("chevron-left", "Back", [this] { m_client->mirrorAction("back"); });
-      key("home", "Home", [this] { m_client->mirrorAction("home"); });
-      key("dots", "Recent apps", [this] { m_client->mirrorAction("recents"); });
+      key("chevron-left", "link.common.back", [this] { m_client->mirrorAction("back"); });
+      key("home", "link.mirror.home", [this] { m_client->mirrorAction("home"); });
+      key("dots", "link.mirror.recents", [this] { m_client->mirrorAction("recents"); });
       bar->addChild(ui::box({.fill = colorSpecFromRole(ColorRole::Separator), .width = s, .height = Tokens::spaceP12 * s}));
       constexpr std::int32_t kVolumeUp = 24; // Android KeyEvent codes
       constexpr std::int32_t kVolumeDown = 25;
-      key("volume", "Volume up (right-click: down)", [this] { m_client->mirrorKey(kVolumeUp); },
+      key("volume", "link.mirror.volume", [this] { m_client->mirrorKey(kVolumeUp); },
           [this] { m_client->mirrorKey(kVolumeDown); });
-      key("lock", "Lock", [this] { confirmLock(); });
+      key("lock", "link.mirror.lock", [this] { confirmLock(); });
       const bool dark = m_client->mirrorScreenOff();
-      key("device-mobile-off", dark ? "Turn the phone's screen on" : "Turn the phone's screen off (mirroring goes on)",
+      key("device-mobile-off", dark ? "link.mirror.screen-on" : "link.mirror.screen-off",
           [this, dark] { m_client->setMirrorScreenOff(!dark); }, nullptr, dark);
-      key("photo", "Screenshot", [this] { m_client->mirrorAction("screenshot"); });
+      key("photo", "link.mirror.screenshot", [this] { m_client->mirrorAction("screenshot"); });
       stage->addChild(std::move(bar));
       break;
     }
@@ -2438,8 +2444,8 @@ namespace linkapp {
     const float boxW = std::max(1.0F, width - 2.0F * pad);
     const float boxH = std::max(1.0F, height - Tokens::componentWindowCaption * s - barH - 3.0F * pad);
     if (failed) {
-      stage->addChild(emptyState("photo-off", "This photo could not be loaded", "The phone did not send it.", s,
-                                 ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Secondary,
+      stage->addChild(emptyState("photo-off", i18n::tr("link.photos.load-failed-title"), i18n::tr("link.photos.load-failed-body"), s,
+                                 ui::button({.text = i18n::tr("link.common.try-again"), .variant = ButtonVariant::Secondary,
                                              .onClick = [this, path = photo.path] { m_client->closePhoto(); viewPhoto(path); }})));
     } else {
       Image* image = nullptr;
@@ -2465,12 +2471,12 @@ namespace linkapp {
     bar->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s);
     const auto key = [&](const char* glyph, const char* tip, bool enabled, std::function<void()> click) {
       bar->addChild(ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s, .enabled = enabled,
-                                .variant = ButtonVariant::Ghost, .tooltip = std::string(tip), .onClick = std::move(click)}));
+                                .variant = ButtonVariant::Ghost, .tooltip = i18n::tr(tip), .onClick = std::move(click)}));
     };
     const auto previous = photoStep(-1);
     const auto next = photoStep(1);
-    key("chevron-left", "Previous", previous.has_value(), [this, previous] { viewPhoto(previous); });
-    key("chevron-right", "Next", next.has_value(), [this, next] { viewPhoto(next); });
+    key("chevron-left", "link.player.previous", previous.has_value(), [this, previous] { viewPhoto(previous); });
+    key("chevron-right", "link.player.next", next.has_value(), [this, next] { viewPhoto(next); });
     bar->addChild(ui::separator({.orientation = SeparatorOrientation::VerticalRule, .height = Tokens::sizeControlS * s}));
     auto names = ui::column({.align = FlexAlign::Start, .paddingH = Tokens::spaceP8 * s, .maxWidth = std::max(0.0F, width / 2.0F)});
     names->addChild(text(photo.name, Tokens::typeBody, ColorRole::Label1, s));
@@ -2482,15 +2488,15 @@ namespace linkapp {
     names->addChild(text(info, Tokens::typeFootnote, ColorRole::Label2, s));
     bar->addChild(std::move(names));
     bar->addChild(ui::separator({.orientation = SeparatorOrientation::VerticalRule, .height = Tokens::sizeControlS * s}));
-    if (!photo.videoS) key("copy", "Copy", ready, [this] { copyPhoto(); });
+    if (!photo.videoS) key("copy", "desk.edit.copy", ready, [this] { copyPhoto(); });
     const auto saved = m_viewSaved.find(photo.path);
     if (saved != m_viewSaved.end()) {
-      bar->addChild(ui::button({.text = std::string("Show in Folder"), .glyph = std::string("folder"), .variant = ButtonVariant::Tonal,
+      bar->addChild(ui::button({.text = i18n::tr("link.common.show-in-folder"), .glyph = std::string("folder"), .variant = ButtonVariant::Tonal,
                                 .onClick = [this, local = saved->second] { m_client->showInFolder({local}); }}));
     } else {
       const Presence::Kind kind = m_client->presence().kind;
       const bool live = kind == Presence::Kind::Connected || kind == Presence::Kind::Locked;
-      bar->addChild(ui::button({.text = std::string("Save"), .glyph = std::string("download"), .enabled = live,
+      bar->addChild(ui::button({.text = i18n::tr("link.common.save"), .glyph = std::string("download"), .enabled = live,
                                 .variant = ButtonVariant::Tonal,
                                 .onClick = [this, path = photo.path] {
                                   m_client->savePhoto(path, [this, path](const std::string& local) {
@@ -2615,14 +2621,14 @@ namespace linkapp {
     const float s = m_scale;
     const Photos& photos = m_client->photos();
     std::vector<std::unique_ptr<Node>> caption;
-    caption.push_back(text("Photos", Tokens::typeHeadline, ColorRole::Label1, s));
+    caption.push_back(text(i18n::tr("link.pages.photos"), Tokens::typeHeadline, ColorRole::Label1, s));
     if (photos.total() > 0) caption.push_back(text(groupedCount(photos.total()), Tokens::typeFootnote, ColorRole::Label2, s));
     caption.push_back(ui::row({.flexGrow = 1.0F}));
     if (m_viewing) {
       // The lightbox caption: Back, the photo's place in the grid order.
       caption.clear();
       caption.push_back(ui::button({.glyph = std::string("chevron-left"), .glyphSize = Tokens::sizeSymbol * s,
-                                    .variant = ButtonVariant::Ghost, .tooltip = std::string("Back to Photos"),
+                                    .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("link.photos.back"),
                                     .onClick = [this] { viewPhoto(std::nullopt); }}));
       const std::vector<std::size_t>* order = m_search ? &m_search->photos : nullptr;
       const auto& items = photos.items();
@@ -2630,22 +2636,22 @@ namespace linkapp {
       const auto index = static_cast<std::size_t>(at - items.begin());
       if (order != nullptr && std::ranges::find(*order, index) == order->end()) order = nullptr; // not a hit: place among all
       const std::size_t shown = order ? static_cast<std::size_t>(std::ranges::find(*order, index) - order->begin()) : index;
-      auto place = text(std::format("{} of {}", groupedCount(shown + 1), groupedCount(order ? order->size() : photos.total())),
+      auto place = text(i18n::tr("link.photos.place", "index", groupedCount(shown + 1), "count", groupedCount(order ? order->size() : photos.total())),
                         Tokens::typeFootnote, ColorRole::Label2, s);
       caption.push_back(std::move(place));
       caption.push_back(ui::row({.flexGrow = 1.0F}));
     } else {
       const bool taking = m_client->takingPhoto();
       const bool live = m_client->presence().kind == Presence::Kind::Connected;
-      caption.push_back(ui::button({.text = std::string(taking ? "Waiting for the phone…" : "Take Photo"),
+      caption.push_back(ui::button({.text = i18n::tr(taking ? "link.photos.waiting" : "link.photos.take"),
                                     .glyph = std::string("camera"), .enabled = live && !taking,
                                     .variant = ButtonVariant::Tonal, .onClick = [this] { m_client->takePhoto(); }}));
       if (taking) {
-        caption.push_back(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Ghost,
+        caption.push_back(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Ghost,
                                       .onClick = [this] { m_client->cancelTakePhoto(); }}));
       }
     }
-    if (!m_viewing) caption.push_back(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = "All"}, {.label = "Photos"}, {.label = "Videos"}},
+    if (!m_viewing) caption.push_back(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = i18n::tr("link.photos.all")}, {.label = i18n::tr("link.pages.photos")}, {.label = i18n::tr("link.photos.videos")}},
                                      .selectedIndex = static_cast<std::size_t>(photos.media()), .scale = s, .compact = true,
                                      .onChange = [this](std::size_t i) {
                                        m_client->setPhotoMedia(static_cast<Photos::Media>(i));
@@ -2657,7 +2663,7 @@ namespace linkapp {
       return row;
     };
     const auto retry = [this] {
-      return ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Secondary,
+      return ui::button({.text = i18n::tr("link.common.try-again"), .variant = ButtonVariant::Secondary,
                          .onClick = [this] { m_client->loadPhotos(); }});
     };
     const bool videos = photos.media() == Photos::Media::Videos;
@@ -2665,22 +2671,22 @@ namespace linkapp {
     case Photos::Load::Idle:
     case Photos::Load::Loading:
       if (photos.items().empty()) {
-        return cards(emptyState("photo", "Loading photos", "The newest photos on the phone show here.", s));
+        return cards(emptyState("photo", i18n::tr("link.photos.loading-title"), i18n::tr("link.photos.loading-body"), s));
       }
       break;
     case Photos::Load::Denied:
-      return cards(emptyState("photo-off", "Link cannot see photos", "Allow Photos access for Link in the phone's settings.", s,
+      return cards(emptyState("photo-off", i18n::tr("link.photos.denied-title"), i18n::tr("link.photos.denied-body"), s,
                               retry()));
     case Photos::Load::Unsupported:
-      return cards(emptyState("photo-off", "This phone does not share photos",
-                              "Update Link on the phone to see its new photos here.", s));
+      return cards(emptyState("photo-off", i18n::tr("link.photos.unsupported-title"),
+                              i18n::tr("link.photos.unsupported-body"), s));
     case Photos::Load::Failed:
-      return cards(emptyState("alert-circle", "Photos did not load", "The phone did not answer in time.", s, retry()));
+      return cards(emptyState("alert-circle", i18n::tr("link.photos.failed-title"), i18n::tr("link.photos.failed-body"), s, retry()));
     case Photos::Load::More:
     case Photos::Load::Ready:
       if (photos.items().empty()) {
-        return cards(videos ? emptyState("video", "No videos", "Videos on the phone show here.", s)
-                            : emptyState("photo", "No photos", "New photos on the phone show here.", s));
+        return cards(videos ? emptyState("video", i18n::tr("link.photos.no-videos-title"), i18n::tr("link.photos.no-videos-body"), s)
+                            : emptyState("photo", i18n::tr("link.photos.none-title"), i18n::tr("link.photos.none-body"), s));
       }
       break;
     }
@@ -2705,12 +2711,12 @@ namespace linkapp {
     // FloatingCapsuleBar (handoff.yaml): "n selected · Save · Clear", or how the last save went.
     std::string what;
     if (photos.selectedCount() > 0) {
-      what = std::format("{} selected", photos.selectedCount());
+      what = i18n::tr("link.photos.selected", "count", photos.selectedCount());
     } else if (photos.save() == Photos::Save::Saving) {
-      what = "Saving to Downloads…";
+      what = i18n::tr("link.photos.saving");
     } else if (photos.save() == Photos::Save::Done) {
-      what = photos.saveFailed() == 0 ? std::format("Saved {} to Downloads", photos.saved())
-                                      : std::format("{} not saved", photos.saveFailed());
+      what = photos.saveFailed() == 0 ? i18n::tr("link.photos.saved", "count", photos.saved())
+                                      : i18n::tr("link.photos.not-saved", "count", photos.saveFailed());
     }
     if (!what.empty()) {
       auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .fill = colorSpecFromRole(ColorRole::Popover),
@@ -2719,9 +2725,9 @@ namespace linkapp {
       bar->addChild(text(what, Tokens::typeBody, ColorRole::Label1, s));
       if (photos.selectedCount() > 0) {
         const bool saving = photos.save() == Photos::Save::Saving;
-        bar->addChild(ui::button({.text = std::string("Save"), .glyph = std::string("download"), .enabled = !saving,
+        bar->addChild(ui::button({.text = i18n::tr("link.common.save"), .glyph = std::string("download"), .enabled = !saving,
                                   .variant = ButtonVariant::Ghost, .onClick = [this] { m_client->savePhotos(); }}));
-        bar->addChild(ui::button({.text = std::string("Clear"), .glyph = std::string("x"), .variant = ButtonVariant::Ghost,
+        bar->addChild(ui::button({.text = i18n::tr("link.photos.clear"), .glyph = std::string("x"), .variant = ButtonVariant::Ghost,
                                   .onClick = [this] { m_client->clearPhotoSelection(); }}));
       }
       // Over the grid: out of the page's layout, laid out alone to learn its width.
@@ -2738,11 +2744,11 @@ namespace linkapp {
     const float s = m_scale;
     switch (m_client->callLog()) {
     case CallLog::Off:
-      return emptyState("phone-off", "Calls are off", "Turn on Calls in Link on your phone to see them here.", s);
+      return emptyState("phone-off", i18n::tr("link.calls.off-title"), i18n::tr("link.calls.off-body"), s);
     case CallLog::Denied:
-      return emptyState("phone-off", "Link cannot read calls", "Allow Phone access for Link in the phone's settings.", s);
+      return emptyState("phone-off", i18n::tr("link.calls.denied-title"), i18n::tr("link.calls.denied-body"), s);
     case CallLog::Failed:
-      return emptyState("alert-circle", "Calls did not load", "The phone could not read its call log.", s);
+      return emptyState("alert-circle", i18n::tr("link.calls.failed-title"), i18n::tr("link.calls.failed-body"), s);
     case CallLog::Ready: break;
     }
     auto page = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
@@ -2760,16 +2766,16 @@ namespace linkapp {
                           .fill = colorSpecFromRole(ColorRole::Fill1), .radius = h / 2.0F, .height = h, .flexGrow = 1.0F});
     field->addChild(ui::glyph({.glyph = std::string("phone"), .glyphSize = Tokens::sizeSymbol * s,
                                .color = colorSpecFromRole(ColorRole::Label2)}));
-    field->addChild(ui::input({.value = m_dial, .placeholder = std::string("Name or number"), .fontSize = Tokens::typeBody.size * s,
+    field->addChild(ui::input({.value = m_dial, .placeholder = i18n::tr("link.messages.name-or-number"), .fontSize = Tokens::typeBody.size * s,
                                .frameVisible = false, .flexGrow = 1.0F,
                                .onChange = [this](const std::string& value) { m_dial = value; },
                                .onSubmit = [dial](const std::string&) { dial(); }}));
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP8 * s});
     row->addChild(std::move(field));
-    row->addChild(ui::button({.text = std::string("Call"), .variant = ButtonVariant::Primary, .onClick = dial}));
+    row->addChild(ui::button({.text = i18n::tr("link.common.call"), .variant = ButtonVariant::Primary, .onClick = dial}));
     page->addChild(std::move(row));
     if (m_client->calls().empty()) {
-      page->addChild(emptyState("phone", "No calls", "Calls on your phone show here.", s));
+      page->addChild(emptyState("phone", i18n::tr("link.calls.none-title"), i18n::tr("link.calls.none-body"), s));
     } else {
       page->addChild(ui::virtualListView({.state = &m_callScroll, .contentScale = s, .adapter = m_calls.get(), .flexGrow = 1.0F}));
     }
@@ -2780,7 +2786,7 @@ namespace linkapp {
   std::unique_ptr<Node> LinkApp::activity() {
     const float s = m_scale;
     if (m_client->activity().rowCount() == 0) {
-      return emptyState("arrows-down-up", "No transfers", "Files you send or receive and text copied on the phone show here.", s);
+      return emptyState("arrows-down-up", i18n::tr("link.activity.none-title"), i18n::tr("link.activity.none-body"), s);
     }
     auto page = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
     page->setPadding(0.0F, Tokens::spaceP24 * s, Tokens::spaceP24 * s, Tokens::spaceP24 * s);
@@ -2906,16 +2912,16 @@ namespace linkapp {
 
     std::vector<std::unique_ptr<Node>> caption;
     caption.push_back(ui::button({.glyph = std::string("chevron-left"), .variant = ButtonVariant::Ghost,
-                                  .tooltip = std::string("Back to Settings"), .onClick = [this] {
+                                  .tooltip = i18n::tr("link.commands.back"), .onClick = [this] {
                                     commandsChanged(m_commands.close());
                                     m_settingsView = SettingsView::Main;
                                     sync();
                                     m_window->requestRebuild();
                                   }}));
-    caption.push_back(text("Commands", Tokens::typeHeadline, ColorRole::Label1, s));
+    caption.push_back(text(i18n::tr("link.commands.title"), Tokens::typeHeadline, ColorRole::Label1, s));
     caption.back()->setFlexGrow(1.0F);
     if (!list.empty()) {
-      caption.push_back(ui::button({.text = std::string("Add command"), .glyph = std::string("plus"),
+      caption.push_back(ui::button({.text = i18n::tr("link.commands.add"), .glyph = std::string("plus"),
                                     .enabled = ed.canAdd(), .variant = ButtonVariant::Tonal,
                                     .onClick = [this] { commandsChanged(m_commands.add()); }}));
     }
@@ -2930,11 +2936,9 @@ namespace linkapp {
       r->addChild(ui::glyph({.glyph = std::string("device-mobile"), .glyphSize = Tokens::sizeSymbol * s,
                              .color = colorSpecFromRole(ColorRole::Label1)}));
       auto words = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
-      words->addChild(text(std::format("{} may run these", phone), Tokens::typeBody, ColorRole::Label1, s, 2));
+      words->addChild(text(i18n::tr("link.commands.may-run", "phone", phone), Tokens::typeBody, ColorRole::Label1, s, 2));
       const bool granted = m_client->phoneSettings().commands;
-      words->addChild(note(!granted ? "Off: its buttons do nothing on this computer"
-                           : away   ? "Changes reach it when it connects"
-                                    : "Each runs with sh -c as you on this computer",
+      words->addChild(note(i18n::tr(!granted ? "link.commands.grant-off" : away ? "link.commands.grant-away" : "link.commands.grant-on"),
                            ColorRole::Label2));
       r->addChild(std::move(words));
       r->addChild(ui::toggle({.checked = granted, .scale = s,
@@ -2945,12 +2949,12 @@ namespace linkapp {
 
     auto head = ui::row({.align = FlexAlign::Center});
     head->setPadding(Tokens::spaceP16 * s, inset, Tokens::spaceP8 * s, inset);
-    auto headTitle = text(std::format("Buttons on {}, in order", phone), Tokens::typeFootnote, ColorRole::Label2, s);
+    auto headTitle = text(i18n::tr("link.commands.buttons-on", "phone", phone), Tokens::typeFootnote, ColorRole::Label2, s);
     headTitle->setFontWeight(FontWeight::SemiBold);
     headTitle->setFlexGrow(1.0F);
     head->addChild(std::move(headTitle));
     if (list.size() >= CommandsEditor::kMax - 8) {
-      auto count = text(std::format("{} of {}", list.size(), CommandsEditor::kMax), Tokens::typeFootnote, ColorRole::Label2, s);
+      auto count = text(i18n::tr("link.commands.count", "count", list.size(), "max", CommandsEditor::kMax), Tokens::typeFootnote, ColorRole::Label2, s);
       count->setFontWeight(FontWeight::SemiBold);
       head->addChild(std::move(count));
     }
@@ -2963,7 +2967,7 @@ namespace linkapp {
                              .radius = Style::scaledRadius(Tokens::componentListRowRadius, s)});
       const auto field = [&](const char* label, std::unique_ptr<Node> input, const char* error) {
         auto line = ui::row({.align = FlexAlign::Start, .gap = Tokens::spaceP12 * s});
-        auto name = text(label, Tokens::typeFootnote, ColorRole::Label2, s);
+        auto name = text(i18n::tr(label), Tokens::typeFootnote, ColorRole::Label2, s);
         name->setFontWeight(FontWeight::SemiBold);
         auto cell = ui::column({.align = FlexAlign::Start, .width = Tokens::componentLinkFieldLabel * s});
         cell->setPadding(Tokens::spaceP8 * s, 0.0F, 0.0F, 0.0F);
@@ -2971,12 +2975,12 @@ namespace linkapp {
         line->addChild(std::move(cell));
         auto right = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s, .flexGrow = 1.0F});
         right->addChild(std::move(input));
-        if (error != nullptr) right->addChild(note(error, ColorRole::DangerText));
+        if (error != nullptr) right->addChild(note(i18n::tr(error), ColorRole::DangerText));
         line->addChild(std::move(right));
         return line;
       };
       const auto invalid = ed.invalid();
-      box->addChild(field("Name",
+      box->addChild(field("link.commands.name",
                           ui::input({.value = ed.draft().name,
                                      .fontSize = Tokens::typeBody.size * s, .invalid = invalid == CommandsEditor::Invalid::Name,
                                      .surfaceRole = ColorRole::View, .flexGrow = 1.0F,
@@ -2987,9 +2991,9 @@ namespace linkapp {
                                      },
                                      .onSubmit = [this](const std::string&) { commandsChanged(m_commands.close()); }}),
                           invalid == CommandsEditor::Invalid::Name
-                              ? (ed.draft().name.size() > CommandsEditor::kMaxName ? "At most 512 bytes." : "The phone shows the name on the button.")
+                              ? (ed.draft().name.size() > CommandsEditor::kMaxName ? "link.commands.name-long" : "link.commands.name-hint")
                               : nullptr));
-      box->addChild(field("Command",
+      box->addChild(field("link.commands.command",
                           ui::input({.value = ed.draft().line,
                                      .fontSize = Tokens::typeMono.size * s, .invalid = invalid == CommandsEditor::Invalid::Line,
                                      .surfaceRole = ColorRole::View,
@@ -3005,28 +3009,28 @@ namespace linkapp {
                                        input.setSubmitOnEnter(true);
                                        input.setFontFamily(std::string(Tokens::fontMono));
                                      }}),
-                          invalid == CommandsEditor::Invalid::Line ? "Give it a line to run." : nullptr));
+                          invalid == CommandsEditor::Invalid::Line ? "link.commands.line-missing" : nullptr));
       auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
       Button* remove = nullptr;
-      bar->addChild(ui::button({.out = &remove, .text = std::string("Remove"), .variant = ButtonVariant::Ghost,
+      bar->addChild(ui::button({.out = &remove, .text = i18n::tr("link.commands.remove"), .variant = ButtonVariant::Ghost,
                                 .onClick = [this] { commandsChanged(m_commands.remove()); }}));
       auto palette = Button::defaultPalette(ButtonVariant::Ghost);
       for (auto* state : {&palette.normal, &palette.hover, &palette.pressed}) state->label = colorSpecFromRole(ColorRole::DangerText);
       remove->setCustomPalette(palette);
       const bool full = invalid == CommandsEditor::Invalid::Full;
       const bool failed = ed.sync() == CommandsEditor::Sync::Failed;
-      auto status = note(full     ? std::string("64 is the limit. Remove one to add another.")
-                         : failed ? std::format("Not saved: {}. Your text stays here.", ed.error())
-                         : away   ? std::format("Waiting for {}", phone)
-                                  : std::string("Enter or Done saves it"),
+      auto status = note(full     ? i18n::tr("link.commands.full")
+                         : failed ? i18n::tr("link.commands.not-saved-text", "error", ed.error())
+                         : away   ? i18n::tr("link.commands.waiting", "phone", phone)
+                                  : i18n::tr("link.commands.enter-saves"),
                          full || failed ? ColorRole::DangerText : ColorRole::Label2);
       status->setFlexGrow(1.0F);
       bar->addChild(std::move(status));
       if (failed) {
-        bar->addChild(ui::button({.text = std::string("Try again"), .variant = ButtonVariant::Tonal,
+        bar->addChild(ui::button({.text = i18n::tr("link.commands.try-again"), .variant = ButtonVariant::Tonal,
                                   .onClick = [this] { commandsChanged(m_commands.retry()); }}));
       }
-      bar->addChild(ui::button({.text = std::string("Done"), .variant = ButtonVariant::Tonal,
+      bar->addChild(ui::button({.text = i18n::tr("link.commands.done"), .variant = ButtonVariant::Tonal,
                                 .onClick = [this] { commandsChanged(m_commands.close()); }}));
       box->addChild(std::move(bar));
       return box;
@@ -3038,10 +3042,10 @@ namespace linkapp {
         rule(*rows);
         auto r = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP8 * s,
                           .paddingH = inset, .minHeight = Tokens::sizeControlL * s});
-        auto gone = text(std::format("Removed “{}”", ed.draft().name), Tokens::typeBody, ColorRole::Label2, s);
+        auto gone = text(i18n::tr("link.commands.removed", "name", ed.draft().name), Tokens::typeBody, ColorRole::Label2, s);
         gone->setFlexGrow(1.0F);
         r->addChild(std::move(gone));
-        r->addChild(ui::button({.text = std::string("Undo"), .enabled = ed.canAdd(), .variant = ButtonVariant::Tonal,
+        r->addChild(ui::button({.text = i18n::tr("link.commands.undo"), .enabled = ed.canAdd(), .variant = ButtonVariant::Tonal,
                                 .onClick = [this] { commandsChanged(m_commands.undo()); }}));
         rows->addChild(std::move(r));
       }
@@ -3073,23 +3077,23 @@ namespace linkapp {
       rows->addChild(std::move(line));
     }
     if (list.empty() && !editing) {
-      rows->addChild(ui::button({.text = std::string("Add command"), .glyph = std::string("plus"), .variant = ButtonVariant::Ghost,
+      rows->addChild(ui::button({.text = i18n::tr("link.commands.add"), .glyph = std::string("plus"), .variant = ButtonVariant::Ghost,
                                  .onClick = [this] { commandsChanged(m_commands.add()); }}));
     }
     page->addChild(std::move(rows));
 
-    std::string foot = list.empty() ? std::format("Each command becomes a button on {} that runs one shell line here.", phone)
-                       : !ed.canAdd() ? std::string("64 is the limit. Remove one to add another.")
-                                      : std::string("The phone shows the buttons in this order.");
+    std::string foot = list.empty() ? i18n::tr("link.commands.empty-foot", "phone", phone)
+                       : !ed.canAdd() ? i18n::tr("link.commands.full")
+                                      : i18n::tr("link.commands.order-foot");
     auto footer = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     footer->setPadding(Tokens::spaceP8 * s, inset, 0.0F, inset);
     const bool failedIdle = ed.sync() == CommandsEditor::Sync::Failed && !editing;
-    auto footText = note(failedIdle ? std::format("Not saved: {}. Your changes stay here.", ed.error()) : foot,
+    auto footText = note(failedIdle ? i18n::tr("link.commands.not-saved-changes", "error", ed.error()) : foot,
                          failedIdle ? ColorRole::DangerText : ColorRole::Label2);
     footText->setFlexGrow(1.0F);
     footer->addChild(std::move(footText));
     if (failedIdle) {
-      footer->addChild(ui::button({.text = std::string("Try again"), .variant = ButtonVariant::Tonal,
+      footer->addChild(ui::button({.text = i18n::tr("link.commands.try-again"), .variant = ButtonVariant::Tonal,
                                    .onClick = [this] { commandsChanged(m_commands.retry()); }}));
     }
     page->addChild(std::move(footer));
@@ -3154,15 +3158,15 @@ namespace linkapp {
     page->setPadding(0.0F, 0.0F, Tokens::spaceP24 * s, 0.0F);
     // The app's own settings: they need no Link service.
     const auto appearance = [&] {
-      page->addChild(header("Appearance"));
+      page->addChild(header(i18n::tr("link.appearance.title")));
       auto card = group();
       std::vector<std::string> names;
       std::size_t selected = 0;
       for (const MaterialChoice& choice : kMaterials) {
         if (choice.material == m_material) selected = names.size();
-        names.emplace_back(choice.name);
+        names.emplace_back(i18n::tr(choice.title));
       }
-      row(*card, "app-window", "Window", "Glass shows the wallpaper behind the sidebar, the content, or both",
+      row(*card, "app-window", i18n::tr("link.appearance.window"), i18n::tr("link.appearance.window-hint"),
           ui::select({.options = std::move(names), .selectedIndex = selected, .fontSize = Style::fontSizeBody * s,
                       .controlHeight = Style::controlHeight * s,
                       .onSelectionChanged = [this](std::size_t i, std::string_view) {
@@ -3181,9 +3185,9 @@ namespace linkapp {
       return scroll;
     };
     if (presence.kind == Presence::Kind::NoDaemon) {
-      page->addChild(header("Phone"));
+      page->addChild(header(i18n::tr("link.settings.phone")));
       auto card = group();
-      row(*card, "plug-connected-x", "Link is not running", "Start the Link service to reach your phone", nullptr);
+      row(*card, "plug-connected-x", i18n::tr("link.phone-card.not-running"), i18n::tr("link.settings.start-service"), nullptr);
       page->addChild(std::move(card));
       appearance();
       return finish();
@@ -3191,52 +3195,52 @@ namespace linkapp {
     page->addChild(header(presence.phone.name));
     const auto grant = [&](Flex& card, const char* glyph, const char* title, const char* hint, bool held,
                            const char* feature) {
-      row(card, glyph, title, hint,
+      row(card, glyph, i18n::tr(title), *hint != 0 ? i18n::tr(hint) : std::string(), 
           toggle(held, [this, id, feature](bool on) { m_client->setGrant(id, feature, on); }));
     };
     auto phoneCard = group();
     if (phone.notificationsOff) {
-      row(*phoneCard, "alert-triangle", "Notification access is off on the phone",
-          "Turn it on in the phone's settings to see its notifications here", nullptr);
+      row(*phoneCard, "alert-triangle", i18n::tr("link.settings.notif-off-title"),
+          i18n::tr("link.settings.notif-off-hint"), nullptr);
     }
-    grant(*phoneCard, "bell", "Show phone notifications", "Banners and the Waiting page", phone.notifications,
+    grant(*phoneCard, "bell", "link.settings.notifications", "link.settings.notifications-hint", phone.notifications,
           "notifications");
-    grant(*phoneCard, "phone", "Show calls", "Incoming calls and the call log", phone.calls, "calls");
-    grant(*phoneCard, "clipboard", "Share clipboard", "Both ways, text and images", phone.clipboard, "clipboard");
-    grant(*phoneCard, "file", "Share files", "Both ways", phone.files, "files");
-    row(*phoneCard, "arrow-down", "Save offered files without asking", "To Downloads",
+    grant(*phoneCard, "phone", "link.settings.calls", "link.settings.calls-hint", phone.calls, "calls");
+    grant(*phoneCard, "clipboard", "link.settings.clipboard", "link.settings.clipboard-hint", phone.clipboard, "clipboard");
+    grant(*phoneCard, "file", "link.settings.files", "link.settings.files-hint", phone.files, "files");
+    row(*phoneCard, "arrow-down", i18n::tr("link.settings.auto-accept"), i18n::tr("link.settings.auto-accept-hint"),
         toggle(phone.autoAccept, [this, id](bool on) { m_client->setAutoAccept(id, on); }));
-    grant(*phoneCard, "device-mobile", "Allow screen mirroring", "", phone.screen, "screen");
-    grant(*phoneCard, "access-point", "Join phone hotspot", "For files and mirroring when Wi-Fi Direct fails",
+    grant(*phoneCard, "device-mobile", "link.settings.screen", "", phone.screen, "screen");
+    grant(*phoneCard, "access-point", "link.settings.hotspot", "link.settings.hotspot-hint",
           phone.nearby, "nearby");
     page->addChild(std::move(phoneCard));
 
-    page->addChild(header("Control from the phone"));
+    page->addChild(header(i18n::tr("link.settings.control")));
     auto controlCard = group();
     if (phone.inputBlocked) {
-      row(*controlCard, "alert-triangle", "Touchpad and keyboard do not work in this session",
-          "The desktop session cannot take input from the phone", nullptr);
+      row(*controlCard, "alert-triangle", i18n::tr("link.settings.input-blocked-title"),
+          i18n::tr("link.settings.input-blocked-hint"), nullptr);
     }
-    grant(*controlCard, "player-play", "Media", "The phone's player here, and play and pause on this computer",
+    grant(*controlCard, "player-play", "link.settings.media", "link.settings.media-hint",
           phone.media, "media");
-    grant(*controlCard, "keyboard", "Touchpad and keyboard", "", phone.input, "input");
-    grant(*controlCard, "adjustments", "System", "Volume, brightness, lock and sleep, both ways", phone.system,
+    grant(*controlCard, "keyboard", "link.settings.input", "", phone.input, "input");
+    grant(*controlCard, "adjustments", "link.settings.system", "link.settings.system-hint", phone.system,
           "system");
-    grant(*controlCard, "bell-ringing", "Ring this computer", "To find it", phone.ring, "ring");
+    grant(*controlCard, "bell-ringing", "link.settings.ring", "link.settings.ring-hint", phone.ring, "ring");
     page->addChild(std::move(controlCard));
 
-    page->addChild(header("This computer"));
+    page->addChild(header(i18n::tr("link.settings.this-computer")));
     auto deskCard = group();
-    row(*deskCard, "lock", "Show phone notifications while locked", "Off: the lock screen shows only how many",
+    row(*deskCard, "lock", i18n::tr("link.settings.locked-notifications"), i18n::tr("link.settings.locked-notifications-hint"),
         toggle(desk.notificationsWhileLocked, [this](bool on) { m_client->setNotificationsWhileLocked(on); }));
-    row(*deskCard, "device-laptop", "Visible to nearby phones",
-        desk.nearbyName.empty() ? std::string("Quick Share") : std::format("As “{}”", desk.nearbyName),
+    row(*deskCard, "device-laptop", i18n::tr("link.settings.nearby"),
+        desk.nearbyName.empty() ? i18n::tr("link.settings.quick-share") : i18n::tr("link.settings.nearby-as", "name", desk.nearbyName),
         toggle(desk.nearbyVisible, [this](bool on) { m_client->setNearbyVisible(on); }));
-    row(*deskCard, "share", "Visible to LocalSend", "Receive files from LocalSend apps on this network",
+    row(*deskCard, "share", i18n::tr("link.settings.localsend"), i18n::tr("link.settings.localsend-hint"),
         toggle(desk.localSendVisible, [this](bool on) { m_client->setLocalSendVisible(on); }));
     const std::size_t commandCount = desk.commands.size();
-    row(*deskCard, "terminal-2", "Commands the phone can run",
-        commandCount == 1 ? std::string("1 command") : std::format("{} commands", commandCount),
+    row(*deskCard, "terminal-2", i18n::tr("link.settings.commands"),
+        i18n::trp("link.settings.commands-count", static_cast<long>(commandCount)),
         ui::glyph({.glyph = std::string("chevron-right"), .glyphSize = Tokens::sizeSymbolInline * s,
                    .color = colorSpecFromRole(ColorRole::Label2)}),
         [this] {
@@ -3250,21 +3254,21 @@ namespace linkapp {
     auto forget = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
     forget->setPadding(Tokens::spaceP24 * s, 0.0F, 0.0F, 0.0F);
     if (m_confirmForget) {
-      auto ask = text(std::format("Forget {}? It must pair again to connect.", presence.phone.name), Tokens::typeBody,
+      auto ask = text(i18n::tr("link.settings.forget-ask", "phone", presence.phone.name), Tokens::typeBody,
                       ColorRole::Label1, s, 2);
       ask->setFlexGrow(1.0F);
       forget->addChild(std::move(ask));
-      forget->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal, .onClick = [this] {
+      forget->addChild(ui::button({.text = i18n::tr("common.actions.cancel"), .variant = ButtonVariant::Tonal, .onClick = [this] {
                                      m_confirmForget = false;
                                      m_window->requestRebuild();
                                    }}));
-      forget->addChild(ui::button({.text = std::string("Forget"), .variant = ButtonVariant::Destructive, .onClick = [this, id] {
+      forget->addChild(ui::button({.text = i18n::tr("link.settings.forget"), .variant = ButtonVariant::Destructive, .onClick = [this, id] {
                                      m_confirmForget = false;
                                      m_client->unpair(id);
                                    }}));
     } else {
       Button* button = nullptr;
-      forget->addChild(ui::button({.out = &button, .text = std::format("Forget {}…", presence.phone.name),
+      forget->addChild(ui::button({.out = &button, .text = i18n::tr("link.settings.forget-phone", "phone", presence.phone.name),
                                    .variant = ButtonVariant::Ghost, .onClick = [this] {
                                      m_confirmForget = true;
                                      m_window->requestRebuild();

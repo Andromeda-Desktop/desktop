@@ -1,6 +1,7 @@
 #include "link_client.h"
 
 #include "core/log.h"
+#include "i18n/i18n.h"
 #include "dbus/session_bus.h"
 #include "dbus/reply_log.h"
 
@@ -296,8 +297,8 @@ namespace linkapp {
               const std::string key = "c:" + device + ":" + std::to_string(at);
               if (m_feed.find(key) || m_dismissed.contains(key)) continue;
               m_feed.upsert({.kind = FeedItem::Kind::MissedCall, .key = key, .deviceId = device,
-                             .who = call.get<1>().empty() ? call.get<0>() : call.get<1>(), .body = "Missed call",
-                             .atMs = at, .actions = {{call.get<0>(), "Call back", false}}});
+                             .who = call.get<1>().empty() ? call.get<0>() : call.get<1>(), .body = i18n::tr("link.client.missed-call"),
+                             .atMs = at, .actions = {{call.get<0>(), i18n::tr("link.client.call-back"), false}}});
             }
           }
           // Texts and Contacts of the phone presence() shows; Link1 keeps its newest 256 texts.
@@ -756,10 +757,10 @@ namespace linkapp {
             const std::string why = error->getName().ends_with(".Refused") ? error->getMessage() : std::string();
             kLog.warn("ListFiles: {}", error->getMessage());
             const std::string text = why == "not-allowed" || why == "denied"
-                                         ? "Turn on Files for this desktop in Link on the phone."
-                                     : why == "not-found" ? "This folder is no longer on the phone."
-                                     : why == "busy"      ? "The phone is busy. Try again in a moment."
-                                                          : "The phone did not answer.";
+                                         ? i18n::tr("link.client.files-off")
+                                     : why == "not-found" ? i18n::tr("link.client.folder-gone")
+                                     : why == "busy"      ? i18n::tr("link.client.busy")
+                                                          : i18n::tr("link.client.no-answer");
             if (m_files.failed(serial, text)) changed();
             return;
           }
@@ -777,13 +778,13 @@ namespace linkapp {
     // A failed DeleteFile or WriteFile as one line for the Files page (reasons: Link1.xml ListFiles).
     std::string fileError(const sdbus::Error& error, const std::string& name, bool exists) {
       const std::string why = error.getName().ends_with(".Refused") ? error.getMessage() : std::string();
-      if (why == "not-allowed") return "Turn on Files for this desktop in Link on the phone.";
-      if (why == "denied" && exists) return std::format("“{}” is already in this folder on the phone.", name);
-      if (why == "denied") return std::format("The phone does not allow changes to “{}”.", name);
-      if (why == "not-found") return std::format("“{}” is no longer on the phone.", name);
-      if (why == "busy") return "The phone is busy. Try again in a moment.";
-      if (why == "io") return "The phone could not write. Its storage may be full.";
-      return "The phone did not answer.";
+      if (why == "not-allowed") return i18n::tr("link.client.files-off");
+      if (why == "denied" && exists) return i18n::tr("link.client.exists", "name", name);
+      if (why == "denied") return i18n::tr("link.client.denied", "name", name);
+      if (why == "not-found") return i18n::tr("link.client.file-gone", "name", name);
+      if (why == "busy") return i18n::tr("link.client.busy");
+      if (why == "io") return i18n::tr("link.client.io");
+      return i18n::tr("link.client.no-answer");
     }
   } // namespace
 
@@ -840,7 +841,7 @@ namespace linkapp {
       m_fileOp.name = local.filename().string();
       changed();
       if (!upload->file) {
-        finishUpload(upload, std::format("“{}” could not be read on this computer.", m_fileOp.name));
+        finishUpload(upload, i18n::tr("link.client.unreadable", "name", m_fileOp.name));
         return;
       }
     }
@@ -1030,7 +1031,7 @@ namespace linkapp {
       if (!codec || (*codec != MirrorCodec::H264 && std::ranges::find(listed, name) == listed.end())) {
         kLog.warn("OpenMirror: the phone chose codec '{}', not offered", name);
         if (mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Failed, .session = session,
-                                  .error = "The phone sent a video format this desktop cannot play."})) {
+                                  .error = i18n::tr("link.client.bad-video")})) {
           changed();
         }
         return; // fd closes here
@@ -1063,9 +1064,9 @@ namespace linkapp {
         return;
       }
       kLog.warn("OpenMirror: {}", error.getMessage());
-      const std::string why = error.getName().ends_with(".Refused") ? "The phone did not allow screen sharing."
-                              : error.getName().ends_with(".NotConnected") ? "The phone is not connected."
-                                                                           : "The phone did not start sharing its screen.";
+      const std::string why = error.getName().ends_with(".Refused") ? i18n::tr("link.client.share-refused")
+                              : error.getName().ends_with(".NotConnected") ? i18n::tr("link.client.not-connected")
+                                                                           : i18n::tr("link.client.share-failed");
       if (mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Failed, .session = session, .error = why})) changed();
     };
     // The phone's user has 60 s to allow capture; the default D-Bus timeout is shorter.

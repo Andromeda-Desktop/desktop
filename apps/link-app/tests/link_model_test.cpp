@@ -1,6 +1,7 @@
 // Model-based test: random event sequences against the feed, presence and transfer rules, with the invariants checked
 // after every event.
 #include "link_model.h"
+#include "i18n/i18n.h"
 
 #include <algorithm>
 #include <array>
@@ -832,6 +833,8 @@ namespace {
 } // namespace
 
 int main() {
+  i18n::Service::instance().addDomain("link", ANDROMEDA_TRANSLATIONS_DIR);
+  i18n::Service::instance().setLanguage("en");
   for (unsigned seed = 1; seed <= 20; ++seed) runPlayer(seed);
   runMirrorKeys();
   for (unsigned seed = 1; seed <= 20; ++seed) runPair(seed);

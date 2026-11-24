@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "i18n/i18n.h"
 
 #include <algorithm>
 #include <array>
@@ -249,7 +250,7 @@ namespace linkapp {
                                    (std::uint32_t{header[2]} << 8) | header[3];
       const std::uint8_t flags = header[12];
       if (length > kMaxUnit) {
-        why = "The phone sent a broken video stream.";
+        why = i18n::tr("link.client.broken-video");
         break;
       }
       unit.resize(length + AV_INPUT_BUFFER_PADDING_SIZE);
