@@ -88,11 +88,12 @@ void LiveAppearanceSync::initialize(ShellWaylandConnection& wayland, ChangeCallb
   m_control = std::make_unique<SettingsControl>(wayland.registry(), name, version, [this]() { onSettingsChanged(); });
 }
 
-void LiveAppearanceSync::publish(std::string_view scheme, std::string_view accent) {
+void LiveAppearanceSync::publish(std::string_view scheme, SchemeOrigin origin, std::string_view paletteAccent) {
   if (m_focusScheme.empty()) {
     m_scheme = std::string(scheme);
+    m_schemeOrigin = origin;
   }
-  m_accent = normalizeColor(accent);
+  m_accent = normalizeColor(paletteAccent);
   flush();
 }
 
@@ -102,8 +103,9 @@ void LiveAppearanceSync::set(const std::string& key, const std::string& value) {
   }
 }
 
-void LiveAppearanceSync::setAccent(std::string_view accent) {
-  m_chosenAccent = normalizeColor(accent);
+void LiveAppearanceSync::setAccentOrigin(AccentOrigin origin, std::string_view wallpaperAccent) {
+  m_accentOrigin = origin;
+  m_wallpaperAccent = normalizeColor(wallpaperAccent);
   flush();
 }
 
@@ -134,7 +136,7 @@ void LiveAppearanceSync::flush() {
     m_layerUiScale = m_uiScale;
     m_control->setInLayer("style", "appearance.ui_scale", m_uiScale);
   }
-  // Blur recipe per scheme (glass tokens): the user's in the settings, a Focus scheme's in its layer.
+  // Blur recipe per scheme (glass tokens): a chosen scheme's in the settings, a derived or Focus scheme's in its layer.
   const auto recipe = [](std::string_view scheme) {
     const bool light = scheme == "light";
     return std::array<std::pair<std::string, std::string>, 3>{{
@@ -156,24 +158,45 @@ void LiveAppearanceSync::flush() {
       m_control->setInLayer("focus", key, value);
     }
   }
-  const bool userScheme = !m_scheme.empty() && m_focusScheme.empty();
-  if (userScheme) {
-    push("appearance.scheme", m_scheme, m_control->value("appearance.scheme") != m_scheme);
-  }
-  // The user's accent choice lives in the compositor; the shell fills it in only while it is unset.
-  if (!m_chosenAccent.empty()) {
-    const bool differs = normalizeColor(m_control->value("appearance.accent")) != m_chosenAccent;
-    push("appearance.accent", m_chosenAccent, differs);
-    if (!differs) {
-      m_chosenAccent.clear();
+  if (!m_scheme.empty() && m_focusScheme.empty()) {
+    if (m_schemeOrigin == SchemeOrigin::Derived) {
+      if (m_scheme != m_layerDerivedScheme) {
+        m_layerDerivedScheme = m_scheme;
+        m_control->setInLayer("style", "appearance.scheme", m_scheme);
+        for (const auto& [key, value] : recipe(m_scheme)) {
+          m_control->setInLayer("style", key, value);
+        }
+      }
+    } else {
+      // The layer masks the saved keys, so set them before it goes: the view then never shows a stale saved scheme,
+      // which would count as another client's choice.
+      const bool masked = !m_layerDerivedScheme.empty();
+      if (masked) {
+        m_sent.erase("appearance.scheme");
+      }
+      push("appearance.scheme", m_scheme, masked || m_control->value("appearance.scheme") != m_scheme);
+      for (const auto& [key, value] : recipe(m_scheme)) {
+        if (masked) {
+          m_sent.erase(key);
+        }
+        push(key, value, masked || m_control->value(key) != value);
+      }
+      if (masked) {
+        m_layerDerivedScheme.clear();
+        m_control->setInLayer("style", "appearance.scheme", "");
+        for (const auto& entry : recipe(m_scheme)) {
+          m_control->setInLayer("style", entry.first, "");
+        }
+      }
     }
-  } else if (!m_accent.empty()) {
+  }
+  const bool fromWallpaper = m_accentOrigin == AccentOrigin::Wallpaper;
+  if (const std::string layerAccent = fromWallpaper ? m_wallpaperAccent : std::string{}; layerAccent != m_layerAccent) {
+    m_layerAccent = layerAccent;
+    m_control->setInLayer("style", "appearance.accent", m_layerAccent);
+  }
+  if (!fromWallpaper && !m_accent.empty()) {
     push("appearance.accent", m_accent, m_control->value("appearance.accent").empty());
-  }
-  if (userScheme) {
-    for (const auto& [key, value] : recipe(m_scheme)) {
-      push(key, value, m_control->value(key) != value);
-    }
   }
 }
 

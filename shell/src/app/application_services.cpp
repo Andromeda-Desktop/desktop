@@ -810,14 +810,14 @@ void Application::initServices() {
 
 void Application::refreshWallpaperAccent(bool forSettingsRow) {
   const bool fromWallpaper = m_configService.config().theme.accentSource == AccentSource::Wallpaper;
-  const std::string path = m_configService.getPaletteWallpaperPath();
-  if (path.empty() || path == m_wallpaperAccentPath) {
-    if (fromWallpaper && !forSettingsRow && !m_wallpaperAccent.empty()) {
-      m_liveAppearance.setAccent(m_wallpaperAccent);
-    }
-    return;
+  if (!forSettingsRow) {
+    m_liveAppearance.setAccentOrigin(
+        fromWallpaper ? LiveAppearanceSync::AccentOrigin::Wallpaper : LiveAppearanceSync::AccentOrigin::Saved,
+        m_wallpaperAccent
+    );
   }
-  if (!fromWallpaper && !forSettingsRow) {
+  const std::string path = m_configService.getPaletteWallpaperPath();
+  if (path.empty() || path == m_wallpaperAccentPath || (!fromWallpaper && !forSettingsRow)) {
     return;
   }
   m_wallpaperAccentPath = path;
@@ -839,7 +839,7 @@ void Application::refreshWallpaperAccent(bool forSettingsRow) {
         m_wallpaperAccent = std::move(accent);
         kLog.info("wallpaper accent: {} from {}", m_wallpaperAccent.empty() ? "none" : m_wallpaperAccent, path);
         if (!m_wallpaperAccent.empty() && m_configService.config().theme.accentSource == AccentSource::Wallpaper) {
-          m_liveAppearance.setAccent(m_wallpaperAccent);
+          m_liveAppearance.setAccentOrigin(LiveAppearanceSync::AccentOrigin::Wallpaper, m_wallpaperAccent);
         }
         m_settingsWindow.onExternalOptionsChanged();
       }
@@ -1033,7 +1033,10 @@ void Application::initStyleThemeAndWayland() {
       greeter::setLockClockGradient((gradientFrom->second << 8U) | 0xFFU, (to << 8U) | 0xFFU);
     }
     m_liveAppearance.publish(
-        m_themeService.resolvedShellMode(), primary != shellTokens.end() ? formatRgbHex(rgbHex(primary->second)) : ""
+        m_themeService.resolvedShellMode(),
+        shellThemeMode(m_configService.config().theme) == ThemeMode::Auto ? LiveAppearanceSync::SchemeOrigin::Derived
+                                                                           : LiveAppearanceSync::SchemeOrigin::Chosen,
+        primary != shellTokens.end() ? formatRgbHex(rgbHex(primary->second)) : ""
     );
     if (m_configService.config().theme.syncColorScheme) {
       syncGSettingsColorScheme(m_bus.get(), resolvedMode);

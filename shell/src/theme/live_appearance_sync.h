@@ -2,6 +2,7 @@
 
 #include "protocols/glass_material.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -38,26 +39,32 @@ struct LiveAppearance {
 void applyLiveMotion(const LiveAppearance& appearance);
 
 // Keeps a dsk_settings_manager_v1 binding for the whole session on andromeda: reads the live appearance keys and
-// writes the shell's scheme and accent.
+// writes the shell's scheme and accent. The user's choices go to the saved base keys; derived values (an auto scheme,
+// the wallpaper accent) go only to the runtime layer "style", so the compositor never saves them as the user's.
 class LiveAppearanceSync {
 public:
   using ChangeCallback = std::function<void(const LiveAppearance&)>;
+  enum class SchemeOrigin : std::uint8_t { Chosen, Derived };
 
   LiveAppearanceSync();
   ~LiveAppearanceSync();
 
   void initialize(ShellWaylandConnection& wayland, ChangeCallback onChange);
-  // Sets each key the compositor holds with a different value; before the first batch arrives, it waits for it.
-  void publish(std::string_view scheme, std::string_view accent);
-  // Sets appearance.accent ("#rrggbb"); before the first batch arrives, it waits for it.
-  void setAccent(std::string_view accent);
+  enum class AccentOrigin : std::uint8_t { Saved, Wallpaper };
+
+  // Sets each key the compositor holds with a different value; before the first batch arrives, it waits for it. The
+  // palette accent fills the saved appearance.accent only while it is unset and the accent origin is Saved.
+  void publish(std::string_view scheme, SchemeOrigin origin, std::string_view paletteAccent);
+  // Saved: the user's saved appearance.accent shows. Wallpaper: the wallpaper accent ("#rrggbb", empty until known)
+  // masks it from the "style" layer.
+  void setAccentOrigin(AccentOrigin origin, std::string_view wallpaperAccent);
   // A Focus scheme in the compositor's runtime layer "focus" (never saved there); empty clears the layer. While it is
   // on, publish() keeps the user's scheme and no scheme change counts as another client's choice.
   void setFocusScheme(std::string scheme);
   // The shell's corner scale in the compositor's runtime layer "style" (never saved there): window corners follow it.
   void setCornerScale(float scale);
   void setUiScale(float scale);
-  // Runs when another client (Settings, `andromeda msg settings-set`) changes appearance.scheme; the shell adopts it.
+  // Runs when another client changes the saved appearance.scheme; the shell adopts it.
   void setOnExternalScheme(std::function<void(std::string_view)> callback) { m_onExternalScheme = std::move(callback); }
   // Runs on every batch of settings and on every refused set, once the first batch has arrived.
   void setOnBatch(std::function<void(const SettingsControl&)> callback) { m_onBatch = std::move(callback); }
@@ -74,6 +81,8 @@ private:
   std::unique_ptr<SettingsControl> m_control;
   LiveAppearance m_state;
   std::string m_scheme;
+  SchemeOrigin m_schemeOrigin = SchemeOrigin::Chosen;
+  std::string m_layerDerivedScheme; // the derived scheme in the compositor's "style" layer now
   std::string m_focusScheme;
   std::string m_layerScheme; // the scheme in the compositor's "focus" layer now
   std::string m_cornerScale;
@@ -81,7 +90,9 @@ private:
   std::string m_uiScale;
   std::string m_layerUiScale; // the ui scale in the compositor's "style" layer now
   std::string m_accent;
-  std::string m_chosenAccent; // a setAccent() value until the compositor holds it
+  AccentOrigin m_accentOrigin = AccentOrigin::Saved;
+  std::string m_wallpaperAccent;
+  std::string m_layerAccent; // the accent in the compositor's "style" layer now
   std::unordered_map<std::string, std::string> m_sent; // last value set per key, until the compositor has it
   ChangeCallback m_onChange;
   std::function<void(std::string_view)> m_onExternalScheme;

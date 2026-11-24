@@ -198,16 +198,15 @@ namespace settings {
       options.push_back(std::move(custom));
       SelectSetting select{std::move(options), fromWallpaper ? "wallpaper" : preset ? current : "custom"};
       select.tiles = true;
-      select.groupedCommit = [wallpaperAccent = env.wallpaperAccent](
-                                 std::string_view value, const std::vector<std::string>& primaryPath
-                             ) {
+      // A wallpaper pick saves only the source: the shell keeps the derived accent in a runtime layer.
+      select.groupedCommit = [](std::string_view value, const std::vector<std::string>& primaryPath) {
         std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> writes;
         const bool wallpaperPick = value == "wallpaper";
         writes.emplace_back(
             std::vector<std::string>{"theme", "accent_source"}, std::string(wallpaperPick ? "wallpaper" : "color")
         );
-        if (const std::string accent = wallpaperPick ? wallpaperAccent : std::string(value); !accent.empty()) {
-          writes.emplace_back(primaryPath, accent);
+        if (!wallpaperPick) {
+          writes.emplace_back(primaryPath, std::string(value));
         }
         return writes;
       };
