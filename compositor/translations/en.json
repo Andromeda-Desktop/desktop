@@ -1,0 +1,36 @@
+{
+  "overview": {
+    "arrange": {
+      "title": "Arrange “{name}”",
+      "free": {
+        "name": "Free",
+        "description": "Windows stay where you put them. Snap to edges and layouts."
+      },
+      "scrolling": {
+        "name": "Scrolling",
+        "description": "Columns on an endless strip. New windows open to the right."
+      },
+      "split": {
+        "name": "Split",
+        "description": "Each new window splits the focused one in half."
+      },
+      "main-stack": {
+        "name": "Main + Stack",
+        "description": "One large window, the rest stacked beside it."
+      }
+    },
+    "menu": {
+      "arrangement": "Arrangement",
+      "close": "Close",
+      "close-all": "Close All on This Desktop",
+      "move-to": "Move to {name}",
+      "move-to-desktop": "Move to Desktop {number}",
+      "move-to-display": "Move to Display {name}",
+      "move-to-new-desktop": "Move to New Desktop",
+      "rename-desktop": "Rename Desktop"
+    },
+    "no-match": "No windows match “{filter}”. Enter searches apps and files.",
+    "no-windows": "No windows",
+    "untitled": "Untitled"
+  }
+}

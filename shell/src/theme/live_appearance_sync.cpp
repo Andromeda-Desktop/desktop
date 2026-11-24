@@ -124,6 +124,11 @@ void LiveAppearanceSync::setUiScale(float scale) {
   flush();
 }
 
+void LiveAppearanceSync::setLanguage(std::string_view language) {
+  m_language = language;
+  flush();
+}
+
 void LiveAppearanceSync::flush() {
   if (m_control == nullptr || !m_control->ready()) {
     return;
@@ -135,6 +140,10 @@ void LiveAppearanceSync::flush() {
   if (!m_uiScale.empty() && m_uiScale != m_layerUiScale) {
     m_layerUiScale = m_uiScale;
     m_control->setInLayer("style", "appearance.ui_scale", m_uiScale);
+  }
+  if (!m_language.empty() && m_language != m_layerLanguage) {
+    m_layerLanguage = m_language;
+    m_control->setInLayer("style", "appearance.language", m_language);
   }
   // Blur recipe per scheme (glass tokens): a chosen scheme's in the settings, a derived or Focus scheme's in its layer.
   const auto recipe = [](std::string_view scheme) {

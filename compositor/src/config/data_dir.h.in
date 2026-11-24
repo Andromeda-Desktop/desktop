@@ -2,4 +2,6 @@
 
 namespace andromeda {
   inline constexpr char kDataDir[] = @ANDROMEDA_DATA_DIR@;
+  // The source tree catalogs: an uninstalled build reads them before the installed ones.
+  inline constexpr char kTranslationsSourceDir[] = @ANDROMEDA_TRANSLATIONS_SOURCE_DIR@;
 }

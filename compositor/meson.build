@@ -44,6 +44,7 @@ andromeda_version_h = vcs_tag(
 andromeda_data_dir = get_option('prefix') / get_option('datadir')
 andromeda_data_dir_config = configuration_data()
 andromeda_data_dir_config.set_quoted('ANDROMEDA_DATA_DIR', andromeda_data_dir)
+andromeda_data_dir_config.set_quoted('ANDROMEDA_TRANSLATIONS_SOURCE_DIR', meson.current_source_dir() / 'translations')
 configure_file(
   input: 'src/config/data_dir.h.in',
   output: 'andromeda_data_dir.h',
@@ -945,6 +946,8 @@ pure_sources = files(
   'protocols/dwindle_tree.cpp',
   'protocols/glass_material.cpp',
   'protocols/ipc_channel.cpp',
+  'protocols/i18n_catalog.cpp',
+  'src/i18n/strings.cpp',
   'src/layout/master.cpp',
   'src/layout/floating.cpp',
   'src/output/direction.cpp',
@@ -1299,6 +1302,7 @@ install_data(
   'examples/config.toml',
   install_dir: get_option('datadir') / 'andromeda',
 )
+install_data('translations/en.json', install_dir: get_option('datadir') / 'andromeda' / 'translations' / 'compositor')
 # Bundled effect presets: each directory holds the preset's shader and an
 # effect.toml that defines it without selecting it. Users include the TOML and
 # select the name.

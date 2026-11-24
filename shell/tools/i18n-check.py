@@ -52,12 +52,13 @@ MODULES = {
     "link": (REPO / "apps" / "link-app" / "src", REPO / "apps" / "link-app" / "translations" / "en.json"),
     "terminal": (REPO / "apps" / "terminal" / "src", REPO / "apps" / "terminal" / "translations" / "en.json"),
     "preview": (REPO / "andromeda-preview" / "src", REPO / "andromeda-preview" / "translations" / "en.json"),
+    "compositor": (REPO / "compositor" / "src", REPO / "compositor" / "translations" / "en.json"),
     "share-picker": (REPO / "portal" / "src" / "share_picker", REPO / "portal" / "translations" / "share-picker" / "en.json"),
 }
 DEFAULT_RAW_ROOTS = ("src/ui", "src/shell")
 
 # i18n::tr("a.b.c", ...) or i18n::tr("a.b.c")
-TR_RE = re.compile(r'i18n::tr\s*\(\s*"([^"]+)"')
+TR_RE = re.compile(r'(?:i18n|strings)::tr\s*\(\s*"([^"]+)"')
 # i18n::trp("a.b.c", count, ...) → also requires "a.b.c-plural" when plural branch exists
 TRP_RE = re.compile(r'i18n::trp\s*\(\s*"([^"]+)"')
 

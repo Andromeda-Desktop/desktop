@@ -64,6 +64,8 @@ public:
   // The shell's corner scale in the compositor's runtime layer "style" (never saved there): window corners follow it.
   void setCornerScale(float scale);
   void setUiScale(float scale);
+  // The shell's loaded language in the "style" layer: compositor chrome (overview menus) speaks it too.
+  void setLanguage(std::string_view language);
   // Runs when another client changes the saved appearance.scheme; the shell adopts it.
   void setOnExternalScheme(std::function<void(std::string_view)> callback) { m_onExternalScheme = std::move(callback); }
   // Runs on every batch of settings and on every refused set, once the first batch has arrived.
@@ -89,6 +91,8 @@ private:
   std::string m_layerCornerScale; // the corner scale in the compositor's "style" layer now
   std::string m_uiScale;
   std::string m_layerUiScale; // the ui scale in the compositor's "style" layer now
+  std::string m_language;
+  std::string m_layerLanguage; // the language in the compositor's "style" layer now
   std::string m_accent;
   AccentOrigin m_accentOrigin = AccentOrigin::Saved;
   std::string m_wallpaperAccent;

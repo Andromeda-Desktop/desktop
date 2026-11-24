@@ -796,6 +796,8 @@ namespace andromeda {
       double cornerScale = 1.0;
       // The shell's ui_scale (accessibility), set in its runtime layer; compositor chrome sizes and fonts scale by it.
       double uiScale = 1.0;
+      // The shell's language tag (its loaded catalog, e.g. "de"), set in its runtime layer; empty = English.
+      std::string language;
       double dragOpacity = 0.75;
       // Fullscreen windows ignore window rule opacity and draw over the backdrop. When false, a fullscreen window with
       // rule or client transparency shows the desktop instead.

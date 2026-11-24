@@ -1,4 +1,5 @@
 #include "overview/overview_internal.h"
+#include "i18n/strings.h"
 
 namespace andromeda {
 
@@ -692,22 +693,22 @@ namespace andromeda {
         continue;
       }
       const bool named = workspace->named() || workspace->displayName() != workspace->name();
-      add(named ? std::format("Move to {}", workspace->displayName())
-                : std::format("Move to Desktop {}", workspace->displayName()),
+      add(named ? strings::tr("compositor.overview.menu.move-to", "name", workspace->displayName())
+                : strings::tr("compositor.overview.menu.move-to-desktop", "number", workspace->displayName()),
           {.action = Action::MoveToWorkspace, .workspace = Ref<Workspace>(workspace), .output = {}, .newWorkspace = false});
     }
-    add("Move to New Desktop", {.action = Action::MoveToWorkspace, .workspace = {}, .output = {}, .newWorkspace = true});
+    add(strings::tr("compositor.overview.menu.move-to-new-desktop"), {.action = Action::MoveToWorkspace, .workspace = {}, .output = {}, .newWorkspace = true});
     for (const auto& state : m_outputs) {
       WorkspaceGroup* other = state->output != nullptr ? state->output->workspaceGroup() : nullptr;
       if (other != nullptr && other != group && other->active() != nullptr) {
-        add(std::format("Move to Display {}", state->output->wlr()->name),
+        add(strings::tr("compositor.overview.menu.move-to-display", "name", state->output->wlr()->name),
             {.action = Action::MoveToOutput, .workspace = {}, .output = Ref<Output>(state->output), .newWorkspace = false});
       }
     }
-    add("Rename Desktop", {.action = Action::Rename, .workspace = {}, .output = {}, .newWorkspace = false});
-    add("Arrangement", {.action = Action::Arrangement, .workspace = {}, .output = {}, .newWorkspace = false});
-    add("Close", {.action = Action::Close, .workspace = {}, .output = {}, .newWorkspace = false});
-    add("Close All on This Desktop", {.action = Action::CloseAll, .workspace = {}, .output = {}, .newWorkspace = false});
+    add(strings::tr("compositor.overview.menu.rename-desktop"), {.action = Action::Rename, .workspace = {}, .output = {}, .newWorkspace = false});
+    add(strings::tr("compositor.overview.menu.arrangement"), {.action = Action::Arrangement, .workspace = {}, .output = {}, .newWorkspace = false});
+    add(strings::tr("compositor.overview.menu.close"), {.action = Action::Close, .workspace = {}, .output = {}, .newWorkspace = false});
+    add(strings::tr("compositor.overview.menu.close-all"), {.action = Action::CloseAll, .workspace = {}, .output = {}, .newWorkspace = false});
     setWindowMenu(std::move(menu));
   }
 

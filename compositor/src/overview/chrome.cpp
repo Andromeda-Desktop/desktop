@@ -1,6 +1,7 @@
 #include "overview/chrome.h"
 
 #include "config/config.h"
+#include "i18n/strings.h"
 #include "scene/border_rect.h"
 #include "scene/color.h"
 #include "scene/surface_blur.h"
@@ -53,19 +54,18 @@ namespace andromeda::ov {
       float alpha;
     };
     struct MenuRow {
-      std::string_view name;
-      std::string_view description;
+      std::string_view key; // compositor.overview.arrange.<key>.name and .description
       std::array<ArtBlock, 4> art;
       size_t blocks;
     };
     constexpr std::array<MenuRow, kMenuRows> kMenu{{
-        {"Free", "Windows stay where you put them. Snap to edges and layouts.",
+        {"free",
          {{{3, 3, 22, 14, 1.0F}, {17, 10, 24, 15, 0.7F}}}, 2},
-        {"Scrolling", "Columns on an endless strip. New windows open to the right.",
+        {"scrolling",
          {{{0, 3, 8, 22, 0.35F}, {11, 3, 14, 22, 1.0F}, {28, 3, 14, 22, 1.0F}}}, 3},
-        {"Split", "Each new window splits the focused one in half.",
+        {"split",
          {{{3, 3, 18, 22, 1.0F}, {23, 3, 18, 10, 1.0F}, {23, 15, 8, 10, 1.0F}, {33, 15, 8, 10, 1.0F}}}, 4},
-        {"Main + Stack", "One large window, the rest stacked beside it.",
+        {"main-stack",
          {{{3, 3, 23, 22, 1.0F}, {28, 3, 13, 6, 1.0F}, {28, 11, 13, 6, 1.0F}, {28, 19, 13, 6, 1.0F}}}, 4},
     }};
 
@@ -519,7 +519,7 @@ namespace andromeda::ov {
         continue;
       }
       setLabel(
-          label, span(l2, "normal", "No windows"),
+          label, span(l2, "normal", strings::tr("compositor.overview.no-windows")),
           {.font = tokenFont(Tokens::typeFootnote, m_ui), .padX = u(10), .height = u(kNameHeight), .maxWidth = workspace->card.width},
           scale
       );
@@ -538,7 +538,7 @@ namespace andromeda::ov {
           : chosen->card;
       setLabel(
           m_noMatch,
-          span(l2, "normal", std::format("No windows match “{}”. Enter searches apps and files.", frame.filter)),
+          span(l2, "normal", strings::tr("compositor.overview.no-match", "filter", frame.filter)),
           {.font = tokenFont(Tokens::typeBody, m_ui), .maxWidth = std::max(1, area.width - u(48))}, scale
       );
       placeLabel(m_noMatch, area.x + (area.width - m_noMatch.width) / 2, area.y + (area.height - m_noMatch.height) / 2, late);
@@ -587,7 +587,7 @@ namespace andromeda::ov {
       }
       Label& label = m_titles[window.key];
       setLabel(
-          label, span(l1, "600", window.title.empty() ? std::string_view("Untitled") : window.title),
+          label, span(l1, "600", window.title.empty() ? strings::tr("compositor.overview.untitled") : window.title),
           {.font = tokenFont(Tokens::typeFootnote, m_ui),
            .padX = u(10),
            .height = u(kCapsuleHeight),
@@ -687,7 +687,7 @@ namespace andromeda::ov {
       placeFrame(m_menu, *m_menuBox, u(kMenuRadius), 1, withAlpha(solid, 0.97F), withAlpha(l1, 0.1F), 1.0F);
       raise(m_menu.tree);
       const std::string_view name = frame.workspaces[frame.menu->workspace].name;
-      setLabel(m_menuHead, span(l2, "600", std::format("Arrange “{}”", name)), {.font = tokenFont(Tokens::typeCaption, m_ui), .maxWidth = u(240)}, scale);
+      setLabel(m_menuHead, span(l2, "600", strings::tr("compositor.overview.arrange.title", "name", name)), {.font = tokenFont(Tokens::typeCaption, m_ui), .maxWidth = u(240)}, scale);
       placeLabel(m_menuHead, x + u(kMenuPad) + u(10), y + u(kMenuPad) + (u(kMenuHeadHeight) - m_menuHead.height) / 2, 1.0F);
       raise(m_menuHead.tree);
       const int textX = u(kMenuPad) + u(10) + u(kMenuArtWidth) + u(10);
@@ -714,12 +714,12 @@ namespace andromeda::ov {
           placeFrame(art, {artX + u(b.x), artY + u(b.y), u(b.w), u(b.h)}, u(2), 1, colors.accentPrimary, {}, b.alpha);
           raise(art.tree);
         }
-        std::string markup = span(l1, "600", item.name);
+        std::string markup = span(l1, "600", strings::tr(std::format("compositor.overview.arrange.{}.name", item.key)));
         if (static_cast<int>(row) == frame.menu->current) {
           markup += span(colors.accentPrimary, "bold", "  ✓");
         }
         markup += std::format(
-            "\n<span size='small' foreground='{}'>{}</span>", rgbaHex(l2), escapeMarkup(item.description)
+            "\n<span size='small' foreground='{}'>{}</span>", rgbaHex(l2), escapeMarkup(strings::tr(std::format("compositor.overview.arrange.{}.description", item.key)))
         );
         Label& label = m_menuLabels[row];
         setLabel(label, markup, {.font = tokenFont(Tokens::typeFootnote, m_ui), .maxWidth = u(kMenuWidth) - textX - u(kMenuPad) - u(10), .wrap = true}, scale);
