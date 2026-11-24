@@ -466,6 +466,7 @@ void PanelManager::initialize(CompositorPlatform& platform, ConfigService* confi
     }
   });
   m_platform = &platform;
+  m_platform->setOutputRemovedCallback([this](wl_output* output) { onOutputRemoved(output); });
   m_config = config;
   m_renderContext = renderContext;
   m_clickShield.initialize(platform.wayland());
@@ -713,10 +714,8 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
   }
 
   // If a panel is open or closing, destroy it immediately with no close animation.
-  // Bump the generation first so any in-flight deferred destroyPanel is a no-op.
-  if (isOpen() || m_lifecycle.closing()) {
-    ++m_destroyGeneration;
-    destroyPanel();
+  if (isOpen()) {
+    destroyPanelNow();
   }
 
   auto it = m_panels.find(panelId);
@@ -1137,6 +1136,14 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
       syncGlassPieces(false);
     });
     surface.setAnimationManager(&m_animations);
+    // The compositor closes the panel with its output; the surface must not be destroyed inside its own event.
+    m_layerSurface->setClosedCallback([this, closed = m_layerSurface] {
+      DeferredCall::callLater([this, closed] {
+        if (m_layerSurface == closed) {
+          destroyPanelNow();
+        }
+      });
+    });
   };
 
   const auto resetPanelOpenState = [this] {
@@ -1790,6 +1797,18 @@ void PanelManager::prewarmNext() {
   m_prewarmTimer.start(std::chrono::milliseconds(0), [this] { prewarmNext(); });
 }
 
+void PanelManager::destroyPanelNow() {
+  // Bump the generation first so any in-flight deferred destroyPanel is a no-op.
+  ++m_destroyGeneration;
+  destroyPanel();
+}
+
+void PanelManager::onOutputRemoved(wl_output* output) {
+  if (output != nullptr && output == m_output) {
+    destroyPanelNow();
+  }
+}
+
 void PanelManager::destroyPanel() {
   if (!m_lifecycle.apply(panel_lifecycle::Destroyed{}).accepted) {
     return;
@@ -2095,7 +2114,7 @@ bool PanelManager::onPointerEvent(const PointerEvent& event) {
   return m_pointerInside;
 }
 
-bool PanelManager::isOpen() const noexcept { return m_surface != nullptr && m_activePanel != nullptr; }
+bool PanelManager::isOpen() const noexcept { return m_lifecycle.phase() != panel_lifecycle::Phase::Closed; }
 
 bool PanelManager::isOpenPanel(std::string_view panelId) const noexcept {
   if (m_persistentHost.hasPanel(panelId)) {
@@ -2105,7 +2124,7 @@ bool PanelManager::isOpenPanel(std::string_view panelId) const noexcept {
 }
 
 bool PanelManager::isPanelTransitionActive() const noexcept {
-  if (!isOpen() && !m_lifecycle.closing()) {
+  if (!isOpen()) {
     return false;
   }
   if (m_lifecycle.closing() || m_attachedOpenAnimationPending) {

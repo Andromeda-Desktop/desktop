@@ -1204,6 +1204,9 @@ void CompositorPlatform::onOutputRemoved(wl_output* output) {
   if (m_workspaces != nullptr) {
     m_workspaces->onOutputRemoved(output);
   }
+  if (m_outputRemovedCallback) {
+    m_outputRemovedCallback(output);
+  }
 }
 
 wl_output* CompositorPlatform::resolveOutputName(const std::string& outputName) const {

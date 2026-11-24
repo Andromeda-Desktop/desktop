@@ -210,6 +210,8 @@ public:
   void setOutputPowerOffPending(bool pending) noexcept { m_outputPowerOffPending = pending; }
   [[nodiscard]] bool shouldSuppressLockTransition() const;
   void setOutputPowerChangeCallback(const ChangeCallback& callback);
+  // Runs while the removed wl_output is still bound, before the output change callback.
+  void setOutputRemovedCallback(std::function<void(wl_output*)> callback) { m_outputRemovedCallback = std::move(callback); }
 
   [[nodiscard]] bool tracksOverviewState() const noexcept;
   [[nodiscard]] bool hasOverviewState() const noexcept;
@@ -267,6 +269,7 @@ private:
   ChangeCallback m_keyboardLayoutChangeCallback;
   ChangeCallback m_toplevelChangeCallback;
   std::function<void(bool active)> m_toplevelTitleCallback;
+  std::function<void(wl_output*)> m_outputRemovedCallback;
   std::unique_ptr<OutputProbe> m_outputProbe;
   std::vector<WorkspaceModelSnapshot> m_lastWorkspaceModelSnapshot;
   std::optional<std::string> m_lastFocusedCompositorWindowId;

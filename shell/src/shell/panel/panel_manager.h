@@ -155,6 +155,7 @@ public:
   bool onPointerEvent(const PointerEvent& event);
   bool onKeyboardEvent(const KeyboardEvent& event);
 
+  // From the surface initialize until it is destroyed, the close animation included.
   [[nodiscard]] bool isOpen() const noexcept;
   // Time the open spring needs to travel 35 % of its way: the content fades in from then on.
   [[nodiscard]] static std::chrono::milliseconds openContentGate(const Tokens::Spring& spring = Tokens::springOpen);
@@ -253,6 +254,8 @@ private:
   void prepareFrame(bool needsUpdate, bool needsLayout);
   void applyPendingPanelFocus();
   void destroyPanel();
+  void destroyPanelNow();
+  void onOutputRemoved(wl_output* output);
   void endInitialization(bool ok);
   // Called before the panel surface commits so outside-click dismissal is ready
   // for its first frame. The panel rect is excluded separately because
