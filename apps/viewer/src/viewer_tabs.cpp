@@ -1,5 +1,6 @@
 #include "viewer_tabs.h"
 
+#include "protocols/uri.h"
 #include "app/app_loop.h"
 #include "app/app_window.h"
 #include "core/deferred_call.h"
@@ -130,14 +131,14 @@ namespace viewer {
       return;
     }
     m_dropSurface = surface;
-    dnd->setAcceptedTypes({"text/uri-list"});
+    dnd->setAcceptedTypes({uri::kUriListMime});
     dnd->setTarget(surface, {
         .enter = [](const std::vector<std::string>&) { return true; },
         .motion = [](float, float) -> std::uint32_t { return DragAndDrop::Copy; },
         .leave = [] {},
         .drop =
             [this](float, float, std::uint32_t, const std::string& mime, std::string data) {
-              if (mime != "text/uri-list") {
+              if (mime != uri::kUriListMime) {
                 return;
               }
               std::istringstream lines(data);
@@ -148,9 +149,8 @@ namespace viewer {
                 if (line.empty() || line.front() == '#') {
                   continue;
                 }
-                if (char* path = g_filename_from_uri(line.c_str(), nullptr, nullptr)) {
-                  add(path);
-                  g_free(path);
+                if (const auto path = uri::pathFromFileUri(line)) {
+                  add(*path);
                 }
               }
             },

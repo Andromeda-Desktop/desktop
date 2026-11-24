@@ -1,5 +1,6 @@
 #include "terminal_view.h"
 #include "core/sys/sys.h"
+#include "protocols/uri.h"
 #include "platform/input_events.h"
 #include "core/input/pointer_axis.h"
 
@@ -2745,7 +2746,7 @@ namespace term {
   }
 
   void TerminalView::pasteDrop(const std::string& mime, const std::string& data) {
-    if (mime != "text/uri-list") {
+    if (mime != uri::kUriListMime) {
       pasteText(data);
       return;
     }

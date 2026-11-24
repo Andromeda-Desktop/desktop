@@ -17,6 +17,7 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "design_tokens.h"
+#include "protocols/uri.h"
 
 #include <format>
 #include <fstream>
@@ -108,10 +109,7 @@ namespace {
   }
 
   std::string uriFor(const fs::path& path) {
-    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-    std::string out = uri != nullptr ? uri : "";
-    g_free(uri);
-    return out;
+    return path.is_absolute() ? uri::fileUri(path.string()) : std::string{};
   }
 } // namespace
 

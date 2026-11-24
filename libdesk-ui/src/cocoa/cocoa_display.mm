@@ -1,6 +1,7 @@
 #include "cocoa/cocoa_internal.h"
 
 #include "core/deferred_call.h"
+#include "protocols/uri.h"
 #include "core/input/cursor_shape.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
@@ -112,7 +113,7 @@ NSString* cocoaPasteboardType(const std::string& mime) {
   if (mime.starts_with("text/plain") || mime == "UTF8_STRING" || mime == "STRING" || mime == "TEXT") {
     return NSPasteboardTypeString;
   }
-  if (mime == "text/uri-list") {
+  if (mime == uri::kUriListMime) {
     return NSPasteboardTypeFileURL;
   }
   if (mime == "text/html") {

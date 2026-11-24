@@ -1,5 +1,6 @@
 #include "music_library.h"
 
+#include "protocols/uri.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
 
@@ -204,9 +205,8 @@ MusicPlaylist MusicLibrary::readPlaylist(const fs::path& file) {
     }
     // Paths are bytes on Linux, so a Latin-1 .m3u still names its files; URLs go to mpv as they are.
     if (line.starts_with("file://")) {
-      if (gchar* file = g_filename_from_uri(line.c_str(), nullptr, nullptr)) {
-        line = file;
-        g_free(file);
+      if (auto file = uri::pathFromFileUri(line)) {
+        line = *file;
       }
     } else if (line.find("://") != std::string::npos) {
       out.entries.emplace_back(line);

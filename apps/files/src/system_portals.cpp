@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "dbus/session_bus.h"
+#include "protocols/uri.h"
 
 #include <filesystem>
 #include <fstream>
@@ -40,10 +41,7 @@ namespace {
   }
 
   std::string fileFromUri(const std::string& uri) {
-    gchar* path = g_filename_from_uri(uri.c_str(), nullptr, nullptr);
-    std::string out = path != nullptr ? path : "";
-    g_free(path);
-    return out;
+    return uri::pathFromFileUri(uri).value_or("");
   }
 
   // A serialized GIcon as a file the sheet or the notification server can load; bytes go to the runtime dir.
@@ -250,9 +248,8 @@ void SystemPortals::answer(std::uint64_t id, std::uint32_t response, const std::
       const User user = currentUser();
       results["id"] = sdbus::Variant(user.id);
       results["name"] = sdbus::Variant(user.name);
-      gchar* uri = user.image.empty() ? nullptr : g_filename_to_uri(user.image.c_str(), nullptr, nullptr);
-      results["image"] = sdbus::Variant(std::string(uri != nullptr ? uri : ""));
-      g_free(uri);
+      const bool localImage = !user.image.empty() && user.image.front() == '/';
+      results["image"] = sdbus::Variant(localImage ? uri::fileUri(user.image) : std::string{});
     }
     kLog.info("account answer {}", response);
     if (pending->withResults) {

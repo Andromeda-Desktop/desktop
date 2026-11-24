@@ -1,5 +1,6 @@
 #include "viewer_app.h"
 
+#include "protocols/uri.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
 #include "i18n/i18n.h"
@@ -22,10 +23,7 @@ namespace viewer {
       if (uri.find("://") == std::string::npos) {
         return std::filesystem::absolute(uri);
       }
-      char* path = g_filename_from_uri(uri.c_str(), nullptr, nullptr);
-      std::filesystem::path out = path != nullptr ? path : "";
-      g_free(path);
-      return out;
+      return uri::pathFromFileUri(uri).value_or("");
     }
   } // namespace
 

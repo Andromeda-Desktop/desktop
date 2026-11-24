@@ -1,5 +1,6 @@
 #include "player_app.h"
 
+#include "protocols/uri.h"
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
@@ -50,10 +51,7 @@ namespace {
 
   std::string pathFromUri(const std::string& uri) {
     if (uri.starts_with("file://")) {
-      gchar* file = g_filename_from_uri(uri.c_str(), nullptr, nullptr);
-      std::string out = file != nullptr ? file : uri;
-      g_free(file);
-      return out;
+      return uri::pathFromFileUri(uri).value_or(uri);
     }
     return uri;
   }

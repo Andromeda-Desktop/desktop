@@ -1,4 +1,5 @@
 #include "service_menus.h"
+#include "protocols/uri.h"
 
 #include "core/files/file_info.h"
 
@@ -65,10 +66,7 @@ namespace {
   }
 
   std::string uriOf(const fs::path& path) {
-    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-    std::string out = uri != nullptr ? uri : "";
-    g_free(uri);
-    return out;
+    return path.is_absolute() ? uri::fileUri(path.string()) : std::string{};
   }
 
   std::string quoted(const std::string& s) {

@@ -31,6 +31,7 @@
 
 #include "app/app_loop.h"
 #include "app/app_window.h"
+#include "protocols/uri.h"
 #include "share/share_menu.h"
 #include "dbus/session_bus.h"
 #include "core/deferred_call.h"
@@ -322,10 +323,7 @@ namespace {
   constexpr auto kToastTime = std::chrono::seconds(5);
 
   std::string uriFor(const fs::path& path) {
-    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-    std::string out = uri != nullptr ? uri : "";
-    g_free(uri);
-    return out;
+    return path.is_absolute() ? uri::fileUri(path.string()) : std::string{};
   }
 
   using LaunchContext = std::unique_ptr<GAppLaunchContext, void (*)(gpointer)>;
@@ -356,9 +354,8 @@ namespace {
       if (line.empty() || line.front() == '#') {
         continue;
       }
-      if (gchar* file = g_filename_from_uri(line.c_str(), nullptr, nullptr)) {
-        out.emplace_back(file);
-        g_free(file);
+      if (auto file = uri::pathFromFileUri(line)) {
+        out.emplace_back(*file);
       }
     }
     return out;
@@ -437,8 +434,8 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
               m_dragIcon = std::move(icon);
             }
             return dnd->startDrag(m_window.wlSurface(), m_app.loop().wayland().lastInputSerial(),
-                                  {.mimeTypes = {"text/uri-list", "text/plain;charset=utf-8", "text/plain"},
-                                   .data = [uris, text](const std::string& mime) { return mime == "text/uri-list" ? uris : text; },
+                                  {.mimeTypes = {uri::kUriListMime, "text/plain;charset=utf-8", "text/plain"},
+                                   .data = [uris, text](const std::string& mime) { return mime == uri::kUriListMime ? uris : text; },
                                    // Root's items leave an admin folder only as copies, into any app.
                                    .actions = adminHere() != nullptr ? DragAndDrop::Copy
                                                                      : DragAndDrop::Copy | DragAndDrop::Move | DragAndDrop::Ask,
@@ -640,11 +637,11 @@ void FilesWindow::registerDropTarget() {
     return;
   }
   m_dropSurface = surface;
-  dnd->setAcceptedTypes({"text/uri-list", "image/png", "text/plain;charset=utf-8", "text/plain"});
+  dnd->setAcceptedTypes({uri::kUriListMime, "image/png", "text/plain;charset=utf-8", "text/plain"});
   dnd->setTarget(surface, {
       .enter =
           [this](const std::vector<std::string>& mimes) {
-            m_dragHasUris = std::ranges::contains(mimes, std::string("text/uri-list"));
+            m_dragHasUris = std::ranges::contains(mimes, std::string(uri::kUriListMime));
             return true;
           },
       .motion =
@@ -684,7 +681,7 @@ void FilesWindow::registerDropTarget() {
       .drop =
           [this](float x, float y, std::uint32_t action, const std::string& mime, std::string data) {
             const auto target = dragOver(x, y);
-            if (target.has_value() && mime == "text/uri-list") {
+            if (target.has_value() && mime == uri::kUriListMime) {
               drop(*target, data, action);
             } else if (target.has_value() && target->kind == FileBrowser::DropTarget::Kind::Folder) {
               dropData(target->folder, mime, data);
@@ -1939,15 +1936,14 @@ void FilesWindow::goRecents() {
       if (listing.rows.size() >= kRecentsMax) {
         break;
       }
-      gchar* path = g_filename_from_uri(uri.c_str(), nullptr, nullptr);
-      if (path == nullptr) {
+      const auto path = uri::pathFromFileUri(uri);
+      if (!path) {
         continue;
       }
-      if (auto info = statFile(fs::path(path)); info.has_value() && !info->isDir) {
-        info->setNameKeepLabel(path); // absolute: the row opens as a path
+      if (auto info = statFile(fs::path(*path)); info.has_value() && !info->isDir) {
+        info->setNameKeepLabel(*path); // absolute: the row opens as a path
         listing.rows.push_back(std::make_shared<const FileInfo>(std::move(*info)));
       }
-      g_free(path);
     }
   }
   g_bookmark_file_free(bookmarks);
@@ -4077,13 +4073,13 @@ void FilesWindow::copySelection(bool cut) {
   }
   if (DragAndDrop* dnd = m_app.loop().wayland().dragAndDrop()) {
     dnd->setSelection(m_app.loop().wayland().lastInputSerial(),
-                      {.mimeTypes = {"x-special/gnome-copied-files", "text/uri-list", "application/x-kde-cutselection",
+                      {.mimeTypes = {"x-special/gnome-copied-files", uri::kUriListMime, "application/x-kde-cutselection",
                                      "text/plain;charset=utf-8", "text/plain"},
                        .data = [uris, text, gnome, cut](const std::string& mime) -> std::string {
                          if (mime == "x-special/gnome-copied-files") {
                            return gnome;
                          }
-                         if (mime == "text/uri-list") {
+                         if (mime == uri::kUriListMime) {
                            return uris;
                          }
                          if (mime == "application/x-kde-cutselection") {
@@ -4149,7 +4145,7 @@ void FilesWindow::paste() {
   // Files another app copied come from the system clipboard; our own copy stays in m_app.clipboard().
   DragAndDrop* dnd = m_app.loop().wayland().dragAndDrop();
   if (dnd != nullptr && !dnd->ownsSelection() && !dnd->selectionTypes().empty()) {
-    dnd->readSelection({"x-special/gnome-copied-files", "text/uri-list"},
+    dnd->readSelection({"x-special/gnome-copied-files", uri::kUriListMime},
                        [this, alive = std::weak_ptr<bool>(m_alive)](const std::string& mime, std::string bytes) {
                          if (alive.expired() || mime.empty()) {
                            return;
@@ -4169,9 +4165,8 @@ void FilesWindow::paste() {
                            if (line.empty() || line.front() == '#') {
                              continue;
                            }
-                           if (gchar* path = g_filename_from_uri(line.c_str(), nullptr, nullptr)) {
-                             paths.emplace_back(path);
-                             g_free(path);
+                           if (auto path = uri::pathFromFileUri(line)) {
+                             paths.emplace_back(*path);
                            }
                          }
                          kLog.debug("paste {} items from the clipboard ({})", paths.size(), cut ? "cut" : "copy");

@@ -1,6 +1,7 @@
 #include "terminal_app.h"
 #include "theme_cli.h"
 #include "theme_store.h"
+#include "protocols/uri.h"
 
 #include "agent_host.h"
 #include "holder_client.h"
@@ -204,7 +205,7 @@ namespace term {
       }
     }
     GError* error = nullptr;
-    const std::string uri = "file://" + path.string();
+    const std::string uri = uri::fileUri(path.string());
     if (!g_app_info_launch_default_for_uri(uri.c_str(), context.get(), &error)) {
       kLog.warn("open {}: {}", uri, error != nullptr ? error->message : "?");
       g_clear_error(&error);

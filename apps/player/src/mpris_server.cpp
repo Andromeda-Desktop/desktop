@@ -1,5 +1,6 @@
 #include "mpris_server.h"
 
+#include "protocols/uri.h"
 #include "dbus/session_bus.h"
 #include "mpv_player.h"
 
@@ -24,10 +25,7 @@ namespace {
     if (path.find("://") != std::string::npos) {
       return path;
     }
-    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
-    std::string out = uri != nullptr ? uri : path;
-    g_free(uri);
-    return out;
+    return path.starts_with('/') ? uri::fileUri(path) : path;
   }
 } // namespace
 

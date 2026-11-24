@@ -3,6 +3,7 @@
 #include "agent_host.h"
 
 #include "app/app_loop.h"
+#include "protocols/uri.h"
 #include "app/app_notifier.h"
 #include "app/app_window.h"
 #include "file_actions.h"
@@ -2360,7 +2361,7 @@ namespace term {
       TerminalView* view = shownTerminal();
       return view != nullptr && view->focusArea() != nullptr && view->focusArea()->containsScenePoint(x, y) ? view : nullptr;
     };
-    const bool registered = m_loop.display().setDropTarget(*surface, {"text/uri-list", "text/plain;charset=utf-8", "text/plain"}, {
+    const bool registered = m_loop.display().setDropTarget(*surface, {uri::kUriListMime, "text/plain;charset=utf-8", "text/plain"}, {
         .enter = [](const std::vector<std::string>& /*mimes*/) { return true; },
         .motion = [over](float x, float y) -> std::uint32_t { return over(x, y) != nullptr ? DropCopy : DropNone; },
         .leave = [] {},

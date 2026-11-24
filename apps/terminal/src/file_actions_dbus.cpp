@@ -1,6 +1,7 @@
 #include "file_actions.h"
 
 #include "core/log.h"
+#include "protocols/uri.h"
 #include "dbus/session_bus.h"
 #include "files/file_ops_client.h"
 
@@ -85,9 +86,8 @@ namespace term {
     }
     std::vector<std::string> uris;
     for (const auto& path : paths) {
-      if (gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr)) {
-        uris.emplace_back(uri);
-        g_free(uri);
+      if (path.is_absolute()) {
+        uris.push_back(uri::fileUri(path.string()));
       }
     }
     try {

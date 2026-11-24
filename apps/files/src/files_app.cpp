@@ -7,6 +7,7 @@
 #include "files_window.h"
 #include "i18n/i18n.h"
 #include "job_text.h"
+#include "protocols/uri.h"
 #include "tag_manager_sheet.h"
 #include "terminal_pane.h"
 #include "select_pattern_sheet.h"
@@ -59,10 +60,7 @@ namespace {
       const fs::path abs = fs::absolute(uri, ec);
       return ec ? fs::path(uri) : abs.lexically_normal();
     }
-    gchar* file = g_filename_from_uri(uri.c_str(), nullptr, nullptr);
-    fs::path out = file != nullptr ? file : "";
-    g_free(file);
-    return out;
+    return uri::pathFromFileUri(uri).value_or("");
   }
 } // namespace
 
@@ -440,9 +438,8 @@ void FilesApp::pickerAnswered(std::uint64_t id, const PickerPortal::Answer& answ
     m_localPicks.erase(it);
     std::vector<fs::path> files;
     for (const std::string& uri : answer.response == 0 ? answer.uris : std::vector<std::string>{}) {
-      if (gchar* path = g_filename_from_uri(uri.c_str(), nullptr, nullptr)) {
-        files.emplace_back(path);
-        g_free(path);
+      if (auto path = uri::pathFromFileUri(uri)) {
+        files.emplace_back(*path);
       }
     }
     done(std::move(files));

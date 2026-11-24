@@ -3,6 +3,7 @@
 #include "app/app_window.h"
 #include "i18n/i18n.h"
 #include "wayland/drag_and_drop.h"
+#include "protocols/uri.h"
 #include "wayland/wayland_connection.h"
 #include "core/log.h"
 #include "core/text_clipboard.h"
@@ -751,14 +752,14 @@ namespace linkapp {
     DragAndDrop* dnd = loop().wayland().dragAndDrop();
     if (surface == nullptr || dnd == nullptr || surface == m_dropSurface) return;
     m_dropSurface = surface;
-    dnd->setAcceptedTypes({"text/uri-list"});
+    dnd->setAcceptedTypes({uri::kUriListMime});
     const auto cue = [this](DropCue next) {
       if (next == m_dropCue) return;
       m_dropCue = next;
       m_window->requestRebuild();
     };
     dnd->setTarget(surface, {.enter = [](const std::vector<std::string>& mimes) {
-                               return std::ranges::contains(mimes, std::string("text/uri-list"));
+                               return std::ranges::contains(mimes, std::string(uri::kUriListMime));
                              },
                              .motion = [this, cue](float, float) -> std::uint32_t {
                                cue(dropCueHere());
@@ -767,7 +768,7 @@ namespace linkapp {
                              .leave = [cue] { cue(DropCue::None); },
                              .drop = [this, cue](float, float, std::uint32_t, const std::string& mime, std::string data) {
                                cue(DropCue::None);
-                               if (mime == "text/uri-list") dropped(data);
+                               if (mime == uri::kUriListMime) dropped(data);
                              }});
   }
 
@@ -777,10 +778,7 @@ namespace linkapp {
     for (std::string line; std::getline(lines, line);) {
       if (!line.empty() && line.back() == '\r') line.pop_back();
       if (line.empty() || line.front() == '#') continue;
-      if (char* path = g_filename_from_uri(line.c_str(), nullptr, nullptr)) {
-        paths.emplace_back(path);
-        g_free(path);
-      }
+      if (auto path = uri::pathFromFileUri(line)) paths.emplace_back(*path);
     }
     if (paths.empty()) return;
     switch (dropCueHere()) {
@@ -792,16 +790,16 @@ namespace linkapp {
 
   void LinkApp::openLocalFile(const std::string& path) {
     GError* error = nullptr;
-    char* uri = g_filename_to_uri(path.c_str(), nullptr, &error);
+    const bool absolute = path.starts_with('/');
+    const std::string target = absolute ? uri::fileUri(path) : std::string{};
     std::unique_ptr<GAppLaunchContext, void (*)(gpointer)> context(g_app_launch_context_new(), g_object_unref);
     if (const std::string token = loop().wayland().requestActivationToken(m_window->wlSurface()); !token.empty()) {
       g_app_launch_context_setenv(context.get(), "XDG_ACTIVATION_TOKEN", token.c_str());
     }
-    if (uri == nullptr || !g_app_info_launch_default_for_uri(uri, context.get(), &error)) {
+    if (!absolute || !g_app_info_launch_default_for_uri(target.c_str(), context.get(), &error)) {
       Logger("link").warn("open {}: {}", path, error != nullptr ? error->message : "?");
     }
     g_clear_error(&error);
-    g_free(uri);
   }
 
   void LinkApp::fileMenu(std::size_t index, float sceneX, float sceneY) {
@@ -1041,15 +1039,12 @@ namespace linkapp {
     auto drop = std::make_shared<Drop>();
     m_client->savePhotoTo(path, folder.string(), [drop](const std::string& saved) {
       std::string uris;
-      if (gchar* uri = saved.empty() ? nullptr : g_filename_to_uri(saved.c_str(), nullptr, nullptr)) {
-        uris = std::string(uri) + "\r\n";
-        g_free(uri);
-      }
+      if (saved.starts_with('/')) uris = uri::joinUriList({uri::fileUri(saved)});
       drop->uris = uris;
       for (const auto& reply : std::exchange(drop->waiting, {})) reply(uris);
     });
     (void)dnd->startDrag(m_window->wlSurface(), serial,
-                         {.mimeTypes = {"text/uri-list"},
+                         {.mimeTypes = {uri::kUriListMime},
                           .dataLater =
                               [drop](const std::string&, std::function<void(const std::string&)> reply) {
                                 if (drop->uris) {
