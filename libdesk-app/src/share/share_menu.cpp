@@ -1,6 +1,7 @@
 #include "share/share_menu.h"
 
 #include "share/link_share.h"
+#include "i18n/i18n.h"
 
 #include <format>
 #include <glib.h>
@@ -8,7 +9,7 @@
 namespace share {
 
   ContextMenuControlEntry menuEntry(const LinkShare* link, std::vector<std::string>& ids) {
-    ContextMenuControlEntry share{.label = "Share", .hasSubmenu = true, .glyph = "share"};
+    ContextMenuControlEntry share{.label = i18n::tr("desk.share.title"), .hasSubmenu = true, .glyph = "share"};
     const auto child = [&](std::string id, std::string label, std::string glyph, bool enabled, std::string caption) {
       ids.push_back(std::move(id));
       share.children.push_back({.id = static_cast<std::int32_t>(ids.size()), .label = std::move(label),
@@ -17,15 +18,15 @@ namespace share {
     std::string names;
     for (const LinkShare::Device& device : link != nullptr ? link->devices() : std::vector<LinkShare::Device>{}) {
       child("share.device:" + device.id, device.name, "device-mobile", device.connected,
-            device.connected ? std::string() : std::string("Not connected"));
+            device.connected ? std::string() : i18n::tr("desk.share.not-connected"));
       names += (names.empty() ? "" : ", ") + device.name;
     }
     if (!share.children.empty()) {
       share.children.push_back({.separator = true});
       // The row names the phones (mockup §4 "Share › Pixel 9, Link…").
-      share.shortcut = names + ", Link…";
+      share.shortcut = i18n::tr("desk.share.devices-and-link", "names", names);
     }
-    child("share.email", "Email…", "mail", true, {});
+    child("share.email", i18n::tr("desk.share.email"), "mail", true, {});
     return share;
   }
 
@@ -48,7 +49,7 @@ namespace share {
     argv.push_back(nullptr);
     GError* error = nullptr;
     if (!g_spawn_async(nullptr, argv.data(), nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr, &error)) {
-      std::string message = std::format("Could not open the mail app: {}", error->message);
+      std::string message = i18n::tr("desk.share.mail-failed", "error", error->message);
       g_error_free(error);
       return message;
     }

@@ -2,6 +2,7 @@
 
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "i18n/i18n.h"
 
 #include <algorithm>
 #include <xkbcommon/xkbcommon.h>
@@ -94,4 +95,28 @@ bool CommandTable::handleKey(std::uint32_t sym, std::uint32_t modifiers) const {
   const auto run = command->run;
   run();
   return true;
+}
+
+void CommandTable::setGroupTitle(std::string group, std::string title) {
+  if (auto it = std::ranges::find(m_groupTitles, group, &std::pair<std::string, std::string>::first); it != m_groupTitles.end()) {
+    it->second = std::move(title);
+  } else {
+    m_groupTitles.emplace_back(std::move(group), std::move(title));
+  }
+}
+
+std::string CommandTable::groupTitle(const std::string& group) const {
+  if (auto it = std::ranges::find(m_groupTitles, group, &std::pair<std::string, std::string>::first); it != m_groupTitles.end()) {
+    return it->second;
+  }
+  static constexpr std::pair<std::string_view, std::string_view> kShared[] = {
+      {"File", "desk.menu.file"}, {"Edit", "desk.menu.edit"}, {"View", "desk.menu.view"},
+      {"Go", "desk.menu.go"},     {"Window", "desk.menu.window"},
+  };
+  for (const auto& [id, key] : kShared) {
+    if (group == id) {
+      return i18n::tr(key);
+    }
+  }
+  return group;
 }

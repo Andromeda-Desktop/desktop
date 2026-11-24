@@ -8,6 +8,7 @@
 #include "core/process/process_phase.h"
 #include "core/sys/sys.h"
 #include "i18n/i18n_service.h"
+#include "i18n/i18n.h"
 #include "platform/surface.h"
 #include "protocols/uri.h"
 #include "render/text/cairo_text_renderer.h"
@@ -241,6 +242,8 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
       }
     }
   });
+  // Command labels translate when they register: a shell language that already arrived applies first.
+  m_services->processPendingEvents();
   addStandardCommands();
   m_loop.display().setPointerEventCallback([this](const PointerEvent& event) { routePointer(event); });
   m_loop.display().setPinchEventCallback([this](const PinchEvent& event) {
@@ -492,7 +495,7 @@ void DeskApp::addStandardCommands() {
   };
   m_commands.add({
       .id = "window.close",
-      .label = "Close Window",
+      .label = i18n::tr("desk.window.close"),
       .group = "Window",
       .shortcut = chord(XKB_KEY_w, KeyMod::Ctrl),
       .run = [this] {
@@ -503,20 +506,20 @@ void DeskApp::addStandardCommands() {
   });
   m_commands.add({
       .id = "window.maximize",
-      .label = "Zoom",
+      .label = i18n::tr("desk.window.zoom"),
       .group = "Window",
       .run = withWindow([](AppWindow& w) { w.toggleMaximized(); }),
   });
   m_commands.add({
       .id = "window.fullscreen",
-      .label = "Full Screen",
+      .label = i18n::tr("desk.window.full-screen"),
       .group = "Window",
       .shortcut = chord(XKB_KEY_F11, 0),
       .run = withWindow([](AppWindow& w) { w.toggleFullscreen(); }),
   });
   m_commands.add({
       .id = "window.minimize",
-      .label = "Minimize",
+      .label = i18n::tr("desk.window.minimize"),
       .group = "Window",
       .shortcut = chord(XKB_KEY_m, KeyMod::Ctrl),
       .run = withWindow([](AppWindow& w) {
@@ -527,7 +530,7 @@ void DeskApp::addStandardCommands() {
   });
   m_commands.add({
       .id = "app.quit",
-      .label = "Quit",
+      .label = i18n::tr("desk.window.quit"),
       .group = "File",
       .shortcut = chord(XKB_KEY_q, KeyMod::Ctrl),
       .run =

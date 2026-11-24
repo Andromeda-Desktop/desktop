@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "core/process/process.h"
 #include "dbus/session_bus.h"
+#include "i18n/i18n.h"
 
 #include <fcntl.h>
 #include <map>
@@ -68,26 +69,29 @@ const LinkShare::Device* LinkShare::device(const std::string& id) const {
 }
 
 std::string LinkShare::outcome(const std::string& status, const std::string& phone) {
-  const std::string who = phone.empty() ? std::string("The phone") : phone;
+  // An unnamed phone gets its own sentence: translations cannot build "the phone" from a name slot.
+  const auto about = [&phone](const std::string& key) {
+    return phone.empty() ? i18n::tr(key + "-unnamed") : i18n::tr(key, "phone", phone);
+  };
   if (status == "done") {
     return {};
   }
   if (status == "declined") {
-    return who + " declined the files.";
+    return about("desk.share.outcome.declined");
   }
   if (status == "no-space") {
-    return who + " has no space for the files.";
+    return about("desk.share.outcome.no-space");
   }
   if (status == "too-large") {
-    return "The files are too large for " + (phone.empty() ? std::string("the phone") : phone) + ".";
+    return about("desk.share.outcome.too-large");
   }
   if (status == "busy") {
-    return who + " is busy with another transfer.";
+    return about("desk.share.outcome.busy");
   }
   if (status == "cancelled") {
-    return "The transfer was stopped.";
+    return i18n::tr("desk.share.outcome.cancelled");
   }
-  return "The transfer failed.";
+  return i18n::tr("desk.share.outcome.failed");
 }
 
 void LinkShare::watch(const std::string& transferId, Transfer transfer) { m_transfers[transferId] = std::move(transfer); }

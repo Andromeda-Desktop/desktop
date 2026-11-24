@@ -7887,5 +7887,49 @@
     "copy": "Copy",
     "open-with": "Open With",
     "properties": "Properties"
+  },
+  "desk": {
+    "edit": {
+      "copy": "Copy",
+      "cut": "Cut",
+      "paste": "Paste",
+      "select-all": "Select All"
+    },
+    "share": {
+      "title": "Share",
+      "not-connected": "Not connected",
+      "devices-and-link": "{names}, Link…",
+      "email": "Email…",
+      "mail-failed": "Could not open the mail app: {error}",
+      "outcome": {
+        "declined": "{phone} declined the files.",
+        "declined-unnamed": "The phone declined the files.",
+        "no-space": "{phone} has no space for the files.",
+        "no-space-unnamed": "The phone has no space for the files.",
+        "too-large": "The files are too large for {phone}.",
+        "too-large-unnamed": "The files are too large for the phone.",
+        "busy": "{phone} is busy with another transfer.",
+        "busy-unnamed": "The phone is busy with another transfer.",
+        "cancelled": "The transfer was stopped.",
+        "failed": "The transfer failed."
+      }
+    },
+    "window": {
+      "close": "Close Window",
+      "full-screen": "Full Screen",
+      "minimize": "Minimize",
+      "more": "More",
+      "quit": "Quit",
+      "session-menu": "Session menu",
+      "sidebar": "Sidebar",
+      "zoom": "Zoom"
+    },
+    "menu": {
+      "edit": "Edit",
+      "file": "File",
+      "go": "Go",
+      "view": "View",
+      "window": "Window"
+    }
   }
 }

@@ -13,7 +13,7 @@
 struct AppCommand {
   std::string id;                  // stable, dotted: "file.copy", "view.toggle-sidebar"
   std::string label;               // translated, shown in menus
-  std::string group;               // menu section: "File", "Edit", "View", "Go", "Window"
+  std::string group;               // menu section id: "File", "Edit", "View", "Go", "Window", or the app's own
   std::optional<KeyChord> shortcut;
   std::function<bool()> enabled;   // empty = always enabled
   std::function<void()> run;
@@ -39,6 +39,12 @@ public:
 
   [[nodiscard]] const std::vector<AppCommand>& commands() const noexcept { return m_commands; }
 
+  // The translated title of an app's own group; the shared groups have theirs.
+  void setGroupTitle(std::string group, std::string title);
+  // The title a menu shows for a group: the shared or set title, else the id.
+  [[nodiscard]] std::string groupTitle(const std::string& group) const;
+
 private:
   std::vector<AppCommand> m_commands;
+  std::vector<std::pair<std::string, std::string>> m_groupTitles;
 };

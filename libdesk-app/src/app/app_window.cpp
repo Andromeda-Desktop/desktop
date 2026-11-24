@@ -2,6 +2,7 @@
 
 #include <array>
 
+#include "i18n/i18n.h"
 #include "render/render_context.h"
 #include "render/text/glyph_registry.h"
 #include "render/render_target.h"
@@ -311,7 +312,7 @@ void AppWindow::syncMenuBar() {
         continue;
       }
       if (items.size() == groupStart) {
-        items.push_back({.id = groupId, .label = groups[g]});
+        items.push_back({.id = groupId, .label = m_commands.groupTitle(groups[g])});
       }
       const bool enabled = !c.enabled || c.enabled();
       anyEnabled = anyEnabled || enabled;
@@ -374,7 +375,7 @@ void AppWindow::openMoreMenu() {
         if (!entries.empty()) {
           entries.push_back({.separator = true});
         }
-        entries.push_back({.label = group, .header = true});
+        entries.push_back({.label = m_commands.groupTitle(group), .header = true});
         first = false;
       }
       entries.push_back({.id = static_cast<std::int32_t>(i + 1),
@@ -424,11 +425,11 @@ bool AppWindow::openTextMenu(Input& input, float sceneX, float sceneY) {
   const bool selection = input.hasSelection();
   const bool paste = Input::textClipboard() != nullptr && Input::textClipboard()->clipboardText().has_value();
   std::vector<ContextMenuControlEntry> entries{
-      {.id = XKB_KEY_x, .label = "Cut", .shortcut = "Ctrl+X", .enabled = selection},
-      {.id = XKB_KEY_c, .label = "Copy", .shortcut = "Ctrl+C", .enabled = selection},
-      {.id = XKB_KEY_v, .label = "Paste", .shortcut = "Ctrl+V", .enabled = paste},
+      {.id = XKB_KEY_x, .label = i18n::tr("desk.edit.cut"), .shortcut = "Ctrl+X", .enabled = selection},
+      {.id = XKB_KEY_c, .label = i18n::tr("desk.edit.copy"), .shortcut = "Ctrl+C", .enabled = selection},
+      {.id = XKB_KEY_v, .label = i18n::tr("desk.edit.paste"), .shortcut = "Ctrl+V", .enabled = paste},
       {.separator = true},
-      {.id = XKB_KEY_a, .label = "Select All", .shortcut = "Ctrl+A"},
+      {.id = XKB_KEY_a, .label = i18n::tr("desk.edit.select-all"), .shortcut = "Ctrl+A"},
   };
   // Each row runs the field's own editing chord, so undo, password rules and change callbacks stay the same.
   openContextMenu(std::move(entries), sceneX, sceneY, [this](std::int32_t sym) {
@@ -1353,7 +1354,7 @@ std::unique_ptr<Node> AppWindow::buildSidebarToggle() {
       .glyphSize = Tokens::sizeSymbol * s,
       .enabled = m_commands.isEnabled("view.toggle-sidebar"),
       .variant = ButtonVariant::Ghost,
-      .tooltip = std::string("Sidebar"),
+      .tooltip = i18n::tr("desk.window.sidebar"),
       .radius = Style::scaledRadius(Tokens::radiusR8, s),
       .width = Tokens::sizeControlM * s,
       .height = Tokens::sizeControlM * s,
@@ -1535,7 +1536,7 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
         .out = &m_moreButton,
         .variant = ButtonVariant::Ghost,
         .customPalette = ib,
-        .tooltip = std::string("More"),
+        .tooltip = i18n::tr("desk.window.more"),
         .radius = kNavButton * s / 2.0F,
         .width = kNavButton * s,
         .height = kNavButton * s,
@@ -1557,7 +1558,7 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
         .glyph = std::string("dots"),
         .glyphSize = kWindowButtonSymbol * s,
         .customPalette = windowButtonPalette(false),
-        .tooltip = std::string("Session menu"),
+        .tooltip = i18n::tr("desk.window.session-menu"),
         .radius = kWindowButton * s / 2.0F,
         .width = kWindowButton * s,
         .height = kWindowButton * s,

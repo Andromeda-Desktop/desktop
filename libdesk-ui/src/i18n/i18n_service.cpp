@@ -50,7 +50,7 @@ namespace i18n {
     return s_instance;
   }
 
-  bool mergeCatalogFile(const std::filesystem::path& path, Catalog& out) {
+  bool mergeCatalogFile(const std::filesystem::path& path, Catalog& out, std::string_view prefix) {
     std::ifstream file(path);
     if (!file.is_open()) {
       return false;
@@ -61,7 +61,7 @@ namespace i18n {
         kLog.warn("catalog {} is not a JSON object", path.string());
         return false;
       }
-      flatten(json, {}, out);
+      flatten(json, std::string(prefix), out);
       return true;
     } catch (const std::exception& e) {
       kLog.error("failed to parse {}: {}", path.string(), e.what());
@@ -79,10 +79,32 @@ namespace i18n {
   }
 
   void Service::init(std::string_view preferredLang) {
-    const std::string candidate = resolveRequestedLanguage(preferredLang);
-    m_requestedLanguage = candidate;
+    m_requestedLanguage = resolveRequestedLanguage(preferredLang);
     m_loaded = true;
+    loadShellCatalogs(m_requestedLanguage);
+    for (const Domain& domain : m_domains) {
+      loadDomain(domain.name, domain.dir);
+    }
+  }
 
+  void Service::addDomain(std::string domain, const std::filesystem::path& sourceDir) {
+    std::filesystem::path dir = paths::translationsDir(domain, sourceDir);
+    m_domains.push_back({std::move(domain), std::move(dir)});
+    if (m_loaded) {
+      loadDomain(m_domains.back().name, m_domains.back().dir);
+    }
+  }
+
+  void Service::loadDomain(const std::string& domain, const std::filesystem::path& dir) {
+    if (!mergeCatalogFile(dir / "en.json", m_fallback, domain)) {
+      kLog.warn("no English catalog for {} in {}", domain, dir.string());
+    }
+    if (m_language != "en") {
+      mergeCatalogFile(dir / (m_language + ".json"), m_active, domain);
+    }
+  }
+
+  void Service::loadShellCatalogs(const std::string& candidate) {
     // English is always loaded as the fallback; for English itself the active catalog stays empty.
     if (!loadCatalog("en", m_fallback)) {
       kLog.warn("could not load English fallback catalog");

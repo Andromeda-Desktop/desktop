@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace i18n {
 
@@ -63,9 +64,9 @@ namespace i18n {
       {"zh-Hant", "繁體中文"},
   }};
 
-  // Merges the string leaves of the JSON object in `path` into `out` as dotted keys.
-  // Returns false when the file is missing or is not a JSON object.
-  bool mergeCatalogFile(const std::filesystem::path& path, Catalog& out);
+  // Merges the string leaves of the JSON object in `path` into `out` as dotted keys, each after "<prefix>." when
+  // a prefix is given. Returns false when the file is missing or is not a JSON object.
+  bool mergeCatalogFile(const std::filesystem::path& path, Catalog& out, std::string_view prefix = {});
 
   // Loads translation catalogs and resolves dotted keys against them.
   // English is always loaded as a fallback alongside the active language.
@@ -85,12 +86,25 @@ namespace i18n {
     [[nodiscard]] std::string_view requestedLanguage() const noexcept { return m_requestedLanguage; }
     [[nodiscard]] bool rtl() const noexcept { return m_rtl; }
 
+    // Adds the catalogs <lang>.json of one module under keys "<domain>.<key>", with English as the fallback. They
+    // come from paths::translationsDir(domain, sourceDir) and load now when the shell catalogs are loaded, else with
+    // them, and again after each language change.
+    void addDomain(std::string domain, const std::filesystem::path& sourceDir);
+
     // Returns a view into the active or fallback catalog, or {} if the key
     // exists in neither.
     [[nodiscard]] std::string_view lookup(std::string_view dottedKey) const;
 
   private:
     bool loadCatalog(std::string_view lang, Catalog& out) const;
+    void loadShellCatalogs(const std::string& candidate);
+    void loadDomain(const std::string& domain, const std::filesystem::path& dir);
+
+    struct Domain {
+      std::string name;
+      std::filesystem::path dir;
+    };
+    std::vector<Domain> m_domains;
 
     Catalog m_active;
     Catalog m_fallback;

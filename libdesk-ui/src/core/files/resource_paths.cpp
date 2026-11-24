@@ -100,4 +100,21 @@ namespace paths {
     return assetsRoot() / std::filesystem::path(std::string(relativePath));
   }
 
+  std::filesystem::path translationsDir(std::string_view domain, const std::filesystem::path& sourceDir) {
+    std::error_code ec;
+    if (std::filesystem::exists(sourceDir / "en.json", ec)) {
+      return sourceDir;
+    }
+    const std::filesystem::path relative = std::filesystem::path("translations") / std::string(domain);
+    const std::filesystem::path datadir(NOCTALIA_INSTALL_DATADIR);
+    const std::filesystem::path installed =
+        (datadir.is_absolute() ? datadir : std::filesystem::path(NOCTALIA_INSTALL_PREFIX) / datadir) / "andromeda" / relative;
+    if (const std::filesystem::path exe = sys::executablePath(); !exe.empty() && !std::filesystem::exists(installed, ec)) {
+      if (const auto bundled = exe.parent_path().parent_path() / "Resources" / relative; std::filesystem::exists(bundled, ec)) {
+        return bundled;
+      }
+    }
+    return installed;
+  }
+
 } // namespace paths

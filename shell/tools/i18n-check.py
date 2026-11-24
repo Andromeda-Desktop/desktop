@@ -41,7 +41,19 @@ from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TRANSLATIONS = ROOT / "assets" / "translations" / "en.json"
-DEFAULT_SRC = ROOT / "src"
+REPO = ROOT.parent
+# Sources that use the shell catalog: the shell and the libdesk toolkit it shares with the apps.
+DEFAULT_SRCS = (ROOT / "src", REPO / "libdesk-ui" / "src", REPO / "libdesk-app" / "src")
+# Module catalogs (i18n::Service::addDomain): domain -> (source root, English catalog); keys are "<domain>.<key>".
+MODULES = {
+    "files": (REPO / "apps" / "files" / "src", REPO / "apps" / "files" / "translations" / "en.json"),
+    "viewer": (REPO / "apps" / "viewer" / "src", REPO / "apps" / "viewer" / "translations" / "en.json"),
+    "player": (REPO / "apps" / "player" / "src", REPO / "apps" / "player" / "translations" / "en.json"),
+    "link": (REPO / "apps" / "link-app" / "src", REPO / "apps" / "link-app" / "translations" / "en.json"),
+    "terminal": (REPO / "apps" / "terminal" / "src", REPO / "apps" / "terminal" / "translations" / "en.json"),
+    "preview": (REPO / "andromeda-preview" / "src", REPO / "andromeda-preview" / "translations" / "en.json"),
+    "share-picker": (REPO / "portal" / "src" / "share_picker", REPO / "portal" / "translations" / "share-picker" / "en.json"),
+}
 DEFAULT_RAW_ROOTS = ("src/ui", "src/shell")
 
 # i18n::tr("a.b.c", ...) or i18n::tr("a.b.c")
@@ -381,7 +393,10 @@ def main() -> int:
         default=DEFAULT_TRANSLATIONS,
         help="Path to translations JSON (default: en.json)",
     )
-    ap.add_argument("--src", type=Path, default=DEFAULT_SRC, help="Root for i18n key scan (default: src/)")
+    ap.add_argument(
+        "--src", type=Path, nargs="*", default=None,
+        help="Roots for the i18n key scan (default: shell, libdesk-ui and libdesk-app sources, and each module in MODULES)",
+    )
     ap.add_argument(
         "--raw-roots",
         nargs="*",
@@ -427,6 +442,13 @@ def main() -> int:
     catalog: dict[str, str] = {}
     with args.translations.open(encoding="utf-8") as f:
         flatten_json_strings(json.load(f), "", catalog)
+    srcs = list(args.src) if args.src is not None else list(DEFAULT_SRCS)
+    if args.src is None:
+        for domain, (src, path) in MODULES.items():
+            srcs.append(src)
+            if path.is_file():
+                with path.open(encoding="utf-8") as f:
+                    flatten_json_strings(json.load(f), domain, catalog)
 
     all_tr: set[str] = set()
     all_trp: set[str] = set()
@@ -434,7 +456,7 @@ def main() -> int:
     all_key_prefixes: set[str] = set()
     raw_hits: list[tuple[Path, int, str, str]] = []
 
-    for path in iter_source_files(args.src, (".cpp", ".h"), excludes):
+    for path in (p for src in srcs for p in iter_source_files(src, (".cpp", ".h", ".mm"), excludes)):
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as e:
