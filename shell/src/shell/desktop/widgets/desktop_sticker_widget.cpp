@@ -84,7 +84,7 @@ void DesktopStickerWidget::doLayout(Renderer& renderer) {
       animated = tryLoadAnimated(renderer);
     }
     if (!animated) {
-      m_image->setSourceFile(renderer, m_imagePath);
+      m_image->load(renderer, m_imagePath);
     }
     m_loaded = true;
     if (animated && m_frames.size() > 1) {

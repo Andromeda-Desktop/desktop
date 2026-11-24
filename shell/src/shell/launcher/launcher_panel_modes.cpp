@@ -343,9 +343,8 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
       m_previewImage->clear(renderer);
       m_previewIconPath = result.iconPath;
     }
-    imageReady = m_asyncTextures != nullptr
-        ? m_previewImage->setSourceFileAsync(renderer, *m_asyncTextures, result.iconPath, iconSize, true)
-        : m_previewImage->setSourceFile(renderer, result.iconPath, iconSize, true);
+    imageReady =
+        m_previewImage->load(renderer, result.iconPath, {.targetSize = iconSize, .mipmap = true}) == ImageLoad::Ready;
   }
   m_previewImage->setVisible(imageReady);
   m_previewImage->setParticipatesInLayout(imageReady);
@@ -421,13 +420,15 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   if (!gif.empty() && playPreviewGif(renderer, gif)) {
     m_previewShotId.clear();
     shot = true;
-  } else if (media && m_asyncTextures != nullptr) {
+  } else if (media) {
     stopPreviewGif();
     m_previewShotId.clear();
-    shot = !result.iconPath.empty() && m_previewShot->setSourceFileAsync(
-        renderer, *m_asyncTextures, result.iconPath,
-        static_cast<int>(std::round(Tokens::componentLauncherPreviewMedia * 1.75F * scale)), true
-    );
+    shot = !result.iconPath.empty()
+        && m_previewShot->load(
+               renderer, result.iconPath,
+               {.targetSize = static_cast<int>(std::round(Tokens::componentLauncherPreviewMedia * 1.75F * scale)),
+                .mipmap = true}
+           ) == ImageLoad::Ready;
   }
   m_previewShot->setVisible(shot);
   m_previewShot->setParticipatesInLayout(shot);
@@ -444,13 +445,13 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   // texture cache; an image without one yet asks for it and shows when the results refresh.
   if (shot && clipboard != nullptr && m_previewShotId != result.id + result.iconPath) {
     m_previewShotId = result.id + result.iconPath;
-    if (result.iconPath.empty() || m_asyncTextures == nullptr) {
+    if (result.iconPath.empty()) {
       m_previewShot->clear(renderer);
       clipboard->requestThumbnail(result);
     } else {
-      (void)m_previewShot->setSourceFileAsync(
-          renderer, *m_asyncTextures, result.iconPath,
-          static_cast<int>(std::round(Tokens::componentLauncherPreviewMedia * 1.75F * scale))
+      m_previewShot->load(
+          renderer, result.iconPath,
+          {.targetSize = static_cast<int>(std::round(Tokens::componentLauncherPreviewMedia * 1.75F * scale))}
       );
     }
   }

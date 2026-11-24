@@ -288,9 +288,8 @@ bool WindowSwitcherTile::refreshIcon(Renderer& renderer) {
     return false;
   }
   m_icon->setAppIconColorization(m_appIconColorizeTint);
-  const bool ready = m_asyncTextures != nullptr
-      ? m_icon->setSourceFileAsync(renderer, *m_asyncTextures, m_iconPath, m_iconTargetSize, true)
-      : m_icon->setSourceFile(renderer, m_iconPath, m_iconTargetSize, true);
+  const bool ready =
+      m_icon->load(renderer, m_iconPath, {.targetSize = m_iconTargetSize, .mipmap = true}) == ImageLoad::Ready;
   m_icon->setVisible(ready);
   m_fallbackGlyph->setVisible(!ready);
   return ready;

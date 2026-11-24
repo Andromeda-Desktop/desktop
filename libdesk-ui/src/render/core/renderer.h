@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+class AsyncTextureCache;
 class TextureManager;
 
 enum class TextAlign : std::uint8_t { Start, Center, End };
@@ -151,6 +152,8 @@ public:
   }
   [[nodiscard]] virtual TextMetrics measureGlyph(char32_t codepoint, float fontSize) = 0;
   [[nodiscard]] virtual TextureManager& textureManager() = 0;
+  // Decodes file images off the main loop; null: Image loads decode at once.
+  [[nodiscard]] virtual AsyncTextureCache* asyncTextures() noexcept { return nullptr; }
   [[nodiscard]] virtual float renderScale() const noexcept = 0;
   [[nodiscard]] virtual std::uint64_t textMetricsGeneration() const noexcept { return 0; }
   // The user Text Size factor the text renderer applies to every font size; fixed line boxes grow with it.

@@ -422,7 +422,7 @@ void ActiveWindowWidget::syncState(Renderer& renderer) {
   if (iconPath != m_lastIconPath) {
     m_lastIconPath = iconPath;
     if (!m_lastIconPath.empty()) {
-      m_icon->setSourceFile(renderer, m_lastIconPath, static_cast<int>(std::round(48.0F * m_contentScale)), true);
+      m_icon->load(renderer, m_lastIconPath, {.targetSize = static_cast<int>(std::round(48.0F * m_contentScale)), .mipmap = true});
     } else {
       m_icon->clear(renderer);
     }

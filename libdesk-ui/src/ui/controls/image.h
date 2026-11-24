@@ -22,6 +22,18 @@ enum class ImageFit : std::uint8_t {
   Stretch,
 };
 
+enum class ImageLoad : std::uint8_t {
+  Ready,
+  Pending, // the ready callback fires once the decode ends, as Ready or Failed
+  Failed,
+};
+
+struct ImageRequest {
+  int targetSize = 0;
+  bool mipmap = false;
+  AsyncTextureCache::DecodeOptions decode{};
+};
+
 class Image : public Node {
 public:
   using AsyncReadyCallback = std::function<void()>;
@@ -43,6 +55,9 @@ public:
   void setPadding(float padding);
   void setAsyncReadyCallback(AsyncReadyCallback callback);
 
+  // The one entry for file images: decodes on the renderer's AsyncTextureCache when it has one, else at once.
+  ImageLoad load(Renderer& renderer, const std::string& path, const ImageRequest& request = {});
+  [[nodiscard]] ImageLoad loadState() const;
   bool setSourceFile(Renderer& renderer, const std::string& path, int targetSize = 0, bool mipmap = false);
   bool setSourceFile(Renderer& renderer, const std::string& path, int targetSize, bool mipmap, bool centerSquareCrop);
   bool setSourceFileBlurred(
@@ -143,10 +158,15 @@ private:
   std::string m_asyncSourcePath;
   int m_asyncRequestedTargetSize = 0;
   int m_asyncTargetSize = 0;
-  // A cache entry still on screen while a resized decode is pending; released once the new texture shows.
-  int m_asyncRetiringTargetSize = 0;
+  // A cache entry still on screen while a resized or rewritten file decodes; released once the new texture shows.
+  struct AsyncRetiring {
+    int targetSize = 0;
+    AsyncTextureCache::DecodeOptions options;
+  };
+  std::optional<AsyncRetiring> m_asyncRetiring;
   bool m_asyncMipmap = false;
   AsyncTextureCache::DecodeOptions m_asyncOptions;
+  std::uint64_t m_loadStamp = 0; // sourceStamp of the last synchronous load()
   AsyncReadyCallback m_asyncReadyCallback;
   Signal<>::ScopedConnection m_paletteConn;
 };

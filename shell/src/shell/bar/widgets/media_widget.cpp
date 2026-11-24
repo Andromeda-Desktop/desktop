@@ -366,16 +366,12 @@ void MediaWidget::syncState(Renderer& renderer, const std::optional<MprisPlayerI
       const std::string artPath = resolveArtworkSource(
           m_httpClient, m_pendingArtDownloads, m_lastArtUrl, [this] { requestUpdate(); }, m_aliveGuard
       );
-      if (!artPath.empty() && m_asyncTextures != nullptr) {
-        // The Cover fit crops to the square slot, as the in-place center crop did.
+      if (!artPath.empty()) {
+        // The Cover fit crops to the square slot.
         m_art->setAsyncReadyCallback([this] { requestUpdate(); });
-        m_art->setSourceFileAsync(renderer, *m_asyncTextures, artPath, artDecodePx, true);
-      } else if (!artPath.empty()) {
-        if (!m_art->setSourceFile(renderer, artPath, artDecodePx, true, true)) {
+        if (m_art->load(renderer, artPath, {.targetSize = artDecodePx, .mipmap = true}) == ImageLoad::Failed) {
           kLog.warn(R"(artwork load failed url="{}" path="{}")", m_lastArtUrl, artPath);
           m_art->clear(renderer);
-        } else {
-          kLog.debug(R"(artwork loaded url="{}" path="{}")", m_lastArtUrl, artPath);
         }
       } else {
         if (!m_lastArtUrl.empty()) {
@@ -386,11 +382,9 @@ void MediaWidget::syncState(Renderer& renderer, const std::optional<MprisPlayerI
     }
   } else if (!m_lastArtUrl.empty() && !m_art->hasImage() && !m_hideAlbumArt) {
     const std::string artPath = cachedArtworkPath(m_lastArtUrl);
-    if (!artPath.empty() && m_asyncTextures != nullptr) {
+    if (!artPath.empty()) {
       m_art->setAsyncReadyCallback([this] { requestUpdate(); });
-      m_art->setSourceFileAsync(renderer, *m_asyncTextures, artPath, artDecodePx, true);
-    } else if (!artPath.empty() && m_art->setSourceFile(renderer, artPath, artDecodePx, false, true)) {
-      requestRedraw();
+      m_art->load(renderer, artPath, {.targetSize = artDecodePx, .mipmap = true});
     }
   }
 

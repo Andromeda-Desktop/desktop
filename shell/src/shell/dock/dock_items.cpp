@@ -488,7 +488,7 @@ namespace shell::dock {
           .width = iSize,
           .height = iSize,
           .configure = [&cfg, iSize, &renderer, iconDecodeTarget](Image& image) {
-            image.setSourceFile(renderer, cfg.launcherCustomImage, iconDecodeTarget, true);
+            image.load(renderer, cfg.launcherCustomImage, {.targetSize = iconDecodeTarget, .mipmap = true});
             image.setForegroundTint(
                 cfg.launcherCustomImageColorize ? std::optional<ColorSpec>{colorSpecFromRole(ColorRole::Label1)}
                                                 : std::nullopt
@@ -613,9 +613,9 @@ namespace shell::dock {
       static_cast<Glyph*>(instance.trash.icon)->setGlyph(instance.trashFull ? "trash-x" : "trash");
     } else if (instance.surface != nullptr) {
       static_cast<Image*>(instance.trash.icon)
-          ->setSourceFile(
+          ->load(
               instance.surface->renderTarget().renderer(), instance.trash.themeIcons[instance.trashFull ? 1 : 0],
-              instance.trash.decodeSize, true
+              {.targetSize = instance.trash.decodeSize, .mipmap = true}
           );
     }
     if (instance.surface != nullptr) {
@@ -757,13 +757,13 @@ namespace shell::dock {
                         &shell = deps.model.config.config().shell](Image& image) {
             image.setAppIconColorization(effectiveShellAppIconColorizationTint(shell));
             if (!iconPath.empty()) {
-              image.setSourceFile(renderer, iconPath, iconDecodeTarget, true);
+              image.load(renderer, iconPath, {.targetSize = iconDecodeTarget, .mipmap = true});
             }
             image.setPosition(kCellPad, kCellPad);
           },
       });
 
-      if (iconImg->hasImage()) {
+      if (iconImg->loadState() != ImageLoad::Failed) {
         item.iconImage = static_cast<Image*>(areaNode->addChild(std::move(iconImg)));
       } else {
         item.iconGlyph = static_cast<Glyph*>(areaNode->addChild(

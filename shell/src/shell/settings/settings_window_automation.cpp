@@ -472,7 +472,9 @@ void SettingsWindow::addServicesContent(float scale) {
             Image* image = nullptr;
             auto node = ui::image({.out = &image, .fit = ImageFit::Contain, .width = size, .height = size});
             if (image == nullptr
-                || !image->setSourceFile(m_surface->renderTarget().renderer(), path, static_cast<int>(size), true)) {
+                || image->load(
+                       m_surface->renderTarget().renderer(), path, {.targetSize = static_cast<int>(size), .mipmap = true}
+                   ) == ImageLoad::Failed) {
               return nullptr;
             }
             return node;

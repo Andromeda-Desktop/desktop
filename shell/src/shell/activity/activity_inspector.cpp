@@ -134,7 +134,7 @@ std::unique_ptr<Flex> ActivityWindow::buildInspector(Renderer& renderer, float s
       )
   ));
   if (const std::string path = iconPath(id.icon, iconPx); !path.empty()) {
-    icon->setSourceFile(renderer, path, iconPx);
+    icon->load(renderer, path, {.targetSize = iconPx});
   }
   inspector->addChild(ui::row(
       {.align = FlexAlign::Center},

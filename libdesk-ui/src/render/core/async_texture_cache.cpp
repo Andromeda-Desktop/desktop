@@ -365,6 +365,7 @@ std::size_t AsyncTextureCache::RequestKeyHash::operator()(const RequestKey& key)
   seed ^= std::hash<bool>{}(key.mipmap) + 0x9e3779b9U + (seed << 6U) + (seed >> 2U);
   seed ^= std::hash<int>{}(key.options.blurRadius * 2 + (key.options.centerSquareCrop ? 1 : 0)) + 0x9e3779b9U
       + (seed << 6U) + (seed >> 2U);
+  seed ^= std::hash<std::uint64_t>{}(key.options.sourceStamp) + 0x9e3779b9U + (seed << 6U) + (seed >> 2U);
   return seed;
 }
 

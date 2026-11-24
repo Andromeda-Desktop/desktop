@@ -753,7 +753,7 @@ namespace {
         auto wallpaper = ui::image({});
         wallpaper->setFit(ImageFit::Cover);
         if (const auto path = m_config.wallpaperFor(view.connector)) {
-          if (!wallpaper->setSourceFile(renderer, *path)) {
+          if (wallpaper->load(renderer, *path) == ImageLoad::Failed) {
             kLog.warn("cannot load wallpaper {}", *path);
           }
         }

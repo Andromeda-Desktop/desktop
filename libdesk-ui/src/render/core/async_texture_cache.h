@@ -27,6 +27,7 @@ class TextureManager;
 struct TextureDecodeOptions {
   bool centerSquareCrop = false;
   int blurRadius = 0;
+  std::uint64_t sourceStamp = 0; // file size and mtime: a rewritten file is a new key; 0 = not stamped
   [[nodiscard]] bool operator==(const TextureDecodeOptions&) const = default;
 };
 

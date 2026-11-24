@@ -368,7 +368,8 @@ namespace ui {
         if (resolved != slot.imagePath || targetSize > slot.imageTargetSize) {
           slot.imagePath = resolved;
           slot.imageTargetSize = targetSize;
-          if (!image->setSourceFile(renderer, resolved, static_cast<int>(std::round(targetSize)), true)) {
+          if (image->load(renderer, resolved, {.targetSize = static_cast<int>(std::round(targetSize)), .mipmap = true})
+              == ImageLoad::Failed) {
             kLog.warn("ui tree: image failed to load '{}'", resolved);
           }
         }

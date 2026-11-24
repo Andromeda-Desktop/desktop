@@ -565,7 +565,8 @@ void LauncherPanel::startAppDrag(const LauncherResult& result) {
         loaded = true;
         auto image = ui::image({.fit = ImageFit::Contain, .width = static_cast<float>(kIcon),
                                 .height = static_cast<float>(kIcon), .participatesInLayout = false});
-        if (image->setSourceFile(raw->renderTarget().renderer(), file, kIcon, true)) {
+        if (image->load(raw->renderTarget().renderer(), file, {.targetSize = kIcon, .mipmap = true})
+            != ImageLoad::Failed) {
           m_dragImage->addChild(std::move(image));
         }
       }

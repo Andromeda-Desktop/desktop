@@ -625,7 +625,7 @@ void TrayWidget::rebuild(Renderer& renderer) {
           );
         }
       }
-      if (!loadedFromFile && m_asyncTextures != nullptr) {
+      if (!loadedFromFile) {
         // A tray change rebuilds every item: the shared cache decodes each icon once, off the main thread.
         // A failed decode rebuilds the items, which then take the fallback.
         Image* raw = image.get();
@@ -637,10 +637,8 @@ void TrayWidget::rebuild(Renderer& renderer) {
             requestRedraw();
           }
         });
-        loadedFromFile = image->setSourceFileAsync(renderer, *m_asyncTextures, iconPath, iconRequestSize, true)
-                         || (!image->sourcePath().empty() && !image->asyncFailed());
-      } else if (!loadedFromFile) {
-        loadedFromFile = image->setSourceFile(renderer, iconPath, iconRequestSize, true);
+        loadedFromFile =
+            image->load(renderer, iconPath, {.targetSize = iconRequestSize, .mipmap = true}) != ImageLoad::Failed;
       }
 
       if (loadedFromFile) {
@@ -725,7 +723,7 @@ void TrayWidget::rebuild(Renderer& renderer) {
             .width = iconSize,
             .height = iconSize,
         });
-        if (overlayImage->setSourceFile(renderer, overlayPath, iconRequestSize, true)) {
+        if (overlayImage->load(renderer, overlayPath, {.targetSize = iconRequestSize, .mipmap = true}) != ImageLoad::Failed) {
           overlayW = iconSize;
           overlayH = iconSize;
           m_loadedImages.push_back(overlayImage.get());

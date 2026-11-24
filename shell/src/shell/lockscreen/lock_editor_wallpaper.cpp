@@ -212,7 +212,7 @@ void LockEditorWallpaper::layoutTile(
     if (tile.source != still) {
       tile.source = still;
       tile.thumb->clear(renderer);
-      (void)tile.thumb->setSourceFile(renderer, still, kThumbPx);
+      tile.thumb->load(renderer, still, {.targetSize = kThumbPx});
     }
     tile.thumb->setRadius(radius);
     tile.thumb->setPosition(x, y);

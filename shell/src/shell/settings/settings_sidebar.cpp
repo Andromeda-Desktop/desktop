@@ -174,9 +174,8 @@ namespace settings {
             .height = avatarSize,
         });
         if (image != nullptr
-            && image->setSourceFileAsync(
-                *ctx.renderer, *ctx.avatarTextures, ctx.accountAvatarPath, static_cast<int>(avatarSize), false
-            )) {
+            && image->load(*ctx.renderer, ctx.accountAvatarPath, {.targetSize = static_cast<int>(avatarSize)})
+                == ImageLoad::Ready) {
           avatar = std::move(node);
         }
       }

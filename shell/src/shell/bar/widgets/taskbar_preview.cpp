@@ -470,7 +470,8 @@ void TaskbarPreview::build() {
       return false;
     }
     auto icon = ui::image({.fit = ImageFit::Contain, .width = kIcon * s, .height = kIcon * s, .participatesInLayout = false});
-    if (!icon->setSourceFile(renderer, resolved.path, static_cast<int>(std::lround(kIcon * s)), true)) {
+    if (icon->load(renderer, resolved.path, {.targetSize = static_cast<int>(std::lround(kIcon * s)), .mipmap = true})
+        == ImageLoad::Failed) {
       return false;
     }
     icon->setPosition(x, std::round(headerY + (kHeader - kIcon) * 0.5F * s));

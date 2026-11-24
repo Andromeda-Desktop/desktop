@@ -73,7 +73,8 @@ RULES = {
                   ("libdesk-system/src/core/process/",)),
     "heap-trim": ("heap trim via heap::releaseFree (protocol/heap.h) or sys::releaseFreeHeap in libdesk-ui (C12)",
                   CPP_DIRS, CPP, r"\bmalloc_trim\s*\(", ()),
-    "sync-image": ("Image decides sync or async decode (C14)", ("shell/src/",), CPP, r"\bsetSourceFile\(", ()),
+    "sync-image": ("Image::load decides sync or async decode (C14)", ("shell/src/",), CPP,
+                   r"\b(setSourceFile|setSourceFileAsync|setSourceFileBlurred|reloadSourceFile)\(", ()),
     "logind-sleep": ("suspend comes from SessionActivity (Compositor1.Apps Activity, AR2); System1 alone reads logind "
                      "PrepareForSleep, the compositor only as the fallback without System1", CPP_DIRS, CPP + (".rs",),
                      r"\"PrepareForSleep\"|receive_prepare_for_sleep", ("system/crates/andromeda-system/src/login.rs",

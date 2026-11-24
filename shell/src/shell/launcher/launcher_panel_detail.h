@@ -561,12 +561,8 @@ namespace launcher_detail {
 
       m_image->setAppIconColorization(m_style.appIconColorizeTint);
 
-      bool ready = false;
-      if (m_asyncTextures != nullptr) {
-        ready = m_image->setSourceFileAsync(renderer, *m_asyncTextures, m_iconPath, m_iconTargetSize, true);
-      } else {
-        ready = m_image->setSourceFile(renderer, m_iconPath, m_iconTargetSize, true);
-      }
+      const bool ready =
+          m_image->load(renderer, m_iconPath, {.targetSize = m_iconTargetSize, .mipmap = true}) == ImageLoad::Ready;
 
       m_image->setSize(leadingSize(), leadingSize());
       m_image->setVisible(ready);
@@ -856,12 +852,8 @@ namespace launcher_detail {
 
       m_image->setAppIconColorization(m_isAppIcon ? m_style.appIconColorizeTint : std::nullopt);
 
-      bool ready = false;
-      if (m_asyncTextures != nullptr) {
-        ready = m_image->setSourceFileAsync(renderer, *m_asyncTextures, m_iconPath, m_iconTargetSize, true);
-      } else {
-        ready = m_image->setSourceFile(renderer, m_iconPath, m_iconTargetSize, true);
-      }
+      const bool ready =
+          m_image->load(renderer, m_iconPath, {.targetSize = m_iconTargetSize, .mipmap = true}) == ImageLoad::Ready;
 
       const float iconSize = launcherGridIconSize(m_style);
       m_image->setSize(iconSize, iconSize);
@@ -1048,8 +1040,7 @@ namespace launcher_detail {
       bool ready = false;
       if (!m_iconPath.empty()) {
         const int target = static_cast<int>(std::round(icon));
-        ready = m_asyncTextures != nullptr ? m_image->setSourceFileAsync(renderer, *m_asyncTextures, m_iconPath, target, true)
-                                           : m_image->setSourceFile(renderer, m_iconPath, target, true);
+        ready = m_image->load(renderer, m_iconPath, {.targetSize = target, .mipmap = true}) == ImageLoad::Ready;
       }
       m_image->setVisible(ready);
       m_image->setParticipatesInLayout(ready);
@@ -1307,11 +1298,13 @@ namespace launcher_detail {
           const bool selected = m_selectedResultIndex == resultIndex;
           const LauncherResult& result = (*m_results)[resultIndex];
           m_emojiLabels[slot]->setText(result.badge);
-          if (m_cellGrid != CellGrid::Emoji && m_asyncTextures != nullptr && !result.iconPath.empty()) {
+          if (m_cellGrid != CellGrid::Emoji && !result.iconPath.empty()) {
             Image& image = *m_cellImages[slot];
             image.setFit(m_cellGrid == CellGrid::Sticker ? ImageFit::Contain : ImageFit::Cover);
             const int target = static_cast<int>(std::round(std::max(image.width(), image.height())));
-            image.setVisible(image.setSourceFileAsync(renderer, *m_asyncTextures, result.iconPath, target, true));
+            image.setVisible(
+                image.load(renderer, result.iconPath, {.targetSize = target, .mipmap = true}) == ImageLoad::Ready
+            );
           }
           m_emojiCells[slot]->setFill(
               selected ? colorSpecFromRole(ColorRole::Lens)

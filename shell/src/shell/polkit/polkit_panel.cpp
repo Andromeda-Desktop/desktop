@@ -542,7 +542,9 @@ void PolkitPanel::updateAvatar(Renderer& renderer) {
     return;
   }
   const int size = static_cast<int>(std::round(m_avatar->width()));
-  m_avatarShown = !m_avatarPath.empty() && m_avatar->setSourceFile(renderer, m_avatarPath, size, true, true)
+  m_avatarShown = !m_avatarPath.empty()
+          && m_avatar->load(renderer, m_avatarPath, {.targetSize = size, .mipmap = true, .decode = {.centerSquareCrop = true}})
+              != ImageLoad::Failed
       ? m_avatarPath
       : std::string{};
   if (m_avatarShown.empty()) {
@@ -561,7 +563,7 @@ void PolkitPanel::resolveIcon(Renderer& renderer, const PolkitRequest& request) 
     const auto logoPath = paths::assetPath("andromeda.svg");
     m_fallbackIcon->setVisible(false);
     m_icon->setSize(iconSize, iconSize);
-    m_icon->setSourceFile(renderer, logoPath.string(), static_cast<int>(std::round(iconSize)), true);
+    m_icon->load(renderer, logoPath.string(), {.targetSize = static_cast<int>(std::round(iconSize)), .mipmap = true});
     m_icon->setVisible(true);
     return;
   }
@@ -571,7 +573,7 @@ void PolkitPanel::resolveIcon(Renderer& renderer, const PolkitRequest& request) 
     if (!resolved.empty()) {
       m_fallbackIcon->setVisible(false);
       m_icon->setSize(iconSize, iconSize);
-      m_icon->setSourceFile(renderer, resolved, static_cast<int>(std::round(iconSize)), true);
+      m_icon->load(renderer, resolved, {.targetSize = static_cast<int>(std::round(iconSize)), .mipmap = true});
       m_icon->setVisible(true);
       return;
     }

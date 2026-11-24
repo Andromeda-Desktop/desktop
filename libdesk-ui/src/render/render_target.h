@@ -63,6 +63,7 @@ public:
   ) override;
   [[nodiscard]] TextMetrics measureGlyph(char32_t codepoint, float fontSize) override;
   [[nodiscard]] TextureManager& textureManager() override;
+  [[nodiscard]] AsyncTextureCache* asyncTextures() noexcept override;
   [[nodiscard]] float renderScale() const noexcept override;
   [[nodiscard]] std::uint64_t textMetricsGeneration() const noexcept override;
   [[nodiscard]] float textScale() const noexcept override;

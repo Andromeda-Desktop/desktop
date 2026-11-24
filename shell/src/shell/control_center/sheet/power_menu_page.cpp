@@ -317,13 +317,14 @@ void PowerMenuPage::syncWho(Renderer& renderer) {
     }
     m_subtitle->setText(line);
   }
-  if (m_avatar != nullptr && m_services.config != nullptr && m_services.asyncTextures != nullptr) {
+  if (m_avatar != nullptr && m_services.config != nullptr) {
     const std::string path = shell::avatarDisplayPath(m_services.accounts, m_services.config->config());
     if (path != m_avatarPath && !path.empty()) {
       m_avatarPath = path;
-      (void)m_avatar->setSourceFileAsync(renderer, *m_services.asyncTextures, path,
-                                         static_cast<int>(std::round(m_avatar->width())), false,
-                                         {.centerSquareCrop = true});
+      m_avatar->load(
+          renderer, path,
+          {.targetSize = static_cast<int>(std::round(m_avatar->width())), .decode = {.centerSquareCrop = true}}
+      );
     }
   }
 }

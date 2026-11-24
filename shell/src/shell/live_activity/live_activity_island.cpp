@@ -1893,11 +1893,14 @@ void LiveActivityIsland::loadArt(Instance& inst, Renderer& renderer, const std::
   bool ok = true;
   if (inst.artUrl != url) {
     inst.artUrl = url;
-    ok = inst.art->setSourceFile(renderer, path, 64, true, true);
+    ok = inst.art->load(renderer, path, {.targetSize = 64, .mipmap = true, .decode = {.centerSquareCrop = true}})
+        != ImageLoad::Failed;
   }
   if (inst.morph.shown() == Face::HoverMedia) {
     inst.hoverArtUrl = url;
-    ok = inst.hoverArt->setSourceFile(renderer, path, 96, true, true) && ok;
+    ok = inst.hoverArt->load(renderer, path, {.targetSize = 96, .mipmap = true, .decode = {.centerSquareCrop = true}})
+            != ImageLoad::Failed
+        && ok;
   }
   if (!ok) {
     kLog.warn("center island artwork load failed url=\"{}\" path=\"{}\"", url, path);
@@ -2216,7 +2219,8 @@ void LiveActivityIsland::applyContent(Instance& inst) {
             path = m_iconResolver.resolve(path, static_cast<int>(kBannerGlyph));
           }
         }
-        ok = !path.empty() && inst.bannerImage->setSourceFile(renderer, path, static_cast<int>(kBannerGlyph));
+        ok = !path.empty()
+            && inst.bannerImage->load(renderer, path, {.targetSize = static_cast<int>(kBannerGlyph)}) != ImageLoad::Failed;
       }
       inst.bannerImage->setVisible(ok);
       inst.bannerCircle->setVisible(!ok);

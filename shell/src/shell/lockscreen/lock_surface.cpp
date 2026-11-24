@@ -2397,7 +2397,9 @@ void LockSurface::syncRegularExtras(Renderer& renderer) {
               m_httpClient, m_pendingArtDownloads, artUrl, [this] { requestUpdate(); }, m_aliveGuard
           );
           if (!artPath.empty()) {
-            hasArt = m_mediaArt->setSourceFile(renderer, artPath, targetPx, true, true);
+            hasArt = m_mediaArt->load(
+                         renderer, artPath, {.targetSize = targetPx, .mipmap = true, .decode = {.centerSquareCrop = true}}
+                     ) != ImageLoad::Failed;
           }
           if (!hasArt) {
             m_mediaArt->clear(renderer);

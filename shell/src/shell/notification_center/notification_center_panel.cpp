@@ -519,7 +519,7 @@ void NotificationCenterPanel::loadIcons(Renderer& renderer) {
     for (std::size_t i = 0; !loaded && i < slot.candidates.size(); ++i) {
       const std::string& candidate = slot.candidates[i];
       const std::string path = !candidate.empty() && candidate.front() == '/' ? candidate : m_iconResolver.resolve(candidate, px);
-      loaded = !path.empty() && slot.image->setSourceFile(renderer, path, px, true);
+      loaded = !path.empty() && slot.image->load(renderer, path, {.targetSize = px, .mipmap = true}) != ImageLoad::Failed;
     }
     slot.image->setVisible(loaded);
     slot.fallback->setVisible(!loaded);

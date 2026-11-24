@@ -1684,20 +1684,20 @@ void SetupWizardPanel::layoutModeArt(const ModeArt& art) {
 void SetupWizardPanel::doLayout(Renderer& renderer, float width, float height) {
   const float scale = contentScale();
   if (m_logo != nullptr && !m_logo->hasImage()) {
-    m_logo->setSourceFile(renderer, paths::assetPath("andromeda.svg").string(), static_cast<int>(96.0F * scale));
+    m_logo->load(renderer, paths::assetPath("andromeda.svg").string(), {.targetSize = static_cast<int>(96.0F * scale)});
   }
   const std::string bundled = paths::assetPath("andromeda-wallpaper.png").string();
   const int thumbSize = static_cast<int>(kThumbWidth * scale);
   for (auto& art : m_modeArts) {
     if (!art.wallpaper->hasImage()) {
-      art.wallpaper->setSourceFile(renderer, bundled, thumbSize);
+      art.wallpaper->load(renderer, bundled, {.targetSize = thumbSize});
     }
   }
   if (m_bundledImage != nullptr && !m_bundledImage->hasImage()) {
-    m_bundledImage->setSourceFile(renderer, bundled, thumbSize);
+    m_bundledImage->load(renderer, bundled, {.targetSize = thumbSize});
   }
   if (m_pickedImage != nullptr && !m_pickedLoaded && !m_pickedPath.empty()) {
-    m_pickedLoaded = m_pickedImage->reloadSourceFile(renderer, m_pickedPath, thumbSize);
+    m_pickedLoaded = m_pickedImage->load(renderer, m_pickedPath, {.targetSize = thumbSize}) != ImageLoad::Failed;
   }
   if (m_pickedImage != nullptr) {
     m_pickedImage->setVisible(!m_pickedPath.empty());

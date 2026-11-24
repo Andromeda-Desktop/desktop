@@ -1307,6 +1307,7 @@ if build_tests
     'icon_color_scheme',
     'image_orientation',
     'image_source_log',
+    'image_load',
     'inotify',
     'island_queue',
     'island_morph',

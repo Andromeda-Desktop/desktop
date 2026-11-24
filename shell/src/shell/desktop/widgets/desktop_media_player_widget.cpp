@@ -348,12 +348,10 @@ void DesktopMediaPlayerWidget::refreshArtworkTextures(Renderer& renderer) {
       quantizeDecodeSize(std::max(m_artwork->width(), m_artwork->height()), 64, kMaxArtworkDecodeSize);
   // Decode, crop and blur run on the texture cache workers: a track change must not stall the frame.
   const auto redrawWhenReady = [this] { requestRedraw(); };
-  if (m_asyncTextures != nullptr) {
-    m_artwork->setAsyncReadyCallback(redrawWhenReady);
-    (void)m_artwork->setSourceFileAsync(
-        renderer, *m_asyncTextures, m_artPath, foregroundTarget, true, {.centerSquareCrop = true, .blurRadius = 0}
-    );
-  } else if (!m_artwork->setSourceFile(renderer, m_artPath, foregroundTarget, true, true)) {
+  m_artwork->setAsyncReadyCallback(redrawWhenReady);
+  if (m_artwork->load(
+          renderer, m_artPath, {.targetSize = foregroundTarget, .mipmap = true, .decode = {.centerSquareCrop = true}}
+      ) == ImageLoad::Failed) {
     m_artwork->clear(renderer);
   }
 
@@ -366,13 +364,10 @@ void DesktopMediaPlayerWidget::refreshArtworkTextures(Renderer& renderer) {
   const float cardHeight = card->height();
   const int backgroundTarget =
       quantizeDecodeSize(std::max(cardWidth, cardHeight), kMinBackgroundArtDecodeSize, kMaxBackgroundArtDecodeSize);
-  if (m_asyncTextures != nullptr) {
-    m_backgroundArtwork->setAsyncReadyCallback(redrawWhenReady);
-    (void)m_backgroundArtwork->setSourceFileAsync(
-        renderer, *m_asyncTextures, m_artPath, backgroundTarget, true,
-        {.centerSquareCrop = false, .blurRadius = m_albumArtBlur}
-    );
-  } else if (!m_backgroundArtwork->setSourceFileBlurred(renderer, m_artPath, backgroundTarget, m_albumArtBlur, true)) {
+  m_backgroundArtwork->setAsyncReadyCallback(redrawWhenReady);
+  if (m_backgroundArtwork->load(
+          renderer, m_artPath, {.targetSize = backgroundTarget, .mipmap = true, .decode = {.blurRadius = m_albumArtBlur}}
+      ) == ImageLoad::Failed) {
     m_backgroundArtwork->clear(renderer);
   }
 }

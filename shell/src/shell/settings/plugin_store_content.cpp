@@ -696,12 +696,8 @@ namespace settings {
           .height = thumbnailHeight,
       });
       const int thumbTargetSize = static_cast<int>(std::ceil(320.0F * scale));
-      if (textureCache != nullptr) {
-        if (!img->setSourceFileAsync(renderer, *textureCache, thumbIt->second, thumbTargetSize, true)) {
-          img->setAsyncReadyCallback(m_onRebuildNeeded);
-        }
-      } else {
-        img->setSourceFile(renderer, thumbIt->second, thumbTargetSize, true);
+      if (img->load(renderer, thumbIt->second, {.targetSize = thumbTargetSize, .mipmap = true}) == ImageLoad::Pending) {
+        img->setAsyncReadyCallback(m_onRebuildNeeded);
       }
       if (img->hasImage()) {
         thumbnailHeight = std::min(thumbnailHeight, thumbnailWidth / img->aspectRatio());

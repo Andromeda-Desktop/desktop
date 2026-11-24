@@ -11,7 +11,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <functional>
 #include <memory>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -190,6 +193,33 @@ void Image::setPadding(float padding) {
 
 void Image::setAsyncReadyCallback(AsyncReadyCallback callback) { m_asyncReadyCallback = std::move(callback); }
 
+ImageLoad Image::load(Renderer& renderer, const std::string& path, const ImageRequest& request) {
+  AsyncTextureCache::DecodeOptions decode = request.decode;
+  std::error_code ec;
+  const auto size = std::filesystem::file_size(path, ec);
+  const auto mtime = ec ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(path, ec);
+  decode.sourceStamp = ec ? 0 : std::hash<std::uint64_t>{}(size) ^ static_cast<std::uint64_t>(mtime.time_since_epoch().count());
+  if (AsyncTextureCache* cache = renderer.asyncTextures(); cache != nullptr) {
+    setSourceFileAsync(renderer, *cache, path, request.targetSize, request.mipmap, decode);
+  } else {
+    if (decode.sourceStamp != m_loadStamp) {
+      clear(renderer);
+      m_loadStamp = decode.sourceStamp;
+    }
+    setSourceFileImpl(
+        renderer, path, request.targetSize, request.mipmap, request.decode.centerSquareCrop, request.decode.blurRadius
+    );
+  }
+  return loadState();
+}
+
+ImageLoad Image::loadState() const {
+  if (hasImage()) {
+    return ImageLoad::Ready;
+  }
+  return hasPendingContent() ? ImageLoad::Pending : ImageLoad::Failed;
+}
+
 bool Image::setSourceFile(Renderer& renderer, const std::string& path, int targetSize, bool mipmap) {
   return setSourceFileImpl(renderer, path, targetSize, mipmap, false, 0);
 }
@@ -328,6 +358,30 @@ bool Image::setSourceFileAsync(
       presentAsyncTexture(m_texture);
     }
     return hasImage();
+  }
+
+  const bool rewritten = !sameRequest
+      && m_asyncTextureCache == &cache
+      && m_asyncSourcePath == path
+      && m_asyncRequestedTargetSize == requestedTargetSize
+      && m_asyncTargetSize == normalizedTargetSize
+      && m_asyncMipmap == mipmap
+      && m_asyncOptions.sourceStamp != options.sourceStamp
+      && m_texture.id != 0
+      && !m_ownsTexture
+      && !m_asyncRetiring;
+  if (rewritten) {
+    // The shown texture stays until the rewritten file decodes, so a reload never flashes empty.
+    m_asyncReadySub.disconnect();
+    m_asyncRetiring = AsyncRetiring{.targetSize = m_asyncTargetSize, .options = m_asyncOptions};
+    m_asyncOptions = options;
+    const TextureHandle next = cache.acquire(path, normalizedTargetSize, mipmap, options);
+    if (next.id != 0) {
+      presentAsyncTexture(next);
+    } else if (!cache.failed(path, normalizedTargetSize, mipmap, options)) {
+      subscribeAsyncReady();
+    }
+    return true;
   }
 
   if (!sameRequest) {
@@ -484,15 +538,15 @@ void Image::clearAsyncSource() {
   m_asyncReadySub.disconnect();
   if (m_asyncTextureCache != nullptr && !m_asyncSourcePath.empty()) {
     m_asyncTextureCache->release(m_asyncSourcePath, m_asyncTargetSize, m_asyncMipmap, m_asyncOptions);
-    if (m_asyncRetiringTargetSize != 0) {
-      m_asyncTextureCache->release(m_asyncSourcePath, m_asyncRetiringTargetSize, m_asyncMipmap, m_asyncOptions);
+    if (m_asyncRetiring) {
+      m_asyncTextureCache->release(m_asyncSourcePath, m_asyncRetiring->targetSize, m_asyncMipmap, m_asyncRetiring->options);
     }
   }
   m_asyncTextureCache = nullptr;
   m_asyncSourcePath.clear();
   m_asyncRequestedTargetSize = 0;
   m_asyncTargetSize = 0;
-  m_asyncRetiringTargetSize = 0;
+  m_asyncRetiring.reset();
   m_asyncMipmap = false;
   m_asyncOptions = {};
 }
@@ -593,12 +647,12 @@ void Image::doLayout(Renderer& renderer) {
           m_asyncTextureCache->acquire(m_asyncSourcePath, m_asyncTargetSize, m_asyncMipmap, m_asyncOptions);
       // The current texture stays on screen until the resized decode lands, so a resize never flashes empty.
       // A colorized texture is owned and already dropped its cache reference.
-      if (m_ownsTexture || m_texture.id == 0 || m_asyncRetiringTargetSize != 0) {
+      if (m_ownsTexture || m_texture.id == 0 || m_asyncRetiring) {
         if (!m_ownsTexture) {
           m_asyncTextureCache->release(m_asyncSourcePath, previousTargetSize, m_asyncMipmap, m_asyncOptions);
         }
       } else {
-        m_asyncRetiringTargetSize = previousTargetSize;
+        m_asyncRetiring = AsyncRetiring{.targetSize = previousTargetSize, .options = m_asyncOptions};
       }
       if (next.id != 0) {
         presentAsyncTexture(next);
@@ -736,9 +790,9 @@ void Image::presentAsyncTexture(TextureHandle handle) {
     }
   }
 
-  if (m_asyncRetiringTargetSize != 0 && m_asyncTextureCache != nullptr) {
-    m_asyncTextureCache->release(m_asyncSourcePath, m_asyncRetiringTargetSize, m_asyncMipmap, m_asyncOptions);
-    m_asyncRetiringTargetSize = 0;
+  if (m_asyncRetiring && m_asyncTextureCache != nullptr) {
+    m_asyncTextureCache->release(m_asyncSourcePath, m_asyncRetiring->targetSize, m_asyncMipmap, m_asyncRetiring->options);
+    m_asyncRetiring.reset();
   }
   m_asyncReadySub.disconnect();
   updateLayout();

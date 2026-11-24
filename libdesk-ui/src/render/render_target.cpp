@@ -70,6 +70,10 @@ TextMetrics ScaledRenderer::measureGlyph(char32_t codepoint, float fontSize) {
   return m_context->measureGlyphScaled(currentScale(), codepoint, fontSize);
 }
 
+AsyncTextureCache* ScaledRenderer::asyncTextures() noexcept {
+  return m_context != nullptr ? m_context->asyncTextures() : nullptr;
+}
+
 TextureManager& ScaledRenderer::textureManager() {
   assert(m_context != nullptr && "ScaledRenderer textureManager without a bound RenderContext");
   return m_context->textureManager();

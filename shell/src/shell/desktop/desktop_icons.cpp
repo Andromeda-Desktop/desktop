@@ -389,7 +389,7 @@ void DesktopIcons::startSystemDrag() {
     } else {
       auto image = ui::image({.fit = ImageFit::Contain, .width = static_cast<float>(iconSize),
                               .height = static_cast<float>(iconSize), .participatesInLayout = false});
-      if (image->setSourceFile(renderer, iconFile, iconSize, true)) {
+      if (image->load(renderer, iconFile, {.targetSize = iconSize, .mipmap = true}) != ImageLoad::Failed) {
         image->setPosition(0.0F, top);
         m_dragImage->addChild(std::move(image));
       }
@@ -1294,7 +1294,7 @@ void DesktopIcons::build() {
             .height = static_cast<float>(iconSize),
             .participatesInLayout = false,
         });
-        if (icon->setSourceFile(renderer, path, iconSize, true)) {
+        if (icon->load(renderer, path, {.targetSize = iconSize, .mipmap = true}) != ImageLoad::Failed) {
           icon->setPosition(static_cast<float>(m_cellW - iconSize) * 0.5F, static_cast<float>(m_plate - iconSize) * 0.5F);
           area->addChild(std::move(icon));
         }

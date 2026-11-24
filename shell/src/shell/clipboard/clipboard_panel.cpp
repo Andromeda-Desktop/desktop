@@ -405,7 +405,7 @@ namespace {
       }
 
       const int targetSize = static_cast<int>(std::ceil(kListThumbSize * m_scale));
-      const bool ready = m_image->setSourceFileAsync(renderer, *m_asyncTextures, m_imageSource, targetSize);
+      const bool ready = m_image->load(renderer, m_imageSource, {.targetSize = targetSize}) == ImageLoad::Ready;
       m_image->setVisible(ready);
       m_glyph->setVisible(!ready);
       m_glyph->setParticipatesInLayout(!ready);
@@ -1353,7 +1353,7 @@ void ClipboardPanel::rebuildPreview(Renderer& renderer, float width, float heigh
     if (m_asyncTextures != nullptr && m_clipboard != nullptr) {
       const std::string imageSource = m_listAdapter != nullptr ? m_listAdapter->imageUri(entry) : std::string();
       if (!imageSource.empty()) {
-        (void)image->setSourceFileAsync(renderer, *m_asyncTextures, imageSource, previewTargetSize);
+        image->load(renderer, imageSource, {.targetSize = previewTargetSize});
         if (showLoadedImage()) {
           m_previewMeta->setText(formatPreviewMeta(entry, image->sourceWidth(), image->sourceHeight()));
         }

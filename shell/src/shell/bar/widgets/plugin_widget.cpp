@@ -725,9 +725,10 @@ void PluginWidget::syncImage(Renderer& renderer) {
 
   const int imageTargetSize = std::max(1, static_cast<int>(std::round(std::max(imageWidth, imageHeight) * 3.0F)));
   if (m_imageDirty) {
-    const bool loaded = m_imageForceReload
-        ? m_image->reloadSourceFile(renderer, m_resolvedImagePath.string(), imageTargetSize, true)
-        : m_image->setSourceFile(renderer, m_resolvedImagePath.string(), imageTargetSize, true);
+    // A rewritten file has a new stamp, so load() decodes it again and keeps the shown texture meanwhile.
+    const bool loaded =
+        m_image->load(renderer, m_resolvedImagePath.string(), {.targetSize = imageTargetSize, .mipmap = true})
+        != ImageLoad::Failed;
     if (loaded) {
       m_imageDirty = false;
       m_imageForceReload = false;
@@ -741,7 +742,7 @@ void PluginWidget::syncImage(Renderer& renderer) {
       m_imageReloadRetries = 0;
     }
   } else {
-    (void)m_image->setSourceFile(renderer, m_resolvedImagePath.string(), imageTargetSize, true);
+    m_image->load(renderer, m_resolvedImagePath.string(), {.targetSize = imageTargetSize, .mipmap = true});
   }
 
   m_image->setVisible(m_image->hasImage());

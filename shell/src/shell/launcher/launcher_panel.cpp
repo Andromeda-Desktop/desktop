@@ -1021,11 +1021,9 @@ void LauncherPanel::syncLauncherAvatar(Renderer& renderer) {
   }
 
   const int targetSize = static_cast<int>(std::round(kLauncherAvatarSize * contentScale()));
-  const bool ready = m_asyncTextures != nullptr
-      ? m_launcherAvatar->setSourceFileAsync(
-            renderer, *m_asyncTextures, displayPath, targetSize, false, {.centerSquareCrop = true}
-        )
-      : m_launcherAvatar->setSourceFile(renderer, displayPath, targetSize, false, true);
+  const bool ready =
+      m_launcherAvatar->load(renderer, displayPath, {.targetSize = targetSize, .decode = {.centerSquareCrop = true}})
+      == ImageLoad::Ready;
   if (ready) {
     m_launcherAvatar->setVisible(true);
     m_launcherAvatar->setParticipatesInLayout(true);

@@ -1464,24 +1464,19 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
         image->setAppIconColorization(effectiveShellAppIconColorizationTint(m_configService.config().shell));
       }
       // A task change rebuilds every tile: the shared cache decodes each icon once, off the main thread.
-      bool shown = false;
-      if (m_asyncTextures != nullptr) {
-        // A failed decode rebuilds the tiles, which then take the glyph.
-        Image* raw = image.get();
-        image->setAsyncReadyCallback([this, raw] {
-          if (raw->asyncFailed()) {
-            m_rebuildPending = true;
-            requestUpdate();
-          } else {
-            requestRedraw();
-          }
-        });
-        shown = image->setSourceFileAsync(renderer, *m_asyncTextures, task.icon.path,
-                                          static_cast<int>(std::round(iconSize)), true)
-                || (!image->sourcePath().empty() && !image->asyncFailed());
-      } else {
-        shown = image->setSourceFile(renderer, task.icon.path, static_cast<int>(std::round(iconSize)), true);
-      }
+      // A failed decode rebuilds the tiles, which then take the glyph.
+      Image* raw = image.get();
+      image->setAsyncReadyCallback([this, raw] {
+        if (raw->asyncFailed()) {
+          m_rebuildPending = true;
+          requestUpdate();
+        } else {
+          requestRedraw();
+        }
+      });
+      const bool shown =
+          image->load(renderer, task.icon.path, {.targetSize = static_cast<int>(std::round(iconSize)), .mipmap = true})
+          != ImageLoad::Failed;
       if (shown) {
         iconHost->addChild(std::move(image));
       } else {

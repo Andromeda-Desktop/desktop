@@ -1603,12 +1603,7 @@ void WorkspacesWidget::syncActiveWindowIcon(Renderer& renderer, Item& item) {
   item.iconPath = iconPath;
   if (!iconPath.empty()) {
     const int iconTargetSize = static_cast<int>(std::round(focusedPillIconSize() * 2.0F));
-    if (m_asyncTextures != nullptr) {
-      item.icon->setAsyncReadyCallback([this] { requestRedraw(); });
-      item.icon->setSourceFileAsync(renderer, *m_asyncTextures, iconPath, iconTargetSize, true);
-    } else {
-      item.icon->setSourceFile(renderer, iconPath, iconTargetSize, true);
-    }
+    item.icon->load(renderer, iconPath, {.targetSize = iconTargetSize, .mipmap = true});
   } else {
     item.icon->clear(renderer);
   }

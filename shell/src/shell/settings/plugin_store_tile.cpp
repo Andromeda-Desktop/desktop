@@ -163,11 +163,7 @@ namespace settings {
       // The thumbnail is Cover-fit across the grid cell (~200px logical wide); decode to that
       // size and mipmap so the full-res webp does not alias when minified into the tile.
       const int targetSize = static_cast<int>(std::ceil(200.0F * m_scale));
-      if (textureCache != nullptr) {
-        m_thumbnail->setSourceFileAsync(*renderer, *textureCache, thumbnailPath, targetSize, true);
-      } else {
-        m_thumbnail->setSourceFile(*renderer, thumbnailPath, targetSize, true);
-      }
+      m_thumbnail->load(*renderer, thumbnailPath, {.targetSize = targetSize, .mipmap = true});
       m_boundThumbnailPath = thumbnailPath;
     }
     m_thumbnail->setVisible(hasThumbnail);

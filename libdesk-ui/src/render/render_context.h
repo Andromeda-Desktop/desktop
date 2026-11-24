@@ -82,6 +82,9 @@ public:
   void releaseUnusedCaches();
   // Caches outside this context that keep unused GPU entries (AsyncTextureCache) connect here.
   [[nodiscard]] Signal<>& unusedCacheRelease() noexcept { return m_unusedCacheRelease; }
+  // The cache every Image load on this context decodes through; it must outlive its use here.
+  void setAsyncTextures(AsyncTextureCache* cache) noexcept { m_asyncTextures = cache; }
+  [[nodiscard]] AsyncTextureCache* asyncTextures() const noexcept { return m_asyncTextures; }
 
 private:
   // Text setters free glyph textures only once GL is attached; before that none exist, and a pending attach waits.
@@ -136,6 +139,7 @@ private:
   CairoTextRenderer m_textRenderer;
   CairoGlyphRenderer m_glyphRenderer;
   Signal<> m_unusedCacheRelease;
+  AsyncTextureCache* m_asyncTextures = nullptr;
   std::string m_textFontFamily{Tokens::fontFamily}; // the design font; the shell overrides it from its config
   bool m_textBaseDirRtl = false;
   std::uint64_t m_textMetricsGeneration = 1;

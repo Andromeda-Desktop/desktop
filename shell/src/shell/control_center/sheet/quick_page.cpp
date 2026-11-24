@@ -1453,7 +1453,9 @@ void QuickPage::syncMedia(Renderer& renderer) {
       }, m_aliveGuard
   );
   const auto decode = static_cast<int>(std::ceil(Tokens::componentMediaArt * contentScale() * 2.0F));
-  if (path.empty() || !m_mediaArt->setSourceFile(renderer, path, decode, true, true)) {
+  if (path.empty()
+      || m_mediaArt->load(renderer, path, {.targetSize = decode, .mipmap = true, .decode = {.centerSquareCrop = true}})
+          == ImageLoad::Failed) {
     m_mediaArt->clear(renderer);
     m_mediaArtUrl = path.empty() && !url.empty() ? std::string{} : url;
     return;

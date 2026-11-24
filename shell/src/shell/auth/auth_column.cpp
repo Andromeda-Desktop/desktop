@@ -346,7 +346,10 @@ void AuthColumn::layout(Renderer& renderer, const AuthPlacement& place, float sw
   );
   if (m_state.avatarPath != m_avatarShown) {
     m_avatarShown = !m_state.avatarPath.empty()
-            && m_avatarImage->setSourceFile(renderer, m_state.avatarPath, static_cast<int>(avatar), true, true)
+            && m_avatarImage->load(
+                   renderer, m_state.avatarPath,
+                   {.targetSize = static_cast<int>(avatar), .mipmap = true, .decode = {.centerSquareCrop = true}}
+               ) != ImageLoad::Failed
         ? m_state.avatarPath
         : std::string{};
     if (m_avatarShown.empty()) {
@@ -892,7 +895,10 @@ void AuthColumn::layoutAccounts(Renderer& renderer, float cx, float bottom, floa
     item.avatar->setOpacity(opacity);
     if (account.avatarPath != item.shown) {
       item.shown = !account.avatarPath.empty()
-              && item.image->setSourceFile(renderer, account.avatarPath, static_cast<int>(avatar), true, true)
+              && item.image->load(
+                     renderer, account.avatarPath,
+                     {.targetSize = static_cast<int>(avatar), .mipmap = true, .decode = {.centerSquareCrop = true}}
+                 ) != ImageLoad::Failed
           ? account.avatarPath
           : std::string{};
       if (item.shown.empty()) {

@@ -670,7 +670,7 @@ void ActivityWindow::bindTableSlot(Renderer& renderer, TableSlot& slot, const Ta
   accessible.selected = selected;
   const int iconPx = static_cast<int>(std::round(Tokens::sizeSymbol * scale));
   if (std::string path = iconPath(id.icon, iconPx); path != slot.iconPath) {
-    slot.icon->setSourceFile(renderer, path, iconPx);
+    slot.icon->load(renderer, path, {.targetSize = iconPx});
     slot.iconPath = std::move(path);
   }
   slot.name->setText(id.name);

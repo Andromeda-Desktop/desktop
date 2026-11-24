@@ -382,8 +382,12 @@ void LockCards::layoutMediaCard(Renderer& renderer, Card& card, const AuthRect& 
   const float artY = snap(rect.y + (rect.h - art) * 0.5F);
   const bool hasArt = !media.artPath.empty();
   if (hasArt && media.artPath != card.imagePath) {
-    card.imagePath = card.image->setSourceFile(renderer, media.artPath, static_cast<int>(art), true, true) ? media.artPath
-                                                                                                           : std::string{};
+    card.imagePath = card.image->load(
+                         renderer, media.artPath,
+                         {.targetSize = static_cast<int>(art), .mipmap = true, .decode = {.centerSquareCrop = true}}
+                     ) != ImageLoad::Failed
+        ? media.artPath
+        : std::string{};
   }
   const bool showArt = hasArt && card.imagePath == media.artPath;
   card.image->setVisible(showArt);
@@ -463,7 +467,11 @@ void LockCards::layoutNoticeCard(
   const bool file = !group.icon.empty() && group.icon.front() == '/';
   if (file && group.icon != card.imagePath) {
     card.imagePath =
-        card.image->setSourceFile(renderer, group.icon, static_cast<int>(icon), true, true) ? group.icon : std::string{};
+        card.image->load(
+            renderer, group.icon, {.targetSize = static_cast<int>(icon), .mipmap = true, .decode = {.centerSquareCrop = true}}
+        ) != ImageLoad::Failed
+        ? group.icon
+        : std::string{};
   }
   const bool showIcon = file && card.imagePath == group.icon;
   card.image->setVisible(showIcon);
