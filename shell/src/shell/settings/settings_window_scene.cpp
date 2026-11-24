@@ -1613,7 +1613,6 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
           .accountName = sessionDisplayName(),
           .accountAvatarPath = shell::avatarDisplayPath(m_accounts, cfg),
           .renderer = &m_surface->renderTarget().renderer(),
-          .avatarTextures = m_asyncTextures,
           .sidebarScrollState = m_sidebarScrollState,
           .clearTransientState = clearTransientSettingsState,
           .requestRebuild = requestRebuild,

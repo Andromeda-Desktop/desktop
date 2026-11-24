@@ -259,7 +259,7 @@ TaskbarWidget::TaskbarWidget(
       m_windowTitleMaxWidth(static_cast<float>(m_configOptions.windowTitleMaxWidth)),
       m_taskbarMaxWidth(static_cast<float>(m_configOptions.taskbarMaxWidth)),
       m_barPosition(std::move(context.barPosition)), m_barName(std::move(context.barName)),
-      m_widgetName(std::move(context.widgetName)), m_asyncTextures(context.asyncTextures) {
+      m_widgetName(std::move(context.widgetName)) {
   syncWorkspaceGroupingCapability();
   buildDesktopIconIndex();
 }

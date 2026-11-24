@@ -312,8 +312,8 @@ void LauncherPanel::create() {
   });
 
   const LauncherListStyle initialStyle = launcherListStyleFrom(m_browserMode, m_config, scale, panelCardOpacity());
-  m_listAdapter = std::make_unique<LauncherResultAdapter>(initialStyle, m_asyncTextures);
-  m_gridAdapter = std::make_unique<LauncherAppGridAdapter>(initialStyle, m_asyncTextures);
+  m_listAdapter = std::make_unique<LauncherResultAdapter>(initialStyle);
+  m_gridAdapter = std::make_unique<LauncherAppGridAdapter>(initialStyle);
   m_listAdapter->setResults(&m_results);
   m_gridAdapter->setResults(&m_results);
   const auto onActivate = [this](std::size_t index) { activateAt(index); };
@@ -321,7 +321,7 @@ void LauncherPanel::create() {
     (void)openAppActionsMenu(index, ax, ay);
   };
   m_launcherSectionsAdapter = std::make_unique<LauncherSectionsAdapter>(
-      initialStyle, m_asyncTextures, [this](std::size_t index) { selectResult(index, false); }, onActivate,
+      initialStyle, [this](std::size_t index) { selectResult(index, false); }, onActivate,
       onSecondaryActivate
   );
   m_launcherSectionsAdapter->setResults(&m_results);

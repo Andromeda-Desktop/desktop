@@ -20,8 +20,8 @@ namespace {
 
 } // namespace
 
-WindowSwitcherTile::WindowSwitcherTile(float contentScale, AsyncTextureCache* asyncTextures)
-    : m_contentScale(contentScale), m_asyncTextures(asyncTextures) {
+WindowSwitcherTile::WindowSwitcherTile(float contentScale)
+    : m_contentScale(contentScale) {
   const float cardRadius = Style::scaledRadiusXl(m_contentScale);
   const float previewRadius = std::max(0.0F, cardRadius - Style::spaceXs * m_contentScale);
 

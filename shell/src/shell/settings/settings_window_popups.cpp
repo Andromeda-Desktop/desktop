@@ -2661,7 +2661,7 @@ void SettingsWindow::openPluginStore() {
                           )
                       );
                     }
-                    storeContent->populateBody(body, m_surface->renderTarget().renderer(), m_asyncTextures);
+                    storeContent->populateBody(body, m_surface->renderTarget().renderer());
                   },
               .scale = scale,
               .minWidth = 800.0F,

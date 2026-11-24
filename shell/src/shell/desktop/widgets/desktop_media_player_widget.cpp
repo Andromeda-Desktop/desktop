@@ -57,7 +57,7 @@ DesktopMediaPlayerWidget::DesktopMediaPlayerWidget(
       m_color(options.color), m_shadow(options.shadow), m_hideWhenNoMedia(options.hideWhenNoMedia),
       m_albumArtBackground(options.albumArtBackground),
       m_albumArtBlur(std::clamp(options.albumArtBlur, 0, kMaxBackgroundBlurRadius)),
-      m_audioVisualizerEnabled(options.audioVisualizer), m_asyncTextures(options.asyncTextures) {}
+      m_audioVisualizerEnabled(options.audioVisualizer) {}
 
 DesktopMediaPlayerWidget::~DesktopMediaPlayerWidget() {
   if (m_spectrum != nullptr && m_spectrumListenerId != 0) {

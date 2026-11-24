@@ -81,7 +81,6 @@ namespace settings {
       void setCallbacks(const PluginStoreCallbacks* callbacks) { m_callbacks = callbacks; }
       void setThumbnailPaths(const std::unordered_map<std::string, std::string>* paths) { m_thumbnailPaths = paths; }
       void setRenderer(Renderer* r) { m_renderer = r; }
-      void setTextureCache(AsyncTextureCache* c) { m_textureCache = c; }
 
       [[nodiscard]] std::size_t itemCount() const override { return m_indices != nullptr ? m_indices->size() : 0; }
 
@@ -103,7 +102,7 @@ namespace settings {
           }
         }
         t->bind(
-            storeEntry.entry, storeEntry.source, onDisk, selected, hovered, thumbPath, m_renderer, m_textureCache,
+            storeEntry.entry, storeEntry.source, onDisk, selected, hovered, thumbPath, m_renderer,
       storeEntry.listed
         );
       }
@@ -122,7 +121,6 @@ namespace settings {
       const PluginStoreCallbacks* m_callbacks = nullptr;
       const std::unordered_map<std::string, std::string>* m_thumbnailPaths = nullptr;
       Renderer* m_renderer = nullptr;
-      AsyncTextureCache* m_textureCache = nullptr;
     };
 
   } // namespace
@@ -402,7 +400,7 @@ namespace settings {
     sortEntries();
   }
 
-  void PluginStoreContent::populateBody(Flex& body, Renderer& renderer, AsyncTextureCache* textureCache) {
+  void PluginStoreContent::populateBody(Flex& body, Renderer& renderer) {
     const auto detailKey = isDetailView() && *m_detailIndex < m_filteredIndices.size()
         ? std::optional<std::string>(m_catalog[m_filteredIndices[*m_detailIndex]].key())
         : std::nullopt;
@@ -411,16 +409,15 @@ namespace settings {
       m_detailIndex = indexOfPluginKey(*detailKey);
     }
     if (m_detailIndex.has_value()) {
-      buildDetailView(body, renderer, textureCache);
+      buildDetailView(body, renderer);
     } else {
-      buildGridView(body, renderer, textureCache);
+      buildGridView(body, renderer);
     }
   }
 
-  void PluginStoreContent::buildGridView(Flex& body, Renderer& renderer, AsyncTextureCache* textureCache) {
+  void PluginStoreContent::buildGridView(Flex& body, Renderer& renderer) {
     uiAssertNotRendering("PluginStoreContent::buildGridView");
     m_renderer = &renderer;
-    m_textureCache = textureCache;
     const float scale = m_callbacks.scale;
 
     body.addChild(
@@ -586,7 +583,6 @@ namespace settings {
     adapterPtr->setCallbacks(&m_callbacks);
     adapterPtr->setThumbnailPaths(&m_thumbnailPaths);
     adapterPtr->setRenderer(&renderer);
-    adapterPtr->setTextureCache(textureCache);
     m_adapter = std::move(adapter);
 
     auto grid = ui::virtualGridView({
@@ -628,7 +624,7 @@ namespace settings {
     }
   }
 
-  void PluginStoreContent::buildDetailView(Flex& body, Renderer& renderer, AsyncTextureCache* textureCache) {
+  void PluginStoreContent::buildDetailView(Flex& body, Renderer& renderer) {
     uiAssertNotRendering("PluginStoreContent::buildDetailView");
     if (!m_detailIndex.has_value() || *m_detailIndex >= m_filteredIndices.size()) {
       return;

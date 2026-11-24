@@ -1,7 +1,6 @@
 #pragma once
 
 class AppMenuRegistrar;
-class AsyncTextureCache;
 class BluetoothService;
 class LinkService;
 class BrightnessService;
@@ -56,7 +55,6 @@ struct BarServices {
   WeatherService* weather = nullptr;
   RenderContext* renderContext = nullptr;
   // Shared off-thread icon decode; null in tests (widgets then decode in place).
-  AsyncTextureCache* asyncTextures = nullptr;
   GammaService* nightLight = nullptr;
   noctalia::theme::ThemeService* theme = nullptr;
   BluetoothService* bluetooth = nullptr;

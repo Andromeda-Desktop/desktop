@@ -768,7 +768,6 @@ void Application::initPanelManagerAndPanels() {
       .clipboard = &m_clipboardService,
       .accounts = m_accountsService.get(),
       .thumbnails = &m_thumbnailService,
-      .asyncTextures = &m_asyncTextureCache,
       .sessionGuard = &m_sessionGuard,
       .softwareUpdates = [this] { return softwareUpdateService(); },
   });
@@ -1064,9 +1063,7 @@ void Application::initNotificationAndOsd() {
   m_bar.setCenterIslandSpaceCallback(m_liveActivity.refresher());
   m_configService.addReloadCallback(m_liveActivity.refresher());
   m_islandUnreadToken = m_notificationManager.addUnreadCountCallback(m_liveActivity.refresher());
-  m_windowSwitcher.initialize(
-      m_wayland, &m_renderContext, m_compositorPlatform, &m_configService, &m_asyncTextureCache
-  );
+  m_windowSwitcher.initialize(m_wayland, &m_renderContext, m_compositorPlatform, &m_configService);
   m_configService.addReloadCallback([this] { m_windowSwitcher.onConfigReload(); });
   m_powerOverlay.initialize(m_wayland, &m_renderContext, &m_configService, &m_ipcService, &m_compositorPlatform);
   // The last session ended with "Reopen windows when you log back in": open its apps again, once.
@@ -1211,7 +1208,6 @@ void Application::initBarDockAndLayout() {
       .httpClient = &m_httpClient,
       .weather = &m_weatherService,
       .renderContext = &m_renderContext,
-      .asyncTextures = &m_asyncTextureCache,
       .nightLight = &m_gammaService,
       .theme = &m_themeService,
       .bluetooth = bluetooth(),
@@ -1363,7 +1359,6 @@ void Application::initWidgetControllersAndCallbacks() {
       .mpris = mpris(),
       .httpClient = &m_httpClient,
       .sysmon = m_systemMonitor.get(),
-      .asyncTextures = &m_asyncTextureCache,
       .scriptDeps = desktopWidgetScriptDeps,
   };
   const DesktopWidgetServices lockscreenWidgetServices{

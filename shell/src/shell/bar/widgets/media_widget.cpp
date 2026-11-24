@@ -26,9 +26,9 @@ namespace {
 } // namespace
 
 MediaWidget::MediaWidget(
-    MprisService* mpris, HttpClient* httpClient, wl_output* /*output*/, Options options, AsyncTextureCache* asyncTextures
+    MprisService* mpris, HttpClient* httpClient, wl_output* /*output*/, Options options
 )
-    : m_mpris(mpris), m_httpClient(httpClient), m_asyncTextures(asyncTextures), m_maxWidth(static_cast<float>(options.maxWidth)),
+    : m_mpris(mpris), m_httpClient(httpClient), m_maxWidth(static_cast<float>(options.maxWidth)),
       m_minWidth(static_cast<float>(options.minWidth)), m_artSize(static_cast<float>(options.artSize)),
       m_titleScrollMode(options.titleScrollMode), m_hideWhenNoMedia(options.hideWhenNoMedia),
       m_hideWhenIdle(options.hideWhenIdle), m_rotateAlbumArt(options.rotateAlbumArt),

@@ -164,8 +164,8 @@ namespace {
 
 } // namespace
 
-TrayWidget::TrayWidget(ConfigService& config, TrayService* tray, Options options, AsyncTextureCache* asyncTextures)
-    : m_config(config), m_tray(tray), m_asyncTextures(asyncTextures), m_hiddenItems(std::move(options.hiddenItems)),
+TrayWidget::TrayWidget(ConfigService& config, TrayService* tray, Options options)
+    : m_config(config), m_tray(tray), m_hiddenItems(std::move(options.hiddenItems)),
       m_pinnedItems(std::move(options.pinnedItems)), m_hidePassive(options.hidePassive),
       m_drawerMode(options.drawerMode), m_itemActivated(std::move(options.itemActivated)),
       m_barPosition(std::move(options.barPosition)), m_panelGridMode(options.panelGridMode),

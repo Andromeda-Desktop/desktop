@@ -13,7 +13,6 @@ class CompositorPlatform;
 class MprisService;
 class SystemMonitorService;
 class PipeWireService;
-class AsyncTextureCache;
 class PipeWireSpectrum;
 class WeatherService;
 
@@ -35,6 +34,5 @@ private:
   MprisService* m_mpris = nullptr;
   HttpClient* m_httpClient = nullptr;
   SystemMonitorService* m_sysmon = nullptr;
-  AsyncTextureCache* m_asyncTextures = nullptr;
   DesktopWidgetScriptDeps m_scriptDeps;
 };

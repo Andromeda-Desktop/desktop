@@ -5,7 +5,6 @@
 #include <functional>
 
 class AccountsService;
-class AsyncTextureCache;
 class BluetoothAgent;
 class BluetoothService;
 class BrightnessService;
@@ -84,7 +83,6 @@ struct ControlCenterServices {
   ClipboardService* clipboard = nullptr;
   AccountsService* accounts = nullptr;
   ThumbnailService* thumbnails = nullptr;
-  AsyncTextureCache* asyncTextures = nullptr;
   SessionGuard* sessionGuard = nullptr;
   // Created on first call (D-Bus activates Update1), so the power menu asks only when it opens.
   std::function<SoftwareUpdateService*()> softwareUpdates;

@@ -20,7 +20,6 @@ class ConfigService;
 class Image;
 class InputArea;
 class Label;
-class AsyncTextureCache;
 
 class WorkspacesWidgetTestAccess;
 
@@ -57,7 +56,6 @@ public:
     bool focusedOutputOnly = false;
     bool islandDots = false; // plain dots: token dot gap, no dimming of empty workspaces
     // Shared off-thread icon decode; null decodes in place (tests).
-    AsyncTextureCache* asyncTextures = nullptr;
   };
 
   WorkspacesWidget(CompositorPlatform& platform, ConfigService& config, wl_output* output, Options options);
@@ -217,7 +215,6 @@ private:
   WorkspacesStyle m_style = WorkspacesStyle::Regular;
   bool m_focusedOutputOnly = false;
   bool m_islandDots = false;
-  AsyncTextureCache* m_asyncTextures = nullptr;
   LensTrack m_lens; // islandDots: the current-workspace capsule, travels per P1
   // Set while the capsule follows the compositor's slide; empty while it travels on its own springs.
   std::optional<SlideFollow> m_slideFollow;

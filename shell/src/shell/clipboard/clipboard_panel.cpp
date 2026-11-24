@@ -248,8 +248,8 @@ namespace {
 
   class ClipboardListRow final : public InputArea {
   public:
-    ClipboardListRow(float scale, AsyncTextureCache* asyncTextures, std::optional<ColorSpec> listItemBackground)
-        : m_scale(scale), m_asyncTextures(asyncTextures), m_listItemBackground(listItemBackground) {
+    ClipboardListRow(float scale, std::optional<ColorSpec> listItemBackground)
+        : m_scale(scale), m_listItemBackground(listItemBackground) {
       setVisible(false);
 
       addChild(
@@ -395,7 +395,7 @@ namespace {
       if (m_image == nullptr || m_glyph == nullptr || m_colorSwatch == nullptr) {
         return;
       }
-      if (!m_isImage || m_imageSource.empty() || m_asyncTextures == nullptr) {
+      if (!m_isImage || m_imageSource.empty()) {
         m_image->clear(renderer);
         m_image->setVisible(false);
         const bool showGlyph = !m_colorSwatch->visible();
@@ -476,7 +476,6 @@ namespace {
     }
 
     float m_scale = 1.0F;
-    AsyncTextureCache* m_asyncTextures = nullptr;
     std::optional<ColorSpec> m_listItemBackground;
     Box* m_background = nullptr;
     Flex* m_row = nullptr;
@@ -501,11 +500,9 @@ namespace {
 class ClipboardListAdapter final : public VirtualGridAdapter {
 public:
   ClipboardListAdapter(
-      float scale, ClipboardService* clipboard, AsyncTextureCache* asyncTextures,
-      std::optional<ColorSpec> listItemBackground
+      float scale, ClipboardService* clipboard, std::optional<ColorSpec> listItemBackground
   )
-      : m_scale(scale), m_clipboard(clipboard), m_asyncTextures(asyncTextures),
-        m_listItemBackground(listItemBackground) {}
+      : m_scale(scale), m_clipboard(clipboard), m_listItemBackground(listItemBackground) {}
 
   void setRenderer(Renderer* renderer) { m_renderer = renderer; }
   void setFilteredIndices(const std::vector<std::size_t>* indices) { m_filteredIndices = indices; }
@@ -547,7 +544,7 @@ public:
   }
 
   [[nodiscard]] std::unique_ptr<Node> createTile() override {
-    return std::make_unique<ClipboardListRow>(m_scale, m_asyncTextures, m_listItemBackground);
+    return std::make_unique<ClipboardListRow>(m_scale, m_listItemBackground);
   }
 
   void bindTile(Node& tile, std::size_t index, bool selected, bool hovered) override {
@@ -582,7 +579,6 @@ public:
 private:
   float m_scale = 1.0F;
   ClipboardService* m_clipboard = nullptr;
-  AsyncTextureCache* m_asyncTextures = nullptr;
   std::optional<ColorSpec> m_listItemBackground;
   Renderer* m_renderer = nullptr;
   const std::vector<std::size_t>* m_filteredIndices = nullptr;
@@ -720,7 +716,7 @@ void ClipboardPanel::create() {
 
   const bool listItemBackground = m_config != nullptr && m_config->config().shell.panel.listItemBackground;
   m_listAdapter = std::make_unique<ClipboardListAdapter>(
-      scale, m_clipboard, m_asyncTextures,
+      scale, m_clipboard,
       listItemBackground ? std::optional(colorSpecFromRole(ColorRole::Fill2, panelCardOpacity()))
                          : std::nullopt
   );
@@ -1350,7 +1346,7 @@ void ClipboardPanel::rebuildPreview(Renderer& renderer, float width, float heigh
       );
       PanelManager::instance().refresh();
     });
-    if (m_asyncTextures != nullptr && m_clipboard != nullptr) {
+    if (m_clipboard != nullptr) {
       const std::string imageSource = m_listAdapter != nullptr ? m_listAdapter->imageUri(entry) : std::string();
       if (!imageSource.empty()) {
         image->load(renderer, imageSource, {.targetSize = previewTargetSize});

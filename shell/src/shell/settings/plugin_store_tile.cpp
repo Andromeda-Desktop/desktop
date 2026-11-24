@@ -155,7 +155,7 @@ namespace settings {
 
   void PluginStoreTile::bind(
       const scripting::CatalogEntry& entry, std::string_view source, bool onDisk, bool selected, bool hovered,
-      const std::string& thumbnailPath, Renderer* renderer, AsyncTextureCache* textureCache, bool listed
+      const std::string& thumbnailPath, Renderer* renderer, bool listed
   ) {
     // Thumbnail vs icon fallback.
     const bool hasThumbnail = !thumbnailPath.empty() && renderer != nullptr;

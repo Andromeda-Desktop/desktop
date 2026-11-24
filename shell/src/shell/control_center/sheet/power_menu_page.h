@@ -8,7 +8,6 @@
 #include <string>
 #include <string_view>
 
-class AsyncTextureCache;
 class Flex;
 class Image;
 class Label;

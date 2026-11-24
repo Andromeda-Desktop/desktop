@@ -13,7 +13,6 @@
 #include <string>
 #include <vector>
 
-class AsyncTextureCache;
 class CompositorPlatform;
 class ConfigService;
 class IpcService;
@@ -39,8 +38,7 @@ public:
   ~WindowSwitcher();
 
   void initialize(
-      ShellWaylandConnection& wayland, RenderContext* renderContext, CompositorPlatform& platform, ConfigService* config,
-      AsyncTextureCache* asyncTextures
+      ShellWaylandConnection& wayland, RenderContext* renderContext, CompositorPlatform& platform, ConfigService* config
   );
   void registerIpc(IpcService& ipc);
   void onConfigReload();
@@ -100,7 +98,6 @@ private:
   RenderContext* m_renderContext = nullptr;
   CompositorPlatform* m_platform = nullptr;
   ConfigService* m_config = nullptr;
-  AsyncTextureCache* m_asyncTextures = nullptr;
 
   Instance* m_instance = nullptr;
   IconResolver m_iconResolver;

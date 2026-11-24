@@ -10,7 +10,7 @@ public:
   using SecondaryActivateCallback = std::function<void(std::size_t, float, float)>;
   using ReorderCallback = std::function<void(std::size_t, std::size_t)>;
 
-  LauncherResultAdapter(LauncherListStyle style, AsyncTextureCache* cache) : m_style(style), m_cache(cache) {}
+  LauncherResultAdapter(LauncherListStyle style) : m_style(style) {}
 
   void setListStyle(LauncherListStyle style) { m_style = style; }
   void setResults(const std::vector<LauncherResult>* results) { m_results = results; }
@@ -29,7 +29,7 @@ public:
   [[nodiscard]] std::size_t itemCount() const override { return m_results == nullptr ? 0U : m_results->size(); }
 
   [[nodiscard]] std::unique_ptr<Node> createTile() override {
-    return std::make_unique<LauncherResultRow>(m_style, m_cache);
+    return std::make_unique<LauncherResultRow>(m_style);
   }
 
   void bindTile(Node& tile, std::size_t index, bool selected, bool hovered) override {
@@ -144,7 +144,6 @@ private:
   }
 
   LauncherListStyle m_style{};
-  AsyncTextureCache* m_cache = nullptr;
   Renderer* m_renderer = nullptr;
   const std::vector<LauncherResult>* m_results = nullptr;
   ActivateCallback m_onActivate;
@@ -162,7 +161,7 @@ public:
   using SecondaryActivateCallback = std::function<void(std::size_t, float, float)>;
   using ReorderCallback = std::function<void(std::size_t, std::size_t)>;
 
-  LauncherAppGridAdapter(LauncherListStyle style, AsyncTextureCache* cache) : m_style(style), m_cache(cache) {}
+  LauncherAppGridAdapter(LauncherListStyle style) : m_style(style) {}
 
   void setListStyle(LauncherListStyle style) { m_style = style; }
   void setResults(const std::vector<LauncherResult>* results) { m_results = results; }
@@ -181,7 +180,7 @@ public:
   [[nodiscard]] std::size_t itemCount() const override { return m_results == nullptr ? 0U : m_results->size(); }
 
   [[nodiscard]] std::unique_ptr<Node> createTile() override {
-    return std::make_unique<LauncherAppGridTile>(m_style, m_cache);
+    return std::make_unique<LauncherAppGridTile>(m_style);
   }
 
   void bindTile(Node& tile, std::size_t index, bool selected, bool hovered) override {
@@ -293,7 +292,6 @@ private:
   }
 
   LauncherListStyle m_style{};
-  AsyncTextureCache* m_cache = nullptr;
   Renderer* m_renderer = nullptr;
   const std::vector<LauncherResult>* m_results = nullptr;
   ActivateCallback m_onActivate;
@@ -312,10 +310,10 @@ public:
   using SecondaryActivateCallback = std::function<void(std::size_t, float, float)>;
 
   LauncherSectionsAdapter(
-      LauncherListStyle style, AsyncTextureCache* cache, SelectCallback onSelect, ActivateCallback onActivate,
+      LauncherListStyle style, SelectCallback onSelect, ActivateCallback onActivate,
       SecondaryActivateCallback onSecondaryActivate
   )
-      : m_style(style), m_cache(cache), m_onSelect(std::move(onSelect)), m_onActivate(std::move(onActivate)),
+      : m_style(style), m_onSelect(std::move(onSelect)), m_onActivate(std::move(onActivate)),
         m_onSecondaryActivate(std::move(onSecondaryActivate)) {}
 
   void setListStyle(LauncherListStyle style) { m_style = style; }
@@ -581,7 +579,7 @@ public:
 
   [[nodiscard]] std::unique_ptr<Node> createItem() override {
     return std::make_unique<LauncherSectionRow>(
-        m_style, m_cache, m_onSelect, m_onActivate, m_onSecondaryActivate, m_onNewWindow
+        m_style, m_onSelect, m_onActivate, m_onSecondaryActivate, m_onNewWindow
     );
   }
 
@@ -605,7 +603,6 @@ private:
   };
 
   LauncherListStyle m_style{};
-  AsyncTextureCache* m_cache = nullptr;
   SelectCallback m_onSelect;
   ActivateCallback m_onActivate;
   SecondaryActivateCallback m_onSecondaryActivate;

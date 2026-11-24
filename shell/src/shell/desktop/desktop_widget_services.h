@@ -35,7 +35,6 @@ struct DesktopWidgetScriptDeps {
   const std::unordered_map<std::string, std::unordered_map<std::string, WidgetSettingValue>>* pluginSettings = nullptr;
 };
 
-class AsyncTextureCache;
 
 struct DesktopWidgetRuntimeServices {
   CalendarService* calendar = nullptr;
@@ -46,7 +45,6 @@ struct DesktopWidgetRuntimeServices {
   MprisService* mpris = nullptr;
   HttpClient* httpClient = nullptr;
   SystemMonitorService* sysmon = nullptr;
-  AsyncTextureCache* asyncTextures = nullptr; // null in the lock helper: art decodes in place there
   DesktopWidgetScriptDeps scriptDeps;
 };
 

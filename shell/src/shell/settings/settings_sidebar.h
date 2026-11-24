@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-class AsyncTextureCache;
 class Flex;
 class Node;
 class Renderer;
@@ -37,7 +36,6 @@ namespace settings {
     std::string accountName;
     std::string accountAvatarPath;
     Renderer* renderer = nullptr;
-    AsyncTextureCache* avatarTextures = nullptr;
 
     ScrollViewState& sidebarScrollState;
 

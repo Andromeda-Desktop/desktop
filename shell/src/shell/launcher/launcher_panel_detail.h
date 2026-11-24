@@ -316,8 +316,8 @@ namespace launcher_detail {
 
   class LauncherResultRow final : public Node {
   public:
-    LauncherResultRow(LauncherListStyle style, AsyncTextureCache* asyncTextures)
-        : m_style(style), m_asyncTextures(asyncTextures) {
+    LauncherResultRow(LauncherListStyle style)
+        : m_style(style) {
       const float iconSize = launcherIconSize(m_style);
       const float gap = rowGap(m_style);
       const float paddingV =
@@ -641,7 +641,6 @@ namespace launcher_detail {
     Label* m_subtitle = nullptr;
     Glyph* m_pinnedGlyph = nullptr;
     Glyph* m_originGlyph = nullptr;
-    AsyncTextureCache* m_asyncTextures = nullptr;
     std::string m_iconPath;
     std::string m_fallbackGlyph;
     int m_iconTargetSize = 0;
@@ -652,8 +651,8 @@ namespace launcher_detail {
 
   class LauncherAppGridTile final : public Node {
   public:
-    LauncherAppGridTile(LauncherListStyle style, AsyncTextureCache* asyncTextures)
-        : m_style(style), m_asyncTextures(asyncTextures) {
+    LauncherAppGridTile(LauncherListStyle style)
+        : m_style(style) {
       const float gap = Style::spaceXs * m_style.scale;
       const float padding = Style::spaceSm * m_style.scale;
       auto col = ui::column({
@@ -925,7 +924,6 @@ namespace launcher_detail {
     Glyph* m_pinnedGlyph = nullptr;
     Glyph* m_originGlyph = nullptr;
     Label* m_title = nullptr;
-    AsyncTextureCache* m_asyncTextures = nullptr;
     std::string m_iconPath;
     std::string m_fallbackGlyph;
     int m_iconTargetSize = 0;
@@ -947,9 +945,9 @@ namespace launcher_detail {
   // The best app match above the sections (concept C launcher .top): icon 56 r14, title and subtitle, Open and New Window.
   class LauncherTopHitRow final : public Node {
   public:
-    LauncherTopHitRow(float scale, AsyncTextureCache* asyncTextures, std::function<void()> onOpen,
+    LauncherTopHitRow(float scale, std::function<void()> onOpen,
                       std::function<void()> onNewWindow)
-        : m_scale(scale), m_asyncTextures(asyncTextures) {
+        : m_scale(scale) {
       auto row = ui::row({
           .out = &m_row,
           .align = FlexAlign::Center,
@@ -1057,7 +1055,6 @@ namespace launcher_detail {
 
   private:
     float m_scale = 1.0F;
-    AsyncTextureCache* m_asyncTextures = nullptr;
     std::string m_iconPath;
     Flex* m_row = nullptr;
     KeyFocusRing m_focusRing;
@@ -1077,10 +1074,10 @@ namespace launcher_detail {
     using SecondaryActivateCallback = std::function<void(std::size_t, float, float)>;
 
     LauncherSectionRow(
-        LauncherListStyle style, AsyncTextureCache* asyncTextures, SelectCallback onSelect, ActivateCallback onActivate,
+        LauncherListStyle style, SelectCallback onSelect, ActivateCallback onActivate,
         SecondaryActivateCallback onSecondaryActivate, ActivateCallback onNewWindow
     )
-        : m_style(style), m_asyncTextures(asyncTextures), m_onSelect(std::move(onSelect)),
+        : m_style(style), m_onSelect(std::move(onSelect)),
           m_onActivate(std::move(onActivate)), m_onSecondaryActivate(std::move(onSecondaryActivate)),
           m_onNewWindow(std::move(onNewWindow)) {
       auto header = ui::row({
@@ -1147,10 +1144,10 @@ namespace launcher_detail {
           return (*m_results)[resultIndex].origin;
         });
 
-        auto tile = std::make_unique<LauncherAppGridTile>(m_style, asyncTextures);
+        auto tile = std::make_unique<LauncherAppGridTile>(m_style);
         m_tiles[slot] = tile.get();
         area->addChild(std::move(tile));
-        auto listRow = std::make_unique<LauncherResultRow>(m_style, asyncTextures);
+        auto listRow = std::make_unique<LauncherResultRow>(m_style);
         listRow->setVisible(false);
         m_listRows[slot] = listRow.get();
         auto emojiCell = ui::row({
@@ -1183,7 +1180,7 @@ namespace launcher_detail {
             };
           };
           auto topHit = std::make_unique<LauncherTopHitRow>(
-              m_style.scale, asyncTextures, bound(m_onActivate), bound(m_onNewWindow)
+              m_style.scale, bound(m_onActivate), bound(m_onNewWindow)
           );
           topHit->setVisible(false);
           m_topHit = topHit.get();
@@ -1350,7 +1347,6 @@ namespace launcher_detail {
     Glyph* m_headerGlyph = nullptr;
     Label* m_headerLabel = nullptr;
     CellGrid m_cellGrid = CellGrid::None;
-    AsyncTextureCache* m_asyncTextures = nullptr;
     std::array<Image*, kMaxSectionColumns> m_cellImages{};
     std::array<InputArea*, kMaxSectionColumns> m_areas{};
     std::array<LauncherAppGridTile*, kMaxSectionColumns> m_tiles{};

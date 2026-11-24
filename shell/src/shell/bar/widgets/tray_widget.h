@@ -16,7 +16,6 @@
 #include <unordered_map>
 #include <vector>
 
-class AsyncTextureCache;
 class ConfigService;
 class Flex;
 class Image;
@@ -43,7 +42,7 @@ public:
     bool detachedPanel = true;
   };
 
-  TrayWidget(ConfigService& config, TrayService* tray, Options options, AsyncTextureCache* asyncTextures = nullptr);
+  TrayWidget(ConfigService& config, TrayService* tray, Options options);
   ~TrayWidget() override;
 
   void setHoverOverlayParent(Node* node) noexcept { m_hoverOverlayParent = node; }
@@ -79,7 +78,6 @@ private:
 
   ConfigService& m_config;
   TrayService* m_tray = nullptr;
-  AsyncTextureCache* m_asyncTextures = nullptr;
   Flex* m_container = nullptr;
   IconResolver m_iconResolver;
   std::unordered_map<std::string, std::string> m_appIcons;

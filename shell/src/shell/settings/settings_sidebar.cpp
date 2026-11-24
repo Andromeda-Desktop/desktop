@@ -164,7 +164,7 @@ namespace settings {
       const float scale = ctx.scale;
       const float avatarSize = metrics::kAccountAvatar * scale;
       std::unique_ptr<Node> avatar;
-      if (ctx.renderer != nullptr && ctx.avatarTextures != nullptr && !ctx.accountAvatarPath.empty()) {
+      if (ctx.renderer != nullptr && !ctx.accountAvatarPath.empty()) {
         Image* image = nullptr;
         auto node = ui::image({
             .out = &image,
