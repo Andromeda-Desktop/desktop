@@ -4,7 +4,7 @@
 # hands it into PNG files.
 #
 # Proves:
-# 1. With the phone's screen switch off, as after pairing, OpenMirror is refused with the phone's reason.
+# 1. With the phone's screen switch off, as after pairing, the desktop refuses OpenMirror (not-allowed) without asking.
 # 2. With it on, the viewer decodes 60 frames of the bars, at the phone's size and in the bars' colours.
 # 3. Input reaches the phone as the viewer sends it: a tap, a swipe, a scroll, text, and Back, in 1/10000 units; an
 #    out-of-range tap is refused before it is sent; a keyframe request reaches it too.
@@ -68,7 +68,7 @@ hold() {
 
 hold
 REFUSED=$(link OpenMirror "'$ID'" 2>&1 || true)
-[[ $REFUSED == *Refused*"screen switch"* ]] || fail "OpenMirror with the screen switch off: $REFUSED"
+[[ $REFUSED == *Refused*not-allowed* ]] || fail "OpenMirror with the screen switch off: $REFUSED"
 record '{"step":"refused-with-switch-off"}'
 # $! is the function's subshell; the phone itself runs under it.
 pkill -f -- "--state $RUNTIME/phone .*hold" || true
