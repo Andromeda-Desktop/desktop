@@ -300,8 +300,9 @@ void Surface::frameDone(std::uint32_t callbackMs) {
   m_lastFrameAt = now;
 
   const bool activeAnimations = m_animationManager != nullptr && m_animationManager->hasActive();
-  const bool runFrameTick = m_frameCallbackShouldTick || m_frameTickPending || activeAnimations;
+  const bool runFrameTick = ticks() && (m_frameCallbackShouldTick || m_frameTickPending || activeAnimations);
   m_frameCallbackShouldTick = false;
+  m_frameTickPending = m_frameTickPending && ticks();
 
   const bool invalidated =
       m_sceneRoot != nullptr && (m_sceneRoot->paintDirty() || m_sceneRoot->layoutDirty());
@@ -369,6 +370,10 @@ void Surface::setPresence(SurfacePresence presence) {
     return;
   }
   m_presence = presence;
+  if (ticks()) {
+    // Animations and frame-tick widgets held while not shown resume with one tick.
+    requestFrameTick();
+  }
   if (m_presenceChangedCallback) {
     m_presenceChangedCallback(presence);
   }
@@ -972,7 +977,7 @@ void Surface::requestRedraw() {
 }
 
 void Surface::requestFrameTick() {
-  if (!m_running || !m_configured) {
+  if (!m_running || !m_configured || !ticks()) {
     return;
   }
 
@@ -1071,9 +1076,10 @@ void Surface::render() {
   if (!presented && frameCallbackPending()) {
     // Nothing changed: keep the current buffer. Commit the callback only when a tick needs it; otherwise the
     // compositor would run an output frame for nothing.
-    const bool needsTick = m_frameCallbackShouldTick
-        || m_frameTickPending
-        || (m_animationManager != nullptr && m_animationManager->hasActive());
+    const bool needsTick = ticks()
+        && (m_frameCallbackShouldTick
+            || m_frameTickPending
+            || (m_animationManager != nullptr && m_animationManager->hasActive()));
     if (needsTick || callbackInFlight) {
       commitNative();
     } else {
@@ -1122,7 +1128,7 @@ void Surface::requestFrame() {
   }
 
   const bool activeAnimations = m_animationManager != nullptr && m_animationManager->hasActive();
-  m_frameCallbackShouldTick = m_nextFrameCallbackShouldTick || activeAnimations;
+  m_frameCallbackShouldTick = ticks() && (m_nextFrameCallbackShouldTick || activeAnimations);
   m_nextFrameCallbackShouldTick = false;
 
   requestFrameCallback();
@@ -1293,7 +1299,7 @@ void Surface::queueRenderIfNeeded() {
   const bool animating = m_animationManager != nullptr && m_animationManager->hasActive();
   if (m_redrawRequested || invalidated) {
     queueRender();
-  } else if (animating) {
+  } else if (animating && ticks()) {
     continueAnimationFrameLoop();
   }
 }

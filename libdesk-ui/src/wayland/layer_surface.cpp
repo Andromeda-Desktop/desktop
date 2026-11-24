@@ -105,6 +105,8 @@ bool LayerSurface::initialize(wl_output* output) {
   }
 
   m_connection.registerLayerSurface(*this);
+  // After the role: the compositor looks up presence through the layer role.
+  (void)dsk();
 
   zwlr_layer_surface_v1_set_anchor(m_layerSurface, m_config.anchor);
   zwlr_layer_surface_v1_set_size(m_layerSurface, m_config.width, m_config.height);

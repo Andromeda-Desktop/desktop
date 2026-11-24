@@ -1228,6 +1228,7 @@ if build_tests
     'blocking_pool',
     'gpu_cache_release',
     'plugin_update_timer',
+    'surface_presence',
     'clipboard_persistence_model',
     'clipboard_service',
     'clipboard_storage_permissions',

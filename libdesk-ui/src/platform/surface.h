@@ -69,7 +69,8 @@ struct SurfaceIdleProfileSnapshot {
 
 // What the user can see of a toplevel window, from the compositor (dsk_surface_v1.presence). Off: the session is
 // locked or every output the window is on is off. Hidden: minimized, on another workspace or a background tab.
-// Occluded: opaque windows cover all of it. Other surfaces, and compositors without the event, stay Shown.
+// Occluded: opaque windows cover all of it. Layer surfaces get only Shown or Off. Other surfaces, and compositors
+// without the event, stay Shown.
 enum class SurfacePresence : std::uint8_t { Shown, Occluded, Hidden, Off };
 
 // A window-system surface that draws a scene: render target, frame pacing, scale and damage. A platform subclass
@@ -105,6 +106,9 @@ public:
   void setScaleChangedCallback(ScaleChangedCallback callback);
   // The one visibility fact for content that only matters on screen (animations, polls, previews).
   [[nodiscard]] SurfacePresence presence() const noexcept { return m_presence; }
+  // Frame ticks (animations, frame-tick widgets, decorative loops) run only while the presence is Shown; content
+  // renders (configure, update, redraw) do not wait for it.
+  [[nodiscard]] bool ticks() const noexcept { return m_presence == SurfacePresence::Shown; }
   // Runs when presence() changes.
   void setPresenceChangedCallback(PresenceChangedCallback callback) { m_presenceChangedCallback = std::move(callback); }
   // Runs once, after the next render that swaps a new buffer.

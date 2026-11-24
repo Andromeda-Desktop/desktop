@@ -181,8 +181,6 @@ bool PluginLayer::initialize(const scripting::PluginLayerConfig& config) {
     m_surface.reset();
     return false;
   }
-  // Presence arrives on the surface's dsk object.
-  (void)m_surface->dsk();
   m_surface->setClickThrough(config.clickThrough);
 
   startScript();
