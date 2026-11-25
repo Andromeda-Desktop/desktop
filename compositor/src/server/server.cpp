@@ -675,7 +675,9 @@ namespace andromeda {
     promptLayerShellAccess();
   }
 
-  void Server::requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode, InputPermissionKind kind) {
+  void Server::requestInputCapture(
+      uint64_t id, std::string_view name, uint32_t persistMode, uint32_t capabilities, InputPermissionKind kind
+  ) {
     if (m_stopping
         || m_sessionLock != nullptr
         || sessionLocked()
@@ -696,7 +698,7 @@ namespace andromeda {
       label = "Unknown application";
     }
     if (kind == InputPermissionKind::Emulate) {
-      m_quitConfirm->showRemoteInput(label, persistMode);
+      m_quitConfirm->showRemoteInput(label, persistMode, (capabilities & 4U) != 0);
     } else {
       m_quitConfirm->showInputCapture(label, persistMode);
     }
@@ -805,6 +807,9 @@ namespace andromeda {
       if (std::holds_alternative<ConsentCapture>(self->m_consent)) {
         self->dismissConfirmation();
       }
+    }
+    if (self->m_inputCapture != nullptr) {
+      self->m_inputCapture->refreshBlocked();
     }
   }
 
@@ -2206,11 +2211,10 @@ namespace andromeda {
 
     m_globalShortcutService = std::make_unique<GlobalShortcutService>(*this);
     m_inputCapture = std::make_unique<InputCapture>(*this);
-    m_inputCapture->setAuthorize(
-        [this](uint64_t id, std::string_view name, uint32_t persistMode, InputPermissionKind kind) {
-          requestInputCapture(id, name, persistMode, kind);
-        }
-    );
+    m_inputCapture->setAuthorize([this](
+                                     uint64_t id, std::string_view name, uint32_t persistMode, uint32_t capabilities,
+                                     InputPermissionKind kind
+                                 ) { requestInputCapture(id, name, persistMode, capabilities, kind); });
     m_inputCapture->setAuthorizationCancelled([this](uint64_t id) { cancelInputCapture(id); });
     m_inputCapture->setActiveChanged([this](bool active) { inputCaptureStateChanged(active); });
     for (const auto& keyboard : m_keyboards) {

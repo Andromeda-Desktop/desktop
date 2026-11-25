@@ -18,8 +18,9 @@ namespace andromeda {
   // permission-scoped sessions and EI FDs.
   class InputCapture {
   public:
-    // (session id, application label, persist mode, kind): the user answers through authorizeSession.
-    using AuthorizationRequest = std::function<void(uint64_t, std::string_view, uint32_t, InputPermissionKind)>;
+    // (session id, application label, persist mode, capabilities, kind): the user answers through authorizeSession.
+    using AuthorizationRequest =
+        std::function<void(uint64_t, std::string_view, uint32_t, uint32_t, InputPermissionKind)>;
     using AuthorizationCancelled = std::function<void(uint64_t)>;
     using ActiveChanged = std::function<void(bool)>;
 
@@ -44,6 +45,9 @@ namespace andromeda {
     // Compositor escape, locking, and session deactivation stop capture and
     // disarm barriers. A client must explicitly enable its session again.
     void suspend();
+    // Tells started remote input sessions when emulated input becomes blocked or unblocked. Call after any input of
+    // the block (stopping, session lock, lock state, session activity) changes.
+    void refreshBlocked();
 
     // True consumes the event before any local client or compositor binding.
     // canActivate prevents a barrier from taking an existing interactive grab.

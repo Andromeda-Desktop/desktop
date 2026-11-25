@@ -683,7 +683,9 @@ namespace andromeda {
     friend class EisInput;
     void requestInputEmulation(uint64_t id, std::string_view name);
     void cancelInputEmulation(uint64_t id);
-    void requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode, InputPermissionKind kind);
+    void requestInputCapture(
+        uint64_t id, std::string_view name, uint32_t persistMode, uint32_t capabilities, InputPermissionKind kind
+    );
     void cancelInputCapture(uint64_t id);
     void inputCaptureStateChanged(bool active);
     static void onSessionActive(wl_listener* listener, void* data);

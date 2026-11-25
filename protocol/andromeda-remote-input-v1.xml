@@ -28,8 +28,10 @@
     <description summary="one permission-scoped input emulation session">
       Request identifiers correlate replies. Status values are zero for success,
       one for user cancellation, and two for failure. A session may start once.
-      Capabilities: bit 0 keyboard, bit 1 pointer. Destroying the object, a
-      revoked grant or a closed event ends every EIS connection of the session.
+      Capabilities: bit 0 keyboard, bit 1 pointer, bit 2 clipboard. A start
+      needs keyboard or pointer; clipboard only adds the bridge's clipboard use
+      to the consent. Destroying the object, a revoked grant or a closed event
+      ends every EIS connection of the session.
     </description>
     <request name="destroy" type="destructor"/>
     <request name="set_persistence">
@@ -79,6 +81,16 @@
     </event>
     <event name="closed">
       <description summary="the session ended: revoked, locked policy or compositor exit"/>
+    </event>
+    <event name="paused">
+      <description summary="emulated input is blocked or unblocked">
+        Sent after a successful start whenever the compositor blocks emulated
+        input (screen lock, inactive session) or unblocks it. A session starts
+        unpaused. While paused is one, the bridge client must not start a
+        clipboard transfer or announce a selection for the session; a transfer
+        whose pipe it already handed out may finish.
+      </description>
+      <arg name="paused" type="uint"/>
     </event>
   </interface>
 </protocol>

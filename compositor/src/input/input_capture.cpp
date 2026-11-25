@@ -473,7 +473,10 @@ namespace andromeda {
           return;
         }
         pending = true;
-        owner.authorize(id, *label != '\0' ? label : "unidentified application", persistMode, InputPermissionKind::Capture);
+        owner.authorize(
+            id, *label != '\0' ? label : "unidentified application", persistMode, capabilities,
+            InputPermissionKind::Capture
+        );
       }
 
       void approve(const InputCaptureGrant& grant) {
@@ -546,14 +549,18 @@ namespace andromeda {
           return;
         }
         startRequest = request;
-        capabilities = requested & 3U;
+        // Keyboard, pointer and clipboard (bit 2, the bridge's own data-control use).
+        capabilities = requested & 7U;
         application = label;
         if (const auto grant = owner.restoreGrant(*this, InputPermissionKind::Emulate)) {
           approve(*grant);
           return;
         }
         phase = Phase::Asking;
-        owner.authorize(id, *label != '\0' ? label : "unidentified application", persistMode, InputPermissionKind::Emulate);
+        owner.authorize(
+            id, *label != '\0' ? label : "unidentified application", persistMode, capabilities,
+            InputPermissionKind::Emulate
+        );
       }
 
       void approve(const InputCaptureGrant& grant) {
@@ -573,7 +580,7 @@ namespace andromeda {
       void connect(uint32_t request) const {
         EisInput* eis = owner.server.eisInput();
         const int fd = phase == Phase::Granted && !owner.blocked() && eis != nullptr
-            ? eis->openGrantedClient(id, capabilities)
+            ? eis->openGrantedClient(id, capabilities & 3U)
             : -1;
         if (fd < 0) {
           andromeda_remote_input_session_v1_send_result(resource, request, kFailure);
@@ -655,6 +662,8 @@ namespace andromeda {
     std::vector<wlr_keyboard*> keyboards;
     std::vector<std::unique_ptr<Session>> sessions;
     std::vector<std::unique_ptr<RemoteSession>> remoteSessions;
+    // The block state granted remote sessions last heard through paused.
+    bool pausedSent = false;
     std::vector<wl_resource*> managers;
     InputCapturePermissions permissionStore{InputCapturePermissions::defaultPath()};
     struct Peer {
@@ -1163,6 +1172,18 @@ namespace andromeda {
       state->createPointer();
       if (state->approved && !state->closed) {
         andromeda_input_capture_session_v1_send_zones_changed(state->resource, invalidated);
+      }
+    }
+  }
+
+  void InputCapture::refreshBlocked() {
+    const bool blocked = m_impl->blocked();
+    if (blocked == std::exchange(m_impl->pausedSent, blocked)) {
+      return;
+    }
+    for (const auto& state : m_impl->remoteSessions) {
+      if (state->phase == Impl::RemoteSession::Phase::Granted) {
+        andromeda_remote_input_session_v1_send_paused(state->resource, blocked ? 1 : 0);
       }
     }
   }

@@ -57,9 +57,10 @@ namespace andromeda {
     show(Kind::InputCapture);
   }
 
-  void QuitConfirm::showRemoteInput(std::string_view application, uint32_t persistMode) {
+  void QuitConfirm::showRemoteInput(std::string_view application, uint32_t persistMode, bool clipboard) {
     m_application = application;
     m_inputCapturePersistMode = persistMode;
+    m_remoteClipboard = clipboard;
     show(Kind::RemoteInput);
   }
 
@@ -172,11 +173,11 @@ namespace andromeda {
           )
         : m_kind == Kind::RemoteInput
         ? std::format(
-              "'{}' wants to control your keyboard and pointer.\n"
+              "'{}' wants to control your keyboard and pointer{}.\n"
               "The application label is supplied by the requester.\n\n"
               "{}\n\n"
               "Locking the screen stops control.",
-              m_application, captureChoices
+              m_application, m_remoteClipboard ? ", and to read and set your clipboard" : "", captureChoices
           )
         : m_kind == Kind::InputEmulation
         ? std::format(

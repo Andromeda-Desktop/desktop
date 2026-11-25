@@ -40,6 +40,7 @@ namespace {
   void onStarted(void*, andromeda_remote_input_session_v1*, uint32_t, uint32_t status, uint32_t capabilities) {
     std::println("started status={} capabilities={}", status, capabilities);
   }
+  void onPaused(void*, andromeda_remote_input_session_v1*, uint32_t paused) { std::println("paused {}", paused); }
   void onEisFd(void* data, andromeda_remote_input_session_v1*, uint32_t, int32_t fd) {
     auto& state = *static_cast<State*>(data);
     state.context = ei_new_sender(&state);
@@ -55,7 +56,12 @@ namespace {
   }
   void onClosed(void*, andromeda_remote_input_session_v1*) { std::println("closed"); }
   const andromeda_remote_input_session_v1_listener kSession{
-      .grant = onGrant, .started = onStarted, .eis_fd = onEisFd, .result = onResult, .closed = onClosed
+      .grant = onGrant,
+      .started = onStarted,
+      .eis_fd = onEisFd,
+      .result = onResult,
+      .closed = onClosed,
+      .paused = onPaused
   };
 
   void handleEi(State& state) {

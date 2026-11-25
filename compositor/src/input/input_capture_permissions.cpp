@@ -11,6 +11,10 @@ namespace andromeda {
 
   namespace {
     constexpr size_t kMaxGrants = 128;
+    // A grant holds keyboard or pointer; a remote input grant may add clipboard.
+    constexpr bool validCapabilities(uint64_t capabilities, InputPermissionKind kind) {
+      return (capabilities & 3U) != 0 && capabilities <= (kind == InputPermissionKind::Emulate ? 7U : 3U);
+    }
     constexpr size_t kMaxStoreBytes = 256 * 1024;
     constexpr std::string_view kLockName = ".input-capture-permissions.lock";
 
@@ -19,8 +23,11 @@ namespace andromeda {
           && std::ranges::all_of(value, [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
     }
 
-    bool validRequest(std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer) {
-      if (application.size() > 256 || capabilities == 0 || (capabilities & ~3U) != 0 || persistMode > 2 || peer == 0) {
+    bool validRequest(
+        std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer,
+        InputPermissionKind kind
+    ) {
+      if (application.size() > 256 || !validCapabilities(capabilities, kind) || persistMode > 2 || peer == 0) {
         return false;
       }
       try {
@@ -89,8 +96,7 @@ namespace andromeda {
       if (!hexString(id, 32)
           || !hexString(token, 64)
           || application.size() > 256
-          || capabilities == 0
-          || capabilities > 3
+          || !validCapabilities(capabilities, emulate ? InputPermissionKind::Emulate : InputPermissionKind::Capture)
           || std::ranges::any_of(records, [&](const auto& record) {
                return record.permission.id == id || record.token == token;
              })) {
@@ -144,7 +150,7 @@ namespace andromeda {
   std::optional<InputCaptureGrant> InputCapturePermissions::issue(
       std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer, InputPermissionKind kind
   ) {
-    if (!validRequest(application, capabilities, persistMode, peer) || persistMode == 0) {
+    if (!validRequest(application, capabilities, persistMode, peer, kind) || persistMode == 0) {
       return std::nullopt;
     }
     // Serialize durable credentials across compositor instances. Refresh while
@@ -179,7 +185,7 @@ namespace andromeda {
       std::string_view token, std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer,
       InputPermissionKind kind
   ) {
-    if (!validRequest(application, capabilities, persistMode, peer) || !hexString(token, 64)) {
+    if (!validRequest(application, capabilities, persistMode, peer, kind) || !hexString(token, 64)) {
       return std::nullopt;
     }
     std::optional<private_state::Lock> lock;

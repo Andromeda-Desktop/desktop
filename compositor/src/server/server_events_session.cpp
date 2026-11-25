@@ -148,6 +148,9 @@ namespace andromeda {
 
     m_sessionLock = std::make_unique<SessionLock>(*this, lock);
     m_sessionLock->start();
+    if (m_inputCapture != nullptr) {
+      m_inputCapture->refreshBlocked();
+    }
   }
 
   void Server::activateSessionLock(SessionLock* lock) {
@@ -262,6 +265,9 @@ namespace andromeda {
     if (m_appsBus != nullptr) {
       m_appsBus->setActivity(activityName(next));
     }
+    if (m_inputCapture != nullptr) {
+      m_inputCapture->refreshBlocked();
+    }
     readyForSleepIfLocked();
     if (next == SessionActivity::RestartLocked) {
       m_restartLockEscape = wl_event_loop_add_timer(
@@ -327,6 +333,9 @@ namespace andromeda {
     // A lock client that dies before its surfaces show leaves the lock request standing: lock behind the blank.
     if (abandoned && !sessionLocked()) {
       lockBehindBlank();
+    }
+    if (m_inputCapture != nullptr) {
+      m_inputCapture->refreshBlocked();
     }
     if (!sessionLocked()) {
       wlr_scene_node_set_enabled(&m_lockTree->node, false);

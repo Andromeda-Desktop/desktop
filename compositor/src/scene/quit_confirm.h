@@ -35,7 +35,7 @@ namespace andromeda {
     void show(Kind kind);
     void showInputEmulation(std::string_view application);
     void showInputCapture(std::string_view application, uint32_t persistMode);
-    void showRemoteInput(std::string_view application, uint32_t persistMode);
+    void showRemoteInput(std::string_view application, uint32_t persistMode, bool clipboard);
     void showLayerShell(std::string_view application);
     // One page of "name  key" rows; page is 0-based.
     void showGlobalShortcuts(std::string_view application, std::vector<std::string> rows, size_t page, size_t pages);
@@ -59,6 +59,7 @@ namespace andromeda {
     Kind m_kind = Kind::SessionQuit;
     std::string m_application;
     uint32_t m_inputCapturePersistMode = 0;
+    bool m_remoteClipboard = false;
     std::vector<std::string> m_rows;
     size_t m_page = 0;
     size_t m_pages = 1;

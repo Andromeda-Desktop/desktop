@@ -33,9 +33,12 @@ namespace {
       case Grant::Test: return true;
       case Grant::Greeter: return shellOnly;
       case Grant::Portal:
-        return in(name, {"ext_foreign_toplevel_list_v1", "ext_image_copy_capture_manager_v1",
-                         "ext_output_image_capture_source_manager_v1",
-                         "ext_foreign_toplevel_image_capture_source_manager_v1", "andromeda_remote_input_manager_v1"});
+        return in(
+            name,
+            {"ext_foreign_toplevel_list_v1", "ext_image_copy_capture_manager_v1",
+             "ext_output_image_capture_source_manager_v1", "ext_foreign_toplevel_image_capture_source_manager_v1",
+             "andromeda_remote_input_manager_v1", "zwlr_data_control_manager_v1", "ext_data_control_manager_v1"}
+        );
       case Grant::Link:
         return in(name, {"zwlr_data_control_manager_v1", "ext_data_control_manager_v1", "zwp_virtual_keyboard_manager_v1",
                          "zwlr_virtual_pointer_manager_v1"});

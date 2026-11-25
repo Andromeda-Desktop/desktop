@@ -17,12 +17,13 @@
 #include <unistd.h>
 
 using andromeda::InputCapturePermissions;
+using andromeda::InputPermissionKind;
 
 namespace {
   constexpr std::string_view kId = "11111111111111111111111111111111";
   constexpr std::string_view kToken = "2222222222222222222222222222222222222222222222222222222222222222";
 
-  std::string record(std::string_view id = kId, std::string_view token = kToken, unsigned capabilities = 3) {
+  std::string record(std::string_view id = kId, std::string_view token = kToken, uint64_t capabilities = 3) {
     return std::format(
         R"({{"id":"{}","token":"{}","application":"org.test.Capture","capabilities":{}}})", id, token, capabilities
     );
@@ -142,6 +143,10 @@ ANDROMEDA_TEST(failedScopeUpgradesDoNotConsumeAnOtherwiseValidCredential) {
   InputCapturePermissions permissions(fixture.path);
   CHECK(!permissions.issue("org.test.Capture", 0, 2, 11));
   CHECK(!permissions.issue("org.test.Capture", 4, 2, 11));
+  CHECK(!permissions.issue("org.test.Capture", 9, 2, 11));
+  CHECK(!permissions.issue("org.test.Capture", 5, 2, 11));
+  CHECK(!permissions.issue("org.test.Capture", 9, 2, 11, InputPermissionKind::Emulate));
+  CHECK(permissions.issue("org.test.Remote", 5, 2, 11, InputPermissionKind::Emulate));
   CHECK(!permissions.issue("org.test.Capture", 1, 3, 11));
   CHECK(!permissions.issue("org.test.Capture", 1, 0, 11));
   CHECK(!permissions.issue("org.test.Capture", 1, 2, 0));
@@ -153,6 +158,7 @@ ANDROMEDA_TEST(failedScopeUpgradesDoNotConsumeAnOtherwiseValidCredential) {
   }
   CHECK(!permissions.restore(grant->token, "org.test.Other", 1, 1, 11));
   CHECK(!permissions.restore(grant->token, "org.test.Capture", 3, 1, 11));
+  CHECK(!permissions.restore(grant->token, "org.test.Capture", 5, 1, 11));
   CHECK(!permissions.restore(grant->token, "org.test.Capture", 1, 2, 11));
   CHECK(!permissions.restore(grant->token, "org.test.Capture", 1, 1, 0));
   CHECK(!permissions.restore(std::string(64, 'z'), "org.test.Capture", 1, 1, 11));
@@ -274,6 +280,8 @@ ANDROMEDA_TEST(malformedStoresNeverPartiallyAuthorizeOrGetOverwrittenByNewGrants
       document(record() + "," + record(kId, otherToken)),
       document(record() + "," + record("44444444444444444444444444444444", otherToken, 4)),
       document(record("short-id")),
+      document(record(kId, kToken, 0x100000003)),
+      document(record(kId, kToken, 7)),
   };
   for (const auto& bytes : documents) {
     Fixture fixture;
@@ -332,7 +340,6 @@ int main() { return RUN_TESTS(); }
 // Capture and emulation grants share one store: a token restores only its own kind, also across a reload, and a
 // stored emulation grant never loads as capture.
 ANDROMEDA_TEST(aTokenRestoresOnlyItsOwnKindAcrossReloads) {
-  using andromeda::InputPermissionKind;
   Fixture fixture;
   std::string emulateToken;
   {
