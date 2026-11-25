@@ -372,7 +372,7 @@ void AuthColumn::layout(Renderer& renderer, const AuthPlacement& place, float sw
 
   layoutAccounts(renderer, cx, capY - 16.0F * s, s, row);
 
-  // Hint 12 below the capsule; owner message 24 below the hint line. Both keep their place when empty.
+  // Hint (up to 2 lines) 12 below the capsule; owner message 24 below the hint. Both keep their place when empty.
   const float footLine = Tokens::typeFootnote.line * s;
   const float hintY = capY + capH + 12.0F * s;
   m_hint->setVisible(!m_state.hint.empty());
@@ -382,10 +382,13 @@ void AuthColumn::layout(Renderer& renderer, const AuthPlacement& place, float sw
     m_hint->setColor(m_state.hintError ? kDanger : kLabel2);
     m_hint->setText(m_state.hint);
     m_hint->setMaxWidth(320.0F * s);
+    m_hint->setMaxLines(2);
+    m_hint->setTextAlign(TextAlign::Center);
     m_hint->setEllipsize(TextEllipsize::End);
     m_hint->measure(renderer);
     m_hint->setPosition(snap(cx - m_hint->width() * 0.5F), snap(hintY));
   }
+  const float hintH = m_state.hint.empty() ? footLine : std::max(footLine, m_hint->height());
   m_owner->setVisible(!m_state.ownerMessage.empty());
   if (!m_state.ownerMessage.empty()) {
     m_owner->setFontSize(Tokens::typeFootnote.size * s);
@@ -396,10 +399,10 @@ void AuthColumn::layout(Renderer& renderer, const AuthPlacement& place, float sw
     m_owner->setMaxLines(2);
     m_owner->setTextAlign(TextAlign::Center);
     m_owner->measure(renderer);
-    m_owner->setPosition(snap(cx - m_owner->width() * 0.5F), snap(hintY + footLine + 24.0F * s));
+    m_owner->setPosition(snap(cx - m_owner->width() * 0.5F), snap(hintY + hintH + 24.0F * s));
     // Glance: the sheet grows down to hold the owner message with its 24 bottom padding.
     if (!m_place.sheet.empty()) {
-      m_place.sheet.h = snap(hintY + footLine + 24.0F * s + m_owner->height() + 24.0F * s - m_place.sheet.y);
+      m_place.sheet.h = snap(hintY + hintH + 24.0F * s + m_owner->height() + 24.0F * s - m_place.sheet.y);
     }
   }
 
