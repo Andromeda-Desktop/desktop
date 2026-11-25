@@ -2,7 +2,7 @@
 
 #include "config/atomic_file.h"
 
-#include "security/secure_buffer.h"
+#include "security/secure_key.h"
 
 #include <array>
 #include <cstddef>

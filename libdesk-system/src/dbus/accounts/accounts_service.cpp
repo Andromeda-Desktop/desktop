@@ -4,6 +4,7 @@
 #include "core/log.h"
 #include "dbus/system_bus.h"
 #include "dbus/system_interactive_call.h"
+#include "util/secure_wipe.h"
 
 #include <crypt.h>
 #include <cstdint>
@@ -202,7 +203,7 @@ void AccountsService::createUser(
   const char* hashed = salt != nullptr ? libcrypt().crypt_r(password.c_str(), salt, &data) : nullptr;
   std::free(const_cast<char*>(salt));
   const std::string hash = hashed != nullptr && hashed[0] != '*' ? std::string(hashed) : std::string{};
-  explicit_bzero(&data, sizeof(data));
+  util::secureWipe(&data, sizeof(data));
   if (hash.empty()) {
     done("could not hash the password");
     return;

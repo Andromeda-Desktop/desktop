@@ -1,6 +1,7 @@
 #include "greeter/greetd_client.h"
 
 #include "core/log.h"
+#include "util/secure_wipe.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -10,7 +11,6 @@
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <poll.h>
-#include <sodium.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -226,7 +226,7 @@ bool GreetdClient::sendRequest(const std::string& request, const GreetdRequestTy
   frame.append(request);
   const bool written = writeAll(frame.data(), frame.size());
   // The frame may carry a password.
-  sodium_memzero(frame.data(), frame.size());
+  util::secureWipe(frame);
   if (!written) {
     // A partial stream frame cannot be recovered. Close it so callers fail
     // closed instead of issuing another request on a corrupted connection.
@@ -350,7 +350,7 @@ bool GreetdClient::requestPostAuthData(const std::string& data) {
   }
   body += "\"}";
   const bool sent = sendRequest(body, GreetdRequestType::PostAuthMessageResponse);
-  sodium_memzero(body.data(), body.size());
+  util::secureWipe(body);
   return sent;
 }
 

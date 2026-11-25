@@ -10,6 +10,7 @@
 #include "render/core/texture_manager.h"
 #include "render/scene/input_dispatcher.h"
 #include "render/scene/node.h"
+#include "security/secure_buffer.h"
 #include "shell/auth/auth_clock.h"
 #include "shell/auth/clock_glass_sync.h"
 #include "shell/auth/auth_chrome.h"
@@ -76,7 +77,7 @@ public:
   bool initialize() override { return false; }
   bool initialize(ext_session_lock_v1* lock, wl_output* output, std::int32_t scale);
   void setLockedState(bool locked);
-  void setPromptState(std::string user, const std::string& password, std::string status, bool error, bool authenticating);
+  void setPromptState(std::string user, std::string_view password, std::string status, bool error, bool authenticating);
   void setKeyboardIndicators(bool capsLock, bool hasMultipleLayouts, bool layoutSwitchable, std::string layoutLabel);
   // Auth facts the Andromeda column shows beyond the status line.
   struct AuthExtras {
@@ -335,7 +336,7 @@ private:
   std::function<void(const std::string&)> m_onPasswordChanged;
   bool m_locked = false;
   std::string m_user;
-  std::string m_password;
+  security::SecureBuffer m_password;
   std::string m_status;
   bool m_error = false;
   bool m_authenticating = false;

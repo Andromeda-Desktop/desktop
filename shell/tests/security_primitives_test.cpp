@@ -1,5 +1,5 @@
 #include "security/encrypted_file_store.h"
-#include "security/secure_buffer.h"
+#include "security/secure_key.h"
 #include "util/file_utils.h"
 
 #include <algorithm>

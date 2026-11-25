@@ -21,6 +21,7 @@
 #include "protocols/xdg_dirs.h"
 #include "security/secret_store.h"
 #include "time/time_format.h"
+#include "util/secure_wipe.h"
 
 #include <algorithm>
 #include <cctype>
@@ -31,7 +32,6 @@
 #include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
-#include <sodium.h>
 #include <stop_token>
 #include <thread>
 #include <unistd.h>
@@ -121,12 +121,6 @@ namespace {
   // Whether this process can read the file at path, as libcurl must to load a client certificate or key.
   bool isReadableFile(const std::string& path) { return !path.empty() && ::access(path.c_str(), R_OK) == 0; }
 
-  void wipeString(std::string& value) {
-    if (!value.empty()) {
-      sodium_memzero(value.data(), value.size());
-      value.clear();
-    }
-  }
 } // namespace
 
 struct CalendarService::VdirWorker : std::enable_shared_from_this<CalendarService::VdirWorker> {
@@ -515,7 +509,7 @@ void CalendarService::onConfigReload() {
       ++it;
       continue;
     }
-    wipeString(it->second.accessToken);
+    util::secureWipe(it->second.accessToken);
     it = m_googleSessions.erase(it);
   }
   if (!m_activeConfig.enabled) {
@@ -1173,7 +1167,7 @@ void CalendarService::refreshGoogleToken(
               );
             }
         );
-        wipeString(refreshToken);
+        util::secureWipe(refreshToken);
       }
   );
 }
@@ -1284,7 +1278,7 @@ void CalendarService::saveCalDavAccount(
   }
 
   if (credentialSource == CalendarCredentialSource::File) {
-    wipeString(password);
+    util::secureWipe(password);
     if (passwordFile.empty()
         || !std::filesystem::path(passwordFile).is_absolute()
         || calendar::readCredentialFile(passwordFile).status != calendar::CredentialFileStatus::Success) {
@@ -1315,7 +1309,7 @@ void CalendarService::saveCalDavAccount(
   }
 
   auto newPassword = std::make_shared<security::SecureBuffer>(secureBuffer(password));
-  wipeString(password);
+  util::secureWipe(password);
   m_credentials.lookupPassword(
       accountId,
       [this, accountId, newPassword = std::move(newPassword), persistConfig = std::move(persistConfig),
@@ -1462,7 +1456,7 @@ void CalendarService::storeGoogleTokens(
   security::SecureBuffer refreshToken;
   if (hasRefreshToken) {
     refreshToken = secureBuffer(tokens.refreshToken);
-    wipeString(tokens.refreshToken);
+    util::secureWipe(tokens.refreshToken);
   }
   auto retainAccessToken = [this, accountId, tokens = std::move(tokens),
                             callback = std::move(callback)](security::SecretStoreStatus status) mutable {
@@ -1489,7 +1483,7 @@ void CalendarService::clearGoogleSession(const std::string& accountId) {
   if (it == m_googleSessions.end()) {
     return;
   }
-  wipeString(it->second.accessToken);
+  util::secureWipe(it->second.accessToken);
   m_googleSessions.erase(it);
 }
 

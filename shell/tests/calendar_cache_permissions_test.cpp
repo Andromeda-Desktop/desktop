@@ -1,5 +1,5 @@
 #include "calendar/calendar_cache.h"
-#include "security/secure_buffer.h"
+#include "security/secure_key.h"
 
 #include <array>
 #include <chrono>

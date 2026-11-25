@@ -523,7 +523,7 @@ _noctalia_source_paths = [
   'src/scripting/plugin_bindings.cpp',
   'src/security/encrypted_file_store.cpp',
   'src/security/secret_store.cpp',
-  'src/security/secure_buffer.cpp',
+  'src/security/secure_key.cpp',
   'src/security/storage_key_provider.cpp',
   'src/system/battery_warning_monitor.cpp',
   'src/system/xkb_layout_catalog.cpp',

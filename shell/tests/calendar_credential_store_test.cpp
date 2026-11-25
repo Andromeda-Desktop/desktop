@@ -1,5 +1,6 @@
 #include "calendar/calendar_credential_store.h"
 
+#include "security/secure_key.h"
 #include "tests/test_deferred.h"
 
 #include <algorithm>

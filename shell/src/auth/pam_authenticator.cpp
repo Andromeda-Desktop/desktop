@@ -4,6 +4,7 @@
 #include "core/log.h"
 #include "core/process/process.h"
 #include "i18n/i18n.h"
+#include "security/secure_buffer.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -35,14 +36,6 @@ namespace {
 
   constexpr std::size_t kMaxPamMessageBytes = 4096;
   constexpr std::size_t kMaxPasswordBytes = 64 * 1024;
-
-  void secureClear(std::string& value) {
-    volatile char* ptr = value.empty() ? nullptr : value.data();
-    for (std::size_t i = 0; i < value.size(); ++i) {
-      ptr[i] = '\0';
-    }
-    value.clear();
-  }
 
   struct PamConversationData {
     const char* password = nullptr;
@@ -305,8 +298,10 @@ namespace {
       return PamAuthenticator::Result{.success = false, .message = i18n::tr("auth.pam.user-unavailable")};
     }
 
-    std::string passwordCopy(password);
-    PamConversationData convData{.password = passwordCopy.c_str()};
+    // NUL-terminated for the conversation: the last byte stays zero.
+    security::SecureBuffer passwordCopy(password.size() + 1);
+    std::ranges::copy(password, passwordCopy.bytes().begin());
+    PamConversationData convData{.password = reinterpret_cast<const char*>(passwordCopy.bytes().data())};
     pam_conv conv = {
         .conv = &pamConversation,
         .appdata_ptr = &convData,
@@ -321,7 +316,6 @@ namespace {
       kLog.error(
           "pam_start failed rc={} ({})", startRc, pamh.h != nullptr ? pam().pam_strerror(pamh.h, startRc) : "no handle"
       );
-      secureClear(passwordCopy);
       return PamAuthenticator::Result{.success = false, .message = i18n::tr("auth.pam.start-failed")};
     }
 
@@ -352,7 +346,7 @@ namespace {
       }
     }
 
-    secureClear(passwordCopy);
+    passwordCopy.clear();
 
     if (rc == PAM_SUCCESS) {
       kLog.debug("authentication succeeded for user='{}'", user);
@@ -458,14 +452,13 @@ int PamAuthenticator::runHelperMode(int argc, char* argv[]) {
   if (!readAll(STDIN_FILENO, &len, sizeof(len)) || len > kMaxPasswordBytes) {
     return 2;
   }
-  std::string password(len, '\0');
-  if (len > 0 && !readAll(STDIN_FILENO, password.data(), len)) {
-    secureClear(password);
+  security::SecureBuffer password(static_cast<std::size_t>(len));
+  if (len > 0 && !readAll(STDIN_FILENO, password.bytes().data(), len)) {
     return 2;
   }
 
-  Result result = authenticateDirect(password, service);
-  secureClear(password);
+  Result result = authenticateDirect(password.text(), service);
+  password.clear();
 
   if (!writeResult(STDOUT_FILENO, result)) {
     return 2;

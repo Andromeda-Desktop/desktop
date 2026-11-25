@@ -2,6 +2,7 @@
 
 #include "config/config_types.h"
 #include "security/secret_store.h"
+#include "security/secure_key.h"
 
 #include <cstdint>
 #include <functional>

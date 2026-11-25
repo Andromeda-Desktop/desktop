@@ -113,6 +113,11 @@ RULES = {
                   "andromeda_rt::ipc (AR4)", CPP_DIRS + ("protocol/",), CPP + (".rs",),
                   r"SOL_SOCKET\s*,\s*SO_PEER(CRED|PIDFD)\b|sockopt::Peer(Credentials|Pidfd)\b",
                   ("protocol/ipc_channel.", "system/crates/andromeda-rt/src/ipc.rs")),
+    "secret-wipe": ("secrets are wiped only by util::secureWipe (libdesk-ui util/secure_wipe.h) and held in "
+                    "security::SecureBuffer (libdesk-system security/secure_buffer.h) (AR8 D5); askpass links no libdesk",
+                    CPP_DIRS + ("protocol/",), CPP, r"\b(explicit_bzero|sodium_memzero|memset_s)\s*\(|volatile\s+char\s*\*",
+                    ("libdesk-ui/src/core/sys/sys_linux.cpp", "libdesk-ui/src/core/sys/sys_macos.cpp",
+                     "shell/src/askpass/askpass_main.cpp")),
     "bus-credentials": ("a D-Bus caller is identified by busCaller (libdesk-system dbus/caller.h) or "
                         "andromeda_rt::bus::caller; a pid alone names no caller (AR8 D3); the tray reads a pid for a "
                         "label only", CPP_DIRS + ("protocol/", "system/"), CPP + (".rs",),

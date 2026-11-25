@@ -10,6 +10,7 @@
 #include "render/core/image_file_loader.h"
 #include "ext-data-control-v1-client-protocol.h"
 #include "security/encrypted_file_store.h"
+#include "util/secure_wipe.h"
 #include "util/file_utils.h"
 #include "wayland/primary_selection.h"
 #include "wayland/wayland_connection.h"
@@ -1136,7 +1137,7 @@ std::optional<std::string> ClipboardService::clipboardText() { return m_selectio
 void ClipboardService::setSelectionText(std::optional<std::string> text) {
   if (m_selectionText.has_value()) {
     // May hold a password-hinted secret; do not leave it in freed memory.
-    sodium_memzero(m_selectionText->data(), m_selectionText->size());
+    util::secureWipe(m_selectionText->data(), m_selectionText->size());
   }
   m_selectionText = std::move(text);
 }
@@ -1637,7 +1638,7 @@ void ClipboardService::clearOffers() {
 void ClipboardService::cancelActiveRead() {
   closeFd(m_activeRead.fd);
   if (m_activeRead.sensitive) {
-    sodium_memzero(m_activeRead.buffer.data(), m_activeRead.buffer.size());
+    util::secureWipe(m_activeRead.buffer.data(), m_activeRead.buffer.size());
   }
   m_activeRead.buffer.clear();
   m_activeRead.mimeType.clear();
@@ -1706,7 +1707,7 @@ void ClipboardService::finishRead(bool discard) {
 
   if (!shouldStore) {
     if (sensitive) {
-      sodium_memzero(data.data(), data.size());
+      util::secureWipe(data.data(), data.size());
     }
     // handleSelection cleared the live text without notifying, expecting this
     // read to report the new content.
@@ -1721,7 +1722,7 @@ void ClipboardService::finishRead(bool discard) {
 
   if (sensitive) {
     kLog.debug("keeping clipboard selection out of history: password-hint MIME advertised");
-    sodium_memzero(data.data(), data.size());
+    util::secureWipe(data.data(), data.size());
     notifyChanged();
     return;
   }

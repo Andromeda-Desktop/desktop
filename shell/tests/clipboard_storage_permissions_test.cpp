@@ -1,5 +1,5 @@
 #include "security/secret_store.h"
-#include "security/secure_buffer.h"
+#include "security/secure_key.h"
 #include "security/storage_key_provider.h"
 #include "clipboard/clipboard_service.h"
 #include "tests/test_deferred.h"

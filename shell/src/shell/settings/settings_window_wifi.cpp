@@ -5,6 +5,7 @@
 #include "shell/settings/settings_page_rows.h"
 #include "ui/builders.h"
 #include "ui/style.h"
+#include "util/secure_wipe.h"
 #include "shell/settings/settings_content_bluetooth.h"
 #include "shell/settings/settings_alert.h"
 #include "core/deferred_call.h"
@@ -384,8 +385,8 @@ void SettingsWindow::addUsersContent(float scale) {
 }
 
 void SettingsWindow::clearNewUser() {
-  explicit_bzero(m_newUser.password.data(), m_newUser.password.size());
-  explicit_bzero(m_newUser.verify.data(), m_newUser.verify.size());
+  util::secureWipe(m_newUser.password);
+  util::secureWipe(m_newUser.verify);
   m_newUser = {};
 }
 

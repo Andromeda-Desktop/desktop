@@ -8,6 +8,7 @@
 #include "shell/lockscreen/lock_cards.h"
 #include "shell/lockscreen/lock_fail_delay.h"
 #include "shell/lockscreen/lock_lifecycle.h"
+#include "security/secure_buffer.h"
 
 #include <cstdint>
 #include <functional>
@@ -154,7 +155,6 @@ public:
   static void handleLocked(void* data, ext_session_lock_v1* lock);
   static void handleFinished(void* data, ext_session_lock_v1* lock);
 
-  static void clearSensitiveString(std::string& value);
 
 private:
   struct Instance {
@@ -237,7 +237,7 @@ private:
   std::unique_ptr<FingerprintAuthenticator> m_fingerprint;
   std::unique_ptr<FaceAuthenticator> m_face;
   std::string m_user;
-  std::string m_password;
+  security::SecureBuffer m_password;
   std::string m_status;
   wl_surface* m_pointerSurface = nullptr;
   bool m_statusIsError = false;

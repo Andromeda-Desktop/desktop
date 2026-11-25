@@ -664,7 +664,6 @@ void LockSurface::startRyokuIdleClock() {
 }
 
 LockSurface::~LockSurface() {
-  LockScreen::clearSensitiveString(m_password);
   invalidateSleepFrame();
   m_aliveGuard.reset();
   releaseCaptureTextures();
@@ -797,18 +796,17 @@ void LockSurface::focusPasswordField() {
 }
 
 void LockSurface::setPromptState(
-    std::string user, const std::string& password, std::string status, bool error, bool authenticating
+    std::string user, std::string_view password, std::string status, bool error, bool authenticating
 ) {
   if (m_user == user
-      && m_password == password
+      && m_password.text() == password
       && m_status == status
       && m_error == error
       && m_authenticating == authenticating) {
     return;
   }
   m_user = std::move(user);
-  LockScreen::clearSensitiveString(m_password);
-  m_password = password;
+  m_password = security::SecureBuffer(password);
   m_status = std::move(status);
   m_error = error;
   m_authenticating = authenticating;
@@ -2186,7 +2184,7 @@ void LockSurface::setAuthExtras(const AuthExtras& extras) {
 }
 
 void LockSurface::updateCopy() {
-  m_passwordField->setValue(m_password);
+  m_passwordField->setValue(m_password.text());
   m_passwordField->setEnabled(!m_authenticating);
   if (m_passwordRevealButton != nullptr) {
     m_passwordRevealButton->setEnabled(!m_authenticating);

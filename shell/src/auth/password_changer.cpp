@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "core/sys/sys.h"
 #include "security/secret_store.h"
+#include "util/secure_wipe.h"
 
 #include <algorithm>
 #include <cctype>
@@ -30,15 +31,6 @@ namespace password_change {
     constexpr Logger kLog("password");
     // passwd waits on PAM; pam_faillock adds a delay after a wrong password.
     constexpr int kPromptTimeoutMs = 15000;
-
-    void clear(std::string& s) {
-      volatile char* p = s.data();
-      for (std::size_t i = 0; i < s.size(); ++i) {
-        p[i] = '\0';
-      }
-      s.clear();
-    }
-
 
     std::string lower(std::string s) {
       std::ranges::transform(s, s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -109,13 +101,13 @@ namespace password_change {
           continue;
         }
         if (n <= 0) {
-          clear(line);
+          util::secureWipe(line);
           return false;
         }
         p += n;
         left -= static_cast<std::size_t>(n);
       }
-      clear(line);
+      util::secureWipe(line);
       return true;
     }
 
@@ -273,8 +265,8 @@ namespace password_change {
     } else {
       kLog.info("password not changed: {}", result.wrongCurrent ? "wrong current password" : result.message);
     }
-    clear(current);
-    clear(next);
+    util::secureWipe(current);
+    util::secureWipe(next);
     return result;
   }
 

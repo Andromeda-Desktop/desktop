@@ -4,6 +4,7 @@
 #include "core/process/process.h"
 #include "dbus/system_bus.h"
 #include "i18n/i18n.h"
+#include "util/secure_wipe.h"
 #include "dbus/name_owner_watch.h"
 
 #include <algorithm>
@@ -805,7 +806,7 @@ struct PolkitAgent::Impl {
     line.push_back('\n');
     // A failed send shows up as the helper closing its end, which dispatch() handles.
     conversation->send(line);
-    explicit_bzero(line.data(), line.size());
+    util::secureWipe(line);
     answered = true;
   }
 

@@ -25,7 +25,6 @@
 #include "shell/session/session_action_runner.h"
 #include "shell/wallpaper/wallpaper_geometry.h"
 #include "ui/palette.h"
-#include "util/secure_wipe.h"
 #include "compositors/shell_wayland_connection.h"
 #include "wayland/wayland_seat.h"
 
@@ -314,7 +313,7 @@ bool LockScreen::lock(bool relock) {
   }
 
   (void)m_lifecycle.on(LockLifecycle::Event::Requested);
-  clearSensitiveString(m_password);
+  m_password.clear();
   m_status = i18n::tr("lockscreen.waiting");
   m_statusIsError = false;
   syncInstances();
@@ -412,7 +411,7 @@ void LockScreen::endLock(LockLifecycle::Event event) {
     cancelPendingAfterLocked();
   }
 
-  clearSensitiveString(m_password);
+  m_password.clear();
   m_status.clear();
   m_statusIsError = false;
   m_wayland->stopKeyRepeat();
@@ -680,7 +679,7 @@ void LockScreen::onKeyboardEvent(const KeyboardEvent& event) {
   }
 
   if (cancel) {
-    clearSensitiveString(m_password);
+    m_password.clear();
     m_status = i18n::tr("lockscreen.password-cleared");
     m_statusIsError = false;
     updatePromptOnSurfaces();
@@ -1615,7 +1614,7 @@ void LockScreen::createInstance(const WaylandOutput& output) {
   surface->setLoginBoxServices(m_sessionActions, m_mpris, m_weather, m_httpClient);
   surface->setPhoneServices(m_link);
   surface->setNoticeProvider(m_notices);
-  surface->setPromptState(m_user, m_password, m_status, m_statusIsError, m_authenticating);
+  surface->setPromptState(m_user, m_password.text(), m_status, m_statusIsError, m_authenticating);
   applyIndicatorsToSurface(*surface);
 
   surface->setBlackout(!isInteractiveOutput(output));
@@ -1666,7 +1665,7 @@ void LockScreen::updatePromptOnSurfaces() {
           && (m_configService == nullptr || m_configService->config().lockscreen.fingerprint),
   };
   for (auto& instance : m_instances) {
-    instance.surface->setPromptState(m_user, m_password, m_status, m_statusIsError, m_authenticating);
+    instance.surface->setPromptState(m_user, m_password.text(), m_status, m_statusIsError, m_authenticating);
     instance.surface->setAuthExtras(extras);
     instance.surface->setStatus(m_statusIsland);
     instance.surface->setClockGradient(m_clockGradientFrom, m_clockGradientTo);
@@ -1739,21 +1738,21 @@ void LockScreen::invalidatePendingAuthentication() {
 
 void LockScreen::handlePasswordEdited(const std::string& value) {
   if (m_failDelayTimer.active()) {
-    clearSensitiveString(m_password);
+    m_password.clear();
     updatePromptOnSurfaces();
     return;
   }
   if (m_authenticating) {
-    clearSensitiveString(m_password);
-    m_password = value;
+    m_password.clear();
+    m_password = security::SecureBuffer(std::string_view(value));
     updatePromptOnSurfaces();
     return;
   }
-  if (m_password == value && m_status.empty() && !m_statusIsError) {
+  if (m_password.text() == value && m_status.empty() && !m_statusIsError) {
     return;
   }
-  clearSensitiveString(m_password);
-  m_password = value;
+  m_password.clear();
+  m_password = security::SecureBuffer(std::string_view(value));
   m_status.clear();
   m_statusIsError = false;
   updatePromptOnSurfaces();
@@ -1764,7 +1763,7 @@ void LockScreen::tryAuthenticate() {
     return;
   }
   if (applyFailDelay()) {
-    clearSensitiveString(m_password);
+    m_password.clear();
     updatePromptOnSurfaces();
     return;
   }
@@ -1784,8 +1783,8 @@ void LockScreen::tryAuthenticate() {
     m_wayland->stopKeyRepeat();
   }
 
-  std::string password = m_password;
-  clearSensitiveString(m_password);
+  // Shared: the pool takes copyable work; the last holder wipes it.
+  const auto password = std::make_shared<security::SecureBuffer>(std::move(m_password));
 
   const std::uint64_t generation = ++m_authGeneration;
   m_authenticating = true;
@@ -1801,11 +1800,11 @@ void LockScreen::tryAuthenticate() {
   const std::string pamStartFailure = i18n::tr("auth.pam.start-failed");
   // The thread never touches `this`; the result hops back to the main loop and is dropped if the lock screen is gone.
   const std::weak_ptr<void> guard = m_aliveGuard;
-  BlockingPool::instance().run([this, guard, generation, password = std::move(password), authenticator, pamService, pamLanguage,
+  BlockingPool::instance().run([this, guard, generation, password, authenticator, pamService, pamLanguage,
                pamStartFailure] mutable {
     nameThisThread("dsk-pam");
-    const auto result = authenticator.authenticateCurrentUser(password, pamService, pamLanguage, pamStartFailure);
-    clearSensitiveString(password);
+    const auto result = authenticator.authenticateCurrentUser(password->text(), pamService, pamLanguage, pamStartFailure);
+    password->clear();
     DeferredCall::callLater([this, guard, generation, result] {
       if (!guard.expired()) {
         handleAuthResult(generation, result);
@@ -1942,6 +1941,3 @@ void LockScreen::handleBiometricStatus(const std::string& message, bool isError)
   updatePromptOnSurfaces();
 }
 
-void LockScreen::clearSensitiveString(std::string& value) {
-  util::secureWipe(value);
-}

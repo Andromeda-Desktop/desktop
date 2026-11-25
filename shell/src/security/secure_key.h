@@ -1,5 +1,7 @@
 #pragma once
 
+#include "security/secure_buffer.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -10,31 +12,6 @@ namespace security {
 
   [[nodiscard]] bool initializeSecurityPrimitives();
   [[nodiscard]] bool securityPrimitivesReady();
-
-  class SecureBuffer {
-  public:
-    SecureBuffer() = default;
-    explicit SecureBuffer(std::size_t size);
-    explicit SecureBuffer(std::span<const std::uint8_t> bytes);
-    ~SecureBuffer();
-
-    SecureBuffer(const SecureBuffer&) = delete;
-    SecureBuffer& operator=(const SecureBuffer&) = delete;
-
-    SecureBuffer(SecureBuffer&& other) noexcept;
-    SecureBuffer& operator=(SecureBuffer&& other) noexcept;
-
-    [[nodiscard]] std::span<std::uint8_t> bytes();
-    [[nodiscard]] std::span<const std::uint8_t> bytes() const;
-    [[nodiscard]] std::size_t size() const;
-    [[nodiscard]] bool empty() const;
-
-    void clear();
-
-  private:
-    std::unique_ptr<std::uint8_t[]> m_data;
-    std::size_t m_size = 0;
-  };
 
   class SecureKey {
   public:
