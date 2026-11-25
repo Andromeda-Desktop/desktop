@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -296,7 +297,18 @@ namespace ipc {
     }
     addr.sun_family = AF_UNIX;
     std::memcpy(addr.sun_path, path.c_str(), path.size());
+    // Held until listen: a server that probes while another binds would unlink that server's fresh socket.
+    Fd dirLock;
     if (stale == Stale::Replace) {
+      const std::size_t slash = path.rfind('/');
+      const std::string dir = slash == std::string::npos ? "." : slash == 0 ? "/" : path.substr(0, slash);
+      dirLock = Fd(open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+      int rc = -1;
+      while (dirLock && (rc = flock(dirLock.get(), LOCK_EX)) != 0 && errno == EINTR) {
+      }
+      if (rc != 0) {
+        return {};
+      }
       if (unixPathListens(path)) {
         errno = EADDRINUSE;
         return {};

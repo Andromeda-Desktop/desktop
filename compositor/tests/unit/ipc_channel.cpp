@@ -241,6 +241,61 @@ namespace {
     unlink(path.c_str());
   }
 
+  // Servers that start together on one stale path: exactly one gets it, and the path reaches that one. Without a
+  // lock over probe, unlink and bind, a later server unlinks an earlier one's fresh socket and both report success.
+  ANDROMEDA_TEST(listenUnixReplaceRace) {
+    const std::string path = (std::filesystem::temp_directory_path() / std::format("ipc-race-{}.sock", getpid())).string();
+    constexpr int kServers = 12;
+    for (int round = 0; round < 40; ++round) {
+      unlink(path.c_str());
+      ipc::Fd stale = ipc::listenUnix(path, SOCK_STREAM, 4, 0, ipc::Stale::Keep);
+      CHECK(static_cast<bool>(stale));
+      stale = ipc::Fd();
+      std::array<int, 2> go{};
+      std::array<int, 2> results{};
+      std::array<int, 2> release{};
+      CHECK(pipe(go.data()) == 0 && pipe(results.data()) == 0 && pipe(release.data()) == 0);
+      std::vector<pid_t> children;
+      for (int i = 0; i < kServers; ++i) {
+        const pid_t pid = fork();
+        if (pid == 0) {
+          close(go[1]);
+          close(results[0]);
+          close(release[1]);
+          char byte = 0;
+          (void)!read(go[0], &byte, 1);
+          const ipc::Fd fd = ipc::listenUnix(path, SOCK_STREAM, kServers * 2, 0, ipc::Stale::Replace);
+          const char won = fd ? 1 : 0;
+          (void)!write(results[1], &won, 1);
+          (void)!read(release[0], &byte, 1);
+          _exit(0);
+        }
+        children.push_back(pid);
+      }
+      close(go[0]);
+      close(results[1]);
+      close(release[0]);
+      close(go[1]);
+      int winners = 0;
+      for (int i = 0; i < kServers; ++i) {
+        char won = 0;
+        CHECK(read(results[0], &won, 1) == 1);
+        winners += won;
+      }
+      CHECK_EQ(winners, 1);
+      CHECK(static_cast<bool>(ipc::connectTo(path, in(200ms))));
+      close(release[1]);
+      close(results[0]);
+      for (const pid_t pid : children) {
+        waitpid(pid, nullptr, 0);
+      }
+      if (winners != 1) {
+        break;
+      }
+    }
+    unlink(path.c_str());
+  }
+
   ANDROMEDA_TEST(fdPassing) {
     const auto openFds = [] {
       return std::distance(std::filesystem::directory_iterator("/proc/self/fd"), std::filesystem::directory_iterator{});
