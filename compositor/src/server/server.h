@@ -106,6 +106,8 @@ struct wlr_virtual_pointer_v1;
 
 namespace andromeda {
 
+  enum class InputPermissionKind : uint8_t;
+
   class EventPacer;
   class ScreenActivityRecorder;
   class MainLoopWorker;
@@ -681,7 +683,7 @@ namespace andromeda {
     friend class EisInput;
     void requestInputEmulation(uint64_t id, std::string_view name);
     void cancelInputEmulation(uint64_t id);
-    void requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode);
+    void requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode, InputPermissionKind kind);
     void cancelInputCapture(uint64_t id);
     void inputCaptureStateChanged(bool active);
     static void onSessionActive(wl_listener* listener, void* data);

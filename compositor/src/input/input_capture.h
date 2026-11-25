@@ -13,11 +13,13 @@ namespace andromeda {
 
   class Server;
 
-  // The compositor owns capture permission and event routing. The private
-  // Wayland bridge exposes only permission-scoped sessions and an EI FD.
+  // The compositor owns portal input permission: capture sessions (local input to an EI receiver) and remote
+  // sessions (RemoteDesktop: an EI sender through EisInput). The private Wayland bridges expose only
+  // permission-scoped sessions and EI FDs.
   class InputCapture {
   public:
-    using AuthorizationRequest = std::function<void(uint64_t, std::string_view, uint32_t)>;
+    // (session id, application label, persist mode, kind): the user answers through authorizeSession.
+    using AuthorizationRequest = std::function<void(uint64_t, std::string_view, uint32_t, InputPermissionKind)>;
     using AuthorizationCancelled = std::function<void(uint64_t)>;
     using ActiveChanged = std::function<void(bool)>;
 

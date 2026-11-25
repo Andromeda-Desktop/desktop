@@ -21,6 +21,7 @@ namespace andromeda {
       ScreenCastDynamic,
       InputEmulation,
       InputCapture,
+      RemoteInput,
       GlobalShortcuts,
       LayerShell,
     };
@@ -34,6 +35,7 @@ namespace andromeda {
     void show(Kind kind);
     void showInputEmulation(std::string_view application);
     void showInputCapture(std::string_view application, uint32_t persistMode);
+    void showRemoteInput(std::string_view application, uint32_t persistMode);
     void showLayerShell(std::string_view application);
     // One page of "name  key" rows; page is 0-based.
     void showGlobalShortcuts(std::string_view application, std::vector<std::string> rows, size_t page, size_t pages);
@@ -42,7 +44,8 @@ namespace andromeda {
     [[nodiscard]] Kind kind() const { return m_kind; }
     [[nodiscard]] bool canRemember() const {
       return m_kind == Kind::LayerShell
-          || (m_kind == Kind::InputCapture && (m_inputCapturePersistMode == 1 || m_inputCapturePersistMode == 2));
+          || ((m_kind == Kind::InputCapture || m_kind == Kind::RemoteInput)
+              && (m_inputCapturePersistMode == 1 || m_inputCapturePersistMode == 2));
     }
     void relayout(); // re-render if visible (output add/remove/scale change)
 

@@ -31,6 +31,11 @@ namespace andromeda {
     void setAuthorize(AuthorizationRequest authorize);
     void setAuthorizationCancelled(AuthorizationCancelled cancelled);
     void authorizeClient(uint64_t id, bool allowed);
+    // An EIS connection for a session the user already granted: no authorize step, a seat limited to
+    // `capabilities` (portal types: bit 0 keyboard, bit 1 pointer). Returns an owned fd, or -1 while locked.
+    [[nodiscard]] int openGrantedClient(uint64_t grant, uint32_t capabilities);
+    // Disconnects every client opened for `grant`.
+    void closeGrantedClients(uint64_t grant);
     void applyConfig();
     void updateOutputs();
     void updateModifiers(const wlr_keyboard_modifiers& modifiers);

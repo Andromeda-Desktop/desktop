@@ -68,8 +68,10 @@ namespace andromeda {
     }
     std::vector<Record> records;
     for (const auto& item : data["grants"]) {
+      // A capture grant has 4 keys; an emulation grant adds "kind": "emulate".
+      const bool emulate = item.is_object() && item.size() == 5 && item.contains("kind") && item["kind"] == "emulate";
       if (!item.is_object()
-          || item.size() != 4
+          || (item.size() != 4 && !emulate)
           || !item.contains("id")
           || !item["id"].is_string()
           || !item.contains("token")
@@ -94,7 +96,11 @@ namespace andromeda {
              })) {
         return false;
       }
-      records.push_back({{id, application, static_cast<uint32_t>(capabilities), 2}, token, 0});
+      records.push_back(
+          {{id, application, static_cast<uint32_t>(capabilities), 2,
+            emulate ? InputPermissionKind::Emulate : InputPermissionKind::Capture},
+           token, 0}
+      );
     }
     for (const auto& record : m_records) {
       if (record.permission.persistMode == 1) {
@@ -118,6 +124,9 @@ namespace andromeda {
             {"capabilities", record.permission.capabilities},
             {"token", record.token},
         });
+        if (record.permission.kind == InputPermissionKind::Emulate) {
+          data["grants"].back()["kind"] = "emulate";
+        }
       }
     }
     std::string bytes;
@@ -133,7 +142,7 @@ namespace andromeda {
   }
 
   std::optional<InputCaptureGrant> InputCapturePermissions::issue(
-      std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer
+      std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer, InputPermissionKind kind
   ) {
     if (!validRequest(application, capabilities, persistMode, peer) || persistMode == 0) {
       return std::nullopt;
@@ -157,7 +166,7 @@ namespace andromeda {
     }
     auto records = m_records;
     records.push_back(
-        {{*id, std::string(application), capabilities, persistMode}, *token, persistMode == 1 ? peer : 0}
+        {{*id, std::string(application), capabilities, persistMode, kind}, *token, persistMode == 1 ? peer : 0}
     );
     if (persistMode == 2 && !save(records)) {
       return std::nullopt;
@@ -167,7 +176,8 @@ namespace andromeda {
   }
 
   std::optional<InputCaptureGrant> InputCapturePermissions::restore(
-      std::string_view token, std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer
+      std::string_view token, std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer,
+      InputPermissionKind kind
   ) {
     if (!validRequest(application, capabilities, persistMode, peer) || !hexString(token, 64)) {
       return std::nullopt;
@@ -184,6 +194,7 @@ namespace andromeda {
     }
     const auto found = std::ranges::find(m_records, token, &Record::token);
     if (found == m_records.end()
+        || found->permission.kind != kind
         || found->permission.application != application
         || (capabilities & ~found->permission.capabilities) != 0
         || persistMode > found->permission.persistMode

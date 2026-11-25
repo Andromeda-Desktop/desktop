@@ -328,3 +328,24 @@ ANDROMEDA_TEST(symlinkStoresAndDirectoriesCannotAuthorizeOrReplaceTheirTargets) 
 }
 
 int main() { return RUN_TESTS(); }
+
+// Capture and emulation grants share one store: a token restores only its own kind, also across a reload, and a
+// stored emulation grant never loads as capture.
+ANDROMEDA_TEST(aTokenRestoresOnlyItsOwnKindAcrossReloads) {
+  using andromeda::InputPermissionKind;
+  Fixture fixture;
+  std::string emulateToken;
+  {
+    InputCapturePermissions permissions(fixture.path);
+    const auto emulate = permissions.issue("org.test.Capture", 3, 2, 11, InputPermissionKind::Emulate);
+    const auto capture = permissions.issue("org.test.Capture", 3, 2, 11, InputPermissionKind::Capture);
+    CHECK(emulate && capture);
+    emulateToken = emulate->token;
+    CHECK(!permissions.restore(capture->token, "org.test.Capture", 3, 2, 11, InputPermissionKind::Emulate));
+  }
+  InputCapturePermissions reloaded(fixture.path);
+  CHECK(!reloaded.restore(emulateToken, "org.test.Capture", 3, 2, 11, InputPermissionKind::Capture));
+  const auto list = reloaded.list();
+  CHECK(std::ranges::count(list, InputPermissionKind::Emulate, &andromeda::InputCapturePermission::kind) == 1);
+  CHECK(reloaded.restore(emulateToken, "org.test.Capture", 1, 2, 11, InputPermissionKind::Emulate));
+}

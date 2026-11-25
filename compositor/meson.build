@@ -188,6 +188,24 @@ input_capture_protocol_c = custom_target(
   output: 'andromeda-input-capture-v1-protocol.c',
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
+remote_input_server_h = custom_target(
+  'andromeda-remote-input-v1-server-protocol.h',
+  input: 'protocols/andromeda-remote-input-v1.xml',
+  output: 'andromeda-remote-input-v1-server-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
+remote_input_client_h = custom_target(
+  'andromeda-remote-input-v1-client-protocol.h',
+  input: 'protocols/andromeda-remote-input-v1.xml',
+  output: 'andromeda-remote-input-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+remote_input_protocol_c = custom_target(
+  'andromeda-remote-input-v1-protocol.c',
+  input: 'protocols/andromeda-remote-input-v1.xml',
+  output: 'andromeda-remote-input-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
 
 # andromedafx's vendored layer-shell scene helper needs this server header, so it
 # is generated before the subdir that consumes it.
@@ -1197,6 +1215,8 @@ andromeda_core = static_library(
   core_sources + [
     input_capture_server_h,
     input_capture_protocol_c,
+    remote_input_server_h,
+    remote_input_protocol_c,
     toplevel_drag_server_h,
     toplevel_drag_c,
     xdg_session_server_h,

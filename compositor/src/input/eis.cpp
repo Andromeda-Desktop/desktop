@@ -42,6 +42,21 @@ namespace andromeda {
         EIS_DEVICE_CAP_POINTER, EIS_DEVICE_CAP_POINTER_ABSOLUTE, EIS_DEVICE_CAP_KEYBOARD,
         EIS_DEVICE_CAP_SCROLL,  EIS_DEVICE_CAP_BUTTON,
     };
+    constexpr uint32_t kAllCapabilities = EIS_DEVICE_CAP_POINTER | EIS_DEVICE_CAP_POINTER_ABSOLUTE
+        | EIS_DEVICE_CAP_KEYBOARD | EIS_DEVICE_CAP_SCROLL | EIS_DEVICE_CAP_BUTTON;
+
+    // Portal device types: bit 0 keyboard, bit 1 pointer.
+    uint32_t eisCapabilities(uint32_t portalTypes) {
+      uint32_t result = 0;
+      if ((portalTypes & 1U) != 0) {
+        result |= EIS_DEVICE_CAP_KEYBOARD;
+      }
+      if ((portalTypes & 2U) != 0) {
+        result |= EIS_DEVICE_CAP_POINTER | EIS_DEVICE_CAP_POINTER_ABSOLUTE | EIS_DEVICE_CAP_SCROLL
+            | EIS_DEVICE_CAP_BUTTON;
+      }
+      return result;
+    }
   } // namespace
 
   struct EisInput::Impl {
@@ -167,10 +182,31 @@ namespace andromeda {
       }
     };
 
+    // A context for one granted session: its clients skip the authorize step and see only its capabilities.
+    struct Granted {
+      Impl& owner;
+      uint64_t id = 0;
+      uint32_t capabilities = 0;
+      eis* context = nullptr;
+      wl_event_source* source = nullptr;
+
+      ~Granted() {
+        if (source != nullptr) {
+          wl_event_source_remove(source);
+        }
+        if (context != nullptr) {
+          eis_unref(context);
+        }
+      }
+    };
+
     struct Client {
       uint64_t id = 0;
       eis_client* handle = nullptr;
       eis_seat* seat = nullptr;
+      // Null for a client of the Xwayland socket, which needs the user's approval.
+      const Granted* grant = nullptr;
+      uint32_t allowed = kAllCapabilities;
       bool approved = false;
       uint32_t capabilities = 0;
       std::vector<std::unique_ptr<Device>> devices;
@@ -204,6 +240,7 @@ namespace andromeda {
     AuthorizationRequest authorize;
     AuthorizationCancelled cancelled;
     std::vector<std::unique_ptr<Client>> clients;
+    std::vector<std::unique_ptr<Granted>> granted;
 
     Impl(EisInput& owner, Server& server) : owner(owner), server(server) {}
     ~Impl() {
@@ -215,6 +252,7 @@ namespace andromeda {
         wl_event_source_remove(updateSource);
       }
       clients.clear();
+      granted.clear();
       socket.reset();
       if (context != nullptr) {
         eis_unref(context);
@@ -240,7 +278,8 @@ namespace andromeda {
       eventSource = wl_event_loop_add_fd(
           wl_display_get_event_loop(server.display()), eis_get_fd(context), WL_EVENT_READABLE,
           [](int, uint32_t, void* data) -> int {
-            static_cast<Impl*>(data)->dispatch();
+            auto* self = static_cast<Impl*>(data);
+            self->dispatch(self->context, nullptr);
             return 0;
           },
           this
@@ -252,24 +291,69 @@ namespace andromeda {
       }
     }
 
-    void requestClient(eis_client* handle) {
+    void requestClient(eis_client* handle, const Granted* grant) {
       const char* name = eis_client_get_name(handle);
       if (locked
           || server.sessionLocked()
           || !eis_client_is_sender(handle)
-          || name == nullptr
-          || *name == '\0'
-          || !authorize) {
+          || (grant == nullptr && (name == nullptr || *name == '\0' || !authorize))) {
         eis_client_disconnect(handle);
         return;
       }
       auto client = std::make_unique<Client>();
       client->id = ++nextId;
       client->handle = eis_client_ref(handle);
+      client->grant = grant;
+      client->allowed = grant != nullptr ? grant->capabilities : kAllCapabilities;
       eis_client_set_user_data(handle, client.get());
       const uint64_t id = client->id;
       clients.push_back(std::move(client));
-      authorize(id, name);
+      if (grant != nullptr) {
+        approve(id, true);
+      } else {
+        authorize(id, name);
+      }
+    }
+
+    int openGranted(uint64_t id, uint32_t portalTypes) {
+      const uint32_t capabilities = eisCapabilities(portalTypes);
+      if (locked || server.sessionLocked() || capabilities == 0) {
+        return -1;
+      }
+      auto found = std::ranges::find_if(granted, [id](const auto& entry) { return entry->id == id; });
+      if (found == granted.end()) {
+        auto entry = std::make_unique<Granted>(*this, id, capabilities);
+        entry->context = eis_new(entry.get());
+        if (entry->context == nullptr || eis_setup_backend_fd(entry->context) != 0) {
+          return -1;
+        }
+        entry->source = wl_event_loop_add_fd(
+            wl_display_get_event_loop(server.display()), eis_get_fd(entry->context), WL_EVENT_READABLE,
+            [](int, uint32_t, void* data) -> int {
+              auto* grant = static_cast<Granted*>(data);
+              grant->owner.dispatch(grant->context, grant);
+              return 0;
+            },
+            entry.get()
+        );
+        if (entry->source == nullptr) {
+          return -1;
+        }
+        found = granted.insert(granted.end(), std::move(entry));
+      } else if ((*found)->capabilities != capabilities) {
+        return -1;
+      }
+      return eis_backend_fd_add_client((*found)->context);
+    }
+
+    void closeGranted(uint64_t id) {
+      const auto found = std::ranges::find_if(granted, [id](const auto& entry) { return entry->id == id; });
+      if (found == granted.end()) {
+        return;
+      }
+      const Granted* grant = found->get();
+      std::erase_if(clients, [grant](const auto& client) { return client->grant == grant; });
+      granted.erase(found);
     }
 
     void approve(uint64_t id, bool allowed) {
@@ -287,7 +371,9 @@ namespace andromeda {
       client.seat = eis_client_new_seat(client.handle, "Andromeda desktop");
       eis_seat_set_user_data(client.seat, &client);
       for (const auto capability : kCapabilities) {
-        eis_seat_configure_capability(client.seat, capability);
+        if ((client.allowed & capability) != 0) {
+          eis_seat_configure_capability(client.seat, capability);
+        }
       }
       eis_seat_add(client.seat);
     }
@@ -434,22 +520,22 @@ namespace andromeda {
       );
     }
 
-    void dispatch() {
-      eis_dispatch(context);
-      while (eis_event* event = eis_get_event(context)) {
-        handleEvent(event);
+    void dispatch(eis* source, const Granted* grant) {
+      eis_dispatch(source);
+      while (eis_event* event = eis_get_event(source)) {
+        handleEvent(event, grant);
         eis_event_unref(event);
       }
     }
 
-    void handleEvent(eis_event* event) {
+    void handleEvent(eis_event* event, const Granted* grant) {
       const auto type = eis_event_get_type(event);
       eis_client* handle = eis_event_get_client(event);
       if (handle == nullptr) {
         return;
       }
       if (type == EIS_EVENT_CLIENT_CONNECT) {
-        requestClient(handle);
+        requestClient(handle, grant);
         return;
       }
       auto* client = static_cast<Client*>(eis_client_get_user_data(handle));
@@ -622,6 +708,10 @@ namespace andromeda {
     m_impl->cancelled = std::move(cancelled);
   }
   void EisInput::authorizeClient(uint64_t id, bool allowed) { m_impl->approve(id, allowed); }
+  int EisInput::openGrantedClient(uint64_t grant, uint32_t capabilities) {
+    return m_impl->openGranted(grant, capabilities);
+  }
+  void EisInput::closeGrantedClients(uint64_t grant) { m_impl->closeGranted(grant); }
   void EisInput::applyConfig() { m_impl->scheduleUpdate(true, false); }
   void EisInput::updateOutputs() { m_impl->scheduleUpdate(false, true); }
   void EisInput::updateModifiers(const wlr_keyboard_modifiers& modifiers) {

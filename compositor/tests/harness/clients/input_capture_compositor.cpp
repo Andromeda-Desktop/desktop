@@ -4,6 +4,7 @@
 #include "input/cursor.h"
 #include "input/input_capture.h"
 #include "scene/quit_confirm.h"
+#include "server/client_trust.h"
 #include "server/server.h"
 #include "wlr.h"
 
@@ -22,6 +23,7 @@ extern "C" {
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unistd.h>
 
 namespace {
@@ -189,9 +191,16 @@ namespace {
 } // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 2) {
-    std::println(stderr, "usage: input-capture-compositor CONFIG");
+  if (argc < 2 || argc % 2 != 0) {
+    std::println(stderr, "usage: input-capture-compositor CONFIG [--trust-binary PATH]...");
     return 2;
+  }
+  for (int i = 2; i + 1 < argc; i += 2) {
+    if (std::string_view(argv[i]) != "--trust-binary") {
+      std::println(stderr, "unknown option {}", argv[i]);
+      return 2;
+    }
+    andromeda::addTestBinary(argv[i + 1]);
   }
   setvbuf(stdout, nullptr, _IOLBF, 0);
   try {

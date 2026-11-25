@@ -23,6 +23,7 @@ namespace andromeda {
       kInjectInput = 1U << 7,
       kInputCapture = 1U << 8,
       kOutputControl = 1U << 9,
+      kRemoteInput = 1U << 10, // RemoteDesktop sessions; the compositor asks the user for each app
     };
 
     struct Privileged {
@@ -30,7 +31,7 @@ namespace andromeda {
       uint16_t kind;
     };
 
-    constexpr std::array<Privileged, 18> kPrivileged{{
+    constexpr std::array<Privileged, 19> kPrivileged{{
         {"dsk_shell_v1", kShell},
         {"dsk_settings_manager_v1", kShell},
         {"ext_session_lock_manager_v1", kLock},
@@ -45,13 +46,14 @@ namespace andromeda {
         {"zwp_virtual_keyboard_manager_v1", kInjectInput},
         {"zwlr_virtual_pointer_manager_v1", kInjectInput},
         {"andromeda_input_capture_manager_v1", kInputCapture},
+        {"andromeda_remote_input_manager_v1", kRemoteInput},
         {"dsk_output_manager_v1", kOutputControl},
         {"zwlr_output_manager_v1", kOutputControl},
         {"zwlr_gamma_control_manager_v1", kOutputControl},
         {"zwlr_output_power_manager_v1", kOutputControl},
     }};
 
-    constexpr uint16_t kAll = (1U << 10) - 1;
+    constexpr uint16_t kAll = (1U << 11) - 1;
 
     constexpr uint16_t kindsOf(Grant grant) {
       switch (grant) {
@@ -59,8 +61,8 @@ namespace andromeda {
         case Grant::Test: return kAll;
         // The login screen reads appearance and shows itself; nothing that sees or drives the session.
         case Grant::Greeter: return kShell | kLock;
-        // The portal lists windows and outputs and captures the one the user chose for the asking app.
-        case Grant::Portal: return kWindowList | kCapture;
+        // The portal lists windows and outputs, captures the one the user chose, and bridges RemoteDesktop.
+        case Grant::Portal: return kWindowList | kCapture | kRemoteInput;
         // Link syncs the clipboard with the phone and lets the phone drive the pointer and keyboard.
         case Grant::Link: return kClipboard | kInjectInput;
         // A tool the user granted: everything but the shell's own protocols.

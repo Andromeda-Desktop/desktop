@@ -57,6 +57,12 @@ namespace andromeda {
     show(Kind::InputCapture);
   }
 
+  void QuitConfirm::showRemoteInput(std::string_view application, uint32_t persistMode) {
+    m_application = application;
+    m_inputCapturePersistMode = persistMode;
+    show(Kind::RemoteInput);
+  }
+
   void QuitConfirm::showLayerShell(std::string_view application) {
     m_application = application;
     show(Kind::LayerShell);
@@ -123,12 +129,15 @@ namespace andromeda {
 
     const std::string_view heading = m_kind == Kind::GlobalShortcuts ? "Allow global shortcuts?"
         : m_kind == Kind::InputCapture                            ? "Allow input capture?"
+        : m_kind == Kind::RemoteInput                             ? "Allow remote control?"
         : m_kind == Kind::InputEmulation                          ? "Allow desktop control?"
         : m_kind == Kind::LayerShell                              ? "Allow screen overlay?"
         : m_kind == Kind::SessionQuit                             ? "Quit Andromeda?"
                                                                   : "Allow screencast target changes?";
-    std::string_view captureChoices = "Enter allows this capture session.\n"
-                                      "Any other key or click denies it.";
+    std::string_view captureChoices = m_kind == Kind::RemoteInput ? "Enter allows this control session.\n"
+                                                                    "Any other key or click denies it."
+                                                                  : "Enter allows this capture session.\n"
+                                                                    "Any other key or click denies it.";
     if (m_inputCapturePersistMode == 1) {
       captureChoices = "Enter allows once.\n"
                        "R remembers approval while the application runs.\n"
@@ -161,6 +170,14 @@ namespace andromeda {
               "Press Ctrl+Alt+Escape to stop capture and restore local control.",
               m_application, captureChoices
           )
+        : m_kind == Kind::RemoteInput
+        ? std::format(
+              "'{}' wants to control your keyboard and pointer.\n"
+              "The application label is supplied by the requester.\n\n"
+              "{}\n\n"
+              "Locking the screen stops control.",
+              m_application, captureChoices
+          )
         : m_kind == Kind::InputEmulation
         ? std::format(
               "An X11 application claiming to be '{}' wants to control your pointer and keyboard.\n"
@@ -182,7 +199,9 @@ namespace andromeda {
         std::format("<span size='14pt' weight='bold' foreground='{}'>{}</span>", headingColor, heading);
     markup += std::format(
         "{}<span foreground='{}'>{}</span>",
-        m_kind == Kind::InputCapture || m_kind == Kind::GlobalShortcuts ? "\n\n" : "\n", textColor,
+        m_kind == Kind::InputCapture || m_kind == Kind::RemoteInput || m_kind == Kind::GlobalShortcuts ? "\n\n"
+                                                                                                         : "\n",
+        textColor,
         escapeMarkup(detail)
     );
     TextBufferResult rendered = renderTextBuffer({

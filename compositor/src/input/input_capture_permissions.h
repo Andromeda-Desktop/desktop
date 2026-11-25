@@ -9,11 +9,15 @@
 
 namespace andromeda {
 
+  // Capture sends local input to the application; Emulate lets it inject input (RemoteDesktop).
+  enum class InputPermissionKind : uint8_t { Capture, Emulate };
+
   struct InputCapturePermission {
     std::string id;
     std::string application;
     uint32_t capabilities = 0;
     uint32_t persistMode = 0;
+    InputPermissionKind kind = InputPermissionKind::Capture;
   };
 
   struct InputCaptureGrant {
@@ -29,10 +33,14 @@ namespace andromeda {
     explicit InputCapturePermissions(std::filesystem::path path);
     static std::filesystem::path defaultPath();
 
-    [[nodiscard]] std::optional<InputCaptureGrant>
-    issue(std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer);
+    // A token restores only a grant of the same kind and application, for a subset of its capabilities.
+    [[nodiscard]] std::optional<InputCaptureGrant> issue(
+        std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer,
+        InputPermissionKind kind = InputPermissionKind::Capture
+    );
     [[nodiscard]] std::optional<InputCaptureGrant> restore(
-        std::string_view token, std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer
+        std::string_view token, std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer,
+        InputPermissionKind kind = InputPermissionKind::Capture
     );
     [[nodiscard]] std::vector<InputCapturePermission> list();
     [[nodiscard]] bool revoke(std::string_view id);

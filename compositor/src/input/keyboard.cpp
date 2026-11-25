@@ -348,7 +348,9 @@ namespace andromeda {
     uint32_t modifiers = m_server->keyboardModifiers(true);
     if (QuitConfirm* confirm = m_server->quitConfirm();
         confirm != nullptr && confirm->visible() && m_virtual
-        && (confirm->kind() == QuitConfirm::Kind::InputCapture || confirm->kind() == QuitConfirm::Kind::GlobalShortcuts)) {
+        && (confirm->kind() == QuitConfirm::Kind::InputCapture
+            || confirm->kind() == QuitConfirm::Kind::RemoteInput
+            || confirm->kind() == QuitConfirm::Kind::GlobalShortcuts)) {
       if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         m_consumedKeycodes.insert(event->keycode);
       } else {
@@ -577,7 +579,8 @@ namespace andromeda {
               m_server->requestSessionExit();
             } else if (confirm->kind() == QuitConfirm::Kind::InputEmulation) {
               m_server->confirmInputEmulation();
-            } else if (confirm->kind() == QuitConfirm::Kind::InputCapture) {
+            } else if (confirm->kind() == QuitConfirm::Kind::InputCapture
+                       || confirm->kind() == QuitConfirm::Kind::RemoteInput) {
               m_server->confirmInputCapture(remember);
             } else if (confirm->kind() == QuitConfirm::Kind::GlobalShortcuts) {
               m_server->globalShortcuts()->approvalEnter();

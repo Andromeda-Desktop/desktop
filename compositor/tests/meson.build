@@ -711,10 +711,16 @@ input_capture_client = executable(
   ['harness/clients/input_capture_client.cpp', input_capture_client_h, input_capture_protocol_c],
   dependencies: [wayland_client_dep, dependency('libei-1.0', version: '>=1.3')],
 )
+remote_input_client = executable(
+  'remote-input-client',
+  ['harness/clients/remote_input_client.cpp', remote_input_client_h, remote_input_protocol_c],
+  dependencies: [wayland_client_dep, dependency('libei-1.0', version: '>=1.3')],
+)
 
 harness_client_targets = [
   input_capture_compositor,
   input_capture_client,
+  remote_input_client,
   color_feedback_client,
   pixel_probe,
   capture_client,

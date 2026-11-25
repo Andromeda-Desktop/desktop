@@ -75,7 +75,7 @@ done
 mkfifo "$RUNTIME/physical.fifo"
 exec {PHYSICAL_FD}<> "$RUNTIME/physical.fifo"
 WAYLAND_DISPLAY=input-capture-isolated-parent WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=1 \
-  "$COMPOSITOR" "$RUNTIME/config.toml" <&"$PHYSICAL_FD" > "$RUNTIME/compositor.log" 2>&1 &
+  "$COMPOSITOR" "$RUNTIME/config.toml" --trust-binary "$BUILD/" --trust-binary "$PORTAL_BUILD/" <&"$PHYSICAL_FD" > "$RUNTIME/compositor.log" 2>&1 &
 COMPOSITOR_PID=$!
 PIDS+=("$COMPOSITOR_PID")
 

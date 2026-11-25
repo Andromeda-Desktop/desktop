@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "input/cursor.h"
+#include "input/eis.h"
 #include "input/input_capture_geometry.h"
 #include "output/output.h"
 #include "server/server.h"
@@ -17,6 +18,7 @@
 #include <string>
 #include <tuple>
 #include <andromeda-input-capture-v1-server-protocol.h>
+#include <andromeda-remote-input-v1-server-protocol.h>
 #include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -466,28 +468,12 @@ namespace andromeda {
         startRequest = request;
         capabilities = requested & 3U;
         application = label;
-        wl_client* client = wl_resource_get_client(resource);
-        permissionPeer = owner.permissionPeer(client, "");
-        if (!restoreToken.empty()) {
-          const uint64_t scoped = owner.permissionPeer(client, applicationInstance, false);
-          const bool newScope = persistMode == 1 && scoped == 0;
-          const uint64_t restorePeer = persistMode == 1 ? owner.permissionPeer(client, applicationInstance)
-              : persistMode == 0 && scoped != 0         ? scoped
-                                                        : permissionPeer;
-          const auto grant =
-              owner.permissionStore.restore(restoreToken, application, capabilities, persistMode, restorePeer);
-          restoreToken.clear();
-          if (grant) {
-            permissionPeer = restorePeer;
-            approve(*grant);
-            return;
-          }
-          if (newScope) {
-            owner.forgetPermissionScope(client, applicationInstance);
-          }
+        if (const auto grant = owner.restoreGrant(*this, InputPermissionKind::Capture)) {
+          approve(*grant);
+          return;
         }
         pending = true;
-        owner.authorize(id, *label != '\0' ? label : "unidentified application", persistMode);
+        owner.authorize(id, *label != '\0' ? label : "unidentified application", persistMode, InputPermissionKind::Capture);
       }
 
       void approve(const InputCaptureGrant& grant) {
@@ -517,8 +503,147 @@ namespace andromeda {
       }
     };
 
+    // One RemoteDesktop session: the same consent and store as capture, then EIS sender connections.
+    struct RemoteSession {
+      enum class Phase : uint8_t { Idle, Asking, Granted, Closed };
+
+      Impl& owner;
+      wl_resource* resource = nullptr;
+      uint64_t id = 0;
+      uint32_t startRequest = 0;
+      uint32_t capabilities = 0;
+      uint32_t persistMode = 0;
+      uint64_t permissionPeer = 0;
+      std::string application;
+      std::string applicationInstance;
+      std::string restoreToken;
+      std::string grantId;
+      Phase phase = Phase::Idle;
+
+      explicit RemoteSession(Impl& owner) : owner(owner) {}
+
+      ~RemoteSession() {
+        if (phase == Phase::Asking && owner.cancelled) {
+          owner.cancelled(id);
+        }
+        closeClients();
+      }
+
+      void closeClients() const {
+        if (EisInput* eis = owner.server.eisInput(); eis != nullptr) {
+          eis->closeGrantedClients(id);
+        }
+      }
+
+      void start(uint32_t request, const char* label, uint32_t requested) {
+        if (phase != Phase::Idle
+            || owner.blocked()
+            || !owner.authorize
+            || label == nullptr
+            || std::char_traits<char>::length(label) > 256
+            || (requested & 3U) == 0) {
+          andromeda_remote_input_session_v1_send_started(resource, request, kFailure, 0);
+          return;
+        }
+        startRequest = request;
+        capabilities = requested & 3U;
+        application = label;
+        if (const auto grant = owner.restoreGrant(*this, InputPermissionKind::Emulate)) {
+          approve(*grant);
+          return;
+        }
+        phase = Phase::Asking;
+        owner.authorize(id, *label != '\0' ? label : "unidentified application", persistMode, InputPermissionKind::Emulate);
+      }
+
+      void approve(const InputCaptureGrant& grant) {
+        phase = Phase::Granted;
+        grantId = grant.id;
+        if (grant.persistMode != 0) {
+          andromeda_remote_input_session_v1_send_grant(resource, startRequest, grant.persistMode, grant.token.c_str());
+        }
+        andromeda_remote_input_session_v1_send_started(resource, startRequest, kSuccess, capabilities);
+      }
+
+      void answer(uint32_t status) {
+        phase = Phase::Closed;
+        andromeda_remote_input_session_v1_send_started(resource, startRequest, status, 0);
+      }
+
+      void connect(uint32_t request) const {
+        EisInput* eis = owner.server.eisInput();
+        const int fd = phase == Phase::Granted && !owner.blocked() && eis != nullptr
+            ? eis->openGrantedClient(id, capabilities)
+            : -1;
+        if (fd < 0) {
+          andromeda_remote_input_session_v1_send_result(resource, request, kFailure);
+          return;
+        }
+        andromeda_remote_input_session_v1_send_eis_fd(resource, request, fd);
+        ::close(fd);
+      }
+
+      void close() {
+        if (phase == Phase::Closed) {
+          return;
+        }
+        if (phase == Phase::Asking) {
+          if (owner.cancelled) {
+            owner.cancelled(id);
+          }
+          andromeda_remote_input_session_v1_send_started(resource, startRequest, kFailure, 0);
+        }
+        phase = Phase::Closed;
+        closeClients();
+        andromeda_remote_input_session_v1_send_closed(resource);
+      }
+    };
+
+    // Restores a remembered grant for a capture or remote session; sets its permission peer either way.
+    template <class State>
+    std::optional<InputCaptureGrant> restoreGrant(State& state, InputPermissionKind kind) {
+      wl_client* client = wl_resource_get_client(state.resource);
+      state.permissionPeer = permissionPeer(client, "");
+      if (state.restoreToken.empty()) {
+        return std::nullopt;
+      }
+      const uint64_t scoped = permissionPeer(client, state.applicationInstance, false);
+      const bool newScope = state.persistMode == 1 && scoped == 0;
+      const uint64_t restorePeer = state.persistMode == 1 ? permissionPeer(client, state.applicationInstance)
+          : state.persistMode == 0 && scoped != 0         ? scoped
+                                                          : state.permissionPeer;
+      auto grant = permissionStore.restore(
+          state.restoreToken, state.application, state.capabilities, state.persistMode, restorePeer, kind
+      );
+      state.restoreToken.clear();
+      if (grant) {
+        state.permissionPeer = restorePeer;
+      } else if (newScope) {
+        forgetPermissionScope(client, state.applicationInstance);
+      }
+      return grant;
+    }
+
+    // Stores a remembered approval; nullopt when the store refuses it.
+    template <class State>
+    std::optional<InputCaptureGrant> issueGrant(State& state, InputPermissionKind kind) {
+      wl_client* client = wl_resource_get_client(state.resource);
+      const uint64_t previous = permissionPeer(client, state.applicationInstance, false);
+      const bool newScope = state.persistMode == 1 && previous == 0;
+      if (state.persistMode == 1) {
+        state.permissionPeer = permissionPeer(client, state.applicationInstance);
+      }
+      auto grant =
+          permissionStore.issue(state.application, state.capabilities, state.persistMode, state.permissionPeer, kind);
+      if (!grant && newScope) {
+        forgetPermissionScope(client, state.applicationInstance);
+      }
+      return grant;
+    }
+
     Server& server;
     wl_global* global = nullptr;
+    wl_global* remoteGlobal = nullptr;
     AuthorizationRequest authorize;
     AuthorizationCancelled cancelled;
     ActiveChanged changed;
@@ -529,6 +654,7 @@ namespace andromeda {
     std::vector<InputCaptureZone> zones;
     std::vector<wlr_keyboard*> keyboards;
     std::vector<std::unique_ptr<Session>> sessions;
+    std::vector<std::unique_ptr<RemoteSession>> remoteSessions;
     std::vector<wl_resource*> managers;
     InputCapturePermissions permissionStore{InputCapturePermissions::defaultPath()};
     struct Peer {
@@ -602,6 +728,11 @@ namespace andromeda {
           state->close();
         }
       }
+      for (const auto& state : remoteSessions) {
+        if (state->permissionPeer == id) {
+          state->close();
+        }
+      }
     }
 
     explicit Impl(Server& server) : server(server) {}
@@ -609,8 +740,14 @@ namespace andromeda {
       if (global != nullptr) {
         wl_global_destroy(global);
       }
+      if (remoteGlobal != nullptr) {
+        wl_global_destroy(remoteGlobal);
+      }
       while (!sessions.empty()) {
         wl_resource_destroy(sessions.back()->resource);
+      }
+      while (!remoteSessions.empty()) {
+        wl_resource_destroy(remoteSessions.back()->resource);
       }
       while (!managers.empty()) {
         wl_resource_destroy(managers.back());
@@ -646,6 +783,49 @@ namespace andromeda {
       if (global == nullptr) {
         kLog.error("failed to create the input capture global");
       }
+      remoteGlobal = wl_global_create(
+          server.display(), &andromeda_remote_input_manager_v1_interface, 1, this,
+          [](wl_client* client, void* data, uint32_t version, uint32_t id) {
+            auto* self = static_cast<Impl*>(data);
+            wl_resource* resource = wl_resource_create(client, &andromeda_remote_input_manager_v1_interface, version, id);
+            if (resource == nullptr) {
+              wl_client_post_no_memory(client);
+              return;
+            }
+            wl_resource_set_implementation(resource, &kRemoteManager, self, [](wl_resource* manager) {
+              auto* owner = static_cast<Impl*>(wl_resource_get_user_data(manager));
+              std::erase(owner->managers, manager);
+            });
+            self->managers.push_back(resource);
+          }
+      );
+      if (remoteGlobal == nullptr) {
+        kLog.error("failed to create the remote input global");
+      }
+    }
+
+    static void createRemoteSession(wl_client* client, wl_resource* manager, uint32_t id) {
+      auto* self = static_cast<Impl*>(wl_resource_get_user_data(manager));
+      if (self->remoteSessions.size() >= kMaxSessions) {
+        wl_resource_post_error(manager, 0, "too many remote input sessions");
+        return;
+      }
+      auto session = std::make_unique<RemoteSession>(*self);
+      session->resource = wl_resource_create(client, &andromeda_remote_input_session_v1_interface, 1, id);
+      if (session->resource == nullptr) {
+        wl_client_post_no_memory(client);
+        return;
+      }
+      session->id = ++self->nextSession;
+      wl_resource_set_implementation(session->resource, &kRemoteSession, session.get(), [](wl_resource* resource) {
+        auto* session = static_cast<RemoteSession*>(wl_resource_get_user_data(resource));
+        std::erase_if(session->owner.remoteSessions, [session](const auto& item) { return item.get() == session; });
+      });
+      self->remoteSessions.push_back(std::move(session));
+    }
+
+    static RemoteSession& remoteSession(wl_resource* resource) {
+      return *static_cast<RemoteSession*>(wl_resource_get_user_data(resource));
     }
 
     static void destroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
@@ -677,6 +857,42 @@ namespace andromeda {
 
     static const struct andromeda_input_capture_manager_v1_interface kManager;
     static const struct andromeda_input_capture_session_v1_interface kSession;
+    static const struct andromeda_remote_input_manager_v1_interface kRemoteManager;
+    static const struct andromeda_remote_input_session_v1_interface kRemoteSession;
+  };
+
+  const struct andromeda_remote_input_manager_v1_interface InputCapture::Impl::kRemoteManager{
+      .destroy = destroy,
+      .create_session = createRemoteSession,
+      .expire_scope = [](wl_client* client, wl_resource* resource, const char* scope) {
+        auto* owner = static_cast<Impl*>(wl_resource_get_user_data(resource));
+        if (scope != nullptr && std::char_traits<char>::length(scope) <= 256) {
+          owner->expireScope(client, scope);
+        }
+      },
+  };
+
+  const struct andromeda_remote_input_session_v1_interface InputCapture::Impl::kRemoteSession{
+      .destroy = destroy,
+      .set_persistence =
+          [](wl_client*, wl_resource* resource, uint32_t mode, const char* token, const char* instance) {
+            auto& state = remoteSession(resource);
+            if (state.phase != RemoteSession::Phase::Idle
+                || mode > 2
+                || token == nullptr
+                || instance == nullptr
+                || std::char_traits<char>::length(token) > 4096
+                || std::char_traits<char>::length(instance) > 256) {
+              state.close();
+              return;
+            }
+            state.persistMode = mode;
+            state.restoreToken = std::char_traits<char>::length(token) == 64 ? token : "";
+            state.applicationInstance = instance;
+          },
+      .start = [](wl_client*, wl_resource* resource, uint32_t request, const char* label,
+                  uint32_t capabilities) { remoteSession(resource).start(request, label, capabilities); },
+      .connect_eis = [](wl_client*, wl_resource* resource, uint32_t request) { remoteSession(resource).connect(request); },
   };
 
   const struct andromeda_input_capture_manager_v1_interface InputCapture::Impl::kManager{
@@ -796,6 +1012,26 @@ namespace andromeda {
   uint32_t InputCapture::capabilities() const { return m_impl->active != nullptr ? m_impl->active->capabilities : 0; }
 
   void InputCapture::authorizeSession(uint64_t id, bool allowed, bool remember) {
+    if (const auto remote =
+            std::ranges::find_if(m_impl->remoteSessions, [id](const auto& state) { return state->id == id; });
+        remote != m_impl->remoteSessions.end()) {
+      auto& state = **remote;
+      if (state.phase != Impl::RemoteSession::Phase::Asking) {
+        return;
+      }
+      if (!allowed || m_impl->blocked()) {
+        state.answer(kCancelled);
+      } else if (!remember) {
+        state.approve({});
+      } else if (const auto grant = state.persistMode != 0 ? m_impl->issueGrant(state, InputPermissionKind::Emulate)
+                                                            : std::nullopt) {
+        state.approve(*grant);
+      } else {
+        kLog.error("unable to save the remote input permission; control was not started");
+        state.answer(kFailure);
+      }
+      return;
+    }
     const auto found = std::ranges::find_if(m_impl->sessions, [id](const auto& state) { return state->id == id; });
     if (found == m_impl->sessions.end() || !(*found)->pending) {
       return;
@@ -808,21 +1044,9 @@ namespace andromeda {
         return;
       }
       if (state.persistMode != 0) {
-        wl_client* client = wl_resource_get_client(state.resource);
-        const uint64_t previous = m_impl->permissionPeer(client, state.applicationInstance, false);
-        const bool newScope = state.persistMode == 1 && previous == 0;
-        if (state.persistMode == 1) {
-          state.permissionPeer = m_impl->permissionPeer(client, state.applicationInstance);
-        }
-        const auto grant = m_impl->permissionStore.issue(
-            state.application, state.capabilities, state.persistMode, state.permissionPeer
-        );
-        if (grant) {
+        if (const auto grant = m_impl->issueGrant(state, InputPermissionKind::Capture)) {
           state.approve(*grant);
           return;
-        }
-        if (newScope) {
-          m_impl->forgetPermissionScope(client, state.applicationInstance);
         }
         kLog.error("unable to save input capture permission; capture was not started");
       }
@@ -841,6 +1065,11 @@ namespace andromeda {
   bool InputCapture::revokePermission(std::string_view id) {
     const bool forgotten = m_impl->permissionStore.revoke(id);
     for (const auto& state : m_impl->sessions) {
+      if (!state->grantId.empty() && (id == "all" || state->grantId == id)) {
+        state->close();
+      }
+    }
+    for (const auto& state : m_impl->remoteSessions) {
       if (!state->grantId.empty() && (id == "all" || state->grantId == id)) {
         state->close();
       }

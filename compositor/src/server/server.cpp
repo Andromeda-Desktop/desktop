@@ -675,7 +675,7 @@ namespace andromeda {
     promptLayerShellAccess();
   }
 
-  void Server::requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode) {
+  void Server::requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode, InputPermissionKind kind) {
     if (m_stopping
         || m_sessionLock != nullptr
         || sessionLocked()
@@ -692,7 +692,12 @@ namespace andromeda {
     for (const unsigned char character : name) {
       label += character >= 32 && character < 127 ? static_cast<char>(character) : '?';
     }
-    m_quitConfirm->showInputCapture(label.empty() ? "Unknown application" : label, persistMode);
+    const std::string_view shown = label.empty() ? "Unknown application" : label;
+    if (kind == InputPermissionKind::Emulate) {
+      m_quitConfirm->showRemoteInput(shown, persistMode);
+    } else {
+      m_quitConfirm->showInputCapture(shown, persistMode);
+    }
     if (!m_quitConfirm->visible()) {
       dismissConfirmation();
     }
@@ -720,7 +725,9 @@ namespace andromeda {
       return;
     }
     m_consent = {};
-    if (m_quitConfirm != nullptr && m_quitConfirm->kind() == QuitConfirm::Kind::InputCapture) {
+    if (m_quitConfirm != nullptr
+        && (m_quitConfirm->kind() == QuitConfirm::Kind::InputCapture
+            || m_quitConfirm->kind() == QuitConfirm::Kind::RemoteInput)) {
       m_quitConfirm->hide();
     }
   }
@@ -1979,22 +1986,22 @@ namespace andromeda {
     // Create the Xwayland server before session services and autostart so X11
     // applications can connect. It starts lazily: the X display socket exists
     // now, and Xwayland itself spawns when the first X client connects.
+    // EisInput serves the Xwayland input socket and the granted RemoteDesktop sessions, so it exists without Xwayland.
+    m_eisInput = std::make_unique<EisInput>(*this);
+    if (sessionLocked()) {
+      m_eisInput->setSessionLocked(true);
+    }
+    m_eisInput->setAuthenticate([this](pid_t peer) {
+      return m_xwayland != nullptr && m_xwayland->authenticateInputPeer(peer);
+    });
+    m_eisInput->setAuthorize([this](uint64_t id, std::string_view name) { requestInputEmulation(id, name); });
+    m_eisInput->setAuthorizationCancelled([this](uint64_t id) { cancelInputEmulation(id); });
     if (config().general.xwayland) {
-      m_eisInput = std::make_unique<EisInput>(*this);
-      if (sessionLocked()) {
-        m_eisInput->setSessionLocked(true);
-      }
-      m_eisInput->setAuthenticate([this](pid_t peer) {
-        return m_xwayland != nullptr && m_xwayland->authenticateInputPeer(peer);
-      });
-      m_eisInput->setAuthorize([this](uint64_t id, std::string_view name) { requestInputEmulation(id, name); });
-      m_eisInput->setAuthorizationCancelled([this](uint64_t id) { cancelInputEmulation(id); });
       m_xwayland = std::make_unique<Xwayland>(*this);
       if (m_xwayland->available() && m_xwayland->setInputSocket(m_eisInput->socketFd())) {
         setenv("DISPLAY", m_xwayland->displayName(), 1);
       } else {
         m_xwayland.reset();
-        m_eisInput.reset();
       }
     }
 
@@ -2197,9 +2204,11 @@ namespace andromeda {
 
     m_globalShortcutService = std::make_unique<GlobalShortcutService>(*this);
     m_inputCapture = std::make_unique<InputCapture>(*this);
-    m_inputCapture->setAuthorize([this](uint64_t id, std::string_view name, uint32_t persistMode) {
-      requestInputCapture(id, name, persistMode);
-    });
+    m_inputCapture->setAuthorize(
+        [this](uint64_t id, std::string_view name, uint32_t persistMode, InputPermissionKind kind) {
+          requestInputCapture(id, name, persistMode, kind);
+        }
+    );
     m_inputCapture->setAuthorizationCancelled([this](uint64_t id) { cancelInputCapture(id); });
     m_inputCapture->setActiveChanged([this](bool active) { inputCaptureStateChanged(active); });
     for (const auto& keyboard : m_keyboards) {
