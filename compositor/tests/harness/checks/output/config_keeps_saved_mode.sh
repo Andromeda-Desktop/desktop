@@ -4,6 +4,7 @@
 # wlr-output-management is still written to displays.toml, a scale config.toml sets is not, and the next session
 # starts with that mode and the config.toml scale. Runs on one private instance with the harness's containment.
 set -euo pipefail
+source "$ANDROMEDA_REPO/../tests/headless.sh"
 
 readonly OUTPUT_MANAGEMENT=${ANDROMEDA_OUTPUT_MANAGEMENT_CLIENT:-./build-debug/tests/output-management-client}
 
@@ -42,12 +43,8 @@ EOF
 
 start_server() {
   rm -f "$SOCKET"
-  env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
-    XDG_RUNTIME_DIR="$RUNTIME_DIR" \
-    WLR_BACKENDS=headless \
-    WLR_LIBINPUT_NO_DEVICES=1 \
-    WLR_HEADLESS_OUTPUTS=1 \
-    "$ANDROMEDA" -c "$CONFIG" --trust-binary "$ANDROMEDA_REPO/" --trust-binary /usr/bin/ >> "$RUNTIME_DIR/compositor.log" 2>&1 &
+  headless_compositor "$RUNTIME_DIR" 1 "$CONFIG" -uDBUS_SESSION_BUS_ADDRESS \
+    >> "$RUNTIME_DIR/compositor.log" 2>&1 &
   SERVER_PID=$!
   for _ in $(seq 40); do
     [[ -S $SOCKET ]] && return 0

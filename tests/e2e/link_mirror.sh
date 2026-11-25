@@ -24,6 +24,7 @@ RUNTIME=$(mktemp -d /tmp/link-mirror.XXXX)
 trap 'kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null; rm -rf "$RUNTIME"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 source "$ROOT/tests/e2e/wait.sh"
+source "$ROOT/tests/headless.sh"
 record() { printf '%s\n' "$1" >> "$OUT/results.jsonl"; }
 
 ip link set lo up
@@ -146,8 +147,7 @@ if gst-inspect-1.0 gtk4paintablesink > /dev/null 2>&1; then
   mkdir -p "$WL"
   chmod 700 "$WL"
   printf '[general]\nautostart = []\n' > "$WL/andromeda.toml"
-  env -u WAYLAND_DISPLAY -u DISPLAY XDG_RUNTIME_DIR="$WL" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
-    WLR_HEADLESS_OUTPUTS=1 "${ANDROMEDA:-$ROOT/compositor/build-debug/andromeda}" -c "$WL/andromeda.toml" --trust-binary "$ROOT/" --trust-binary /usr/bin/ \
+  ANDROMEDA=${ANDROMEDA:-$ROOT/compositor/build-debug/andromeda} headless_compositor "$WL" 1 "$WL/andromeda.toml" \
     > "$OUT/andromeda.log" 2>&1 &
   WAIT_S=10 wait_for "andromeda did not start" test -S "$WL/wayland-0"
   in_session() { env -u DISPLAY XDG_RUNTIME_DIR="$WL" WAYLAND_DISPLAY=wayland-0 "$@"; }

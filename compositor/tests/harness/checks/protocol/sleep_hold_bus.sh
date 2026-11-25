@@ -6,6 +6,7 @@
 # compositor locks behind the blank 1 s before the budget (1.2 s) ends, then sends SleepReady. Locked, the hold
 # ends at once. Each SleepReady comes with Activity "sleeping-locked", except after the shell's sleep_ready.
 set -euo pipefail
+source "$ANDROMEDA_REPO/../tests/headless.sh"
 
 readonly SHELL_CLIENT=${ANDROMEDA_DESKTOP_CLIENT:-./build-debug/tests/desktop-client}
 readonly LOCK_CLIENT=${ANDROMEDA_LOCK_CLIENT:-./build-debug/tests/lock-client}
@@ -59,15 +60,11 @@ DBUS_SYSTEM_BUS_ADDRESS=$SYSTEM_BUS python3 "$MOCK" > "$RUNTIME_DIR/system1.log"
 PIDS+=($!)
 await up head -n1 "$RUNTIME_DIR/system1.log"
 
-env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
-  XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+headless_compositor "$RUNTIME_DIR" 1 "$CONFIG" -uDBUS_SESSION_BUS_ADDRESS \
   DBUS_SYSTEM_BUS_ADDRESS="$SYSTEM_BUS" \
   ANDROMEDA_TEST_SLEEP_HOLD=1 \
   ANDROMEDA_COMPOSITOR_BUS_NAME="$BUS_NAME" \
-  WLR_BACKENDS=headless \
-  WLR_LIBINPUT_NO_DEVICES=1 \
-  WLR_HEADLESS_OUTPUTS=1 \
-  "$ANDROMEDA" -c "$CONFIG" --trust-binary "$ANDROMEDA_REPO/" --trust-binary /usr/bin/ > "$RUNTIME_DIR/compositor.log" 2>&1 &
+  > "$RUNTIME_DIR/compositor.log" 2>&1 &
 PIDS+=($!)
 activity() {
   busctl --address="unix:path=$USER_BUS" get-property "$BUS_NAME" /org/andromeda/Compositor1/Apps \

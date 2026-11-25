@@ -5,6 +5,7 @@
 # answering IPC, and the second must take it down cleanly. Proving the bypass form then needs a live compositor again,
 # so this check boots exactly one private instance for it, with the same containment as check.sh.
 set -euo pipefail
+source "$ANDROMEDA_REPO/../tests/headless.sh"
 
 # The harness instance is not this check's child, so there is no pid to signal
 # and liveness can only be observed over IPC.
@@ -62,12 +63,8 @@ xwayland = false
 autostart = []
 EOF
 
-env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
-  XDG_RUNTIME_DIR="$RUNTIME_DIR" \
-  WLR_BACKENDS=headless \
-  WLR_LIBINPUT_NO_DEVICES=1 \
-  WLR_HEADLESS_OUTPUTS=1 \
-  "$ANDROMEDA" -c "$CONFIG" --trust-binary "$ANDROMEDA_REPO/" --trust-binary /usr/bin/ > "$LOG" 2>&1 &
+headless_compositor "$RUNTIME_DIR" 1 "$CONFIG" -uDBUS_SESSION_BUS_ADDRESS \
+  > "$LOG" 2>&1 &
 SERVER_PID=$!
 export ANDROMEDA_SOCKET=$SOCKET
 

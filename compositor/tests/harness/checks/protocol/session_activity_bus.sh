@@ -3,6 +3,7 @@
 # Compositor1.Apps `Activity` follows the session: "locked" while a lock client holds it, "active" after the unlock,
 # and `Idle` is true while locked. Runs one private instance on the user bus, where the property lives.
 set -euo pipefail
+source "$ANDROMEDA_REPO/../tests/headless.sh"
 
 readonly LOCK_CLIENT=${ANDROMEDA_LOCK_CLIENT:-./build-debug/tests/lock-client}
 readonly USER_BUS=/run/user/$(id -u)/bus
@@ -33,13 +34,9 @@ xwayland = false
 autostart = []
 EOF
 
-env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
-  XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+headless_compositor "$RUNTIME_DIR" 1 "$CONFIG" -uDBUS_SESSION_BUS_ADDRESS \
   ANDROMEDA_COMPOSITOR_BUS_NAME="$BUS_NAME" \
-  WLR_BACKENDS=headless \
-  WLR_LIBINPUT_NO_DEVICES=1 \
-  WLR_HEADLESS_OUTPUTS=1 \
-  "$ANDROMEDA" -c "$CONFIG" --trust-binary "$ANDROMEDA_REPO/" --trust-binary /usr/bin/ > "$RUNTIME_DIR/compositor.log" 2>&1 &
+  > "$RUNTIME_DIR/compositor.log" 2>&1 &
 SERVER_PID=$!
 prop() {
   busctl --address="unix:path=$USER_BUS" get-property "$BUS_NAME" /org/andromeda/Compositor1/Apps \

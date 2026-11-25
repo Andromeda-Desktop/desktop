@@ -65,6 +65,7 @@ HARNESS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 CHECKS_DIR=${CHECK_DIR:-$HARNESS_DIR/checks}
 export ANDROMEDA_REPO
 ANDROMEDA_REPO=$(cd "$HARNESS_DIR/../.." && pwd)
+source "$ANDROMEDA_REPO/../tests/headless.sh"
 
 # A check that never returns would otherwise hang the suite with no output. The
 # cap is per check and generous: the slowest checks drive two-second animations.
@@ -585,40 +586,30 @@ start_instance() {
     }
     notify_environment=("NOTIFY_SOCKET=$RUNTIME_DIR/notify.sock" WATCHDOG_USEC=2000000 HARNESS_SYSTEMD_SERVICE=1)
   fi
-  setsid env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u NOTIFY_SOCKET -u WATCHDOG_USEC -u WATCHDOG_PID \
-    -u ANDROMEDA_RENDER_THREAD \
+  ANDROMEDA=$BINARY headless_compositor "$RUNTIME_DIR" "$outputs" "$config" \
+    -uDBUS_SESSION_BUS_ADDRESS -uNOTIFY_SOCKET -uWATCHDOG_USEC -uWATCHDOG_PID -uANDROMEDA_RENDER_THREAD \
     "${xwayland_environment[@]}" \
     "${notify_environment[@]}" \
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$RUNTIME_DIR/no-system-bus" \
-    XDG_RUNTIME_DIR="$RUNTIME_DIR" \
     XDG_DATA_HOME="$RUNTIME_DIR/xdg-data" \
     XDG_STATE_HOME="$RUNTIME_DIR/xdg-state" \
-    WLR_BACKENDS=headless \
-    WLR_LIBINPUT_NO_DEVICES=1 \
-    WLR_HEADLESS_OUTPUTS="$outputs" \
-    bash -c 'echo $$ > "$1"; shift; [[ -z ${HARNESS_SYSTEMD_SERVICE:-} ]] || export SYSTEMD_EXEC_PID=$$; exec "$@"' _ "$pgid_file" \
-    "$BINARY" -c "$config" --trust-binary "$ANDROMEDA_REPO/" --trust-binary /usr/bin/ > "$log" 2>&1 &
+    -- setsid bash -c 'echo $$ > "$1"; shift; [[ -z ${HARNESS_SYSTEMD_SERVICE:-} ]] || export SYSTEMD_EXEC_PID=$$; exec "$@"' _ "$pgid_file" \
+    > "$log" 2>&1 &
   SERVER_PID=$!
   export ANDROMEDA_SERVER_PID=$SERVER_PID
   INSTANCE_PGID=$(child_pgid "$pgid_file" "$SERVER_PID")
 
-  # Boot lands in tens of milliseconds, and this runs once per check, so poll
-  # tightly rather than in quarter-second steps.
-  local waited_ms=0
-  while [[ ! -S $socket ]]; do
-    if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-      wait "$SERVER_PID" 2>/dev/null || true
-      SERVER_PID=
-      BOOT_ERROR="compositor died during boot"$'\n'"$(< "$log")"
-      return 1
-    fi
-    if ((waited_ms >= 10000)); then
-      BOOT_ERROR="IPC socket never appeared within 10s"$'\n'"$(< "$log")"
-      return 1
-    fi
-    sleep 0.005
-    waited_ms=$((waited_ms + 5))
-  done
+  local waited=0
+  wait_compositor "$SERVER_PID" "$socket" 10 || waited=$?
+  if ((waited == 1)); then
+    wait "$SERVER_PID" 2>/dev/null || true
+    SERVER_PID=
+    BOOT_ERROR="compositor died during boot"$'\n'"$(< "$log")"
+    return 1
+  elif ((waited)); then
+    BOOT_ERROR="IPC socket never appeared within 10s"$'\n'"$(< "$log")"
+    return 1
+  fi
 
   export ANDROMEDA_SOCKET=$socket
   export ANDROMEDA_RUNTIME_DIR=$RUNTIME_DIR

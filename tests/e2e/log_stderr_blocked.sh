@@ -4,17 +4,16 @@
 set -u
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 ANDROMEDA=${ANDROMEDA:-$ROOT/compositor/build-debug/andromeda}
+source "$ROOT/tests/headless.sh"
 RT=$(mktemp -d /tmp/logblock.XXXX)
 mkfifo "$RT/err"
 exec 3<>"$RT/err"            # holds the read end open and never reads
 # The smallest pipe buffer (one page), so a few dozen lines fill it.
 python3 -I -c "import fcntl; fcntl.fcntl(3, 1031, 4096)"
 printf '[general]\nautostart = []\n' > "$RT/a.toml"
-env -u WAYLAND_DISPLAY -u DISPLAY XDG_RUNTIME_DIR="$RT" XDG_CACHE_HOME="$RT/cache" ANDROMEDA_WLR_DEBUG=1 \
-  WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 \
-  "$ANDROMEDA" -c "$RT/a.toml" --trust-binary "$ROOT/" --trust-binary /usr/bin/ > "$RT/err" 2>&1 &
+headless_compositor "$RT" 1 "$RT/a.toml" XDG_CACHE_HOME="$RT/cache" ANDROMEDA_WLR_DEBUG=1 > "$RT/err" 2>&1 &
 pid=$!
-for _ in $(seq 100); do [[ -S $RT/andromeda-wayland-0.sock ]] && break; sleep 0.05; done
+wait_compositor $pid "$RT/andromeda-wayland-0.sock" 5
 ipc() { timeout 2 env XDG_RUNTIME_DIR="$RT" ANDROMEDA_SOCKET="$RT/andromeda-wayland-0.sock" "$ANDROMEDA" msg config-reload > /dev/null 2>&1; }
 fail=0
 for i in $(seq 30); do

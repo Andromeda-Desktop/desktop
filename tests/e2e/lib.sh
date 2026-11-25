@@ -4,6 +4,7 @@ ANDROMEDA=${ANDROMEDA:-$ROOT/compositor/build-debug/andromeda}
 NOCTALIA=${NOCTALIA:-$ROOT/shell/build-debug/andromeda-shell}
 DESKTOP_CLIENT=${DESKTOP_CLIENT:-$ROOT/compositor/build-debug/tests/desktop-client}
 RUNTIME=$(mktemp -d /tmp/dsk.XXXX)
+source "$ROOT/tests/headless.sh"
 trap 'kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null; rm -rf "$RUNTIME"' EXIT
 
 # boot_headless OUTPUTS: start Andromeda with that many headless outputs; its log goes to $OUT/andromeda.log. The private
@@ -25,16 +26,15 @@ boot_headless() {
   [[ -s $RUNTIME/bus.address ]] || { echo "dbus-daemon did not start" >&2; exit 1; }
   BUS_ADDRESS=$(head -n 1 "$RUNTIME/bus.address")
   # NESTED_PARENT (a parent Wayland socket path): one output as a window on that session, with its GPU and vsync.
-  local backend=headless session_bus=$BUS_ADDRESS
-  [[ -n ${NESTED_PARENT:-} ]] && backend=wayland
+  local nested=() session_bus=$BUS_ADDRESS
+  [[ -n ${NESTED_PARENT:-} ]] && nested=(WLR_BACKENDS=wayland "WAYLAND_DISPLAY=$NESTED_PARENT")
   # A test that links $RUNTIME/bus to the real user bus gives the compositor the real systemd user manager.
   [[ -S $RUNTIME/bus ]] && session_bus=unix:path=$RUNTIME/bus
-  env -u WAYLAND_DISPLAY -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$session_bus" DBUS_SYSTEM_BUS_ADDRESS="$BUS_ADDRESS" XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
-    ${NESTED_PARENT:+WAYLAND_DISPLAY=$NESTED_PARENT} ${SLEEP_ON_TEST_BUS:+ANDROMEDA_TEST_SLEEP_HOLD=1} WLR_BACKENDS=$backend WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS="$1" \
-    "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" --trust-binary "$ROOT/" --trust-binary /usr/bin/ > "$OUT/andromeda.log" 2>&1 &
+  headless_compositor "$RUNTIME" "$1" "$RUNTIME/andromeda.toml" DBUS_SESSION_BUS_ADDRESS="$session_bus" \
+    DBUS_SYSTEM_BUS_ADDRESS="$BUS_ADDRESS" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
+    ${SLEEP_ON_TEST_BUS:+ANDROMEDA_TEST_SLEEP_HOLD=1} "${nested[@]}" > "$OUT/andromeda.log" 2>&1 &
   # The IPC socket comes after the Wayland socket (server.cpp creates Ipc later); `msg` needs it.
-  for _ in $(seq 100); do [[ -S $RUNTIME/wayland-0 && -S $RUNTIME/andromeda-wayland-0.sock ]] && break; sleep 0.05; done
-  [[ -S $RUNTIME/andromeda-wayland-0.sock ]] || { echo "andromeda did not start" >&2; exit 1; }
+  wait_compositor $! "$RUNTIME/andromeda-wayland-0.sock" 5 || { echo "andromeda did not start" >&2; exit 1; }
 }
 
 # rm_runtime: deletes $RUNTIME in a cleanup trap. Helpers the private bus started (thumbnailers, previews) can
