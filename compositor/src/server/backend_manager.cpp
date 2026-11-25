@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "core/scanout_keeper.h"
+#include "server/dmabuf_modifiers.h"
 #include "server/drm_policy.h"
 #include "util/driver_threads.h"
 #include "wlr.h"
@@ -988,6 +989,7 @@ namespace andromeda {
   wlr_renderer* BackendManager::createRenderer() {
     wlr_renderer* renderer = m_impl->createRenderer();
     if (renderer != nullptr) {
+      dropUnsafeDmabufModifiers(renderer);
       kLog.info("{} GPU driver thread(s) share the main thread's real-time policy", shareSchedulingWithDriverThreads());
     }
     return renderer;
