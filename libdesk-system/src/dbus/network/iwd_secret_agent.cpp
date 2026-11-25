@@ -1,6 +1,7 @@
 #include "dbus/network/iwd_secret_agent.h"
 
 #include "core/log.h"
+#include "dbus/caller.h"
 #include "dbus/system_bus.h"
 
 #include <optional>
@@ -86,10 +87,14 @@ IwdSecretAgent::IwdSecretAgent(SystemBus& bus) : m_impl(std::make_unique<Impl>(b
               .withInputParamNames("network")
               .withOutputParamNames("passphrase")
               .implementedAs([this](sdbus::Result<std::string>&& result, const sdbus::ObjectPath& networkPath) {
+                requireNameOwner(m_impl->bus.connection(), kIwdBusName);
                 m_impl->onRequestPassphrase(std::move(result), networkPath);
               }),
           sdbus::registerMethod("Cancel").withInputParamNames("reason").implementedAs(
-              [this](const std::string& reason) { m_impl->cancelPending(reason); }
+              [this](const std::string& reason) {
+                requireNameOwner(m_impl->bus.connection(), kIwdBusName);
+                m_impl->cancelPending(reason);
+              }
           )
       )
       .forInterface(kAgentInterface);

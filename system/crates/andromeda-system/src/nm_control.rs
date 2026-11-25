@@ -144,7 +144,7 @@ where
 
 /// The caller's user name, as `connection.permissions` holds it.
 async fn user(conn: &Connection, header: &Header<'_>) -> Result<String> {
-    let (uid, _) = login::caller(conn, header).await?;
+    let uid = login::caller(conn, header).await?.uid;
     let uid = uid.to_string();
     let out = tokio::process::Command::new("getent")
         .args(["passwd", &uid])

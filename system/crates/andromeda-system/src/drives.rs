@@ -129,7 +129,7 @@ pub async fn power_off(
 ) -> NmResult<()> {
     check_path(&drive, DRIVE_PREFIX)?;
     let interactive = interactive(&options)?;
-    let (uid, _) = login::caller(conn, header).await?;
+    let uid = login::caller(conn, header).await?.uid;
     let block = drive_block(conn, &drive).await?;
     // A missing hint counts as a system drive: more authorization, never less.
     let system = block.get("HintSystem").is_none_or(|v| bool::try_from(v).unwrap_or(true));

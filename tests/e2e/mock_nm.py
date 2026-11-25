@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Owns org.freedesktop.NetworkManager on the bus in DBUS_SYSTEM_BUS_ADDRESS with one AP-capable Wi-Fi device, and
-appends each activation call to argv[1]."""
+appends each activation call and each secret agent registration ("Agent <sender>") to argv[1]. org.test.MockNM.AskSecrets
+makes NM call the agent's GetSecrets (no interaction) and returns the agent's error name, or "ok"."""
 import os
 import sys
 
@@ -61,6 +62,24 @@ class Manager(Object):
                 return dbus.Array([p for p, _ in settings.profiles], signature="o")
 
         Settings(bus, BASE + "/Settings", {})
+
+        class AgentManager(Object):
+            @dbus.service.method(NM + ".AgentManager", in_signature="s", sender_keyword="sender")
+            def Register(self, identifier, sender=None):
+                settings.agent = sender
+                settings.record(f"Agent {sender}")
+
+        self.agent = None
+        AgentManager(bus, BASE + "/AgentManager", {})
+
+    @dbus.service.method("org.test.MockNM", out_signature="s")
+    def AskSecrets(self):
+        try:
+            self.bus.call_blocking(self.agent, BASE + "/SecretAgent", NM + ".SecretAgent", "GetSecrets", "a{sa{sv}}osasu",
+                                   ({"connection": {"id": "wifi"}}, BASE + "/Settings/1", "802-11-wireless-security", [], 0))
+            return "ok"
+        except dbus.exceptions.DBusException as e:
+            return e.get_dbus_name()
 
     def record(self, line):
         with open(self.log, "a") as out:

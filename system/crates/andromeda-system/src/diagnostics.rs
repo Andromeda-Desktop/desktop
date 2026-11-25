@@ -81,7 +81,7 @@ impl Diagnostics {
         #[zbus(header)] header: Header<'_>,
         #[zbus(connection)] conn: &Connection,
     ) -> zbus::fdo::Result<String> {
-        let (uid, _) = login::caller(conn, &header).await?;
+        let uid = login::caller(conn, &header).await?.uid;
         polkit::check_with(conn, &header, "org.andromeda.system.diagnostics", false).await?;
         let owner = tokio::fs::metadata(format!("/proc/{pid}"))
             .await

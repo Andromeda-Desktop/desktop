@@ -5,10 +5,10 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 
+use andromeda_rt::bus::Caller;
 use futures_util::StreamExt;
 use zbus::fdo::{Error, Result};
 use zbus::message::Header;
-use zbus::names::BusName;
 use zbus::object_server::{InterfaceRef, SignalEmitter};
 use zbus::proxy::CacheProperties;
 use zbus::zvariant::{DynamicType, Type};
@@ -244,13 +244,9 @@ where
     R::try_from(value).map_err(|e| failed(name, e))
 }
 
-/// The caller's uid and pid.
-pub(crate) async fn caller(conn: &Connection, header: &Header<'_>) -> Result<(u32, u32)> {
-    let sender = header.sender().ok_or_else(|| Error::Failed("call without sender".into()))?;
-    let dbus = zbus::fdo::DBusProxy::new(conn).await?;
-    let uid = dbus.get_connection_unix_user(BusName::Unique(sender.clone())).await?;
-    let pid = dbus.get_connection_unix_process_id(BusName::Unique(sender.clone())).await?;
-    Ok((uid, pid))
+/// The process that sent the call.
+pub(crate) async fn caller(conn: &Connection, header: &Header<'_>) -> Result<Caller> {
+    andromeda_rt::bus::caller(conn, header).await
 }
 
 /// Whether a user other than `uid` has a login session; logind then asks for the multiple-sessions action.
@@ -277,14 +273,19 @@ async fn power_plan_for(
     Ok(power_plan(action, others, block(&inhibitors, action.what(), uid), skip_inhibitors))
 }
 
-/// `session`, or with an empty one the session of process `pid`, else the display session of user `uid`.
-async fn session_path(conn: &Connection, session: &str, uid: u32, pid: u32) -> Result<OwnedObjectPath> {
+/// `session`, or with an empty one the session of the caller's process, else the display session of the caller's user.
+async fn session_path(conn: &Connection, session: &str, caller: &Caller) -> Result<OwnedObjectPath> {
     if !session.is_empty() {
         return manager(conn, "GetSession", &(session,)).await;
     }
-    if let Ok(path) = manager::<_, OwnedObjectPath>(conn, "GetSessionByPID", &(pid,)).await {
+    if let Ok(path) = manager::<_, OwnedObjectPath>(conn, "GetSessionByPID", &(caller.pid,)).await {
+        // logind has no pidfd lookup: the answer names the caller only if its process still runs.
+        if !caller.alive() {
+            return Err(Error::Failed(format!("process {} exited during the call", caller.pid)));
+        }
         return Ok(path);
     }
+    let uid = caller.uid;
     let user: OwnedObjectPath = manager(conn, "GetUser", &(uid,)).await?;
     let (_, display): (String, OwnedObjectPath) = property(conn, user.as_str(), USER, "Display").await?;
     if display.as_str() == "/" { Err(Error::Failed(format!("user {uid} has no session"))) } else { Ok(display) }
@@ -298,7 +299,7 @@ async fn authorize_power(
     interactive: bool,
     skip_inhibitors: bool,
 ) -> Result<(u32, u64)> {
-    let (uid, _) = caller(conn, header).await?;
+    let uid = caller(conn, header).await?.uid;
     let mut passed: Vec<String> = Vec::new();
     // Inhibitors and sessions can change while a polkit dialog is open: plan again until no new check is due.
     loop {
@@ -445,7 +446,7 @@ impl Login {
         if root != "yes" {
             return Ok(root);
         }
-        let (uid, _) = caller(conn, &header).await?;
+        let uid = caller(conn, &header).await?.uid;
         let (checks, _) = power_plan_for(conn, uid, action, true).await?.map_err(Error::Failed)?;
         let mut answers = Vec::with_capacity(checks.len());
         for check in &checks {
@@ -607,8 +608,9 @@ impl Login {
         #[zbus(header)] header: Header<'_>,
         #[zbus(connection)] conn: &Connection,
     ) -> Result<()> {
-        let (uid, pid) = caller(conn, &header).await?;
-        let path = session_path(conn, &session, uid, pid).await?;
+        let caller = caller(conn, &header).await?;
+        let uid = caller.uid;
+        let path = session_path(conn, &session, &caller).await?;
         let (owner, _): (u32, OwnedObjectPath) = property(conn, path.as_str(), SESSION, "User").await?;
         if owner != uid {
             return Err(Error::AccessDenied(format!("session {} is not of uid {uid}", path.as_str())));

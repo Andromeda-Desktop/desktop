@@ -1638,6 +1638,19 @@ if build_tests
     )
   endif
 
+  bus_caller_integration_exe = executable('bus_caller_integration_test',
+    sources: files('tests/bus_caller_integration_test.cpp'),
+    dependencies: noctalia_core_dep,
+    override_options: ['b_ndebug=false'],
+  )
+  if dbus_run_session.found()
+    test('bus_caller_integration',
+      dbus_run_session,
+      args: ['--', bus_caller_integration_exe.full_path()],
+      depends: bus_caller_integration_exe,
+    )
+  endif
+
   notification_reply_integration_exe = executable('notification_reply_integration_test',
     sources: files('tests/notification_reply_integration_test.cpp'),
     dependencies: noctalia_core_dep,

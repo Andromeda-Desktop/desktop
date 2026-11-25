@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "core/timer_manager.h"
+#include "dbus/caller.h"
 #include "dbus/system_bus.h"
 #include "dbus/name_owner_watch.h"
 
@@ -192,6 +193,7 @@ NetworkSecretAgent::NetworkSecretAgent(SystemBus& bus) : m_impl(std::make_unique
                                  sdbus::ObjectPath connectionPath, std::string settingName,
                                  const std::vector<std::string>& hints, std::uint32_t flags
                              ) {
+                requireNameOwner(m_impl->bus.connection(), kNmBusName);
                 m_impl->onGetSecrets(
                     std::move(result), connection, std::move(connectionPath), std::move(settingName), hints, flags
                 );
@@ -199,14 +201,19 @@ NetworkSecretAgent::NetworkSecretAgent(SystemBus& bus) : m_impl(std::make_unique
           sdbus::registerMethod("CancelGetSecrets")
               .withInputParamNames("connection_path", "setting_name")
               .implementedAs([this](const sdbus::ObjectPath& /*connectionPath*/, const std::string& /*settingName*/) {
+                requireNameOwner(m_impl->bus.connection(), kNmBusName);
                 m_impl->cancelPending("NM canceled");
               }),
           sdbus::registerMethod("SaveSecrets")
               .withInputParamNames("connection", "connection_path")
-              .implementedAs([](const SecretsDict& /*connection*/, const sdbus::ObjectPath& /*connectionPath*/) {}),
+              .implementedAs([this](const SecretsDict& /*connection*/, const sdbus::ObjectPath& /*connectionPath*/) {
+                requireNameOwner(m_impl->bus.connection(), kNmBusName);
+              }),
           sdbus::registerMethod("DeleteSecrets")
               .withInputParamNames("connection", "connection_path")
-              .implementedAs([](const SecretsDict& /*connection*/, const sdbus::ObjectPath& /*connectionPath*/) {})
+              .implementedAs([this](const SecretsDict& /*connection*/, const sdbus::ObjectPath& /*connectionPath*/) {
+                requireNameOwner(m_impl->bus.connection(), kNmBusName);
+              })
       )
       .forInterface(kAgentInterface);
 

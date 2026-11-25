@@ -11,12 +11,13 @@ publish = false
 anyhow = "1"
 env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
 log = "0.4"
-nix = { version = "0.31", default-features = false, features = ["socket", "user"] }
+nix = { version = "0.31", default-features = false, features = ["socket", "user", "poll"] }
 tokio = { version = "1", features = ["rt", "macros", "time", "sync", "signal", "net", "io-util"] }
 zbus = { version = "6", default-features = false, features = ["tokio"], optional = true }
 
 [features]
 notify = ["dep:zbus"]
+bus = ["dep:zbus", "zbus/proxy"]
 
 [lints]
 workspace = true

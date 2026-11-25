@@ -388,9 +388,7 @@ impl Helper {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> zbus::fdo::Result<()> {
         self.touch();
-        let sender = header.sender().ok_or_else(|| zbus::fdo::Error::AccessDenied("no sender".into()))?;
-        let uid = zbus::fdo::DBusProxy::new(conn).await?.get_connection_unix_user(sender.clone().into()).await?;
-        if uid != 0 {
+        if andromeda_rt::bus::caller(conn, &header).await?.uid != 0 {
             return Err(zbus::fdo::Error::AccessDenied("RunTonight is for the timer".into()));
         }
         let Some(scheduled) = self.tonight_token().await else { return Ok(()) };

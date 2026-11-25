@@ -2,6 +2,8 @@
 //! and one shutdown token that async code awaits and blocking closures poll.
 
 pub mod backoff;
+#[cfg(feature = "bus")]
+pub mod bus;
 pub mod ipc;
 pub mod logged;
 #[cfg(feature = "notify")]

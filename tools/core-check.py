@@ -113,6 +113,13 @@ RULES = {
                   "andromeda_rt::ipc (AR4)", CPP_DIRS + ("protocol/",), CPP + (".rs",),
                   r"SOL_SOCKET\s*,\s*SO_PEER(CRED|PIDFD)\b|sockopt::Peer(Credentials|Pidfd)\b",
                   ("protocol/ipc_channel.", "system/crates/andromeda-rt/src/ipc.rs")),
+    "bus-credentials": ("a D-Bus caller is identified by busCaller (libdesk-system dbus/caller.h) or "
+                        "andromeda_rt::bus::caller; a pid alone names no caller (AR8 D3); the tray reads a pid for a "
+                        "label only", CPP_DIRS + ("protocol/", "system/"), CPP + (".rs",),
+                        r"GetConnection(UnixProcessID|UnixUser|Credentials)\b|"
+                        r"get_connection_(unix_process_id|unix_user|credentials)\b",
+                        ("libdesk-system/src/dbus/caller.", "system/crates/andromeda-rt/src/bus.rs",
+                         "libdesk-system/src/dbus/tray/tray_service.cpp")),
     "bus-name": ("the System1, bus-daemon and portal frontend names come from busname:: (protocol/bus_names.h); "
                  "impl portals check the frontend with requirePortalFrontend (dbus/caller.h) (C13, AR8)", CPP_DIRS, CPP,
                  r"\"(org\.andromeda\.System1|org\.freedesktop\.DBus|/org/freedesktop/DBus|"
