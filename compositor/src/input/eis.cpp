@@ -458,14 +458,15 @@ namespace andromeda {
             if (box.width <= 0 || box.height <= 0) {
               continue;
             }
-            Xwayland* xwayland = server.xwayland();
-            if (xwayland == nullptr) {
-              continue;
+            // Regions use Xwayland coordinates when it runs (X clients), else layout coordinates.
+            wlr_box area = box;
+            if (Xwayland* xwayland = server.xwayland(); xwayland != nullptr) {
+              const auto mapped = xwayland->outputs().region(output->output, box.x, box.y);
+              area = {.x = mapped.x.x, .y = mapped.x.y, .width = mapped.x.width, .height = mapped.x.height};
             }
-            const auto mapped = xwayland->outputs().region(output->output, box.x, box.y);
             eis_region* region = eis_device_new_region(device->handle);
-            eis_region_set_offset(region, mapped.x.x, mapped.x.y);
-            eis_region_set_size(region, mapped.x.width, mapped.x.height);
+            eis_region_set_offset(region, area.x, area.y);
+            eis_region_set_size(region, area.width, area.height);
             eis_region_set_physical_scale(region, 1.0);
             eis_region_set_mapping_id(region, output->output->name);
             eis_region_add(region);
@@ -628,17 +629,19 @@ namespace andromeda {
         if (!std::isfinite(x) || !std::isfinite(y) || layout.width <= 0 || layout.height <= 0) {
           break;
         }
-        Xwayland* xwayland = server.xwayland();
-        if (xwayland == nullptr
-            || x < std::numeric_limits<int>::min()
+        if (x < std::numeric_limits<int>::min()
             || x > std::numeric_limits<int>::max()
             || y < std::numeric_limits<int>::min()
             || y > std::numeric_limits<int>::max()) {
           break;
         }
-        const auto mapped = xwayland->outputs().regionAtX(x, y);
-        const double logicalX = mapped.layout.x + (x - mapped.x.x) / mapped.scale;
-        const double logicalY = mapped.layout.y + (y - mapped.x.y) / mapped.scale;
+        double logicalX = x;
+        double logicalY = y;
+        if (Xwayland* xwayland = server.xwayland(); xwayland != nullptr) {
+          const auto mapped = xwayland->outputs().regionAtX(x, y);
+          logicalX = mapped.layout.x + (x - mapped.x.x) / mapped.scale;
+          logicalY = mapped.layout.y + (y - mapped.x.y) / mapped.scale;
+        }
         wlr_pointer_motion_absolute_event motion{
             .pointer = &device->pointer,
             .time_msec = monotonicMsec(),

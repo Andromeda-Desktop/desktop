@@ -20,6 +20,7 @@ struct ext_image_copy_capture_session_v1;
 struct ext_image_copy_capture_frame_v1;
 
 struct ext_image_copy_capture_cursor_session_v1;
+struct andromeda_remote_input_session_v1;
 namespace xdpu {
 
   class Loop;
@@ -195,6 +196,36 @@ namespace xdpu {
         FrameFailedCallback onFailed
     );
     void requestCursorFrame(CaptureSession& session);
+
+    // One andromeda_remote_input_v1 session: the compositor asks the user and hands out EIS fds.
+    class RemoteInputSession {
+    public:
+      struct Events {
+        std::function<void(uint32_t persistMode, std::string token)> grant;
+        std::function<void(uint32_t status, uint32_t capabilities)> started;
+        std::function<void(uint32_t request, int fd)> eisFd; // the handler owns fd
+        std::function<void(uint32_t request, uint32_t status)> result;
+        std::function<void()> closed;
+      };
+      RemoteInputSession(WaylandContext& context, andromeda_remote_input_session_v1* proxy, Events events);
+      ~RemoteInputSession();
+      RemoteInputSession(const RemoteInputSession&) = delete;
+      RemoteInputSession& operator=(const RemoteInputSession&) = delete;
+
+      void setPersistence(uint32_t persistMode, const std::string& restoreToken, const std::string& instance);
+      void start(const std::string& application, uint32_t capabilities);
+      // Returns the request id that eis_fd or result answers.
+      uint32_t connectEis();
+
+      WaylandContext& context;
+      andromeda_remote_input_session_v1* proxy = nullptr;
+      Events events;
+      uint32_t nextRequest = 1;
+    };
+    // nullptr when the compositor does not offer the bridge to this binary.
+    std::unique_ptr<RemoteInputSession> createRemoteInputSession(RemoteInputSession::Events events);
+    // Ends mode-one remote input grants issued for this application instance (its D-Bus peer is gone).
+    void expireRemoteInputScope(const std::string& instance);
 
     struct ScreenshotResult {
       std::vector<uint8_t> pixels;

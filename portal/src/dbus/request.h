@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <sdbus-c++/sdbus-c++.h>
 #include <string>
 #include <sys/types.h>
@@ -14,6 +15,19 @@ namespace xdpu {
 
   using PortalResults = std::map<std::string, sdbus::Variant>;
   using PortalResponse = sdbus::Result<uint32_t, PortalResults>;
+
+  // The option's value, or nullopt when it is missing or has another type.
+  template <typename T> std::optional<T> optionValue(const PortalResults& options, const std::string& key) {
+    const auto it = options.find(key);
+    if (it == options.end() || !it->second.containsValueOfType<T>()) {
+      return std::nullopt;
+    }
+    try {
+      return it->second.get<T>();
+    } catch (const std::exception&) {
+      return std::nullopt;
+    }
+  }
 
   class Request {
   public:

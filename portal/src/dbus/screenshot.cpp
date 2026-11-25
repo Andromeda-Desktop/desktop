@@ -52,18 +52,6 @@ namespace xdpu {
       return std::string(line.substr(0, trimmedEnd + 1));
     }
 
-    template <typename T> std::optional<T> optionValue(const PortalResults& options, const std::string& key) {
-      const auto it = options.find(key);
-      if (it == options.end() || !it->second.containsValueOfType<T>()) {
-        return std::nullopt;
-      }
-      try {
-        return it->second.get<T>();
-      } catch (const std::exception&) {
-        return std::nullopt;
-      }
-    }
-
     std::optional<std::string> selectedMonitorFromChooser(std::string_view output) {
       const std::string line = firstLine(output);
       if (line.empty()) {

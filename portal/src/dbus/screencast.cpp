@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "dbus/request.h"
 #include "dbus/session.h"
+#include "dbus/session_table.h"
 #include "loop/loop.h"
 #include "pipewire/pipewire.h"
 #include "andromeda/ipc.h"
@@ -49,18 +50,6 @@ namespace xdpu {
         return {};
       }
       return std::string(line.substr(0, trimmedEnd + 1));
-    }
-
-    template <typename T> std::optional<T> optionValue(const PortalResults& options, const std::string& key) {
-      const auto it = options.find(key);
-      if (it == options.end() || !it->second.containsValueOfType<T>()) {
-        return std::nullopt;
-      }
-      try {
-        return it->second.get<T>();
-      } catch (const std::exception&) {
-        return std::nullopt;
-      }
     }
 
     std::optional<std::string> dictString(const PortalResults& dict, const std::string& key) {
@@ -324,10 +313,10 @@ namespace xdpu {
     Loop& loop;
     sdbus::IConnection& connection;
     sdbus::IObject& object;
+    SessionTable& sessions;
     Config config;
     WaylandContext& wayland;
     PipeWireContext& pipewire;
-    std::map<std::string, std::shared_ptr<Session>> sessions;
     std::map<std::string, DynamicGrant> dynamicGrants;
     ScreenCastCommand screenCastCommand;
     std::optional<Session::Selection> manualTarget;
@@ -339,10 +328,20 @@ namespace xdpu {
     static constexpr auto kDynamicGrantLifetime = std::chrono::seconds(2);
 
     Impl(
-        Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, const Config& config,
-        WaylandContext& wayland, PipeWireContext& pipewire
+        Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
+        const Config& config, WaylandContext& wayland, PipeWireContext& pipewire
     )
-        : loop(loop), connection(connection), object(object), config(config), wayland(wayland), pipewire(pipewire) {
+        : loop(loop), connection(connection), object(object), sessions(sessions), config(config), wayland(wayland),
+          pipewire(pipewire) {
+      sessions.addClosedListener([this](Session&) {
+        // A Start still choosing or starting captures ends with the session.
+        for (const auto& operation : std::set(inflight)) {
+          if (operation->session && operation->session->closed()) {
+            operation->cancel();
+          }
+        }
+        reportActive();
+      });
       object
           .addVTable(
               sdbus::registerMethod("CreateSession")
@@ -386,9 +385,11 @@ namespace xdpu {
           .forInterface(kInterface);
     }
 
+    std::string sender() const { return object.getCurrentlyProcessedMessage().getSender(); }
+
     void reportActive(bool force = false) {
       const bool active =
-          std::ranges::any_of(sessions, [](const auto& entry) { return entry.second->hasDynamicStreams(); });
+          std::ranges::any_of(sessions.sessions(), [](const auto& entry) { return entry.second->hasDynamicStreams(); });
       if (!force && active == reportedActive) {
         return;
       }
@@ -398,36 +399,12 @@ namespace xdpu {
       }
     }
 
-    void deferEraseSession(const std::string& path) {
-      // Erase only the closed session: a CreateSession on the same path may have replaced it meanwhile.
-      loop.addTimer(0, [this, path]() {
-        if (const auto it = sessions.find(path); it != sessions.end() && it->second->closed()) {
-          sessions.erase(it);
-        }
-        reportActive();
-      });
-    }
-
     void createSession(
         PortalResponse&& result, const std::string& handle, const std::string& sessionPath, const std::string& appId
     ) {
       auto request = std::make_shared<Request>(connection, handle, []() {});
-      if (auto existing = sessions.find(sessionPath); existing != sessions.end()) {
-        existing->second->close();
-        sessions.erase(existing);
-        reportActive();
-      }
-
-      sessions.emplace(sessionPath, std::make_shared<Session>(connection, sessionPath, appId, [this, sessionPath]() {
-                         // A Start still choosing or starting captures ends with the session.
-                         for (const auto& operation : std::set(inflight)) {
-                           if (operation->session && operation->session->closed()) {
-                             operation->cancel();
-                           }
-                         }
-                         deferEraseSession(sessionPath);
-                       }));
-      result.returnResults(uint32_t{0}, PortalResults{});
+      const bool created = sessions.create(sessionPath, appId, sender()) != nullptr;
+      result.returnResults(uint32_t{created ? 0U : 2U}, PortalResults{});
       loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
     }
 
@@ -435,8 +412,8 @@ namespace xdpu {
         PortalResponse&& result, const std::string& handle, const std::string& sessionPath, const PortalResults& options
     ) {
       auto request = std::make_shared<Request>(connection, handle, []() {});
-      const auto sessionIt = sessions.find(sessionPath);
-      if (sessionIt == sessions.end() || sessionIt->second->closed()) {
+      const auto session = sessions.find(sessionPath, sender());
+      if (!session) {
         result.returnResults(uint32_t{2}, PortalResults{});
         loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
         return;
@@ -447,13 +424,13 @@ namespace xdpu {
       const uint32_t cursorMode = optionValue<uint32_t>(options, "cursor_mode").value_or(kCursorHidden);
       if (cursorMode != kCursorHidden && cursorMode != kCursorEmbedded && cursorMode != kCursorMetadata) {
         std::fprintf(stderr, "screencast: unsupported cursor mode %u\n", cursorMode);
-        sessionIt->second->closeByBackend();
+        session->closeByBackend();
         result.returnResults(uint32_t{2}, PortalResults{});
         loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
         return;
       }
       const uint32_t persistMode = optionValue<uint32_t>(options, "persist_mode").value_or(0);
-      sessionIt->second->setSelectionOptions(types, multiple, cursorMode, persistMode, parseRestoreData(options));
+      session->setSelectionOptions(types, multiple, cursorMode, persistMode, parseRestoreData(options));
 
       result.returnResults(uint32_t{0}, PortalResults{});
       loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
@@ -461,7 +438,7 @@ namespace xdpu {
 
     struct StartOperation : public std::enable_shared_from_this<StartOperation> {
       Impl& portal;
-      PortalResponse result;
+      StartReply reply;
       std::shared_ptr<Request> request;
       std::shared_ptr<AsyncProcess> process;
       std::shared_ptr<Session> session;
@@ -474,11 +451,14 @@ namespace xdpu {
       CaptureCursorMode captureCursorMode = CaptureCursorMode::Hidden;
       std::string parentWindow;
 
-      StartOperation(Impl& portal, PortalResponse&& result, std::shared_ptr<Session> session)
-          : portal(portal), result(std::move(result)), session(std::move(session)) {}
+      StartOperation(Impl& portal, StartReply reply, std::shared_ptr<Session> session)
+          : portal(portal), reply(std::move(reply)), session(std::move(session)) {}
 
+      // An empty handle leaves the Request to the caller (RemoteDesktop.Start owns it and calls cancel()).
       void start(const std::string& handle) {
-        attachRequest(handle);
+        if (!handle.empty()) {
+          attachRequest(handle);
+        }
         const auto restored = resolveRestoreSelections(
             portal.wayland, session->restoreSelections(), session->multiple(), session->sourceTypes()
         );
@@ -497,11 +477,12 @@ namespace xdpu {
         if (session->appId().empty()) {
           return std::nullopt;
         }
-        const auto existing = std::ranges::find_if(portal.sessions, [this](const auto& entry) {
+        const auto& sessions = portal.sessions.sessions();
+        const auto existing = std::ranges::find_if(sessions, [this](const auto& entry) {
           const auto& existing = entry.second;
           return existing != session && existing->appId() == session->appId() && existing->hasDynamicStreams();
         });
-        return existing == portal.sessions.end() ? std::nullopt : existing->second->dynamicMode();
+        return existing == sessions.end() ? std::nullopt : existing->second->dynamicMode();
       }
 
       std::optional<Session::DynamicMode> joinDynamicMode() const {
@@ -553,7 +534,7 @@ namespace xdpu {
         if (response != 0 && session) {
           session->clearStreams();
         }
-        result.returnResults(response, results);
+        reply(response, std::move(results));
         deferRequestDestroy();
         process.reset();
         pending.clear();
@@ -826,9 +807,8 @@ namespace xdpu {
                   item.selection, captureCursorMode,
                   static_cast<uint32_t>(std::max(0, portal.config.screencast.maxFps)), item.dynamicMode,
                   [portalPtr, sessionPath]() {
-                    const auto it = portalPtr->sessions.find(sessionPath);
-                    if (it != portalPtr->sessions.end()) {
-                      it->second->closeByBackend();
+                    if (const auto session = portalPtr->sessions.find(sessionPath)) {
+                      session->closeByBackend();
                     }
                   }
               )) {
@@ -940,7 +920,7 @@ namespace xdpu {
       } else if (command.kind == ScreenCastCommand::Kind::Clear) {
         manualTarget.reset();
       } else if (command.kind == ScreenCastCommand::Kind::FollowStop) {
-        for (const auto& [path, session] : sessions) {
+        for (const auto& [path, session] : sessions.sessions()) {
           (void)path;
           const auto currentMode = session->dynamicMode();
           if (currentMode == Session::DynamicMode::FollowWindow || currentMode == Session::DynamicMode::FollowOutput) {
@@ -950,7 +930,7 @@ namespace xdpu {
         }
       }
 
-      for (const auto& [path, session] : sessions) {
+      for (const auto& [path, session] : sessions.sessions()) {
         (void)path;
         if (command.kind == ScreenCastCommand::Kind::FollowStop) {
           session->setDynamicMode(Session::DynamicMode::Manual);
@@ -977,7 +957,7 @@ namespace xdpu {
       }
       focusedWindow = identifier;
       const auto target = targetForMode(Session::DynamicMode::FollowWindow);
-      for (const auto& [path, session] : sessions) {
+      for (const auto& [path, session] : sessions.sessions()) {
         (void)path;
         session->setFollowTarget(Session::DynamicMode::FollowWindow, target);
       }
@@ -993,7 +973,7 @@ namespace xdpu {
       }
       focusedOutput = output;
       const auto target = targetForMode(Session::DynamicMode::FollowOutput);
-      for (const auto& [path, session] : sessions) {
+      for (const auto& [path, session] : sessions.sessions()) {
         (void)path;
         session->setFollowTarget(Session::DynamicMode::FollowOutput, target);
       }
@@ -1007,28 +987,52 @@ namespace xdpu {
         PortalResponse&& result, const std::string& handle, const std::string& sessionPath,
         const std::string& parentWindow
     ) {
-      const auto sessionIt = sessions.find(sessionPath);
-      if (sessionIt == sessions.end() || !sessionIt->second->beginStart()) {
+      const auto session = sessions.find(sessionPath, sender());
+      if (!session || !session->beginStart()) {
         auto request = std::make_shared<Request>(connection, handle, []() {});
         result.returnResults(uint32_t{2}, PortalResults{});
         loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
         return;
       }
 
-      auto op = std::make_shared<StartOperation>(*this, std::move(result), sessionIt->second);
+      auto op = std::make_shared<StartOperation>(
+          *this,
+          [result = std::move(result)](uint32_t response, PortalResults results) mutable {
+            result.returnResults(response, results);
+          },
+          session
+      );
       op->parentWindow = parentWindow;
       inflight.insert(op);
       op->start(handle);
     }
+
+    std::function<void()> startSources(
+        const std::shared_ptr<Session>& session, const std::string& parentWindow, StartReply reply
+    ) {
+      auto op = std::make_shared<StartOperation>(*this, std::move(reply), session);
+      op->parentWindow = parentWindow;
+      inflight.insert(op);
+      op->start({});
+      return [weak = std::weak_ptr(op)]() {
+        if (const auto op = weak.lock()) {
+          op->cancel();
+        }
+      };
+    }
   };
 
   ScreenCastPortal::ScreenCastPortal(
-      Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, const Config& config, WaylandContext& wayland,
-      PipeWireContext& pipewire
+      Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions, const Config& config,
+      WaylandContext& wayland, PipeWireContext& pipewire
   )
-      : m_impl(std::make_unique<Impl>(loop, connection, object, config, wayland, pipewire)) {}
+      : m_impl(std::make_unique<Impl>(loop, connection, object, sessions, config, wayland, pipewire)) {}
 
   ScreenCastPortal::~ScreenCastPortal() = default;
+
+  std::vector<Session::Selection> restoreSelections(const sdbus::Variant& data) {
+    return parseRestoreData({{"restore_data", data}});
+  }
 
   void ScreenCastPortal::onConfigChanged(const Config&, const Config& newCfg) { m_impl->config = newCfg; }
 
@@ -1042,6 +1046,12 @@ namespace xdpu {
 
   void ScreenCastPortal::onFocusedOutputChanged(const std::optional<std::string>& output) {
     m_impl->setFocusedOutput(output);
+  }
+
+  std::function<void()> ScreenCastPortal::startSources(
+      const std::shared_ptr<Session>& session, const std::string& parentWindow, StartReply reply
+  ) {
+    return m_impl->startSources(session, parentWindow, std::move(reply));
   }
 
   void ScreenCastPortal::setActiveChangedHandler(std::function<void(bool)> handler) {

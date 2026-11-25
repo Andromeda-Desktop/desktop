@@ -71,7 +71,11 @@ namespace xdpu {
 
     using ClosedHandler = std::function<void()>;
 
-    Session(sdbus::IConnection& connection, std::string path, std::string appId, ClosedHandler closedHandler);
+    // `owner` is the unique bus name that created the session; only it may use the session.
+    Session(
+        sdbus::IConnection& connection, std::string path, std::string appId, std::string owner,
+        ClosedHandler closedHandler
+    );
     ~Session();
 
     Session(const Session&) = delete;
@@ -81,6 +85,7 @@ namespace xdpu {
 
     const std::string& path() const;
     const std::string& appId() const;
+    const std::string& owner() const;
     bool closed() const;
     /// Open -> Started; false when the session already started or closed (Start is allowed once).
     bool beginStart();
@@ -89,6 +94,8 @@ namespace xdpu {
         uint32_t sourceTypes, bool multiple, uint32_t cursorMode, uint32_t persistMode,
         std::vector<Selection> restoreSelections
     );
+    // True once ScreenCast.SelectSources ran; a RemoteDesktop session then also shares the screen.
+    bool sourcesSelected() const;
     uint32_t sourceTypes() const;
     bool multiple() const;
     uint32_t cursorMode() const;
@@ -97,6 +104,8 @@ namespace xdpu {
     void setCursorMode(uint32_t cursorMode);
     void setPersistMode(uint32_t persistMode);
     const std::vector<Selection>& restoreSelections() const;
+    // RemoteDesktop keeps the sources in its own restore data; the frontend sends ScreenCast none for its sessions.
+    void setRestoreSelections(std::vector<Selection> restoreSelections);
 
     void setSelections(std::vector<Selection> selections);
     const std::vector<Selection>& selections() const;

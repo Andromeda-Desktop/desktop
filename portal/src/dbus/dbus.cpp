@@ -1,8 +1,10 @@
 #include "dbus/dbus.h"
 
 #include "config/config.h"
+#include "dbus/remote_desktop.h"
 #include "dbus/screencast.h"
 #include "dbus/screenshot.h"
+#include "dbus/session_table.h"
 #include "loop/loop.h"
 #include "pipewire/pipewire.h"
 #include "andromeda/ipc.h"
@@ -51,8 +53,10 @@ namespace xdpu {
     PipeWireContext& pipewire;
     std::unique_ptr<sdbus::IConnection> connection;
     std::unique_ptr<sdbus::IObject> desktopObject;
+    std::unique_ptr<SessionTable> sessions;
     std::unique_ptr<ScreenshotPortal> screenshot;
     std::unique_ptr<ScreenCastPortal> screencast;
+    std::unique_ptr<RemoteDesktopPortal> remoteDesktop;
     int busFd = -1;
     int busFdWatch = 0;
     int eventFd = -1;
@@ -71,8 +75,12 @@ namespace xdpu {
       desktopObject = sdbus::createObject(*connection, sdbus::ObjectPath{kDesktopPath});
 
       screenshot = std::make_unique<ScreenshotPortal>(loop, *connection, *desktopObject, this->config, wayland);
-      screencast =
-          std::make_unique<ScreenCastPortal>(loop, *connection, *desktopObject, this->config, wayland, pipewire);
+      sessions = std::make_unique<SessionTable>(loop, *connection);
+      screencast = std::make_unique<ScreenCastPortal>(
+          loop, *connection, *desktopObject, *sessions, this->config, wayland, pipewire
+      );
+      remoteDesktop =
+          std::make_unique<RemoteDesktopPortal>(loop, *connection, *desktopObject, *sessions, *screencast, wayland);
 
       refreshPollData();
       drain();
@@ -91,7 +99,9 @@ namespace xdpu {
         loop.removeFd(eventFdWatch);
         eventFdWatch = 0;
       }
+      remoteDesktop.reset();
       screencast.reset();
+      sessions.reset();
       screenshot.reset();
       desktopObject.reset();
       connection.reset();

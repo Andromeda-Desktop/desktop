@@ -36,6 +36,7 @@ protocols = {
   'ext-foreign-toplevel-list-v1': wp_dir / 'staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml',
   'linux-dmabuf-v1':              wp_dir / 'stable/linux-dmabuf/linux-dmabuf-v1.xml',
   'xdg-output-unstable-v1':       wp_dir / 'unstable/xdg-output/xdg-output-unstable-v1.xml',
+  'andromeda-remote-input-v1':    files('protocols/andromeda-remote-input-v1.xml'),
 }
 
 protocol_sources = []
@@ -74,8 +75,10 @@ daemon_sources = files(
   'src/dbus/dbus.cpp',
   'src/dbus/screenshot.cpp',
   'src/dbus/screencast.cpp',
+  'src/dbus/remote_desktop.cpp',
   'src/dbus/request.cpp',
   'src/dbus/session.cpp',
+  'src/dbus/session_table.cpp',
   'src/wayland/wayland.cpp',
   'src/pipewire/pipewire.cpp',
   'src/andromeda/ipc.cpp',
@@ -95,6 +98,9 @@ executable(
     cairo_dep,
     tomlplusplus_dep,
     nlohmann_json_dep,
+    dependency('libei-1.0', version: '>=1.3'),
+    subproject('libdesk-system').get_variable('desk_system_dep'),
+    dependency('xkbcommon'),
   ],
   install: true,
   install_dir: get_option('libexecdir'),

@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <drm_fourcc.h>
+#include <andromeda-remote-input-v1-client-protocol.h>
 #include <ext-foreign-toplevel-list-v1-client-protocol.h>
 #include <ext-image-capture-source-v1-client-protocol.h>
 #include <ext-image-copy-capture-v1-client-protocol.h>
@@ -68,6 +69,7 @@ namespace xdpu {
     ext_output_image_capture_source_manager_v1* outputSourceManager = nullptr;
     ext_foreign_toplevel_image_capture_source_manager_v1* toplevelSourceManager = nullptr;
     ext_image_copy_capture_manager_v1* captureManager = nullptr;
+    andromeda_remote_input_manager_v1* remoteInputManager = nullptr;
     ext_foreign_toplevel_list_v1* toplevelList = nullptr;
     zxdg_output_manager_v1* xdgOutputManager = nullptr;
 
@@ -263,6 +265,10 @@ namespace xdpu {
       if (captureManager != nullptr) {
         ext_image_copy_capture_manager_v1_destroy(captureManager);
         captureManager = nullptr;
+      }
+      if (remoteInputManager != nullptr) {
+        andromeda_remote_input_manager_v1_destroy(remoteInputManager);
+        remoteInputManager = nullptr;
       }
       if (toplevelSourceManager != nullptr) {
         ext_foreign_toplevel_image_capture_source_manager_v1_destroy(toplevelSourceManager);
@@ -1070,6 +1076,12 @@ namespace xdpu {
         );
         return;
       }
+      if (iface == andromeda_remote_input_manager_v1_interface.name) {
+        impl->remoteInputManager = static_cast<andromeda_remote_input_manager_v1*>(
+            wl_registry_bind(registry, name, &andromeda_remote_input_manager_v1_interface, std::min(version, 1U))
+        );
+        return;
+      }
       if (iface == ext_foreign_toplevel_list_v1_interface.name) {
         impl->toplevelList = static_cast<ext_foreign_toplevel_list_v1*>(
             wl_registry_bind(registry, name, &ext_foreign_toplevel_list_v1_interface, std::min(version, 1U))
@@ -1406,6 +1418,99 @@ namespace xdpu {
     wl_shm_pool_destroy(pool);
     m_impl->flushDisplay();
     return buffer;
+  }
+
+  namespace {
+
+    using RemoteInputSession = WaylandContext::RemoteInputSession;
+
+    RemoteInputSession& remoteSession(void* data) { return *static_cast<RemoteInputSession*>(data); }
+
+    const andromeda_remote_input_session_v1_listener kRemoteInputListener = {
+        .grant =
+            [](void* data, andromeda_remote_input_session_v1*, uint32_t, uint32_t persistMode, const char* token) {
+              if (auto& handler = remoteSession(data).events.grant) {
+                handler(persistMode, token == nullptr ? std::string() : std::string(token));
+              }
+            },
+        .started =
+            [](void* data, andromeda_remote_input_session_v1*, uint32_t, uint32_t status, uint32_t capabilities) {
+              if (auto& handler = remoteSession(data).events.started) {
+                handler(status, capabilities);
+              }
+            },
+        .eis_fd =
+            [](void* data, andromeda_remote_input_session_v1*, uint32_t request, int32_t fd) {
+              if (auto& handler = remoteSession(data).events.eisFd) {
+                handler(request, fd);
+              } else {
+                close(fd);
+              }
+            },
+        .result =
+            [](void* data, andromeda_remote_input_session_v1*, uint32_t request, uint32_t status) {
+              if (auto& handler = remoteSession(data).events.result) {
+                handler(request, status);
+              }
+            },
+        .closed =
+            [](void* data, andromeda_remote_input_session_v1*) {
+              if (auto& handler = remoteSession(data).events.closed) {
+                handler();
+              }
+            },
+    };
+
+  } // namespace
+
+  WaylandContext::RemoteInputSession::RemoteInputSession(
+      WaylandContext& context, andromeda_remote_input_session_v1* proxy, Events events
+  )
+      : context(context), proxy(proxy), events(std::move(events)) {
+    andromeda_remote_input_session_v1_add_listener(proxy, &kRemoteInputListener, this);
+  }
+
+  WaylandContext::RemoteInputSession::~RemoteInputSession() {
+    if (context.connected()) {
+      andromeda_remote_input_session_v1_destroy(proxy);
+      context.flush();
+    }
+  }
+
+  void WaylandContext::RemoteInputSession::setPersistence(
+      uint32_t persistMode, const std::string& restoreToken, const std::string& instance
+  ) {
+    andromeda_remote_input_session_v1_set_persistence(proxy, persistMode, restoreToken.c_str(), instance.c_str());
+    context.flush();
+  }
+
+  void WaylandContext::RemoteInputSession::start(const std::string& application, uint32_t capabilities) {
+    andromeda_remote_input_session_v1_start(proxy, nextRequest++, application.c_str(), capabilities);
+    context.flush();
+  }
+
+  uint32_t WaylandContext::RemoteInputSession::connectEis() {
+    const uint32_t request = nextRequest++;
+    andromeda_remote_input_session_v1_connect_eis(proxy, request);
+    context.flush();
+    return request;
+  }
+
+  void WaylandContext::expireRemoteInputScope(const std::string& instance) {
+    if (connected() && m_impl->remoteInputManager != nullptr) {
+      andromeda_remote_input_manager_v1_expire_scope(m_impl->remoteInputManager, instance.c_str());
+      flush();
+    }
+  }
+
+  std::unique_ptr<WaylandContext::RemoteInputSession>
+  WaylandContext::createRemoteInputSession(RemoteInputSession::Events events) {
+    if (!connected() || m_impl->remoteInputManager == nullptr) {
+      return nullptr;
+    }
+    return std::make_unique<RemoteInputSession>(
+        *this, andromeda_remote_input_manager_v1_create_session(m_impl->remoteInputManager), std::move(events)
+    );
   }
 
   void WaylandContext::flush() {

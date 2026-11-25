@@ -397,8 +397,10 @@ namespace xdpu {
     std::unique_ptr<sdbus::IObject> object;
     std::string path;
     std::string appId;
+    std::string owner;
     ClosedHandler closedHandler;
     Phase phase = Phase::Open;
+    bool sourcesSelected = false;
     uint32_t selectedSourceTypes = 1;
     bool allowMultiple = false;
     uint32_t selectedCursorMode = 1;
@@ -407,8 +409,12 @@ namespace xdpu {
     std::vector<Selection> currentSelections;
     std::vector<std::shared_ptr<StreamState>> streams;
 
-    Impl(sdbus::IConnection& connection, std::string path, std::string appId, ClosedHandler closedHandler)
-        : path(std::move(path)), appId(std::move(appId)), closedHandler(std::move(closedHandler)) {
+    Impl(
+        sdbus::IConnection& connection, std::string path, std::string appId, std::string owner,
+        ClosedHandler closedHandler
+    )
+        : path(std::move(path)), appId(std::move(appId)), owner(std::move(owner)),
+          closedHandler(std::move(closedHandler)) {
       object = sdbus::createObject(connection, sdbus::ObjectPath{this->path});
       object
           ->addVTable(
@@ -450,14 +456,21 @@ namespace xdpu {
     }
   };
 
-  Session::Session(sdbus::IConnection& connection, std::string path, std::string appId, ClosedHandler closedHandler)
-      : m_impl(std::make_unique<Impl>(connection, std::move(path), std::move(appId), std::move(closedHandler))) {}
+  Session::Session(
+      sdbus::IConnection& connection, std::string path, std::string appId, std::string owner,
+      ClosedHandler closedHandler
+  )
+      : m_impl(std::make_unique<Impl>(
+            connection, std::move(path), std::move(appId), std::move(owner), std::move(closedHandler)
+        )) {}
 
   Session::~Session() = default;
 
   const std::string& Session::path() const { return m_impl->path; }
 
   const std::string& Session::appId() const { return m_impl->appId; }
+
+  const std::string& Session::owner() const { return m_impl->owner; }
 
   bool Session::closed() const { return m_impl->phase == Phase::Closed; }
 
@@ -473,12 +486,19 @@ namespace xdpu {
       uint32_t sourceTypes, bool multiple, uint32_t cursorMode, uint32_t persistMode,
       std::vector<Selection> restoreSelections
   ) {
+    m_impl->sourcesSelected = true;
     m_impl->selectedSourceTypes = (sourceTypes & 0x3u) == 0 ? 1u : (sourceTypes & 0x3u);
     m_impl->allowMultiple = multiple;
     m_impl->selectedCursorMode = cursorMode;
     m_impl->selectedPersistMode = std::min<uint32_t>(persistMode, 2);
     m_impl->restore = std::move(restoreSelections);
   }
+
+  void Session::setRestoreSelections(std::vector<Selection> restoreSelections) {
+    m_impl->restore = std::move(restoreSelections);
+  }
+
+  bool Session::sourcesSelected() const { return m_impl->sourcesSelected; }
 
   uint32_t Session::sourceTypes() const { return m_impl->selectedSourceTypes; }
 
