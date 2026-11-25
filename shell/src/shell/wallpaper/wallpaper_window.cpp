@@ -17,6 +17,7 @@
 #include "ui/dialogs/layer_popup_host.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "wayland/surface.h"
 #include "wayland/wayland_seat.h"
 
 #include <algorithm>
@@ -289,12 +290,26 @@ void WallpaperWindow::syncBlur() {
 }
 
 bool WallpaperWindow::ownsKeyboardSurface(wl_surface* surface) const noexcept {
-  return isOpen() && surface != nullptr && surface == m_surface->wlSurface();
+  if (!isOpen() || surface == nullptr) {
+    return false;
+  }
+  return surface == m_surface->wlSurface()
+      || (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()
+          && WaylandSurface::wlOf(m_selectPopup->surface()) == surface);
 }
 
 bool WallpaperWindow::onPointerEvent(const PointerEvent& event) {
   if (!isOpen()) {
     return false;
+  }
+  if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
+    if (m_selectPopup->onPointerEvent(event)) {
+      return true;
+    }
+    if (event.type == PointerEvent::Type::Button && event.pressed) {
+      m_selectPopup->closeSelectDropdown();
+      return true;
+    }
   }
   const bool onThis = event.surface != nullptr && event.surface == m_surface.get();
   bool consumed = false;
@@ -351,6 +366,10 @@ bool WallpaperWindow::onPointerEvent(const PointerEvent& event) {
 
 void WallpaperWindow::onKeyboardEvent(const KeyboardEvent& event) {
   if (!isOpen() || m_panel == nullptr) {
+    return;
+  }
+  if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
+    m_selectPopup->onKeyboardEvent(event);
     return;
   }
   if (event.pressed && (event.modifiers & KeyMod::Ctrl) != 0 && (event.sym == XKB_KEY_w || event.sym == XKB_KEY_q)) {
