@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # RemoteDesktop through the real xdg-desktop-portal frontend, this portal and an isolated compositor with
-# backend-boundary input: a denial starts nothing, an allowed session moves the pointer through the portal's EIS
-# sender, a remembered grant restores without asking and hands out an EIS fd, revoking it ends the session, a
+# backend-boundary input: a denial starts nothing, an allowed session moves the pointer and types keysyms (Shift
+# added for a level-1 keysym) through the portal's EIS sender, a remembered grant restores without asking and hands out an EIS fd, revoking it ends the session, a
 # caller other than the frontend cannot create a session, a session with sources streams the chooser's output and
 # places absolute motion on it, a remembered token restores devices and sources without panel or chooser, a
 # mode-1 grant ends when its app leaves the bus, and the clipboard moves both ways only for a session whose consent
@@ -36,7 +36,9 @@ done
 for command in pipewire wl-copy wl-paste; do
   command -v "$command" > /dev/null || { echo "Missing test command: $command"; exit 2; }
 done
-[[ -x $BUILD/tests/lock-client ]] || { echo "Missing executable: $BUILD/tests/lock-client"; exit 2; }
+for client in lock-client seat-log-client; do
+  [[ -x $BUILD/tests/$client ]] || { echo "Missing executable: $BUILD/tests/$client"; exit 2; }
+done
 
 export XDG_RUNTIME_DIR=$RUNTIME XDG_CONFIG_HOME=$RUNTIME/config XDG_DATA_HOME=$RUNTIME/data-home
 export XDG_CACHE_HOME=$RUNTIME/cache XDG_STATE_HOME=$RUNTIME/state XDG_DATA_DIRS=$RUNTIME/data
@@ -177,6 +179,24 @@ for _ in $(seq 50); do
 done
 awk -v a="$x0" -v b="$x1" -v c="$y0" -v d="$y1" 'BEGIN { exit !((b - a) == 40 && (d - c) == 30) }' ||
   { echo "the pointer moved from $x0,$y0 to $x1,$y1, not by 40,30"; exit 1; }
+
+# NotifyKeyboardKeysym: 'a' types KEY_A alone; 'A' wraps KEY_A in Shift, which the focused client sees as a modifier.
+readonly KEYS=$RUNTIME/keys.log
+mkfifo "$RUNTIME/keys.fifo"
+exec {KEYS_FD}<> "$RUNTIME/keys.fifo"
+LOG_MODIFIERS=1 "$BUILD/tests/seat-log-client" remote-desktop-keys <&"$KEYS_FD" > "$KEYS" 2>&1 &
+PIDS+=("$!")
+await_events "$KEYS" keyboard-enter 1 "key observer focused"
+send_once 'keysym 0x61'
+await_events "$RUNTIME/once.log" keysymed 1 "keysym a sent"
+await_events "$KEYS" 'keyboard-key code=30 state=released' 1 "keysym a typed KEY_A"
+grep -q 'code=42' "$KEYS" && { echo "keysym a pressed Shift"; exit 1; }
+send_once 'keysym 0x41'
+await_events "$RUNTIME/once.log" keysymed 2 "keysym A sent"
+await_events "$KEYS" 'keyboard-key code=42 state=released' 1 "keysym A released Shift"
+sed -n '/code=30 state=released/,$p' "$KEYS" | tr '\n' ' ' |
+  grep -q 'code=42 state=pressed.*depressed=1 .*code=30 state=pressed.*code=30 state=released.*code=42 state=released' ||
+  { echo "keysym A did not type Shift+KEY_A in order:"; cat "$KEYS"; exit 1; }
 
 # Remember: R stores a grant; the frontend's token restores it without the panel, and ConnectToEIS gives a socket.
 client remember

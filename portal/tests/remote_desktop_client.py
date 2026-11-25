@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drives org.freedesktop.portal.RemoteDesktop through the real frontend, one stdin command per line:
   session <persist_mode> <restore_token|->   sources   start   move <dx> <dy>   abs <stream> <x> <y>
-  key <evdev code>   eis   clipboard   set <mime> <text>   read <mime>   close   quit
+  key <evdev code>   keysym <keysym>   eis   clipboard   set <mime> <text>   read <mime>   close   quit
 SelectionOwnerChanged and SelectionTransfer print lines too; a transfer is answered with the text of the last set.
 Each result is one stdout line."""
 import os
@@ -141,6 +141,10 @@ def command(line):
         code = int(words[1])
         if notify("NotifyKeyboardKeycode", ("iu", code, 1)) and notify("NotifyKeyboardKeycode", ("iu", code, 0)):
             say("keyed")
+    elif action == "keysym":
+        sym = int(words[1], 0)
+        if notify("NotifyKeyboardKeysym", ("iu", sym, 1)) and notify("NotifyKeyboardKeysym", ("iu", sym, 0)):
+            say("keysymed")
     elif action == "eis":
         try:
             reply, fds = BUS.call_with_unix_fd_list_sync(
