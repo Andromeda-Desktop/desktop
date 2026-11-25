@@ -46,10 +46,14 @@ namespace {
     int configuredHeight = 0;
     bool mapped = false;
     bool suspended = false;
+    bool dskRequested = false;
     wl_surface* popupSurface = nullptr;
   };
 
   void addDskListener(State& state, wl_surface* surface, const char* label);
+  // LATE_DSK=<file>: at the first frame after <file> exists, ask for dsk_surface_v1 and stop committing, as a static
+  // surface that asks long after its map.
+  const char* lateDskFile() { return std::getenv("LATE_DSK"); }
 
   void requestFrame(State& state);
   bool createBuffer(State& state);
@@ -58,6 +62,12 @@ namespace {
     wl_callback_destroy(callback);
     auto& state = *static_cast<State*>(data);
         std::println("frame {}", timeMs);
+    if (const char* late = lateDskFile(); late != nullptr && !state.dskRequested && access(late, F_OK) == 0) {
+      state.dskRequested = true;
+      addDskListener(state, state.surface, "presence");
+      std::fflush(stdout);
+      return;
+    }
     if (const char* stop = std::getenv("STOP_FILE"); stop != nullptr && access(stop, F_OK) == 0) {
       std::println("stopped");
       std::fflush(stdout);
@@ -270,7 +280,9 @@ int main(int argc, char** argv) {
         WP_CONTENT_TYPE_V1_TYPE_GAME
     );
   }
-  addDskListener(state, state.surface, "presence");
+  if (lateDskFile() == nullptr) {
+    addDskListener(state, state.surface, "presence");
+  }
   state.xdgSurface = xdg_wm_base_get_xdg_surface(state.wmBase, state.surface);
   xdg_surface_add_listener(state.xdgSurface, &kXdgListener, &state);
   state.toplevel = xdg_surface_get_toplevel(state.xdgSurface);
