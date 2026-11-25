@@ -48,7 +48,7 @@ namespace andromeda {
     // Binaries the user granted screen and input access (Settings > Privacy): canonical absolute paths.
     [[nodiscard]] std::vector<std::string> binaries();
     // Stores the canonical path of an existing ELF executable. Errors: not-absolute, not-executable, script,
-    // too-long, too-many (64), store-failed.
+    // runs-other-code (an interpreter or loader), too-long, too-many (64), store-failed.
     [[nodiscard]] std::expected<std::string, std::string> addBinary(std::string_view path);
     [[nodiscard]] bool removeBinary(std::string_view path);
     [[nodiscard]] bool revoke(std::string_view id);

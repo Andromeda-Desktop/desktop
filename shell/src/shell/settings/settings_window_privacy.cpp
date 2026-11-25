@@ -565,9 +565,10 @@ void SettingsWindow::addTrustedApp() {
       return;
     }
     const auto added = m_platform->andromedaRuntime().commandResult("trusted-binary-add", result->native());
-    static constexpr std::array<std::pair<std::string_view, std::string_view>, 4> kErrors{{
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 5> kErrors{{
         {"not-executable", "settings.privacy.screen-input-not-app"},
         {"script", "settings.privacy.screen-input-script"},
+        {"runs-other-code", "settings.privacy.screen-input-runner"},
         {"too-many", "settings.privacy.screen-input-too-many"},
         {"too-long", "settings.privacy.screen-input-not-app"},
     }};

@@ -338,6 +338,30 @@ ANDROMEDA_TEST(symlinkStoresAndDirectoriesCannotAuthorizeOrReplaceTheirTargets) 
   }
 }
 
+// Grants whose token nobody holds any more (the portal row was revoked, the app was removed) must not block new ones:
+// a full store drops the durable grant used least recently, also across a reload.
+ANDROMEDA_TEST(aFullStoreDropsTheGrantUsedLeastRecently) {
+  Fixture fixture;
+  std::vector<std::string> tokens;
+  {
+    InputCapturePermissions permissions(fixture.path);
+    for (int index = 0; index < 128; ++index) {
+      const auto grant = permissions.issue("org.test.Capture", 3, 2, 11, InputPermissionKind::Emulate);
+      CHECK(grant.has_value());
+      tokens.push_back(grant ? grant->token : std::string{});
+    }
+    const auto used = permissions.restore(tokens[0], "org.test.Capture", 3, 2, 11, InputPermissionKind::Emulate);
+    CHECK(used.has_value());
+    tokens[0] = used ? used->token : std::string{};
+  }
+  InputCapturePermissions reloaded(fixture.path);
+  CHECK(reloaded.issue("org.test.New", 3, 2, 22, InputPermissionKind::Emulate).has_value());
+  CHECK(!reloaded.restore(tokens[1], "org.test.Capture", 3, 2, 11, InputPermissionKind::Emulate));
+  CHECK(reloaded.restore(tokens[0], "org.test.Capture", 3, 2, 11, InputPermissionKind::Emulate).has_value());
+  CHECK(reloaded.restore(tokens[2], "org.test.Capture", 3, 2, 11, InputPermissionKind::Emulate).has_value());
+  CHECK_EQ(reloaded.list().size(), 128U);
+}
+
 namespace {
   // An ELF copy of this test binary.
   void writeFile(const std::filesystem::path& path, mode_t mode) {
@@ -441,6 +465,14 @@ ANDROMEDA_TEST(aTrustedBinaryListIsCappedAndABadEntryRefusesTheStore) {
     InputCapturePermissions permissions(fixture.path);
     CHECK(permissions.addBinary((bin / "script").native()).error() == "script");
     CHECK(permissions.addBinary("bin/app").error() == "not-absolute");
+    for (const std::string_view runner : {"python3.12", "ld-linux-x86-64.so.2", "electron33", "sh"}) {
+      writeFile(bin / runner, 0700);
+      const auto added = permissions.addBinary((bin / runner).native());
+      CHECK(!added && added.error() == "runs-other-code");
+    }
+    writeFile(bin / "node-red", 0700);
+    CHECK(permissions.addBinary((bin / "node-red").native()).has_value());
+    CHECK(permissions.removeBinary((bin / "node-red").native()));
     CHECK(permissions.addBinary((bin / "app").native()).has_value());
     CHECK(fixture.read().contains(R"("version":2)"));
     CHECK(permissions.removeBinary((bin / "app").native()));

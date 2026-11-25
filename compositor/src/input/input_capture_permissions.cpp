@@ -17,6 +17,24 @@ namespace andromeda {
     constexpr size_t kMaxGrants = 128;
     constexpr size_t kMaxBinaries = 64;
     constexpr size_t kMaxBinaryPath = 4096;
+    // Programs whose process runs code from another file: their exe stays the same for every script or program they
+    // run, so a grant to one of them goes to all of that code. Matched on the file name without a version suffix.
+    constexpr std::string_view kRunners[] = {
+        "bash",  "busybox", "bun",  "dash",  "deno",   "dotnet", "electron", "env",    "fish",           "gjs",
+        "guile", "java",    "ksh",  "ld.so", "lua",    "luajit", "mksh",     "mono",   "node",           "nodejs",
+        "perl",  "php",     "pwsh", "pypy",  "python", "racket", "Rscript",  "ruby",   "sbcl",           "sh",
+        "tclsh", "wine",    "wish", "zsh",   "wine-preloader", "wine64-preloader",
+    };
+
+    bool runsOtherCode(const std::filesystem::path& binary) {
+      const std::string name = binary.filename().native();
+      if (name.starts_with("ld-linux") || name.starts_with("ld-musl") || name.starts_with("qemu-")) {
+        return true;
+      }
+      const auto end = name.find_last_not_of("0123456789.-");
+      const std::string_view stem = std::string_view(name).substr(0, end == std::string::npos ? 0 : end + 1);
+      return std::ranges::contains(kRunners, stem);
+    }
     // A grant holds keyboard or pointer; a remote input grant may add clipboard.
     constexpr bool validCapabilities(uint64_t capabilities, InputPermissionKind kind) {
       return (capabilities & 3U) != 0 && capabilities <= (kind == InputPermissionKind::Emulate ? 7U : 3U);
@@ -189,15 +207,23 @@ namespace andromeda {
         return std::nullopt;
       }
     }
-    if (m_records.size() >= kMaxGrants) {
-      return std::nullopt;
-    }
     const auto id = private_state::randomHex(16);
     const auto token = private_state::randomHex(32);
     if (!id || !token) {
       return std::nullopt;
     }
     auto records = m_records;
+    if (records.size() >= kMaxGrants) {
+      // Records are in use order (a restore moves its record last), so a full store drops the grant of the same
+      // persist mode used least recently: for example one whose token the portal or the app no longer holds.
+      const auto oldest = std::ranges::find(records, persistMode, [](const Record& item) {
+        return item.permission.persistMode;
+      });
+      if (oldest == records.end()) {
+        return std::nullopt;
+      }
+      records.erase(oldest);
+    }
     records.push_back(
         {{*id, std::string(application), capabilities, persistMode, kind}, *token, persistMode == 1 ? peer : 0}
     );
@@ -248,6 +274,8 @@ namespace andromeda {
       records[index].token = *nextToken;
       records[index].permission.persistMode = persistMode;
       records[index].peer = persistMode == 1 ? peer : 0;
+      std::rotate(records.begin() + static_cast<ptrdiff_t>(index), records.begin() + static_cast<ptrdiff_t>(index) + 1,
+                  records.end());
     }
     if (durable && !save(records, m_binaries)) {
       return std::nullopt;
@@ -343,6 +371,9 @@ namespace andromeda {
     }
     if (magic != std::array<char, 4>{'\x7f', 'E', 'L', 'F'}) {
       return std::unexpected("not-executable");
+    }
+    if (runsOtherCode(canonical)) {
+      return std::unexpected("runs-other-code");
     }
     std::string binary = canonical.native();
     if (binary.size() > kMaxBinaryPath) {

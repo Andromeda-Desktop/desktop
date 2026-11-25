@@ -2090,6 +2090,7 @@
       "screen-input-none": "No apps have screen and input access.",
       "screen-input-not-app": "This file is not an app.",
       "screen-input-note": "Apps get or lose access the next time they start.",
+      "screen-input-runner": "This program runs other apps, so access would go to all of them. Choose the app itself.",
       "screen-input-script": "This file is a script. Choose the program that it starts.",
       "screen-input-too-many": "The list is full. Remove an app first.",
       "sign-in": "Sign-in",
