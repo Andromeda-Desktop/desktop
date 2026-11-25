@@ -9,6 +9,7 @@
 namespace lock_thumbnail {
 
   // An image that shows `file`: its freedesktop thumbnail, or the helper's still. Empty while none exists.
+  // Blocking: call from a worker thread.
   [[nodiscard]] std::string find(const std::string& file);
   // Where the helper writes the still of `file` (keyed by its URI and mtime).
   [[nodiscard]] std::filesystem::path cachePath(const std::string& file);

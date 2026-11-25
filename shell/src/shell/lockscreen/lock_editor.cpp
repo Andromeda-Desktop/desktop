@@ -5,6 +5,7 @@
 
 #include "auth/pam_authenticator.h"
 #include "config/config_service.h"
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/ui_phase.h"
@@ -775,22 +776,50 @@ void LockEditor::loadWallpaperItems() {
       m_config->config().wallpaper, wallpaper::effectiveThemeMode(configured, configured == ThemeMode::Light)
   );
   m_wallItems = LockEditorWallpaper::items(m_wall.tab, directory);
-  for (auto& item : m_wallItems) {
-    if (item.kind != LockEditorWallpaper::Item::Kind::Video && item.kind != LockEditorWallpaper::Item::Kind::Shader) {
-      continue;
+  std::vector<std::string> live;
+  for (const auto& item : m_wallItems) {
+    if (item.kind == LockEditorWallpaper::Item::Kind::Video || item.kind == LockEditorWallpaper::Item::Kind::Shader) {
+      live.push_back(item.value);
     }
-    item.still = lock_thumbnail::find(item.value);
-    if (item.still.empty()) {
-      lock_thumbnail::request(item.value, [this, file = item.value] {
-        // The editor may have closed or changed tabs since the request.
-        for (auto& shown : m_wallItems) {
-          if (shown.value == file) {
-            shown.still = lock_thumbnail::find(file);
-          }
+  }
+  if (!live.empty()) {
+    // Both completions match items by file: the tab may have changed since the lookup or request.
+    const auto setStill = [this](const std::string& file, const std::string& still) {
+      for (auto& shown : m_wallItems) {
+        if (shown.value == file) {
+          shown.still = still;
         }
-        refresh();
-      });
-    }
+      }
+    };
+    using Found = std::vector<std::pair<std::string, std::string>>;
+    BlockingPool::instance().run<Found>(
+        m_alive,
+        [live = std::move(live)] {
+          Found found;
+          for (const std::string& file : live) {
+            found.emplace_back(file, lock_thumbnail::find(file));
+          }
+          return found;
+        },
+        [this, setStill](Found found) {
+          for (const auto& [file, still] : found) {
+            setStill(file, still);
+            if (!still.empty()) {
+              continue;
+            }
+            lock_thumbnail::request(file, [this, setStill, alive = std::weak_ptr<char>(m_alive), file] {
+              if (alive.expired()) {
+                return;
+              }
+              const std::filesystem::path own = lock_thumbnail::cachePath(file);
+              std::error_code error;
+              setStill(file, std::filesystem::exists(own, error) ? own.string() : std::string{});
+              refresh();
+            });
+          }
+          refresh();
+        }
+    );
   }
   m_wall.emptyText = i18n::tr("lockscreen.editor.wallpaper-empty", "dir", directory);
   m_wall.scrollRow = 0;

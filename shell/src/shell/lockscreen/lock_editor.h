@@ -186,4 +186,5 @@ private:
   std::vector<PanelMotion> m_panelMotion;
   Timer m_clockTimer;
   std::function<void(bool)> m_openChanged;
+  std::shared_ptr<char> m_alive = std::make_shared<char>();
 };

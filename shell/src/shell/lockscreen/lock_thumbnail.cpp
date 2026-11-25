@@ -1,5 +1,6 @@
 #include "shell/lockscreen/lock_thumbnail.h"
 
+#include "core/freedesktop_thumbnails.h"
 #include "core/log.h"
 #include "core/process/process.h"
 #include "net/uri.h"
@@ -101,12 +102,8 @@ namespace lock_thumbnail {
   }
 
   std::string find(const std::string& file) {
-    const std::string name = md5(uri::fileUri(file)) + ".png";
-    for (const char* size : {"x-large", "large", "normal"}) {
-      const std::filesystem::path path = cacheHome() / "thumbnails" / size / name;
-      if (std::filesystem::exists(path)) {
-        return path.string();
-      }
+    if (const auto thumb = freedesktop_thumbnails::lookup(file, static_cast<int>(kWidth))) {
+      return thumb->string();
     }
     const std::filesystem::path own = cachePath(file);
     return std::filesystem::exists(own) ? own.string() : std::string{};
