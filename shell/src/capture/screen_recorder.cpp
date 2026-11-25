@@ -5,6 +5,7 @@
 #include "core/log.h"
 #include "dbus/session_bus.h"
 #include "notification/notification_manager.h"
+#include "protocols/bus_names.h"
 
 #include <algorithm>
 #include <chrono>
@@ -22,7 +23,7 @@ namespace {
 
   constexpr Logger kLog("screen-recorder");
 
-  const sdbus::ServiceName kPortalBusName{"org.freedesktop.portal.Desktop"};
+  const sdbus::ServiceName kPortalBusName{busname::kPortalFrontend};
   const sdbus::ObjectPath kPortalPath{"/org/freedesktop/portal/desktop"};
   constexpr auto kScreenCast = "org.freedesktop.portal.ScreenCast";
   constexpr auto kRequest = "org.freedesktop.portal.Request";

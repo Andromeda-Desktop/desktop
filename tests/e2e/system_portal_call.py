@@ -8,6 +8,12 @@ from gi.repository import Gio, GLib
 
 NAME, PATH = "org.freedesktop.impl.portal.desktop.andromeda.Files", "/org/freedesktop/portal/desktop"
 bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+# The impl accepts only the frontend: on the private test bus this script is it.
+owned = bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName",
+                      GLib.Variant("(su)", ("org.freedesktop.portal.Desktop", 3)), GLib.VariantType("(u)"),
+                      Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+if owned != 1:
+    sys.exit(f"could not own org.freedesktop.portal.Desktop ({owned})")
 
 
 def call(iface, method, args, reply):

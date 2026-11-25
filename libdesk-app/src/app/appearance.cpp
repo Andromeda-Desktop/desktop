@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "i18n/i18n_service.h"
+#include "protocols/bus_names.h"
 #include "render/animation/motion_service.h"
 #include "dbus/session_bus.h"
 #include "ui/palette.h"
@@ -13,7 +14,7 @@
 
 namespace {
   constexpr Logger kLog("appearance");
-  const sdbus::ServiceName kPortal{"org.freedesktop.portal.Desktop"};
+  const sdbus::ServiceName kPortal{busname::kPortalFrontend};
   const sdbus::ServiceName kBackend{"org.freedesktop.impl.portal.desktop.andromeda.shell"};
   const sdbus::ObjectPath kPath{"/org/freedesktop/portal/desktop"};
   constexpr auto kPortalSettings = "org.freedesktop.portal.Settings";

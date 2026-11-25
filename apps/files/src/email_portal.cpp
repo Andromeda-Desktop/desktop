@@ -1,6 +1,7 @@
 #include "email_portal.h"
 
 #include "core/log.h"
+#include "dbus/caller.h"
 #include "dbus/session_bus.h"
 
 #include <glib.h>
@@ -81,6 +82,7 @@ EmailPortal::EmailPortal(SessionBus& bus) : m_bus(bus) {
                       .withOutputParamNames("response", "results")
                       .implementedAs([this](sdbus::Result<std::uint32_t, Options>&& result, sdbus::ObjectPath /*handle*/,
                                             std::string appId, std::string /*parent*/, Options options) {
+                        requirePortalFrontend(m_bus.connection());
                         const auto args = xdgEmailArgs(options);
                         if (!args) {
                           kLog.warn("{}: refused an address that is not a plain e-mail address", appId);

@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "dbus/session_bus.h"
+#include "protocols/bus_names.h"
 #include "protocols/uri.h"
 
 #include <sdbus-c++/sdbus-c++.h>
@@ -16,7 +17,7 @@ namespace desk {
 
   namespace {
     constexpr Logger kLog("file-chooser");
-    const sdbus::ServiceName kPortal{"org.freedesktop.portal.Desktop"};
+    const sdbus::ServiceName kPortal{busname::kPortalFrontend};
     const sdbus::ObjectPath kPath{"/org/freedesktop/portal/desktop"};
     constexpr auto kFileChooser = "org.freedesktop.portal.FileChooser";
     constexpr auto kRequest = "org.freedesktop.portal.Request";

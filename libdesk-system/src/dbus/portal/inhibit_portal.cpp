@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "dbus/caller.h"
 #include "dbus/session_bus.h"
 #include "dbus/logind/logind_service.h"
 
@@ -33,6 +34,7 @@ InhibitPortal::InhibitPortal(SessionBus& bus, LogindService* logind) : m_bus(bus
                                  const std::string& /*window*/, std::uint32_t flags,
                                  const std::map<std::string, sdbus::Variant>& options
                              ) {
+                requirePortalFrontend(m_bus.connection());
                 std::string reason;
                 if (const auto it = options.find("reason"); it != options.end()) {
                   try {
@@ -49,12 +51,13 @@ InhibitPortal::InhibitPortal(SessionBus& bus, LogindService* logind) : m_bus(bus
                                  const sdbus::ObjectPath& /*handle*/, const sdbus::ObjectPath& sessionHandle,
                                  const std::string& /*appId*/, const std::string& /*window*/
                              ) {
+                requirePortalFrontend(m_bus.connection());
                 createMonitor(sessionHandle);
                 return std::uint32_t{0};
               }),
           sdbus::registerMethod("QueryEndSessionResponse")
               .withInputParamNames("session_handle")
-              .implementedAs([](const sdbus::ObjectPath& /*sessionHandle*/) {}),
+              .implementedAs([this](const sdbus::ObjectPath& /*sessionHandle*/) { requirePortalFrontend(m_bus.connection()); }),
           sdbus::registerSignal("StateChanged")
               .withParameters<sdbus::ObjectPath, std::map<std::string, sdbus::Variant>>("session_handle", "state"),
           sdbus::registerProperty("version").withGetter([]() { return kVersion; })
@@ -74,7 +77,10 @@ void InhibitPortal::inhibit(
   entry.flags = flags;
   entry.object = sdbus::createObject(m_bus.connection(), sdbus::ObjectPath{handle});
   entry.object->addVTable(
-                  sdbus::registerMethod("Close").implementedAs([this, handle]() { close(handle); })
+                  sdbus::registerMethod("Close").implementedAs([this, handle]() {
+                    requirePortalFrontend(m_bus.connection());
+                    close(handle);
+                  })
   ).forInterface(kRequestInterface);
 
   entry.serial = ++m_nextSerial;
@@ -148,7 +154,10 @@ void InhibitPortal::createMonitor(const std::string& sessionHandle) {
   entry.object = sdbus::createObject(m_bus.connection(), sdbus::ObjectPath{sessionHandle});
   entry.object
       ->addVTable(
-          sdbus::registerMethod("Close").implementedAs([this, sessionHandle]() { close(sessionHandle); }),
+          sdbus::registerMethod("Close").implementedAs([this, sessionHandle]() {
+            requirePortalFrontend(m_bus.connection());
+            close(sessionHandle);
+          }),
           sdbus::registerSignal("Closed"), sdbus::registerProperty("version").withGetter([]() { return 1U; })
       )
       .forInterface(kSessionInterface);

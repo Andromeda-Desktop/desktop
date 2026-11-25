@@ -1,12 +1,13 @@
 #include "dbus/screencast.h"
 
+#include "andromeda/ipc.h"
 #include "config/config.h"
+#include "dbus/caller.h"
 #include "dbus/request.h"
 #include "dbus/session.h"
 #include "dbus/session_table.h"
 #include "loop/loop.h"
 #include "pipewire/pipewire.h"
-#include "andromeda/ipc.h"
 #include "wayland/wayland.h"
 
 #include <algorithm>
@@ -402,6 +403,7 @@ namespace xdpu {
     void createSession(
         PortalResponse&& result, const std::string& handle, const std::string& sessionPath, const std::string& appId
     ) {
+      requirePortalFrontend(connection);
       auto request = std::make_shared<Request>(connection, handle, []() {});
       const bool created = sessions.create(sessionPath, appId, sender()) != nullptr;
       result.returnResults(uint32_t{created ? 0U : 2U}, PortalResults{});
@@ -411,6 +413,7 @@ namespace xdpu {
     void selectSources(
         PortalResponse&& result, const std::string& handle, const std::string& sessionPath, const PortalResults& options
     ) {
+      requirePortalFrontend(connection);
       auto request = std::make_shared<Request>(connection, handle, []() {});
       const auto session = sessions.find(sessionPath, sender());
       if (!session) {
@@ -987,6 +990,7 @@ namespace xdpu {
         PortalResponse&& result, const std::string& handle, const std::string& sessionPath,
         const std::string& parentWindow
     ) {
+      requirePortalFrontend(connection);
       const auto session = sessions.find(sessionPath, sender());
       if (!session || !session->beginStart()) {
         auto request = std::make_shared<Request>(connection, handle, []() {});

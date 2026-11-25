@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "dbus/caller.h"
 #include "dbus/session_bus.h"
 #include "protocols/uri.h"
 
@@ -105,6 +106,7 @@ SystemPortals::SystemPortals(SessionBus& bus, Handlers handlers) : m_bus(bus), m
                       .withOutputParamNames("response", "results")
                       .implementedAs([this](sdbus::Result<std::uint32_t, Options>&& result, sdbus::ObjectPath handle,
                                             std::string appId, std::string window, Options options) {
+                        requirePortalFrontend(m_bus.connection());
                         auto pending = std::make_unique<Pending>();
                         pending->withResults = std::move(result);
                         pending->request = {.kind = Kind::Account, .appId = std::move(appId),
@@ -124,6 +126,7 @@ SystemPortals::SystemPortals(SessionBus& bus, Handlers handlers) : m_bus(bus), m
                       .withOutputParamNames("response")
                       .implementedAs([this](sdbus::Result<std::uint32_t>&& result, sdbus::ObjectPath handle,
                                             std::string appId, std::string parent, std::string uri, Options options) {
+                        requirePortalFrontend(m_bus.connection());
                         Request request{.kind = Kind::Wallpaper, .appId = std::move(appId),
                                         .parentWindow = std::move(parent), .path = fileFromUri(uri),
                                         .setOn = option<std::string>(options, "set-on").value_or("both"),
@@ -157,6 +160,7 @@ SystemPortals::SystemPortals(SessionBus& bus, Handlers handlers) : m_bus(bus), m
               .implementedAs([this](sdbus::Result<std::uint32_t, Options>&& result, sdbus::ObjectPath handle,
                                     std::string appId, std::string parent, std::string name, sdbus::Variant icon,
                                     Options options) {
+                requirePortalFrontend(m_bus.connection());
                 const std::uint32_t type = option<std::uint32_t>(options, "launcher_type").value_or(kLauncherApp);
                 Request request{.kind = Kind::Launcher, .appId = std::move(appId), .parentWindow = std::move(parent),
                                 .name = std::move(name),
@@ -180,7 +184,8 @@ SystemPortals::SystemPortals(SessionBus& bus, Handlers handlers) : m_bus(bus), m
           sdbus::registerMethod("RequestInstallToken")
               .withInputParamNames("app_id", "options")
               .withOutputParamNames("response")
-              .implementedAs([](const std::string& appId, const Options&) {
+              .implementedAs([this](const std::string& appId, const Options&) {
+                requirePortalFrontend(m_bus.connection());
                 kLog.info("install token for {} refused", appId);
                 return std::uint32_t{2};
               }),
@@ -205,6 +210,7 @@ std::uint64_t SystemPortals::track(const std::string& handle, std::unique_ptr<Pe
   pending->requestObject = sdbus::createObject(m_bus.connection(), sdbus::ObjectPath{handle});
   pending->requestObject
       ->addVTable(sdbus::registerMethod("Close").implementedAs([this, id] {
+        requirePortalFrontend(m_bus.connection());
         // The caller gave up: end the call; the Request object goes after this callback, which it owns.
         const auto it = m_pending.find(id);
         if (it == m_pending.end()) {

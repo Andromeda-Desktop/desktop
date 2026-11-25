@@ -32,7 +32,8 @@ env_all=(env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_CONFIG_HOME="$
   XDG_DATA_HOME="$HOME_DIR/.local/share" XDG_STATE_HOME="$HOME_DIR/.local/state" XDG_CURRENT_DESKTOP=andromeda)
 
 run "${env_all[@]}" ANDROMEDA_LOG_LEVEL=debug "$FILES" --picker > "$OUT/picker.log" 2>&1 &
-run "${env_all[@]}" XDG_DESKTOP_PORTAL_DIR="$RUNTIME/portals" "$PORTAL" --verbose > "$OUT/portal.log" 2>&1 &
+spawn "${env_all[@]}" XDG_DESKTOP_PORTAL_DIR="$RUNTIME/portals" "$PORTAL" --verbose > "$OUT/portal.log" 2>&1
+PORTAL_PID=$!
 
 WAIT_S=5
 on_bus() { DBUS_SESSION_BUS_ADDRESS=$BUS gdbus introspect --session -d "$1" -o "$2" > /dev/null 2>&1; }
@@ -85,8 +86,17 @@ action picker.accept
 wait_for "the picker window stayed open after Save" unmapped
 echo "PASS save"
 
+client cancel open "$DOCS"
+action picker.cancel
+[[ $(result cancel) == CANCELLED* ]] || fail "Cancel returned: $(result cancel)"
+wait_for "the picker window stayed open after Cancel" unmapped
+echo "PASS cancel"
+
 # Portal choices come back as chosen (a pop keeps its default, a check its value), and a Save with no folder from the
 # caller starts where this app saved last.
+# The impl accepts only the frontend: the helper takes its bus name once xdg-desktop-portal is gone.
+kill "$PORTAL_PID"
+wait "$PORTAL_PID" 2> /dev/null || true
 impl() { # name, method, app id, [folder]
   local name=$1; shift
   run "${env_all[@]}" python3 "$ROOT/tests/e2e/filechooser_impl_call.py" "$@" > "$OUT/client-$name.log" 2>&1 &
@@ -105,9 +115,3 @@ action picker.accept
 [[ $(result remembered) == "RESULT 0 file://$DOCS/two.txt quality=low,readonly=true" ]] \
   || fail "a Save with no folder did not start in the app's last folder: $(result remembered)"
 echo "PASS choices + last folder per app"
-
-client cancel open "$DOCS"
-action picker.cancel
-[[ $(result cancel) == CANCELLED* ]] || fail "Cancel returned: $(result cancel)"
-wait_for "the picker window stayed open after Cancel" unmapped
-echo "PASS cancel"

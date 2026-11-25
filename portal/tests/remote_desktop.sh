@@ -137,11 +137,16 @@ client() {
   await_events "$RUNTIME/$1.log" ready 1 "$1 client"
 }
 
-# Only the frontend may create sessions: a direct caller gets response 2 and no session object.
-gdbus call --session --dest org.freedesktop.impl.portal.desktop.andromeda --object-path /org/freedesktop/portal/desktop \
-  --method org.freedesktop.impl.portal.RemoteDesktop.CreateSession /org/x/request/1 /org/x/session/1 spoof '{}' \
-  > "$RUNTIME/direct.log" 2>&1
-grep -q '^(uint32 2,' "$RUNTIME/direct.log" || { echo "a direct caller created a session: $(cat "$RUNTIME/direct.log")"; exit 1; }
+# Only the frontend may call the impl objects: a direct caller gets AccessDenied and starts nothing.
+direct() {
+  gdbus call --session --dest org.freedesktop.impl.portal.desktop.andromeda --object-path /org/freedesktop/portal/desktop \
+    --method "org.freedesktop.impl.portal.$1" "${@:2}" > "$RUNTIME/direct.log" 2>&1 && true
+  grep -q 'AccessDenied' "$RUNTIME/direct.log" || { echo "a direct caller reached $1: $(cat "$RUNTIME/direct.log")"; exit 1; }
+}
+direct RemoteDesktop.CreateSession /org/x/request/1 /org/x/session/1 spoof '{}'
+direct ScreenCast.CreateSession /org/x/request/2 /org/x/session/2 spoof '{}'
+direct Screenshot.Screenshot /org/x/request/3 spoof '' '{}'
+direct Screenshot.PickColor /org/x/request/4 spoof '' '{}'
 
 # A denial starts nothing; Notify on it fails.
 client denied

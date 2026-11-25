@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "dbus/caller.h"
 #include "i18n/i18n.h"
 #include "dbus/session_bus.h"
 
@@ -47,6 +48,7 @@ AppChooserPortal::AppChooserPortal(SessionBus& bus, Handlers handlers) : m_bus(b
               .implementedAs([this](sdbus::Result<std::uint32_t, Options>&& result, sdbus::ObjectPath handle,
                                     std::string appId, std::string parent, std::vector<std::string> choices,
                                     Options options) {
+                requirePortalFrontend(m_bus.connection());
                 ChooseRequest r{.appId = std::move(appId), .parentWindow = std::move(parent),
                                 .choices = std::move(choices),
                                 .lastChoice = option<std::string>(options, "last_choice").value_or(""),
@@ -64,6 +66,7 @@ AppChooserPortal::AppChooserPortal(SessionBus& bus, Handlers handlers) : m_bus(b
           sdbus::registerMethod("UpdateChoices")
               .withInputParamNames("handle", "choices")
               .implementedAs([this](sdbus::ObjectPath handle, std::vector<std::string> choices) {
+                requirePortalFrontend(m_bus.connection());
                 if (const auto it = m_byHandle.find(handle); it != m_byHandle.end() && m_handlers.updateChoices) {
                   m_handlers.updateChoices(it->second, choices);
                 }
@@ -79,6 +82,7 @@ AppChooserPortal::AppChooserPortal(SessionBus& bus, Handlers handlers) : m_bus(b
                       .implementedAs([this](sdbus::Result<std::uint32_t, Options>&& result, sdbus::ObjectPath handle,
                                             std::string appId, std::string parent, std::string title,
                                             std::string subtitle, std::string body, Options options) {
+                        requirePortalFrontend(m_bus.connection());
                         AccessRequest r{.appId = std::move(appId), .parentWindow = std::move(parent),
                                         .title = std::move(title), .subtitle = std::move(subtitle),
                                         .body = std::move(body),
@@ -120,6 +124,7 @@ std::uint64_t AppChooserPortal::track(const std::string& handle, std::unique_ptr
   pending->requestObject = sdbus::createObject(m_bus.connection(), sdbus::ObjectPath{handle});
   pending->requestObject
       ->addVTable(sdbus::registerMethod("Close").implementedAs([this, id] {
+        requirePortalFrontend(m_bus.connection());
         // The caller gave up: end the call as "other"; the Request object goes after this callback, which it owns.
         const auto it = m_pending.find(id);
         if (it == m_pending.end() || !it->second->result) {

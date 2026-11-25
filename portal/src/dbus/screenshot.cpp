@@ -1,6 +1,7 @@
 #include "dbus/screenshot.h"
 
 #include "config/config.h"
+#include "dbus/caller.h"
 #include "dbus/request.h"
 #include "loop/loop.h"
 #include "protocols/xdg_dirs.h"
@@ -761,6 +762,7 @@ namespace xdpu {
     std::set<std::shared_ptr<Operation>> inflight;
 
     void screenshot(PortalResponse&& result, const std::string& handle, const PortalResults& options) {
+      requirePortalFrontend(connection);
       const bool interactive = optionValue<bool>(options, "interactive").value_or(false);
       auto op = std::make_shared<ScreenshotOperation>(*this, std::move(result));
       inflight.insert(op);
@@ -768,6 +770,7 @@ namespace xdpu {
     }
 
     void pickColor(PortalResponse&& result, const std::string& handle) {
+      requirePortalFrontend(connection);
       auto op = std::make_shared<PickColorOperation>(*this, std::move(result));
       inflight.insert(op);
       op->start(handle);

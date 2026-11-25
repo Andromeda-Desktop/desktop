@@ -1,5 +1,6 @@
 #include "dbus/request.h"
 
+#include "dbus/caller.h"
 #include "loop/loop.h"
 
 #include <cerrno>
@@ -62,9 +63,12 @@ namespace xdpu {
     m_impl->path = std::move(path);
     m_impl->closeHandler = std::move(closeHandler);
     m_impl->object = sdbus::createObject(connection, sdbus::ObjectPath{m_impl->path});
-    m_impl->object->addVTable(
-                      sdbus::registerMethod("Close").implementedAs([this]() { m_impl->close(); })
-    ).forInterface(kRequestInterface);
+    m_impl->object
+        ->addVTable(sdbus::registerMethod("Close").implementedAs([this]() {
+          requirePortalFrontend(m_impl->object->getConnection());
+          m_impl->close();
+        }))
+        .forInterface(kRequestInterface);
   }
 
   Request::~Request() = default;

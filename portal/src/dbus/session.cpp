@@ -1,5 +1,6 @@
 #include "dbus/session.h"
 
+#include "dbus/caller.h"
 #include "loop/loop.h"
 #include "pipewire/pipewire.h"
 
@@ -418,7 +419,10 @@ namespace xdpu {
       object = sdbus::createObject(connection, sdbus::ObjectPath{this->path});
       object
           ->addVTable(
-              sdbus::registerMethod("Close").implementedAs([this]() { close(false); }),
+              sdbus::registerMethod("Close").implementedAs([this]() {
+                requirePortalFrontend(object->getConnection());
+                close(false);
+              }),
               sdbus::registerSignal("Closed").withParameters(),
               sdbus::registerProperty("version").withGetter([]() { return uint32_t{1}; })
           )

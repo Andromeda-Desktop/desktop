@@ -8,5 +8,7 @@ namespace busname {
   // The bus daemon itself: NameHasOwner, NameOwnerChanged, ListNames.
   inline constexpr const char* kDaemon = "org.freedesktop.DBus";
   inline constexpr const char* kDaemonPath = "/org/freedesktop/DBus";
+  // The xdg-desktop-portal frontend: the only caller our portal impl objects accept.
+  inline constexpr const char* kPortalFrontend = "org.freedesktop.portal.Desktop";
 
 } // namespace busname

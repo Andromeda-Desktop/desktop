@@ -18,6 +18,12 @@ if len(sys.argv) > 3:
 if method == "SaveFile":
     options["current_name"] = GLib.Variant("s", "draft.txt")
 bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+# The impl accepts only the frontend: on the private test bus this script is it.
+owned = bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName",
+                      GLib.Variant("(su)", ("org.freedesktop.portal.Desktop", 3)), GLib.VariantType("(u)"),
+                      Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+if owned != 1:
+    sys.exit(f"could not own org.freedesktop.portal.Desktop ({owned})")
 reply = bus.call_sync("org.freedesktop.impl.portal.desktop.andromeda.Files", "/org/freedesktop/portal/desktop",
                       "org.freedesktop.impl.portal.FileChooser", method,
                       GLib.Variant("(osssa{sv})", ("/org/test/request/1", app_id, "", "", options)),

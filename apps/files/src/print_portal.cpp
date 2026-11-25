@@ -2,6 +2,7 @@
 
 #include "core/blocking_pool.h"
 #include "core/deferred_call.h"
+#include "dbus/caller.h"
 #include "i18n/i18n.h"
 #include "core/log.h"
 #include "printing/cups_printers.h"
@@ -163,6 +164,7 @@ PrintPortal::PrintPortal(SessionBus& bus, AppNotifier& notifier, Handlers handle
               .implementedAs([this](sdbus::ObjectPath /*handle*/, std::string appId, std::string /*parent*/,
                                     std::string /*title*/, Options /*settings*/, Options pageSetupIn,
                                     Options /*options*/) {
+                requirePortalFrontend(m_bus.connection());
                 const PrintOptions o = loadRemembered(m_stateFile, appId);
                 Options results;
                 results["settings"] = sdbus::Variant(neutralSettings(o));
@@ -177,6 +179,7 @@ PrintPortal::PrintPortal(SessionBus& bus, AppNotifier& notifier, Handlers handle
               .implementedAs([this](sdbus::Result<std::uint32_t, Options>&& result, sdbus::ObjectPath handle,
                                     std::string appId, std::string parent, std::string title, sdbus::UnixFd fd,
                                     Options /*options*/) {
+                requirePortalFrontend(m_bus.connection());
                 const std::uint64_t id = m_nextId++;
                 auto pending = std::make_unique<Pending>(std::move(result));
                 pending->appId = appId;
@@ -185,6 +188,7 @@ PrintPortal::PrintPortal(SessionBus& bus, AppNotifier& notifier, Handlers handle
                 pending->requestObject = sdbus::createObject(m_bus.connection(), handle);
                 pending->requestObject
                     ->addVTable(sdbus::registerMethod("Close").implementedAs([this, id] {
+                      requirePortalFrontend(m_bus.connection());
                       const bool sheetOpen = stageOf(id) == PrintStage::SheetOpen;
                       if (apply(id, PrintEvent::CallerClose) && sheetOpen && m_handlers.closed)
                         m_handlers.closed(id);

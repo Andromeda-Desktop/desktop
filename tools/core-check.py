@@ -113,8 +113,10 @@ RULES = {
                   "andromeda_rt::ipc (AR4)", CPP_DIRS + ("protocol/",), CPP + (".rs",),
                   r"SOL_SOCKET\s*,\s*SO_PEER(CRED|PIDFD)\b|sockopt::Peer(Credentials|Pidfd)\b",
                   ("protocol/ipc_channel.", "system/crates/andromeda-rt/src/ipc.rs")),
-    "bus-name": ("the System1 and bus-daemon names come from busname:: (protocol/bus_names.h) (C13)", CPP_DIRS, CPP,
-                 r"\"(org\.andromeda\.System1|org\.freedesktop\.DBus|/org/freedesktop/DBus)\"", ()),
+    "bus-name": ("the System1, bus-daemon and portal frontend names come from busname:: (protocol/bus_names.h); "
+                 "impl portals check the frontend with requirePortalFrontend (dbus/caller.h) (C13, AR8)", CPP_DIRS, CPP,
+                 r"\"(org\.andromeda\.System1|org\.freedesktop\.DBus|/org/freedesktop/DBus|"
+                 r"org\.freedesktop\.portal\.Desktop)\"", ()),
     "logind-direct": ("logind is reached through LogindService (Inhibit, session lock) or System1 (C13); own owners: "
                       "compositor sleep watch, greeter (GIO launcher), Files vault guard (own GIO main loop)", CPP_DIRS, CPP,
                       r"\"org\.freedesktop\.login1[\".]",

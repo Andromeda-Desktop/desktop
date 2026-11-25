@@ -1,5 +1,6 @@
 #include "dbus/remote_desktop.h"
 
+#include "dbus/caller.h"
 #include "dbus/name_owner_watch.h"
 #include "dbus/request.h"
 #include "dbus/screencast.h"
@@ -32,7 +33,6 @@ namespace xdpu {
 
     constexpr char kInterface[] = "org.freedesktop.impl.portal.RemoteDesktop";
     constexpr char kClipboardInterface[] = "org.freedesktop.impl.portal.Clipboard";
-    constexpr char kFrontendName[] = "org.freedesktop.portal.Desktop";
     constexpr char kSessionPrefix[] = "/org/freedesktop/portal/desktop/session/";
     constexpr char kRestoreVendor[] = "andromeda-rd";
     // Version 1 data: a{sv} with "token" (s, the compositor grant) and optional "sources" (ScreenCast restore data).
@@ -330,7 +330,6 @@ namespace xdpu {
     SessionTable& sessions;
     ScreenCastPortal& screencast;
     WaylandContext& wayland;
-    std::unique_ptr<sdbus::IProxy> bus;
     std::map<std::string, std::unique_ptr<Remote>> remotes;
     // Application instances that hold mode-one grants; their grants expire when the app leaves the bus.
     std::map<std::string, NameOwnerWatch> scopedInstances;
@@ -345,9 +344,6 @@ namespace xdpu {
     )
         : loop(loop), connection(connection), object(object), sessions(sessions), screencast(screencast),
           wayland(wayland) {
-      bus = sdbus::createProxy(
-          connection, sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
-      );
       sessions.addClosedListener([this](Session& session) { end(session.path()); });
       registerVTable();
       registerClipboard();
@@ -356,19 +352,6 @@ namespace xdpu {
     ~Impl() { remotes.clear(); }
 
     std::string sender() const { return object.getCurrentlyProcessedMessage().getSender(); }
-
-    bool fromFrontend() {
-      try {
-        std::string owner;
-        bus->callMethod("GetNameOwner")
-            .onInterface(busname::kDaemon)
-            .withArguments(std::string{kFrontendName})
-            .storeResultsTo(owner);
-        return owner == sender();
-      } catch (const sdbus::Error&) {
-        return false;
-      }
-    }
 
     // The instance is the frontend's escaped unique name of the app (":1.42" -> "1_42").
     void watchScope(const std::string& instance) {
@@ -416,11 +399,7 @@ namespace xdpu {
     void createSession(
         PortalResponse&& result, const std::string& handle, const std::string& path, const std::string& appId
     ) {
-      if (!fromFrontend()) {
-        std::fprintf(stderr, "remote desktop: CreateSession from %s, not the portal frontend\n", sender().c_str());
-        replyNow(std::move(result), handle, 2);
-        return;
-      }
+      requirePortalFrontend(connection);
       if (!sessions.create(path, appId, sender())) {
         replyNow(std::move(result), handle, 2);
         return;
@@ -435,6 +414,7 @@ namespace xdpu {
     void selectDevices(
         PortalResponse&& result, const std::string& handle, const std::string& path, const PortalResults& options
     ) {
+      requirePortalFrontend(connection);
       Remote* remote = remoteFor(path);
       if (remote == nullptr || remote->phase != Remote::Phase::Open) {
         replyNow(std::move(result), handle, 2);
@@ -461,6 +441,7 @@ namespace xdpu {
     void start(
         PortalResponse&& result, const std::string& handle, const std::string& path, const std::string& parentWindow
     ) {
+      requirePortalFrontend(connection);
       Remote* remote = remoteFor(path);
       if (remote == nullptr || remote->phase != Remote::Phase::Open || !sessions.find(path)->beginStart()) {
         replyNow(std::move(result), handle, 2);

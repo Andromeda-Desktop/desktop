@@ -4,6 +4,7 @@
 #include "app/desk_app.h"
 #include "core/deferred_call.h"
 #include "dbus/session_bus.h"
+#include "protocols/bus_names.h"
 #include "print_portal.h"
 
 #include <atomic>
@@ -82,7 +83,8 @@ int main() {
       state);
   bus.connection().requestName(kBusName);
 
-  auto client = sdbus::createSessionBusConnection();
+  // The portal answers only the frontend, so the client owns its name.
+  auto client = sdbus::createSessionBusConnection(sdbus::ServiceName{busname::kPortalFrontend});
   auto proxy = sdbus::createProxy(*client, kBusName, kObjectPath);
   client->enterEventLoopAsync();
 

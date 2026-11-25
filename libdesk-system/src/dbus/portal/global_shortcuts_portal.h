@@ -43,7 +43,6 @@ private:
 
   void createSession(sdbus::MethodCall call);
   void bindShortcuts(sdbus::MethodCall call);
-  [[nodiscard]] bool fromFrontend(const sdbus::MethodCall& call);
   [[nodiscard]] GlobalShortcutsEvents eventsFor(const std::string& path);
   void
   handle(const std::string& path, GlobalShortcutsEvent event, const std::string& id = {}, std::uint32_t timeMs = 0);
@@ -55,7 +54,6 @@ private:
   SessionBus& m_bus;
   GlobalShortcutsBackend& m_backend;
   std::unique_ptr<sdbus::IObject> m_object;
-  std::unique_ptr<sdbus::IProxy> m_dbus;
   NameOwnerWatch m_frontendWatch;
   std::map<std::string, Session> m_sessions;
 };

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # The shell serves org.freedesktop.impl.portal.Background. Fails when:
+#   - a caller other than the portal frontend gets an answer,
 #   - GetAppState does not list a mapped foot window (app id bg.test) as running,
 #   - closing it emits no RunningApplicationsChanged or leaves it in GetAppState,
 #   - NotifyBackground does not answer response 0 with result 1 (allow), posts no notification with Show, or its
@@ -10,15 +11,18 @@ OUT=${OUT:-$(pwd)/artifacts/background-portal}
 source "$(dirname "$0")/lib.sh"
 boot_headless 1
 
-with_noctalia '
+FRONTEND_CALL="$ROOT/tests/e2e/portal_frontend_call.py" with_noctalia '
   impl() {
-    busctl --user call org.freedesktop.impl.portal.desktop.andromeda.shell /org/freedesktop/portal/desktop \
-      org.freedesktop.impl.portal.Background "$@"
+    python3 -I "$FRONTEND_CALL" org.freedesktop.impl.portal.desktop.andromeda.shell \
+      "org.freedesktop.impl.portal.Background.$1" "${@:2}"
   }
+  denied=$(gdbus call --session -d org.freedesktop.impl.portal.desktop.andromeda.shell -o /org/freedesktop/portal/desktop \
+    -m org.freedesktop.impl.portal.Background.GetAppState 2>&1 || true)
+  [[ $denied == *"portal frontend"* ]] || { echo "FAIL: a direct caller got GetAppState: $denied"; exit 1; }
   foot --config=/dev/null --app-id=bg.test sh -c "sleep 300" > /dev/null 2>&1 &
   foot_pid=$!
   for _ in $(seq 50); do impl GetAppState > "$OUT/state-open.txt" 2>&1 && grep -q "\"bg.test\"" "$OUT/state-open.txt" && break; sleep 0.1; done
-  grep -q "\"bg.test\" u [12]" "$OUT/state-open.txt" || { echo "FAIL: bg.test not running in GetAppState"; exit 1; }
+  grep -Eq "\"bg.test\": [12]" "$OUT/state-open.txt" || { echo "FAIL: bg.test not running in GetAppState"; exit 1; }
 
   dbus-monitor --session "type=signal,interface=org.freedesktop.impl.portal.Background,member=RunningApplicationsChanged" \
     > "$OUT/signals.txt" 2>&1 &
@@ -29,8 +33,9 @@ with_noctalia '
   impl GetAppState > "$OUT/state-closed.txt"
   ! grep -q "\"bg.test\"" "$OUT/state-closed.txt" || { echo "FAIL: bg.test still in GetAppState"; exit 1; }
 
-  impl NotifyBackground oss /org/freedesktop/portal/desktop/request/1_1/t bg.test "BG Test" > "$OUT/notify.txt"
-  grep -q "^ua{sv} 0 1 \"result\" u 1$" "$OUT/notify.txt" || { echo "FAIL: NotifyBackground replied $(cat "$OUT/notify.txt")"; exit 1; }
+  impl NotifyBackground "(objectpath \"/org/freedesktop/portal/desktop/request/1_1/t\", \"bg.test\", \"BG Test\")" \
+    > "$OUT/notify.txt"
+  grep -q "^\[0, {\"result\": 1}\]$" "$OUT/notify.txt" || { echo "FAIL: NotifyBackground replied $(cat "$OUT/notify.txt")"; exit 1; }
   for _ in $(seq 50); do grep -q "portal background: bg.test" "$OUT/noctalia.log" && break; sleep 0.1; done
   grep -q "portal background: bg.test" "$OUT/noctalia.log" || { echo "FAIL: no Activity notification for bg.test"; exit 1; }
   [[ $("$NOCTALIA" msg notification-action-latest show) == ok ]] || { echo "FAIL: the notification has no Show action"; exit 1; }

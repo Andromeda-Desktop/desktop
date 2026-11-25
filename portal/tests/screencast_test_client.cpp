@@ -30,6 +30,7 @@ namespace {
   public:
     Client() {
       m_bus = sdbus::createSessionBusConnection();
+      ownFrontend();
       m_portal = sdbus::createProxy(
           *m_bus, sdbus::ServiceName{kService}, sdbus::ObjectPath{"/org/freedesktop/portal/desktop"}
       );
@@ -120,6 +121,7 @@ namespace {
         pw_main_loop_destroy(m_loop);
       try {
         if (m_bus && !m_session.empty()) {
+          ownFrontend();
           auto session = sdbus::createProxy(*m_bus, sdbus::ServiceName{kService}, m_session);
           session->callMethod("Close").onInterface("org.freedesktop.impl.portal.Session");
         }
@@ -134,6 +136,20 @@ namespace {
     }
 
   private:
+    // The impl accepts only the frontend. On the private test bus, the client that calls takes the name, so
+    // shares that overlap can each still close their own session.
+    void ownFrontend() {
+      auto daemon = sdbus::createProxy(
+          *m_bus, sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+      );
+      std::uint32_t reply = 0;
+      daemon->callMethod("RequestName")
+          .onInterface("org.freedesktop.DBus")
+          .withArguments(std::string{"org.freedesktop.portal.Desktop"}, std::uint32_t{3})
+          .storeResultsTo(reply);
+      require(reply == 1 || reply == 4, "cannot own org.freedesktop.portal.Desktop");
+    }
+
     static void require(bool condition, const char* message) {
       if (!condition)
         throw std::runtime_error(message);

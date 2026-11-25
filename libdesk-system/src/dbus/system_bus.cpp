@@ -1,7 +1,7 @@
 #include "dbus/system_bus.h"
 
+#include "dbus/caller.h"
 #include "dbus/name_owner_watch.h"
-#include "protocols/bus_names.h"
 
 #include "core/log.h"
 
@@ -12,9 +12,6 @@
 
 namespace {
   constexpr Logger kLog("system_bus");
-  constexpr auto kDbusInterface = busname::kDaemon;
-  const sdbus::ServiceName kDbusName{kDbusInterface};
-  const sdbus::ObjectPath kDbusPath{busname::kDaemonPath};
 
   constexpr int kMaxEventsPerDispatch = 16;
   constexpr auto kMaxDispatchBudget = std::chrono::milliseconds(4);
@@ -47,15 +44,7 @@ bool SystemBus::nameHasOwner(std::string_view name) const { return ::nameHasOwne
 
 // Directed signals reach a handler even when another peer sent them, so callers check the sender here.
 bool SystemBus::isNameOwner(std::string_view name, std::string_view sender) const {
-  try {
-    auto proxy = sdbus::createProxy(*m_connection, kDbusName, kDbusPath);
-    std::string owner;
-    proxy->callMethod("GetNameOwner").onInterface(kDbusInterface).withArguments(std::string{name}).storeResultsTo(owner);
-    return owner == sender;
-  } catch (const sdbus::Error& e) {
-    kLog.debug("GetNameOwner({}) failed: {}", name, e.what());
-    return false;
-  }
+  return ::isNameOwner(*m_connection, name, sender);
 }
 
 void SystemBus::processPendingEvents() {

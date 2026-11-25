@@ -1,6 +1,7 @@
 #include "dbus/portal/background_portal.h"
 
 #include "core/log.h"
+#include "dbus/caller.h"
 #include "dbus/session_bus.h"
 
 #include <utility>
@@ -26,6 +27,7 @@ BackgroundPortal::BackgroundPortal(
   m_object
       ->addVTable(
           sdbus::registerMethod("GetAppState").withOutputParamNames("apps").implementedAs([this]() {
+            requirePortalFrontend(m_bus.connection());
             std::map<std::string, sdbus::Variant> apps;
             for (const auto& [appId, state] : m_appStates()) {
               apps.emplace(appId, sdbus::Variant{state});
@@ -36,6 +38,7 @@ BackgroundPortal::BackgroundPortal(
               .withInputParamNames("handle", "app_id", "name")
               .withOutputParamNames("response", "results")
               .implementedAs([this](const sdbus::ObjectPath& /*handle*/, const std::string& appId, const std::string& name) {
+                requirePortalFrontend(m_bus.connection());
                 m_notifyBackground(appId, name);
                 const std::map<std::string, sdbus::Variant> results{{"result", sdbus::Variant{kResultAllow}}};
                 return std::tuple{kResponseSuccess, results};
@@ -43,8 +46,9 @@ BackgroundPortal::BackgroundPortal(
           sdbus::registerMethod("EnableAutostart")
               .withInputParamNames("app_id", "enable", "commandline", "flags")
               .withOutputParamNames("result")
-              .implementedAs([](const std::string& appId, bool /*enable*/, const std::vector<std::string>& /*commandline*/,
+              .implementedAs([this](const std::string& appId, bool /*enable*/, const std::vector<std::string>& /*commandline*/,
                                 std::uint32_t /*flags*/) {
+                requirePortalFrontend(m_bus.connection());
                 kLog.info("EnableAutostart for {} ignored: xdg-desktop-portal writes autostart files", appId);
                 return false;
               }),

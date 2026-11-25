@@ -64,8 +64,10 @@ wait_for "the chooser stayed open after Cancel" unmapped
 echo "PASS cancel"
 
 call close choose /org/test/request/3 org.test.Viewer
-DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d org.freedesktop.impl.portal.desktop.andromeda.Files \
-  -o /org/test/request/3 -m org.freedesktop.impl.portal.Request.Close > /dev/null
+denied=$(DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d org.freedesktop.impl.portal.desktop.andromeda.Files \
+  -o /org/test/request/3 -m org.freedesktop.impl.portal.Request.Close 2>&1 || true)
+[[ $denied == *"portal frontend"* ]] || fail "a direct caller closed the request: $denied"
+kill -USR1 "$(sed -n 's/^PID //p' "$OUT/client-close.log")"
 [[ $(result close) == "RESULT 2 " ]] || fail "Request.Close returned: $(result close)"
 wait_for "the chooser stayed open after Request.Close" unmapped
 echo "PASS request close"

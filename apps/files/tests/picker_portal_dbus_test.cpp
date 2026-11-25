@@ -1,6 +1,7 @@
 // FileChooser portal contract over a private session bus (meson runs it under dbus-run-session).
 #include "core/deferred_call.h"
 #include "dbus/session_bus.h"
+#include "protocols/bus_names.h"
 #include "picker_portal.h"
 
 #include <atomic>
@@ -64,7 +65,8 @@ int main() {
       [&](std::uint64_t id) { closed.push_back(id); }
   );
 
-  auto client = sdbus::createSessionBusConnection();
+  // The portal answers only the frontend, so the client owns its name.
+  auto client = sdbus::createSessionBusConnection(sdbus::ServiceName{busname::kPortalFrontend});
   auto proxy = sdbus::createProxy(*client, kBusName, kObjectPath);
   client->enterEventLoopAsync();
 

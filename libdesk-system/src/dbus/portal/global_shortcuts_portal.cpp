@@ -1,4 +1,6 @@
 #include "dbus/portal/global_shortcuts_portal.h"
+
+#include "dbus/caller.h"
 #include "protocols/bus_names.h"
 
 #include "core/deferred_call.h"
@@ -18,7 +20,6 @@ namespace {
   constexpr auto kRequestInterface = "org.freedesktop.impl.portal.Request";
   constexpr auto kSessionInterface = "org.freedesktop.impl.portal.Session";
   constexpr std::uint32_t kVersion = 1;
-  constexpr auto kFrontendName = "org.freedesktop.portal.Desktop";
   // The compositor raises a protocol error, which ends the shell, past these limits (dsk_global_shortcuts_session_v1).
   constexpr std::size_t kMaxShortcuts = 64;
   constexpr std::size_t kMaxText = 256;
@@ -41,21 +42,12 @@ namespace {
     }
   }
 
-  [[noreturn]] void denyAccess() {
-    throw sdbus::Error(
-        sdbus::Error::Name{"org.freedesktop.DBus.Error.AccessDenied"}, "only the portal frontend may call this"
-    );
-  }
-
 } // namespace
 
 GlobalShortcutsPortal::GlobalShortcutsPortal(SessionBus& bus, GlobalShortcutsBackend& backend)
     : m_bus(bus), m_backend(backend) {
-  m_dbus = sdbus::createProxy(
-      m_bus.connection(), sdbus::ServiceName{busname::kDaemon}, sdbus::ObjectPath{busname::kDaemonPath}
-  );
   m_frontendWatch = NameOwnerWatch::changes(
-      m_bus.connection(), kFrontendName,
+      m_bus.connection(), busname::kPortalFrontend,
       [this](const std::string& /*name*/, const std::string& oldOwner, const std::string& /*newOwner*/) {
         // Every session belongs to the frontend that created it; a gained owner (D-Bus activation) has none yet.
         if (!oldOwner.empty()) {
@@ -84,9 +76,7 @@ GlobalShortcutsPortal::GlobalShortcutsPortal(SessionBus& bus, GlobalShortcutsBac
   listShortcuts.inputSignature = "oo";
   listShortcuts.outputSignature = "ua{sv}";
   listShortcuts.callbackHandler = [this](sdbus::MethodCall call) {
-    if (!fromFrontend(call)) {
-      denyAccess();
-    }
+    requirePortalFrontend(m_bus.connection());
     sdbus::ObjectPath requestHandle;
     sdbus::ObjectPath sessionHandle;
     call >> requestHandle >> sessionHandle;
@@ -122,28 +112,8 @@ GlobalShortcutsPortal::GlobalShortcutsPortal(SessionBus& bus, GlobalShortcutsBac
 
 GlobalShortcutsPortal::~GlobalShortcutsPortal() = default;
 
-bool GlobalShortcutsPortal::fromFrontend(const sdbus::MethodCall& call) {
-  const char* sender = call.getSender();
-  if (sender == nullptr) {
-    return false;
-  }
-  try {
-    std::string owner;
-    m_dbus->callMethod("GetNameOwner")
-        .onInterface(busname::kDaemon)
-        .withArguments(std::string{kFrontendName})
-        .storeResultsTo(owner);
-    return owner == sender;
-  } catch (const sdbus::Error& e) {
-    kLog.debug("GetNameOwner({}) failed: {}", kFrontendName, e.what());
-    return false;
-  }
-}
-
 void GlobalShortcutsPortal::createSession(sdbus::MethodCall call) {
-  if (!fromFrontend(call)) {
-    denyAccess();
-  }
+  requirePortalFrontend(m_bus.connection());
   sdbus::ObjectPath requestHandle;
   sdbus::ObjectPath sessionHandle;
   std::string appId;
@@ -165,6 +135,7 @@ void GlobalShortcutsPortal::createSession(sdbus::MethodCall call) {
   session.object
       ->addVTable(
           sdbus::registerMethod("Close").implementedAs([this, path]() {
+            requirePortalFrontend(m_bus.connection());
             handle(path, GlobalShortcutsEvent::SessionClosed);
           }),
           sdbus::registerSignal("Closed"), sdbus::registerProperty("version").withGetter([]() { return 1U; })
@@ -176,9 +147,7 @@ void GlobalShortcutsPortal::createSession(sdbus::MethodCall call) {
 }
 
 void GlobalShortcutsPortal::bindShortcuts(sdbus::MethodCall call) {
-  if (!fromFrontend(call)) {
-    denyAccess();
-  }
+  requirePortalFrontend(m_bus.connection());
   sdbus::ObjectPath requestHandle;
   sdbus::ObjectPath sessionHandle;
   Shortcuts requested;
@@ -230,6 +199,7 @@ void GlobalShortcutsPortal::bindShortcuts(sdbus::MethodCall call) {
   session.request = sdbus::createObject(m_bus.connection(), requestHandle);
   session.request
       ->addVTable(sdbus::registerMethod("Close").implementedAs([this, path, requestPath]() {
+        requirePortalFrontend(m_bus.connection());
         const auto found = m_sessions.find(path);
         if (found != m_sessions.end()
             && found->second.request != nullptr

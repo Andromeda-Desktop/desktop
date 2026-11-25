@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "dbus/caller.h"
 #include "dbus/session_bus.h"
 
 #include <fnmatch.h>
@@ -73,6 +74,7 @@ PickerPortal::PickerPortal(SessionBus& bus, RequestHandler onRequest, CloseHandl
   const auto handler = [this](Request::Kind kind) {
     return [this, kind](sdbus::Result<std::uint32_t, Options>&& result, sdbus::ObjectPath handle, std::string appId,
                         std::string parent, std::string title, Options options) {
+      requirePortalFrontend(m_bus.connection());
       auto pending = std::make_unique<Pending>();
       Request& r = pending->request;
       r.kind = kind;
@@ -127,6 +129,7 @@ PickerPortal::PickerPortal(SessionBus& bus, RequestHandler onRequest, CloseHandl
       pending->requestObject = sdbus::createObject(m_bus.connection(), handle);
       pending->requestObject
           ->addVTable(sdbus::registerMethod("Close").implementedAs([this, id] {
+            requirePortalFrontend(m_bus.connection());
             // The caller gave up: end the call as "other", then drop the Request object after this callback, which
             // that object owns.
             const auto it = m_pending.find(id);
