@@ -2,6 +2,7 @@
 
 #include "shell/settings/global_shortcuts_page_state.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <set>
@@ -40,9 +41,18 @@ namespace settings {
     std::vector<App> apps;
   };
 
+  // Apps the user gave screen and input access (compositor trusted-binaries).
+  struct TrustedAppsView {
+    // Unavailable: the compositor has no trusted-binaries IPC, so no row and no page.
+    enum class Load : uint8_t { NotLoaded, Unavailable, Ready };
+    Load load = Load::NotLoaded;
+    // Canonical absolute paths, in the order they were added.
+    std::vector<std::string> paths;
+  };
+
   struct SettingsPrivacyContext {
     float scale = 1.0F;
-    // "privacy:<title>\t<kind>" (kind face, finger, password, access:<table> or rename; rename's title is the face name), else empty.
+    // "privacy:<title>\t<kind>" (kind face, finger, password, access:<table>, global-shortcuts, trusted-apps or rename; rename's title is the face name), else empty.
     std::string detail;
     // False without a system bus: the Sign-in rows show "Not available" and open nothing.
     bool biometricsKnown = false;
@@ -90,6 +100,9 @@ namespace settings {
     std::function<void(std::string app)> toggleShortcutApp;
     std::function<std::string(const std::string& app)> appName;
     std::function<std::unique_ptr<Node>(const std::string& app, float size)> appIcon;
+    const TrustedAppsView* trustedApps = nullptr;
+    std::function<void()> addTrustedApp;
+    std::function<void(std::string path)> removeTrustedApp;
     std::function<void()> openKeyboardShortcuts;
     std::function<void()> changePassword;
   };

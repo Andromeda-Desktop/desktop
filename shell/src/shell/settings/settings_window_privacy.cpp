@@ -12,6 +12,7 @@
 #include "compositors/compositor_platform.h"
 #include "system/app_permissions.h"
 #include "system/desktop_entry.h"
+#include "ui/dialogs/file_dialog.h"
 
 #include <nlohmann/json.hpp>
 #include "util/parse_number.h"
@@ -21,6 +22,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <fstream>
 #include <optional>
 #include <sstream>
@@ -221,6 +223,7 @@ void SettingsWindow::leavePrivacy() {
       m_compositorSettings->cancelCapture();
     }
   }
+  m_trustedApps.load = settings::TrustedAppsView::Load::NotLoaded;
   if (m_enroll != nullptr && m_enroll->enrolling() != BiometricEnrollment::Method::None) {
     m_enroll->stop();
   }
@@ -244,6 +247,9 @@ void SettingsWindow::addPrivacyContent(float scale) {
   }
   if (m_globalShortcuts.load == gs::Load::Loading) {
     (void)m_globalShortcuts.handle(gs::Loaded{.apps = fetchGlobalShortcuts()});
+  }
+  if (m_trustedApps.load == settings::TrustedAppsView::Load::NotLoaded) {
+    loadTrustedApps();
   }
   if (m_enroll == nullptr && m_systemBus != nullptr) {
     m_enroll = std::make_unique<BiometricEnrollment>(m_systemBus, currentUser());
@@ -438,6 +444,9 @@ void SettingsWindow::addPrivacyContent(float scale) {
                 const DesktopEntry* entry = findAppEntry(*entries, app);
                 return entry != nullptr ? appIcon(*entry, size) : nullptr;
               },
+          .trustedApps = &m_trustedApps,
+          .addTrustedApp = [this] { addTrustedApp(); },
+          .removeTrustedApp = [this](std::string path) { removeTrustedApp(path); },
           .openKeyboardShortcuts = [this] { navigateTo("shortcuts"); },
           .changePassword = [this] { changePassword(); },
       }
@@ -528,4 +537,58 @@ std::optional<std::vector<gs::App>> SettingsWindow::fetchGlobalShortcuts() const
   }
   const auto reply = m_platform->andromedaRuntime().requestCommand("global-shortcuts");
   return reply.has_value() ? gs::parseApps((*reply)["ok"]) : std::nullopt;
+}
+
+void SettingsWindow::loadTrustedApps() {
+  using Load = settings::TrustedAppsView::Load;
+  const auto reply = m_platform == nullptr ? std::unexpected(std::string{})
+                                           : m_platform->andromedaRuntime().commandResult("trusted-binaries");
+  m_trustedApps.paths.clear();
+  if (!reply.has_value() || !reply->is_array()) {
+    m_trustedApps.load = Load::Unavailable;
+    return;
+  }
+  for (const auto& path : *reply) {
+    if (path.is_string()) {
+      m_trustedApps.paths.push_back(path.get<std::string>());
+    }
+  }
+  m_trustedApps.load = Load::Ready;
+}
+
+void SettingsWindow::addTrustedApp() {
+  FileDialogOptions options;
+  options.title = i18n::tr("settings.privacy.screen-input-add-title");
+  options.startDirectory = "/usr/bin";
+  const bool opened = FileDialog::open(std::move(options), [this](std::optional<std::filesystem::path> result) {
+    if (!result.has_value() || m_platform == nullptr) {
+      return;
+    }
+    const auto added = m_platform->andromedaRuntime().commandResult("trusted-binary-add", result->native());
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 4> kErrors{{
+        {"not-executable", "settings.privacy.screen-input-not-app"},
+        {"script", "settings.privacy.screen-input-script"},
+        {"too-many", "settings.privacy.screen-input-too-many"},
+        {"too-long", "settings.privacy.screen-input-not-app"},
+    }};
+    m_privacyStatus.clear();
+    if (!added.has_value()) {
+      const auto it = std::ranges::find(kErrors, std::string_view(added.error()), &std::pair<std::string_view, std::string_view>::first);
+      m_privacyStatus = i18n::tr(it != kErrors.end() ? it->second : "settings.privacy.change-failed");
+    }
+    loadTrustedApps();
+    requestContentRebuild();
+  });
+  if (!opened) {
+    m_privacyStatus = i18n::tr("settings.privacy.change-failed");
+    requestContentRebuild();
+  }
+}
+
+void SettingsWindow::removeTrustedApp(const std::string& path) {
+  const bool ok = m_platform != nullptr
+                  && m_platform->andromedaRuntime().commandResult("trusted-binary-remove", path).has_value();
+  m_privacyStatus = ok ? std::string{} : i18n::tr("settings.privacy.change-failed");
+  loadTrustedApps();
+  requestContentRebuild();
 }

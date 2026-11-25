@@ -10,6 +10,7 @@
 #include "ui/style.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <memory>
 #include <set>
 #include <variant>
@@ -453,6 +454,44 @@ namespace settings {
                                      [event = ctx.shortcutEvent] { event(gs::AskRemove{.app = {}}); }));
       content.addChild(std::move(end));
     }
+
+    void addTrustedAppsPage(Flex& content, const SettingsPrivacyContext& ctx) {
+      const float scale = ctx.scale;
+      auto add = plainButton(i18n::tr("settings.privacy.screen-input-add"), ButtonVariant::Secondary, scale,
+                             ctx.addTrustedApp);
+      if (ctx.trustedApps->paths.empty()) {
+        addEmptyState(content, "pointer", i18n::tr("settings.privacy.screen-input-none"), scale,
+                      i18n::tr("settings.privacy.screen-input-body"), std::move(add));
+        addStatus(content, ctx);
+        return;
+      }
+      Flex* card = addCard(content, scale);
+      for (const auto& path : ctx.trustedApps->paths) {
+        auto r = row(scale);
+        r->setGap(Style::spaceMd * scale);
+        r->setMinHeight(Tokens::sizeRowTwo * scale);
+        r->addChild(symbol("app-window", Style::fontSizeBody * scale, ColorRole::Label2));
+        auto text = ui::column({.align = FlexAlign::Start, .flexGrow = 1.0F});
+        text->addChild(ui::label({.text = std::filesystem::path(path).filename().string(),
+                                  .fontSize = Style::fontSizeBody * scale,
+                                  .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1}));
+        text->addChild(ui::label({.text = path, .fontSize = Tokens::typeFootnote.size * scale,
+                                  .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1}));
+        r->addChild(std::move(text));
+        r->addChild(plainButton(i18n::tr("settings.privacy.remove"), ButtonVariant::Destructive, scale,
+                                [remove = ctx.removeTrustedApp, path] { remove(path); }));
+        card->addChild(std::move(r));
+      }
+      auto actions = row(scale);
+      actions->addChild(std::move(add));
+      card->addChild(std::move(actions));
+      addStatus(content, ctx);
+      auto note = row(scale);
+      note->addChild(ui::label({.text = i18n::tr("settings.privacy.screen-input-note"),
+                                .fontSize = Style::fontSizeCaption * scale,
+                                .color = colorSpecFromRole(ColorRole::Label2)}));
+      content.addChild(std::move(note));
+    }
   } // namespace
 
   void addSettingsPrivacy(Flex& content, const SettingsPrivacyContext& ctx) {
@@ -473,6 +512,9 @@ namespace settings {
         }
       } else if (kind == "global-shortcuts" && ctx.shortcuts != nullptr) {
         addShortcutsPage(content, ctx);
+      } else if (kind == "trusted-apps" && ctx.trustedApps != nullptr
+                 && ctx.trustedApps->load == TrustedAppsView::Load::Ready) {
+        addTrustedAppsPage(content, ctx);
       } else if (kind == "rename") {
         addRenamePage(content, ctx, ctx.detail.substr(8, tab - 8));
       }
@@ -507,8 +549,17 @@ namespace settings {
                ctx.biometricsKnown, ctx);
 
     const bool shortcutsRow = ctx.shortcuts != nullptr && ctx.shortcuts->load == global_shortcuts::Load::Ready;
-    if (!ctx.access.empty() || shortcutsRow) {
+    const bool trustedRow = ctx.trustedApps != nullptr && ctx.trustedApps->load == TrustedAppsView::Load::Ready;
+    if (!ctx.access.empty() || shortcutsRow || trustedRow) {
       Flex* access = addSection(content, i18n::tr("settings.privacy.app-access"), nullptr, scale);
+      if (trustedRow) {
+        const std::size_t apps = ctx.trustedApps->paths.size();
+        const std::string trustedTitle = i18n::tr("settings.privacy.screen-input");
+        addLinkRow(*access, "pointer", trustedTitle,
+                   apps == 0 ? i18n::tr("settings.privacy.access-no-apps")
+                             : countText(apps, "settings.privacy.apps-one", "settings.privacy.apps-many"),
+                   "privacy:" + trustedTitle + "\ttrusted-apps", true, ctx);
+      }
       if (shortcutsRow) {
         const std::size_t apps = ctx.shortcuts->apps.size();
         const std::string shortcutsTitle = i18n::tr("settings.privacy.global-shortcuts");

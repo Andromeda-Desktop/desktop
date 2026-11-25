@@ -233,10 +233,15 @@ namespace andromeda {
       return std::string(stripDeleted(exe));
     }
 
-    Grant clientGrant(const wl_client* client, ClientGlobalPolicy& policy) {
+    Grant clientGrant(Server& server, const wl_client* client, ClientGlobalPolicy& policy) {
       if (!policy.grant) {
         const std::string exe = clientBinary(client);
-        policy.grant = grantFor({.exe = exe, .greeterMode = greeterMode(), .userBinaries = {}, .testBinaries = testBinaries()});
+        auto* capture = server.inputCapture();
+        const std::vector<std::string> userBinaries =
+            capture != nullptr ? capture->permissionStore().binaries() : std::vector<std::string>{};
+        policy.grant = grantFor(
+            {.exe = exe, .greeterMode = greeterMode(), .userBinaries = userBinaries, .testBinaries = testBinaries()}
+        );
       }
       return *policy.grant;
     }
@@ -284,7 +289,7 @@ namespace andromeda {
       // entire connection.
       ClientGlobalPolicy* policy = clientGlobalPolicy(client);
       if (privilegedGlobal(interfaceName)) {
-        return server->clientSecurityContext(client) == nullptr && grantAllows(clientGrant(client, *policy), interfaceName);
+        return server->clientSecurityContext(client) == nullptr && grantAllows(clientGrant(*server, client, *policy), interfaceName);
       }
       if (const wlr_security_context_v1_state* context = server->clientSecurityContext(client);
           context != nullptr && !isAllowedSecurityContextGlobal(interfaceName)) {

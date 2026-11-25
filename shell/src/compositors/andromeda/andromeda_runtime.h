@@ -3,6 +3,7 @@
 #include "protocols/backoff.h"
 #include <chrono>
 #include <nlohmann/json.hpp>
+#include <expected>
 #include <optional>
 #include <poll.h>
 #include <string>
@@ -29,6 +30,9 @@ namespace compositors::andromeda {
     [[nodiscard]] const std::string& socketPath() const;
     [[nodiscard]] std::optional<nlohmann::json>
     requestCommand(std::string_view cmd, std::optional<std::string_view> arg = std::nullopt) const;
+    // The reply's "ok" value, else its "err" text; an empty error when the compositor gave no reply.
+    [[nodiscard]] std::expected<nlohmann::json, std::string>
+    commandResult(std::string_view cmd, std::optional<std::string_view> arg = std::nullopt) const;
     [[nodiscard]] bool requestAction(std::string_view action) const;
     void refresh();
     void cleanup();
@@ -46,6 +50,7 @@ namespace compositors::andromeda {
     struct IpcReply;
 
     [[nodiscard]] IpcReply request(std::string_view payload) const;
+    [[nodiscard]] std::optional<nlohmann::json> commandReply(std::string_view cmd, std::optional<std::string_view> arg) const;
     void ensureResolved() const;
     void resolveSocketPath() const;
 

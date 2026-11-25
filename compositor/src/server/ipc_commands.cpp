@@ -89,6 +89,36 @@ namespace andromeda {
     return nlohmann::json{{"ok", true}};
   }
 
+  nlohmann::json IpcCommands::trustedBinaries(Server& server, std::string_view) {
+    auto* capture = server.inputCapture();
+    return nlohmann::json{
+        {"ok", capture != nullptr ? capture->permissionStore().binaries() : std::vector<std::string>{}}
+    };
+  }
+
+  nlohmann::json IpcCommands::trustedBinaryAdd(Server& server, std::string_view arg) {
+    if (arg.empty() || arg.find_first_of("\r\n") != std::string_view::npos) {
+      return nlohmann::json{{"err", "usage: trusted-binary-add <path>"}};
+    }
+    auto* capture = server.inputCapture();
+    if (capture == nullptr) {
+      return nlohmann::json{{"err", "no input capture"}};
+    }
+    auto added = capture->permissionStore().addBinary(arg);
+    if (!added) {
+      return nlohmann::json{{"err", added.error()}};
+    }
+    return nlohmann::json{{"ok", *added}};
+  }
+
+  nlohmann::json IpcCommands::trustedBinaryRemove(Server& server, std::string_view arg) {
+    auto* capture = server.inputCapture();
+    if (capture == nullptr || !capture->permissionStore().removeBinary(arg)) {
+      return nlohmann::json{{"err", "unable to remove (not in the list or state write failed)"}};
+    }
+    return nlohmann::json{{"ok", true}};
+  }
+
   nlohmann::json IpcCommands::globalShortcuts(Server& server, std::string_view) {
     auto grants = nlohmann::json::object();
     auto sessions = nlohmann::json::array();
@@ -1927,6 +1957,12 @@ namespace andromeda {
        &IpcCommands::inputCapturePermissions, nullptr},
       {"input-capture-revoke", "<id|all>", "forget capture permission and stop sessions using it",
        IpcCommandGroup::Control, true, &IpcCommands::inputCaptureRevoke, nullptr},
+      {"trusted-binaries", "", "list apps the user gave screen and input access", IpcCommandGroup::Inspect, false,
+       &IpcCommands::trustedBinaries, nullptr},
+      {"trusted-binary-add", "<path>", "give an app screen and input access from its next start",
+       IpcCommandGroup::Control, true, &IpcCommands::trustedBinaryAdd, nullptr},
+      {"trusted-binary-remove", "<path>", "take an app's screen and input access away from its next start",
+       IpcCommandGroup::Control, true, &IpcCommands::trustedBinaryRemove, nullptr},
       {"layer-shell-permissions", "", "list sandboxed apps remembered for layer-shell", IpcCommandGroup::Inspect, false,
        &IpcCommands::layerShellPermissions, nullptr},
       {"layer-shell-revoke", "<sandbox_engine/app_id|all>", "forget layer-shell approval and close the app's layers",

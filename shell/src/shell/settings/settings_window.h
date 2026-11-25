@@ -623,6 +623,10 @@ private:
   // Feeds the Global Shortcuts page an event and runs its actions: compositor IPC, chord capture, the remove alert.
   void globalShortcutsEvent(settings::global_shortcuts::Event event, float scale);
   [[nodiscard]] std::optional<std::vector<settings::global_shortcuts::App>> fetchGlobalShortcuts() const;
+  settings::TrustedAppsView m_trustedApps;
+  void loadTrustedApps();
+  void addTrustedApp();
+  void removeTrustedApp(const std::string& path);
   [[nodiscard]] std::unique_ptr<Node> appIcon(const DesktopEntry& entry, float size);
   // Leaving the page or closing the window: a running enroll releases the camera or reader, typed passwords go.
   void leavePrivacy();

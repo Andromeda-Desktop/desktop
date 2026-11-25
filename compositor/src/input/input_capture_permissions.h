@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -43,6 +45,12 @@ namespace andromeda {
         InputPermissionKind kind = InputPermissionKind::Capture
     );
     [[nodiscard]] std::vector<InputCapturePermission> list();
+    // Binaries the user granted screen and input access (Settings > Privacy): canonical absolute paths.
+    [[nodiscard]] std::vector<std::string> binaries();
+    // Stores the canonical path of an existing ELF executable. Errors: not-absolute, not-executable, script,
+    // too-long, too-many (64), store-failed.
+    [[nodiscard]] std::expected<std::string, std::string> addBinary(std::string_view path);
+    [[nodiscard]] bool removeBinary(std::string_view path);
     [[nodiscard]] bool revoke(std::string_view id);
     void expirePeer(uint64_t peer);
 
@@ -54,10 +62,13 @@ namespace andromeda {
     };
 
     bool load();
-    bool save(const std::vector<Record>& records) const;
+    bool save(const std::vector<Record>& records, const std::vector<std::string>& binaries) const;
 
     std::filesystem::path m_path;
     std::vector<Record> m_records;
+    std::vector<std::string> m_binaries;
+    // lstat (inode, size, mtime) of the store when binaries() last parsed it.
+    std::array<int64_t, 4> m_stamp{};
     bool m_loaded = false;
   };
 

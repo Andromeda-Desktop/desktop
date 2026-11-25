@@ -1,7 +1,11 @@
 #include "input/input_capture_permissions.h"
 
 #include <algorithm>
+#include <sys/stat.h>
+#include <fstream>
+#include <array>
 #include <cstdlib>
+#include <unistd.h>
 #include <nlohmann/json.hpp>
 
 #include "protocols/xdg_dirs.h"
@@ -11,6 +15,8 @@ namespace andromeda {
 
   namespace {
     constexpr size_t kMaxGrants = 128;
+    constexpr size_t kMaxBinaries = 64;
+    constexpr size_t kMaxBinaryPath = 4096;
     // A grant holds keyboard or pointer; a remote input grant may add clipboard.
     constexpr bool validCapabilities(uint64_t capabilities, InputPermissionKind kind) {
       return (capabilities & 3U) != 0 && capabilities <= (kind == InputPermissionKind::Emulate ? 7U : 3U);
@@ -60,18 +66,35 @@ namespace andromeda {
     }
     if (std::holds_alternative<private_state::Missing>(file)) {
       std::erase_if(m_records, [](const auto& item) { return item.permission.persistMode == 2; });
+      m_binaries.clear();
       return true;
     }
     const auto data = nlohmann::json::parse(std::get<std::string>(file), nullptr, false);
+    // Version 1 has no binaries.
+    const bool v2 = data.is_object() && data.contains("version") && data["version"] == 2;
     if (!data.is_object()
-        || data.size() != 2
+        || data.size() != (v2 ? 3U : 2U)
         || !data.contains("version")
         || !data["version"].is_number_unsigned()
-        || data["version"] != 1
+        || (data["version"] != 1 && !v2)
         || !data.contains("grants")
         || !data["grants"].is_array()
-        || data["grants"].size() > kMaxGrants) {
+        || data["grants"].size() > kMaxGrants
+        || (v2 && (!data.contains("binaries") || !data["binaries"].is_array() || data["binaries"].size() > kMaxBinaries))) {
       return false;
+    }
+    std::vector<std::string> binaries;
+    if (v2) {
+      for (const auto& item : data["binaries"]) {
+        if (!item.is_string()) {
+          return false;
+        }
+        auto path = item.get<std::string>();
+        if (path.empty() || path.size() > kMaxBinaryPath || path.front() != '/' || std::ranges::contains(binaries, path)) {
+          return false;
+        }
+        binaries.push_back(std::move(path));
+      }
     }
     std::vector<Record> records;
     for (const auto& item : data["grants"]) {
@@ -114,14 +137,18 @@ namespace andromeda {
       }
     }
     m_records = std::move(records);
+    m_binaries = std::move(binaries);
     return true;
   }
 
-  bool InputCapturePermissions::save(const std::vector<Record>& records) const {
+  bool InputCapturePermissions::save(const std::vector<Record>& records, const std::vector<std::string>& binaries) const {
     if (m_path.empty() || !m_path.is_absolute()) {
       return false;
     }
-    auto data = nlohmann::json{{"version", 1}, {"grants", nlohmann::json::array()}};
+    // Version 1 while no binary is listed, so an older compositor sharing the store still reads it.
+    auto data = binaries.empty()
+                    ? nlohmann::json{{"version", 1}, {"grants", nlohmann::json::array()}}
+                    : nlohmann::json{{"version", 2}, {"grants", nlohmann::json::array()}, {"binaries", binaries}};
     for (const auto& record : records) {
       if (record.permission.persistMode == 2) {
         data["grants"].push_back({
@@ -174,7 +201,7 @@ namespace andromeda {
     records.push_back(
         {{*id, std::string(application), capabilities, persistMode, kind}, *token, persistMode == 1 ? peer : 0}
     );
-    if (persistMode == 2 && !save(records)) {
+    if (persistMode == 2 && !save(records, m_binaries)) {
       return std::nullopt;
     }
     m_records = std::move(records);
@@ -222,7 +249,7 @@ namespace andromeda {
       records[index].permission.persistMode = persistMode;
       records[index].peer = persistMode == 1 ? peer : 0;
     }
-    if (durable && !save(records)) {
+    if (durable && !save(records, m_binaries)) {
       return std::nullopt;
     }
     m_records = std::move(records);
@@ -274,13 +301,92 @@ namespace andromeda {
     const bool durable = all || std::ranges::any_of(m_records, [id](const auto& item) {
                            return item.permission.id == id && item.permission.persistMode == 2;
                          });
-    if (durable && !save(records)) {
+    if (durable && !save(records, m_binaries)) {
       return false;
     }
     m_records = std::move(records);
     if (all) {
       m_loaded = true;
     }
+    return true;
+  }
+
+  std::vector<std::string> InputCapturePermissions::binaries() {
+    // Asked per new connection: parse the store again only when the file changed (another compositor instance may
+    // have written it). A bad file keeps the last list read.
+    struct stat st{};
+    const std::array<int64_t, 4> stamp = ::lstat(m_path.c_str(), &st) == 0
+                                             ? std::array<int64_t, 4>{static_cast<int64_t>(st.st_ino), st.st_size,
+                                                                      st.st_mtim.tv_sec, st.st_mtim.tv_nsec}
+                                             : std::array<int64_t, 4>{};
+    if (!m_loaded || stamp != m_stamp) {
+      m_loaded = load();
+      m_stamp = stamp;
+    }
+    return m_binaries;
+  }
+
+  std::expected<std::string, std::string> InputCapturePermissions::addBinary(std::string_view path) {
+    if (path.empty() || path.front() != '/') {
+      return std::unexpected("not-absolute");
+    }
+    std::error_code ec;
+    const auto canonical = std::filesystem::canonical(std::filesystem::path(path), ec);
+    if (ec || !std::filesystem::is_regular_file(canonical, ec) || ::access(canonical.c_str(), X_OK) != 0) {
+      return std::unexpected("not-executable");
+    }
+    // A client's identity is the ELF the kernel ran: for a script that is its interpreter, so a script never matches.
+    std::array<char, 4> magic{};
+    std::ifstream(canonical, std::ios::binary).read(magic.data(), magic.size());
+    if (magic[0] == '#' && magic[1] == '!') {
+      return std::unexpected("script");
+    }
+    if (magic != std::array<char, 4>{'\x7f', 'E', 'L', 'F'}) {
+      return std::unexpected("not-executable");
+    }
+    std::string binary = canonical.native();
+    if (binary.size() > kMaxBinaryPath) {
+      return std::unexpected("too-long");
+    }
+    private_state::Lock lock(m_path, kLockName);
+    if (!lock || !(m_loaded = load())) {
+      return std::unexpected("store-failed");
+    }
+    if (std::ranges::contains(m_binaries, binary)) {
+      return binary;
+    }
+    if (m_binaries.size() >= kMaxBinaries) {
+      return std::unexpected("too-many");
+    }
+    auto binaries = m_binaries;
+    binaries.push_back(binary);
+    if (!save(m_records, binaries)) {
+      return std::unexpected("store-failed");
+    }
+    m_binaries = std::move(binaries);
+    return binary;
+  }
+
+  bool InputCapturePermissions::removeBinary(std::string_view path) {
+    private_state::Lock lock(m_path, kLockName);
+    if (!lock || !(m_loaded = load())) {
+      return false;
+    }
+    // The list holds canonical paths; a symlink to a listed binary names it too, also after the binary is gone.
+    std::string listed(path);
+    if (!std::ranges::contains(m_binaries, listed)) {
+      std::error_code ec;
+      listed = std::filesystem::weakly_canonical(std::filesystem::path(path), ec).native();
+      if (ec || !std::ranges::contains(m_binaries, listed)) {
+        return false;
+      }
+    }
+    auto binaries = m_binaries;
+    std::erase(binaries, listed);
+    if (!save(m_records, binaries)) {
+      return false;
+    }
+    m_binaries = std::move(binaries);
     return true;
   }
 

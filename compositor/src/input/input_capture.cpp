@@ -1071,6 +1071,8 @@ namespace andromeda {
 
   std::vector<InputCapturePermission> InputCapture::permissions() { return m_impl->permissionStore.list(); }
 
+  InputCapturePermissions& InputCapture::permissionStore() { return m_impl->permissionStore; }
+
   bool InputCapture::revokePermission(std::string_view id) {
     const bool forgotten = m_impl->permissionStore.revoke(id);
     for (const auto& state : m_impl->sessions) {

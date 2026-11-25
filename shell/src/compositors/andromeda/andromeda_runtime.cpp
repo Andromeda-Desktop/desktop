@@ -53,7 +53,7 @@ namespace compositors::andromeda {
   }
 
   std::optional<nlohmann::json>
-  AndromedaRuntime::requestCommand(std::string_view cmd, std::optional<std::string_view> arg) const {
+  AndromedaRuntime::commandReply(std::string_view cmd, std::optional<std::string_view> arg) const {
     nlohmann::json request = nlohmann::json::object();
     request["cmd"] = cmd;
     if (arg.has_value()) {
@@ -66,10 +66,31 @@ namespace compositors::andromeda {
     if (!reply.json.has_value() || !reply.json->is_object()) {
       return std::nullopt;
     }
-    if (reply.json->contains("err") || !reply.json->contains("ok")) {
+    return reply.json;
+  }
+
+  std::optional<nlohmann::json>
+  AndromedaRuntime::requestCommand(std::string_view cmd, std::optional<std::string_view> arg) const {
+    auto reply = commandReply(cmd, arg);
+    if (!reply.has_value() || reply->contains("err") || !reply->contains("ok")) {
       return std::nullopt;
     }
-    return reply.json;
+    return reply;
+  }
+
+  std::expected<nlohmann::json, std::string>
+  AndromedaRuntime::commandResult(std::string_view cmd, std::optional<std::string_view> arg) const {
+    auto reply = commandReply(cmd, arg);
+    if (!reply.has_value()) {
+      return std::unexpected(std::string{});
+    }
+    if (const auto err = reply->find("err"); err != reply->end()) {
+      return std::unexpected(err->is_string() ? err->get<std::string>() : std::string{});
+    }
+    if (const auto ok = reply->find("ok"); ok != reply->end()) {
+      return std::move(*ok);
+    }
+    return std::unexpected(std::string{});
   }
 
   bool AndromedaRuntime::requestAction(std::string_view action) const {

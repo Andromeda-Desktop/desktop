@@ -34,6 +34,7 @@ namespace andromeda {
     void setActiveChanged(ActiveChanged changed);
     void authorizeSession(uint64_t id, bool allowed, bool remember = false);
     [[nodiscard]] std::vector<InputCapturePermission> permissions();
+    [[nodiscard]] InputCapturePermissions& permissionStore();
     [[nodiscard]] bool revokePermission(std::string_view id);
     [[nodiscard]] bool active() const;
     [[nodiscard]] uint32_t capabilities() const;

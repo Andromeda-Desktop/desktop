@@ -1,4 +1,5 @@
 #include "input/input_capture_permissions.h"
+#include "server/client_trust.h"
 
 #include "check.h"
 
@@ -9,6 +10,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -333,6 +336,129 @@ ANDROMEDA_TEST(symlinkStoresAndDirectoriesCannotAuthorizeOrReplaceTheirTargets) 
     CHECK(!permissions.issue("org.test.New", 3, 2, 11));
     CHECK(fixture.read() == document(record()));
   }
+}
+
+namespace {
+  // An ELF copy of this test binary.
+  void writeFile(const std::filesystem::path& path, mode_t mode) {
+    std::filesystem::copy_file("/proc/self/exe", path, std::filesystem::copy_options::overwrite_existing);
+    if (chmod(path.c_str(), mode) != 0) {
+      throw std::runtime_error("could not set a test binary's mode");
+    }
+  }
+
+  std::string binariesDocument(std::string_view binaries) {
+    return std::format(R"({{"version":2,"grants":[{}],"binaries":[{}]}})", record(), binaries);
+  }
+} // namespace
+
+// Settings > Privacy: random add, remove, restart and a second compositor sharing the store, from an empty store or a
+// version 1 file. After every step each instance lists exactly the binaries the model holds, a client of each binary
+// gets the User grant exactly when it is listed, and the durable capture grant still restores.
+ANDROMEDA_TEST(trustedBinariesFollowAddRemoveRestartAndASecondInstance) {
+  for (uint32_t seed = 1; seed <= 20; ++seed) {
+    Fixture fixture;
+    if (seed % 2 == 0) {
+      fixture.write(document(record()));
+    }
+    const auto bin = fixture.directory / "bin";
+    std::filesystem::create_directories(bin);
+    writeFile(bin / "a", 0700);
+    writeFile(bin / "b", 0755);
+    writeFile(bin / "plain", 0644);
+    std::filesystem::create_symlink(bin / "a", bin / "alias");
+    const std::string a = (bin / "a").native();
+    const std::string b = (bin / "b").native();
+    const std::array<std::string, 6> candidates{
+        a, b, (bin / "plain").native(), (bin / "alias").native(), (bin / "missing").native(), bin.native()
+    };
+
+    std::array<std::optional<InputCapturePermissions>, 2> instances;
+    instances[0].emplace(fixture.path);
+    instances[1].emplace(fixture.path);
+    std::vector<std::string> model;
+    std::mt19937 random(seed);
+    for (int step = 0; step < 60; ++step) {
+      auto& store = *instances[random() % 2];
+      const std::string& path = candidates[random() % candidates.size()];
+      switch (random() % 3) {
+      case 0: {
+        const auto added = store.addBinary(path);
+        const std::string expected = path == candidates[3] ? a : path;
+        const bool executable = expected == a || expected == b;
+        CHECK_EQ(added.has_value(), executable);
+        if (added) {
+          CHECK_EQ(*added, expected);
+          if (!std::ranges::contains(model, expected)) {
+            model.push_back(expected);
+          }
+        }
+        break;
+      }
+      case 1: {
+        const std::string listed = path == candidates[3] ? a : path;
+        CHECK_EQ(store.removeBinary(path), std::ranges::contains(model, listed));
+        std::erase(model, listed);
+        break;
+      }
+      default:
+        instances[random() % 2].emplace(fixture.path);
+      }
+      for (auto& instance : instances) {
+        const auto listed = instance->binaries();
+        CHECK(listed == model);
+        for (const auto& exe : {a, b}) {
+          const auto grant = andromeda::grantFor({.exe = exe, .greeterMode = false, .userBinaries = listed, .testBinaries = {}});
+          CHECK(grant == (std::ranges::contains(model, exe) ? andromeda::Grant::User : andromeda::Grant::None));
+        }
+      }
+    }
+    if (seed % 2 == 0) {
+      CHECK(instances[0]->restore(kToken, "org.test.Capture", 3, 2, 11).has_value());
+    }
+  }
+}
+
+ANDROMEDA_TEST(aTrustedBinaryListIsCappedAndABadEntryRefusesTheStore) {
+  {
+    Fixture fixture;
+    const auto bin = fixture.directory / "bin";
+    std::filesystem::create_directories(bin);
+    InputCapturePermissions permissions(fixture.path);
+    for (int index = 0; index <= 64; ++index) {
+      writeFile(bin / std::to_string(index), 0700);
+      CHECK_EQ(permissions.addBinary((bin / std::to_string(index)).native()).has_value(), index < 64);
+    }
+    CHECK_EQ(InputCapturePermissions(fixture.path).binaries().size(), 64U);
+  }
+  {
+    Fixture fixture;
+    const auto bin = fixture.directory / "bin";
+    std::filesystem::create_directories(bin);
+    std::ofstream(bin / "script") << "#!/bin/sh\n";
+    chmod((bin / "script").c_str(), 0700);
+    writeFile(bin / "app", 0700);
+    InputCapturePermissions permissions(fixture.path);
+    CHECK(permissions.addBinary((bin / "script").native()).error() == "script");
+    CHECK(permissions.addBinary("bin/app").error() == "not-absolute");
+    CHECK(permissions.addBinary((bin / "app").native()).has_value());
+    CHECK(fixture.read().contains(R"("version":2)"));
+    CHECK(permissions.removeBinary((bin / "app").native()));
+    // An empty list writes version 1, which an older compositor still reads.
+    CHECK(fixture.read().contains(R"("version":1)") && !fixture.read().contains("binaries"));
+  }
+  for (const std::string_view binaries : {R"(1)", R"("bin/a")", R"("")", R"("/bin/a","/bin/a")"}) {
+    Fixture fixture;
+    fixture.write(binariesDocument(binaries));
+    rejectedStore(fixture);
+    InputCapturePermissions permissions(fixture.path);
+    CHECK(permissions.binaries().empty());
+  }
+  Fixture fixture;
+  fixture.write(binariesDocument(R"("/bin/a")"));
+  InputCapturePermissions permissions(fixture.path);
+  CHECK(permissions.binaries() == std::vector<std::string>{"/bin/a"});
+  CHECK(permissions.restore(kToken, "org.test.Capture", 3, 2, 11).has_value());
 }
 
 int main() { return RUN_TESTS(); }

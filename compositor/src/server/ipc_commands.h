@@ -17,6 +17,9 @@ namespace andromeda {
     static nlohmann::json keyboardLayouts(Server& server, std::string_view arg);
     static nlohmann::json inputCapturePermissions(Server& server, std::string_view arg);
     static nlohmann::json inputCaptureRevoke(Server& server, std::string_view arg);
+    static nlohmann::json trustedBinaries(Server& server, std::string_view arg);
+    static nlohmann::json trustedBinaryAdd(Server& server, std::string_view arg);
+    static nlohmann::json trustedBinaryRemove(Server& server, std::string_view arg);
     static nlohmann::json layerShellPermissions(Server& server, std::string_view arg);
     static nlohmann::json layerShellRevoke(Server& server, std::string_view arg);
     static nlohmann::json globalShortcuts(Server& server, std::string_view arg);
