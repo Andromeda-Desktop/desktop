@@ -424,6 +424,10 @@ PanelManager::PanelManager() { s_instance = this; }
 
 PanelManager::~PanelManager() {
   m_persistentHost.setPanelClosedCallback(nullptr);
+  // A popup's dismiss callback calls back into this manager; it must run before the panels and s_instance go.
+  if (m_activePopup != nullptr) {
+    m_activePopup->close();
+  }
   if (s_instance == this) {
     s_instance = nullptr;
   }
