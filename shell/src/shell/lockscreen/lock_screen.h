@@ -202,7 +202,6 @@ private:
   void handlePasswordEdited(const std::string& value);
   void tryAuthenticate();
   void handleAuthResult(std::uint64_t generation, const PamAuthenticator::Result& result);
-  // Shows the wrong-password countdown while it runs; false when no delay is active.
   void acceptBiometric();
   void invalidatePendingAuthentication();
   void startFingerprint();

@@ -52,7 +52,14 @@ assert(not ok and string.find(err, "process", 1, true), err)
   if (!expect(denied, "runAsync without the process permission should be denied")) {
     return 1;
   }
-  host.setPermissions({.process = true});
+  host.setPermissions({.process = true, .environment = true});
+  const bool hostGlobalIgnored = host.exec("=host-global", R"(
+__noctalia_host = nil
+assert(noctalia.getenv("HOME"))
+)");
+  if (!expect(hostGlobalIgnored, "a script global must not replace the host the permission gate reads")) {
+    return 1;
+  }
 
   constexpr auto source = R"(
 assert(not noctalia.runAsync(""))

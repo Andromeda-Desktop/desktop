@@ -114,12 +114,19 @@ mod tests {
         std_listener.set_nonblocking(true).unwrap();
         let listener = UnixListener::from_std(std_listener).unwrap();
         // A subordinate uid (newuidmap, /etc/subuid) connects without root, through the shared network namespace.
-        let script = "import socket, sys\nc = socket.socket(socket.AF_UNIX)\nc.connect('\\0' + sys.argv[1])\nc.recv(1)\n";
-        let mut child = std::process::Command::new("unshare")
+        let script =
+            "import socket, sys\nc = socket.socket(socket.AF_UNIX)\nc.connect('\\0' + sys.argv[1])\nc.recv(1)\n";
+        let spawned = std::process::Command::new("unshare")
             .args(["--map-auto", "--map-root-user", "setpriv", "--reuid=1", "--regid=1", "--clear-groups"])
             .args(["python3", "-I", "-c", script, &name])
-            .spawn()
-            .unwrap();
+            .spawn();
+        let mut child = match spawned {
+            Ok(child) => child,
+            Err(error) => {
+                eprintln!("skipped: unshare not available ({error})");
+                return;
+            }
+        };
         let Ok(accepted) = tokio::time::timeout(std::time::Duration::from_secs(5), listener.accept()).await else {
             let _ = child.kill();
             eprintln!("skipped: no subordinate uid peer ({:?})", child.wait());

@@ -61,7 +61,11 @@ namespace ipc {
   }
 
   bool running(int pidfd) {
-    // A pidfd becomes readable when its process exits.
+    // poll() skips a negative fd and reports nothing, which would read as "still runs".
+    if (pidfd < 0) {
+      return false;
+    }
+    // A pidfd becomes readable when its process exits; a closed fd gives POLLNVAL, also "not running".
     pollfd exited{.fd = pidfd, .events = POLLIN, .revents = 0};
     int ready = 0;
     do {

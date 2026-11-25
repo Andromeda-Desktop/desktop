@@ -61,7 +61,8 @@
 
 namespace {
   Logger kLog{"luau"};
-  constexpr const char* kHostKey = "__noctalia_host";
+  // Registry key: scripts cannot reach the registry, so they cannot replace the host the permission gate reads.
+  constexpr const char* kHostKey = "andromeda.luau_host";
   // Field on a module environment's metatable holding the module's own directory.
   // Not reachable through the environment table itself, and the metatable is frozen.
   constexpr const char* kModuleDirKey = "__noctalia_moduledir";
@@ -233,7 +234,7 @@ namespace {
   }
 
   LuauHost* hostForState(lua_State* L) {
-    lua_getglobal(L, kHostKey);
+    lua_getfield(L, LUA_REGISTRYINDEX, kHostKey);
     auto* host = static_cast<LuauHost*>(lua_touserdata(L, -1));
     lua_pop(L, 1);
     return host;
@@ -2244,8 +2245,8 @@ LuauHost::LuauHost(scripting::ScriptApiContext& api, std::string runtimeName, Co
 
   m_T = lua_newthread(m_L);
   luaL_sandboxthread(m_T);
-  lua_pushlightuserdata(m_T, this);
-  lua_setglobal(m_T, kHostKey);
+  lua_pushlightuserdata(m_L, this);
+  lua_setfield(m_L, LUA_REGISTRYINDEX, kHostKey);
   // lua_newthread leaves the thread on the main stack; pin it in the registry
   // so the GC can't collect it, then drop the stack reference.
   m_threadRef = lua_ref(m_L, -1);

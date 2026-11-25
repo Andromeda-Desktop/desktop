@@ -5,6 +5,7 @@
 #include "core/process/process.h"
 #include "i18n/i18n.h"
 #include "security/secure_buffer.h"
+#include "util/string_utils.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -97,7 +98,7 @@ namespace {
         replies[i].resp = nullptr;
         if (msg[i]->msg != nullptr && data->notice.size() < kMaxPamMessageBytes) {
           data->notice.append(data->notice.empty() ? "" : " ").append(msg[i]->msg);
-          data->notice.resize(std::min(data->notice.size(), kMaxPamMessageBytes));
+          data->notice = StringUtils::truncateUtf8(data->notice, kMaxPamMessageBytes);
         }
         break;
       default:

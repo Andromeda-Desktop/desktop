@@ -88,10 +88,6 @@ namespace {
     return sources;
   }
 
-  security::SecureBuffer secureBuffer(std::string_view value) {
-    return security::SecureBuffer(std::span(reinterpret_cast<const std::uint8_t*>(value.data()), value.size()));
-  }
-
   std::string secretString(const calendar::CalendarCredentialStore::Secret& value) {
     if (!value) {
       return {};
@@ -395,7 +391,7 @@ calendar::CredentialMigration CalendarService::credentialMigration() {
         migration.credentials.push_back({
             .accountId = account.id,
             .kind = kind,
-            .value = secureBuffer(*value),
+            .value = security::SecureBuffer{std::string_view(*value)},
         });
       }
     };
@@ -1308,8 +1304,7 @@ void CalendarService::saveCalDavAccount(
     return;
   }
 
-  auto newPassword = std::make_shared<security::SecureBuffer>(secureBuffer(password));
-  util::secureWipe(password);
+  auto newPassword = std::make_shared<security::SecureBuffer>(security::SecureBuffer::take(password));
   m_credentials.lookupPassword(
       accountId,
       [this, accountId, newPassword = std::move(newPassword), persistConfig = std::move(persistConfig),
@@ -1455,8 +1450,7 @@ void CalendarService::storeGoogleTokens(
   const bool hasRefreshToken = !tokens.refreshToken.empty();
   security::SecureBuffer refreshToken;
   if (hasRefreshToken) {
-    refreshToken = secureBuffer(tokens.refreshToken);
-    util::secureWipe(tokens.refreshToken);
+    refreshToken = security::SecureBuffer::take(tokens.refreshToken);
   }
   auto retainAccessToken = [this, accountId, tokens = std::move(tokens),
                             callback = std::move(callback)](security::SecretStoreStatus status) mutable {

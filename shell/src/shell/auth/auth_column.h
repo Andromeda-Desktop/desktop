@@ -58,9 +58,8 @@ public:
     // The account picture (accountPicturePath); empty = the initial on the gradient.
     std::string avatarPath;
     std::size_t passwordLength = 0;
-    // "Password", or the fail-delay countdown.
     std::string placeholder;
-    // Fail delay and PAM error: the capsule dims to 60 %.
+    // No greetd connection: the capsule dims to 60 %.
     bool inputOff = false;
     Trailing trailing = Trailing::None;
     std::string hint;
