@@ -1692,8 +1692,6 @@
       "phone": "Phone",
       "unlock-to-read": "Unlock to read"
     },
-    "fail-delay": "Try again in {time}",
-    "failed-attempts": "{count} failed attempts",
     "glance-hint": "Press any key to unlock",
     "glance-hint-face": "Press any key or look at the camera to unlock",
     "glance-hint-face-request": "Press any key, then tap the face icon to unlock",

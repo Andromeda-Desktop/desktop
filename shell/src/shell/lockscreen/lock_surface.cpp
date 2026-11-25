@@ -1855,23 +1855,17 @@ void LockSurface::layoutAndromeda(Renderer& renderer, float sw, float sh) {
     state.avatarPath = accountPicturePath(m_user, std::getenv("HOME") != nullptr ? std::getenv("HOME") : "");
     state.passwordLength = m_password.size();
     state.ownerMessage = lock.ownerMessage;
-    if (m_authExtras.failDelay) {
-      state.placeholder = m_status;
-      state.inputOff = true;
-      state.hint = i18n::tr("lockscreen.failed-attempts", "count", m_authExtras.failures);
-    } else {
-      state.placeholder = i18n::tr("lockscreen.password-placeholder");
-      // Under the field: the other ways in that are set up (enrolled face, enrolled finger), else nothing.
-      const char* methodHint = m_authExtras.face && m_authExtras.fingerprint ? "lockscreen.hint-face-fingerprint"
-          : m_authExtras.face        ? (m_authExtras.faceOnRequest ? "lockscreen.hint-face-request" : "lockscreen.hint-face")
-          : m_authExtras.fingerprint ? "lockscreen.hint-fingerprint"
-                                     : nullptr;
-      const bool ready = m_status.empty() || m_status == i18n::tr("lockscreen.ready");
-      state.hint = !ready ? m_status : methodHint != nullptr && !typing ? i18n::tr(methodHint) : std::string{};
-      state.hintError = m_error;
-      if (!m_error && typing && m_capsLock) {
-        state.hint = i18n::tr("lockscreen.caps-lock-on");
-      }
+    state.placeholder = i18n::tr("lockscreen.password-placeholder");
+    // Under the field: the other ways in that are set up (enrolled face, enrolled finger), else nothing.
+    const char* methodHint = m_authExtras.face && m_authExtras.fingerprint ? "lockscreen.hint-face-fingerprint"
+        : m_authExtras.face        ? (m_authExtras.faceOnRequest ? "lockscreen.hint-face-request" : "lockscreen.hint-face")
+        : m_authExtras.fingerprint ? "lockscreen.hint-fingerprint"
+                                   : nullptr;
+    const bool ready = m_status.empty() || m_status == i18n::tr("lockscreen.ready");
+    state.hint = !ready ? m_status : methodHint != nullptr && !typing ? i18n::tr(methodHint) : std::string{};
+    state.hintError = m_error;
+    if (!m_error && typing && m_capsLock) {
+      state.hint = i18n::tr("lockscreen.caps-lock-on");
     }
     if (m_authenticating) {
       state.trailing = AuthColumn::Trailing::Checking;

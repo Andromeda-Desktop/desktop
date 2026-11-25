@@ -40,6 +40,7 @@ namespace {
   struct PamConversationData {
     const char* password = nullptr;
     bool passwordSent = false;
+    std::string notice;
   };
 
   struct PamHandle {
@@ -94,6 +95,10 @@ namespace {
       case PAM_ERROR_MSG:
       case PAM_TEXT_INFO:
         replies[i].resp = nullptr;
+        if (msg[i]->msg != nullptr && data->notice.size() < kMaxPamMessageBytes) {
+          data->notice.append(data->notice.empty() ? "" : " ").append(msg[i]->msg);
+          data->notice.resize(std::min(data->notice.size(), kMaxPamMessageBytes));
+        }
         break;
       default:
         for (int j = 0; j <= i; ++j) {
@@ -354,8 +359,11 @@ namespace {
     }
 
     kLog.warn("authentication failed for user='{}' rc={} ({})", user, rc, errStr);
+    const bool rejected = rc == PAM_AUTH_ERR || rc == PAM_MAXTRIES;
     return PamAuthenticator::Result{
-        .success = false, .rejected = rc == PAM_AUTH_ERR || rc == PAM_MAXTRIES, .message = errStr
+        .success = false,
+        .rejected = rejected,
+        .message = !convData.notice.empty() ? convData.notice : (rejected ? std::string{} : errStr),
     };
   }
 

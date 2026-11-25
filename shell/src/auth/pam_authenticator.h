@@ -10,6 +10,8 @@ public:
     bool success = false;
     // PAM refused the credential itself (wrong password), not a PAM or helper error.
     bool rejected = false;
+    // PAM's own text when it sent one (pam_faillock's lockout notice); else, for a failure that is not a rejection,
+    // its error string. Empty for a plain wrong password.
     std::string message;
   };
 

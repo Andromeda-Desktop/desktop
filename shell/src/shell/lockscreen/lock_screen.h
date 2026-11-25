@@ -6,7 +6,6 @@
 #include "shell/lockscreen/lockscreen_transition.h"
 #include "shell/auth/auth_column.h"
 #include "shell/lockscreen/lock_cards.h"
-#include "shell/lockscreen/lock_fail_delay.h"
 #include "shell/lockscreen/lock_lifecycle.h"
 #include "security/secure_buffer.h"
 
@@ -204,7 +203,6 @@ private:
   void tryAuthenticate();
   void handleAuthResult(std::uint64_t generation, const PamAuthenticator::Result& result);
   // Shows the wrong-password countdown while it runs; false when no delay is active.
-  bool applyFailDelay();
   void acceptBiometric();
   void invalidatePendingAuthentication();
   void startFingerprint();
@@ -281,9 +279,7 @@ private:
   double m_pointerEnterX = 0.0;
   double m_pointerEnterY = 0.0;
   Timer m_unlockTransitionTimer;
-  LockFailDelay m_failDelay{LockFailDelay::defaultPath()};
   std::vector<std::int64_t> m_rejectedAt;
-  Timer m_failDelayTimer;
   bool m_passwordOnly = false;
   bool m_lastRejected = false;
   AuthColumn::Status m_statusIsland;

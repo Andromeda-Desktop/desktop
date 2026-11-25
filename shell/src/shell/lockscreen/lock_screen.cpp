@@ -111,16 +111,8 @@ namespace {
       .finished = &LockScreen::handleFinished,
   };
 
-  // PAM denies a service without a stack file, so a build run before the package installs andromeda-lock uses login.
-  std::string lockPamService() {
-    std::error_code ec;
-    for (const char* dir : {"/etc/pam.d/", "/usr/lib/pam.d/"}) {
-      if (std::filesystem::exists(std::string(dir) + "andromeda-lock", ec)) {
-        return "andromeda-lock";
-      }
-    }
-    return "login";
-  }
+  // The one lock stack, shipped by the package (session/pam.d/andromeda-lock); pam_faillock in it counts failures.
+  constexpr std::string_view kLockPamService = "andromeda-lock";
 
 } // namespace
 
@@ -358,8 +350,6 @@ void LockScreen::unlock() {
   }
   m_pendingDecline.clear();
   stopFace();
-  m_failDelay.reset();
-  m_failDelayTimer.stop();
   m_passwordOnly = false;
 
   if (m_lifecycle.phase() == LockLifecycle::Phase::Pending) {
@@ -851,7 +841,7 @@ bool LockScreen::lockFromPhone() {
   if (!ok) {
     m_passwordOnly = false;
   }
-  if (ok && m_lifecycle.locked() && !m_failDelayTimer.active()) {
+  if (ok && m_lifecycle.locked()) {
     m_status = i18n::tr("lockscreen.password-required");
     m_statusIsError = false;
     updatePromptOnSurfaces();
@@ -1141,7 +1131,7 @@ void LockScreen::handleLocked(void* data, ext_session_lock_v1* /*lock*/) {
   // Idle status is empty; the surface renders the password hint itself.
   self->m_status.clear();
   self->m_statusIsError = false;
-  if (!self->applyFailDelay() && self->m_passwordOnly) {
+  if (self->m_passwordOnly) {
     self->m_status = i18n::tr("lockscreen.password-required");
   }
   for (auto& instance : self->m_instances) {
@@ -1656,8 +1646,6 @@ void LockScreen::clearInstances() { m_instances.clear(); }
 void LockScreen::updatePromptOnSurfaces() {
   const LockSurface::AuthExtras extras{
       .passwordOnly = m_passwordOnly,
-      .failDelay = m_failDelayTimer.active(),
-      .failures = m_failDelay.failures(),
       .rejected = m_lastRejected,
       .face = m_face != nullptr && faceEnabled() && m_face->available(),
       .faceOnRequest = faceOnRequest(),
@@ -1737,11 +1725,6 @@ void LockScreen::invalidatePendingAuthentication() {
 }
 
 void LockScreen::handlePasswordEdited(const std::string& value) {
-  if (m_failDelayTimer.active()) {
-    m_password.clear();
-    updatePromptOnSurfaces();
-    return;
-  }
   if (m_authenticating) {
     m_password.clear();
     m_password = security::SecureBuffer(std::string_view(value));
@@ -1760,11 +1743,6 @@ void LockScreen::handlePasswordEdited(const std::string& value) {
 
 void LockScreen::tryAuthenticate() {
   if (m_authenticating || !m_lifecycle.locked() || unlocking()) {
-    return;
-  }
-  if (applyFailDelay()) {
-    m_password.clear();
-    updatePromptOnSurfaces();
     return;
   }
   const bool allowEmptyPassword =
@@ -1794,8 +1772,8 @@ void LockScreen::tryAuthenticate() {
 
   const PamAuthenticator authenticator = m_authenticator;
   // The andromeda-lock stack checks the password only, without pam_fprintd: the lock screen runs fingerprint itself
-  // over fprintd D-Bus. The login fallback can list pam_fprintd and wait for a finger; stopFingerprint() freed the reader.
-  const std::string pamService = lockPamService();
+  // over fprintd D-Bus.
+  const std::string pamService(kLockPamService);
   const std::string pamLanguage(i18n::Service::instance().language());
   const std::string pamStartFailure = i18n::tr("auth.pam.start-failed");
   // The thread never touches `this`; the result hops back to the main loop and is dropped if the lock screen is gone.
@@ -1829,7 +1807,8 @@ void LockScreen::handleAuthResult(std::uint64_t generation, const PamAuthenticat
   }
 
   if (result.rejected) {
-    m_status = i18n::tr("lockscreen.wrong-password");
+    // A faillock lockout rejects even the right password; PAM's notice says so and for how long.
+    m_status = result.message.empty() ? i18n::tr("lockscreen.wrong-password") : result.message;
   } else {
     m_status = i18n::tr(
         "lockscreen.pam-error", "message",
@@ -1839,39 +1818,13 @@ void LockScreen::handleAuthResult(std::uint64_t generation, const PamAuthenticat
   m_statusIsError = true;
   m_lastRejected = result.rejected;
   if (result.rejected) {
-    m_failDelay.recordRejected(wallClockMillis());
     m_rejectedAt.push_back(wallClockMillis());
-    applyFailDelay();
   }
   updatePromptOnSurfaces();
   startFingerprint();
   if (m_face != nullptr && faceEnabled() && !faceOnRequest()) {
     m_face->resume();
   }
-}
-
-bool LockScreen::applyFailDelay() {
-  const std::int64_t remainingMs = m_failDelay.remainingMs(wallClockMillis());
-  if (remainingMs <= 0) {
-    if (m_failDelayTimer.active()) {
-      m_failDelayTimer.stop();
-      m_status.clear();
-      m_statusIsError = false;
-    }
-    return false;
-  }
-  const std::int64_t seconds = (remainingMs + 999) / 1000;
-  m_status = i18n::tr("lockscreen.fail-delay", "time", std::format("{}:{:02}", seconds / 60, seconds % 60));
-  m_statusIsError = true;
-  m_failDelayTimer.start(std::chrono::milliseconds(remainingMs % 1000 == 0 ? 1000 : remainingMs % 1000), [this] {
-    m_failDelayTimer.stop();
-    if (!applyFailDelay()) {
-      m_status.clear();
-      m_statusIsError = false;
-    }
-    updatePromptOnSurfaces();
-  });
-  return true;
 }
 
 void LockScreen::startFingerprint() {
@@ -1911,7 +1864,7 @@ void LockScreen::startFace() {
 }
 
 void LockScreen::requestFace() {
-  if (m_face != nullptr && faceEnabled() && m_lifecycle.locked() && !unlocking() && !m_authenticating && !applyFailDelay()) {
+  if (m_face != nullptr && faceEnabled() && m_lifecycle.locked() && !unlocking() && !m_authenticating) {
     m_face->setOnRequest(faceOnRequest());
     m_face->request();
   }
@@ -1927,10 +1880,7 @@ void LockScreen::handleBiometricStatus(const std::string& message, bool isError)
   if (!isActive()) {
     return;
   }
-  // Don't clobber a password the user is typing, or the fail-delay countdown.
-  if (m_failDelayTimer.active()) {
-    return;
-  }
+  // Don't clobber a password the user is typing.
   if (!m_password.empty()) {
     kLog.debug("status hidden while typing: {}", message);
     return;

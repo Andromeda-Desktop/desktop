@@ -82,8 +82,6 @@ public:
   // Auth facts the Andromeda column shows beyond the status line.
   struct AuthExtras {
     bool passwordOnly = false;
-    bool failDelay = false;
-    int failures = 0;
     // The last error was a wrong password (shake), not a PAM error.
     bool rejected = false;
     bool face = false;

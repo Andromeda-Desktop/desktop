@@ -233,9 +233,11 @@ Find answers to common setup and troubleshooting questions for Noctalia.
 </FaqItem>
 
 <FaqItem question="Why can't I unlock my lock screen?">
-  Noctalia authenticates through PAM using the `login` service. Make sure `/etc/pam.d/login` exists and is valid for your distribution.
+  The lock screen authenticates through PAM with the `andromeda-lock` service, which the package installs as `/etc/pam.d/andromeda-lock` (it includes `system-auth`). A build run without the package cannot unlock until that file exists.
 
-  If you changed your PAM stack for fingerprint, security key, or other authentication methods, make sure those changes are present in the `login` PAM service used by Noctalia.
+  Failed attempts are counted only by `pam_faillock`. After too many, the account is locked for the time set in `/etc/security/faillock.conf`, and the lock screen shows PAM's notice with the minutes left; even the right password is refused until then. `faillock --user $USER --reset` (as root) clears it.
+
+  If you changed your PAM stack for a security key or other authentication methods, make those changes in `system-auth` or `andromeda-lock`. Fingerprint and face unlock run in the lock screen itself, not through this stack.
 
   After a successful PAM unlock, Noctalia asks the same PAM stack to refresh existing credentials, such as Kerberos tickets or PAM-integrated GPG and keyring credentials.
 </FaqItem>
