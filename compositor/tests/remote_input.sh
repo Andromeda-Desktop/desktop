@@ -112,6 +112,21 @@ done
 awk -v a="$x0" -v b="$x1" -v c="$y0" -v d="$y1" 'BEGIN { exit !((b - a) == 40 && (d - c) == 30) }' ||
   { echo "the pointer moved from $x0,$y0 to $x1,$y1, not by 40,30"; exit 1; }
 
+# An emulated Enter from the granted keyboard cannot answer another session's consent panel.
+await_events "$RUNTIME/once.log" keyboard-ready 1 "keyboard device resumed"
+client probe
+await_events "$RUNTIME/probe.log" ready 1 "probe client"
+send_probe 'start 0 -'
+wait_confirmation
+send_once 'key 28'
+await_events "$RUNTIME/once.log" keyed 1 "emulated Enter sent"
+for _ in $(seq 20); do
+  status | grep -q 'confirmation=1' || { echo "an emulated key closed the consent panel"; exit 1; }
+done
+grep -q '^started' "$RUNTIME/probe.log" && { echo "an emulated Enter answered the consent panel"; exit 1; }
+physical 'tap 1'
+await_events "$RUNTIME/probe.log" 'started status=1 capabilities=0' 1 "Escape denies the probe"
+
 # Remember: R stores a grant; a new session restores it without the panel.
 client remember
 await_events "$RUNTIME/remember.log" ready 1 "remember client"

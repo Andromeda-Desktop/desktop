@@ -1,5 +1,5 @@
 // Drives andromeda_remote_input_v1 from stdin commands and reports events on stdout, one line each:
-//   start <persist_mode> <restore_token|->  connect  move <dx> <dy>  quit
+//   start <persist_mode> <restore_token|->  connect  move <dx> <dy>  key <evdev code>  quit
 #include <andromeda-remote-input-v1-client-protocol.h>
 #include <cstdint>
 #include <cstring>
@@ -82,6 +82,9 @@ namespace {
           if (ei_device_has_capability(device, EI_DEVICE_CAP_POINTER)) {
             std::println("pointer-ready");
           }
+          if (ei_device_has_capability(device, EI_DEVICE_CAP_KEYBOARD)) {
+            std::println("keyboard-ready");
+          }
           break;
         }
         default: break;
@@ -111,6 +114,18 @@ namespace {
           ei_device_pointer_motion(device, dx, dy);
           ei_device_frame(device, ei_now(state.context));
           std::println("moved");
+        }
+      }
+    } else if (action == "key") {
+      uint32_t code = 0;
+      words >> code;
+      for (ei_device* device : state.devices) {
+        if (ei_device_has_capability(device, EI_DEVICE_CAP_KEYBOARD)) {
+          ei_device_keyboard_key(device, code, true);
+          ei_device_frame(device, ei_now(state.context));
+          ei_device_keyboard_key(device, code, false);
+          ei_device_frame(device, ei_now(state.context));
+          std::println("keyed");
         }
       }
     } else if (action == "quit") {
