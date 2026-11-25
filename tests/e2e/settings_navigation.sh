@@ -57,8 +57,10 @@ repeated=$(for page in "${pages[@]}" bar; do md5sum < "$OUT/$page.png"; done | s
 [[ -s $OUT/search-expert.png && -s $OUT/search-none.png ]] || { echo "FAIL: no search screenshots" >&2; exit 1; }
 cmp -s "$OUT/search-expert.png" "$OUT/search-none.png" && { echo "FAIL: search for an expert-only row found nothing" >&2; exit 1; }
 cmp -s "$OUT/search-expert.png" "$OUT/wallpaper.png" && { echo "FAIL: search did not leave the page" >&2; exit 1; }
+# An alias may open its page scrolled to the absorbed section: compare the sidebar column (screen x 160..450), not the page.
+sidebar() { magick "$OUT/$1.png" -crop 290x600+160+0 +repage ppm:- | md5sum; }
 for pair in $aliases; do
-  cmp -s "$OUT/alias-${pair%%:*}.png" "$OUT/${pair##*:}.png" \
+  [[ $(sidebar "alias-${pair%%:*}") == $(sidebar "${pair##*:}") ]] \
     || { echo "FAIL: settings-open ${pair%%:*} did not open ${pair##*:}" >&2; exit 1; }
 done
 echo "PASS: $(wc -l < "$OUT/paths.txt") settings on ${#pages[@]} sidebar pages, none lost or duplicated; artifacts: $OUT"
