@@ -446,14 +446,15 @@ uint32_t NotificationService::onNotify(
 }
 
 NotificationOwner NotificationService::callerOwner() const {
-  const auto caller = busCaller(m_bus.connection(), m_object->getCurrentlyProcessedMessage().getSender());
+  const std::string sender = m_object->getCurrentlyProcessedMessage().getSender();
+  const auto caller = busCaller(m_bus.connection(), sender);
   if (!caller.has_value()) {
-    throw sdbus::Error(sdbus::Error::Name{"org.freedesktop.DBus.Error.AccessDenied"}, "caller identity unknown");
+    return NotificationOwner{.kind = NotificationOwner::Kind::Connection, .id = sender};
   }
   if (caller->kind == BusCaller::Kind::Host) {
     return NotificationOwner{.kind = NotificationOwner::Kind::Host};
   }
-  return NotificationOwner{.kind = NotificationOwner::Kind::App, .appId = caller->appId};
+  return NotificationOwner{.kind = NotificationOwner::Kind::App, .id = caller->appId};
 }
 
 std::vector<std::string> NotificationService::onGetCapabilities() {

@@ -111,7 +111,7 @@ int main() {
 
     for (const char* key : {"image-path", "image_path"}) {
       const std::map<std::string, sdbus::Variant> hints{{key, sdbus::Variant(test.input)}};
-      const auto id = notification_dbus::ingestNotify(manager, "uri-test", 0, "", test.input, "", {}, hints, 0);
+      const auto id = notification_dbus::ingestNotify(manager, "uri-test", 0, "", test.input, "", {}, hints, 0, {});
       expectedSnapshots.emplace(id, test.expected);
       ok = check(
                runDeferredUntil([&] { return manager.all().back().imageData.has_value(); }),

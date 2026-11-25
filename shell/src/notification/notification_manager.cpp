@@ -429,6 +429,11 @@ uint32_t NotificationManager::addOrReplace(NotificationRequest request) {
       m_suppressedIds.erase(replacesId);
     }
 
+    // An expired id waiting for its close is not replaced in place: it closes, and the request gets a new id.
+    if (m_pendingDBusClose.contains(replacesId)) {
+      (void)close(replacesId, CloseReason::ClosedByCall);
+    }
+
     if (const auto it = m_idToIndex.find(replacesId); it != m_idToIndex.end()) {
       auto& n = m_notifications[it->second];
 
@@ -499,9 +504,11 @@ uint32_t NotificationManager::addOrReplace(NotificationRequest request) {
     return suppressExternal(appName, urgency, std::move(owner));
   }
 
-  // Suppress immediate duplicate bursts. Later same-content notifications should still be visible.
+  // Suppress immediate duplicate bursts. Later same-content notifications should still be visible. Portal
+  // notifications carry their own key: two keys never share an id.
   for (const auto& existing : std::views::reverse(m_notifications)) {
-    if (hasSameContent(existing, origin, appName, summary, body, sender)
+    if (origin != NotificationOrigin::Portal
+        && hasSameContent(existing, origin, appName, summary, body, sender)
         && now - existing.receivedTime < kImplicitDuplicateWindow) {
       logNotification(existing, "duplicate ignored");
       return existing.id;

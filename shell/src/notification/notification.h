@@ -49,11 +49,12 @@ struct NotificationImageData {
 };
 
 // Who may replace, close, list or invoke a notification. Host processes share one trust domain (same user);
-// a sandboxed app is its app id. Shell (in-process and the portal) is never reachable from the fdo D-Bus API.
+// a sandboxed app is its app id; a caller the bus cannot name is its connection only. Shell (in-process and the
+// portal) is never reachable from the fdo D-Bus API.
 struct NotificationOwner {
-  enum class Kind : std::uint8_t { Shell, Host, App };
+  enum class Kind : std::uint8_t { Shell, Host, App, Connection };
   Kind kind = Kind::Shell;
-  std::string appId;
+  std::string id; // App: the app id; Connection: the unique name
 
   bool operator==(const NotificationOwner&) const = default;
 };

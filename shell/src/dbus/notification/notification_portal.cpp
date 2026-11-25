@@ -229,6 +229,7 @@ void NotificationPortal::add(const std::string& appId, const std::string& id, co
       .appName = appId,
       .summary = option<std::string>(n, "title").value_or(""),
       .body = std::move(body),
+      .sender = busname::kPortalFrontend,
       .urgency = priority == "low" ? Urgency::Low : (priority == "urgent" ? Urgency::Critical : Urgency::Normal),
       .timeout = hinted("persistent") ? 0 : kDefaultNotificationTimeout,
       .origin = NotificationOrigin::Portal,
@@ -240,9 +241,8 @@ void NotificationPortal::add(const std::string& appId, const std::string& id, co
       .portalPriority = priority,
   };
   const std::uint32_t managerId = m_manager.addOrReplace(std::move(request));
-  // An expired id waiting for its close is not replaced in place: it closes, so it leaves no entry or icon file.
+  // A suppressed old id fires no close observer.
   if (oldId != 0 && oldId != managerId) {
-    (void)m_manager.close(oldId, CloseReason::ClosedByCall);
     dropEntry(oldId);
   }
   if (const auto replaced = m_entries.find(managerId); replaced != m_entries.end() && !replaced->second.iconFile.empty()

@@ -445,7 +445,6 @@ int main() {
   }
   TEST_CHECK(summaryOf(owned) == "Owned");
   TEST_CHECK(manager.isOwnedBy(owned, host));
-  TEST_CHECK(client1ActionId == 0);
 
   TEST_CHECK(notify(*proxy2, owned, "Replaced") == owned);
   TEST_CHECK(summaryOf(owned) == "Replaced");

@@ -1360,6 +1360,7 @@ if build_tests
     'notification_history_image_bounds',
     'notification_history_utf8',
     'notification_inline_reply',
+    'notification_owner_model',
     'notification_settings_page',
     'notification_internal_history',
     'palette_tone',
