@@ -140,6 +140,8 @@
     <method name="ListInhibitors">
       <arg type="a(ssssuu)" direction="out" />
     </method>
+    <method name="CreateFaillockTally">
+      </method>
     <method name="ListSessions">
       <arg type="a(susso)" direction="out" />
     </method>

@@ -4,6 +4,9 @@
 
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::fs;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::path::Path;
 
 use andromeda_rt::bus::Caller;
 use futures_util::StreamExt;
@@ -29,6 +32,8 @@ const USER: &str = "org.freedesktop.login1.User";
 const ROOT_CHECK_INHIBITORS: u64 = 1 << 0;
 /// `SD_LOGIND_SKIP_INHIBITORS`: the call passes "block" and "block-weak" inhibitors.
 const SKIP_INHIBITORS: u64 = 1 << 4;
+/// `pam_faillock`'s tally directory (faillock.conf `dir` default); the unit may write only here.
+const FAILLOCK_DIR: &str = "/run/faillock";
 const FIRMWARE: &str = "reboot-to-firmware-setup";
 const FIRMWARE_ACTION: &str = "org.freedesktop.login1.set-reboot-to-firmware-setup";
 /// logind Manager properties that `ManagerProperties` returns.
@@ -422,6 +427,25 @@ impl Login {
     }
 }
 
+/// Opens or creates `dir/user` and gives it to `uid` with mode 0660, as `pam_faillock`'s root side does, so the user's
+/// own PAM stack (the lock screen) can count failures: it cannot create the file in root's directory. Refuses a symlink.
+fn create_tally(dir: &Path, user: &str, uid: u32) -> std::io::Result<()> {
+    if user.is_empty() || user.contains('/') || user.starts_with('.') {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("bad user name {user:?}")));
+    }
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .mode(0o660)
+        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed())
+        .open(dir.join(user))?;
+    file.set_permissions(fs::Permissions::from_mode(0o660))?;
+    if file.metadata()?.uid() != uid {
+        std::os::unix::fs::fchown(&file, Some(uid), None)?;
+    }
+    Ok(())
+}
+
 fn sender(header: &Header<'_>) -> Result<String> {
     Ok(header.sender().ok_or_else(|| Error::Failed("call without sender".into()))?.to_string())
 }
@@ -594,6 +618,20 @@ impl Login {
         manager(conn, "ListInhibitors", &()).await
     }
 
+    /// Creates the caller's `pam_faillock` tally file, so wrong lock-screen passwords count toward faillock's lockout
+    /// also in a session that started without a password (autologin).
+    async fn create_faillock_tally(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] conn: &Connection,
+    ) -> Result<()> {
+        let uid = caller(conn, &header).await?.uid;
+        let user: OwnedObjectPath = manager(conn, "GetUser", &(uid,)).await?;
+        let name: String = property(conn, user.as_str(), USER, "Name").await?;
+        create_tally(Path::new(FAILLOCK_DIR), &name, uid)
+            .map_err(|e| Error::Failed(format!("faillock tally for {name}: {e}")))
+    }
+
     /// logind's sessions: (id, uid, user, seat, path).
     async fn list_sessions(&self, #[zbus(connection)] conn: &Connection) -> Result<Vec<SessionRow>> {
         manager(conn, "ListSessions", &()).await
@@ -625,6 +663,39 @@ impl Login {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("andromeda-tally-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn tally_is_created_writable_by_its_group() {
+        let dir = scratch("new");
+        let uid = fs::metadata(&dir).unwrap().uid();
+        create_tally(&dir, "alice", uid).unwrap();
+        let meta = fs::metadata(dir.join("alice")).unwrap();
+        assert_eq!((meta.mode() & 0o777, meta.len()), (0o660, 0));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn tally_repairs_an_existing_file_and_refuses_a_symlink() {
+        let dir = scratch("existing");
+        let uid = fs::metadata(&dir).unwrap().uid();
+        fs::write(dir.join("alice"), b"records").unwrap();
+        fs::set_permissions(dir.join("alice"), fs::Permissions::from_mode(0o600)).unwrap();
+        std::os::unix::fs::symlink(dir.join("target"), dir.join("bob")).unwrap();
+        create_tally(&dir, "alice", uid).unwrap();
+        let meta = fs::metadata(dir.join("alice")).unwrap();
+        assert_eq!((meta.mode() & 0o777, fs::read(dir.join("alice")).unwrap()), (0o660, b"records".to_vec()));
+        assert!(create_tally(&dir, "bob", uid).is_err());
+        assert!(!dir.join("target").exists());
+        assert!(create_tally(&dir, "../alice", uid).is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn inhibitor(what: &str, mode: &str, uid: u32) -> Inhibitor {
         (what.into(), "app".into(), "why".into(), mode.into(), uid, 1)

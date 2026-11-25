@@ -3,6 +3,8 @@
 #include "app/application.h"
 #include "app/application_internal.h"
 #include "app/deferred_call_poll_source.h"
+#include "dbus/reply_log.h"
+#include "protocols/bus_names.h"
 #include "app/main_loop.h"
 #include "app/timer_poll_source.h"
 #include "compositors/compositor_platform.h"
@@ -174,6 +176,15 @@ namespace {
         if (m_systemBus->nameHasOwner(LogindService::kBusName)) {
           m_logind = std::make_unique<LogindService>(*m_systemBus);
         }
+        // pam_faillock in this process counts failures only in a tally file root made for the user; a session that
+        // started without a password (autologin) has none.
+        m_system1Login = sdbus::createProxy(
+            m_systemBus->connection(), sdbus::ServiceName{busname::kSystem1},
+            sdbus::ObjectPath{"/org/andromeda/System1/Login"}
+        );
+        m_system1Login->callMethodAsync("CreateFaillockTally")
+            .onInterface("org.andromeda.System1.Login")
+            .uponReplyInvoke(logReply(kLog, "CreateFaillockTally"));
         m_upower = std::make_unique<UPowerService>(*m_systemBus);
         m_upower->setChangeCallback([this](const auto& /*change*/) { refreshStatus(); });
       } catch (const std::exception& e) {
@@ -530,6 +541,7 @@ namespace {
     std::unique_ptr<SystemBus> m_systemBus;
     std::unique_ptr<SystemBusPollSource> m_systemBusPoll;
     std::unique_ptr<LogindService> m_logind;
+    std::unique_ptr<sdbus::IProxy> m_system1Login;
     std::unique_ptr<UPowerService> m_upower;
     std::unique_ptr<PowerProfilesService> m_powerProfiles;
     std::unique_ptr<SessionBus> m_sessionBus;

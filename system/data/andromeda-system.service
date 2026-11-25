@@ -11,11 +11,12 @@ WatchdogSec=30s
 # Root only for reads the kernel keeps from users (RAPL energy_uj 0400); PSI triggers with 1 s windows need
 # CAP_SYS_RESOURCE. CAP_NET_ADMIN creates the hotspot AP interface (nl80211 add interface).
 # CAP_SYS_ADMIN, CAP_SYS_PTRACE and CAP_DAC_READ_SEARCH (stack files are 0400, owned by the task's user): /proc/<pid>/stack
-# for Diagnostics.KernelStacks.
-CapabilityBoundingSet=CAP_SYS_RESOURCE CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+# for Diagnostics.KernelStacks. CAP_CHOWN gives a new pam_faillock tally file to its user (Login.CreateFaillockTally).
+CapabilityBoundingSet=CAP_SYS_RESOURCE CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH CAP_CHOWN
 AmbientCapabilities=
 NoNewPrivileges=yes
 ProtectSystem=strict
+ReadWritePaths=-/run/faillock
 StateDirectory=andromeda-system
 ProtectHome=yes
 PrivateTmp=yes
