@@ -1,7 +1,5 @@
 #pragma once
 
-#include <sys/types.h>
-
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -11,10 +9,6 @@ struct wl_event_loop;
 struct wl_event_source;
 
 namespace andromeda {
-
-  // A listening Unix socket bound at `path` with `mode` (0: the umask's). Never unlinks: fails with -1 when the path
-  // exists, so it cannot replace another process's socket.
-  [[nodiscard]] int bindUnixListener(const std::string& path, int backlog, mode_t mode);
 
   // Recreates the compositor's sockets when something deletes their files in the runtime dir: an inotify fd on the
   // event loop (no timer, no idle work). `recover` returns false when it gave up; the name is then no longer watched.

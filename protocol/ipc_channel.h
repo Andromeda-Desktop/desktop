@@ -1,5 +1,6 @@
 #pragma once
 
+#include <sys/socket.h>
 #include <sys/types.h>
 
 #include <chrono>
@@ -114,21 +115,31 @@ namespace ipc {
     std::string data;
   };
 
-  // Writes all bytes, waiting for space until the deadline. Works on blocking and non-blocking fds; never SIGPIPE.
+  // Writes all bytes, waiting for space until the deadline (then errno ETIMEDOUT). Works on blocking and non-blocking
+  // fds; never SIGPIPE.
   [[nodiscard]] bool writeAll(int fd, std::string_view bytes, Deadline deadline);
 
-  // Reads until end of file, at most cap bytes, until the deadline; complete (when set) ends the read early once it
-  // accepts the data (a peer that keeps its end open). data holds what came, also on TooLong and TimedOut.
+  // Reads until end of file, at most cap bytes, until the deadline (Deadline::max(): none); complete (when set) ends the
+  // read early once it accepts the data (a peer that keeps its end open). data holds what came, also on TooLong and
+  // TimedOut.
   [[nodiscard]] Read readAll(int fd, std::size_t cap, Deadline deadline, bool (*complete)(std::string_view) = nullptr);
 
-  // A connected stream socket (close-on-exec, blocking), or an empty Fd: no socket at path, or the server's
-  // backlog stayed full until the deadline.
-  [[nodiscard]] Fd connectTo(const std::string& path, Deadline deadline);
+  // A connected socket (close-on-exec), or an empty Fd with errno: no socket at path, or the server's backlog stayed
+  // full until the deadline. type: SOCK_STREAM or SOCK_SEQPACKET; | SOCK_NONBLOCK makes the connected fd non-blocking.
+  // A deadline already past connects without waiting; else blocking sends keep the deadline's time left as SO_SNDTIMEO.
+  [[nodiscard]] Fd connectTo(const std::string& path, Deadline deadline, int type = SOCK_STREAM);
+
+  // Keep: an existing path fails (EADDRINUSE), so another process's socket is never replaced. Replace: unlinks it.
+  enum class Stale { Keep, Replace };
+
+  // A listening Unix socket at path. type: SOCK_STREAM or SOCK_SEQPACKET, optionally | SOCK_NONBLOCK; close-on-exec
+  // always. mode 0 keeps the umask's. An empty Fd with errno on failure; a failure after bind removes the path again.
+  [[nodiscard]] Fd listenUnix(const std::string& path, int type, int backlog, mode_t mode, Stale stale);
 
   enum class EndOfRequest { KeepOpen, HalfClose };
 
-  // One request: connect, write bytes, optionally shut down the write side, then read the reply to end of file.
+  // One request: connect, write bytes, optionally shut down the write side, then read the reply as readAll does.
   [[nodiscard]] Read request(const std::string& path, std::string_view bytes, EndOfRequest end, std::size_t cap,
-                             Deadline deadline);
+                             Deadline deadline, bool (*complete)(std::string_view) = nullptr);
 
 } // namespace ipc

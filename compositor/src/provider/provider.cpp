@@ -36,28 +36,10 @@ namespace andromeda {
       return;
     }
     m_socketPath = runtimeDir + "/andromeda-provider-" + waylandSocketName + ".sock";
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    if (m_socketPath.size() >= sizeof(addr.sun_path)) {
-      kLog.error("provider socket path too long");
-      m_socketPath.clear();
-      return;
-    }
-    m_socketPath.copy(addr.sun_path, m_socketPath.size());
-    m_listenFd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    m_listenFd = ipc::listenUnix(m_socketPath, SOCK_STREAM | SOCK_NONBLOCK, 4, S_IRUSR | S_IWUSR, ipc::Stale::Replace)
+                     .release();
     if (m_listenFd < 0) {
-      kLog.error("failed to create provider socket: {}", strerror(errno));
-      m_socketPath.clear();
-      return;
-    }
-    unlink(m_socketPath.c_str());
-    if (bind(m_listenFd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0
-        || chmod(m_socketPath.c_str(), S_IRUSR | S_IWUSR) < 0
-        || listen(m_listenFd, 4) < 0) {
       kLog.error("failed to set up provider socket: {}", strerror(errno));
-      close(m_listenFd);
-      m_listenFd = -1;
-      unlink(m_socketPath.c_str());
       m_socketPath.clear();
       return;
     }

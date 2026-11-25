@@ -247,41 +247,14 @@ namespace compositors::andromeda {
       return;
     }
 
-    const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (fd < 0) {
+    const auto deadline = now + kRequestTimeout;
+    ipc::Fd fd = ipc::connectTo(m_socketPath, deadline, SOCK_STREAM | SOCK_NONBLOCK);
+    if (!fd || !ipc::writeAll(fd.get(), subscribeRequests(newFamilies(nullptr)), deadline)) {
       scheduleReconnect();
       return;
     }
 
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    if (m_socketPath.size() >= sizeof(addr.sun_path)) {
-      kLog.warn("andromeda socket path too long");
-      ::close(fd);
-      scheduleReconnect();
-      return;
-    }
-    std::memcpy(addr.sun_path, m_socketPath.c_str(), m_socketPath.size() + 1);
-
-    if (::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) < 0) {
-      ::close(fd);
-      scheduleReconnect();
-      return;
-    }
-
-    const std::string subscribe = subscribeRequests(newFamilies(nullptr));
-    if (!ipc::writeAll(fd, subscribe, std::chrono::steady_clock::now() + kRequestTimeout)) {
-      ::close(fd);
-      scheduleReconnect();
-      return;
-    }
-
-    const int flags = ::fcntl(fd, F_GETFL, 0);
-    if (flags >= 0) {
-      (void)::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-    }
-
-    m_eventSocketFd = fd;
+    m_eventSocketFd = fd.release();
     m_nextReconnectAt = {};
     m_reconnectBackoff.reset();
     m_readBuffer.clear();

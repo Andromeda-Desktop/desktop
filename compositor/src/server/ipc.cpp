@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <bit>
 #include <cerrno>
+#include <cstring>
 #include <charconv>
 #include <cstdlib>
 #include <format>
@@ -183,9 +184,10 @@ namespace andromeda {
     }
     m_socketPath = runtimeDir + "/andromeda-" + waylandSocketName + ".sock";
 
-    unlink(m_socketPath.c_str());
-    m_listenFd = bindUnixListener(m_socketPath, 4, S_IRUSR | S_IWUSR);
+    m_listenFd = ipc::listenUnix(m_socketPath, SOCK_STREAM | SOCK_NONBLOCK, 4, S_IRUSR | S_IWUSR, ipc::Stale::Replace)
+                     .release();
     if (m_listenFd < 0) {
+      kLog.error("IPC socket {}: {}", m_socketPath, std::strerror(errno));
       return;
     }
 
@@ -207,8 +209,10 @@ namespace andromeda {
     if (m_socketPath.empty()) {
       return false;
     }
-    const int fd = bindUnixListener(m_socketPath, 4, S_IRUSR | S_IWUSR);
+    const int fd =
+        ipc::listenUnix(m_socketPath, SOCK_STREAM | SOCK_NONBLOCK, 4, S_IRUSR | S_IWUSR, ipc::Stale::Keep).release();
     if (fd < 0) {
+      kLog.error("IPC socket {}: {}", m_socketPath, std::strerror(errno));
       return false;
     }
     wl_event_source* source =

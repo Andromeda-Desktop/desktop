@@ -5,9 +5,7 @@
 #include <cerrno>
 #include <cstring>
 #include <sys/inotify.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/un.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -18,34 +16,6 @@ namespace andromeda {
   namespace {
     constexpr Logger kLog("socket");
   } // namespace
-
-  int bindUnixListener(const std::string& path, int backlog, mode_t mode) {
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    if (path.size() >= sizeof(addr.sun_path)) {
-      kLog.error("socket path too long: {}", path);
-      return -1;
-    }
-    path.copy(addr.sun_path, path.size());
-    const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-    if (fd < 0) {
-      kLog.error("socket {}: {}", path, std::strerror(errno));
-      return -1;
-    }
-    // bind fails with EADDRINUSE on an existing path: another process's socket is never replaced.
-    if (bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-      kLog.error("bind {}: {}", path, std::strerror(errno));
-      close(fd);
-      return -1;
-    }
-    if ((mode != 0 && chmod(path.c_str(), mode) < 0) || listen(fd, backlog) < 0) {
-      kLog.error("listen {}: {}", path, std::strerror(errno));
-      close(fd);
-      unlink(path.c_str());
-      return -1;
-    }
-    return fd;
-  }
 
   SocketRecovery::SocketRecovery(wl_event_loop* loop, std::string runtimeDir) : m_runtimeDir(std::move(runtimeDir)) {
     m_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);

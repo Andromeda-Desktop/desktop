@@ -1,8 +1,10 @@
 // andromeda-askpass: SUDO_ASKPASS helper. Asks the running shell for the password over its IPC socket and prints
 // it to stdout. Exit 1 with empty stdout on cancel, timeout or when no shell runs.
 
+#include "protocols/ipc_channel.h"
 #include "protocols/xdg_dirs.h"
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -25,21 +27,6 @@ namespace {
     return 1;
   }
 
-
-  bool sendAll(int fd, std::string_view text) {
-    while (!text.empty()) {
-      const auto n = ::send(fd, text.data(), text.size(), MSG_NOSIGNAL);
-      if (n < 0 && errno == EINTR) {
-        continue;
-      }
-      if (n <= 0) {
-        return false;
-      }
-      text.remove_prefix(static_cast<std::size_t>(n));
-    }
-    return true;
-  }
-
 } // namespace
 
 int main() {
@@ -54,29 +41,18 @@ int main() {
   }
   const std::string path = runtime + "/noctalia-" + display + ".sock";
 
-  sockaddr_un addr{};
-  addr.sun_family = AF_UNIX;
-  if (path.size() >= sizeof(addr.sun_path)) {
-    return noShell();
-  }
-  std::memcpy(addr.sun_path, path.c_str(), path.size() + 1);
-
-  const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-  if (fd < 0 || ::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) < 0) {
-    return noShell();
-  }
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  const ipc::Fd connected = ipc::connectTo(path, deadline);
   // The prompt (argv[1]) is not sent: the shell reads the caller from /proc. The shell knows this helper by the
   // setgid group in SO_PEERCRED, then answers "verify".
-  constexpr std::string_view kRequest = "askpass\n";
-  if (!sendAll(fd, kRequest)) {
-    ::close(fd);
+  if (!connected || !ipc::writeAll(connected.get(), "askpass\n", deadline)) {
     return noShell();
   }
+  const int fd = connected.get();
 
   // One page, never reallocated, kept out of core dumps and wiped before exit.
   char* reply = static_cast<char*>(::mmap(nullptr, kReplyMax, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
   if (reply == MAP_FAILED) {
-    ::close(fd);
     return 1;
   }
   ::madvise(reply, kReplyMax, MADV_DONTDUMP);
@@ -96,11 +72,9 @@ int main() {
     }
     if (ready <= 0) {
       std::fputs("andromeda-askpass: no answer in 120 s\n", stderr);
-      ::close(fd);
       return finish(1);
     }
     if (size == kReplyMax) {
-      ::close(fd);
       return finish(1);
     }
     const auto n = ::read(fd, reply + size, kReplyMax - size);
@@ -113,8 +87,8 @@ int main() {
     size += static_cast<std::size_t>(n);
     if (!verified && std::string_view(reply, size).starts_with(kVerify)) {
       // The setgid exec already made it non-dumpable; this keeps it so when installed without the setgid bit.
-      if (::prctl(PR_SET_DUMPABLE, 0) != 0 || !sendAll(fd, "ready\n")) {
-        ::close(fd);
+      if (::prctl(PR_SET_DUMPABLE, 0) != 0
+          || !ipc::writeAll(fd, "ready\n", std::chrono::steady_clock::now() + std::chrono::seconds(5))) {
         return finish(1);
       }
       verified = true;
@@ -122,7 +96,6 @@ int main() {
       size -= kVerify.size();
     }
   }
-  ::close(fd);
 
   const std::string_view text(reply, size);
   constexpr std::string_view kPassword = "password\n";

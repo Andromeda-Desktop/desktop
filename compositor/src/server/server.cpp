@@ -1603,8 +1603,9 @@ namespace andromeda {
       m_waylandLockIno = lock.st_ino;
     }
     const std::string path = waylandSocketPath("");
-    const int fd = bindUnixListener(path, 128, 0);
+    const int fd = ipc::listenUnix(path, SOCK_STREAM | SOCK_NONBLOCK, 128, 0, ipc::Stale::Keep).release();
     if (fd < 0) {
+      kLog.error("Wayland socket {}: {}", path, std::strerror(errno));
       return false;
     }
     if (wl_display_add_socket_fd(m_display, fd) != 0) {

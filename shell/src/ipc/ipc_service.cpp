@@ -90,45 +90,12 @@ bool IpcService::start() {
     return false;
   }
 
-  const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-  if (fd < 0) {
-    kLog.warn("IPC disabled: socket() failed: {}", std::strerror(errno));
+  m_listenFd = ipc::listenUnix(m_socketPath, SOCK_STREAM | SOCK_NONBLOCK, 128, S_IRUSR | S_IWUSR, ipc::Stale::Replace)
+                   .release();
+  if (m_listenFd < 0) {
+    kLog.warn("IPC disabled: {}: {}", m_socketPath, std::strerror(errno));
     return false;
   }
-
-  // Remove stale socket file before binding
-  ::unlink(m_socketPath.c_str());
-
-  sockaddr_un addr{};
-  addr.sun_family = AF_UNIX;
-  if (m_socketPath.size() >= sizeof(addr.sun_path)) {
-    kLog.warn("IPC disabled: socket path too long");
-    ::close(fd);
-    return false;
-  }
-  std::memcpy(addr.sun_path, m_socketPath.c_str(), m_socketPath.size() + 1);
-
-  if (::bind(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) < 0) {
-    kLog.warn("IPC disabled: bind() failed: {}", std::strerror(errno));
-    ::close(fd);
-    return false;
-  }
-
-  if (::chmod(m_socketPath.c_str(), S_IRUSR | S_IWUSR) < 0) {
-    kLog.warn("IPC disabled: chmod() failed: {}", std::strerror(errno));
-    ::close(fd);
-    ::unlink(m_socketPath.c_str());
-    return false;
-  }
-
-  if (::listen(fd, 128) < 0) {
-    kLog.warn("IPC disabled: listen() failed: {}", std::strerror(errno));
-    ::close(fd);
-    ::unlink(m_socketPath.c_str());
-    return false;
-  }
-
-  m_listenFd = fd;
   return true;
 }
 

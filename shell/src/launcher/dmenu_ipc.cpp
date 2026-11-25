@@ -49,32 +49,9 @@ bool DmenuIpcService::start() {
     return false;
   }
 
-  const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+  const int fd = ipc::listenUnix(m_socketPath, SOCK_STREAM | SOCK_NONBLOCK, 8, 0, ipc::Stale::Replace).release();
   if (fd < 0) {
-    kLog.warn("disabled: socket() failed: {}", std::strerror(errno));
-    return false;
-  }
-
-  ::unlink(m_socketPath.c_str());
-
-  sockaddr_un addr{};
-  addr.sun_family = AF_UNIX;
-  if (m_socketPath.size() >= sizeof(addr.sun_path)) {
-    kLog.warn("disabled: socket path too long");
-    ::close(fd);
-    return false;
-  }
-  std::memcpy(addr.sun_path, m_socketPath.c_str(), m_socketPath.size() + 1);
-
-  if (::bind(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) < 0) {
-    kLog.warn("disabled: bind() failed: {}", std::strerror(errno));
-    ::close(fd);
-    return false;
-  }
-  if (::listen(fd, 8) < 0) {
-    kLog.warn("disabled: listen() failed: {}", std::strerror(errno));
-    ::close(fd);
-    ::unlink(m_socketPath.c_str());
+    kLog.warn("disabled: {}: {}", m_socketPath, std::strerror(errno));
     return false;
   }
 

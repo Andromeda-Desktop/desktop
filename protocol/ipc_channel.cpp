@@ -1,7 +1,9 @@
 #include "ipc_channel.h"
 
+#include <fcntl.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -27,11 +29,15 @@ namespace ipc {
     bool waitFor(int fd, short events, Deadline deadline) {
       for (;;) {
         pollfd p{.fd = fd, .events = events, .revents = 0};
-        const int ready = poll(&p, 1, remainingMs(deadline));
+        const int ready = poll(&p, 1, deadline == Deadline::max() ? -1 : remainingMs(deadline));
         if (ready > 0) {
           return true;
         }
-        if (ready == 0 || errno != EINTR) {
+        if (ready == 0) {
+          errno = ETIMEDOUT;
+          return false;
+        }
+        if (errno != EINTR) {
           return false;
         }
       }
@@ -237,32 +243,76 @@ namespace ipc {
     }
   }
 
-  Fd connectTo(const std::string& path, Deadline deadline) {
+  Fd connectTo(const std::string& path, Deadline deadline, int type) {
     sockaddr_un addr{};
     if (path.empty() || path.size() >= sizeof(addr.sun_path)) {
+      errno = path.empty() ? EINVAL : ENAMETOOLONG;
       return {};
     }
-    Fd fd(socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    const int ms = remainingMs(deadline);
+    const bool nonBlocking = (type & SOCK_NONBLOCK) != 0;
+    // A non-blocking AF_UNIX connect fails with EAGAIN on a full backlog instead of waiting.
+    Fd fd(socket(AF_UNIX, (ms == 0 ? type | SOCK_NONBLOCK : type & ~SOCK_NONBLOCK) | SOCK_CLOEXEC, 0));
     if (!fd) {
       return {};
     }
     addr.sun_family = AF_UNIX;
     std::memcpy(addr.sun_path, path.c_str(), path.size());
-    // A blocking connect waits for backlog room for at most SO_SNDTIMEO.
-    const int ms = std::max(remainingMs(deadline), 1);
-    const timeval timeout{.tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000};
-    setsockopt(fd.get(), SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    if (ms > 0) {
+      // A blocking connect waits for backlog room for at most SO_SNDTIMEO.
+      const timeval timeout{.tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000};
+      setsockopt(fd.get(), SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    }
     int rc = -1;
     do {
       rc = connect(fd.get(), reinterpret_cast<const sockaddr*>(&addr), sizeof(addr));
     } while (rc != 0 && errno == EINTR && remainingMs(deadline) > 0);
-    if (rc != 0) {
+    const int flags = fcntl(fd.get(), F_GETFL);
+    if (rc != 0 || flags < 0
+        || fcntl(fd.get(), F_SETFL, nonBlocking ? flags | O_NONBLOCK : flags & ~O_NONBLOCK) != 0) {
+      const int error = errno;
+      fd = Fd();
+      errno = error;
       return {};
     }
     return fd;
   }
 
-  Read request(const std::string& path, std::string_view bytes, EndOfRequest end, std::size_t cap, Deadline deadline) {
+  Fd listenUnix(const std::string& path, int type, int backlog, mode_t mode, Stale stale) {
+    sockaddr_un addr{};
+    if (path.empty() || path.size() >= sizeof(addr.sun_path)) {
+      errno = path.empty() ? EINVAL : ENAMETOOLONG;
+      return {};
+    }
+    Fd fd(socket(AF_UNIX, type | SOCK_CLOEXEC, 0));
+    if (!fd) {
+      return {};
+    }
+    addr.sun_family = AF_UNIX;
+    std::memcpy(addr.sun_path, path.c_str(), path.size());
+    if (stale == Stale::Replace) {
+      unlink(path.c_str());
+    }
+    int error = 0;
+    // Linux creates the socket file with the socket inode's mode minus the umask, so the path never has wider access.
+    if (mode != 0 && fchmod(fd.get(), mode) != 0) {
+      error = errno;
+    } else if (bind(fd.get(), reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0) {
+      error = errno;
+    } else if ((mode != 0 && chmod(path.c_str(), mode) != 0) || listen(fd.get(), backlog) != 0) {
+      error = errno;
+      unlink(path.c_str());
+    }
+    if (error != 0) {
+      fd = Fd();
+      errno = error;
+      return {};
+    }
+    return fd;
+  }
+
+  Read request(const std::string& path, std::string_view bytes, EndOfRequest end, std::size_t cap, Deadline deadline,
+               bool (*complete)(std::string_view)) {
     const Fd fd = connectTo(path, deadline);
     if (!fd) {
       return {.status = Status::NoServer, .data = {}};
@@ -273,7 +323,7 @@ namespace ipc {
     if (end == EndOfRequest::HalfClose) {
       shutdown(fd.get(), SHUT_WR);
     }
-    return readAll(fd.get(), cap, deadline);
+    return readAll(fd.get(), cap, deadline, complete);
   }
 
 } // namespace ipc

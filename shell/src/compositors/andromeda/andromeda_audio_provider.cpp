@@ -1,4 +1,5 @@
 #include "compositors/andromeda/andromeda_audio_provider.h"
+#include "protocols/ipc_channel.h"
 
 #include "compositors/andromeda/andromeda_runtime.h"
 
@@ -54,16 +55,8 @@ namespace compositors::andromeda {
   }
 
   bool AndromedaAudioProvider::connectSocket() {
-    const auto& path = m_runtime.socketPath();
-    sockaddr_un address{};
-    address.sun_family = AF_UNIX;
-    if (path.empty() || path.size() >= sizeof(address.sun_path)) {
-      return false;
-    }
-    std::memcpy(address.sun_path, path.c_str(), path.size() + 1);
-    m_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    // Linux AF_UNIX connect completes immediately or fails (including EAGAIN).
-    return m_fd >= 0 && connect(m_fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) == 0;
+    m_fd = ipc::connectTo(m_runtime.socketPath(), std::chrono::steady_clock::now(), SOCK_STREAM | SOCK_NONBLOCK).release();
+    return m_fd >= 0;
   }
 
   void AndromedaAudioProvider::doAddPollFds(std::vector<pollfd>& fds) {

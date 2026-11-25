@@ -1,3 +1,4 @@
+#include "protocols/ipc_channel.h"
 #include "protocols/xdg_dirs.h"
 #include "system/container_service.h"
 
@@ -53,16 +54,13 @@ namespace {
   template <typename Io>
   HttpReply request(Io& io, const std::string& socketPath, std::string_view method, const std::string& path, int timeoutSec) {
     HttpReply reply;
-    sockaddr_un addr{};
-    if (socketPath.size() >= sizeof(addr.sun_path)) {
-      reply.error = "socket path too long";
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSec);
+    ipc::Fd connected = ipc::connectTo(socketPath, deadline);
+    if (!connected) {
+      reply.error = errno == EACCES ? "permission" : std::strerror(errno);
       return reply;
     }
-    const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (fd < 0) {
-      reply.error = std::strerror(errno);
-      return reply;
-    }
+    const int fd = connected.release();
     {
       std::scoped_lock lock(io.mutex);
       if (io.stopping) {
@@ -77,18 +75,8 @@ namespace {
       io.fds.erase(fd);
       ::close(fd);
     };
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSec);
-    const timeval timeout{.tv_sec = timeoutSec, .tv_usec = 0};
-    ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-    addr.sun_family = AF_UNIX;
-    std::memcpy(addr.sun_path, socketPath.c_str(), socketPath.size() + 1);
-    if (::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0) {
-      reply.error = errno == EACCES ? "permission" : std::strerror(errno);
-      finish();
-      return reply;
-    }
     const std::string head = std::format("{} {} HTTP/1.0\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n", method, path);
-    if (::send(fd, head.data(), head.size(), MSG_NOSIGNAL) != static_cast<ssize_t>(head.size())) {
+    if (!ipc::writeAll(fd, head, deadline)) {
       reply.error = std::strerror(errno);
       finish();
       return reply;

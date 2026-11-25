@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "core/shared_worker.h"
 #include "ipc/ipc_service.h"
+#include "protocols/ipc_channel.h"
 #include "protocols/xdg_dirs.h"
 #include "util/string_utils.h"
 
@@ -270,80 +271,25 @@ namespace {
   }
 
   std::optional<std::string> exchangeEasyEffectsServerCommand(std::string_view command, bool readResponse) {
-    const std::filesystem::path path = easyEffectsServerPath();
-    const std::string nativePath = path.string();
-    if (nativePath.empty() || nativePath.size() >= sizeof(sockaddr_un::sun_path)) {
-      return std::nullopt;
-    }
-
-    const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (fd < 0) {
-      return std::nullopt;
-    }
-
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    std::strncpy(addr.sun_path, nativePath.c_str(), sizeof(addr.sun_path) - 1);
-
-    bool ok = false;
-    if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0) {
-      std::string payload(command);
-      payload.push_back('\n');
-      const char* data = payload.data();
-      std::size_t remaining = payload.size();
-      ok = true;
-      while (remaining > 0) {
-        const ssize_t n = ::send(fd, data, remaining, MSG_NOSIGNAL);
-        if (n > 0) {
-          const auto written = static_cast<std::size_t>(n);
-          data += written;
-          remaining -= written;
-          continue;
-        }
-        if (n < 0 && errno == EINTR) {
-          continue;
-        }
-        ok = false;
-        break;
+    const std::string path = easyEffectsServerPath().string();
+    const std::string payload = std::string(command) + "\n";
+    // The server keeps the connection open; a get_* reply that the shell reads ends with a newline.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    if (!readResponse) {
+      const ipc::Fd fd = ipc::connectTo(path, deadline);
+      if (!fd || !ipc::writeAll(fd.get(), payload, deadline)) {
+        return std::nullopt;
       }
+      return std::string{};
     }
-
-    std::string response;
-    bool receivedResponse = false;
-    if (ok && readResponse) {
-      (void)::shutdown(fd, SHUT_WR);
-      std::array<char, 512> buffer{};
-      while (true) {
-        pollfd pfd{.fd = fd, .events = POLLIN | POLLHUP, .revents = 0};
-        const int pollRc = ::poll(&pfd, 1, 250);
-        if (pollRc < 0 && errno == EINTR) {
-          continue;
-        }
-        if (pollRc <= 0) {
-          break;
-        }
-
-        const ssize_t n = ::recv(fd, buffer.data(), buffer.size(), 0);
-        if (n > 0) {
-          receivedResponse = true;
-          response.append(buffer.data(), static_cast<std::size_t>(n));
-          continue;
-        }
-        if (n < 0 && errno == EINTR) {
-          continue;
-        }
-        break;
-      }
-    }
-
-    ::close(fd);
-    if (!ok) {
+    ipc::Read reply = ipc::request(
+        path, payload, ipc::EndOfRequest::HalfClose, 64 * 1024, deadline,
+        [](std::string_view data) { return data.ends_with('\n'); }
+    );
+    if (reply.status != ipc::Status::Ok || reply.data.empty()) {
       return std::nullopt;
     }
-    if (readResponse && !receivedResponse) {
-      return std::nullopt;
-    }
-    return response;
+    return std::move(reply.data);
   }
 
   bool sendEasyEffectsServerCommand(std::string_view command) {

@@ -1,4 +1,5 @@
 #include "core/process/app_zygote.h"
+#include "protocols/ipc_channel.h"
 
 #include "protocols/xdg_dirs.h"
 #include "util/string_utils.h"
@@ -24,24 +25,12 @@ namespace process::zygote {
 
     // A connected SEQPACKET socket with 1 s send and receive timeouts, or -1.
     int connectTo(const std::filesystem::path& path) {
-      sockaddr_un addr{};
-      if (path.empty() || path.native().size() >= sizeof(addr.sun_path)) {
-        return -1;
+      ipc::Fd fd = ipc::connectTo(path, std::chrono::steady_clock::now() + std::chrono::seconds(1), SOCK_SEQPACKET);
+      if (fd) {
+        const timeval timeout{.tv_sec = 1, .tv_usec = 0};
+        setsockopt(fd.get(), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
       }
-      const int fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
-      if (fd < 0) {
-        return -1;
-      }
-      addr.sun_family = AF_UNIX;
-      std::memcpy(addr.sun_path, path.c_str(), path.native().size());
-      const timeval timeout{.tv_sec = 1, .tv_usec = 0};
-      setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-      setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-      if (connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0) {
-        close(fd);
-        return -1;
-      }
-      return fd;
+      return fd.release();
     }
 
     bool sendMessage(int fd, const Message& message) {

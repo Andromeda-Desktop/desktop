@@ -1120,7 +1120,7 @@ noctalia_shell_module = shared_module('andromeda-shell',
 
 # Small on purpose: greeter mode runs from it before any login (.agent/DESIGN.md "Shell greeter mode").
 noctalia_exe = executable('andromeda-shell',
-  sources: files('src/main.cpp', 'src/greeter/greeter_host.cpp', 'src/greeter/greetd_client.cpp')
+  sources: files('src/main.cpp', 'src/greeter/greeter_host.cpp', 'src/greeter/greetd_client.cpp', 'protocols/ipc_channel.cpp')
     + _protocol_headers
     # The sanitizer runtime reads the suppressions from the executable, not from the RTLD_LOCAL module.
     + (sanitize ? files('src/core/lsan_suppressions.cpp') : []),
@@ -1133,7 +1133,7 @@ noctalia_exe = executable('andromeda-shell',
 )
 
 askpass_exe = executable('andromeda-askpass',
-  sources: files('src/askpass/askpass_main.cpp'),
+  sources: files('src/askpass/askpass_main.cpp', 'protocols/ipc_channel.cpp'),
   cpp_args: _noctalia_cpp_args,
   install: true,
 )

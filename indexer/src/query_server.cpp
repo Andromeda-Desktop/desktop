@@ -48,23 +48,7 @@ namespace andromeda::index {
     if (const int fd = passedSocket(); fd >= 0) {
       return fd;
     }
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    const std::string p = path.string();
-    if (p.size() >= sizeof(addr.sun_path)) {
-      return -1;
-    }
-    std::memcpy(addr.sun_path, p.c_str(), p.size() + 1);
-    const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    if (fd < 0) {
-      return -1;
-    }
-    unlink(p.c_str());
-    if (bind(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0 || listen(fd, 16) != 0) {
-      close(fd);
-      return -1;
-    }
-    return fd;
+    return ipc::listenUnix(path.string(), SOCK_STREAM | SOCK_NONBLOCK, 16, 0, ipc::Stale::Replace).release();
   }
 
   void QueryServer::addPollFds(std::vector<pollfd>& fds) const {

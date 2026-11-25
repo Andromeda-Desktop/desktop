@@ -1,18 +1,17 @@
 #include "greeter/greetd_client.h"
 
 #include "core/log.h"
+#include "protocols/ipc_channel.h"
 #include "util/secure_wipe.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
-#include <fcntl.h>
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <poll.h>
 #include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
 
 using json = nlohmann::json;
@@ -96,29 +95,11 @@ GreetdClient::GreetdClient() = default;
 GreetdClient::~GreetdClient() { disconnect(); }
 
 bool GreetdClient::connect(const std::string& socketPath) {
-  m_socketFd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (m_socketFd < 0) {
-    kLog.error("failed to create socket: {}", strerror(errno));
-    return false;
-  }
-
-  struct sockaddr_un addr{};
-  addr.sun_family = AF_UNIX;
-  std::strncpy(addr.sun_path, socketPath.c_str(), sizeof(addr.sun_path) - 1);
-
-  if (::connect(m_socketFd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
-    kLog.error("failed to connect to greetd: {}", strerror(errno));
-    ::close(m_socketFd);
-    m_socketFd = -1;
-    return false;
-  }
-
   // Non-blocking so the event loop never stalls on a slow PAM conversation.
-  const int flags = ::fcntl(m_socketFd, F_GETFL, 0);
-  if (flags < 0 || ::fcntl(m_socketFd, F_SETFL, flags | O_NONBLOCK) < 0) {
-    kLog.error("failed to set greetd socket non-blocking: {}", strerror(errno));
-    ::close(m_socketFd);
-    m_socketFd = -1;
+  m_socketFd = ipc::connectTo(socketPath, std::chrono::steady_clock::now() + std::chrono::seconds(5),
+                              SOCK_STREAM | SOCK_NONBLOCK).release();
+  if (m_socketFd < 0) {
+    kLog.error("failed to connect to greetd: {}", strerror(errno));
     return false;
   }
 

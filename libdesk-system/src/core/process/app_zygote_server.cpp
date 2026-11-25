@@ -90,12 +90,8 @@ namespace process::zygote {
 
     std::error_code ec;
     std::filesystem::create_directories(path.parent_path(), ec);
-    unlink(path.c_str());
-    const int listener = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
-    addr.sun_family = AF_UNIX;
-    std::memcpy(addr.sun_path, path.c_str(), path.native().size());
-    if (listener < 0 || bind(listener, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0
-        || chmod(path.c_str(), 0600) != 0 || listen(listener, 16) != 0) {
+    const int listener = ipc::listenUnix(path, SOCK_SEQPACKET, 16, 0600, ipc::Stale::Replace).release();
+    if (listener < 0) {
       fail("listen");
     }
     struct sigaction reap{};

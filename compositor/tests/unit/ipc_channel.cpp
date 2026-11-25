@@ -9,6 +9,7 @@
 #include <spawn.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -137,6 +138,10 @@ namespace {
     const auto line = ipc::readAll(fds[0], 100, in(1s), [](std::string_view data) { return data.contains('\n'); });
     CHECK(line.status == ipc::Status::Ok);
     CHECK(line.data.starts_with("askpass\n"));
+    // A peer that never reads: the write stops at the deadline, and errno says why.
+    errno = 0;
+    CHECK(!ipc::writeAll(fds[1], std::string(8 << 20, 'x'), in(100ms)));
+    CHECK_EQ(errno, ETIMEDOUT);
     close(fds[0]);
     close(fds[1]);
   }
@@ -185,6 +190,45 @@ namespace {
     server.join();
     CHECK(reply.status == ipc::Status::Ok);
     CHECK(reply.data == "reply to ping");
+    unlink(path.c_str());
+  }
+
+  ANDROMEDA_TEST(listenUnixStalePolicy) {
+    const std::string path = (std::filesystem::temp_directory_path() / std::format("ipc-listen-{}.sock", getpid())).string();
+    unlink(path.c_str());
+    ipc::Fd live = ipc::listenUnix(path, SOCK_STREAM, 4, 0600, ipc::Stale::Keep);
+    CHECK(static_cast<bool>(live));
+    struct stat st{};
+    CHECK(stat(path.c_str(), &st) == 0 && (st.st_mode & 0777) == 0600);
+
+    // A live server's socket survives Keep; a connect still reaches it.
+    errno = 0;
+    CHECK(!ipc::listenUnix(path, SOCK_STREAM, 4, 0, ipc::Stale::Keep));
+    CHECK_EQ(errno, EADDRINUSE);
+    CHECK(static_cast<bool>(ipc::connectTo(path, in(200ms))));
+
+    // A stale file (its server gone) still blocks Keep; Replace takes the path.
+    live = ipc::Fd();
+    CHECK(!ipc::listenUnix(path, SOCK_STREAM, 4, 0, ipc::Stale::Keep));
+    const ipc::Fd replaced = ipc::listenUnix(path, SOCK_SEQPACKET | SOCK_NONBLOCK, 4, 0, ipc::Stale::Replace);
+    CHECK(static_cast<bool>(replaced));
+    int type = 0;
+    socklen_t length = sizeof(type);
+    CHECK(getsockopt(replaced.get(), SOL_SOCKET, SO_TYPE, &type, &length) == 0 && type == SOCK_SEQPACKET);
+    CHECK((fcntl(replaced.get(), F_GETFD) & FD_CLOEXEC) != 0 && (fcntl(replaced.get(), F_GETFL) & O_NONBLOCK) != 0);
+
+    // connectTo: the socket type must match the listener's; SOCK_NONBLOCK applies to the connected fd.
+    CHECK(!ipc::connectTo(path, in(200ms)));
+    const ipc::Fd client = ipc::connectTo(path, in(200ms), SOCK_SEQPACKET | SOCK_NONBLOCK);
+    CHECK(static_cast<bool>(client));
+    CHECK((fcntl(client.get(), F_GETFL) & O_NONBLOCK) != 0 && (fcntl(client.get(), F_GETFD) & FD_CLOEXEC) != 0);
+    errno = 0;
+    CHECK(!ipc::connectTo(path + ".missing", in(200ms)));
+    CHECK_EQ(errno, ENOENT);
+
+    errno = 0;
+    CHECK(!ipc::listenUnix(std::string(200, 'x'), SOCK_STREAM, 4, 0, ipc::Stale::Replace));
+    CHECK_EQ(errno, ENAMETOOLONG);
     unlink(path.c_str());
   }
 
