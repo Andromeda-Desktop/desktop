@@ -1,9 +1,9 @@
 #include "app/app_main.h"
+#include "app/glib_source.h"
+#include "core/poll_loop.h"
 #include "files_app.h"
 #include "network_page.h"
 #include "vaults.h"
-
-#include <glib.h>
 
 #include <string_view>
 
@@ -19,18 +19,17 @@ int desk_app_main(int argc, char* argv[]) {
       return Vaults::guard(argv[i + 1]);
     }
     if (std::string_view(argv[i]) == "--reconnect") { // login: mount the saved servers marked "connect at login"
-      GMainLoop* loop = g_main_loop_new(nullptr, FALSE);
+      PollLoop loop;
+      GlibSource glib;
+      loop.addSource(&glib);
       int failed = 0;
-      bool finished = false; // no saved server answers before the loop runs
+      // With no saved server, done runs before run(): the quit makes run() return at once.
       NetworkPage::reconnectSaved([&](int, int f) {
         failed = f;
-        finished = true;
-        g_main_loop_quit(loop);
+        loop.quit();
       });
-      if (!finished) {
-        g_main_loop_run(loop);
-      }
-      g_main_loop_unref(loop);
+      loop.run();
+      loop.removeSource(&glib);
       return failed == 0 ? 0 : 1;
     }
   }

@@ -10,6 +10,9 @@
 class GlibSource final : public PollSource {
 public:
   GlibSource();
+  ~GlibSource() override;
+  GlibSource(const GlibSource&) = delete;
+  GlibSource& operator=(const GlibSource&) = delete;
   [[nodiscard]] int pollTimeoutMs() const override { return m_timeoutMs; }
   void dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) override;
 

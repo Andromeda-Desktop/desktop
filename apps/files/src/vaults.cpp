@@ -1,6 +1,8 @@
 #include "vaults.h"
 
+#include "app/glib_source.h"
 #include "core/log.h"
+#include "core/poll_loop.h"
 #include "core/sys/sys.h"
 #include "i18n/i18n.h"
 
@@ -258,12 +260,15 @@ int Vaults::guard(const fs::path& mount) {
     g_clear_error(&error);
     return 1;
   }
+  PollLoop loop;
+  GlibSource glib;
+  loop.addSource(&glib);
   struct State {
     fs::path mount;
-    GMainLoop* loop;
+    PollLoop& loop;
     GDBusConnection* bus;
     int inhibit = -1;
-  } state{.mount = mount, .loop = g_main_loop_new(nullptr, FALSE), .bus = bus};
+  } state{.mount = mount, .loop = loop, .bus = bus};
   const auto takeInhibitor = [](State& st) {
     GUnixFDList* fds = nullptr;
     GVariant* reply = g_dbus_connection_call_with_unix_fd_list_sync(
@@ -311,7 +316,7 @@ int Vaults::guard(const fs::path& mount) {
           ::close(st.inhibit);
           st.inhibit = -1;
         }
-        g_main_loop_quit(st.loop);
+        st.loop.quit();
       },
       &state, nullptr);
   // Locked some other way (Files, idle timeout, fusermount): nothing left to guard.
@@ -319,14 +324,15 @@ int Vaults::guard(const fs::path& mount) {
   g_signal_connect(monitor, "mounts-changed", G_CALLBACK(+[](GUnixMountMonitor*, gpointer data) {
                      auto& st = *static_cast<State*>(data);
                      if (!mounted(st.mount)) {
-                       g_main_loop_quit(st.loop);
+                       st.loop.quit();
                      }
                    }),
                    &state);
   kLog.info("vault guard: watching {}", mount.string());
   if (mounted(mount)) {
-    g_main_loop_run(state.loop);
+    loop.run();
   }
+  loop.removeSource(&glib);
   if (session != nullptr) {
     g_dbus_connection_signal_unsubscribe(session, sub);
     g_object_unref(session);
@@ -335,7 +341,6 @@ int Vaults::guard(const fs::path& mount) {
   if (state.inhibit >= 0) {
     ::close(state.inhibit);
   }
-  g_main_loop_unref(state.loop);
   g_object_unref(bus);
   return 0;
 }
