@@ -720,17 +720,17 @@ Noctalia only elevates a helper installed as a root-owned regular executable thr
 
 Passwordless authorization is optional. Without a site-local passwordless rule, the constrained 1.5.0 protocol still works and asks for administrator approval on every sync. This authenticated workflow remains supported; users are never required to grant persistent passwordless access.
 
-On a conventional packaged distribution, enable the constrained passwordless rule for your login user with the greeter's administrator command:
+On a conventional packaged distribution, enable the constrained passwordless rule for your login user with the apply helper's administrator command:
 
 ```sh
-sudo noctalia-greeter passwordless-sync enable "$USER"
+sudo andromeda-greeter-apply-appearance passwordless-sync enable "$USER"
 ```
 
 Inspect or undo only the authorization managed by that command with:
 
 ```sh
-noctalia-greeter passwordless-sync status "$USER"
-sudo noctalia-greeter passwordless-sync disable "$USER"
+andromeda-greeter-apply-appearance passwordless-sync status "$USER"
+sudo andromeda-greeter-apply-appearance passwordless-sync disable "$USER"
 ```
 
 Rerun `status` with `sudo` only if your distribution restricts reads of the Polkit rules directory. Disabling removes this command's authorization; another administrator-authored allow rule can still authorize the same user.

@@ -6,7 +6,7 @@ Files: *
 Copyright: 2026 The Andromeda authors
 License: GPL-3.0+
 
-Files: compositor/* shell/* greeter/* portal/*
+Files: compositor/* shell/* portal/*
 Copyright: 2026 Noctalia (noctalia-dev)
            2026 The Andromeda authors
 License: GPL-3.0+ and Expat
@@ -23,7 +23,7 @@ Copyright: John Hawthorn
 License: GPL-3.0+ and Expat
 Comment: fuzzy_match.cpp ports the fzy scorer to UTF-8 codepoints; fzy's notice is third_party/fzy/LICENSE.
 
-Files: libdesk-ui/third_party/wuffs/* greeter/third_party/wuffs/*
+Files: libdesk-ui/third_party/wuffs/*
 Copyright: The Wuffs Authors
 License: Apache-2.0 or Expat
 

@@ -18,10 +18,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PREFERRED = {
     "compositor": ["compositor/build-debug"],
     "shell": ["shell/build-f7"],
-    "libdesk-ui": ["shell/build-f7", "greeter/build-release"],
+    "libdesk-ui": ["shell/build-f7"],
     "libdesk-system": ["shell/build-f7"],
     "protocol": ["compositor/build-debug", "shell/build-f7"],
-    "greeter": ["greeter/build-release"],
     "portal": ["portal/build-debug"],
 }
 C_EXT = {".c", ".cc", ".cpp", ".cxx"}

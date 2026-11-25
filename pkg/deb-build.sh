@@ -50,13 +50,12 @@ case ${1:-} in
       -Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=shared -Dlibliftoff:werror=false
     want shell && arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
     want portal && arch-meson desktop/portal build-portal -Dcpp_std=c++23
-    want greeter && arch-meson desktop/greeter build-greeter -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
     [[ -n ${ANDROMEDA_ONLY:-} ]] || arch-meson desktop/indexer build-indexer -Db_lto=true
     want preview && arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
     for app in "${apps[@]}"; do
       arch-meson desktop/apps/$app build-$app -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
     done
-    for dir in compositor shell portal greeter preview; do want $dir && meson compile -C build-$dir; done
+    for dir in compositor shell portal preview; do want $dir && meson compile -C build-$dir; done
     [[ -n ${ANDROMEDA_ONLY:-} ]] || meson compile -C build-indexer
     for app in "${apps[@]}"; do meson compile -C build-$app; done
     if want system; then

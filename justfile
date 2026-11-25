@@ -1,6 +1,6 @@
 default: check
 
-[doc('Quiet build of one module (compositor shell greeter portal files player viewer system link): one ok line, or the first 3 errors as file:line. Log in /tmp/andromeda-build. Reuses the last result when nothing changed; --force reruns. No module: every module, full output.')]
+[doc('Quiet build of one module (compositor shell portal files player viewer system link): one ok line, or the first 3 errors as file:line. Log in /tmp/andromeda-build. Reuses the last result when nothing changed; --force reruns. No module: every module, full output.')]
 build module="" force="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -8,7 +8,6 @@ build module="" force="":
     (cd compositor && ../tools/build.sh just build)
     (cd shell && ../tools/build.sh just build)
     (cd portal && ../tools/build.sh just build)
-    (cd greeter && ../tools/build.sh just build)
     git submodule update --init link
     (cd link && cargo build)
     (cd system && cargo build)
@@ -153,7 +152,7 @@ package *flags:
     # flock: runs share pkg/src, so a second session's run waits.
     # One makepkg per release unit, as CI: each package takes its own unit's version, so a local build sorts above that
     # unit's last release and below its next one (one run would give every app the core version).
-    cd pkg && for unit in core libdesk viewer player link-app; do \
+    cd pkg && for unit in core libdesk; do \
       if [ "$unit" = core ]; then sel=ANDROMEDA_CORE=1; else sel=ANDROMEDA_APP=$unit; fi; \
       env "$sel" ANDROMEDA_SOURCE="file://$(dirname "$(pwd -P)")#branch=$(git branch --show-current)" flock /tmp/andromeda-package.lock systemd-run --user --scope --quiet --collect -p CPUWeight=idle -p IOWeight=1 taskset -c 0-11 nice -n 19 makepkg -f {{flags}} || exit; \
     done

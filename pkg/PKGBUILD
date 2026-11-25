@@ -106,14 +106,13 @@ build() {
     -Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=shared -Dlibliftoff:werror=false -Dwlroots:renderers=gles2
   _want shell && arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   _want portal && arch-meson desktop/portal build-portal -Dcpp_std=c++23
-  _want greeter && arch-meson desktop/greeter build-greeter -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   _want preview && arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   # The indexer ships in the meta package, which only a full release builds.
   [[ -n ${ANDROMEDA_ONLY:-} ]] || arch-meson desktop/indexer build-indexer -Db_lto=true
   for app in "${_apps[@]}"; do
     arch-meson desktop/apps/$app build-$app -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   done
-  for part in compositor shell portal greeter preview; do _want $part && meson compile -C build-$part; done
+  for part in compositor shell portal preview; do _want $part && meson compile -C build-$part; done
   [[ -n ${ANDROMEDA_ONLY:-} ]] || meson compile -C build-indexer
   for app in "${_apps[@]}"; do meson compile -C build-$app; done
   [[ -n ${ANDROMEDA_ONLY:-} ]] || echo "$stamp" > meson.stamp
@@ -461,29 +460,19 @@ package_andromeda-power-git() {
 }
 
 package_andromeda-greeter-git() {
-  pkgdesc='greetd login for Andromeda: the shell greeter mode, with the old Noctalia greeter as a one-release fallback'
-  depends=(andromeda-greetd andromeda-shell-git andromeda-compositor-git wlroots0.20 libinput libxkbcommon cairo pango librsvg libxml2 glib2 fontconfig freetype2)
+  pkgdesc="greetd login for Andromeda: the greetd config and drop-in that run the shell's greeter mode"
+  depends=(andromeda-greetd andromeda-shell-git andromeda-compositor-git)
   optdepends=('gaze-bin: face login; needs the marker-host change until it is upstream (tools/gaze-patched.sh)')
   provides=(noctalia-greeter)
   conflicts=(noctalia-greeter noctalia-greeter-desktop-git)
   replaces=(noctalia-greeter-desktop-git)
   install=noctalia-greeter.install
-  meson install --no-rebuild -C build-greeter --destdir "$pkgdir"
-  # Old /usr/bin/noctalia-greeter* names: a booted system with an old greetd config still logs in.
-  for name in greeter greeter-apply-appearance greeter-session greeter-xsession greeter-print-greetd-config; do
-    ln -s "andromeda-$name" "$pkgdir/usr/bin/noctalia-$name"
-  done
   install -Dm644 desktop/session/pam.d/gdm-face "$pkgdir/etc/pam.d/gdm-face"
-  # greetd runs the shell's greeter mode; the old greeter config stays one release as the fallback
-  # (sudo tools/greeter-switch.sh legacy).
   install -Dm644 desktop/session/greetd/config-greeter-mode.toml "$pkgdir/usr/share/noctalia-greeter/greetd.toml"
-  install -Dm644 desktop/session/greetd/config.toml "$pkgdir/usr/share/noctalia-greeter/greetd-legacy.toml"
   install -Dm644 desktop/session/greetd/noctalia-greeter.conf \
     "$pkgdir/usr/lib/systemd/system/greetd.service.d/noctalia-greeter.conf"
   install -Dm644 desktop/session/greetd/andromeda-login-fallback.service \
     "$pkgdir/usr/lib/systemd/system/andromeda-login-fallback.service"
-  install -Dm644 desktop/greeter/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 desktop/NOTICE "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
-  install -Dm644 desktop/greeter/assets/fonts/outfit-license.txt "$pkgdir/usr/share/licenses/$pkgname/OFL-Outfit.txt"
   _pin_depends
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: tools/quiet.sh build <module> [--force]   module: compositor shell greeter portal files player viewer system link
+# Usage: tools/quiet.sh build <module> [--force]   module: compositor shell portal files player viewer system link
 #        tools/quiet.sh test <module> [filter] [--force]
 # Runs the job with its full output in /tmp/andromeda-{build,test}/<module>.log and prints only a short summary.
 # When nothing changed since the last run, prints that run's summary as "cached:" lines; --force reruns.
@@ -125,7 +125,6 @@ meson_dir() {
   case $1 in
     shell) echo shell/build-f7 ;;
     compositor | portal) echo "$1/build-debug" ;;
-    greeter) echo greeter/build-release ;;
     files | player | viewer | terminal) echo "apps/$1/build" ;;
     link-app) echo apps/link-app/build ;;
     libdesk-app | indexer) echo "$1/build" ;;
@@ -133,7 +132,7 @@ meson_dir() {
     *) return 1 ;;
   esac
 }
-modules="compositor shell greeter portal files player viewer terminal link-app libdesk-app andromeda-preview indexer system link"
+modules="compositor shell portal files player viewer terminal link-app libdesk-app andromeda-preview indexer system link"
 
 # build-step <label> <log> <module> [targets...]: builds the module (no targets = every target) into the log.
 build_step() {
@@ -233,7 +232,6 @@ module_dirs() {
   case $1 in
     compositor) echo compositor protocol ;;
     shell) echo shell libdesk-ui libdesk-system protocol ;;
-    greeter) echo greeter libdesk-ui protocol ;;
     portal) echo portal protocol ;;
     files | player | viewer) echo "apps/$1" andromeda-preview libdesk-app libdesk-system libdesk-ui protocol ;;
     terminal) echo apps/terminal libdesk-app libdesk-system libdesk-ui protocol ;;

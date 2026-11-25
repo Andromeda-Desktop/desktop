@@ -1,6 +1,6 @@
 # Feature map: where each feature lives. One [[feature]] per feature.
 # Fields: name, keywords (list), module, entry (1-5 main file paths, repo-relative),
-# test (test name, file or dir; "" if none), build (compositor|shell|greeter|system|link),
+# test (test name, file or dir; "" if none), build (compositor|shell|system|link),
 # notes (optional, one line), scenario (optional, a tests/scenario/*.toml file for tools/scenario.py).
 # Check: tools/tests/map_test.sh. Search: tools/where.sh <word>. Build, test and scenario: just verify <word>.
 
@@ -725,7 +725,7 @@ module = "shell"
 entry = ["libdesk-ui/src/ui/controls/button.cpp", "libdesk-ui/src/ui/controls/box.cpp", "libdesk-ui/src/ui/builders.cpp"]
 test = "libdesk-ui/tests"
 build = "shell"
-notes = "libdesk-ui is a subproject of shell (shell/meson.build:146) and greeter."
+notes = "libdesk-ui is a subproject of shell (shell/meson.build:146)."
 
 [[feature]]
 name = "libdesk-ui: style and palette"
@@ -791,7 +791,7 @@ module = "shell"
 entry = ["libdesk-system/src/dbus/session_bus.cpp", "libdesk-system/src/dbus/system_bus.cpp"]
 test = ""
 build = "shell"
-notes = "libdesk-system is a subproject of shell (shell/meson.build:149) and greeter."
+notes = "libdesk-system is a subproject of shell (shell/meson.build:149)."
 
 [[feature]]
 name = "libdesk-system: logind and power clients"
@@ -1093,36 +1093,36 @@ notes = "Android checks: cd link && just android-check (ktlint and lint)."
 # ---------- greeter ----------
 
 [[feature]]
-name = "greeter: login UI"
-keywords = ["greeter", "login", "login screen", "greeter ui", "greeter surface"]
-module = "greeter"
-entry = ["greeter/src/greeter/greeter.cpp", "greeter/src/greeter/greeter_window.cpp", "greeter/src/greeter/greeter_surface.cpp"]
+name = "greeter: login UI (shell greeter mode)"
+keywords = ["greeter", "login", "login screen", "greeter ui", "greeter surface", "greeter mode"]
+module = "shell"
+entry = ["shell/src/greeter/greeter_host.cpp", "shell/src/greeter/greetd_client.cpp"]
 test = "tests/e2e/greeter_mode_parity.sh"
-build = "greeter"
+build = "shell"
 
 [[feature]]
 name = "greeter: greetd sessions and user"
 keywords = ["greetd", "session picker", "greeter sessions", "greetd user"]
-module = "greeter"
-entry = ["greeter/src/greeter/greeter_sessions.cpp", "greeter/src/greeter/greetd_user.cpp"]
-test = "greeter/tests/session_discovery_test.cpp"
-build = "greeter"
+module = "shell"
+entry = ["shell/src/greeter/greeter_host.cpp", "session/greetd/andromeda-greeter-session"]
+test = "tests/e2e/greeter_mode_session.sh"
+build = "shell"
 
 [[feature]]
 name = "greeter: appearance sync (privileged tool)"
-keywords = ["appearance", "appearance sync", "apply appearance", "greeter appearance", "theme sync"]
-module = "greeter"
-entry = ["greeter/src/tools/apply_appearance_main.cpp", "greeter/src/greeter/appearance_sync.cpp", "greeter/src/tools/passwordless_sync_policy.cpp"]
-test = "greeter/tests/passwordless_sync_policy_xml_test.cpp"
-build = "greeter"
+keywords = ["appearance", "appearance sync", "apply appearance", "greeter appearance", "theme sync", "passwordless sync"]
+module = "shell"
+entry = ["shell/src/shell/greeter/greeter_appearance_sync.cpp", "shell/tools/greeter-apply-appearance/src/tools/apply_appearance_main.cpp", "shell/tools/greeter-apply-appearance/src/tools/secure_appearance_sync.cpp", "shell/tools/greeter-apply-appearance/src/tools/passwordless_sync_policy.cpp"]
+test = "shell/tests/greeter_appearance_sync_test.cpp"
+build = "shell"
 
 [[feature]]
 name = "session: greetd config"
 keywords = ["greetd", "greetd config", "greeter config", "greetd toml", "pam"]
-module = "greeter"
-entry = ["session/greetd/config.toml", "session/greetd/greetd.service", "session/pam.d"]
-test = ""
-build = "greeter"
+module = "shell"
+entry = ["session/greetd/config-greeter-mode.toml", "session/greetd/greetd.service", "session/pam.d"]
+test = "tests/e2e/greeter_mode.sh"
+build = "shell"
 
 # ---------- session ----------
 

@@ -1152,6 +1152,8 @@ noctalia_calc_module = shared_module('noctalia-calc',
   install_dir: get_option('libdir') / 'noctalia',
 )
 
+subdir('tools/greeter-apply-appearance')
+
 install_subdir('assets',
   install_dir: get_option('datadir') / 'noctalia',
   exclude_files: ['dev.noctalia.Noctalia.desktop', 'dev.noctalia.Noctalia.Annotator.desktop', 'dev.andromeda.Activity.desktop',

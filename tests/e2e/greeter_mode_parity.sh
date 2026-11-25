@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Greeter mode parity with the old greeter (GM6; old cases face_greeter.sh G8-G10, password only) on two outputs:
+# Greeter mode parity with the old greeter (GM6; old face_greeter.sh cases G8-G10, password only) on two outputs:
 # both outputs show the greeter; keys reach the password field after clicks anywhere; Enter on an empty field posts
 # nothing; a session picked from the session chip is the one that starts. SHOT=1 only writes start.png, SHOT=2 only
 # menu.png with the session menu open (to find the coordinates), then stop. Writes start.png, picked.png, requests.jsonl and greeter.log to $OUT.

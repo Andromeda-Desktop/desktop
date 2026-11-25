@@ -10,7 +10,7 @@ import sys
 import tomllib
 
 root, path = sys.argv[1], sys.argv[2]
-modules = {"compositor", "shell", "greeter", "system", "link"}
+modules = {"compositor", "shell", "system", "link"}
 with open(path, "rb") as f:
     features = tomllib.load(f).get("feature", [])
 bad = []

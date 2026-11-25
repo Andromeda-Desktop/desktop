@@ -13,7 +13,6 @@ andromeda-preview = { deps = ["libdesk-app", "libdesk-ui", "libdesk-system", "sy
 libdesk-term = { deps = ["libdesk-ui"] }
 apps = { deps = ["libdesk-app", "libdesk-ui", "libdesk-system", "libdesk-term", "andromeda-preview"] }
 shell = { deps = ["libdesk-ui", "libdesk-system", "protocol", "motion"] }
-greeter = { deps = ["libdesk-ui"] }
 # tools: the action IDL generator (tools/idl/gen.py).
 compositor = { deps = ["protocol", "motion", "tools"] }
 portal = { deps = ["protocol", "libdesk-app", "libdesk-ui", "libdesk-system"] }

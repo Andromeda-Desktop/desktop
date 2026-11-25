@@ -25,8 +25,9 @@ Description: Andromeda Wayland compositor
 
 Package: andromeda-shell
 Architecture: amd64
-Replaces: noctalia-desktop
-Breaks: noctalia-desktop
+# The greeter appearance helper, its polkit action and tmpfiles moved here from andromeda-greeter 2026.11.14.
+Replaces: noctalia-desktop, andromeda-greeter (<< 2026.11.15~)
+Breaks: noctalia-desktop, andromeda-greeter (<< 2026.11.15~)
 Conflicts: noctalia-desktop
 Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, hicolor-icon-theme, git, curl, gstreamer1.0-plugins-base,
  gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-pipewire, andromeda-system
@@ -57,7 +58,8 @@ Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-greetd
 Replaces: noctalia-greeter-desktop
 Breaks: noctalia-greeter-desktop
 Conflicts: noctalia-greeter-desktop
-Description: Andromeda login greeter for greetd
+Description: Andromeda login for greetd
+ The greetd config, session script and PAM files that run the shell's greeter mode.
 
 Package: andromeda-greetd
 Architecture: amd64

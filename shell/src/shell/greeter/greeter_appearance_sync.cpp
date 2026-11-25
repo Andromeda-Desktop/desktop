@@ -79,7 +79,6 @@ namespace {
   constexpr std::string_view kSyncArgument = "--sync";
   constexpr std::string_view kCapabilityArgument = "--supports";
   constexpr std::string_view kSecureSyncCapability = "secure-sync-v1";
-  constexpr std::string_view kGreeterName = "andromeda-greeter";
   constexpr std::string_view kGreeterTomlFileName = "greeter.toml";
   constexpr std::string_view kDefaultGreeterStateDir = "/var/lib/noctalia-greeter";
   constexpr std::string_view kGreeterStateDirEnv = "ANDROMEDA_GREETER_STATE_DIR";
@@ -186,10 +185,6 @@ namespace {
       }
     }
     return {};
-  }
-
-  [[nodiscard]] bool programExists(std::string_view name, std::initializer_list<const char*> fallbackPaths) {
-    return !resolveProgramPath(name, fallbackPaths).empty();
   }
 
   Color resolveWallpaperFillColor(const WallpaperConfig& config) {
@@ -1150,8 +1145,7 @@ namespace greeter::detail {
 namespace greeter {
 
   bool appearanceSyncAvailable(const ShellGreeterSyncConfig& greeterSync) noexcept {
-    return programExists(kGreeterName, {"/usr/bin/andromeda-greeter", "/usr/local/bin/andromeda-greeter"})
-        && !findApplyHelper().empty()
+    return !findApplyHelper().empty()
         && (process::resolvePrivilegeEscalator().has_value() || hasPrivilegeCommandOverride(greeterSync));
   }
 

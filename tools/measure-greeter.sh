@@ -3,12 +3,12 @@
 # mock_greetd.py (password-only PAM) and an empty private system bus. First frame = the client's own libdesk-ui
 # "first frame at N ms after process start" log line (an output commit is no proof: mapping a window commits before
 # the client draws). Memory is read once the output is idle for 300 ms.
-# Env: GREETER (a command; the shell's greeter mode later), ANDROMEDA, RUNS (5), OUT. Results: $OUT/results.txt.
+# Env: GREETER (a command; default the shell's greeter mode), ANDROMEDA, RUNS (5), OUT. Results: $OUT/results.txt.
 set -euo pipefail
 OUT=${OUT:-/tmp/measure-greeter}
 source "$(dirname "$0")/../tests/e2e/lib.sh"
 ANDROMEDA=${ANDROMEDA:-$ROOT/compositor/build-live/andromeda}
-GREETER=${GREETER:-$ROOT/greeter/build-release/andromeda-greeter --user $USER}
+GREETER=${GREETER:-$ROOT/shell/build-f7/andromeda-shell greeter --user $USER}
 RUNS=${RUNS:-5}
 rm -rf "$OUT"
 boot_headless 1
