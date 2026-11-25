@@ -12,7 +12,6 @@
 
 namespace xdpu {
 
-  class Loop;
   class PipeWireStream;
 
   enum class RestoreDataVersion : uint32_t {
@@ -111,7 +110,7 @@ namespace xdpu {
     const std::vector<Selection>& selections() const;
 
     bool addStream(
-        Loop& loop, WaylandContext& wayland, std::unique_ptr<WaylandContext::CaptureSession> capture,
+        WaylandContext& wayland, std::unique_ptr<WaylandContext::CaptureSession> capture,
         std::unique_ptr<PipeWireStream> stream, const CaptureConstraints& constraints, const Selection& selection,
         CaptureCursorMode cursorMode, uint32_t maxFps, DynamicMode dynamicMode, ClosedHandler backendClosedHandler
     );

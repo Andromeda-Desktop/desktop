@@ -9,9 +9,10 @@
 #include <string>
 #include <sys/types.h>
 
+class PollLoop;
+
 namespace xdpu {
 
-  class Loop;
 
   using PortalResults = std::map<std::string, sdbus::Variant>;
   using PortalResponse = sdbus::Result<uint32_t, PortalResults>;
@@ -66,7 +67,7 @@ namespace xdpu {
   public:
     using Callback = std::function<void(ProcessResult)>;
 
-    static std::shared_ptr<AsyncProcess> start(Loop& loop, std::string command, std::string input, Callback callback);
+    static std::shared_ptr<AsyncProcess> start(PollLoop& loop, std::string command, std::string input, Callback callback);
     ~AsyncProcess();
 
     AsyncProcess(const AsyncProcess&) = delete;
@@ -78,7 +79,7 @@ namespace xdpu {
     pid_t pid() const;
 
   private:
-    AsyncProcess(Loop& loop, std::string command, std::string input, Callback callback);
+    AsyncProcess(PollLoop& loop, std::string command, std::string input, Callback callback);
 
     struct Impl;
     std::unique_ptr<Impl> m_impl;

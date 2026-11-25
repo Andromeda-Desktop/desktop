@@ -6,7 +6,9 @@
 #include "dbus/screencast.h"
 #include "dbus/session.h"
 #include "dbus/session_table.h"
-#include "loop/loop.h"
+#include "core/deferred_call.h"
+#include "core/fd_watch.h"
+#include "core/poll_loop.h"
 #include "protocols/bus_names.h"
 #include "wayland/wayland.h"
 
@@ -20,7 +22,7 @@
 #include <sdbus-c++/sdbus-c++.h>
 #include <set>
 #include <string>
-#include <sys/epoll.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <utility>
@@ -67,13 +69,11 @@ namespace xdpu {
     public:
       using Op = std::function<void(EiSender&)>;
 
-      EiSender(Loop& loop, uint32_t capabilities, std::function<void()> failed)
+      EiSender(PollLoop& loop, uint32_t capabilities, std::function<void()> failed)
           : m_loop(loop), m_capabilities(capabilities), m_failed(std::move(failed)) {}
 
       ~EiSender() {
-        if (m_watch != 0) {
-          m_loop.removeFd(m_watch);
-        }
+        m_watch.reset();
         for (ei_device* device : m_devices) {
           ei_device_unref(device);
         }
@@ -101,7 +101,7 @@ namespace xdpu {
           fail("libei setup failed");
           return;
         }
-        m_watch = m_loop.addFd(ei_get_fd(m_context), EPOLLIN, [this](uint32_t) { dispatch(); });
+        m_watch = std::make_unique<FdWatch>(m_loop, ei_get_fd(m_context), POLLIN, [this](short) { dispatch(); });
       }
 
       void submit(Op op) {
@@ -267,12 +267,12 @@ namespace xdpu {
         }
       }
 
-      Loop& m_loop;
+      PollLoop& m_loop;
       uint32_t m_capabilities;
       std::function<void()> m_failed;
       State m_state = State::Connecting;
       ei* m_context = nullptr;
-      int m_watch = 0;
+      std::unique_ptr<FdWatch> m_watch;
       uint32_t m_sequence = 0;
       std::vector<ei_device*> m_devices;
       std::set<ei_device*> m_emulating;
@@ -324,7 +324,8 @@ namespace xdpu {
       std::optional<sdbus::UnixFd> fd;
     };
 
-    Loop& loop;
+    PollLoop& loop;
+    std::shared_ptr<const void> alive = std::make_shared<char>(); // expires with the portal
     sdbus::IConnection& connection;
     sdbus::IObject& object;
     SessionTable& sessions;
@@ -339,7 +340,7 @@ namespace xdpu {
     uint32_t nextSerial = 1;
 
     Impl(
-        Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
+        PollLoop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
         ScreenCastPortal& screencast, WaylandContext& wayland
     )
         : loop(loop), connection(connection), object(object), sessions(sessions), screencast(screencast),
@@ -367,7 +368,7 @@ namespace xdpu {
               return;
             }
             wayland.expireRemoteInputScope(instance);
-            loop.addTimer(0, [this, instance]() { scopedInstances.erase(instance); });
+            DeferredCall::callLaterIfAlive(alive, [this, instance]() { scopedInstances.erase(instance); });
           })
       );
     }
@@ -386,13 +387,13 @@ namespace xdpu {
     void replyNow(PortalResponse&& result, const std::string& handle, uint32_t response, PortalResults results = {}) {
       auto request = std::make_shared<Request>(connection, handle, []() {});
       result.returnResults(response, results);
-      loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
+      DeferredCall::callLater([request = std::move(request)]() mutable { request.reset(); });
     }
 
     // Destroys the compositor session after the current Wayland event: its handlers may be running.
     void retire(std::unique_ptr<WaylandContext::RemoteInputSession> input) {
       if (input) {
-        loop.addTimer(0, [input = std::shared_ptr(std::move(input))]() {});
+        DeferredCall::callLater([input = std::shared_ptr(std::move(input))]() {});
       }
     }
 
@@ -527,7 +528,7 @@ namespace xdpu {
         if (remote.clipboard == Remote::ClipboardAccess::Enabled) {
           results.emplace("clipboard_enabled", sdbus::Variant(true));
           // After the Start reply: the frontend relays clipboard signals only once it saw clipboard_enabled.
-          loop.addTimer(0, [this, path]() { announceSelection(path); });
+          DeferredCall::callLaterIfAlive(alive, [this, path]() { announceSelection(path); });
         }
         if (!remote.grantToken.empty()) {
           PortalResults data{{"token", sdbus::Variant(remote.grantToken)}};
@@ -559,7 +560,7 @@ namespace xdpu {
         reply(response, std::move(results));
       }
       if (auto request = std::exchange(remote.request, nullptr)) {
-        loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
+        DeferredCall::callLater([request = std::move(request)]() mutable { request.reset(); });
       }
     }
 
@@ -572,7 +573,7 @@ namespace xdpu {
 
     // Closes the session after the current event (revoked grant, compositor quit, lost EIS connection).
     void closeLater(const std::string& path) {
-      loop.addTimer(0, [this, path]() {
+      DeferredCall::callLaterIfAlive(alive, [this, path]() {
         if (const auto session = sessions.find(path)) {
           session->closeByBackend();
         }
@@ -624,7 +625,7 @@ namespace xdpu {
           // the compositor ends every device.
           .finished =
               [this]() {
-                loop.addTimer(0, [this]() {
+                DeferredCall::callLaterIfAlive(alive, [this]() {
                   if (!clipboard || !clipboard->ended()) {
                     return;
                   }
@@ -643,7 +644,7 @@ namespace xdpu {
       if (clipboard && std::ranges::none_of(remotes, [](const auto& entry) {
             return entry.second->clipboard == Remote::ClipboardAccess::Enabled;
           })) {
-        loop.addTimer(0, [this]() {
+        DeferredCall::callLaterIfAlive(alive, [this]() {
           if (std::ranges::none_of(remotes, [](const auto& entry) {
                 return entry.second->clipboard == Remote::ClipboardAccess::Enabled;
               })) {
@@ -1035,7 +1036,7 @@ namespace xdpu {
   };
 
   RemoteDesktopPortal::RemoteDesktopPortal(
-      Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
+      PollLoop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
       ScreenCastPortal& screencast, WaylandContext& wayland
   )
       : m_impl(std::make_unique<Impl>(loop, connection, object, sessions, screencast, wayland)) {}

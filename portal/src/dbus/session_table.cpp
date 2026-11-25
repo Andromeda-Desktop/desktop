@@ -1,11 +1,11 @@
 #include "dbus/session_table.h"
 
 #include "dbus/session.h"
-#include "loop/loop.h"
+#include "core/deferred_call.h"
 
 namespace xdpu {
 
-  SessionTable::SessionTable(Loop& loop, sdbus::IConnection& connection) : m_loop(loop), m_connection(connection) {}
+  SessionTable::SessionTable(sdbus::IConnection& connection) : m_connection(connection) {}
 
   SessionTable::~SessionTable() {
     m_closedListeners.clear();
@@ -29,7 +29,7 @@ namespace xdpu {
           listener(*closed);
         }
         // Erase later: the session is still on the stack of its own Close handler.
-        m_loop.addTimer(0, [this, path]() {
+        DeferredCall::callLaterIfAlive(m_alive, [this, path]() {
           if (const auto it = m_sessions.find(path); it != m_sessions.end() && it->second->closed()) {
             m_sessions.erase(it);
           }

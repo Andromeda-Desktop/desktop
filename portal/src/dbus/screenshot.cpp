@@ -3,7 +3,9 @@
 #include "config/config.h"
 #include "dbus/caller.h"
 #include "dbus/request.h"
-#include "loop/loop.h"
+#include "core/deferred_call.h"
+#include "core/poll_loop.h"
+#include "core/timer_manager.h"
 #include "protocols/xdg_dirs.h"
 #include "wayland/shm_format.h"
 #include "wayland/wayland.h"
@@ -253,14 +255,14 @@ namespace xdpu {
   } // namespace
 
   struct ScreenshotPortal::Impl {
-    Loop& loop;
+    PollLoop& loop;
     sdbus::IConnection& connection;
     sdbus::IObject& object;
     Config config;
     WaylandContext& wayland;
 
     Impl(
-        Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, const Config& config,
+        PollLoop& loop, sdbus::IConnection& connection, sdbus::IObject& object, const Config& config,
         WaylandContext& wayland
     )
         : loop(loop), connection(connection), object(object), config(config), wayland(wayland) {
@@ -335,7 +337,7 @@ namespace xdpu {
       std::shared_ptr<Request> request;
       std::shared_ptr<AsyncProcess> process;
       std::shared_ptr<CaptureState> capture;
-      int timeoutId = 0;
+      Timer timeout;
       bool done = false;
 
       Operation(Impl& portal, PortalResponse&& result) : portal(portal), result(std::move(result)) {}
@@ -356,7 +358,7 @@ namespace xdpu {
           return;
         }
         auto doomed = std::move(request);
-        portal.loop.addTimer(0, [doomed = std::move(doomed)]() mutable { doomed.reset(); });
+        DeferredCall::callLater([doomed = std::move(doomed)]() mutable { doomed.reset(); });
       }
 
       void finish(uint32_t response, PortalResults results = {}) {
@@ -370,7 +372,7 @@ namespace xdpu {
         process.reset();
         // finish can run inside a capture callback or while a caller holds the state; free it on the next turn.
         if (capture) {
-          portal.loop.addTimer(0, [doomed = std::move(capture)]() mutable { doomed.reset(); });
+          DeferredCall::callLater([doomed = std::move(capture)]() mutable { doomed.reset(); });
         }
         // Prevent the shared_ptr erase from destroying `this` while we're in it.
         auto prevent = shared_from_this();
@@ -388,10 +390,7 @@ namespace xdpu {
       }
 
       void cancelTimeout() {
-        if (timeoutId != 0) {
-          portal.loop.removeTimer(timeoutId);
-          timeoutId = 0;
-        }
+        timeout.stop();
       }
 
       void finishWithUri(const std::string& path) {
@@ -431,12 +430,12 @@ namespace xdpu {
         }
 
         // Timeout: cancel if the capture doesn't complete within 5 seconds.
-        timeoutId = portal.loop.addTimer(5000, [weakSelf, failureResponse]() {
+        timeout.start(std::chrono::seconds(5), [weakSelf, failureResponse]() {
           auto self = weakSelf.lock();
           if (!self) {
             return;
           }
-          self->timeoutId = 0;
+          self->timeout.stop();
           if (!self->done) {
             std::fprintf(stderr, "screenshot: capture timed out\n");
             self->finish(failureResponse, {});
@@ -561,7 +560,7 @@ namespace xdpu {
           return;
         }
         auto self = std::static_pointer_cast<ScreenshotOperation>(shared_from_this());
-        portal.loop.addTimer(0, [self]() { self->captureFirstOutput(); });
+        DeferredCall::callLater([self]() { self->captureFirstOutput(); });
       }
 
       void runExternal(bool interactive) {
@@ -702,7 +701,7 @@ namespace xdpu {
               self->cancelTimeout();
               self->frames.push_back({self->outputs[self->frames.size()], std::move(shot)});
               // Replace the capture state outside its own frame callback.
-              self->portal.loop.addTimer(0, [self]() { self->captureNextOutput(); });
+              DeferredCall::callLater([self]() { self->captureNextOutput(); });
             }
         );
       }
@@ -778,7 +777,7 @@ namespace xdpu {
   };
 
   ScreenshotPortal::ScreenshotPortal(
-      Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, const Config& config, WaylandContext& wayland
+      PollLoop& loop, sdbus::IConnection& connection, sdbus::IObject& object, const Config& config, WaylandContext& wayland
   )
       : m_impl(std::make_unique<Impl>(loop, connection, object, config, wayland)) {}
 

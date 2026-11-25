@@ -41,8 +41,8 @@ int main() {
       if (state != LiveState::Stopped && event == LiveEvent::TimerFired) {
         --timers;
       }
-      if (next->cancelTimer) {
-        check(timers == 1, "cancels only a pending timer", run, step);
+      // The owner keeps a deadline only in Waiting: leaving it drops the pending timer.
+      if (state == LiveState::Waiting && event != LiveEvent::TimerFired && next->next != LiveState::Waiting) {
         --timers;
       }
       if (next->dropFrame) {

@@ -7,9 +7,10 @@
 #include <set>
 #include <string>
 
+class PollLoop;
+
 namespace xdpu {
 
-  class Loop;
 
   struct ScreenCastCommand {
     enum class Kind {
@@ -34,7 +35,7 @@ namespace xdpu {
     using CaptureBlockedHandler = std::function<void(std::set<std::string>)>;
 
     AndromedaIpc(
-        Loop& loop, ScreenCastHandler screenCastHandler, FocusHandler focusedWindowHandler,
+        PollLoop& loop, ScreenCastHandler screenCastHandler, FocusHandler focusedWindowHandler,
         FocusHandler focusedOutputHandler, CaptureBlockedHandler captureBlockedHandler
     );
     ~AndromedaIpc();

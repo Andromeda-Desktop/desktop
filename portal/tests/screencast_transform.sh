@@ -36,7 +36,7 @@ for command in dbus-daemon dbus-send pipewire pw-link jq; do
     exit 2
   }
 done
-"$ANDROMEDA" --help | grep -qw settle || {
+grep -qw settle <<<"$("$ANDROMEDA" --help)" || {
   echo 'Andromeda needs -Dtest_ipc=enabled'
   exit 2
 }
@@ -59,7 +59,6 @@ readonly CONFIG=$RUNTIME/config.toml
 cat >"$RUNTIME/base.toml" <<'CONFIG'
 [general]
 xwayland = false
-show_cheatsheet = false
 autostart = []
 [animation]
 enabled = false

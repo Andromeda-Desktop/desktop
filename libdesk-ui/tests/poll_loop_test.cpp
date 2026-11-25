@@ -177,6 +177,32 @@ int main() {
   PollLoop quitting;
   quitting.quit(3);
   check(!quitting.runDeferred() && quitting.run() == 3, "a quit loop ran another pass", 0);
+
+  // A worker loop runs only its own sources, and a quit stops the rest of its pass.
+  {
+    int a[2];
+    int b[2];
+    check(pipe(a) == 0 && pipe(b) == 0 && write(a[1], "x", 1) == 1 && write(b[1], "x", 1) == 1, "pipe setup", 0);
+    bool deferredRan = false;
+    bool timerRan = false;
+    bool secondRan = false;
+    DeferredCall::callLater([&] { deferredRan = true; });
+    Timer timer;
+    timer.start(std::chrono::milliseconds(0), [&] { timerRan = true; });
+    PollLoop worker(PollLoop::Kind::Worker);
+    const FdWatch first(worker, a[0], POLLIN, [&](short) { worker.quit(5); });
+    const FdWatch second(worker, b[0], POLLIN, [&](short) { secondRan = true; });
+    check(worker.run() == 5, "worker loop did not return its quit code", 0);
+    check(!deferredRan && !timerRan, "a worker loop ran main-thread deferred calls or timers", 0);
+    check(!secondRan, "a source ran after quit in the same pass", 0);
+    PollLoop main;
+    DeferredCall::callLater([&] { main.quit(); });
+    main.run();
+    check(deferredRan, "the main loop did not run the deferred call", 0);
+    for (const int fd : {a[0], a[1], b[0], b[1]}) {
+      close(fd);
+    }
+  }
   std::printf("poll_loop: %s\n", g_failures == 0 ? "ok" : "FAILED");
   return g_failures == 0 ? 0 : 1;
 }

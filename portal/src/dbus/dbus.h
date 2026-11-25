@@ -5,9 +5,10 @@
 #include <optional>
 #include <string>
 
+class PollLoop;
+
 namespace xdpu {
 
-  class Loop;
   class PipeWireContext;
   class WaylandContext;
   struct ScreenCastCommand;
@@ -15,7 +16,7 @@ namespace xdpu {
 
   class DbusPortal {
   public:
-    DbusPortal(Loop& loop, const Config& config, WaylandContext& wayland, PipeWireContext& pipewire);
+    DbusPortal(PollLoop& loop, const Config& config, WaylandContext& wayland, PipeWireContext& pipewire);
     ~DbusPortal();
 
     DbusPortal(const DbusPortal&) = delete;

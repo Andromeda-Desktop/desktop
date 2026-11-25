@@ -4,7 +4,7 @@
 
 namespace xdpu {
   // Mode of one live thumbnail. Configuring: waits for buffer constraints. Capturing: one frame is in flight.
-  // Waiting: the pacing timer runs. Stopped: the source is gone or cannot be captured; no event leaves it.
+  // Waiting: the pacing deadline runs; it counts in no other state. Stopped: the source is gone or cannot be captured; no event leaves it.
   enum class LiveState { Configuring, Capturing, Waiting, Stopped };
 
   enum class LiveEvent {
@@ -20,7 +20,6 @@ namespace xdpu {
   // Side effects the owner runs after it stores `next`, in this order.
   struct LiveStep {
     LiveState next;
-    bool cancelTimer = false;   // the pending timer must not fire
     bool dropFrame = false;     // the in-flight frame is abandoned
     bool startTimer = false;
     bool startCapture = false;
@@ -35,10 +34,10 @@ namespace xdpu {
     const bool capturing = state == LiveState::Capturing;
     switch (event) {
     case LiveEvent::Configured:
-      return LiveStep{.next = LiveState::Capturing, .cancelTimer = waiting, .dropFrame = capturing, .startCapture = true};
+      return LiveStep{.next = LiveState::Capturing, .dropFrame = capturing, .startCapture = true};
     case LiveEvent::ConfigureFailed:
     case LiveEvent::SessionStopped:
-      return LiveStep{.next = LiveState::Stopped, .cancelTimer = waiting, .dropFrame = capturing};
+      return LiveStep{.next = LiveState::Stopped, .dropFrame = capturing};
     case LiveEvent::FrameReady:
     case LiveEvent::Retry:
       if (!capturing) {

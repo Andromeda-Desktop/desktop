@@ -7,16 +7,17 @@ namespace sdbus {
   class IObject;
 } // namespace sdbus
 
+class PollLoop;
+
 namespace xdpu {
 
-  class Loop;
   class WaylandContext;
   struct Config;
 
   class ScreenshotPortal {
   public:
     ScreenshotPortal(
-        Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, const Config& config,
+        PollLoop& loop, sdbus::IConnection& connection, sdbus::IObject& object, const Config& config,
         WaylandContext& wayland
     );
     ~ScreenshotPortal();

@@ -26,6 +26,8 @@ namespace {
 
 SessionBus::SessionBus() : m_connection(sdbus::createSessionBusConnection()) {}
 
+SessionBus::SessionBus(const sdbus::ServiceName& name) : m_connection(sdbus::createSessionBusConnection(name)) {}
+
 sdbus::IConnection::PollData SessionBus::getPollData() const { return m_connection->getEventLoopPollData(); }
 
 void SessionBus::processPendingEvents() {

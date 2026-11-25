@@ -1,6 +1,7 @@
 #include "andromeda/ipc.h"
 
-#include "loop/loop.h"
+#include "core/fd_watch.h"
+#include "core/poll_loop.h"
 #include "protocols/ipc_channel.h"
 #include "protocols/xdg_dirs.h"
 
@@ -12,7 +13,7 @@
 #include <fcntl.h>
 #include <nlohmann/json.hpp>
 #include <string_view>
-#include <sys/epoll.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <utility>
@@ -45,19 +46,19 @@ namespace xdpu {
   } // namespace
 
   struct AndromedaIpc::Impl {
-    Loop& loop;
+    PollLoop& loop;
     ScreenCastHandler screenCastHandler;
     FocusHandler focusedWindowHandler;
     FocusHandler focusedOutputHandler;
     CaptureBlockedHandler captureBlockedHandler;
     int fd = -1;
-    int watch = 0;
+    std::unique_ptr<FdWatch> watch;
     ipc::LineReader input{kMaxEventBytes};
     std::string output;
     size_t writeOffset = 0;
 
     Impl(
-        Loop& loop, ScreenCastHandler screenCastHandler, FocusHandler focusedWindowHandler,
+        PollLoop& loop, ScreenCastHandler screenCastHandler, FocusHandler focusedWindowHandler,
         FocusHandler focusedOutputHandler, CaptureBlockedHandler captureBlockedHandler
     )
         : loop(loop), screenCastHandler(std::move(screenCastHandler)),
@@ -90,25 +91,16 @@ namespace xdpu {
         return;
       }
 
-      watch = loop.addFd(fd, EPOLLIN | EPOLLERR | EPOLLHUP, [this](uint32_t events) { readable(events); });
-      if (watch == 0) {
-        closeFd(fd);
-        fd = -1;
-      }
+      watch = std::make_unique<FdWatch>(loop, fd, POLLIN, [this](short events) { readable(events); });
     }
 
     ~Impl() {
-      if (watch != 0) {
-        loop.removeFd(watch);
-      }
+      watch.reset();
       closeFd(fd);
     }
 
     void disconnect() {
-      if (watch != 0) {
-        loop.removeFd(watch);
-        watch = 0;
-      }
+      watch.reset();
       closeFd(fd);
       fd = -1;
       output.clear();
@@ -126,7 +118,7 @@ namespace xdpu {
           continue;
         }
         if (size < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-          loop.updateFd(watch, EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP);
+          watch->setEvents(POLLIN | POLLOUT);
           return;
         }
         std::fprintf(stderr, "andromeda-ipc: send failed: %s\n", std::strerror(errno));
@@ -135,8 +127,8 @@ namespace xdpu {
       }
       output.clear();
       writeOffset = 0;
-      if (watch != 0) {
-        loop.updateFd(watch, EPOLLIN | EPOLLERR | EPOLLHUP);
+      if (watch) {
+        watch->setEvents(POLLIN);
       }
     }
 
@@ -149,18 +141,18 @@ namespace xdpu {
       flushOutput();
     }
 
-    void readable(uint32_t events) {
-      if ((events & (EPOLLERR | EPOLLHUP)) != 0) {
+    void readable(short events) {
+      if ((events & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
         disconnect();
         return;
       }
-      if ((events & EPOLLOUT) != 0) {
+      if ((events & POLLOUT) != 0) {
         flushOutput();
         if (fd < 0) {
           return;
         }
       }
-      if ((events & EPOLLIN) == 0) {
+      if ((events & POLLIN) == 0) {
         return;
       }
 
@@ -277,7 +269,7 @@ namespace xdpu {
   };
 
   AndromedaIpc::AndromedaIpc(
-      Loop& loop, ScreenCastHandler screenCastHandler, FocusHandler focusedWindowHandler,
+      PollLoop& loop, ScreenCastHandler screenCastHandler, FocusHandler focusedWindowHandler,
       FocusHandler focusedOutputHandler, CaptureBlockedHandler captureBlockedHandler
   )
       : m_impl(

@@ -1,6 +1,7 @@
 #include "pipewire/pipewire.h"
 
-#include "loop/loop.h"
+#include "core/fd_watch.h"
+#include "core/poll_loop.h"
 #include "wayland/capture_transform.h"
 
 #include <algorithm>
@@ -30,7 +31,7 @@
 #include <spa/param/video/type-info.h>
 #include <spa/pod/builder.h>
 #include <spa/utils/result.h>
-#include <sys/epoll.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <unordered_set>
@@ -599,18 +600,13 @@ namespace xdpu {
   };
 
   struct PipeWireContext::Impl {
-    explicit Impl(Loop& loop) : loop(loop) {}
-
-    Loop& loop;
     pw_loop* pwLoop = nullptr;
     pw_context* context = nullptr;
     std::shared_ptr<CoreConnection> core;
-    int fdId = 0;
+    std::unique_ptr<FdWatch> watch;
 
     ~Impl() {
-      if (fdId != 0) {
-        loop.removeFd(fdId);
-      }
+      watch.reset();
       core.reset();
       if (context != nullptr) {
         pw_context_destroy(context);
@@ -818,7 +814,7 @@ namespace xdpu {
 
   } // namespace
 
-  PipeWireContext::PipeWireContext(Loop& loop) : m_impl(std::make_unique<Impl>(loop)) {
+  PipeWireContext::PipeWireContext(PollLoop& loop) : m_impl(std::make_unique<Impl>()) {
     pw_init(nullptr, nullptr);
 
     m_impl->pwLoop = pw_loop_new(nullptr);
@@ -835,10 +831,9 @@ namespace xdpu {
     }
 
     const int fd = pw_loop_get_fd(m_impl->pwLoop);
-    m_impl->fdId = loop.addFd(fd, EPOLLIN | EPOLLERR | EPOLLHUP, [impl = m_impl.get()](uint32_t events) {
-      if ((events & (EPOLLIN | EPOLLERR | EPOLLHUP)) != 0) {
-        pw_loop_iterate(impl->pwLoop, 0);
-      }
+    // pw_loop_get_fd is an epoll fd: poll(2) reports it readable while any of its sources is ready.
+    m_impl->watch = std::make_unique<FdWatch>(loop, fd, POLLIN, [impl = m_impl.get()](short) {
+      pw_loop_iterate(impl->pwLoop, 0);
     });
 
     m_impl->connect();

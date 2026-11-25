@@ -1,6 +1,7 @@
 #include "wayland/wayland.h"
 
-#include "loop/loop.h"
+#include "core/fd_watch.h"
+#include "core/poll_loop.h"
 
 #include <algorithm>
 #include <andromeda-remote-input-v1-client-protocol.h>
@@ -18,7 +19,6 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <string_view>
-#include <sys/epoll.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <unordered_map>
@@ -56,10 +56,12 @@ namespace xdpu {
       bool closed = false;
     };
 
-    explicit Impl(WaylandContext& owner, Loop& loop) : owner(owner), loop(loop) {}
+    explicit Impl(WaylandContext& owner, std::function<void()> onDisconnected)
+        : owner(owner), onDisconnected(std::move(onDisconnected)) {}
 
     WaylandContext& owner;
-    Loop& loop;
+    std::function<void()> onDisconnected;
+    std::unique_ptr<FdWatch> displayWatch; // null until connected
     wl_display* display = nullptr;
     wl_seat* seat = nullptr;
     wl_pointer* pointer = nullptr;
@@ -75,7 +77,6 @@ namespace xdpu {
     ext_foreign_toplevel_list_v1* toplevelList = nullptr;
     zxdg_output_manager_v1* xdgOutputManager = nullptr;
 
-    int displayFdId = 0;
     bool preparedRead = false;
     bool wantsWrite = false;
     bool disconnected = false;
@@ -129,18 +130,25 @@ namespace xdpu {
       disconnected = true;
       cancelPreparedRead();
       fprintf(stderr, "wayland: compositor connection closed\n");
-      loop.quit();
+      if (displayWatch) {
+        displayWatch->setEvents(0);
+      }
+      if (onDisconnected) {
+        onDisconnected();
+      }
+    }
+
+    [[nodiscard]] short displayEvents() const {
+      if (display == nullptr || disconnected) {
+        return 0;
+      }
+      return static_cast<short>(POLLIN | (wantsWrite ? POLLOUT : 0));
     }
 
     void updateDisplayFdEvents() {
-      if (displayFdId == 0 || disconnected) {
-        return;
+      if (displayWatch) {
+        displayWatch->setEvents(displayEvents());
       }
-      uint32_t events = EPOLLIN | EPOLLERR | EPOLLHUP;
-      if (wantsWrite) {
-        events |= EPOLLOUT;
-      }
-      loop.updateFd(displayFdId, events);
     }
 
     void flushDisplay() {
@@ -178,21 +186,21 @@ namespace xdpu {
       flushDisplay();
     }
 
-    void handleDisplayEvents(uint32_t events) {
+    void handleDisplayEvents(short events) {
       if (disconnected) {
         return;
       }
 
-      if ((events & (EPOLLERR | EPOLLHUP)) != 0) {
+      if ((events & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
         markDisconnected();
         return;
       }
 
-      if ((events & EPOLLOUT) != 0) {
+      if ((events & POLLOUT) != 0) {
         flushDisplay();
       }
 
-      if ((events & EPOLLIN) != 0) {
+      if ((events & POLLIN) != 0) {
         if (preparedRead) {
           if (wl_display_read_events(display) < 0) {
             preparedRead = false;
@@ -1184,7 +1192,21 @@ namespace xdpu {
 
   } // namespace
 
-  WaylandContext::WaylandContext(Loop& loop) : m_impl(std::make_unique<Impl>(*this, loop)) {
+  WaylandContext::WaylandContext(PollLoop& loop) : WaylandContext() {
+    if (m_impl->display == nullptr) {
+      return;
+    }
+    if (m_impl->disconnected) {
+      loop.quit();
+      return;
+    }
+    m_impl->onDisconnected = [&loop] { loop.quit(); };
+    m_impl->displayWatch =
+        std::make_unique<FdWatch>(loop, wl_display_get_fd(m_impl->display), m_impl->displayEvents(),
+                                  [impl = m_impl.get()](short revents) { impl->handleDisplayEvents(revents); });
+  }
+
+  WaylandContext::WaylandContext() : m_impl(std::make_unique<Impl>(*this, nullptr)) {
     m_impl->display = wl_display_connect(nullptr);
     if (m_impl->display == nullptr) {
       fprintf(stderr, "wayland: unable to connect to compositor\n");
@@ -1199,10 +1221,6 @@ namespace xdpu {
     // (wl_output.name/geometry/mode/done, toplevel handle events, etc.).
     roundtrip();
 
-    const int fd = wl_display_get_fd(m_impl->display);
-    m_impl->displayFdId = loop.addFd(fd, EPOLLIN | EPOLLERR | EPOLLHUP, [impl = m_impl.get()](uint32_t events) {
-      impl->handleDisplayEvents(events);
-    });
     m_impl->prepareRead();
 
     g_defaultContext = this;
@@ -1212,9 +1230,7 @@ namespace xdpu {
     if (g_defaultContext == this) {
       g_defaultContext = nullptr;
     }
-    if (m_impl->displayFdId != 0) {
-      m_impl->loop.removeFd(m_impl->displayFdId);
-    }
+    m_impl->displayWatch.reset();
     if (m_impl->display != nullptr) {
       m_impl->cancelPreparedRead();
       m_impl->destroyObjects();

@@ -1,6 +1,7 @@
 #include "config/config.h"
+#include "core/fd_watch.h"
+#include "core/poll_loop.h"
 #include "dbus/dbus.h"
-#include "loop/loop.h"
 #include "pipewire/pipewire.h"
 #include "andromeda/ipc.h"
 #include "wayland/wayland.h"
@@ -10,7 +11,7 @@
 #include <cstdio>
 #include <cstring>
 #include <exception>
-#include <sys/epoll.h>
+#include <poll.h>
 #include <sys/signalfd.h>
 #include <unistd.h>
 
@@ -26,7 +27,7 @@ int main() {
       return 1;
     }
 
-    xdpu::Loop loop;
+    PollLoop loop;
     auto config = xdpu::loadConfig();
 
     xdpu::WaylandContext wayland(loop);
@@ -54,7 +55,7 @@ int main() {
       return 1;
     }
 
-    const int sigWatch = loop.addFd(sigFd, EPOLLIN, [&](uint32_t) {
+    FdWatch sigWatch(loop, sigFd, POLLIN, [&](short) {
       signalfd_siginfo info{};
       while (true) {
         const ssize_t size = read(sigFd, &info, sizeof(info));
@@ -73,14 +74,7 @@ int main() {
       loop.quit();
     });
 
-    if (sigWatch == 0) {
-      std::fprintf(stderr, "main: unable to add signalfd to loop\n");
-      close(sigFd);
-      return 1;
-    }
-
     loop.run();
-    loop.removeFd(sigWatch);
     close(sigFd);
     return wayland.connected() ? 0 : 1;
   } catch (const std::exception& error) {

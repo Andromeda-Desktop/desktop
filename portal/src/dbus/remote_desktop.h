@@ -7,9 +7,10 @@ namespace sdbus {
   class IObject;
 } // namespace sdbus
 
+class PollLoop;
+
 namespace xdpu {
 
-  class Loop;
   class ScreenCastPortal;
   class SessionTable;
   class WaylandContext;
@@ -19,7 +20,7 @@ namespace xdpu {
   class RemoteDesktopPortal {
   public:
     RemoteDesktopPortal(
-        Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
+        PollLoop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
         ScreenCastPortal& screencast, WaylandContext& wayland
     );
     ~RemoteDesktopPortal();

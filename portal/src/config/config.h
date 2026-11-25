@@ -5,9 +5,10 @@
 #include <memory>
 #include <string>
 
+class PollLoop;
+
 namespace xdpu {
 
-  class Loop;
 
   struct Config {
     struct Screencast {
@@ -31,7 +32,7 @@ namespace xdpu {
 
   class ConfigWatcher {
   public:
-    ConfigWatcher(Loop& loop, std::function<void(const Config& oldCfg, const Config& newCfg)> onChange);
+    ConfigWatcher(PollLoop& loop, std::function<void(const Config& oldCfg, const Config& newCfg)> onChange);
     ~ConfigWatcher();
 
     ConfigWatcher(const ConfigWatcher&) = delete;

@@ -21,9 +21,9 @@ struct ext_image_copy_capture_frame_v1;
 
 struct ext_image_copy_capture_cursor_session_v1;
 struct andromeda_remote_input_session_v1;
-namespace xdpu {
+class PollLoop;
 
-  class Loop;
+namespace xdpu {
 
   struct OutputInfo {
     std::string name;
@@ -117,7 +117,8 @@ namespace xdpu {
 
   class WaylandContext {
   public:
-    explicit WaylandContext(Loop& loop);
+    // Watches the display fd on `loop` and quits it when the compositor connection closes.
+    explicit WaylandContext(PollLoop& loop);
     ~WaylandContext();
 
     WaylandContext(const WaylandContext&) = delete;
@@ -287,6 +288,8 @@ namespace xdpu {
     static uint32_t preferredShmFormat(const std::vector<uint32_t>& formats);
 
   private:
+    WaylandContext();
+
     std::unique_ptr<Impl> m_impl;
   };
 

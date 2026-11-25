@@ -1,7 +1,8 @@
 #include "dbus/request.h"
 
 #include "dbus/caller.h"
-#include "loop/loop.h"
+#include "core/fd_watch.h"
+#include "core/poll_loop.h"
 
 #include <cerrno>
 #include <csignal>
@@ -9,7 +10,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <memory>
-#include <sys/epoll.h>
+#include <poll.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -86,7 +87,7 @@ namespace xdpu {
   bool ProcessResult::commandNotFound() const { return exited && exitStatus == 127; }
 
   struct AsyncProcess::Impl {
-    Loop& loop;
+    PollLoop& loop;
     std::string command;
     std::string input;
     Callback callback;
@@ -95,13 +96,13 @@ namespace xdpu {
     int stdinFd = -1;
     int stdoutFd = -1;
     int pidfd = -1; // readable once the child exits
-    int stdinWatch = 0;
-    int stdoutWatch = 0;
-    int exitWatch = 0;
+    std::unique_ptr<FdWatch> stdinWatch;
+    std::unique_ptr<FdWatch> stdoutWatch;
+    std::unique_ptr<FdWatch> exitWatch;
     size_t inputOffset = 0;
     bool finished = false;
 
-    Impl(Loop& loop, std::string command, std::string input, Callback callback)
+    Impl(PollLoop& loop, std::string command, std::string input, Callback callback)
         : loop(loop), command(std::move(command)), input(std::move(input)), callback(std::move(callback)) {}
 
     bool spawn() {
@@ -163,63 +164,36 @@ namespace xdpu {
 
     void install(const std::shared_ptr<AsyncProcess>& self) {
       std::weak_ptr<AsyncProcess> weak = self;
-      stdoutWatch = loop.addFd(stdoutFd, EPOLLIN | EPOLLHUP | EPOLLERR, [weak](uint32_t events) {
+      stdoutWatch = std::make_unique<FdWatch>(loop, stdoutFd, POLLIN, [weak](short events) {
         if (auto process = weak.lock()) {
           process->m_impl->readReady(process, events);
         }
       });
-      if (stdoutWatch == 0) {
-        std::fprintf(stderr, "dbus: unable to watch child stdout for '%s'\n", command.c_str());
-        if (pid > 0) {
-          ::kill(pid, SIGTERM);
-        }
-        ProcessResult result;
-        finish(std::move(result));
-        return;
-      }
 
       if (input.empty()) {
         closeFd(stdinFd);
         return;
       }
 
-      stdinWatch = loop.addFd(stdinFd, EPOLLOUT | EPOLLHUP | EPOLLERR, [weak](uint32_t events) {
+      stdinWatch = std::make_unique<FdWatch>(loop, stdinFd, POLLOUT, [weak](short events) {
         if (auto process = weak.lock()) {
           process->m_impl->writeReady(process, events);
         }
       });
-      if (stdinWatch == 0) {
-        std::fprintf(stderr, "dbus: unable to watch child stdin for '%s'\n", command.c_str());
-        closeFd(stdinFd);
-      }
-    }
-
-    void removeStdinWatch() {
-      if (stdinWatch != 0) {
-        loop.removeFd(stdinWatch);
-        stdinWatch = 0;
-      }
-    }
-
-    void removeStdoutWatch() {
-      if (stdoutWatch != 0) {
-        loop.removeFd(stdoutWatch);
-        stdoutWatch = 0;
-      }
     }
 
     void closeStdin() {
-      removeStdinWatch();
+      stdinWatch.reset();
       closeFd(stdinFd);
     }
 
     void closeStdout() {
-      removeStdoutWatch();
+      stdoutWatch.reset();
       closeFd(stdoutFd);
     }
 
-    void writeReady(const std::shared_ptr<AsyncProcess>&, uint32_t events) {
-      if ((events & (EPOLLHUP | EPOLLERR)) != 0) {
+    void writeReady(const std::shared_ptr<AsyncProcess>&, short events) {
+      if ((events & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
         closeStdin();
         return;
       }
@@ -245,7 +219,7 @@ namespace xdpu {
       closeStdin();
     }
 
-    void readReady(const std::shared_ptr<AsyncProcess>& self, uint32_t events) {
+    void readReady(const std::shared_ptr<AsyncProcess>& self, short events) {
       char buffer[4096];
       while (true) {
         const ssize_t size = ::read(stdoutFd, buffer, sizeof(buffer));
@@ -269,7 +243,7 @@ namespace xdpu {
         return;
       }
 
-      if ((events & (EPOLLHUP | EPOLLERR)) != 0) {
+      if ((events & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
         closeStdout();
         watchExit(self);
       }
@@ -277,11 +251,11 @@ namespace xdpu {
 
     // Finishes once the child exits, after its output closed or it was told to terminate.
     void watchExit(const std::shared_ptr<AsyncProcess>& self) {
-      if (finished || pid <= 0 || exitWatch != 0) {
+      if (finished || pid <= 0 || exitWatch) {
         return;
       }
       std::weak_ptr<AsyncProcess> weak = self;
-      exitWatch = loop.addFd(pidfd, EPOLLIN, [weak](uint32_t) {
+      exitWatch = std::make_unique<FdWatch>(loop, pidfd, POLLIN, [weak](short) {
         if (auto process = weak.lock()) {
           process->m_impl->reap();
         }
@@ -336,12 +310,7 @@ namespace xdpu {
       }
     }
 
-    void closeExitWatch() {
-      if (exitWatch != 0) {
-        loop.removeFd(exitWatch);
-        exitWatch = 0;
-      }
-    }
+    void closeExitWatch() { exitWatch.reset(); }
 
     void destroy() {
       callback = nullptr;
@@ -354,12 +323,13 @@ namespace xdpu {
       }
       // The loop reaps the terminated child after this object is gone.
       ::kill(pid, SIGTERM);
-      auto watch = std::make_shared<int>(0);
-      *watch = loop.addFd(pidfd, EPOLLIN, [&loop = loop, watch, child = pid, fd = pidfd](uint32_t) {
+      // The watch owns itself through its callback and destroys itself there.
+      auto reaper = std::make_shared<std::unique_ptr<FdWatch>>();
+      *reaper = std::make_unique<FdWatch>(loop, pidfd, POLLIN, [reaper, child = pid, fd = pidfd](short) {
         ::waitpid(child, nullptr, 0);
-        loop.removeFd(*watch);
         int owned = fd;
         closeFd(owned);
+        reaper->reset();
       });
       pid = -1;
       pidfd = -1;
@@ -367,7 +337,7 @@ namespace xdpu {
   };
 
   std::shared_ptr<AsyncProcess>
-  AsyncProcess::start(Loop& loop, std::string command, std::string input, Callback callback) {
+  AsyncProcess::start(PollLoop& loop, std::string command, std::string input, Callback callback) {
     std::signal(SIGPIPE, SIG_IGN);
     auto process = std::shared_ptr<AsyncProcess>(
         new AsyncProcess(loop, std::move(command), std::move(input), std::move(callback))
@@ -382,7 +352,7 @@ namespace xdpu {
     return process;
   }
 
-  AsyncProcess::AsyncProcess(Loop& loop, std::string command, std::string input, Callback callback)
+  AsyncProcess::AsyncProcess(PollLoop& loop, std::string command, std::string input, Callback callback)
       : m_impl(std::make_unique<Impl>(loop, std::move(command), std::move(input), std::move(callback))) {}
 
   AsyncProcess::~AsyncProcess() {

@@ -1,7 +1,8 @@
 #include "share_picker/thumbnails.h"
 
+#include "core/fd_watch.h"
+#include "core/poll_loop.h"
 #include "core/sys/sys.h"
-#include "loop/loop.h"
 #include "share_picker/live_state.h"
 #include "wayland/capture_transform.h"
 #include "wayland/shm_format.h"
@@ -14,7 +15,7 @@
 #include <map>
 #include <mutex>
 #include <set>
-#include <sys/epoll.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
@@ -54,9 +55,10 @@ namespace xdpu {
     }
 
     // One shown source; its mode lives in m_state and changes only in apply() (share_picker/live_state.h).
-    class Live {
+    // A PollSource with no fds: its deadline is the pacing timer, valid only in Waiting.
+    class Live final : public PollSource {
     public:
-      Live(Loop& loop, WaylandContext& wayland, std::size_t index, const ThumbnailSource& source,
+      Live(PollLoop& loop, WaylandContext& wayland, std::size_t index, const ThumbnailSource& source,
            std::function<void(Thumbnail)> publish)
           : m_loop(loop), m_wayland(wayland), m_index(index), m_publish(std::move(publish)) {
         auto constraints = [this](const CaptureConstraints& info) { configure(info); };
@@ -67,12 +69,11 @@ namespace xdpu {
           return;
         }
         m_session->stoppedCb = [this] { apply(LiveEvent::SessionStopped); };
+        m_loop.addSource(this);
       }
 
-      ~Live() {
-        if (m_state == LiveState::Waiting) {
-          m_loop.removeTimer(m_timer);
-        }
+      ~Live() override {
+        m_loop.removeSource(this);
         m_frame.reset();
         m_session.reset();
         releaseBuffer();
@@ -81,7 +82,23 @@ namespace xdpu {
       Live(const Live&) = delete;
       Live& operator=(const Live&) = delete;
 
+      [[nodiscard]] int pollTimeoutMs() const override {
+        if (m_state != LiveState::Waiting) {
+          return -1;
+        }
+        const auto left = std::chrono::ceil<std::chrono::milliseconds>(m_due - Clock::now()).count();
+        return static_cast<int>(std::max<decltype(left)>(left, 0));
+      }
+
+      void dispatch(const std::vector<pollfd>& /*fds*/, std::size_t /*startIdx*/) override {
+        if (m_state == LiveState::Waiting && m_due <= Clock::now()) {
+          apply(LiveEvent::TimerFired);
+        }
+      }
+
     private:
+      void doAddPollFds(std::vector<pollfd>& /*fds*/) override {}
+
       // A frame callback may call apply() again from inside startCapture: the state is stored first.
       void apply(LiveEvent event) {
         const std::optional<LiveStep> step = liveTransition(m_state, event);
@@ -90,15 +107,12 @@ namespace xdpu {
                        static_cast<int>(m_state));
           return;
         }
-        if (step->cancelTimer) {
-          m_loop.removeTimer(m_timer);
-        }
         if (step->dropFrame) {
           m_frame.reset();
         }
         m_state = step->next;
         if (step->startTimer) {
-          m_timer = m_loop.addTimer(m_delayMs, [this] { apply(LiveEvent::TimerFired); });
+          m_due = Clock::now() + std::chrono::milliseconds(m_delayMs);
         }
         if (step->startCapture) {
           capture();
@@ -185,7 +199,7 @@ namespace xdpu {
         }
       }
 
-      Loop& m_loop;
+      PollLoop& m_loop;
       WaylandContext& m_wayland;
       std::size_t m_index;
       std::function<void(Thumbnail)> m_publish;
@@ -199,7 +213,7 @@ namespace xdpu {
       uint32_t m_width = 0;
       uint32_t m_height = 0;
       uint32_t m_format = 0;
-      int m_timer = 0;   // valid only in Waiting
+      Clock::time_point m_due; // valid only in Waiting
       int m_delayMs = kFrameIntervalMs;
       Clock::time_point m_started;
     };
@@ -240,7 +254,8 @@ namespace xdpu {
         return;
       }
       try {
-        Loop loop;
+        // TimerManager and DeferredCall belong to the main thread: this thread's loop runs only its own sources.
+        PollLoop loop(PollLoop::Kind::Worker);
         // The Wayland connection waits for the first shown source.
         std::unique_ptr<WaylandContext> wayland;
         std::map<std::size_t, std::unique_ptr<Live>> live;
@@ -270,7 +285,7 @@ namespace xdpu {
           }
           wayland->flush();
         };
-        loop.addFd(wake.pollFd(), EPOLLIN, [&](uint32_t) { reconcile(); });
+        const FdWatch wakeWatch(loop, wake.pollFd(), POLLIN, [&](short) { reconcile(); });
         loop.run();
         live.clear();
       } catch (const std::exception& error) {

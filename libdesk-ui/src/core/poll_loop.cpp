@@ -61,6 +61,9 @@ bool PollLoop::runDeferred() {
   if (m_exitCode) {
     return false;
   }
+  if (m_kind == Kind::Worker) {
+    return true;
+  }
   for (auto& fn : DeferredCall::takePending()) {
     if (fn) {
       fn();
@@ -70,14 +73,19 @@ bool PollLoop::runDeferred() {
 }
 
 int PollLoop::prepare(std::vector<pollfd>& fds) {
-  std::vector<PollSource*> all{&g_deferred, &g_timers};
+  std::vector<PollSource*> all;
+  if (m_kind == Kind::Main) {
+    all = {&g_deferred, &g_timers};
+  }
   all.insert(all.end(), m_sources.begin(), m_sources.end());
   return m_schedule.prepare(all, fds, PollSchedule::Clock::now());
 }
 
 void PollLoop::dispatch(const std::vector<pollfd>& fds) {
-  m_schedule.dispatch(fds, PollSchedule::Clock::now(), [&fds](PollSource& source, std::size_t start, PollSchedule::Wake) {
-    source.dispatch(fds, start);
+  m_schedule.dispatch(fds, PollSchedule::Clock::now(), [this, &fds](PollSource& source, std::size_t start, PollSchedule::Wake) {
+    if (!m_exitCode) {
+      source.dispatch(fds, start);
+    }
   });
 }
 

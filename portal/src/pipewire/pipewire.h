@@ -9,14 +9,15 @@
 struct pw_buffer;
 struct pw_loop;
 
+class PollLoop;
+
 namespace xdpu {
 
-  class Loop;
   class PipeWireStream;
 
   class PipeWireContext {
   public:
-    explicit PipeWireContext(Loop& loop);
+    explicit PipeWireContext(PollLoop& loop);
     ~PipeWireContext();
 
     PipeWireContext(const PipeWireContext&) = delete;

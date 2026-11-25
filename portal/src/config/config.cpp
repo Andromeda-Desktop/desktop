@@ -1,16 +1,19 @@
 #include "config/config.h"
 
-#include "loop/loop.h"
+#include "core/fd_watch.h"
+#include "core/poll_loop.h"
+#include "core/timer_manager.h"
 #include "protocols/xdg_dirs.h"
 
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <limits>
 #include <string_view>
-#include <sys/epoll.h>
+#include <poll.h>
 #include <sys/inotify.h>
 #include <toml++/toml.hpp>
 #include <unistd.h>
@@ -93,7 +96,7 @@ namespace xdpu {
   }
 
   struct ConfigWatcher::Impl {
-    Impl(Loop& loop, std::function<void(const Config& oldCfg, const Config& newCfg)> onChange)
+    Impl(PollLoop& loop, std::function<void(const Config& oldCfg, const Config& newCfg)> onChange)
         : loop(loop), onChange(std::move(onChange)), path(normalized(configPath())), configDir(path.parent_path()),
           configDirName(configDir.filename().string()), current(loadConfig()) {
       fd = ::inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
@@ -104,23 +107,12 @@ namespace xdpu {
 
       establishWatches();
 
-      fdWatchId = loop.addFd(fd, EPOLLIN, [this](uint32_t) { handleInotify(); });
-      if (fdWatchId == 0) {
-        std::fprintf(stderr, "config: unable to register inotify fd with loop; hot reload disabled\n");
-        closeFd(fd);
-        fd = -1;
-      }
+      fdWatch = std::make_unique<FdWatch>(loop, fd, POLLIN, [this](short) { handleInotify(); });
     }
 
     ~Impl() {
-      if (timerId != 0) {
-        loop.removeTimer(timerId);
-        timerId = 0;
-      }
-      if (fdWatchId != 0) {
-        loop.removeFd(fdWatchId);
-        fdWatchId = 0;
-      }
+      reloadTimer.stop();
+      fdWatch.reset();
       if (fd >= 0) {
         if (fileWatch >= 0) {
           ::inotify_rm_watch(fd, fileWatch);
@@ -222,15 +214,7 @@ namespace xdpu {
     }
 
     void scheduleReload() {
-      if (timerId != 0) {
-        loop.removeTimer(timerId);
-        timerId = 0;
-      }
-
-      timerId = loop.addTimer(kDebounceMs, [this] {
-        timerId = 0;
-        reload();
-      });
+      reloadTimer.start(std::chrono::milliseconds(kDebounceMs), [this] { reload(); });
     }
 
     void reload() {
@@ -351,22 +335,22 @@ namespace xdpu {
       }
     }
 
-    Loop& loop;
+    PollLoop& loop;
     std::function<void(const Config& oldCfg, const Config& newCfg)> onChange;
     std::filesystem::path path;
     std::filesystem::path configDir;
     std::string configDirName;
     Config current;
     int fd = -1;
-    int fdWatchId = 0;
+    std::unique_ptr<FdWatch> fdWatch;
     int fileWatch = -1;
     int dirWatch = -1;
     int ancestorWatch = -1;
     std::filesystem::path ancestorPath;
-    int timerId = 0;
+    Timer reloadTimer;
   };
 
-  ConfigWatcher::ConfigWatcher(Loop& loop, std::function<void(const Config& oldCfg, const Config& newCfg)> onChange)
+  ConfigWatcher::ConfigWatcher(PollLoop& loop, std::function<void(const Config& oldCfg, const Config& newCfg)> onChange)
       : m_impl(std::make_unique<Impl>(loop, std::move(onChange))) {}
 
   ConfigWatcher::~ConfigWatcher() = default;

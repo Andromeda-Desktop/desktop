@@ -12,7 +12,6 @@ namespace sdbus {
 
 namespace xdpu {
 
-  class Loop;
   class Session;
 
   // Every portal session by handle. ScreenCast and RemoteDesktop share it: a RemoteDesktop session may also select
@@ -21,7 +20,7 @@ namespace xdpu {
   public:
     using ClosedListener = std::function<void(Session&)>;
 
-    SessionTable(Loop& loop, sdbus::IConnection& connection);
+    explicit SessionTable(sdbus::IConnection& connection);
     ~SessionTable();
 
     SessionTable(const SessionTable&) = delete;
@@ -38,10 +37,10 @@ namespace xdpu {
     void addClosedListener(ClosedListener listener);
 
   private:
-    Loop& m_loop;
     sdbus::IConnection& m_connection;
     std::map<std::string, std::shared_ptr<Session>> m_sessions;
     std::vector<ClosedListener> m_closedListeners;
+    std::shared_ptr<const void> m_alive = std::make_shared<char>(); // expires with the table
   };
 
 } // namespace xdpu

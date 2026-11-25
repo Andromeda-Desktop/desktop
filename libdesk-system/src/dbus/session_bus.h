@@ -7,6 +7,8 @@
 class SessionBus {
 public:
   SessionBus();
+  // Owns `name` on the bus.
+  explicit SessionBus(const sdbus::ServiceName& name);
 
   [[nodiscard]] sdbus::IConnection& connection() noexcept { return *m_connection; }
   [[nodiscard]] sdbus::IConnection::PollData getPollData() const;

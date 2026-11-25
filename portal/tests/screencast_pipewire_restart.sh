@@ -54,7 +54,6 @@ mkdir -p "$XDG_CONFIG_HOME/xdg-desktop-portal-andromeda" "$XDG_CACHE_HOME" "$XDG
 cat >"$RUNTIME/config.toml" <<'CONFIG'
 [general]
 xwayland = false
-show_cheatsheet = false
 autostart = []
 [animation]
 enabled = false

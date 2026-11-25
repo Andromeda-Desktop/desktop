@@ -6,7 +6,9 @@
 #include "dbus/request.h"
 #include "dbus/session.h"
 #include "dbus/session_table.h"
-#include "loop/loop.h"
+#include "core/deferred_call.h"
+#include "core/poll_loop.h"
+#include "core/timer_manager.h"
 #include "pipewire/pipewire.h"
 #include "wayland/wayland.h"
 
@@ -311,7 +313,7 @@ namespace xdpu {
       Session::DynamicMode dynamicMode = Session::DynamicMode::Static;
     };
 
-    Loop& loop;
+    PollLoop& loop;
     sdbus::IConnection& connection;
     sdbus::IObject& object;
     SessionTable& sessions;
@@ -329,7 +331,7 @@ namespace xdpu {
     static constexpr auto kDynamicGrantLifetime = std::chrono::seconds(2);
 
     Impl(
-        Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
+        PollLoop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
         const Config& config, WaylandContext& wayland, PipeWireContext& pipewire
     )
         : loop(loop), connection(connection), object(object), sessions(sessions), config(config), wayland(wayland),
@@ -407,7 +409,7 @@ namespace xdpu {
       auto request = std::make_shared<Request>(connection, handle, []() {});
       const bool created = sessions.create(sessionPath, appId, sender()) != nullptr;
       result.returnResults(uint32_t{created ? 0U : 2U}, PortalResults{});
-      loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
+      DeferredCall::callLater([request = std::move(request)]() mutable { request.reset(); });
     }
 
     void selectSources(
@@ -418,7 +420,7 @@ namespace xdpu {
       const auto session = sessions.find(sessionPath, sender());
       if (!session) {
         result.returnResults(uint32_t{2}, PortalResults{});
-        loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
+        DeferredCall::callLater([request = std::move(request)]() mutable { request.reset(); });
         return;
       }
 
@@ -429,14 +431,14 @@ namespace xdpu {
         std::fprintf(stderr, "screencast: unsupported cursor mode %u\n", cursorMode);
         session->closeByBackend();
         result.returnResults(uint32_t{2}, PortalResults{});
-        loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
+        DeferredCall::callLater([request = std::move(request)]() mutable { request.reset(); });
         return;
       }
       const uint32_t persistMode = optionValue<uint32_t>(options, "persist_mode").value_or(0);
       session->setSelectionOptions(types, multiple, cursorMode, persistMode, parseRestoreData(options));
 
       result.returnResults(uint32_t{0}, PortalResults{});
-      loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
+      DeferredCall::callLater([request = std::move(request)]() mutable { request.reset(); });
     }
 
     struct StartOperation : public std::enable_shared_from_this<StartOperation> {
@@ -446,7 +448,7 @@ namespace xdpu {
       std::shared_ptr<AsyncProcess> process;
       std::shared_ptr<Session> session;
       std::vector<PendingCapture> pending;
-      int timeoutTimer = 0;
+      Timer timeoutTimer;
       bool done = false;
       std::optional<Session::DynamicMode> waitingMode;
       std::optional<Session::DynamicMode> requestedDynamicMode;
@@ -521,7 +523,7 @@ namespace xdpu {
           return;
         }
         auto doomed = std::move(request);
-        portal.loop.addTimer(0, [doomed = std::move(doomed)]() mutable { doomed.reset(); });
+        DeferredCall::callLater([doomed = std::move(doomed)]() mutable { doomed.reset(); });
       }
 
       void finish(uint32_t response, PortalResults results = {}) {
@@ -529,11 +531,7 @@ namespace xdpu {
           return;
         }
         done = true;
-        if (timeoutTimer != 0) {
-          const int timer = timeoutTimer;
-          timeoutTimer = 0;
-          portal.loop.removeTimer(timer);
-        }
+        timeoutTimer.stop();
         if (response != 0 && session) {
           session->clearStreams();
         }
@@ -709,12 +707,12 @@ namespace xdpu {
           }
         }
 
-        timeoutTimer = portal.loop.addTimer(5000, [weakSelf]() {
+        timeoutTimer.start(std::chrono::seconds(5), [weakSelf]() {
           auto self = weakSelf.lock();
           if (!self || self->done) {
             return;
           }
-          self->timeoutTimer = 0;
+          self->timeoutTimer.stop();
           std::fprintf(stderr, "screencast: timed out waiting for capture constraints\n");
           self->finish(2, {});
         });
@@ -774,11 +772,7 @@ namespace xdpu {
           }
         }
 
-        if (timeoutTimer != 0) {
-          const int timer = timeoutTimer;
-          timeoutTimer = 0;
-          portal.loop.removeTimer(timer);
-        }
+        timeoutTimer.stop();
 
         for (PendingCapture& item : pending) {
           const uint32_t width = item.constraints.bufferWidth;
@@ -806,7 +800,7 @@ namespace xdpu {
           const std::string sessionPath = session->path();
           Impl* portalPtr = &portal;
           if (!session->addStream(
-                  portal.loop, portal.wayland, std::move(item.capture), std::move(stream), item.constraints,
+                  portal.wayland, std::move(item.capture), std::move(stream), item.constraints,
                   item.selection, captureCursorMode,
                   static_cast<uint32_t>(std::max(0, portal.config.screencast.maxFps)), item.dynamicMode,
                   [portalPtr, sessionPath]() {
@@ -995,7 +989,7 @@ namespace xdpu {
       if (!session || !session->beginStart()) {
         auto request = std::make_shared<Request>(connection, handle, []() {});
         result.returnResults(uint32_t{2}, PortalResults{});
-        loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });
+        DeferredCall::callLater([request = std::move(request)]() mutable { request.reset(); });
         return;
       }
 
@@ -1027,7 +1021,7 @@ namespace xdpu {
   };
 
   ScreenCastPortal::ScreenCastPortal(
-      Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions, const Config& config,
+      PollLoop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions, const Config& config,
       WaylandContext& wayland, PipeWireContext& pipewire
   )
       : m_impl(std::make_unique<Impl>(loop, connection, object, sessions, config, wayland, pipewire)) {}

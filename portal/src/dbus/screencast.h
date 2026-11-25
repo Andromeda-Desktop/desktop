@@ -15,9 +15,10 @@ namespace sdbus {
   class IObject;
 } // namespace sdbus
 
+class PollLoop;
+
 namespace xdpu {
 
-  class Loop;
   class PipeWireContext;
   class Session;
   class SessionTable;
@@ -33,7 +34,7 @@ namespace xdpu {
   class ScreenCastPortal {
   public:
     ScreenCastPortal(
-        Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
+        PollLoop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
         const Config& config, WaylandContext& wayland, PipeWireContext& pipewire
     );
     ~ScreenCastPortal();

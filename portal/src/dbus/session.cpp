@@ -1,7 +1,8 @@
 #include "dbus/session.h"
 
 #include "dbus/caller.h"
-#include "loop/loop.h"
+#include "core/deferred_call.h"
+#include "core/timer_manager.h"
 #include "pipewire/pipewire.h"
 
 #include <algorithm>
@@ -37,7 +38,6 @@ namespace xdpu {
 
   struct Session::Impl {
     struct StreamState : public std::enable_shared_from_this<StreamState> {
-      Loop* loop = nullptr;
       WaylandContext* wayland = nullptr;
       std::unique_ptr<WaylandContext::CaptureSession> capture;
       std::unique_ptr<PipeWireStream> stream;
@@ -46,7 +46,7 @@ namespace xdpu {
       ClosedHandler backendClosedHandler;
       uint32_t maxFps = 0;
       CaptureCursorMode cursorMode = CaptureCursorMode::Hidden;
-      int fpsTimer = 0;
+      Timer fpsTimer; // active while a frame is scheduled
       bool stopped = false;
       DynamicMode dynamicMode = DynamicMode::Static;
       bool frameInFlight = false;
@@ -87,11 +87,7 @@ namespace xdpu {
           return;
         }
         stopped = true;
-        if (fpsTimer != 0 && loop != nullptr) {
-          const int timer = fpsTimer;
-          fpsTimer = 0;
-          loop->removeTimer(timer);
-        }
+        fpsTimer.stop();
         // Destroy the pending frame first because its proxy must be gone before
         // the capture session or stream buffers it references.
         cancelFrame();
@@ -133,13 +129,13 @@ namespace xdpu {
       }
 
       void scheduleProcess(int delayMs) {
-        if (fpsTimer != 0 || loop == nullptr) {
+        if (fpsTimer.active()) {
           return;
         }
         std::weak_ptr<StreamState> weak = shared_from_this();
-        fpsTimer = loop->addTimer(delayMs, [weak]() {
+        fpsTimer.start(std::chrono::milliseconds(delayMs), [weak]() {
           if (auto self = weak.lock()) {
-            self->fpsTimer = 0;
+            self->fpsTimer.stop();
             self->processRequest();
           }
         });
@@ -523,7 +519,7 @@ namespace xdpu {
   const std::vector<Session::Selection>& Session::selections() const { return m_impl->currentSelections; }
 
   bool Session::addStream(
-      Loop& loop, WaylandContext& wayland, std::unique_ptr<WaylandContext::CaptureSession> capture,
+      WaylandContext& wayland, std::unique_ptr<WaylandContext::CaptureSession> capture,
       std::unique_ptr<PipeWireStream> stream, const CaptureConstraints& constraints, const Selection& selection,
       CaptureCursorMode cursorMode, uint32_t maxFps, DynamicMode dynamicMode, ClosedHandler backendClosedHandler
   ) {
@@ -532,7 +528,6 @@ namespace xdpu {
     }
 
     auto state = std::make_shared<Impl::StreamState>();
-    state->loop = &loop;
     state->wayland = &wayland;
     state->capture = std::move(capture);
     state->stream = std::move(stream);
@@ -560,8 +555,8 @@ namespace xdpu {
         streamState->bufferRemoved(buffer);
       }
     };
-    state->stream->onLost = [weak, &loop]() {
-      loop.addTimer(0, [weak]() {
+    state->stream->onLost = [weak]() {
+      DeferredCall::callLater([weak]() {
         if (auto streamState = weak.lock()) {
           streamState->endByBackend();
         }

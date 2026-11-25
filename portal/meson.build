@@ -71,7 +71,6 @@ defaults_h = configure_file(
 
 daemon_sources = files(
   'src/main.cpp',
-  'src/loop/loop.cpp',
   'src/config/config.cpp',
   'src/dbus/dbus.cpp',
   'src/dbus/screenshot.cpp',
@@ -133,7 +132,13 @@ if get_option('tests')
     'pipewire-buffer-params-test',
     'tests/pipewire_buffer_params.cpp',
     include_directories: include_directories('src'),
-    dependencies: [pipewire_dep, wayland_client_dep, libdrm_dep, gbm_dep],
+    dependencies: [
+      pipewire_dep,
+      wayland_client_dep,
+      libdrm_dep,
+      gbm_dep,
+      subproject('libdesk-system').get_variable('desk_system_dep'),
+    ],
     # The test includes pipewire.cpp, so GCC treats its anonymous-namespace types as header types.
     cpp_args: ['-ffunction-sections', '-fdata-sections', '-Wno-subobject-linkage'],
     link_args: [
@@ -157,7 +162,7 @@ endif
 # The source sheet (src/share_picker): a libdesk-app window over the asking app, started per Start request.
 executable(
   'andromeda-share-picker',
-  ['src/share_picker/main.cpp', 'src/share_picker/thumbnails.cpp', 'src/loop/loop.cpp', 'src/wayland/wayland.cpp']
+  ['src/share_picker/main.cpp', 'src/share_picker/thumbnails.cpp', 'src/wayland/wayland.cpp']
     + protocol_sources,
   include_directories: include_directories('src'),
   dependencies: [
