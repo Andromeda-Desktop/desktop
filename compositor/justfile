@@ -1,9 +1,7 @@
 set positional-arguments
 
-mode := "debug"
-build-dir := "build-" + mode
-prefix := "/usr/local"
-cpp-std := "c++23"
+import '../tools/module.just'
+
 # Defaults for asan mode. Leak detection is off: Mesa leaks its EGL setup on
 # every renderer teardown, which buries a real finding. A later key wins, so
 # ASAN_OPTIONS from the environment is appended and overrides these.
@@ -57,25 +55,7 @@ configure m=mode install_prefix=prefix:
         rm -rf subprojects/wlroots subprojects/libliftoff
         echo "$stamp" > subprojects/.patches.stamp
     fi
-    if [[ -d "build-{{m}}" ]]; then
-        # A build directory rejects an option added since it was configured
-        # until Meson re-reads the option file, so regenerate and try again.
-        # Subproject options are accepted only by a fresh setup, so a newly forced wrap regenerates the directory.
-        ../tools/build.sh meson setup "build-{{m}}" "${args[@]}" --reconfigure \
-          || { ../tools/build.sh meson setup "build-{{m}}" --reconfigure && ../tools/build.sh meson setup "build-{{m}}" "${args[@]}" --reconfigure; } \
-          || ../tools/build.sh meson setup "build-{{m}}" "${args[@]}" --wipe
-    else
-        ../tools/build.sh meson setup "build-{{m}}" "${args[@]}"
-    fi
-    ln -sfn "build-{{m}}/compile_commands.json" compile_commands.json
-
-[no-exit-message]
-_ensure-configured m=mode:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [[ ! -f "build-{{m}}/build.ninja" ]]; then
-        just configure {{m}}
-    fi
+    just _meson-setup "{{m}}" wipe "${args[@]}"
 
 # Auto mode leaves test targets out of release and sanitized builds, so the recipes that need them turn them on
 # for the build directory they run in. `ipc` also turns on the harness-only IPC commands, which `check` needs and
@@ -233,13 +213,3 @@ lint *files: (_ensure-configured mode) (_enable-tests mode)
         exec clang-tidy --use-color "${opts[@]}" "$@"
     fi
     run-clang-tidy -use-color -j "$(nproc)" "${opts[@]}" "^($(realpath src)|$(realpath tests))/.*"
-
-clean m=mode:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [[ -L compile_commands.json && "$(readlink compile_commands.json)" == "build-{{m}}/compile_commands.json" ]]; then
-        rm -f compile_commands.json
-    fi
-    rm -rf build-{{m}}
-
-rebuild m=mode: (clean m) (build m)
