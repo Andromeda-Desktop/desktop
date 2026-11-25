@@ -48,7 +48,7 @@ case ${1:-} in
     want compositor && arch-meson desktop/compositor build-compositor -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true \
       --force-fallback-for=wlroots-0.20,libliftoff \
       -Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=shared -Dlibliftoff:werror=false
-    want shell && arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+    { want shell || want greeter; } && arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
     want portal && arch-meson desktop/portal build-portal -Dcpp_std=c++23
     [[ -n ${ANDROMEDA_ONLY:-} ]] || arch-meson desktop/indexer build-indexer -Db_lto=true
     want preview && arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
@@ -56,6 +56,7 @@ case ${1:-} in
       arch-meson desktop/apps/$app build-$app -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
     done
     for dir in compositor shell portal preview; do want $dir && meson compile -C build-$dir; done
+    want shell || ! want greeter || meson compile -C build-shell tools/greeter-apply-appearance/andromeda-greeter-apply-appearance
     [[ -n ${ANDROMEDA_ONLY:-} ]] || meson compile -C build-indexer
     for app in "${apps[@]}"; do meson compile -C build-$app; done
     if want system; then

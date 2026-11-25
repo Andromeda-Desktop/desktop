@@ -922,11 +922,11 @@
       "greeter-sync-pending-console": "Se sincronizează aspectul cu ecranul de autentificare. Dacă este necesară autorizarea, aprobă solicitarea polkit în Andromeda, pe un TTY sau pe o consolă.",
       "greeter-sync-pending-legacy": "Se sincronizează prin instrumentul auxiliar autentificat vechi. Este necesară aprobarea administratorului.",
       "greeter-sync-pending-manual": "Fișierele sunt pregătite pentru sincronizarea autentificată veche. Rulează instrumentul auxiliar de aplicare pozițional într-un terminal, păstrând NOCTALIA_GREETER_STATE_DIR dacă folosești o cale personalizată, sau configurează shell.greeter_sync.privilege_command și sincronizează din nou.",
-      "greeter-sync-pending-manual-pkexec": "Se sincronizează aspectul cu ecranul de autentificare. Dacă este necesară autorizarea administratorului și nu apare nicio solicitare, rulează într-un terminal: pkexec noctalia-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\".",
+      "greeter-sync-pending-manual-pkexec": "Se sincronizează aspectul cu ecranul de autentificare. Dacă este necesară autorizarea administratorului și nu apare nicio solicitare, rulează într-un terminal: pkexec andromeda-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\".",
       "greeter-sync-success": "Aspectul a fost sincronizat. Modificările se aplică la următorul ecran de autentificare.",
       "greeter-sync-timeout": "Sincronizarea cu ecranul de autentificare așteaptă încă autorizarea. Verifică un TTY sau o consolă pentru o solicitare polkit, activează agentul polkit din setările de securitate sau rulează pkexec manual.",
       "greeter-sync-timeout-manual": "Sincronizarea autentificată veche necesită încă aprobarea administratorului. Rulează instrumentul auxiliar de aplicare pozițional într-un terminal și păstrează NOCTALIA_GREETER_STATE_DIR dacă folosești o cale personalizată.",
-      "greeter-sync-timeout-manual-pkexec": "Sincronizarea cu ecranul de autentificare necesită încă autorizare. Rulează într-un terminal: pkexec noctalia-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\"",
+      "greeter-sync-timeout-manual-pkexec": "Sincronizarea cu ecranul de autentificare necesită încă autorizare. Rulează într-un terminal: pkexec andromeda-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\"",
       "keybind-app": "Andromeda",
       "keybind-invalid-modifier": "Această comandă rapidă acceptă o singură tastă fără modificatori.",
       "keybind-invalid-printable": "Tastele imprimabile (litere, cifre, simboluri) necesită un modificator precum Ctrl sau Alt.",
@@ -1314,7 +1314,7 @@
       "sync-greeter": "Nu s-a putut sincroniza aspectul cu Andromeda Greeter.",
       "sync-greeter-timeout": "Sincronizarea cu ecranul de autentificare așteaptă încă autorizarea. Verifică un TTY sau o consolă pentru o solicitare polkit, activează agentul polkit din setările de securitate sau rulează pkexec manual.",
       "sync-greeter-timeout-manual": "Sincronizarea autentificată veche necesită încă aprobarea administratorului. Rulează instrumentul auxiliar de aplicare pozițional într-un terminal și păstrează NOCTALIA_GREETER_STATE_DIR dacă folosești o cale personalizată.",
-      "sync-greeter-timeout-manual-pkexec": "Sincronizarea cu ecranul de autentificare necesită încă autorizare. Rulează într-un terminal: pkexec noctalia-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\"",
+      "sync-greeter-timeout-manual-pkexec": "Sincronizarea cu ecranul de autentificare necesită încă autorizare. Rulează într-un terminal: pkexec andromeda-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\"",
       "widget": {
         "rename": "Nu s-a putut redenumi widgetul numit."
       },

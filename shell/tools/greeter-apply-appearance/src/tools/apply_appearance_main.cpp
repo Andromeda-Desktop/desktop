@@ -32,7 +32,10 @@ namespace {
         << " --setup-system\n"
         << "       "
         << programName
-        << " --print-greeter-user\n\n"
+        << " --print-greeter-user\n"
+        << "       "
+        << programName
+        << " passwordless-sync enable|disable|status [USER]\n\n"
         << "Installs appearance into "
         << greeter::appearance::syncedDataDirectory().string()
         << " (owned by the greetd session user).\n"

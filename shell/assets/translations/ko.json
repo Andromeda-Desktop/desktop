@@ -810,10 +810,10 @@
       "greeter-sync": "Andromeda Greeter",
       "greeter-sync-pending": "Greeter에 쓰기 위한 관리자 승인을 기다리는 중입니다.",
       "greeter-sync-pending-console": "관리자 승인을 기다리는 중입니다. Andromeda 또는 TTY/콘솔에서 polkit 프롬프트를 승인하거나 pkexec를 수동으로 실행하세요.",
-      "greeter-sync-pending-manual": "파일이 준비되었습니다. 터미널에서 실행하세요: pkexec noctalia-greeter-apply-appearance \"$XDG_RUNTIME_DIR/noctalia-greeter-sync\". 또는 shell.greeter_sync.privilege_command를 설정하고 (예: ghostty -e pkexec) 다시 동기화하세요.",
+      "greeter-sync-pending-manual": "파일이 준비되었습니다. 터미널에서 실행하세요: pkexec andromeda-greeter-apply-appearance \"$XDG_RUNTIME_DIR/noctalia-greeter-sync\". 또는 shell.greeter_sync.privilege_command를 설정하고 (예: ghostty -e pkexec) 다시 동기화하세요.",
       "greeter-sync-success": "모양이 동기화되었습니다. 변경 사항은 다음 로그인 화면에서 적용됩니다.",
       "greeter-sync-timeout": "Greeter 동기화가 관리자 승인을 기다리고 있습니다. TTY나 콘솔에서 polkit 프롬프트를 확인하거나, 보안 설정에서 polkit 에이전트를 활성화하거나, pkexec를 수동으로 실행하세요.",
-      "greeter-sync-timeout-manual": "Greeter 동기화에 여전히 관리자 승인이 필요합니다. 터미널에서 실행하세요: pkexec noctalia-greeter-apply-appearance \"$XDG_RUNTIME_DIR/noctalia-greeter-sync\"",
+      "greeter-sync-timeout-manual": "Greeter 동기화에 여전히 관리자 승인이 필요합니다. 터미널에서 실행하세요: pkexec andromeda-greeter-apply-appearance \"$XDG_RUNTIME_DIR/noctalia-greeter-sync\"",
       "keybind-app": "Andromeda",
       "keybind-invalid-modifier": "이 단축키는 수정자 키 없이 단일 키만 허용합니다.",
       "keybind-invalid-printable": "인쇄 가능한 키(문자, 숫자, 기호)는 Ctrl 또는 Alt와 같은 수정자 키가 필요합니다.",
@@ -1176,7 +1176,7 @@
       "support-report": "지원 보고서 저장에 실패했습니다.",
       "sync-greeter": "Andromeda Greeter와 모양을 동기화할 수 없습니다.",
       "sync-greeter-timeout": "Greeter 동기화가 관리자 승인을 기다리고 있습니다. TTY나 콘솔에서 polkit 프롬프트를 확인하거나, 보안 설정에서 polkit 에이전트를 활성화하거나, pkexec를 수동으로 실행하세요.",
-      "sync-greeter-timeout-manual": "Greeter 동기화에 여전히 관리자 승인이 필요합니다. 터미널에서 실행하세요: pkexec noctalia-greeter-apply-appearance \"$XDG_RUNTIME_DIR/noctalia-greeter-sync\"",
+      "sync-greeter-timeout-manual": "Greeter 동기화에 여전히 관리자 승인이 필요합니다. 터미널에서 실행하세요: pkexec andromeda-greeter-apply-appearance \"$XDG_RUNTIME_DIR/noctalia-greeter-sync\"",
       "widget": {
         "rename": "이름 있는 위젯의 이름을 변경할 수 없습니다."
       },

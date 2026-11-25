@@ -32,7 +32,7 @@ _apps=(files viewer player terminal link-app)
 [[ -z ${ANDROMEDA_CORE:-} ]] || _apps=()
 # Epoch keeps the monorepo revision newer than the per-fork versions it replaces.
 epoch=1
-pkgver=2026.11.7.r16760
+pkgver=2026.11.14.r17375
 pkgrel=1
 arch=(x86_64)
 license=(GPL-3.0-or-later MIT)
@@ -104,7 +104,8 @@ build() {
   _want compositor && arch-meson desktop/compositor build-compositor -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true \
     --wrap-mode=default --force-fallback-for=wlroots-0.20,libliftoff \
     -Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=shared -Dlibliftoff:werror=false -Dwlroots:renderers=gles2
-  _want shell && arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+  # A greeter-only release builds only the greeter's apply helper from the shell tree.
+  { _want shell || _want greeter; } && arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   _want portal && arch-meson desktop/portal build-portal -Dcpp_std=c++23
   _want preview && arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   # The indexer ships in the meta package, which only a full release builds.
@@ -113,6 +114,7 @@ build() {
     arch-meson desktop/apps/$app build-$app -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   done
   for part in compositor shell portal preview; do _want $part && meson compile -C build-$part; done
+  _want shell || ! _want greeter || meson compile -C build-shell tools/greeter-apply-appearance/andromeda-greeter-apply-appearance
   [[ -n ${ANDROMEDA_ONLY:-} ]] || meson compile -C build-indexer
   for app in "${_apps[@]}"; do meson compile -C build-$app; done
   [[ -n ${ANDROMEDA_ONLY:-} ]] || echo "$stamp" > meson.stamp
@@ -461,12 +463,18 @@ package_andromeda-power-git() {
 
 package_andromeda-greeter-git() {
   pkgdesc="greetd login for Andromeda: the greetd config and drop-in that run the shell's greeter mode"
-  depends=(andromeda-greetd andromeda-shell-git andromeda-compositor-git)
+  depends=(andromeda-greetd andromeda-shell-git andromeda-compositor-git libxml2 tomlplusplus)
   optdepends=('gaze-bin: face login; needs the marker-host change until it is upstream (tools/gaze-patched.sh)')
   provides=(noctalia-greeter)
   conflicts=(noctalia-greeter noctalia-greeter-desktop-git)
   replaces=(noctalia-greeter-desktop-git)
   install=noctalia-greeter.install
+  local helper=build-shell/tools/greeter-apply-appearance
+  install -Dm755 $helper/andromeda-greeter-apply-appearance "$pkgdir/usr/bin/andromeda-greeter-apply-appearance"
+  install -Dm644 $helper/org.andromeda.greeter.apply-appearance.policy \
+    "$pkgdir/usr/share/polkit-1/actions/org.andromeda.greeter.apply-appearance.policy"
+  install -Dm644 desktop/shell/tools/greeter-apply-appearance/data/noctalia-greeter.tmpfiles \
+    "$pkgdir/usr/lib/tmpfiles.d/noctalia-greeter.conf"
   install -Dm644 desktop/session/pam.d/gdm-face "$pkgdir/etc/pam.d/gdm-face"
   install -Dm644 desktop/session/greetd/config-greeter-mode.toml "$pkgdir/usr/share/noctalia-greeter/greetd.toml"
   install -Dm644 desktop/session/greetd/noctalia-greeter.conf \

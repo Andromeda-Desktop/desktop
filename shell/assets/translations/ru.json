@@ -922,11 +922,11 @@
       "greeter-sync-pending-console": "Синхронизация внешнего вида с экраном входа. Если потребуется авторизация, подтвердите запрос polkit в Andromeda, в TTY или в консоли.",
       "greeter-sync-pending-legacy": "Синхронизация через устаревший модуль с авторизацией. Требуется подтверждение администратора.",
       "greeter-sync-pending-manual": "Файлы подготовлены для устаревшей синхронизации с аутентификацией. Запустите консольную утилиту применения в терминале (сохранив переменную NOCTALIA_GREETER_STATE_DIR, если вы используете кастомный путь) или настройте параметр shell.greeter_sync.privilege_command и повторите синхронизацию.",
-      "greeter-sync-pending-manual-pkexec": "Синхронизация внешнего вида с экраном входа. Если требуется авторизация администратора, а запрос не появляется, выполните в терминале: pkexec noctalia-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\".",
+      "greeter-sync-pending-manual-pkexec": "Синхронизация внешнего вида с экраном входа. Если требуется авторизация администратора, а запрос не появляется, выполните в терминале: pkexec andromeda-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\".",
       "greeter-sync-success": "Внешний вид синхронизирован. Изменения вступят в силу на следующем экране входа.",
       "greeter-sync-timeout": "Синхронизация с экраном входа всё ещё ожидает авторизации. Проверьте TTY или консоль на наличие запроса polkit, включите агент polkit в разделе «Безопасность» или выполните pkexec вручную.",
       "greeter-sync-timeout-manual": "Для устаревшей синхронизации с аутентификацией по-прежнему требуется подтверждение администратора. Запустите позиционный вспомогательный инструмент применения (apply helper) в терминале, сохранив переменную NOCTALIA_GREETER_STATE_DIR, если вы используете нестандартный путь.",
-      "greeter-sync-timeout-manual-pkexec": "Синхронизация с экраном входа всё ещё требует авторизации. Выполните в терминале: pkexec noctalia-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\"",
+      "greeter-sync-timeout-manual-pkexec": "Синхронизация с экраном входа всё ещё требует авторизации. Выполните в терминале: pkexec andromeda-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\"",
       "keybind-app": "Andromeda",
       "keybind-invalid-modifier": "Это сочетание клавиш принимает одну клавишу без модификаторов.",
       "keybind-invalid-printable": "Печатные клавиши (буквы, цифры, символы) требуют модификатор, например Ctrl или Alt.",
@@ -1314,7 +1314,7 @@
       "sync-greeter": "Не удалось синхронизировать внешний вид с Andromeda Greeter.",
       "sync-greeter-timeout": "Синхронизация с экраном входа всё ещё ожидает авторизации. Проверьте TTY или консоль на наличие запроса polkit, включите агент polkit в разделе «Безопасность» или выполните pkexec вручную.",
       "sync-greeter-timeout-manual": "Для устаревшей синхронизации с аутентификацией по-прежнему требуется подтверждение администратора. Запустите позиционный вспомогательный инструмент применения (apply helper) в терминале, сохранив переменную NOCTALIA_GREETER_STATE_DIR, если вы используете нестандартный путь.",
-      "sync-greeter-timeout-manual-pkexec": "Синхронизация с экраном входа всё ещё требует авторизации. Выполните в терминале: pkexec noctalia-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\"",
+      "sync-greeter-timeout-manual-pkexec": "Синхронизация с экраном входа всё ещё требует авторизации. Выполните в терминале: pkexec andromeda-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\"",
       "widget": {
         "rename": "Не удалось переименовать виджет."
       },
