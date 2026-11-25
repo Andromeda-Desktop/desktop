@@ -20,7 +20,6 @@
 #include "config/config_service.h"
 #include "core/files/file_watcher.h"
 #include "core/timer_manager.h"
-#include "dbus/secret/secret_collection_probe.h"
 #include "hooks/battery_hook_state.h"
 #include "hooks/hook_manager.h"
 #include "idle/idle_grace_overlay.h"
@@ -251,16 +250,8 @@ private:
   void startTrayService();
   void syncNotificationDaemon();
   void installNotificationBusNameWatch();
-  // gnome-keyring / kwalletd usually claim org.freedesktop.secrets a moment after Noctalia starts,
-  // so the first credential lookups report "no provider". Watch the bus name and re-drive the
-  // consumers that gave up once an owner appears.
-  void installSecretServiceNameWatch();
-  // The provider may be present but its collection still locked at startup (PAM holds the password
-  // but only opens the store on first request; or a fingerprint/autologin session unlocks it a few
-  // seconds later). Watch the collection set and re-drive consumers once the default collection is
-  // actually unlocked, so a lookup that lost the startup race recovers without restarting Noctalia.
-  void installSecretServiceCollectionWatch();
-  void onSecretServiceCollectionChanged();
+  // Re-drives the consumers that gave up before the provider appeared or its default collection unlocked.
+  void onSecretServiceEvent(security::SecretServiceEvent event);
   void retrySecretServiceConsumers(bool defaultCollectionUnlocked = false);
   void scheduleNotificationShellRefresh();
   void syncLiveActivity();
@@ -496,11 +487,7 @@ private:
   std::unique_ptr<TrayService> m_trayService;
   std::unique_ptr<NotificationDBusHost> m_notificationDbus;
   NameOwnerWatch m_notificationBusNameWatch;
-  NameOwnerWatch m_secretServiceNameWatch;
-  std::unique_ptr<sdbus::IProxy> m_secretServiceCollectionWatchProxy;
-  std::unique_ptr<SecretCollectionProbe> m_secretServiceCollectionProbe;
-  bool m_secretServiceCollectionWatchInstalled = false;
-  bool m_secretServiceOwned = false;
+  security::SecretServiceWatch m_secretServiceWatch;
   bool m_storageKeyAutoRetried = false;
   bool m_calendarCredentialAutoRetried = false;
   std::unique_ptr<EasyEffectsService> m_easyEffectsService;

@@ -17,6 +17,8 @@ public:
 
   void request();
   void invalidate();
+  // Calls changed for each CollectionChanged or CollectionCreated signal of the service.
+  void watchCollections(std::function<void()> changed);
 
 private:
   class Impl;

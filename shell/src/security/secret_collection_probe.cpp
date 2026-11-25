@@ -1,4 +1,4 @@
-#include "dbus/secret/secret_collection_probe.h"
+#include "security/secret_collection_probe.h"
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -48,6 +48,12 @@ public:
       kLog.debug("secret default collection alias probe dispatch failed: {}", e.what());
       finish(generation, false);
     }
+  }
+
+  void watchCollections(std::function<void()> changed) {
+    const auto onEvent = [changed = std::move(changed)](const sdbus::ObjectPath& /*collection*/) { changed(); };
+    m_serviceProxy->uponSignal("CollectionChanged").onInterface(kSecretServiceInterface).call(onEvent);
+    m_serviceProxy->uponSignal("CollectionCreated").onInterface(kSecretServiceInterface).call(onEvent);
   }
 
   void invalidate() {
@@ -142,3 +148,7 @@ SecretCollectionProbe::~SecretCollectionProbe() = default;
 void SecretCollectionProbe::request() { m_impl->request(); }
 
 void SecretCollectionProbe::invalidate() { m_impl->invalidate(); }
+
+void SecretCollectionProbe::watchCollections(std::function<void()> changed) {
+  m_impl->watchCollections(std::move(changed));
+}

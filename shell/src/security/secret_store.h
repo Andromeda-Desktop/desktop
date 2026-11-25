@@ -2,6 +2,7 @@
 
 #include "security/secure_buffer.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -9,6 +10,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+
+class SessionBus;
 
 namespace security {
 
@@ -114,6 +117,8 @@ namespace security {
     std::weak_ptr<SecretStoreCancellation> m_cancellation;
   };
 
+  enum class SecretServiceEvent : std::uint8_t { ProviderAppeared, CollectionUnlocked };
+
   class SecretStore final {
   public:
     using LookupCallback = std::function<void(SecretStoreStatus, SecureBuffer)>;
@@ -132,6 +137,29 @@ namespace security {
     SecretStoreOperation retryAvailabilityCheck(StatusCallback callback = {});
 
     [[nodiscard]] std::optional<SecretStoreStatus> availabilityStatus() const;
+
+  private:
+    class Impl;
+    std::unique_ptr<Impl> m_impl;
+  };
+
+  // Watches the Secret Service provider name and its collections. A provider often claims the name, or unlocks its
+  // default collection, after the first lookups failed; the callback reports each so consumers can retry. Destroy
+  // it before the bus.
+  class SecretServiceWatch final {
+  public:
+    using Callback = std::function<void(SecretServiceEvent)>;
+
+    SecretServiceWatch();
+    ~SecretServiceWatch();
+
+    SecretServiceWatch(const SecretServiceWatch&) = delete;
+    SecretServiceWatch& operator=(const SecretServiceWatch&) = delete;
+
+    void start(SessionBus& bus, Callback callback);
+    // Asks once whether the default collection is unlocked; CollectionUnlocked follows when it is.
+    void probeCollection();
+    [[nodiscard]] bool providerOwned() const;
 
   private:
     class Impl;

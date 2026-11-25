@@ -1,4 +1,4 @@
-#include "dbus/secret/secret_collection_probe.h"
+#include "security/secret_collection_probe.h"
 #include "dbus/session_bus.h"
 #include "dbus/tray/tray_service.h"
 #include "tests/test_check.h"

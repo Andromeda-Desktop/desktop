@@ -522,6 +522,7 @@ _noctalia_source_paths = [
   'src/scripting/script_worker_pool.cpp',
   'src/scripting/plugin_bindings.cpp',
   'src/security/encrypted_file_store.cpp',
+  'src/security/secret_collection_probe.cpp',
   'src/security/secret_store.cpp',
   'src/security/secure_key.cpp',
   'src/security/storage_key_provider.cpp',

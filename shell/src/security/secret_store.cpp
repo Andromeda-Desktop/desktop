@@ -3,6 +3,9 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/sys/sys.h"
+#include "dbus/name_owner_watch.h"
+#include "dbus/session_bus.h"
+#include "security/secret_collection_probe.h"
 #include "protocols/crash_capture.h"
 #include "util/secure_wipe.h"
 #include "util/thread_name.h"
@@ -122,6 +125,7 @@ namespace security {
 
     constexpr auto kCallTimeout = std::chrono::seconds(10);
     constexpr const char* kSecretsName = "org.freedesktop.secrets";
+    constexpr const char* kServicePath = "/org/freedesktop/secrets";
     constexpr const char* kServiceInterface = "org.freedesktop.Secret.Service";
     constexpr const char* kCollectionInterface = "org.freedesktop.Secret.Collection";
     constexpr const char* kItemInterface = "org.freedesktop.Secret.Item";
@@ -320,7 +324,7 @@ namespace security {
     public:
       explicit SecretService(int cancelFd)
           : m_cancelFd(cancelFd), m_bus(sdbus::createSessionBusConnection()),
-            m_service(proxy(sdbus::ObjectPath{"/org/freedesktop/secrets"})) {
+            m_service(proxy(sdbus::ObjectPath{kServicePath})) {
         const DhExchange exchange;
         sdbus::Variant output;
         try {
@@ -1153,12 +1157,85 @@ namespace security {
     std::chrono::steady_clock::time_point m_lastErrorLog;
   };
 
+  class SecretServiceWatch::Impl {
+  public:
+    Impl(SessionBus& bus, Callback callback) : m_callback(std::move(callback)) {
+      m_nameWatch = NameOwnerWatch::changes(
+          bus.connection(), std::string{kSecretsName},
+          [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+            if (m_probe != nullptr) {
+              m_probe->invalidate();
+            }
+            m_owned = !newOwner.empty();
+            if (m_owned) {
+              kLog.info("secret service provider appeared on {}", kSecretsName);
+              m_callback(SecretServiceEvent::ProviderAppeared);
+            }
+          }
+      );
+      // The provider may have claimed the name before the watch existed.
+      try {
+        m_owned = nameHasOwner(bus.connection(), std::string{kSecretsName});
+      } catch (const sdbus::Error& e) {
+        kLog.debug("secret service NameHasOwner failed: {}", e.what());
+      }
+      try {
+        m_probe = std::make_unique<SecretCollectionProbe>(bus, [this](bool unlocked) {
+          if (unlocked && m_owned) {
+            kLog.info("secret service default collection unlocked");
+            m_callback(SecretServiceEvent::CollectionUnlocked);
+          }
+        });
+        // A collection appearing or changing is the cue that the default one may have just unlocked.
+        m_probe->watchCollections([this] { DeferredCall::callLaterIfAlive(m_alive, [this] { probe(); }); });
+        // The collection can unlock during startup before this watch exists, and that emits no further signal.
+        DeferredCall::callLaterIfAlive(m_alive, [this] { probe(); });
+      } catch (const sdbus::Error& e) {
+        kLog.debug("secret service collection watch setup failed: {}", e.what());
+        m_probe.reset();
+      }
+    }
+
+    void probe() {
+      if (m_owned && m_probe != nullptr) {
+        m_probe->request();
+      }
+    }
+
+    [[nodiscard]] bool owned() const { return m_owned; }
+
+  private:
+    std::shared_ptr<int> m_alive = std::make_shared<int>(0);
+    Callback m_callback;
+    NameOwnerWatch m_nameWatch;
+    std::unique_ptr<SecretCollectionProbe> m_probe;
+    bool m_owned = false;
+  };
+
   SecretStore::SecretStore() : SecretStore(makeSecretServiceBackend()) {}
 
   SecretStore::SecretStore(std::unique_ptr<SecretStoreBackend> backend)
       : m_impl(std::make_unique<Impl>(std::move(backend))) {}
 
   SecretStore::~SecretStore() = default;
+
+  SecretServiceWatch::SecretServiceWatch() = default;
+
+  SecretServiceWatch::~SecretServiceWatch() = default;
+
+  void SecretServiceWatch::start(SessionBus& bus, Callback callback) {
+    if (m_impl == nullptr) {
+      m_impl = std::make_unique<Impl>(bus, std::move(callback));
+    }
+  }
+
+  void SecretServiceWatch::probeCollection() {
+    if (m_impl != nullptr) {
+      m_impl->probe();
+    }
+  }
+
+  bool SecretServiceWatch::providerOwned() const { return m_impl != nullptr && m_impl->owned(); }
 
   SecretStoreOperation SecretStore::lookup(const SecretId& id, LookupCallback callback) {
     auto cancellation = std::make_shared<SecretStoreCancellation>();

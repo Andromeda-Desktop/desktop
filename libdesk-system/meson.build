@@ -95,7 +95,6 @@ _sources = files(
   'src/dbus/modem/modem_manager_service.cpp',
   'src/dbus/polkit/polkit_agent.cpp',
   'src/dbus/polkit/polkit_session_support.cpp',
-  'src/dbus/secret/secret_collection_probe.cpp',
   'src/dbus/tray/fcitx_status.cpp',
   'src/dbus/tray/tray_service.cpp',
   'src/dbus/upower/upower_charge_limit_support.cpp',
