@@ -692,11 +692,13 @@ namespace andromeda {
     for (const unsigned char character : name) {
       label += character >= 32 && character < 127 ? static_cast<char>(character) : '?';
     }
-    const std::string_view shown = label.empty() ? "Unknown application" : label;
+    if (label.empty()) {
+      label = "Unknown application";
+    }
     if (kind == InputPermissionKind::Emulate) {
-      m_quitConfirm->showRemoteInput(shown, persistMode);
+      m_quitConfirm->showRemoteInput(label, persistMode);
     } else {
-      m_quitConfirm->showInputCapture(shown, persistMode);
+      m_quitConfirm->showInputCapture(label, persistMode);
     }
     if (!m_quitConfirm->visible()) {
       dismissConfirmation();
