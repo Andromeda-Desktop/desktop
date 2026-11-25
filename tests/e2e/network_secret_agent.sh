@@ -10,10 +10,11 @@ boot_headless 1
 : > "$OUT/calls.txt"
 
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_nm.py"
+WAIT="$(cd "$(dirname "$0")/../.." && pwd)/tools/wait.sh"
 with_noctalia '
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
-  for _ in $(seq 100); do grep -q "^Agent " "$OUT/calls.txt" && break; sleep 0.1; done
+  '"$WAIT"' --log "$OUT/mock.log" --match ready --timeout 5 || true
+  '"$WAIT"' --log "$OUT/calls.txt" --match "^Agent " --timeout 10 || true
   agent=$(sed -n "s/^Agent //p" "$OUT/calls.txt" | tail -1)
   [[ -n $agent ]] || { echo "FAIL: the agent never registered with NetworkManager"; exit 1; }
   sys() { gdbus call --address "$DBUS_SYSTEM_BUS_ADDRESS" "$@" 2>&1 || true; }

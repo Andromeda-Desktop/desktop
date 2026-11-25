@@ -278,8 +278,10 @@ async fn session_path(conn: &Connection, session: &str, caller: &Caller) -> Resu
     if !session.is_empty() {
         return manager(conn, "GetSession", &(session,)).await;
     }
-    if let Ok(path) = manager::<_, OwnedObjectPath>(conn, "GetSessionByPID", &(caller.pid,)).await {
-        // logind has no pidfd lookup: the answer names the caller only if its process still runs.
+    // logind has no pidfd lookup: the answer names the caller only if a pidfd shows its process still runs.
+    if caller.pidfd.is_some()
+        && let Ok(path) = manager::<_, OwnedObjectPath>(conn, "GetSessionByPID", &(caller.pid,)).await
+    {
         if !caller.alive() {
             return Err(Error::Failed(format!("process {} exited during the call", caller.pid)));
         }

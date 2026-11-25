@@ -8,20 +8,15 @@
 #include <fcntl.h>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <sdbus-c++/sdbus-c++.h>
 #include <string>
-#include <sys/syscall.h>
+#include <poll.h>
 #include <unistd.h>
 #include <utility>
 
 namespace {
   constexpr Logger kLog("bus-caller");
-  constexpr std::size_t kMaxCached = 256;
   constexpr std::size_t kMaxFlatpakInfo = 64 * 1024;
-
-  std::mutex g_cacheMutex;
-  std::map<std::pair<const sdbus::IConnection*, std::string>, BusCaller, std::less<>> g_cache;
 
   struct Fd {
     int fd = -1;
@@ -88,12 +83,6 @@ std::optional<BusCaller> busCaller(sdbus::IConnection& bus, std::string_view sen
   if (sender.empty()) {
     return std::nullopt;
   }
-  {
-    const std::scoped_lock lock(g_cacheMutex);
-    if (const auto it = g_cache.find(std::pair{&bus, std::string{sender}}); it != g_cache.end()) {
-      return it->second;
-    }
-  }
   std::map<std::string, sdbus::Variant> credentials;
   try {
     daemonProxy(bus)
@@ -105,23 +94,28 @@ std::optional<BusCaller> busCaller(sdbus::IConnection& bus, std::string_view sen
     kLog.debug("GetConnectionCredentials({}) failed: {}", sender, e.what());
     return std::nullopt;
   }
+  const auto uid = credentials.find("UnixUserID");
   const auto pid = credentials.find("ProcessID");
   const auto pidfd = credentials.find("ProcessFD");
-  if (pid == credentials.end() || pidfd == credentials.end()) {
+  if (uid == credentials.end() || pid == credentials.end() || pidfd == credentials.end()) {
     kLog.warn("bus gives no pidfd for {}: caller refused", sender);
+    return std::nullopt;
+  }
+  if (uid->second.get<std::uint32_t>() != ::getuid()) {
     return std::nullopt;
   }
   const auto pidfdHandle = pidfd->second.get<sdbus::UnixFd>();
   auto caller = sandboxOf(pid->second.get<std::uint32_t>());
-  // The pid names the caller only while its pidfd shows the process still runs: after an exit the pid can be reused.
-  if (!caller.has_value() || ::syscall(SYS_pidfd_send_signal, pidfdHandle.get(), 0, nullptr, 0) != 0) {
+  // The pid names the caller only while its pidfd shows the process still runs (a pidfd is readable after the exit):
+  // after an exit the pid can be reused.
+  pollfd exited{.fd = pidfdHandle.get(), .events = POLLIN, .revents = 0};
+  int ready = 0;
+  do {
+    ready = ::poll(&exited, 1, 0);
+  } while (ready < 0 && errno == EINTR);
+  if (!caller.has_value() || ready != 0) {
     return std::nullopt;
   }
-  const std::scoped_lock lock(g_cacheMutex);
-  if (g_cache.size() >= kMaxCached) {
-    g_cache.clear();
-  }
-  g_cache.emplace(std::pair{&bus, std::string{sender}}, *caller);
   return caller;
 }
 
