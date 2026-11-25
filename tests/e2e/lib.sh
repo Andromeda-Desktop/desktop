@@ -1,5 +1,5 @@
 # Sourced by the E2E scripts: a contained headless Andromeda session with the Noctalia fork running inside it.
-ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P) # canonical: --trust-binary "$ROOT/" matches /proc/<pid>/exe
 ANDROMEDA=${ANDROMEDA:-$ROOT/compositor/build-debug/andromeda}
 NOCTALIA=${NOCTALIA:-$ROOT/shell/build-debug/andromeda-shell}
 DESKTOP_CLIENT=${DESKTOP_CLIENT:-$ROOT/compositor/build-debug/tests/desktop-client}
