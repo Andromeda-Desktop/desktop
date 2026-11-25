@@ -634,6 +634,8 @@ private:
   std::string m_expertQuery;
   // Config path (or "section/title" for pathless rows) of the row a search result opened; shown highlighted.
   std::string m_highlightKey;
+  // A section id that settings-open named: its first group scrolls to the top of the page once it is built.
+  std::string m_scrollSection;
   std::string m_reopenAfterWidgetEditorSection;
   std::string m_statusMessage;
   std::string m_pendingResetPageScope;

@@ -22,6 +22,7 @@ void SettingsWindow::applyNavEntry(const NavEntry& entry) {
   m_moreFilter = settings::MoreFilter::All;
   m_moreCurrent = 0;
   m_contentScrollState.offset = 0.0F;
+  m_scrollSection.clear();
   // Swap, initramfs and logind can change outside Settings; the page shows them as they are now.
   if (m_selectedSection == "power" && m_powerConfigProvider) {
     if (PowerConfigService* config = m_powerConfigProvider(); config != nullptr) {

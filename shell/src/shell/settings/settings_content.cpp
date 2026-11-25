@@ -969,6 +969,7 @@ namespace settings {
     std::string activeSectionKey;
     std::string activeGroupKey;
     Flex* activeGroupBody = nullptr;
+    bool sectionTargeted = false;
     constexpr std::size_t kKeybindsPerRow = 2;
     Flex* activeKeybindRow = nullptr;
     std::size_t activeKeybindRowCount = 0;
@@ -1088,6 +1089,11 @@ namespace settings {
         activeKeybindRowCount = 0;
         activeGroupBody = addSettingsGroupCard(content, groupCaption(entry), scale);
         cardBodies.push_back(activeGroupBody);
+        if (!sectionTargeted && !ctx.scrollSection.empty() && ctx.scrollSection == settingsSectionId(entry.section)
+            && ctx.setScrollTarget) {
+          sectionTargeted = true;
+          ctx.setScrollTarget(content.children().back().get());
+        }
         if (ctx.rowScope == RowScope::Expert && ctx.moreGroups != nullptr) {
           const std::string key = groupKeyOf(entry);
           if (auto it = std::ranges::find(*ctx.moreGroups, key, &MoreGroup::key); it != ctx.moreGroups->end()) {

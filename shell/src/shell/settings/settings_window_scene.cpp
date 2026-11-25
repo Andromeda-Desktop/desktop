@@ -644,8 +644,13 @@ void SettingsWindow::applyPendingContentScrollTarget(float margin) {
     return;
   }
 
-  scrollNodeIntoScrollView(*m_contentScrollView, &m_contentScrollState, *m_pendingContentScrollTarget, margin);
+  if (m_scrollSection.empty()) {
+    scrollNodeIntoScrollView(*m_contentScrollView, &m_contentScrollState, *m_pendingContentScrollTarget, margin);
+  } else {
+    scrollNodeToScrollViewTop(*m_contentScrollView, *m_pendingContentScrollTarget, margin);
+  }
   m_highlightKey.clear();
+  m_scrollSection.clear();
   clearPending();
 }
 
@@ -869,6 +874,7 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
       .moreFilter = m_moreFilter,
       .moreGroups = &m_moreGroups,
       .highlightKey = m_highlightKey,
+      .scrollSection = m_scrollSection,
       .batteryDeviceOptions = batteryDeviceOptions(),
       .canHibernate = m_powerConfigProvider && m_powerConfigProvider() != nullptr
           && m_powerConfigProvider()->hibernateVerified(),

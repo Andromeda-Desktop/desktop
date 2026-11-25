@@ -72,6 +72,8 @@ namespace settings {
     std::vector<MoreGroup>* moreGroups = nullptr;
     // Key of the row a search result opened; drawn highlighted and scrolled into view.
     std::string_view highlightKey;
+    // Section id whose first group is the scroll target, drawn plain and scrolled to the top.
+    std::string_view scrollSection;
     std::vector<SelectOption> batteryDeviceOptions;
     // logind CanHibernate=yes and a trial hibernate resumed; gates the Hibernate idle action.
     bool canHibernate = false;

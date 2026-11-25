@@ -464,6 +464,10 @@ void SettingsWindow::open(std::string context) {
   const bool navigate = !page.empty() || !search.empty();
   if (!page.empty()) {
     navigateTo(page, bar, expert);
+    // A section id opens the page that holds it, scrolled to that section.
+    if (page != context && settings::settingsSectionFromId(context).has_value()) {
+      m_scrollSection = context;
+    }
   }
   if (!detail.empty()) {
     openDetail(std::move(detail));

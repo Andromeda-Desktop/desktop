@@ -61,7 +61,7 @@ void scrollNodeToScrollViewTop(ScrollView& scrollView, const Node& target, float
   (void)targetX;
   (void)contentX;
 
-  scrollView.requestScrollToOffset(std::max(0.0F, targetY - contentY - margin));
+  scrollView.setScrollOffset(std::max(0.0F, targetY - contentY - margin));
 }
 
 ScrollView* findEnclosingScrollView(Node* node) {
