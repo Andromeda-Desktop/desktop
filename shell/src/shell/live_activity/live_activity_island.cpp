@@ -2382,7 +2382,17 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
 
   // The pill follows the bar's auto-hide fade; an expanded face stays.
   const float shown = lerp(inst.space.restless ? 0.0F : inst.space.opacity, 1.0F, 1.0F - restMix);
-  inst.sceneRoot->setOpacity(shown);
+  if (inst.dsk != nullptr) {
+    // The compositor fades the whole surface, so the glass it draws for the pill fades with the content.
+    inst.sceneRoot->setOpacity(1.0F);
+    if (std::abs(shown - inst.dskOpacity) > 0.004F) {
+      inst.dsk->set(DskSurfaceClient::Property::Opacity, {shown, 0.0, 0.0, 0.0});
+      inst.dskOpacity = shown;
+      inst.surface->requestRedraw();
+    }
+  } else {
+    inst.sceneRoot->setOpacity(shown);
+  }
   // A faded-out pill draws nothing at all; syncBarShapes and barsDrawn stop its loops (restHidden).
   inst.sceneRoot->setVisible(!restHidden(inst));
   if (lane) {

@@ -285,6 +285,7 @@ private:
     std::optional<Rect> dskTarget;
     Timer driverReaper;
     double dskLevel = 0.0; // last elevation level sent (protocol version 4)
+    float dskOpacity = 1.0F; // last surface opacity sent (the bar's auto-hide fade at rest)
     bool compositorTint = false; // the compositor draws the glass tint; the fills paint nothing
   };
 
