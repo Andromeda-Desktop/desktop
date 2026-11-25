@@ -613,6 +613,7 @@ private:
   bool m_localeNamesRequested = false;
   bool m_userDeleteBusy = false;
   std::unique_ptr<BiometricEnrollment> m_enroll;
+  std::pair<bool, bool> m_biometricPresence{false, false}; // face, fingerprint at the last registry build
   std::string m_privacyStatus;
   settings::PasswordDraft m_passwordDraft;
   std::unique_ptr<AppPermissions> m_permissions;
@@ -630,6 +631,7 @@ private:
   [[nodiscard]] std::unique_ptr<Node> appIcon(const DesktopEntry& entry, float size);
   // Leaving the page or closing the window: a running enroll releases the camera or reader, typed passwords go.
   void leavePrivacy();
+  void ensureEnrollment();
   void changePassword();
   std::string m_userDeleteError;
   // Settings › Users › Login Screen: result of the last switch, shown under the select.

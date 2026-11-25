@@ -2,6 +2,7 @@
 #include "core/input/cursor_shape.h"
 #include "compositors/compositor_detect.h"
 #include "compositors/compositor_platform.h"
+#include "auth/biometric_enrollment.h"
 #include "config/config_service.h"
 #include "config/schema/config_schema.h"
 #include "config/schema/engine.h"
@@ -709,6 +710,8 @@ settings::RegistryEnvironment SettingsWindow::buildRegistryEnvironment() const {
   env.ddcutilAvailable = (m_dependencies != nullptr && m_dependencies->hasDdcutil());
   env.systemdUserManaged = process::runningUnderSystemdUserManager();
   env.gammaControlAvailable = (m_wayland != nullptr && m_wayland->hasGammaControl());
+  env.faceAvailable = m_enroll != nullptr && m_enroll->facePresent();
+  env.fingerprintAvailable = m_enroll != nullptr && m_enroll->fingerPresent();
   if (std::ifstream state("/sys/kernel/sched_ext/state"); state) {
     std::string value;
     std::getline(state, value);
@@ -1726,9 +1729,11 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
 
 void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
   ensureCompositorSettings();
+  ensureEnrollment();
   SettingsProfileWatch phaseProfileWatch;
 
   const auto env = buildRegistryEnvironment();
+  m_biometricPresence = {env.faceAvailable, env.fingerprintAvailable};
   logSettingsProfile("refreshRegistry registryEnvironment", phaseProfileWatch);
   phaseProfileWatch.reset();
   m_settingsRegistry = settings::buildSettingsRegistry(cfg, nullptr, nullptr, env);

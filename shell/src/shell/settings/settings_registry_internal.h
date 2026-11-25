@@ -83,6 +83,10 @@ namespace settings {
         return env.systemdUserManaged;
       case Needs::GammaControl:
         return env.gammaControlAvailable;
+      case Needs::Face:
+        return env.faceAvailable;
+      case Needs::Fingerprint:
+        return env.fingerprintAvailable;
       }
       return true;
     }
@@ -116,7 +120,12 @@ namespace settings {
         }
         const RowSpec& row = *field.row;
         assert(env || row.needs == RowSpec::Needs::None);
-        assert(row.needs == RowSpec::Needs::None || (row.kind == RowSpec::Kind::Toggle && !row.missingKey.empty()));
+        // Biometric rows hide without their sensor, so they need no "missing" text.
+        const bool hidesWhenMissing = row.needs == RowSpec::Needs::Face || row.needs == RowSpec::Needs::Fingerprint;
+        assert(
+            row.needs == RowSpec::Needs::None
+            || (row.kind == RowSpec::Kind::Toggle && (hidesWhenMissing || !row.missingKey.empty()))
+        );
         toml::table written;
         field.write(written, values);
         const auto value = std::as_const(written)[field.key];
@@ -229,6 +238,9 @@ namespace settings {
         const std::string label = row.label.empty() ? std::string(row.section) + "." + i18n::keySegment(field.key)
                                                     : std::string(row.label);
         const bool featureMissing = row.needs != RowSpec::Needs::None && !hasFeature(*env, row.needs);
+        if (featureMissing && hidesWhenMissing) {
+          continue;
+        }
         if (featureMissing) {
           auto& toggle = std::get<ToggleSetting>(control);
           toggle.enabled = toggle.checked;

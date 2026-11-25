@@ -216,6 +216,30 @@ void SettingsWindow::loadAppAccess() {
   }
 }
 
+void SettingsWindow::ensureEnrollment() {
+  if (m_enroll != nullptr || m_systemBus == nullptr) {
+    return;
+  }
+  m_enroll = std::make_unique<BiometricEnrollment>(m_systemBus, currentUser());
+  m_enroll->setChangedCallback([this] {
+    if (!isOpen()) {
+      return;
+    }
+    // A sensor found or lost changes which Lock Screen rows exist.
+    const std::pair present{m_enroll->facePresent(), m_enroll->fingerPresent()};
+    const bool presenceChanged = std::exchange(m_biometricPresence, present) != present;
+    if (presenceChanged) {
+      requestContentRebuild(/*refreshRegistry=*/true, /*refreshFilterRow=*/true);
+    } else if (m_selectedSection == "privacy") {
+      requestContentRebuild();
+    }
+  });
+  m_enroll->setFinishedCallback([this](BiometricEnrollment::Method /*method*/, bool ok) {
+    m_privacyStatus = ok ? std::string{} : i18n::tr("settings.privacy.enroll-failed");
+  });
+  m_enroll->probe();
+}
+
 void SettingsWindow::leavePrivacy() {
   // Runs on every rebuild of another page, so it must not request a rebuild itself.
   for (const gs::Action& action : m_globalShortcuts.handle(gs::Leave{})) {
@@ -251,18 +275,7 @@ void SettingsWindow::addPrivacyContent(float scale) {
   if (m_trustedApps.load == settings::TrustedAppsView::Load::NotLoaded) {
     loadTrustedApps();
   }
-  if (m_enroll == nullptr && m_systemBus != nullptr) {
-    m_enroll = std::make_unique<BiometricEnrollment>(m_systemBus, currentUser());
-    m_enroll->setChangedCallback([this] {
-      if (isOpen() && m_selectedSection == "privacy") {
-        requestContentRebuild();
-      }
-    });
-    m_enroll->setFinishedCallback([this](BiometricEnrollment::Method /*method*/, bool ok) {
-      m_privacyStatus = ok ? std::string{} : i18n::tr("settings.privacy.enroll-failed");
-    });
-    m_enroll->probe();
-  }
+  ensureEnrollment();
   const auto& lock = m_config->config().lockscreen;
   // A 250-byte root-readable file in /etc: no disk wait worth a worker.
   const std::optional<bool> faceAdmin = faceAdminState();

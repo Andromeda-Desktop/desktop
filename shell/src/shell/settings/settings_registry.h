@@ -347,6 +347,8 @@ namespace settings {
     bool ddcutilAvailable = false;              // disable ddcutil toggle when ddcutil is not on PATH
     bool systemdUserManaged = false;            // disable systemd app launching when the shell is not a user unit
     bool gammaControlAvailable = false;         // hide night-light entries when gamma control is unavailable
+    bool faceAvailable = false;                 // a face unlock camera (gazed) is present
+    bool fingerprintAvailable = false;          // an fprintd reader is present
     std::string schedExtScheduler; // the running sched_ext scheduler; app priority (CPU weights) has no effect under it
     std::optional<std::size_t> backgroundActivityCount; // flagged background services at the last check; none = not checked
     std::function<void()> openActivity;

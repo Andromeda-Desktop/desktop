@@ -141,7 +141,7 @@ namespace noctalia::config::schema {
     enum class Kind : std::uint8_t { Toggle, Slider, Select, Text, Stepper, Color, OptionalStepper, List, KeybindList };
     enum class Options : std::uint8_t { None, Outputs, Fonts, BatteryDevices, Languages, SoundThemes, ClockStyles };
     enum class Browse : std::uint8_t { None, Folder, File };
-    enum class Needs : std::uint8_t { None, Ddcutil, SystemdUser, GammaControl };
+    enum class Needs : std::uint8_t { None, Ddcutil, SystemdUser, GammaControl, Face, Fingerprint };
     struct Choice {
       std::string_view value;
       std::string_view labelKey;

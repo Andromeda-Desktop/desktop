@@ -346,6 +346,10 @@ namespace noctalia::config::schema {
           .kind = kind, .section = "security", .group = "lock-screen", .label = label, .tags = tags, .suffix = suffix
       };
     };
+    const auto needing = [](RowSpec row, RowSpec::Needs needs) {
+      row.needs = needs;
+      return row;
+    };
     const auto lockSelect = [&](std::string_view label, std::string_view tags, std::vector<RowSpec::Choice> choices,
                                 bool segmented = false) {
       auto row = lock(label, tags, RowSpec::Kind::Select);
@@ -372,12 +376,18 @@ namespace noctalia::config::schema {
         ),
         field(
             &LockscreenConfig::fingerprint, "fingerprint",
-            lock("lockscreen.fingerprint", "lock screen fingerprint fprintd biometric")
+            needing(lock("lockscreen.fingerprint", "lock screen fingerprint fprintd biometric"), RowSpec::Needs::Fingerprint)
         ),
-        field(&LockscreenConfig::face, "face", lock("lockscreen.face", "lock screen face unlock camera gaze biometric")),
+        field(
+            &LockscreenConfig::face, "face",
+            needing(lock("lockscreen.face", "lock screen face unlock camera gaze biometric"), RowSpec::Needs::Face)
+        ),
         field(
             &LockscreenConfig::faceOnRequest, "face_on_request",
-            lock("lockscreen.face-on-request", "lock screen face unlock tap request camera privacy")
+            needing(
+                lock("lockscreen.face-on-request", "lock screen face unlock tap request camera privacy"),
+                RowSpec::Needs::Face
+            )
         ),
         field(
             &LockscreenConfig::theme, "theme",
