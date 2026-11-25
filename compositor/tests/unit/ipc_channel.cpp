@@ -13,12 +13,14 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <array>
 #include <csignal>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <iterator>
 #include <random>
 #include <string>
 #include <thread>
@@ -230,6 +232,51 @@ namespace {
     CHECK(!ipc::listenUnix(std::string(200, 'x'), SOCK_STREAM, 4, 0, ipc::Stale::Replace));
     CHECK_EQ(errno, ENAMETOOLONG);
     unlink(path.c_str());
+  }
+
+  ANDROMEDA_TEST(fdPassing) {
+    const auto openFds = [] {
+      return std::distance(std::filesystem::directory_iterator("/proc/self/fd"), std::filesystem::directory_iterator{});
+    };
+    int pair[2];
+    CHECK(socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, pair) == 0);
+    const ipc::Fd reader(pair[0]);
+    const ipc::Fd writer(pair[1]);
+    std::array<std::byte, 8> buffer{};
+    CHECK(ipc::recvFds(reader.get(), buffer, 2).kind == ipc::Received::Kind::WouldBlock);
+
+    int pipes[2];
+    CHECK(pipe(pipes) == 0);
+    const ipc::Fd pipeRead(pipes[0]);
+    const ipc::Fd pipeWrite(pipes[1]);
+    const std::array<int, 2> two{pipes[0], pipes[1]};
+    CHECK(ipc::sendFds(writer.get(), "abc", two, in(1s)) == 3);
+    const ipc::Received got = ipc::recvFds(reader.get(), buffer, 2);
+    CHECK(got.kind == ipc::Received::Kind::Data && got.size == 3 && got.fds.size() == 2);
+    CHECK((fcntl(got.fds[0].get(), F_GETFD) & FD_CLOEXEC) != 0);
+    char byte = 0;
+    CHECK(write(got.fds[1].get(), "x", 1) == 1 && read(pipes[0], &byte, 1) == 1 && byte == 'x');
+
+    // More fds than room, or more bytes: Truncated, and no received fd stays open.
+    const auto before = openFds();
+    CHECK(ipc::sendFds(writer.get(), "abc", two, in(1s)) == 3);
+    CHECK(ipc::recvFds(reader.get(), buffer, 1).kind == ipc::Received::Kind::Truncated);
+    CHECK(ipc::sendFds(writer.get(), std::string(20, 'y'), two, in(1s)) == 20);
+    CHECK(ipc::recvFds(reader.get(), buffer, 2).kind == ipc::Received::Kind::Truncated);
+    CHECK_EQ(openFds(), before);
+
+    // A full socket: a past deadline fails at once with EAGAIN, a near one with ETIMEDOUT.
+    while (ipc::sendFds(writer.get(), "z", {}, ipc::Deadline{}) == 1) {
+    }
+    CHECK_EQ(errno, EAGAIN);
+    CHECK(ipc::sendFds(writer.get(), "z", {}, in(50ms)) == -1);
+    CHECK_EQ(errno, ETIMEDOUT);
+
+    int closing[2];
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, closing) == 0);
+    const ipc::Fd open(closing[0]);
+    close(closing[1]);
+    CHECK(ipc::recvFds(open.get(), buffer, 2).kind == ipc::Received::Kind::Closed);
   }
 
   ANDROMEDA_TEST(refuseAPeerOfAnotherUid) {

@@ -1703,19 +1703,7 @@ namespace andromeda {
 
     // False when no process accepts connections at path: it is missing, or a socket file left by an exited process.
     bool unixPathListens(const std::string& path) {
-      sockaddr_un address{.sun_family = AF_UNIX, .sun_path = {}};
-      if (path.size() >= sizeof(address.sun_path)) {
-        return true;
-      }
-      path.copy(address.sun_path, path.size());
-      const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-      if (fd < 0) {
-        return true;
-      }
-      const bool refused = connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0
-                           && (errno == ECONNREFUSED || errno == ENOENT);
-      close(fd);
-      return !refused;
+      return static_cast<bool>(ipc::connectTo(path, ipc::Deadline{})) || (errno != ECONNREFUSED && errno != ENOENT);
     }
   } // namespace
 

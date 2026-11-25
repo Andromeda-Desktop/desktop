@@ -1,4 +1,5 @@
 #include "ipc/pixel_stream_client.h"
+#include "protocols/ipc_channel.h"
 #include "test_check.h"
 
 #include <array>
@@ -16,6 +17,10 @@
 #include <vector>
 
 namespace {
+
+  std::string_view bytesOf(const std::vector<std::uint8_t>& payload) {
+    return {reinterpret_cast<const char*>(payload.data()), payload.size()};
+  }
   constexpr std::uint32_t kBuffer = 1;
   constexpr std::uint32_t kFrame = 2;
   constexpr std::uint32_t kDmabuf = 3;
@@ -87,21 +92,8 @@ namespace {
       for (const std::uint32_t field : fields) {
         putLe32(payload, field);
       }
-      iovec vector{.iov_base = payload.data(), .iov_len = payload.size()};
-      msghdr message{};
-      message.msg_iov = &vector;
-      message.msg_iovlen = 1;
-      alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int))> control{};
-      if (fd >= 0) {
-        message.msg_control = control.data();
-        message.msg_controllen = control.size();
-        cmsghdr* header = CMSG_FIRSTHDR(&message);
-        header->cmsg_level = SOL_SOCKET;
-        header->cmsg_type = SCM_RIGHTS;
-        header->cmsg_len = CMSG_LEN(sizeof(int));
-        std::memcpy(CMSG_DATA(header), &fd, sizeof(int));
-      }
-      TEST_CHECK(::sendmsg(m_peer, &message, MSG_NOSIGNAL) == static_cast<ssize_t>(payload.size()));
+      const auto fds = fd >= 0 ? std::span<const int>(&fd, 1) : std::span<const int>{};
+      TEST_CHECK(ipc::sendFds(m_peer, bytesOf(payload), fds, ipc::Deadline::max()) == static_cast<ssize_t>(payload.size()));
     }
 
     void closePeer() {
@@ -265,15 +257,10 @@ int main() {
     for (const std::uint32_t field : {kDmabuf, 0U, 2U, 1U, kAbgr8888, 0U, 0U, stride, 0U}) {
       putLe32(payload, field);
     }
-    iovec vector{.iov_base = payload.data(), .iov_len = payload.size()};
-    alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int))> control{};
-    msghdr message{.msg_iov = &vector, .msg_iovlen = 1, .msg_control = control.data(), .msg_controllen = control.size()};
-    cmsghdr* header = CMSG_FIRSTHDR(&message);
-    header->cmsg_level = SOL_SOCKET;
-    header->cmsg_type = SCM_RIGHTS;
-    header->cmsg_len = CMSG_LEN(sizeof(int));
-    std::memcpy(CMSG_DATA(header), &fd, sizeof(int));
-    TEST_CHECK(::sendmsg(pair[1], &message, MSG_NOSIGNAL) == static_cast<ssize_t>(payload.size()));
+    TEST_CHECK(
+        ipc::sendFds(pair[1], bytesOf(payload), std::span<const int>(&fd, 1), ipc::Deadline::max())
+        == static_cast<ssize_t>(payload.size())
+    );
     ::close(fd);
     adopted.dispatch(POLLIN);
     // Stride 4 is below width * 4; stride 16 reads past the 8-byte buffer.

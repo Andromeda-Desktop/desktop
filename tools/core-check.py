@@ -118,6 +118,12 @@ RULES = {
                   "andromeda_rt::ipc (AR4)", CPP_DIRS + ("protocol/",), CPP + (".rs",),
                   r"SOL_SOCKET\s*,\s*SO_PEER(CRED|PIDFD)\b|sockopt::Peer(Credentials|Pidfd)\b",
                   ("protocol/ipc_channel.", "system/crates/andromeda-rt/src/ipc.rs")),
+    "unix-socket": ("Unix sockets are made and fds passed through protocol/ipc_channel (listenUnix, connectTo, sendFds, "
+                    "recvFds) (AR4); own: the libdesk-ui platform layer, libwayland's socket, sd_notify datagrams, the "
+                    "portable terminal (no SOCK_CLOEXEC on macOS)", CPP_DIRS + ("protocol/",), CPP,
+                    r"\b(socket|socketCloexec)\s*\(\s*(AF|PF)_(UNIX|LOCAL)\b|\bSCM_RIGHTS\b|\b(sendmsg|recvmsg)\w*\s*\(",
+                    ("protocol/ipc_channel.", "libdesk-ui/src/core/sys/", "libdesk-ui/src/wayland/wayland_connection.cpp",
+                     "compositor/src/core/process.cpp", "libdesk-term/src/holder_client.", "apps/terminal/src/control_socket.cpp")),
     "secret-wipe": ("secrets are wiped only by util::secureWipe (libdesk-ui util/secure_wipe.h) and held in "
                     "security::SecureBuffer (libdesk-system security/secure_buffer.h) (AR8 D5); askpass links no libdesk",
                     CPP_DIRS + ("protocol/",), CPP, r"\b(explicit_bzero|sodium_memzero|memset_s)\s*\(|volatile\s+char\s*\*",
@@ -232,6 +238,9 @@ def scan():
                     found[(rule, path)] = 1
                 continue
             if not path.startswith(dirs) or not path.endswith(suffixes) or path.startswith(owners):
+                continue
+            full = os.path.join(ROOT, path)
+            if os.path.islink(full) and os.path.relpath(os.path.realpath(full), ROOT).startswith(owners):
                 continue
             text = open(os.path.join(ROOT, path), encoding="utf-8", errors="replace").read()
             if path.endswith(CPP):

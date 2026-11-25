@@ -1,6 +1,7 @@
 #include "input/eis_socket.h"
 
 #include "check.h"
+#include "protocols/ipc_channel.h"
 
 #include <array>
 #include <cerrno>
@@ -192,49 +193,17 @@ namespace {
   }
 
   bool sendRights(int fd, const std::vector<int>& descriptors) {
-    std::vector<char> control(CMSG_SPACE(descriptors.size() * sizeof(int)));
-    char byte = 'k';
-    iovec iov{.iov_base = &byte, .iov_len = 1};
-    msghdr message{};
-    message.msg_iov = &iov;
-    message.msg_iovlen = 1;
-    message.msg_control = control.data();
-    message.msg_controllen = control.size();
-    cmsghdr* header = CMSG_FIRSTHDR(&message);
-    header->cmsg_level = SOL_SOCKET;
-    header->cmsg_type = SCM_RIGHTS;
-    header->cmsg_len = CMSG_LEN(descriptors.size() * sizeof(int));
-    std::memcpy(CMSG_DATA(header), descriptors.data(), descriptors.size() * sizeof(int));
-    return sendmsg(fd, &message, MSG_DONTWAIT | MSG_NOSIGNAL) == 1;
+    return ipc::sendFds(fd, "k", descriptors, ipc::Deadline{}) == 1;
   }
 
   bool receiveRights(int fd, Fd& received) {
-    alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int))> control{};
-    char byte = 0;
-    iovec iov{.iov_base = &byte, .iov_len = 1};
-    msghdr message{};
-    message.msg_iov = &iov;
-    message.msg_iovlen = 1;
-    message.msg_control = control.data();
-    message.msg_controllen = control.size();
-    if (recvmsg(fd, &message, MSG_DONTWAIT | MSG_CMSG_CLOEXEC) != 1) {
+    std::array<std::byte, 1> byte{};
+    ipc::Received message = ipc::recvFds(fd, byte, 1);
+    if (message.kind != ipc::Received::Kind::Data || message.size != 1 || byte[0] != std::byte{'k'}
+        || message.fds.size() != 1) {
       return false;
     }
-    std::vector<Fd> descriptors;
-    for (cmsghdr* header = CMSG_FIRSTHDR(&message); header != nullptr; header = CMSG_NXTHDR(&message, header)) {
-      if (header->cmsg_level == SOL_SOCKET && header->cmsg_type == SCM_RIGHTS && header->cmsg_len >= CMSG_LEN(0)) {
-        const size_t count = (header->cmsg_len - CMSG_LEN(0)) / sizeof(int);
-        for (size_t i = 0; i < count; ++i) {
-          int descriptor = -1;
-          std::memcpy(&descriptor, CMSG_DATA(header) + i * sizeof(int), sizeof(descriptor));
-          descriptors.emplace_back(descriptor);
-        }
-      }
-    }
-    if (byte != 'k' || (message.msg_flags & MSG_CTRUNC) != 0 || descriptors.size() != 1) {
-      return false;
-    }
-    received = std::move(descriptors.front());
+    received.reset(message.fds.front().release());
     return true;
   }
 

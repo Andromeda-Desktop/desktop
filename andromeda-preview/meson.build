@@ -42,6 +42,8 @@ helper_path = get_option('prefix') / get_option('libexecdir') / 'andromeda' / 'a
 _core = static_library('preview_core',
   'src/file_kind.cpp',
   'src/helper_client.cpp',
+  'protocols/ipc_channel.cpp',
+  include_directories: include_directories('.'),
   dependencies: [_desk_headers, gio_dep],
   cpp_args: ['-DANDROMEDA_PREVIEW_HELPER_PATH="' + helper_path + '"'],
 )

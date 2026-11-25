@@ -32,16 +32,8 @@ namespace andromeda {
 
     struct Packet {
       std::vector<char> bytes;
-      std::vector<int> fds;
+      std::vector<ipc::Fd> fds;
       size_t offset = 0;
-
-      ~Packet() { closeFds(); }
-      void closeFds() {
-        for (const int fd : fds) {
-          close(fd);
-        }
-        fds.clear();
-      }
     };
 
     struct Channel {
@@ -123,36 +115,19 @@ namespace andromeda {
         auto& channel = channels[index];
         for (unsigned attempt = 0; attempt < kDispatchBudget && channel.canRead(); ++attempt) {
           std::array<char, kReadSize> bytes;
-          alignas(cmsghdr) std::array<char, CMSG_SPACE(kMaxQueuedFds * sizeof(int))> control{};
-          iovec iov{.iov_base = bytes.data(), .iov_len = std::min(bytes.size(), kMaxQueuedBytes - channel.queuedBytes)};
-          msghdr message{};
-          message.msg_iov = &iov;
-          message.msg_iovlen = 1;
-          message.msg_control = control.data();
-          message.msg_controllen = control.size();
-          const ssize_t count = recvmsg(endpoints[index].fd, &message, MSG_DONTWAIT | MSG_CMSG_CLOEXEC);
-          if (count < 0) {
-            if (errno == EINTR) {
-              continue;
-            }
-            return errno == EAGAIN || errno == EWOULDBLOCK;
+          const size_t room = std::min(bytes.size(), kMaxQueuedBytes - channel.queuedBytes);
+          ipc::Received received =
+              ipc::recvFds(endpoints[index].fd, std::as_writable_bytes(std::span(bytes)).first(room), kMaxQueuedFds);
+          if (received.kind == ipc::Received::Kind::WouldBlock) {
+            return true;
           }
-
-          auto packet = std::make_unique<Packet>();
-          bool invalid = (message.msg_flags & (MSG_CTRUNC | MSG_TRUNC)) != 0;
-          for (cmsghdr* header = CMSG_FIRSTHDR(&message); header != nullptr; header = CMSG_NXTHDR(&message, header)) {
-            if (header->cmsg_level != SOL_SOCKET || header->cmsg_type != SCM_RIGHTS || header->cmsg_len < CMSG_LEN(0)) {
-              invalid = true;
-              continue;
-            }
-            const size_t length = header->cmsg_len - CMSG_LEN(0);
-            invalid = invalid || length % sizeof(int) != 0;
-            const auto* fds = reinterpret_cast<const int*>(CMSG_DATA(header));
-            packet->fds.insert(packet->fds.end(), fds, fds + length / sizeof(int));
-          }
-          if (invalid || channel.queuedFds + packet->fds.size() > kMaxQueuedFds) {
+          if (received.kind == ipc::Received::Kind::Failed || received.kind == ipc::Received::Kind::Truncated
+              || channel.queuedFds + received.fds.size() > kMaxQueuedFds) {
             return false;
           }
+          const auto count = static_cast<ptrdiff_t>(received.size);
+          auto packet = std::make_unique<Packet>();
+          packet->fds = std::move(received.fds);
           if (count == 0) {
             channel.eof = true;
             break;
@@ -169,25 +144,13 @@ namespace andromeda {
         auto& channel = channels[index];
         for (unsigned attempt = 0; attempt < kDispatchBudget && !channel.packets.empty(); ++attempt) {
           Packet& packet = *channel.packets.front();
-          iovec iov{.iov_base = packet.bytes.data() + packet.offset, .iov_len = packet.bytes.size() - packet.offset};
-          alignas(cmsghdr) std::array<char, CMSG_SPACE(kMaxQueuedFds * sizeof(int))> control{};
-          msghdr message{};
-          message.msg_iov = &iov;
-          message.msg_iovlen = 1;
-          if (!packet.fds.empty()) {
-            message.msg_control = control.data();
-            message.msg_controllen = CMSG_SPACE(packet.fds.size() * sizeof(int));
-            cmsghdr* header = CMSG_FIRSTHDR(&message);
-            header->cmsg_level = SOL_SOCKET;
-            header->cmsg_type = SCM_RIGHTS;
-            header->cmsg_len = CMSG_LEN(packet.fds.size() * sizeof(int));
-            std::memcpy(CMSG_DATA(header), packet.fds.data(), packet.fds.size() * sizeof(int));
+          std::vector<int> fds;
+          for (const ipc::Fd& fd : packet.fds) {
+            fds.push_back(fd.get());
           }
-          const ssize_t count = sendmsg(endpoints[1 - index].fd, &message, MSG_DONTWAIT | MSG_NOSIGNAL);
+          const std::string_view rest(packet.bytes.data() + packet.offset, packet.bytes.size() - packet.offset);
+          const ssize_t count = ipc::sendFds(endpoints[1 - index].fd, rest, fds, ipc::Deadline{});
           if (count < 0) {
-            if (errno == EINTR) {
-              continue;
-            }
             return errno == EAGAIN || errno == EWOULDBLOCK;
           }
           if (count == 0) {
@@ -196,7 +159,7 @@ namespace andromeda {
           // SCM_RIGHTS is transferred with the first successfully written byte,
           // including when the stream write only accepts part of the packet.
           channel.queuedFds -= packet.fds.size();
-          packet.closeFds();
+          packet.fds.clear();
           channel.queuedBytes -= static_cast<size_t>(count);
           packet.offset += static_cast<size_t>(count);
           if (packet.offset == packet.bytes.size()) {
@@ -265,24 +228,12 @@ namespace andromeda {
         return;
       }
       const std::string path = directory + "/socket";
-      sockaddr_un address{};
-      address.sun_family = AF_UNIX;
-      listener = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-      int failure = 0;
-      if (path.size() >= sizeof(address.sun_path)) {
-        failure = ENAMETOOLONG;
-      } else if (listener < 0) {
-        failure = errno;
-      } else {
-        std::memcpy(address.sun_path, path.c_str(), path.size() + 1);
-        if (bind(listener, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0
-            || listen(listener, 16) != 0) {
+      listener = ipc::listenUnix(path, SOCK_STREAM | SOCK_NONBLOCK, 16, 0, ipc::Stale::Keep).release();
+      int failure = listener < 0 ? errno : 0;
+      if (failure == 0) {
+        endpoint = open(path.c_str(), O_PATH | O_CLOEXEC);
+        if (endpoint < 0) {
           failure = errno;
-        } else {
-          endpoint = open(path.c_str(), O_PATH | O_CLOEXEC);
-          if (endpoint < 0) {
-            failure = errno;
-          }
         }
       }
       unlink(path.c_str());

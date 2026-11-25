@@ -1,5 +1,7 @@
 #include "ipc/pixel_stream_server.h"
 
+#include "protocols/ipc_channel.h"
+
 #include <array>
 #include <cerrno>
 #include <cstring>
@@ -165,19 +167,7 @@ void PixelStreamServer::releaseBuffer() {
 }
 
 bool PixelStreamServer::sendMessage(std::span<const std::uint8_t> payload, int passFd) {
-  iovec vector{.iov_base = const_cast<std::uint8_t*>(payload.data()), .iov_len = payload.size()};
-  msghdr message{};
-  message.msg_iov = &vector;
-  message.msg_iovlen = 1;
-  alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int))> control{};
-  if (passFd >= 0) {
-    message.msg_control = control.data();
-    message.msg_controllen = control.size();
-    cmsghdr* header = CMSG_FIRSTHDR(&message);
-    header->cmsg_level = SOL_SOCKET;
-    header->cmsg_type = SCM_RIGHTS;
-    header->cmsg_len = CMSG_LEN(sizeof(int));
-    std::memcpy(CMSG_DATA(header), &passFd, sizeof(int));
-  }
-  return ::sendmsg(m_fd, &message, MSG_NOSIGNAL) == static_cast<ssize_t>(payload.size());
+  const std::string_view bytes(reinterpret_cast<const char*>(payload.data()), payload.size());
+  const auto fds = passFd >= 0 ? std::span<const int>(&passFd, 1) : std::span<const int>{};
+  return ipc::sendFds(m_fd, bytes, fds, ipc::Deadline{}) == static_cast<ssize_t>(payload.size());
 }

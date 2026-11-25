@@ -1,4 +1,5 @@
 #include "core/scanout_keeper.h"
+#include "protocols/ipc_channel.h"
 #include "protocols/bus_names.h"
 
 #include "core/log.h"
@@ -47,26 +48,10 @@ namespace andromeda::scanout_keeper {
 
     // One request per connection: greetd reads lines until the connection closes.
     bool sendHandoffRequest(const char* request) {
-      const std::string path = handoffSocketPath();
-      sockaddr_un address{};
-      if (path.empty() || path.size() >= sizeof(address.sun_path)) {
-        return false;
-      }
-      address.sun_family = AF_UNIX;
-      std::memcpy(address.sun_path, path.c_str(), path.size() + 1);
-      // Non-blocking: greetd not reading must never stall the main thread; the request is then lost (greetd's
-      // fallbacks cover it).
-      const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-      if (fd < 0) {
-        return false;
-      }
-      bool sent = false;
-      if (connect(fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) == 0) {
-        const std::string line = std::string(request) + "\n";
-        sent = send(fd, line.data(), line.size(), MSG_NOSIGNAL | MSG_DONTWAIT) == static_cast<ssize_t>(line.size());
-      }
-      close(fd);
-      return sent;
+      // No wait: greetd not reading must never stall the main thread; the request is then lost (greetd's fallbacks
+      // cover it).
+      const ipc::Fd fd = ipc::connectTo(handoffSocketPath(), ipc::Deadline{}, SOCK_STREAM | SOCK_NONBLOCK);
+      return fd && ipc::writeAll(fd.get(), std::string(request) + "\n", ipc::Deadline{});
     }
 
     void releaseOverBus();

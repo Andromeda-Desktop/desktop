@@ -50,20 +50,6 @@ namespace {
     }
   }
 
-  // Descriptors received with one message; closes whatever the handler did not consume.
-  struct ReceivedFds {
-    std::array<int, kMaxFdsPerMessage> fds{};
-    std::size_t count = 0;
-
-    ReceivedFds() = default;
-    ReceivedFds(const ReceivedFds&) = delete;
-    ReceivedFds& operator=(const ReceivedFds&) = delete;
-    ~ReceivedFds() {
-      for (std::size_t i = 0; i < count; ++i) {
-        ::close(fds[i]);
-      }
-    }
-  };
 } // namespace
 
 PixelStreamClient::~PixelStreamClient() { disconnect(); }
@@ -105,27 +91,18 @@ void PixelStreamClient::tick(std::chrono::steady_clock::time_point now) {
 
 void PixelStreamClient::connect() {
   m_retryAt = std::chrono::steady_clock::now() + kRetryInterval;
-  sockaddr_un address{};
-  if (m_path.front() != '/' || m_path.size() >= sizeof(address.sun_path) || m_path.contains('\0')) {
+  if (m_path.front() != '/' || m_path.contains('\0')) {
     // Retried like any other failure, so log at debug level to avoid repeating a warning.
     kLog.debug("'{}' is not a usable socket path", m_path);
     return;
   }
-  address.sun_family = AF_UNIX;
-  std::memcpy(address.sun_path, m_path.c_str(), m_path.size() + 1);
-
-  const int fd = ::socket(AF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-  if (fd < 0) {
-    kLog.warn("socket() failed: {}", std::strerror(errno));
-    return;
-  }
-  if (::connect(fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0) {
+  ipc::Fd fd = ipc::connectTo(m_path, ipc::Deadline{}, SOCK_SEQPACKET | SOCK_NONBLOCK);
+  if (!fd) {
     // The companion not running (yet) is the normal case; retry quietly.
     kLog.debug("connect '{}' failed: {}", m_path, std::strerror(errno));
-    ::close(fd);
     return;
   }
-  auto peer = ipc::checkPeer(ipc::Fd(fd));
+  auto peer = ipc::checkPeer(std::move(fd));
   if (!peer) {
     kLog.warn("refusing '{}': companion runs as another user", m_path);
     return;
@@ -203,65 +180,46 @@ void PixelStreamClient::dispatch(short revents) {
 
 bool PixelStreamClient::readMessage() {
   std::array<std::uint8_t, kDmabufMessageSize + 1> payload{};
-  alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int) * kMaxFdsPerMessage)> control{};
-  iovec vector{.iov_base = payload.data(), .iov_len = payload.size()};
-  msghdr message{};
-  message.msg_iov = &vector;
-  message.msg_iovlen = 1;
-  message.msg_control = control.data();
-  message.msg_controllen = control.size();
-
-  const ssize_t count = ::recvmsg(m_fd, &message, MSG_DONTWAIT | MSG_CMSG_CLOEXEC);
-  if (count < 0) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-      return false;
-    }
+  ipc::Received received = ipc::recvFds(m_fd, std::as_writable_bytes(std::span(payload)), kMaxFdsPerMessage);
+  switch (received.kind) {
+  case ipc::Received::Kind::WouldBlock:
+    return false;
+  case ipc::Received::Kind::Failed:
     fail("read failed");
     return false;
-  }
-
-  ReceivedFds fds;
-  for (cmsghdr* header = CMSG_FIRSTHDR(&message); header != nullptr; header = CMSG_NXTHDR(&message, header)) {
-    if (header->cmsg_level != SOL_SOCKET || header->cmsg_type != SCM_RIGHTS) {
-      continue;
-    }
-    const std::size_t received = (header->cmsg_len - CMSG_LEN(0)) / sizeof(int);
-    for (std::size_t i = 0; i < received && fds.count < fds.fds.size(); ++i) {
-      std::memcpy(&fds.fds[fds.count++], CMSG_DATA(header) + i * sizeof(int), sizeof(int));
-    }
-  }
-
-  if (count == 0) {
+  case ipc::Received::Kind::Closed:
     kLog.debug("'{}' closed by companion", m_path);
     disconnect();
     notify();
     return false;
-  }
-  if ((message.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) != 0) {
+  case ipc::Received::Kind::Truncated:
     fail("oversized message");
     return false;
+  case ipc::Received::Kind::Data:
+    break;
   }
 
-  const auto size = static_cast<std::size_t>(count);
+  auto& fds = received.fds;
+  const std::size_t size = received.size;
   const std::uint32_t type = size >= 4 ? readLe32(payload.data()) : 0;
-  if (type == kBuffer && size == kBufferMessageSize && fds.count == 1) {
-    attachBuffer(readLe32(payload.data() + 4), readLe32(payload.data() + 8), readLe32(payload.data() + 12), fds.fds[0]);
+  if (type == kBuffer && size == kBufferMessageSize && fds.size() == 1) {
+    attachBuffer(readLe32(payload.data() + 4), readLe32(payload.data() + 8), readLe32(payload.data() + 12), fds[0].get());
     return connected();
   }
   if (type == kDmabuf && !m_path.empty()) {
     fail("DMABUF on a version 1 stream");
     return false;
   }
-  if (type == kDmabuf && size == kDmabufMessageSize && fds.count == 1) {
+  if (type == kDmabuf && size == kDmabufMessageSize && fds.size() == 1) {
     const std::uint8_t* p = payload.data();
     const std::uint64_t modifier = readLe32(p + 20) | (std::uint64_t{readLe32(p + 24)} << 32U);
     attachDmabuf(
         readLe32(p + 4), readLe32(p + 8), readLe32(p + 12), readLe32(p + 16), modifier, readLe32(p + 28),
-        readLe32(p + 32), std::exchange(fds.fds[0], -1)
+        readLe32(p + 32), fds[0].release()
     );
     return connected();
   }
-  if (type == kFrame && size == kFrameMessageSize && fds.count == 0) {
+  if (type == kFrame && size == kFrameMessageSize && fds.empty()) {
     const std::uint32_t id = readLe32(payload.data() + 4);
     if (!m_requested) {
       fail("FRAME without a pending REQUEST");

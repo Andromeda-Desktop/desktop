@@ -5,9 +5,12 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // Local Unix sockets (compositor, shell, dmenu, askpass, indexer): the one owner of peer identity, capped reads,
 // client caps and deadline writes. libc and the standard library only, so every binary can compile it.
@@ -135,6 +138,26 @@ namespace ipc {
   // A listening Unix socket at path. type: SOCK_STREAM or SOCK_SEQPACKET, optionally | SOCK_NONBLOCK; close-on-exec
   // always. mode 0 keeps the umask's. An empty Fd with errno on failure; a failure after bind removes the path again.
   [[nodiscard]] Fd listenUnix(const std::string& path, int type, int backlog, mode_t mode, Stale stale);
+
+  // One sendmsg of bytes with fds attached (SCM_RIGHTS), never SIGPIPE; waits for room until the deadline (a past one:
+  // no wait). The bytes sent, or -1 with errno (EAGAIN or ETIMEDOUT: no room). On a stream socket the fds go with the
+  // first byte; a datagram socket sends all bytes or none.
+  // At most kMaxFds fds per message (else -1, EINVAL).
+  [[nodiscard]] ssize_t sendFds(int fd, std::string_view bytes, std::span<const int> fds, Deadline deadline);
+
+  inline constexpr std::size_t kMaxFds = 253; // the kernel's SCM_MAX_FD
+
+  struct Received {
+    enum class Kind : std::uint8_t { Data, WouldBlock, Closed, Truncated, Failed };
+    Kind kind = Kind::Failed;
+    std::size_t size = 0;
+    std::vector<Fd> fds;
+  };
+
+  // One recvmsg into buffer, never waiting. fds come close-on-exec, at most maxFds (<= kMaxFds). Closed: end of file
+  // (or an empty datagram). Truncated: the bytes or the fds did not fit; fds that came still close. Other control
+  // messages (SO_PASSCRED) are ignored. Failed keeps errno.
+  [[nodiscard]] Received recvFds(int fd, std::span<std::byte> buffer, std::size_t maxFds);
 
   enum class EndOfRequest { KeepOpen, HalfClose };
 

@@ -1,5 +1,7 @@
 #include "helper_client.h"
 
+#include "protocols/ipc_channel.h"
+
 #include "core/log.h"
 #include "core/process/process.h"
 
@@ -157,20 +159,9 @@ namespace preview {
       callback(HelperReply{});
       return;
     }
-    auto bytes = encode(msg);
-    iovec iov{.iov_base = bytes.data(), .iov_len = bytes.size()};
-    alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int))> control{};
-    msghdr hdr{};
-    hdr.msg_iov = &iov;
-    hdr.msg_iovlen = 1;
-    hdr.msg_control = control.data();
-    hdr.msg_controllen = control.size();
-    cmsghdr* c = CMSG_FIRSTHDR(&hdr);
-    c->cmsg_level = SOL_SOCKET;
-    c->cmsg_type = SCM_RIGHTS;
-    c->cmsg_len = CMSG_LEN(sizeof(int));
-    std::memcpy(CMSG_DATA(c), &fd, sizeof(int));
-    if (sendmsg(m_fd, &hdr, MSG_NOSIGNAL | MSG_DONTWAIT) != static_cast<ssize_t>(bytes.size())) {
+    const auto bytes = encode(msg);
+    const std::string_view view(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    if (ipc::sendFds(m_fd, view, std::span<const int>(&fd, 1), ipc::Deadline{}) != static_cast<ssize_t>(bytes.size())) {
       callback(HelperReply{});
       fail();
       return;
@@ -191,32 +182,19 @@ namespace preview {
 
   void HelperClient::readOne() {
     std::array<std::uint8_t, kMsgSize + kMaxPayload> bytes{};
-    alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int) * kMaxFds)> control{};
-    iovec iov{.iov_base = bytes.data(), .iov_len = bytes.size()};
-    msghdr hdr{};
-    hdr.msg_iov = &iov;
-    hdr.msg_iovlen = 1;
-    hdr.msg_control = control.data();
-    hdr.msg_controllen = control.size();
     // Non-blocking: a stale readiness report (the old helper's fd number reused by a new one) must not stall the loop.
-    const ssize_t got = recvmsg(m_fd, &hdr, MSG_CMSG_CLOEXEC | MSG_DONTWAIT);
-    if (got < 0 && (errno == EAGAIN || errno == EINTR)) {
+    ipc::Received received = ipc::recvFds(m_fd, std::as_writable_bytes(std::span(bytes)), kMaxFds);
+    if (received.kind == ipc::Received::Kind::WouldBlock) {
       return;
     }
-    std::vector<std::shared_ptr<SharedFd>> fds;
-    for (cmsghdr* c = CMSG_FIRSTHDR(&hdr); c != nullptr; c = CMSG_NXTHDR(&hdr, c)) {
-      if (c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_RIGHTS) {
-        const std::size_t n = (c->cmsg_len - CMSG_LEN(0)) / sizeof(int);
-        for (std::size_t i = 0; i < n; ++i) {
-          int fd = -1;
-          std::memcpy(&fd, CMSG_DATA(c) + i * sizeof(int), sizeof(int));
-          fds.push_back(std::make_shared<SharedFd>(fd));
-        }
-      }
-    }
-    if (got < static_cast<ssize_t>(kMsgSize) || (hdr.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) != 0) {
+    if (received.kind != ipc::Received::Kind::Data || received.size < kMsgSize) {
       fail();
       return;
+    }
+    const auto got = static_cast<std::ptrdiff_t>(received.size);
+    std::vector<std::shared_ptr<SharedFd>> fds;
+    for (ipc::Fd& fd : received.fds) {
+      fds.push_back(std::make_shared<SharedFd>(fd.release()));
     }
     std::array<std::uint8_t, kMsgSize> head{};
     std::memcpy(head.data(), bytes.data(), kMsgSize);

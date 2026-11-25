@@ -4,6 +4,7 @@
 #include "core/process/process.h"
 #include "dbus/system_bus.h"
 #include "i18n/i18n.h"
+#include "protocols/ipc_channel.h"
 #include "util/secure_wipe.h"
 #include "dbus/name_owner_watch.h"
 
@@ -321,19 +322,12 @@ namespace {
 
   private:
     static std::unique_ptr<HelperConversation> connectSocket() {
-      const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-      if (fd < 0) {
-        return nullptr;
-      }
-      sockaddr_un addr{};
-      addr.sun_family = AF_UNIX;
-      std::strncpy(addr.sun_path, kHelperSocket, sizeof(addr.sun_path) - 1);
-      if (::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0) {
+      ipc::Fd fd = ipc::connectTo(kHelperSocket, ipc::Deadline::max());
+      if (!fd) {
         kLog.warn("polkit helper socket {}: {}; spawning the helper", kHelperSocket, std::strerror(errno));
-        ::close(fd);
         return nullptr;
       }
-      return std::make_unique<HelperConversation>(fd, -1);
+      return std::make_unique<HelperConversation>(fd.release(), -1);
     }
 
     static std::unique_ptr<HelperConversation> spawn(const std::string& user) {

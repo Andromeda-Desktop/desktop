@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstring>
 
@@ -309,6 +310,73 @@ namespace ipc {
       return {};
     }
     return fd;
+  }
+
+  ssize_t sendFds(int fd, std::string_view bytes, std::span<const int> fds, Deadline deadline) {
+    iovec iov{.iov_base = const_cast<char*>(bytes.data()), .iov_len = bytes.size()};
+    msghdr message{};
+    message.msg_iov = &iov;
+    message.msg_iovlen = 1;
+    if (fds.size() > kMaxFds) {
+      errno = EINVAL;
+      return -1;
+    }
+    alignas(cmsghdr) std::array<char, CMSG_SPACE(kMaxFds * sizeof(int))> control{};
+    if (!fds.empty()) {
+      message.msg_control = control.data();
+      message.msg_controllen = CMSG_SPACE(fds.size_bytes());
+      cmsghdr* header = CMSG_FIRSTHDR(&message);
+      header->cmsg_level = SOL_SOCKET;
+      header->cmsg_type = SCM_RIGHTS;
+      header->cmsg_len = CMSG_LEN(fds.size_bytes());
+      std::memcpy(CMSG_DATA(header), fds.data(), fds.size_bytes());
+    }
+    for (;;) {
+      const ssize_t sent = sendmsg(fd, &message, MSG_NOSIGNAL | MSG_DONTWAIT);
+      if (sent >= 0 || (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK)) {
+        return sent;
+      }
+      if (errno != EINTR && (remainingMs(deadline) == 0 || !waitFor(fd, POLLOUT, deadline))) {
+        return -1;
+      }
+    }
+  }
+
+  Received recvFds(int fd, std::span<std::byte> buffer, std::size_t maxFds) {
+    iovec iov{.iov_base = buffer.data(), .iov_len = buffer.size()};
+    maxFds = std::min(maxFds, kMaxFds);
+    alignas(cmsghdr) std::array<char, CMSG_SPACE(kMaxFds * sizeof(int))> control{};
+    msghdr message{};
+    message.msg_iov = &iov;
+    message.msg_iovlen = 1;
+    message.msg_control = maxFds == 0 ? nullptr : control.data();
+    message.msg_controllen = maxFds == 0 ? 0 : CMSG_SPACE(maxFds * sizeof(int));
+    ssize_t count = -1;
+    do {
+      count = recvmsg(fd, &message, MSG_DONTWAIT | MSG_CMSG_CLOEXEC);
+    } while (count < 0 && errno == EINTR);
+    Received result;
+    if (count < 0) {
+      result.kind = errno == EAGAIN || errno == EWOULDBLOCK ? Received::Kind::WouldBlock : Received::Kind::Failed;
+      return result;
+    }
+    bool truncated = (message.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) != 0;
+    for (cmsghdr* header = CMSG_FIRSTHDR(&message); header != nullptr; header = CMSG_NXTHDR(&message, header)) {
+      if (header->cmsg_level != SOL_SOCKET || header->cmsg_type != SCM_RIGHTS || header->cmsg_len < CMSG_LEN(0)) {
+        continue;
+      }
+      const std::size_t n = (header->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+      for (std::size_t i = 0; i < n; ++i) {
+        int received = -1;
+        std::memcpy(&received, CMSG_DATA(header) + i * sizeof(int), sizeof(int));
+        result.fds.emplace_back(received);
+      }
+    }
+    // CMSG_SPACE rounds up, so the kernel can deliver more fds than asked for.
+    truncated = truncated || result.fds.size() > maxFds;
+    result.size = static_cast<std::size_t>(count);
+    result.kind = truncated ? Received::Kind::Truncated : count == 0 ? Received::Kind::Closed : Received::Kind::Data;
+    return result;
   }
 
   Read request(const std::string& path, std::string_view bytes, EndOfRequest end, std::size_t cap, Deadline deadline,
