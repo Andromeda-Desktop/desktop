@@ -44,6 +44,7 @@
 #include "scripting/plugin_manager.h"
 #include "scripting/plugin_service_host.h"
 #include "scripting/script_api_context.h"
+#include "security/secret_service_state.h"
 #include "security/secret_store.h"
 #include "security/storage_key_provider.h"
 #include "shell/bar/bar.h"
@@ -251,8 +252,7 @@ private:
   void syncNotificationDaemon();
   void installNotificationBusNameWatch();
   // Re-drives the consumers that gave up before the provider appeared or its default collection unlocked.
-  void onSecretServiceEvent(security::SecretServiceEvent event);
-  void retrySecretServiceConsumers(bool defaultCollectionUnlocked = false);
+  [[nodiscard]] security::SecretServiceConsumers secretServiceConsumers();
   void scheduleNotificationShellRefresh();
   void syncLiveActivity();
   // logind's scheduled shutdown: an island live activity with Cancel, and banners at 5 and 1 minute (D3).
@@ -488,8 +488,6 @@ private:
   std::unique_ptr<NotificationDBusHost> m_notificationDbus;
   NameOwnerWatch m_notificationBusNameWatch;
   security::SecretServiceWatch m_secretServiceWatch;
-  bool m_storageKeyAutoRetried = false;
-  bool m_calendarCredentialAutoRetried = false;
   std::unique_ptr<EasyEffectsService> m_easyEffectsService;
   std::unique_ptr<PipeWireSpectrum> m_pipewireSpectrum;
   std::unique_ptr<compositors::andromeda::AndromedaAudioProvider> m_andromedaAudioProvider;

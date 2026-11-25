@@ -670,7 +670,7 @@ void Application::initPanelManagerAndPanels() {
   m_settingsWindow.setCalendarService(&m_calendarService);
   m_calendarService.setCredentialChangeCallback([this] {
     m_settingsWindow.onExternalOptionsChanged();
-    retrySecretServiceConsumers();
+    m_secretServiceWatch.consumerChanged();
   });
   m_settingsWindow.setClipboardService(&m_clipboardService);
   m_settingsWindow.setNotificationManager(&m_notificationManager);

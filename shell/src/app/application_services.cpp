@@ -449,50 +449,22 @@ void Application::installNotificationBusNameWatch() {
   );
 }
 
-void Application::onSecretServiceEvent(security::SecretServiceEvent event) {
-  // A provider that just showed up, or a collection that just unlocked, is a fresh chance for every consumer that
-  // gave up.
-  m_storageKeyAutoRetried = false;
-  m_calendarCredentialAutoRetried = false;
-  if (event == security::SecretServiceEvent::CollectionUnlocked) {
-    // The follow-up lookup reads the unlocked collection without raising a prompt.
-    retrySecretServiceConsumers(true);
-    return;
-  }
-  DeferredCall::callLater([this] {
-    const bool retryWillProbeCollection = m_storageKeyProvider.state() == security::StorageKeyState::DeniedOrLocked;
-    retrySecretServiceConsumers();
-    if (!retryWillProbeCollection) {
-      m_secretServiceWatch.probeCollection();
-    }
-  });
-}
-
-void Application::retrySecretServiceConsumers(bool defaultCollectionUnlocked) {
-  if (!m_secretServiceWatch.providerOwned()) {
-    return;
-  }
-  // A locked storage key is only worth reopening once the collection is actually unlocked: a lookup
-  // then reads silently, whereas retrying while still locked would raise a second keyring prompt.
-  const security::StorageKeyState storageKeyState = m_storageKeyProvider.state();
-  if (!m_storageKeyAutoRetried
-      && (storageKeyState == security::StorageKeyState::Unavailable
-          || (storageKeyState == security::StorageKeyState::DeniedOrLocked && defaultCollectionUnlocked))) {
-    m_storageKeyAutoRetried = true;
-    kLog.info("secret service is running; reopening encrypted storage");
-    DeferredCall::callLater([this] { m_storageKeyProvider.retry(); });
-  } else if (!m_storageKeyAutoRetried && storageKeyState == security::StorageKeyState::DeniedOrLocked) {
-    m_secretServiceWatch.probeCollection();
-  }
-  const calendar::CredentialState calendarCredentialState = m_calendarService.credentialState();
-  const bool calendarRetryNeeded = calendarCredentialState == calendar::CredentialState::Unavailable
-      || calendarCredentialState == calendar::CredentialState::DeniedOrLocked
-      || m_calendarService.hasMissingRefreshTokens();
-  if (!m_calendarCredentialAutoRetried && calendarRetryNeeded) {
-    m_calendarCredentialAutoRetried = true;
-    kLog.info("secret service is running; reopening calendar credentials");
-    DeferredCall::callLater([this] { m_calendarService.retryCredentialMigration(); });
-  }
+security::SecretServiceConsumers Application::secretServiceConsumers() {
+  return {
+      .states =
+          [this] {
+            const calendar::CredentialState calendarState = m_calendarService.credentialState();
+            return security::SecretConsumerStates{
+                .storageKey = m_storageKeyProvider.state(),
+                .calendarDeniedOrLocked = calendarState == calendar::CredentialState::DeniedOrLocked,
+                .calendarRetryNeeded = calendarState == calendar::CredentialState::Unavailable
+                    || calendarState == calendar::CredentialState::DeniedOrLocked
+                    || m_calendarService.hasMissingRefreshTokens(),
+            };
+          },
+      .retryStorageKey = [this] { DeferredCall::callLater([this] { m_storageKeyProvider.retry(); }); },
+      .retryCalendar = [this] { DeferredCall::callLater([this] { m_calendarService.retryCredentialMigration(); }); },
+  };
 }
 
 bool Application::likelySupportsInSessionPolkit() const noexcept {
@@ -689,7 +661,7 @@ void Application::initServices() {
     m_calendarService.syncCachePersistence();
     m_notificationManager.syncHistoryPersistence(m_storageKeyProvider);
     m_settingsWindow.onExternalOptionsChanged();
-    retrySecretServiceConsumers();
+    m_secretServiceWatch.consumerChanged();
   });
   syncStorageKeyProvider();
   m_configService.addReloadCallback(
@@ -2431,7 +2403,7 @@ void Application::initSessionBusServices() {
     installNotificationBusNameWatch();
     syncNotificationDaemon();
     m_configService.addReloadCallback([this] { syncNotificationDaemon(); });
-    m_secretServiceWatch.start(*m_bus, [this](security::SecretServiceEvent event) { onSecretServiceEvent(event); });
+    m_secretServiceWatch.start(*m_bus, secretServiceConsumers());
   }
 
   m_locationService.setSystemBus(m_systemBus.get());

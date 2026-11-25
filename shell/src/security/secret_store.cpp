@@ -6,6 +6,7 @@
 #include "dbus/name_owner_watch.h"
 #include "dbus/session_bus.h"
 #include "security/secret_collection_probe.h"
+#include "security/secret_service_state.h"
 #include "protocols/crash_capture.h"
 #include "util/secure_wipe.h"
 #include "util/thread_name.h"
@@ -1159,57 +1160,53 @@ namespace security {
 
   class SecretServiceWatch::Impl {
   public:
-    Impl(SessionBus& bus, Callback callback) : m_callback(std::move(callback)) {
+    Impl(SessionBus& bus, SecretServiceConsumers consumers) {
+      bool owned = false;
+      // The provider may have claimed the name before the watch existed.
+      try {
+        owned = nameHasOwner(bus.connection(), std::string{kSecretsName});
+      } catch (const sdbus::Error& e) {
+        kLog.debug("secret service NameHasOwner failed: {}", e.what());
+      }
+      m_retries.emplace(
+          owned, [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { probe(); }); }, std::move(consumers)
+      );
       m_nameWatch = NameOwnerWatch::changes(
           bus.connection(), std::string{kSecretsName},
           [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
             if (m_probe != nullptr) {
               m_probe->invalidate();
             }
-            m_owned = !newOwner.empty();
-            if (m_owned) {
-              kLog.info("secret service provider appeared on {}", kSecretsName);
-              m_callback(SecretServiceEvent::ProviderAppeared);
-            }
+            m_retries->providerChanged(!newOwner.empty());
           }
       );
-      // The provider may have claimed the name before the watch existed.
       try {
-        m_owned = nameHasOwner(bus.connection(), std::string{kSecretsName});
-      } catch (const sdbus::Error& e) {
-        kLog.debug("secret service NameHasOwner failed: {}", e.what());
-      }
-      try {
-        m_probe = std::make_unique<SecretCollectionProbe>(bus, [this](bool unlocked) {
-          if (unlocked && m_owned) {
-            kLog.info("secret service default collection unlocked");
-            m_callback(SecretServiceEvent::CollectionUnlocked);
-          }
-        });
-        // A collection appearing or changing is the cue that the default one may have just unlocked.
-        m_probe->watchCollections([this] { DeferredCall::callLaterIfAlive(m_alive, [this] { probe(); }); });
-        // The collection can unlock during startup before this watch exists, and that emits no further signal.
-        DeferredCall::callLaterIfAlive(m_alive, [this] { probe(); });
+        m_probe = std::make_unique<SecretCollectionProbe>(bus, [this](bool unlocked) { m_retries->probed(unlocked); });
+        m_probe->watchCollections([this] { m_retries->collectionChanged(); });
       } catch (const sdbus::Error& e) {
         kLog.debug("secret service collection watch setup failed: {}", e.what());
         m_probe.reset();
       }
+      // The collection can unlock during startup before this watch exists, and that emits no further signal.
+      m_retries->collectionChanged();
     }
 
+    void consumerChanged() { m_retries->consumerChanged(); }
+
+  private:
+    // Without a working probe the collection counts as locked: consumers still get the provider's retry.
     void probe() {
-      if (m_owned && m_probe != nullptr) {
+      if (m_probe != nullptr) {
         m_probe->request();
+      } else {
+        m_retries->probed(false);
       }
     }
 
-    [[nodiscard]] bool owned() const { return m_owned; }
-
-  private:
     std::shared_ptr<int> m_alive = std::make_shared<int>(0);
-    Callback m_callback;
+    std::optional<SecretServiceRetries> m_retries;
     NameOwnerWatch m_nameWatch;
     std::unique_ptr<SecretCollectionProbe> m_probe;
-    bool m_owned = false;
   };
 
   SecretStore::SecretStore() : SecretStore(makeSecretServiceBackend()) {}
@@ -1223,19 +1220,17 @@ namespace security {
 
   SecretServiceWatch::~SecretServiceWatch() = default;
 
-  void SecretServiceWatch::start(SessionBus& bus, Callback callback) {
+  void SecretServiceWatch::start(SessionBus& bus, SecretServiceConsumers consumers) {
     if (m_impl == nullptr) {
-      m_impl = std::make_unique<Impl>(bus, std::move(callback));
+      m_impl = std::make_unique<Impl>(bus, std::move(consumers));
     }
   }
 
-  void SecretServiceWatch::probeCollection() {
+  void SecretServiceWatch::consumerChanged() {
     if (m_impl != nullptr) {
-      m_impl->probe();
+      m_impl->consumerChanged();
     }
   }
-
-  bool SecretServiceWatch::providerOwned() const { return m_impl != nullptr && m_impl->owned(); }
 
   SecretStoreOperation SecretStore::lookup(const SecretId& id, LookupCallback callback) {
     auto cancellation = std::make_shared<SecretStoreCancellation>();
