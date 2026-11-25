@@ -141,6 +141,14 @@ namespace linkapp {
       return out;
     }
 
+    Button::ButtonPalette playPalette() {
+      const Button::ButtonStateColors rest{.bg = colorSpecFromRole(ColorRole::Label1), .border = clearColorSpec(),
+                                           .label = colorSpecFromRole(ColorRole::View)};
+      const Button::ButtonStateColors hot{.bg = colorSpecFromRole(ColorRole::Label2), .border = clearColorSpec(),
+                                          .label = colorSpecFromRole(ColorRole::View)};
+      return {.normal = rest, .hover = hot, .pressed = hot, .disabled = rest};
+    }
+
     std::unique_ptr<Label> text(std::string value, const Tokens::Type& type, ColorRole role, float s, int lines = 1) {
       return ui::label({.text = std::move(value), .fontSize = type.size * s,
                         .fontWeight = static_cast<FontWeight>(type.weight), .color = colorSpecFromRole(role),
@@ -1194,7 +1202,7 @@ namespace linkapp {
     const float s = m_scale = m_window->uiScale();
     auto side = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::componentSidebarPadding * s,
                             .flexGrow = 1.0F});
-    side->addChild(ui::searchCapsule({.out = &m_searchInput, .placeholder = "Search", .height = Tokens::sizeControlL, .scale = s,
+    side->addChild(ui::searchCapsule({.out = &m_searchInput, .placeholder = "Search", .height = Tokens::sizeControlM, .scale = s,
                                       .value = m_query, .clearButton = true,
                                       .onChange = [this](const std::string& query) {
                                         m_searchCaret = m_searchInput != nullptr ? m_searchInput->caret() : query.size();
@@ -1288,6 +1296,7 @@ namespace linkapp {
       list->addChild(std::move(row));
     }
     auto settings = std::make_unique<StatusRow>(s);
+    settings->setOneLine(true);
     settings->setData({.symbol = "settings", .name = i18n::tr("link.pages.settings"), .selected = m_page == Page::Settings && !pairShown()});
     settings->setOnClick([this] { show(Page::Settings); });
     if (m_page == Page::Settings && !pairShown()) selected = settings.get();
@@ -1297,7 +1306,7 @@ namespace linkapp {
     if (!m_client || m_client->presence().kind != Presence::Kind::NotPaired) {
       // The list scrolls on a short window, so the PhoneCard below always shows whole.
       auto scroll = ui::scrollView({.state = &m_sideScroll, .contentScale = s, .scrollbarAutoHide = true,
-                                    .contentAlign = ScrollView::ContentAlign::Start, .flexGrow = 1.0F});
+                                    .contentAlign = ScrollView::ContentAlign::Start, .viewportPaddingV = 0.0F, .flexGrow = 1.0F});
       scroll->content()->addChild(std::move(list));
       side->addChild(std::move(scroll));
     } else {
@@ -1334,10 +1343,23 @@ namespace linkapp {
     auto label = text(name, Tokens::typeHeadline, ColorRole::Label1, s);
     label->setFlexGrow(1.0F);
     head->addChild(std::move(label));
+    // Playing media joins the card instead of adding a row: play/pause here, the track in place of the status line.
+    const PhonePlayer* playing = player();
+    if (playing != nullptr) {
+      const float key = Tokens::sizeControlS * s;
+      const std::string id = presence.phone.id;
+      head->addChild(ui::button({.glyph = std::string(playing->playing ? "player-pause" : "player-play"),
+                                 .glyphSize = Tokens::sizeSymbolInline * s, .controlHeight = key, .enabled = playing->takes("play-pause"),
+                                 .customPalette = playPalette(),
+                                 .tooltip = i18n::tr(playing->playing ? "link.player.pause" : "link.player.play"), .padding = 0.0F,
+                                 .radius = key / 2.0F, .width = key, .height = key,
+                                 .onClick = [this, id] { m_client->playerCommand(id, "play-pause"); }}));
+    }
     if (m_client && !m_client->phones().empty()) {
       Button* choose = nullptr;
       head->addChild(ui::button({.out = &choose, .glyph = std::string("selector"), .glyphSize = Tokens::sizeSymbol * s,
-                                 .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("link.phone-card.choose"),
+                                 .controlHeight = Tokens::sizeControlS * s,
+                                 .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("link.phone-card.choose"), .padding = 0.0F,
                                  .radius = Tokens::sizeControlS * s / 2.0F, .width = Tokens::sizeControlS * s,
                                  .height = Tokens::sizeControlS * s}));
       choose->setOnClick([this, choose] {
@@ -1363,9 +1385,10 @@ namespace linkapp {
         });
       });
     }
-    if (const PhonePlayer* p = player(); p != nullptr) card->addChild(playerMini(*p, presence.phone.id, s));
     card->addChild(std::move(head));
-    if (!line.empty()) {
+    if (playing != nullptr) {
+      card->addChild(playerMini(*playing, s));
+    } else if (!line.empty()) {
       const bool live = presence.kind == Presence::Kind::Connected || presence.kind == Presence::Kind::Locked;
       auto status = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
       if (presence.kind != Presence::Kind::NotPaired) {
@@ -1495,32 +1518,20 @@ namespace linkapp {
       return box;
     }
 
-    Button::ButtonPalette playPalette() {
-      const Button::ButtonStateColors rest{.bg = colorSpecFromRole(ColorRole::Label1), .border = clearColorSpec(),
-                                           .label = colorSpecFromRole(ColorRole::View)};
-      const Button::ButtonStateColors hot{.bg = colorSpecFromRole(ColorRole::Label2), .border = clearColorSpec(),
-                                          .label = colorSpecFromRole(ColorRole::View)};
-      return {.normal = rest, .hover = hot, .pressed = hot, .disabled = rest};
-    }
   } // namespace
 
-  // PlayerMini (design-link-parity handoff.yaml): cover 32 | title over artist | play/pause; the row opens the popover.
-  std::unique_ptr<Node> LinkApp::playerMini(const PhonePlayer& p, const std::string& id, float s) {
-    const float key = Tokens::sizeControlM * s;
-    auto row = ui::button({.contentAlign = ButtonContentAlign::Start, .variant = ButtonVariant::Ghost, .padding = 0.0F,
-                           .gap = Tokens::spaceP8 * s, .radius = Style::scaledRadius(Tokens::radiusR8, s),
+  // The PhoneCard's status line while the phone plays: music symbol, "Title · Artist"; a click opens the player.
+  std::unique_ptr<Node> LinkApp::playerMini(const PhonePlayer& p, float s) {
+    auto row = ui::button({.contentAlign = ButtonContentAlign::Start, .variant = ButtonVariant::Ghost,
+                           .minHeight = Tokens::typeFootnote.line * s, .padding = 0.0F,
+                           .gap = Tokens::spaceP4 * s, .radius = Style::scaledRadius(Tokens::radiusR8, s),
                            .onClick = [this] { openPlayer(); }});
-    row->addChild(cover(m_renderer, p.art, key, Style::scaledRadius(Tokens::radiusR8, s), s));
-    auto body = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
-    auto title = text(p.title, Tokens::typeFootnote, ColorRole::Label1, s);
-    title->setFontWeight(FontWeight::SemiBold);
-    body->addChild(std::move(title));
-    body->addChild(text(p.artist, Tokens::typeFootnote, ColorRole::Label2, s));
-    row->addChild(std::move(body));
-    row->addChild(ui::button({.glyph = std::string(p.playing ? "player-pause" : "player-play"), .glyphSize = Tokens::sizeSymbol * s,
-                              .enabled = p.takes("play-pause"), .customPalette = playPalette(),
-                              .tooltip = i18n::tr(p.playing ? "link.player.pause" : "link.player.play"), .radius = key / 2.0F, .width = key,
-                              .height = key, .onClick = [this, id] { m_client->playerCommand(id, "play-pause"); }}));
+    row->addChild(ui::glyph({.glyph = std::string("music"), .glyphSize = Tokens::sizeSymbolInline * s,
+                             .color = colorSpecFromRole(ColorRole::Label2)}));
+    auto track = text(p.artist.empty() ? p.title : std::format("{} · {}", p.title, p.artist), Tokens::typeFootnote,
+                      ColorRole::Label2, s);
+    track->setFlexGrow(1.0F);
+    row->addChild(std::move(track));
     return row;
   }
 

@@ -52,6 +52,9 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
   text->addChild(ui::label({.out = &m_status, .fontSize = Tokens::typeFootnote.size * s,
                             .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1,
                             .ellipsize = TextEllipsize::End}));
+  // The token lines (body 16 + footnote 16) keep a two-line row at 48 with its 8 padding.
+  m_name->setLineHeight(Tokens::typeBody.line * s);
+  m_status->setLineHeight(Tokens::typeFootnote.line * s);
   m_text = addChild(std::move(text));
   addChild(ui::label({.out = &m_time, .fontSize = Tokens::typeFootnote.size * s, .fontFeatures = std::string("tnum"),
                       .maxLines = 1}));
@@ -133,6 +136,10 @@ void StatusRow::setTime(const std::string& time) {
   if (m_time->setText(time)) {
     markLayoutDirty();
   }
+}
+
+void StatusRow::setOneLine(bool oneLine) {
+  setMinHeight((oneLine ? Tokens::sizeRowCompact : Tokens::sizeRowTwoCompact) * m_scale);
 }
 
 void StatusRow::setRail(bool rail) {

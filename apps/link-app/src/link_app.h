@@ -226,7 +226,7 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> sidebar(float width);
     // The lead player of the shown phone while it is connected; null otherwise.
     [[nodiscard]] const PhonePlayer* player() const;
-    [[nodiscard]] std::unique_ptr<Node> playerMini(const PhonePlayer& p, const std::string& id, float s);
+    [[nodiscard]] std::unique_ptr<Node> playerMini(const PhonePlayer& p, float s);
     [[nodiscard]] std::unique_ptr<Node> playerPopover(float s);
     void openPlayer();
     // Moves the open player popover to the model in place; closes it once the player is gone.

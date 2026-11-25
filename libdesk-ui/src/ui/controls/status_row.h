@@ -55,6 +55,8 @@ public:
   void setActions(std::vector<Action> actions);
   // An icon rail (narrow window): the symbol alone, centred; the name becomes its tooltip.
   void setRail(bool rail);
+  // A row that never has a status line (Settings in a status list): compact one-line height 32, not 48.
+  void setOneLine(bool oneLine);
 
 protected:
   void doLayout(Renderer& renderer) override;

@@ -67,7 +67,7 @@ with_noctalia '
   view() {
     case $1 in
       waiting) at 68 88 ;; messages) at 75 140 ;; calls) at 59 193 ;; photos) at 65 244 ;; files) at 59 290 ;;
-      activity) at 68 351 ;; settings) at 62 449 ;; *) fail "no view $1" ;;
+      activity) at 68 351 ;; settings) at 62 435 ;; *) fail "no view $1" ;;
     esac
   }
   clips() { grep -c "\"event\":\"clip-offered\"" "$OUT/hold.jsonl" || true; }
@@ -149,13 +149,8 @@ with_noctalia '
   wait_for "Send clipboard did not reach the phone" grep -q "\"event\":\"received\",\"kind\":\"text\",\"text\":\"INV-2026-1043" "$OUT/hold.jsonl"
   step "send clipboard: the phone received the copied text"
   shot light
-  # The player on the phone card covers Settings: scroll the sidebar to it, then back for the rows above.
-  wheel() { "'"$ROOT"'/compositor/build-debug/tests/pointer-client" 1280 720 move $((WX + 100)) $((WY + 250)) notch "$1" > /dev/null; } # one notch: 1 down, -1 up
-  wheel 1
-  sleep 0.5 # real time: the scroll settles
-  at 62 405
+  view settings
   shot settings
-  wheel -1
   step "settings: grants of the connected phone"
   for v in messages calls photos files activity; do view $v; shot $v; done
   step "views: messages, calls (the missed call), photos, files, activity with the phone connected"
