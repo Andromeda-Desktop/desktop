@@ -1668,6 +1668,16 @@ namespace andromeda {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+  nlohmann::json IpcCommands::sleepSignal([[maybe_unused]] Server& server, std::string_view arg) {
+    if (arg != "sleep" && arg != "resume") {
+      return nlohmann::json{{"error", "sleep-signal needs sleep or resume"}};
+    }
+#ifdef ANDROMEDA_TEST_IPC
+    server.prepareForSleepForTest(arg == "sleep");
+#endif
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
   nlohmann::json IpcCommands::clockAdvance(Server& /*server*/, std::string_view /*arg*/) {
     return nlohmann::json{{"ok", nullptr}};
   }
@@ -2023,6 +2033,8 @@ namespace andromeda {
        IpcCommandGroup::Harness, true, &IpcCommands::outputFailNextCommit, nullptr},
       {"stall-submit", "<ms>", "make the next render-thread GPU submit sleep <ms> (render thread check)",
        IpcCommandGroup::Harness, true, &IpcCommands::stallSubmit, nullptr},
+      {"sleep-signal", "<sleep|resume>", "act as if logind sent PrepareForSleep (resume check)",
+       IpcCommandGroup::Harness, true, &IpcCommands::sleepSignal, nullptr},
       {"clock-freeze", "", "stop animation time", IpcCommandGroup::Harness, false, &IpcCommands::clockFreeze, nullptr},
       {"clock-advance", "<ms>", "move frozen animation time forward and wait until every output has drawn it",
        IpcCommandGroup::Harness, true, &IpcCommands::clockAdvance, nullptr, 35},

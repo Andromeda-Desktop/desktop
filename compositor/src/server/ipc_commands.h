@@ -49,6 +49,7 @@ namespace andromeda {
     static nlohmann::json settle(Server& server, std::string_view arg);
     static nlohmann::json clockFreeze(Server& server, std::string_view arg);
     static nlohmann::json stallSubmit(Server& server, std::string_view arg);
+    static nlohmann::json sleepSignal(Server& server, std::string_view arg);
     static nlohmann::json outputFailNextCommit(Server& server, std::string_view arg);
     static nlohmann::json stallFrame(Server& server, std::string_view arg);
     // The reply to clock-advance. The IPC server advances the clock and holds the reply until every output has drawn.

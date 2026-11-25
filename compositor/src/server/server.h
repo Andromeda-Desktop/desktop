@@ -349,6 +349,7 @@ namespace andromeda {
     void resumeAnimationClock();
     [[nodiscard]] bool animationClockFrozen() const { return m_frozenAnimationClockMsec.has_value(); }
     void emitRendererLostForTest();
+    void prepareForSleepForTest(bool sleeping) { onPrepareForSleep(sleeping); }
     [[nodiscard]] bool injectPlaneCursor(std::string_view spec, std::string* error);
 #endif
     [[nodiscard]] Ipc* ipc() const { return m_ipc.get(); }
@@ -1280,6 +1281,9 @@ namespace andromeda {
     wl_event_source* m_restartLockEscape = nullptr;
     bool m_lockFileManaged = false;
     wl_event_source* m_watchdogTimer = nullptr;
+    bool m_stuckSubmitLogged = false;
+    // One-shot after resume: logs each output that should show something and presented nothing.
+    wl_event_source* m_resumeCheckTimer = nullptr;
     // The session compositor's logind PrepareForSleep feed: Sleep and Resume for applyActivity, and the watchdog pause.
     std::unique_ptr<SleepWatch> m_sleepWatch;
     void onPrepareForSleep(bool sleeping);

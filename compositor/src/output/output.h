@@ -268,6 +268,9 @@ namespace andromeda {
     // A background layer surface mapped: the login held frame crosses to the session 300 ms later.
     void backgroundMapped();
     void scheduleFullFrame();
+    // Resume redraws every shown output once; resumeStall then names the frame state of one that presented nothing.
+    void noteResume();
+    [[nodiscard]] std::optional<std::string> resumeStall() const;
     // Commit this custom mode and arrange around it. `refreshMHz` paces frames; 0 keeps the backend's default.
     void applyMode(int width, int height, int refreshMHz = 0);
     void handleExternalConfigChange();
@@ -429,6 +432,8 @@ namespace andromeda {
     // WaitingContext: another output's submit holds the GL context; the frame is scheduled again when it returns.
     enum class FrameState : uint8_t { Idle, WaitingContext, Submitting, SubmittingDirty };
     FrameState m_frameState = FrameState::Idle;
+    uint64_t m_presentCount = 0;
+    uint64_t m_presentsAtResume = 0;
     // What handleFrame passes to completeFrame across the render thread's submit.
     struct PendingFrame {
       timespec now{};

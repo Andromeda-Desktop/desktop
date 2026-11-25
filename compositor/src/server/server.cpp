@@ -150,6 +150,8 @@ namespace andromeda {
 
 
     constexpr Logger kLog("server");
+    // Long enough for a resumed GPU and panel to show one frame; an output still silent then is stuck.
+    constexpr int kResumeCheckMs = 5000;
     constexpr size_t kWaylandClientBufferSize = 1024 * 1024;
     // Security-context clients only receive reviewed, ordinary application
     // protocols. New globals stay unavailable until they are classified here.
@@ -1523,6 +1525,10 @@ namespace andromeda {
       wl_event_source_remove(m_watchdogTimer);
       m_watchdogTimer = nullptr;
     }
+    if (m_resumeCheckTimer != nullptr) {
+      wl_event_source_remove(m_resumeCheckTimer);
+      m_resumeCheckTimer = nullptr;
+    }
     if (m_restartLockEscape != nullptr) {
       wl_event_source_remove(m_restartLockEscape);
       m_restartLockEscape = nullptr;
@@ -1724,8 +1730,12 @@ namespace andromeda {
           const int64_t busySince = fx_renderer_busy_since_ns(server->m_renderer);
           timespec now{};
           clock_gettime(CLOCK_MONOTONIC, &now);
-          if (busySince == 0 || now.tv_sec * 1'000'000'000LL + now.tv_nsec - busySince < kStuckSubmitNs) {
+          const int64_t busyNs = busySince == 0 ? 0 : now.tv_sec * 1'000'000'000LL + now.tv_nsec - busySince;
+          if (busyNs < kStuckSubmitNs) {
             (void)notifyService(server->m_notifySocket, "WATCHDOG=1");
+            server->m_stuckSubmitLogged = false;
+          } else if (!std::exchange(server->m_stuckSubmitLogged, true)) {
+            kLog.error("render thread stuck in one GPU submit for {} s; withholding the watchdog so systemd restarts the session", busyNs / 1'000'000'000);
           }
           wl_event_source_timer_update(server->m_watchdogTimer, server->m_watchdogIntervalMs);
           return 0;
@@ -1737,6 +1747,39 @@ namespace andromeda {
 
   void Server::onPrepareForSleep(bool sleeping) {
     applyActivity(sleeping ? SessionEvent::Sleep : SessionEvent::Resume);
+    if (!sleeping) {
+      for (const auto& output : m_outputs) {
+        output->noteResume();
+      }
+      if (m_resumeCheckTimer == nullptr) {
+        m_resumeCheckTimer = wl_event_loop_add_timer(
+            wl_display_get_event_loop(m_display),
+            [](void* data) {
+              auto* server = static_cast<Server*>(data);
+              // An inactive session holds no DRM master: its outputs cannot present until it is active again.
+              if (server->m_session != nullptr && !server->m_session->active) {
+                return 0;
+              }
+              bool stalled = false;
+              for (const auto& output : server->m_outputs) {
+                if (const std::optional<std::string> stall = output->resumeStall()) {
+                  stalled = true;
+                  kLog.warn(
+                      "output '{}': no frame presented {} ms after resume ({}, render_busy={})",
+                      output->wlr()->name, kResumeCheckMs, *stall, fx_renderer_busy_since_ns(server->m_renderer) != 0
+                  );
+                }
+              }
+              if (!stalled) {
+                kLog.info("resume check: every shown output presented a frame");
+              }
+              return 0;
+            },
+            this
+        );
+      }
+      wl_event_source_timer_update(m_resumeCheckTimer, kResumeCheckMs);
+    }
     if (m_notifySocket.empty()) {
       return;
     }

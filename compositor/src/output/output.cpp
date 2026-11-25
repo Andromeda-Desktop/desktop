@@ -2764,6 +2764,24 @@ namespace andromeda {
     wlr_output_schedule_frame(m_output);
   }
 
+  void Output::noteResume() {
+    m_presentsAtResume = m_presentCount;
+    if (m_output->enabled && !m_dpmsOff) {
+      scheduleFullFrame();
+    }
+  }
+
+  std::optional<std::string> Output::resumeStall() const {
+    if (!m_output->enabled || m_dpmsOff || m_presentCount != m_presentsAtResume) {
+      return std::nullopt;
+    }
+    constexpr std::array<std::string_view, 4> kStates{"idle", "waiting-context", "submitting", "submitting-dirty"};
+    return std::format(
+        "frame_state={} frame_pending={} needs_frame={}", kStates[static_cast<size_t>(m_frameState)],
+        m_output->frame_pending, m_output->needs_frame
+    );
+  }
+
   void Output::markDirty(Dirty what) {
     m_dirty |= what;
     wlr_output_schedule_frame(m_output);
@@ -3417,6 +3435,9 @@ namespace andromeda {
 
   void Output::handlePresent(void* data) {
     const auto* event = static_cast<const wlr_output_event_present*>(data);
+    if (event->presented) {
+      ++m_presentCount;
+    }
     if (event->presented && !m_foreignPlanes.empty()) {
       if (const int count = disableForeignPlanes(m_output, m_foreignPlanes); count > 0) {
         kLog.info("output '{}': turned off {} planes left by the previous master", m_output->name, count);
