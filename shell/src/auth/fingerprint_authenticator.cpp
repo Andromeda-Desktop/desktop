@@ -132,9 +132,6 @@ void FingerprintAuthenticator::requestDevice(std::uint64_t attempt) {
             setAvailable(false);
           }
           const bool ok = !e.has_value() && createDeviceProxy(path);
-          if (ok) {
-            emitStatus(i18n::tr("auth.fingerprint.ready"), false);
-          }
           run(m_machine.deviceReply(attempt, ok));
         });
   } catch (const sdbus::Error& e) {

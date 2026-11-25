@@ -307,7 +307,7 @@ bool LockScreen::lock(bool relock) {
   (void)m_lifecycle.on(LockLifecycle::Event::Requested);
   m_password.clear();
   m_status = i18n::tr("lockscreen.waiting");
-  m_statusIsError = false;
+  m_statusKind = StatusKind::Info;
   syncInstances();
   if (m_instances.empty()) {
     // The compositor still answers this request; endLock() fires the abort hook then.
@@ -403,7 +403,7 @@ void LockScreen::endLock(LockLifecycle::Event event) {
 
   m_password.clear();
   m_status.clear();
-  m_statusIsError = false;
+  m_statusKind = StatusKind::Info;
   m_wayland->stopKeyRepeat();
   invalidateDesktopCaptures();
   m_activeTransition.reset();
@@ -671,7 +671,7 @@ void LockScreen::onKeyboardEvent(const KeyboardEvent& event) {
   if (cancel) {
     m_password.clear();
     m_status = i18n::tr("lockscreen.password-cleared");
-    m_statusIsError = false;
+    m_statusKind = StatusKind::Info;
     updatePromptOnSurfaces();
     return;
   }
@@ -843,7 +843,7 @@ bool LockScreen::lockFromPhone() {
   }
   if (ok && m_lifecycle.locked()) {
     m_status = i18n::tr("lockscreen.password-required");
-    m_statusIsError = false;
+    m_statusKind = StatusKind::Info;
     updatePromptOnSurfaces();
   }
   return ok;
@@ -1130,7 +1130,7 @@ void LockScreen::handleLocked(void* data, ext_session_lock_v1* /*lock*/) {
   }
   // Idle status is empty; the surface renders the password hint itself.
   self->m_status.clear();
-  self->m_statusIsError = false;
+  self->m_statusKind = StatusKind::Info;
   if (self->m_passwordOnly) {
     self->m_status = i18n::tr("lockscreen.password-required");
   }
@@ -1604,7 +1604,7 @@ void LockScreen::createInstance(const WaylandOutput& output) {
   surface->setLoginBoxServices(m_sessionActions, m_mpris, m_weather, m_httpClient);
   surface->setPhoneServices(m_link);
   surface->setNoticeProvider(m_notices);
-  surface->setPromptState(m_user, m_password.text(), m_status, m_statusIsError, m_authenticating);
+  surface->setPromptState(m_user, m_password.text(), m_status, m_statusKind != StatusKind::Info, m_authenticating);
   applyIndicatorsToSurface(*surface);
 
   surface->setBlackout(!isInteractiveOutput(output));
@@ -1653,7 +1653,7 @@ void LockScreen::updatePromptOnSurfaces() {
           && (m_configService == nullptr || m_configService->config().lockscreen.fingerprint),
   };
   for (auto& instance : m_instances) {
-    instance.surface->setPromptState(m_user, m_password.text(), m_status, m_statusIsError, m_authenticating);
+    instance.surface->setPromptState(m_user, m_password.text(), m_status, m_statusKind != StatusKind::Info, m_authenticating);
     instance.surface->setAuthExtras(extras);
     instance.surface->setStatus(m_statusIsland);
     instance.surface->setClockGradient(m_clockGradientFrom, m_clockGradientTo);
@@ -1714,7 +1714,7 @@ void LockScreen::acceptBiometric() {
     return;
   }
   m_status = i18n::tr("lockscreen.unlocked");
-  m_statusIsError = false;
+  m_statusKind = StatusKind::Info;
   updatePromptOnSurfaces();
   unlock();
 }
@@ -1731,13 +1731,13 @@ void LockScreen::handlePasswordEdited(const std::string& value) {
     updatePromptOnSurfaces();
     return;
   }
-  if (m_password.text() == value && m_status.empty() && !m_statusIsError) {
+  if (m_password.text() == value && m_status.empty() && m_statusKind == StatusKind::Info) {
     return;
   }
   m_password.clear();
   m_password = security::SecureBuffer(std::string_view(value));
   m_status.clear();
-  m_statusIsError = false;
+  m_statusKind = StatusKind::Info;
   updatePromptOnSurfaces();
 }
 
@@ -1767,7 +1767,7 @@ void LockScreen::tryAuthenticate() {
   const std::uint64_t generation = ++m_authGeneration;
   m_authenticating = true;
   m_status = i18n::tr("lockscreen.authenticating");
-  m_statusIsError = false;
+  m_statusKind = StatusKind::Info;
   updatePromptOnSurfaces();
 
   const PamAuthenticator authenticator = m_authenticator;
@@ -1800,7 +1800,7 @@ void LockScreen::handleAuthResult(std::uint64_t generation, const PamAuthenticat
 
   if (result.success) {
     m_status = i18n::tr("lockscreen.unlocked");
-    m_statusIsError = false;
+    m_statusKind = StatusKind::Info;
     updatePromptOnSurfaces();
     unlock();
     return;
@@ -1815,7 +1815,7 @@ void LockScreen::handleAuthResult(std::uint64_t generation, const PamAuthenticat
         result.message.empty() ? i18n::tr("lockscreen.authentication-failed") : result.message
     );
   }
-  m_statusIsError = true;
+  m_statusKind = StatusKind::PasswordError;
   m_lastRejected = result.rejected;
   if (result.rejected) {
     m_rejectedAt.push_back(wallClockMillis());
@@ -1885,9 +1885,14 @@ void LockScreen::handleBiometricStatus(const std::string& message, bool isError)
     kLog.debug("status hidden while typing: {}", message);
     return;
   }
+  // A hint or a cleared status (device ready, unavailable) keeps a password failure on screen.
+  if (!isError && m_statusKind == StatusKind::PasswordError) {
+    kLog.debug("status hidden behind the password result: {}", message);
+    return;
+  }
   // Empty message means verification disarmed; fall back to the idle prompt (rendered by the surface).
   m_status = message.empty() ? std::string{} : message;
-  m_statusIsError = isError;
+  m_statusKind = isError ? StatusKind::BiometricError : StatusKind::Info;
   updatePromptOnSurfaces();
 }
 

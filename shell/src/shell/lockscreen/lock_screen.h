@@ -237,7 +237,9 @@ private:
   security::SecureBuffer m_password;
   std::string m_status;
   wl_surface* m_pointerSurface = nullptr;
-  bool m_statusIsError = false;
+  // Who wrote m_status, and whether it is an error: a biometric hint must not replace a password failure.
+  enum class StatusKind : std::uint8_t { Info, PasswordError, BiometricError };
+  StatusKind m_statusKind = StatusKind::Info;
   bool m_authenticating = false;
   std::uint64_t m_authGeneration = 0;
   LockLifecycle m_lifecycle;
