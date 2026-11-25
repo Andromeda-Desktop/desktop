@@ -20,6 +20,7 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=${OUT:-$(pwd)/artifacts/link-portable-$COMPOSITOR}
 BIN=${LINK_BIN:-$ROOT/link/target/debug}
 E2E=$ROOT/tests/e2e
+LINK_APP=${LINK_APP:-$ROOT/apps/link-app/build/andromeda-link-app}
 
 if [[ ${1:-} != inner ]]; then
   case $COMPOSITOR in
@@ -152,7 +153,7 @@ case $COMPOSITOR in
     }
     ;;
 esac
-shot() { sleep 1.5; screenshot "$OUT/app-$1.png"; } # real time: the window repaints
+shot() { [[ $GDK == wayland ]] || return 0; sleep 1.5; screenshot "$OUT/app-$1.png"; } # real time: the window repaints
 
 volume() { wpctl get-volume @DEFAULT_AUDIO_SINK@; }
 
@@ -168,9 +169,12 @@ python3 "$E2E/link_api_check.py" "$ROOT/link/api/org.andromeda.Link1.xml" "$OUT/
   || fail "the daemon differs from api/org.andromeda.Link1.xml: $(cat "$OUT/api-check.txt")"
 step "api: the daemon's Link1 matches api/org.andromeda.Link1.xml"
 PORT=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['port'])" "$RUNTIME/state/andromeda-link/devices.json")
-# The Link app (Qt) starts its own pairing window from a button; here the daemon opens it, as the app does.
+# The Link app starts its own pairing window from a button; here the daemon opens it, as the app does.
+# The app is Wayland only: on x11 the run has no app window and no app-*.png.
 app() {
-  QT_QPA_PLATFORM=$([[ $GDK == x11 ]] && echo xcb || echo wayland) "$BIN/andromeda-link" >> "$OUT/app.log" 2>&1 &
+  [[ $GDK == wayland ]] || return 0
+  [[ -x $LINK_APP ]] || fail "no $LINK_APP; build apps/link-app or set LINK_APP"
+  "$LINK_APP" >> "$OUT/app.log" 2>&1 &
   APP=$!
   sleep 3 # real time: the window maps and the app connects to the service
   kill -0 "$APP" 2> /dev/null || fail "the app did not start: $(tail -n 3 "$OUT/app.log")"
@@ -268,7 +272,7 @@ step "volume: the phone saw 100%; without the grant set-volume was refused; with
 
 kill "$INPUT_WINDOW"
 shot connected
-kill "$APP"
+[[ $GDK == wayland ]] && kill "$APP"
 app
 shot restarted
 step "app: app-connected.png with the connected phone, app-restarted.png after a restart"

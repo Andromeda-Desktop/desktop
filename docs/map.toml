@@ -1074,11 +1074,11 @@ test = "tests/e2e/hotspot.sh"
 build = "link"
 
 [[feature]]
-name = "Link: desktop client (link-desk)"
-keywords = ["link desk", "desk", "link-desk", "desktop client"]
+name = "Link: desktop session (link-session)"
+keywords = ["link session", "link-session", "screen share to phone", "phone speaker"]
 module = "link"
-entry = ["link/crates/link-desk/src", "link/crates/link-session/src"]
-test = "tests/e2e/link_desk_mirror.sh"
+entry = ["link/crates/link-session/src"]
+test = "tests/e2e/link_portable.sh"
 build = "link"
 
 [[feature]]

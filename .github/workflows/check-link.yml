@@ -30,9 +30,6 @@ jobs:
           rustup component add clippy rustfmt
           # The socket test runs the daemon in its own user and network namespace.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      # Ubuntu's Qt is older than the 6.7 that link-desk needs. The system python3 keeps python3-dbus and python3-gi for the tests.
-      - uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
-        with: { version: "6.12.0", modules: qtmultimedia, cache: true, setup-python: false }
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { workspaces: link, cache-on-failure: true }
       - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
@@ -58,9 +55,6 @@ jobs:
             libgl-dev libegl-dev libxkbcommon-dev dbus libglib2.0-bin python3-gi iproute2 nftables
           # The tests put the phone and the desktop in their own user and network namespaces.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      # Ubuntu's Qt is older than the 6.7 that link-desk needs. The system python3 keeps python3-dbus and python3-gi for the tests.
-      - uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
-        with: { version: "6.12.0", modules: qtmultimedia, cache: true, setup-python: false }
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { workspaces: link, cache-on-failure: true }
       - name: Build
