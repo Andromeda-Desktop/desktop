@@ -1,9 +1,7 @@
 #include "app/app_loop.h"
 
-#include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/sys/sys.h"
-#include "core/timer_manager.h"
 #include "render/core/startup_metrics.h"
 #include "platform/surface.h"
 
@@ -18,43 +16,11 @@
 namespace {
   constexpr Logger kLog("app-loop");
 
-  class DeferredSource final : public PollSource {
-  public:
-    void dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) override {
-      if (startIdx < fds.size() && (fds[startIdx].revents & (POLLIN | POLLERR | POLLHUP)) != 0) {
-        DeferredCall::drainWakeFd();
-      }
-      for (auto& fn : DeferredCall::takePending()) {
-        if (fn) {
-          fn();
-        }
-      }
-    }
-
-  private:
-    void doAddPollFds(std::vector<pollfd>& fds) override {
-      if (const int fd = DeferredCall::wakeFd(); fd >= 0) {
-        fds.push_back({.fd = fd, .events = POLLIN, .revents = 0});
-      }
-    }
-  };
-
-  class TimerSource final : public PollSource {
-  public:
-    [[nodiscard]] int pollTimeoutMs() const override { return TimerManager::instance().pollTimeoutMs(); }
-    void dispatch(const std::vector<pollfd>& /*fds*/, std::size_t /*startIdx*/) override {
-      TimerManager::instance().tick();
-    }
-
-  private:
-    void doAddPollFds(std::vector<pollfd>& /*fds*/) override {}
-  };
-
-  DeferredSource g_deferred;
-  TimerSource g_timers;
 } // namespace
 
-AppLoop::AppLoop() : m_display(createDisplay()), m_keyRepeat(*m_display) {}
+AppLoop::AppLoop() : m_display(createDisplay()), m_keyRepeat(*m_display) {
+  m_loop.addSource(&m_keyRepeat);
+}
 
 AppLoop::~AppLoop() = default;
 
@@ -97,25 +63,15 @@ bool AppLoop::initialize(bool sharedGl, const std::string& appId) {
 }
 
 void AppLoop::addSource(PollSource* source) {
-  if (source != nullptr && !std::ranges::contains(m_sources, source)) {
-    m_sources.push_back(source);
-  }
+  m_loop.addSource(source);
 }
 
 void AppLoop::removeSource(PollSource* source) {
-  std::erase(m_sources, source);
-  m_schedule.forget(source);
+  m_loop.removeSource(source);
 }
 
 void AppLoop::quit(int code) {
-  m_quit = true;
-  m_exitCode = code;
-}
-
-std::vector<PollSource*> AppLoop::sources() {
-  std::vector<PollSource*> all{&g_deferred, &g_timers, &m_keyRepeat};
-  all.insert(all.end(), m_sources.begin(), m_sources.end());
-  return all;
+  m_loop.quit(code);
 }
 
 void AppLoop::recoverGraphics() {
@@ -195,16 +151,8 @@ int AppLoop::run() {
     return std::nullopt;
   };
 
-  while (!m_quit) {
-    for (auto& fn : DeferredCall::takePending()) {
-      if (fn) {
-        fn();
-      }
-    }
-    if (m_quit) {
-      break;
-    }
-
+  std::vector<pollfd> fds;
+  while (m_loop.runDeferred()) {
     const PollPrep prep = display.preparePoll();
     if (prep.result != PumpResult::Ok) {
       if (const auto code = handle(prep.result)) {
@@ -213,9 +161,8 @@ int AppLoop::run() {
       continue;
     }
 
-    const std::vector<PollSource*> list = sources();
-    std::vector<pollfd> fds{{.fd = display.pollFd(), .events = prep.events, .revents = 0}};
-    int timeoutMs = m_schedule.prepare(list, fds, PollSchedule::Clock::now());
+    fds.assign(1, {.fd = display.pollFd(), .events = prep.events, .revents = 0});
+    int timeoutMs = m_loop.prepare(fds);
     if (Surface::hasPendingFrameWork() || Surface::hasPendingRenders()) {
       timeoutMs = 0;
     }
@@ -239,12 +186,10 @@ int AppLoop::run() {
       continue;
     }
 
-    m_schedule.dispatch(fds, PollSchedule::Clock::now(), [&fds](PollSource& source, std::size_t start, PollSchedule::Wake) {
-      source.dispatch(fds, start);
-    });
+    m_loop.dispatch(fds);
 
     Surface::drainPendingFrameWork();
     Surface::drainPendingRenders();
   }
-  return m_exitCode;
+  return m_loop.exitCode();
 }

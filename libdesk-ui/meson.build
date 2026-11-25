@@ -207,6 +207,8 @@ _desk_ui_sources = files(
   'src/core/log_platform.cpp',
   'protocols/log.cpp',
   'src/core/memory_pressure_poll_source.cpp',
+  'src/core/fd_watch.cpp',
+  'src/core/poll_loop.cpp',
   'src/core/poll_schedule.cpp',
   'src/core/process/process_fds.cpp',
   'src/core/timer_manager.cpp',
@@ -435,4 +437,5 @@ if is_wayland and not meson.is_subproject()
     dependencies: desk_ui_dep))
   test('popup_place', executable('popup_place_test', 'tests/popup_place_test.cpp', dependencies: desk_ui_dep))
   test('poll_schedule', executable('poll_schedule_test', 'tests/poll_schedule_test.cpp', dependencies: desk_ui_dep))
+  test('poll_loop', executable('poll_loop_test', 'tests/poll_loop_test.cpp', dependencies: desk_ui_dep))
 endif

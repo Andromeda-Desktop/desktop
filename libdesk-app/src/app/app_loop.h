@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/poll_schedule.h"
+#include "core/poll_loop.h"
 #include "core/poll_source.h"
 #include "render/gl_shared_context.h"
 #include "render/render_context.h"
@@ -56,7 +56,6 @@ public:
   void quit(int code = 0);
 
 private:
-  [[nodiscard]] std::vector<PollSource*> sources();
 
   std::unique_ptr<Display> m_display;
   GlSharedContext m_gl;
@@ -64,10 +63,7 @@ private:
   std::future<void> m_eglReady; // EGL is initialized; m_egl also covers the program preload after it
   std::future<void> m_egl; // declared after m_gl and m_display: its destructor waits for the worker that uses them
   KeyRepeatPollSource m_keyRepeat;
-  std::vector<PollSource*> m_sources;
-  PollSchedule m_schedule;
+  PollLoop m_loop;
   std::function<bool()> m_onDisconnect;
   bool m_sharedGl = true;
-  bool m_quit = false;
-  int m_exitCode = 0;
 };

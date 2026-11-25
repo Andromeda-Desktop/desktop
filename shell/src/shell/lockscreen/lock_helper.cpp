@@ -1,9 +1,8 @@
 #include "shell/lockscreen/lock_helper.h"
 
 #include "config/widget_config.h"
-#include "core/deferred_call.h"
+#include "core/poll_loop.h"
 #include "core/log.h"
-#include "core/timer_manager.h"
 #include "protocols/toml.h"
 #include "ipc/pixel_stream_server.h"
 #include "render/animation/animation_manager.h"
@@ -373,14 +372,9 @@ int runLockHelper(int argc, char* argv[]) {
 
   auto lastFrame = std::chrono::steady_clock::now();
   std::vector<pollfd> fds;
-  while (true) {
-    for (auto& fn : DeferredCall::takePending()) {
-      if (fn) {
-        fn();
-      }
-    }
-    TimerManager::instance().tick();
-
+  PollLoop loop;
+  // The helper's own fds come first: stdin, then each slot's server, then each slot's video (-1: none).
+  while (loop.runDeferred()) {
     const auto now = std::chrono::steady_clock::now();
     const float deltaMs = std::chrono::duration<float, std::milli>(now - lastFrame).count();
     bool rendered = false;
@@ -402,20 +396,20 @@ int runLockHelper(int argc, char* argv[]) {
 
     fds.clear();
     fds.push_back({.fd = STDIN_FILENO, .events = POLLIN, .revents = 0});
-    fds.push_back({.fd = DeferredCall::wakeFd(), .events = POLLIN, .revents = 0});
     for (const auto& slot : slots) {
       fds.push_back({.fd = slot->server.fd(), .events = POLLIN, .revents = 0});
     }
     for (const auto& slot : slots) {
       fds.push_back({.fd = slot->video != nullptr ? slot->video->wakeFd() : -1, .events = POLLIN, .revents = 0});
     }
-    int timeout = TimerManager::instance().pollTimeoutMs();
+    int timeout = loop.prepare(fds);
     if (waitingAnimation) {
       timeout = timeout < 0 ? kFrameIntervalMs : std::min(timeout, kFrameIntervalMs);
     }
     if (::poll(fds.data(), fds.size(), timeout) < 0 && errno != EINTR) {
       return 1;
     }
+    loop.dispatch(fds);
     if ((fds[0].revents & (POLLERR | POLLNVAL)) != 0) {
       return 0;
     }
@@ -425,11 +419,8 @@ int runLockHelper(int argc, char* argv[]) {
         return 0;
       }
     }
-    if ((fds[1].revents & POLLIN) != 0) {
-      DeferredCall::drainWakeFd();
-    }
     for (std::size_t i = 0; i < slots.size(); ++i) {
-      if (fds[i + 2].revents != 0 && !slots[i]->server.dispatch()) {
+      if (fds[i + 1].revents != 0 && !slots[i]->server.dispatch()) {
         kLog.info("a slot closed; exiting");
         return 0;
       }
@@ -439,7 +430,7 @@ int runLockHelper(int argc, char* argv[]) {
       if (slots[i]->video != nullptr) {
         slots[i]->video->setPaused(slots[i]->server.paused());
       }
-      if (fds[i + 2 + slots.size()].revents != 0) {
+      if (fds[i + 1 + slots.size()].revents != 0) {
         if (slots[i]->video->dispatch()) {
           slots[i]->dirty = true;
         } else {
@@ -450,4 +441,5 @@ int runLockHelper(int argc, char* argv[]) {
       }
     }
   }
+  return loop.exitCode();
 }
