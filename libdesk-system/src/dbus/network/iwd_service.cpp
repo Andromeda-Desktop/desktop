@@ -118,9 +118,9 @@ void IwdService::setSecretAgent(std::unique_ptr<IwdSecretAgent> agent) {
   if (m_secretAgent != nullptr) {
     m_secretAgent->setRequestCallback([this](const IwdSecretAgent::SecretRequest& request) {
       (void)request;
-      if (!m_pendingPsk.empty()) {
-        m_secretAgent->submitSecret(m_pendingPsk);
-        m_pendingPsk.clear();
+      if (m_pendingPsk.has_value()) {
+        m_secretAgent->submitSecret(m_pendingPsk->text());
+        m_pendingPsk.reset();
       } else {
         m_secretAgent->cancelSecret();
       }
@@ -337,7 +337,7 @@ bool IwdService::activateAccessPoint(const AccessPointInfo& ap) {
         .onInterface(kNetworkInterface)
         .uponReplyInvoke([this, ssid = ap.ssid](std::optional<sdbus::Error> error) {
           // consumed by the agent, or abandoned, never keep it around
-          m_pendingPsk.clear();
+          m_pendingPsk.reset();
           if (error) {
             kLog.warn("Connect failed for {}: {}", ssid, error->what());
           }
@@ -346,7 +346,7 @@ bool IwdService::activateAccessPoint(const AccessPointInfo& ap) {
     // dispatched; real result arrives via the change callback
     return true;
   } catch (const sdbus::Error& e) {
-    m_pendingPsk.clear();
+    m_pendingPsk.reset();
     kLog.warn("Connect dispatch failed for {}: {}", ap.ssid, e.what());
     return false;
   }
@@ -361,7 +361,7 @@ bool IwdService::activateAccessPoint(const AccessPointInfo& ap, const std::strin
     return false;
   }
   // Store the PSK for the agent to submit when RequestPassphrase is called
-  m_pendingPsk = psk;
+  m_pendingPsk.emplace(std::string_view(psk));
   return activateAccessPoint(ap);
 }
 

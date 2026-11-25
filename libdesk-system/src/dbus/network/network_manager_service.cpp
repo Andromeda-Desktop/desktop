@@ -575,12 +575,12 @@ bool NetworkManagerService::activateEnterpriseAccessPoint(
     kLog.warn("enterprise credentials rejected for ssid={} reason={}", ap.ssid, static_cast<std::uint32_t>(problem));
     return false;
   }
-  return addAndActivateAccessPoint(ap, std::nullopt, credentials);
+  return addAndActivateAccessPoint(ap, std::nullopt, &credentials);
 }
 
 bool NetworkManagerService::addAndActivateAccessPoint(
-    const AccessPointInfo& ap, const std::optional<std::string>& psk,
-    const std::optional<network_enterprise::EnterpriseCredentials>& credentials
+    const AccessPointInfo& ap, std::optional<std::string_view> psk,
+    const network_enterprise::EnterpriseCredentials* credentials
 ) {
   if (!available()) {
     return false;
@@ -592,9 +592,9 @@ bool NetworkManagerService::addAndActivateAccessPoint(
     settings["802-11-wireless-security"]["key-mgmt"] =
         sdbus::Variant{std::string(network_manager_security::keyManagementName(ap.keyManagement))};
     if (psk.has_value() && ap.keyManagement != network_manager_security::KeyManagement::Owe) {
-      settings["802-11-wireless-security"]["psk"] = sdbus::Variant{*psk};
+      settings["802-11-wireless-security"]["psk"] = sdbus::Variant{std::string(*psk)};
     }
-    if (credentials.has_value()) {
+    if (credentials != nullptr) {
       // PMF is left to NM: it negotiates what the AP requires, and pinning a value
       // here would only be a guess about the other end.
       const auto eap = network_enterprise::buildEapSetting(*credentials);
@@ -602,7 +602,7 @@ bool NetworkManagerService::addAndActivateAccessPoint(
       eapSettings["eap"] = sdbus::Variant{eap.eap};
       eapSettings["identity"] = sdbus::Variant{eap.identity};
       eapSettings["phase2-auth"] = sdbus::Variant{eap.phase2Auth};
-      eapSettings["password"] = sdbus::Variant{eap.password};
+      eapSettings["password"] = sdbus::Variant{std::string(eap.password)};
       if (!eap.anonymousIdentity.empty()) {
         eapSettings["anonymous-identity"] = sdbus::Variant{eap.anonymousIdentity};
       }

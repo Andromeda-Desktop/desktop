@@ -16,7 +16,7 @@ namespace {
     credentials.eap = EapMethod::Peap;
     credentials.phase2 = Phase2Auth::MsChapV2;
     credentials.identity = "user@example.edu";
-    credentials.password = "secret";
+    credentials.password = security::SecureBuffer(std::string_view("secret"));
     credentials.domainSuffixMatch = "example.edu";
     return credentials;
   }
@@ -95,7 +95,8 @@ int main() {
   }
 
   {
-    const auto setting = network_enterprise::buildEapSetting(validCredentials());
+    const auto credentials = validCredentials();
+    const auto setting = network_enterprise::buildEapSetting(credentials);
     TEST_CHECK(setting.eap.size() == 1U);
     TEST_CHECK(setting.eap.front() == "peap");
     TEST_CHECK(setting.identity == "user@example.edu");

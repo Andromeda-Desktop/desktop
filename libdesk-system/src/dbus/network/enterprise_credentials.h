@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dbus/network/network_manager_security.h"
+#include "security/secure_buffer.h"
 
 #include <cstdint>
 #include <string>
@@ -41,7 +42,7 @@ namespace network_enterprise {
     Phase2Auth phase2 = Phase2Auth::MsChapV2;
     std::string identity;
     std::string anonymousIdentity; // Outer identity; omitted from the profile when empty.
-    std::string password;
+    security::SecureBuffer password;
     std::string caCertPath;        // Absolute path; empty means use the system CA store.
     std::string domainSuffixMatch; // RADIUS server name suffix to require.
 
@@ -129,7 +130,7 @@ namespace network_enterprise {
     std::string identity;
     std::string anonymousIdentity;
     std::string phase2Auth;
-    std::string password;
+    std::string_view password; // Into the credentials it was built from.
     bool systemCaCerts = false;
     std::vector<std::uint8_t> caCert;
     std::string domainSuffixMatch;
@@ -137,13 +138,15 @@ namespace network_enterprise {
     bool operator==(const EapSetting&) const = default;
   };
 
+  // The setting's password views the credentials: they must outlive it.
+  EapSetting buildEapSetting(EnterpriseCredentials&&) = delete;
   [[nodiscard]] inline EapSetting buildEapSetting(const EnterpriseCredentials& credentials) {
     EapSetting setting;
     setting.eap.emplace_back(eapName(credentials.eap));
     setting.identity = credentials.identity;
     setting.anonymousIdentity = credentials.anonymousIdentity;
     setting.phase2Auth = std::string(phase2Name(credentials.phase2));
-    setting.password = credentials.password;
+    setting.password = credentials.password.text();
     setting.domainSuffixMatch = credentials.domainSuffixMatch;
     if (credentials.caCertPath.empty()) {
       setting.systemCaCerts = true;

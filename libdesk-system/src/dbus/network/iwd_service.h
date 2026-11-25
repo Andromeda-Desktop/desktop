@@ -2,9 +2,11 @@
 
 #include "dbus/name_owner_watch.h"
 #include "dbus/network/inetwork_service.h"
+#include "security/secure_buffer.h"
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <sdbus-c++/Types.h>
 #include <string>
 #include <unordered_map>
@@ -65,7 +67,7 @@ private:
   std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> m_objectProxies;
   std::unique_ptr<sdbus::IProxy> m_connectProxy; // keeps an in-flight async Connect alive
   std::unique_ptr<IwdSecretAgent> m_secretAgent;
-  std::string m_pendingPsk;
+  std::optional<security::SecureBuffer> m_pendingPsk;
   bool m_hasStateSnapshot = false;
   bool m_refreshInFlight = false;
   bool m_refreshQueued = false;

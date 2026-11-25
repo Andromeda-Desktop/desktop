@@ -95,7 +95,7 @@ namespace settings {
         if (enterprise) {
           network_enterprise::EnterpriseCredentials credentials;
           credentials.identity = identity();
-          credentials.password = secret;
+          credentials.password = security::SecureBuffer(std::string_view(secret));
           if (network_enterprise::validate(credentials) != network_enterprise::Validation::Ok) {
             fail(i18n::tr("settings.wifi.identity-required"));
             return;

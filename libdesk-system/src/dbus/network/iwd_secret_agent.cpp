@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "dbus/caller.h"
 #include "dbus/system_bus.h"
+#include "util/secure_wipe.h"
 
 #include <optional>
 #include <sdbus-c++/IConnection.h>
@@ -69,11 +70,13 @@ struct IwdSecretAgent::Impl {
     pendingResult.reset();
   }
 
-  void submitPending(const std::string& psk) {
+  void submitPending(std::string_view psk) {
     if (!pendingResult.has_value()) {
       return;
     }
-    pendingResult->returnResults(psk);
+    std::string reply(psk);
+    pendingResult->returnResults(reply);
+    util::secureWipe(reply);
     pendingResult.reset();
   }
 };
@@ -132,7 +135,7 @@ void IwdSecretAgent::setRequestCallback(RequestCallback callback) {
   }
 }
 
-void IwdSecretAgent::submitSecret(const std::string& psk) {
+void IwdSecretAgent::submitSecret(std::string_view psk) {
   if (m_impl != nullptr) {
     m_impl->submitPending(psk);
   }

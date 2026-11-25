@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 
 class SystemBus;
 
@@ -33,7 +34,7 @@ public:
   void setRequestCallback(RequestCallback callback);
 
   // Reply paths for the pending request. Safe no-ops if nothing is pending.
-  void submitSecret(const std::string& psk);
+  void submitSecret(std::string_view psk);
   void cancelSecret();
 
   [[nodiscard]] bool hasPendingRequest() const noexcept;

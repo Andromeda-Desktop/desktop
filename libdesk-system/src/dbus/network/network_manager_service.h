@@ -100,8 +100,8 @@ private:
   );
   void finishRefreshAccessPoints(std::vector<AccessPointInfo>& aps, const std::function<void()>& onComplete);
   bool addAndActivateAccessPoint(
-      const AccessPointInfo& ap, const std::optional<std::string>& psk,
-      const std::optional<network_enterprise::EnterpriseCredentials>& credentials = std::nullopt
+      const AccessPointInfo& ap, std::optional<std::string_view> psk,
+      const network_enterprise::EnterpriseCredentials* credentials = nullptr
   );
   void watchPendingAccessPointActivation(
       const std::string& ssid, const std::string& devicePath, const std::string& connectionPath,
