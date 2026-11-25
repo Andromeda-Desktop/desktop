@@ -272,6 +272,31 @@ ANDROMEDA_TEST(authenticateTheRealSocketPeerBeforeOpeningBackend) {
   CHECK_EQ(WEXITSTATUS(status), 0);
 }
 
+ANDROMEDA_TEST(refuseAPeerThatExitedBeforeItsCheck) {
+  Fixture fixture;
+  CHECK(fixture.valid());
+  if (!fixture.valid()) {
+    return;
+  }
+  const pid_t child = fork();
+  CHECK(child >= 0);
+  if (child < 0) {
+    return;
+  }
+  if (child == 0) {
+    const Fd peer = fixture.connect();
+    _exit(peer.get() >= 0 ? 0 : 2);
+  }
+  // Not reaped: the pid stays the child's, so only the pidfd tells that the peer is gone.
+  siginfo_t info{};
+  CHECK_EQ(waitid(P_PID, static_cast<id_t>(child), &info, WEXITED | WNOWAIT), 0);
+  CHECK(fixture.until([&] { return !fixture.authenticated.empty(); }));
+  CHECK_EQ(fixture.opened, 0);
+  int status = 0;
+  CHECK_EQ(waitpid(child, &status, 0), child);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+}
+
 ANDROMEDA_TEST(relayBothDirectionsUnderBackpressureWithoutLosingOrder) {
   Fixture fixture;
   CHECK(fixture.valid());

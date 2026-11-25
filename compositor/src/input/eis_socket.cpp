@@ -322,8 +322,9 @@ namespace andromeda {
           }
           return;
         }
+        // The pidfd confirms that the authenticated pid still names the peer.
         if (relays.size() >= kMaxConnections || accepted->pid <= 0 || !authenticate
-            || !authenticate(accepted->pid)) {
+            || !authenticate(accepted->pid) || !ipc::running(accepted->pidfd.get())) {
           continue;
         }
         const int peer = accepted->conn.release();

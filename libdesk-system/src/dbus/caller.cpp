@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "protocols/bus_names.h"
+#include "protocols/ipc_channel.h"
 
 #include <cerrno>
 #include <cstring>
@@ -10,7 +11,6 @@
 #include <memory>
 #include <sdbus-c++/sdbus-c++.h>
 #include <string>
-#include <poll.h>
 #include <unistd.h>
 #include <utility>
 
@@ -106,14 +106,8 @@ std::optional<BusCaller> busCaller(sdbus::IConnection& bus, std::string_view sen
   }
   const auto pidfdHandle = pidfd->second.get<sdbus::UnixFd>();
   auto caller = sandboxOf(pid->second.get<std::uint32_t>());
-  // The pid names the caller only while its pidfd shows the process still runs (a pidfd is readable after the exit):
-  // after an exit the pid can be reused.
-  pollfd exited{.fd = pidfdHandle.get(), .events = POLLIN, .revents = 0};
-  int ready = 0;
-  do {
-    ready = ::poll(&exited, 1, 0);
-  } while (ready < 0 && errno == EINTR);
-  if (!caller.has_value() || ready != 0) {
+  // The pid names the caller only while its pidfd shows the process still runs: after an exit the pid can be reused.
+  if (!caller.has_value() || !ipc::running(pidfdHandle.get())) {
     return std::nullopt;
   }
   return caller;

@@ -105,6 +105,33 @@ mod tests {
         assert_eq!(pid, peer.pid);
     }
 
+    #[tokio::test]
+    async fn refuses_a_peer_of_another_uid() {
+        use std::os::linux::net::SocketAddrExt;
+        let name = format!("andromeda-rt-ipc-uid-{}", std::process::id());
+        let addr = std::os::unix::net::SocketAddr::from_abstract_name(name.as_bytes()).unwrap();
+        let std_listener = std::os::unix::net::UnixListener::bind_addr(&addr).unwrap();
+        std_listener.set_nonblocking(true).unwrap();
+        let listener = UnixListener::from_std(std_listener).unwrap();
+        // A subordinate uid (newuidmap, /etc/subuid) connects without root, through the shared network namespace.
+        let script = "import socket, sys\nc = socket.socket(socket.AF_UNIX)\nc.connect('\\0' + sys.argv[1])\nc.recv(1)\n";
+        let mut child = std::process::Command::new("unshare")
+            .args(["--map-auto", "--map-root-user", "setpriv", "--reuid=1", "--regid=1", "--clear-groups"])
+            .args(["python3", "-I", "-c", script, &name])
+            .spawn()
+            .unwrap();
+        let Ok(accepted) = tokio::time::timeout(std::time::Duration::from_secs(5), listener.accept()).await else {
+            let _ = child.kill();
+            eprintln!("skipped: no subordinate uid peer ({:?})", child.wait());
+            return;
+        };
+        let (stream, _) = accepted.unwrap();
+        let refused = check_peer(&stream).unwrap_err();
+        assert_eq!(refused.kind(), io::ErrorKind::PermissionDenied);
+        drop(stream);
+        assert!(child.wait().unwrap().success());
+    }
+
     #[test]
     fn slots_bound_open_connections() {
         let slots = ClientSlots::new(2);

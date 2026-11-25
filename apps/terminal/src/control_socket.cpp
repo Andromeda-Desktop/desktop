@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -106,6 +107,12 @@ namespace term {
           if (fd < 0) {
             return;
           }
+          uid_t uid = 0;
+          gid_t gid = 0;
+          if (::getpeereid(fd, &uid, &gid) != 0 || uid != ::geteuid()) {
+            ::close(fd);
+            continue;
+          }
           if (::fcntl(fd, F_SETFD, FD_CLOEXEC) != 0 || !setNonblocking(fd)) {
             ::close(fd);
             continue;
@@ -174,7 +181,9 @@ namespace term {
     }
     // One app per user: a socket left by a crashed run goes.
     ::unlink(path.c_str());
-    if (::bind(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) != 0 || ::listen(fd, 8) != 0) {
+    // The user temp dir falls back to /tmp: the mode keeps other users out before the peer check.
+    if (::bind(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) != 0 || ::chmod(path.c_str(), 0600) != 0
+        || ::listen(fd, 8) != 0) {
       kLog.warn("control socket {}: {}", path, std::strerror(errno));
       ::close(fd);
       return;

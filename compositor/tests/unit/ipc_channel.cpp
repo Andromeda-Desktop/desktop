@@ -5,10 +5,16 @@
 #include "check.h"
 
 #include <fcntl.h>
+#include <poll.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <csignal>
+#include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -16,6 +22,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+extern char** environ;
 
 namespace {
 
@@ -178,6 +186,35 @@ namespace {
     CHECK(reply.status == ipc::Status::Ok);
     CHECK(reply.data == "reply to ping");
     unlink(path.c_str());
+  }
+
+  ANDROMEDA_TEST(refuseAPeerOfAnotherUid) {
+    const std::string name = std::format("ipc-channel-uid-{}", getpid());
+    const ipc::Fd listener(socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    sockaddr_un addr{.sun_family = AF_UNIX, .sun_path = {}};
+    std::memcpy(addr.sun_path + 1, name.c_str(), name.size());
+    const auto size = static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + 1 + name.size());
+    CHECK(bind(listener.get(), reinterpret_cast<const sockaddr*>(&addr), size) == 0);
+    CHECK(listen(listener.get(), 4) == 0);
+    // A subordinate uid (newuidmap, /etc/subuid) connects without root, through the shared network namespace.
+    const char* script = "import socket, sys\nc = socket.socket(socket.AF_UNIX)\nc.connect('\\0' + sys.argv[1])\nc.recv(1)\n";
+    const char* argv[] = {"unshare", "--map-auto", "--map-root-user", "setpriv", "--reuid=1", "--regid=1",
+                          "--clear-groups", "python3", "-I", "-c", script, name.c_str(), nullptr};
+    pid_t child = 0;
+    CHECK(posix_spawnp(&child, "unshare", nullptr, nullptr, const_cast<char**>(argv), environ) == 0);
+    pollfd waiting{.fd = listener.get(), .events = POLLIN, .revents = 0};
+    if (poll(&waiting, 1, 5000) != 1) {
+      kill(child, SIGKILL);
+      waitpid(child, nullptr, 0);
+      std::fprintf(stderr, "refuseAPeerOfAnotherUid skipped: no subordinate uid peer\n");
+      return;
+    }
+    errno = 0;
+    CHECK(!ipc::acceptPeer(listener.get(), 0).has_value());
+    CHECK_EQ(errno, EACCES);
+    int status = 0;
+    CHECK_EQ(waitpid(child, &status, 0), child);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
   }
 
 } // namespace

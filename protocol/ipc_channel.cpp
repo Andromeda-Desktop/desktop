@@ -60,6 +60,16 @@ namespace ipc {
     return fd;
   }
 
+  bool running(int pidfd) {
+    // A pidfd becomes readable when its process exits.
+    pollfd exited{.fd = pidfd, .events = POLLIN, .revents = 0};
+    int ready = 0;
+    do {
+      ready = poll(&exited, 1, 0);
+    } while (ready < 0 && errno == EINTR);
+    return ready == 0;
+  }
+
   std::optional<Peer> checkPeer(Fd conn) {
     ucred cred{};
     socklen_t credSize = sizeof(cred);

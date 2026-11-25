@@ -41,6 +41,9 @@ namespace ipc {
     Fd pidfd;
   };
 
+  // True while the process of `pidfd` runs. Check it after a lookup by pid, so the answer still names that process.
+  [[nodiscard]] bool running(int pidfd);
+
   // Checks a connected socket: another user or no pidfd closes it and returns nothing (errno EACCES).
   [[nodiscard]] std::optional<Peer> checkPeer(Fd conn);
 
