@@ -30,6 +30,7 @@
 #include <stdexcept>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <poll.h>
 #include <string>
 #include <unistd.h>
@@ -39,7 +40,9 @@
 namespace {
 
   constexpr Logger kLog("lock-helper");
-  constexpr int kFrameIntervalMs = 16;
+  constexpr std::chrono::milliseconds kFrameInterval{16};
+  // An animated shader redraws its whole slot every frame (a wallpaper: the whole output); 30 fps halves that GPU work.
+  constexpr std::chrono::milliseconds kShaderAnimationInterval{33};
 
   using SettingsMap = std::unordered_map<std::string, WidgetSettingValue>;
 
@@ -216,6 +219,11 @@ namespace {
     return slot.widget != nullptr && (slot.widget->needsFrameTick() || slot.animations.hasActive());
   }
 
+  // A video slot paces by its decoded frames, so only its upper bound applies.
+  [[nodiscard]] std::chrono::milliseconds frameInterval(const Slot& slot) {
+    return slot.shader != nullptr && slot.video == nullptr ? kShaderAnimationInterval : kFrameInterval;
+  }
+
 } // namespace
 
 int runLockHelper(int argc, char* argv[]) {
@@ -378,17 +386,24 @@ int runLockHelper(int argc, char* argv[]) {
     const auto now = std::chrono::steady_clock::now();
     const float deltaMs = std::chrono::duration<float, std::milli>(now - lastFrame).count();
     bool rendered = false;
-    bool waitingAnimation = false;
+    std::optional<std::chrono::milliseconds> wake;
+    const auto wakeWithin = [&wake](std::chrono::milliseconds wait) {
+      wake = std::min(wake.value_or(wait), std::max(wait, std::chrono::milliseconds{0}));
+    };
     for (auto& slot : slots) {
-      const bool shaderDue = slot->shader == nullptr || now - slot->lastShaderFrame >= std::chrono::milliseconds(kFrameIntervalMs);
+      const auto due = slot->lastShaderFrame + frameInterval(*slot);
+      const bool shaderDue = slot->shader == nullptr || now >= due;
       const bool wants = slot->server.requested() && !slot->server.paused() && (slot->dirty || animating(*slot));
       if (wants && shaderDue) {
         render(context, *slot, deltaMs, gl.get());
         rendered = true;
       }
-      // A frame held back by the pacing (a video frame) needs a wake when it is due.
-      waitingAnimation = waitingAnimation || (wants && !shaderDue)
-          || (animating(*slot) && slot->server.requested() && !slot->server.paused());
+      if (wants && !shaderDue) {
+        // A frame held back by the pacing wakes the loop when it is due, rounded up so it is not early.
+        wakeWithin(std::chrono::ceil<std::chrono::milliseconds>(due - now));
+      } else if (animating(*slot) && slot->server.requested() && !slot->server.paused()) {
+        wakeWithin(frameInterval(*slot));
+      }
     }
     if (rendered) {
       lastFrame = now;
@@ -403,8 +418,9 @@ int runLockHelper(int argc, char* argv[]) {
       fds.push_back({.fd = slot->video != nullptr ? slot->video->wakeFd() : -1, .events = POLLIN, .revents = 0});
     }
     int timeout = loop.prepare(fds);
-    if (waitingAnimation) {
-      timeout = timeout < 0 ? kFrameIntervalMs : std::min(timeout, kFrameIntervalMs);
+    if (wake) {
+      const int wakeMs = static_cast<int>(wake->count());
+      timeout = timeout < 0 ? wakeMs : std::min(timeout, wakeMs);
     }
     if (::poll(fds.data(), fds.size(), timeout) < 0 && errno != EINTR) {
       return 1;
