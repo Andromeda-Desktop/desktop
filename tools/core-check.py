@@ -43,6 +43,11 @@ RULES = {
     "wake-fd": ("a thread wakes a loop through sys::WakeFd (libdesk-ui core/sys/sys.h) or DeferredCall; in the compositor "
                 "through MainLoopWorker (core/main_loop_worker.h) (AR3)", CPP_DIRS, CPP, r"\beventfd\s*\(",
                 ("libdesk-ui/src/core/sys/sys_linux.cpp", "compositor/src/core/main_loop_worker.cpp")),
+    "event-loop": ("a process without its own loop runs on libdesk-ui PollLoop: GLib work through GlibSource, an fd "
+                   "through FdWatch, a timer through Timer; no GMainLoop, epoll or timerfd loop of its own (AR3)",
+                   CPP_DIRS, CPP,
+                   r"\bg_main_loop_(?:new|run)\s*\(|\bg_main_context_iteration\s*\(|\bepoll_create1?\s*\(|"
+                   r"\btimerfd_create\s*\(", ()),
     "clipboard-wait": ("clipboard file I/O runs as SharedWorker jobs; only the destructor drain waits (AR3 C9)",
                        ("shell/src/clipboard/",), CPP, r"\.wait(_for|_until)?\(", ()),
     "schedule-frame": ("redraws go through the Output frame owner (C8)", ("compositor/src/",), CPP,
