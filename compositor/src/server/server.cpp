@@ -1700,11 +1700,6 @@ namespace andromeda {
       const std::string_view path(address.sun_path);
       return std::string(path.substr(path.rfind('/') + 1));
     }
-
-    // False when no process accepts connections at path: it is missing, or a socket file left by an exited process.
-    bool unixPathListens(const std::string& path) {
-      return static_cast<bool>(ipc::connectTo(path, ipc::Deadline{})) || (errno != ECONNREFUSED && errno != ENOENT);
-    }
   } // namespace
 
   // WatchdogSec= in andromeda.service: a ping from the event loop, so a hung loop counts as a crash and restarts.
@@ -1914,7 +1909,7 @@ namespace andromeda {
       m_socketName = *name;
       m_waylandSocketAdopted = true;
       // systemd passes the same listening socket after a restart even when its path was deleted meanwhile.
-      if (const std::string path = waylandSocketPath(""); !unixPathListens(path)) {
+      if (const std::string path = waylandSocketPath(""); !ipc::unixPathListens(path)) {
         struct stat st {};
         if (lstat(path.c_str(), &st) == 0 && S_ISSOCK(st.st_mode)) {
           unlink(path.c_str());

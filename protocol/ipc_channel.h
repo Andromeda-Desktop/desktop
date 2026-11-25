@@ -132,7 +132,12 @@ namespace ipc {
   // A deadline already past connects without waiting; else blocking sends keep the deadline's time left as SO_SNDTIMEO.
   [[nodiscard]] Fd connectTo(const std::string& path, Deadline deadline, int type = SOCK_STREAM);
 
-  // Keep: an existing path fails (EADDRINUSE), so another process's socket is never replaced. Replace: unlinks it.
+  // False when no process accepts connections at path: it is missing, or a socket file left by an exited process.
+  // Probing connects, so a live server sees one client that closes at once.
+  [[nodiscard]] bool unixPathListens(const std::string& path);
+
+  // Keep: an existing path fails (EADDRINUSE), so another process's socket is never replaced. Replace: unlinks a file
+  // no process listens on; a live server's path fails with EADDRINUSE.
   enum class Stale { Keep, Replace };
 
   // A listening Unix socket at path. type: SOCK_STREAM or SOCK_SEQPACKET, optionally | SOCK_NONBLOCK; close-on-exec

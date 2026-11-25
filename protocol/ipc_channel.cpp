@@ -279,6 +279,11 @@ namespace ipc {
     return fd;
   }
 
+  bool unixPathListens(const std::string& path) {
+    // EPROTOTYPE (a live socket of another type) counts as listening.
+    return static_cast<bool>(connectTo(path, Deadline{})) || (errno != ECONNREFUSED && errno != ENOENT);
+  }
+
   Fd listenUnix(const std::string& path, int type, int backlog, mode_t mode, Stale stale) {
     sockaddr_un addr{};
     if (path.empty() || path.size() >= sizeof(addr.sun_path)) {
@@ -292,6 +297,10 @@ namespace ipc {
     addr.sun_family = AF_UNIX;
     std::memcpy(addr.sun_path, path.c_str(), path.size());
     if (stale == Stale::Replace) {
+      if (unixPathListens(path)) {
+        errno = EADDRINUSE;
+        return {};
+      }
       unlink(path.c_str());
     }
     int error = 0;

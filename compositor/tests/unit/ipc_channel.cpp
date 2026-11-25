@@ -208,6 +208,13 @@ namespace {
     CHECK(!ipc::listenUnix(path, SOCK_STREAM, 4, 0, ipc::Stale::Keep));
     CHECK_EQ(errno, EADDRINUSE);
     CHECK(static_cast<bool>(ipc::connectTo(path, in(200ms))));
+    // Replace keeps a live server's path too, whatever socket type asks for it.
+    for (const int replaceType : {SOCK_STREAM, SOCK_SEQPACKET}) {
+      errno = 0;
+      CHECK(!ipc::listenUnix(path, replaceType, 4, 0, ipc::Stale::Replace));
+      CHECK_EQ(errno, EADDRINUSE);
+      CHECK(static_cast<bool>(ipc::connectTo(path, in(200ms))));
+    }
 
     // A stale file (its server gone) still blocks Keep; Replace takes the path.
     live = ipc::Fd();
