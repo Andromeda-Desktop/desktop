@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Drives org.freedesktop.portal.RemoteDesktop through the real frontend, one stdin command per line:
-  session <persist_mode> <restore_token|->   start   move <dx> <dy>   key <evdev code>   eis   close   quit
+  session <persist_mode> <restore_token|->   sources   start   move <dx> <dy>   abs <stream> <x> <y>
+  key <evdev code>   eis   close   quit
 Each result is one stdout line."""
 import os
 import stat
@@ -24,7 +25,7 @@ def say(line):
     print(line, flush=True)
 
 
-def request(method, args, on_response):
+def request(method, args, on_response, iface=IFACE):
     """Calls a Request-returning method and passes the Response (code, results) to on_response."""
     state["counter"] += 1
     token = f"t{os.getpid()}_{state['counter']}"
@@ -37,7 +38,7 @@ def request(method, args, on_response):
 
     sub = BUS.signal_subscribe(NAME, "org.freedesktop.portal.Request", "Response", handle, None,
                                Gio.DBusSignalFlags.NO_MATCH_RULE, response)
-    BUS.call_sync(NAME, PATH, IFACE, method, args(token), None,
+    BUS.call_sync(NAME, PATH, iface, method, args(token), None,
                   Gio.DBusCallFlags.NONE, -1, None)
 
 
@@ -75,10 +76,15 @@ def command(line):
 
         request("CreateSession", lambda t: GLib.Variant("(a{sv})", ({
             "handle_token": GLib.Variant("s", t), "session_handle_token": GLib.Variant("s", f"s{t}")},)), created)
+    elif action == "sources":
+        request("SelectSources", lambda t: GLib.Variant("(oa{sv})", (state["session"], {
+            "handle_token": GLib.Variant("s", t), "types": GLib.Variant("u", 1)})),
+            lambda code, _results: say(f"sources response={code}"), "org.freedesktop.portal.ScreenCast")
     elif action == "start":
         def started(code, results):
+            streams = ",".join(str(node) for node, _props in results.get("streams", [])) or "-"
             say(f"started response={code} devices={results.get('devices', 0)} "
-                f"token={results.get('restore_token', '-')}")
+                f"streams={streams} token={results.get('restore_token', '-')}")
 
         request("Start", lambda t: GLib.Variant("(osa{sv})", (state["session"], "", {
             "handle_token": GLib.Variant("s", t)})), started)
@@ -86,6 +92,9 @@ def command(line):
     elif action == "move":
         if notify("NotifyPointerMotion", ("dd", float(words[1]), float(words[2]))):
             say("moved")
+    elif action == "abs":
+        if notify("NotifyPointerMotionAbsolute", ("udd", int(words[1]), float(words[2]), float(words[3]))):
+            say("absed")
     elif action == "key":
         code = int(words[1])
         if notify("NotifyKeyboardKeycode", ("iu", code, 1)) and notify("NotifyKeyboardKeycode", ("iu", code, 0)):
