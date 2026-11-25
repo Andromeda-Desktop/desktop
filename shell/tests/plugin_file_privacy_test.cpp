@@ -57,6 +57,24 @@ int main() {
   api.setConfigSnapshot(std::make_shared<const toml::table>(toml::parse("[shell]\noffline_mode = true")));
   LuauHost host(api, "test/plugin:service");
 
+  // No [permissions]: a write outside pluginDataDir fails, also through a symlink inside it.
+  fs::create_symlink(shared, dataDir / "escape.txt");
+  const std::string denied = R"(
+local dir = assert(noctalia.pluginDataDir())
+local ok, err = pcall(noctalia.writeFile, ")"
+      + shared.string()
+      + R"(", "x")
+assert(not ok and string.find(err, "files_write", 1, true), err)
+ok, err = pcall(noctalia.writeFile, dir .. "/escape.txt", "x")
+assert(not ok and string.find(err, "files_write", 1, true), err)
+ok, err = pcall(noctalia.readFile, ")"
+      + shared.string()
+      + R"(")
+assert(not ok and string.find(err, "files_read", 1, true), err)
+)";
+  bool ok = expect(host.exec("=denied", denied.c_str()), "writes outside the data dir should be denied");
+  host.setPermissions({.filesWrite = {root.string()}});
+
   const std::string source = R"(
 local dir = assert(noctalia.pluginDataDir())
 assert(noctalia.writeFile(dir .. "/history.json", "private"))
@@ -64,7 +82,7 @@ assert(noctalia.writeFile(")"
       + shared.string()
       + R"(", "shared"))
 )";
-  bool ok = expect(host.exec("=privacy", source.c_str()), "script should run");
+  ok = expect(host.exec("=privacy", source.c_str()), "script should run") && ok;
   ok = expect(mode(dataDir) == 0700, "pluginDataDir should be owner-only") && ok;
   ok = expect(mode(dataDir / "history.json") == 0600, "new file should be created 0600") && ok;
   ok = expect(mode(shared) == 0644, "existing file should keep its mode") && ok;

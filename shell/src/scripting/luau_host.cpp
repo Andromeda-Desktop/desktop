@@ -43,6 +43,7 @@
 #include <ctime>
 #include <fcntl.h>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <limits>
 #include <nlohmann/json.hpp>
@@ -238,6 +239,15 @@ namespace {
     return host;
   }
 
+  // The one permission gate (docs/plugin-permissions.md): a call outside the manifest's [permissions] raises a Lua
+  // error naming the missing permission.
+  void requirePermissions(lua_State* L, const scripting::PluginPermissions& requested, const std::string& name) {
+    const LuauHost* host = hostForState(L);
+    if (host == nullptr || !host->permissions().covers(requested)) {
+      luaL_error(L, "permission denied: [permissions] of this plugin lacks %s", name.c_str());
+    }
+  }
+
   int luau_log(lua_State* L) {
     const char* msg = luaL_checkstring(L, 1);
     if (auto* host = hostForState(L)) {
@@ -249,6 +259,7 @@ namespace {
   }
 
   int luau_runAsync(lua_State* L) {
+    requirePermissions(L, {.process = true}, "process");
     std::vector<std::string> args;
     if (lua_type(L, 1) == LUA_TSTRING) {
       size_t len = 0;
@@ -287,6 +298,7 @@ namespace {
   }
 
   int luau_runStream(lua_State* L) {
+    requirePermissions(L, {.process = true}, "process");
     size_t len = 0;
     const char* cmd = luaL_checklstring(L, 1, &len);
     luaL_checktype(L, 2, LUA_TFUNCTION);
@@ -307,6 +319,7 @@ namespace {
   }
 
   int luau_runInTerminal(lua_State* L) {
+    requirePermissions(L, {.process = true}, "process");
     size_t len = 0;
     const char* cmd = luaL_checklstring(L, 1, &len);
     bool ok = startDetachedCommandInTerminalAsync(std::string(cmd, len));
@@ -875,6 +888,7 @@ namespace {
   }
 
   int luau_clipboardText(lua_State* L) {
+    requirePermissions(L, {.clipboardRead = true}, "clipboard_read");
     auto* host = hostForState(L);
     if (host == nullptr) {
       lua_pushnil(L);
@@ -889,6 +903,7 @@ namespace {
   }
 
   int luau_getenv(lua_State* L) {
+    requirePermissions(L, {.environment = true}, "environment");
     const char* name = luaL_checkstring(L, 1);
     const char* val = std::getenv(name);
     if (val)
@@ -985,6 +1000,26 @@ namespace {
     return host->pluginDir() / path;
   }
 
+  enum class FileAccess : std::uint8_t { Read, Write };
+
+  // A plugin path for a file binding: pluginDataDir() is always readable and writable, pluginDir() always readable;
+  // anything else needs a files_read / files_write root that covers it.
+  std::filesystem::path checkedHostPath(lua_State* L, LuauHost* host, std::string_view path, FileAccess access) {
+    std::filesystem::path resolved = resolveHostPath(host, path);
+    std::vector<std::filesystem::path> own{FileUtils::pluginDataDir(host->pluginId())};
+    if (access == FileAccess::Read) {
+      own.push_back(host->pluginDir());
+    }
+    if (scripting::pathWithin(resolved, own)) {
+      return resolved;
+    }
+    scripting::PluginPermissions requested;
+    const bool read = access == FileAccess::Read;
+    (read ? requested.filesRead : requested.filesWrite).push_back(resolved.string());
+    requirePermissions(L, requested, std::format("{} {}", read ? "files_read" : "files_write", resolved.string()));
+    return resolved;
+  }
+
   // Names the binding the CPU deadline was crossed inside, for the overrun message only.
   // Arms only when the deadline is still ahead on entry, so a binding that merely runs
   // after an already-blown budget is not blamed. Wrap bindings that can block.
@@ -1034,7 +1069,7 @@ namespace {
       return 1;
     }
 
-    const std::string resolvedPath = resolveHostPath(host, std::string_view(path, pathLen)).string();
+    const std::string resolvedPath = checkedHostPath(L, host, std::string_view(path, pathLen), FileAccess::Read).string();
     const int callbackRef = lua_ref(L, 3);
     const bool accepted = host->scriptLoadSound(std::string(name, nameLen), resolvedPath, callbackRef);
     if (!accepted) {
@@ -1111,7 +1146,7 @@ namespace {
       return 2;
     }
     const BudgetCrossingScope budgetScope(host, "readFile", std::string_view(path, len));
-    std::ifstream file(resolveHostPath(host, std::string_view(path, len)), std::ios::binary);
+    std::ifstream file(checkedHostPath(L, host, std::string_view(path, len), FileAccess::Read), std::ios::binary);
     if (!file) {
       lua_pushnil(L);
       lua_pushstring(L, "cannot open file");
@@ -1135,7 +1170,7 @@ namespace {
     }
 
     const int callbackRef = lua_ref(L, 2);
-    const bool accepted = host->startAsyncFileRead(resolveHostPath(host, std::string_view(path, len)), callbackRef);
+    const bool accepted = host->startAsyncFileRead(checkedHostPath(L, host, std::string_view(path, len), FileAccess::Read), callbackRef);
     if (!accepted) {
       lua_unref(L, callbackRef);
     }
@@ -1153,7 +1188,7 @@ namespace {
       return 2;
     }
     const BudgetCrossingScope budgetScope(host, "loadFont", std::string_view(path, len));
-    const std::string family = text::registerFontFile(resolveHostPath(host, std::string_view(path, len)));
+    const std::string family = text::registerFontFile(checkedHostPath(L, host, std::string_view(path, len), FileAccess::Read));
     if (family.empty()) {
       lua_pushnil(L);
       lua_pushstring(L, "failed to load font");
@@ -1176,7 +1211,7 @@ namespace {
     }
     const BudgetCrossingScope budgetScope(host, "writeFile", std::string_view(path, pathLen));
     // New files are owner-only from creation; replacing a file keeps its existing mode.
-    const std::filesystem::path target = resolveHostPath(host, std::string_view(path, pathLen));
+    const std::filesystem::path target = checkedHostPath(L, host, std::string_view(path, pathLen), FileAccess::Write);
     const int fd = ::open(target.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
     if (fd < 0) {
       lua_pushboolean(L, 0);
@@ -1213,7 +1248,7 @@ namespace {
       return 2;
     }
     const BudgetCrossingScope budgetScope(host, "mkdirAll", std::string_view(path, len));
-    const std::filesystem::path dir = resolveHostPath(host, std::string_view(path, len));
+    const std::filesystem::path dir = checkedHostPath(L, host, std::string_view(path, len), FileAccess::Write);
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
     if (ec) {
@@ -1240,7 +1275,7 @@ namespace {
       return 2;
     }
     const BudgetCrossingScope budgetScope(host, "removeFile", std::string_view(path, len));
-    const std::filesystem::path file = resolveHostPath(host, std::string_view(path, len));
+    const std::filesystem::path file = checkedHostPath(L, host, std::string_view(path, len), FileAccess::Write);
     std::error_code ec;
     if (std::filesystem::is_directory(file, ec)) {
       lua_pushboolean(L, 0);
@@ -1270,7 +1305,7 @@ namespace {
     const BudgetCrossingScope budgetScope(host, "renameFile", std::string_view(from, fromLen));
     std::error_code ec;
     std::filesystem::rename(
-        resolveHostPath(host, std::string_view(from, fromLen)), resolveHostPath(host, std::string_view(to, toLen)), ec
+        checkedHostPath(L, host, std::string_view(from, fromLen), FileAccess::Write), checkedHostPath(L, host, std::string_view(to, toLen), FileAccess::Write), ec
     );
     if (ec) {
       lua_pushboolean(L, 0);
@@ -1291,7 +1326,7 @@ namespace {
       return 2;
     }
     const BudgetCrossingScope budgetScope(host, "fileInfo", std::string_view(path, len));
-    const std::filesystem::path target = resolveHostPath(host, std::string_view(path, len));
+    const std::filesystem::path target = checkedHostPath(L, host, std::string_view(path, len), FileAccess::Read);
     std::error_code ec;
     const auto status = std::filesystem::status(target, ec);
     if (ec || !std::filesystem::exists(status)) {
@@ -1333,7 +1368,7 @@ namespace {
     }
     const BudgetCrossingScope budgetScope(host, "fileExists", std::string_view(path, len));
     std::error_code ec;
-    lua_pushboolean(L, std::filesystem::exists(resolveHostPath(host, std::string_view(path, len)), ec) ? 1 : 0);
+    lua_pushboolean(L, std::filesystem::exists(checkedHostPath(L, host, std::string_view(path, len), FileAccess::Read), ec) ? 1 : 0);
     return 1;
   }
 
@@ -1347,7 +1382,7 @@ namespace {
       return 2;
     }
     const BudgetCrossingScope budgetScope(host, "listDir", std::string_view(path, len));
-    const std::filesystem::path dir = resolveHostPath(host, std::string_view(path, len));
+    const std::filesystem::path dir = checkedHostPath(L, host, std::string_view(path, len), FileAccess::Read);
     std::error_code ec;
     if (!std::filesystem::is_directory(dir, ec)) {
       lua_pushnil(L);
@@ -1511,6 +1546,7 @@ namespace {
   }
 
   int luau_http(lua_State* L) {
+    requirePermissions(L, {.network = true}, "network");
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     auto* host = hostForState(L);
@@ -1542,6 +1578,7 @@ namespace {
   }
 
   int luau_httpStream(lua_State* L) {
+    requirePermissions(L, {.network = true}, "network");
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     luaL_checktype(L, 3, LUA_TFUNCTION);
@@ -1575,6 +1612,7 @@ namespace {
   }
 
   int luau_download(lua_State* L) {
+    requirePermissions(L, {.network = true}, "network");
     size_t urlLen = 0;
     const char* url = luaL_checklstring(L, 1, &urlLen);
     size_t destLen = 0;
@@ -1586,7 +1624,7 @@ namespace {
       return 1;
     }
 
-    const std::string destPath = resolveHostPath(host, std::string_view(dest, destLen)).string();
+    const std::string destPath = checkedHostPath(L, host, std::string_view(dest, destLen), FileAccess::Write).string();
     const int callbackRef = lua_ref(L, 3);
     const bool ok = host->startAsyncDownload(std::string(url, urlLen), destPath, callbackRef);
     if (!ok) {

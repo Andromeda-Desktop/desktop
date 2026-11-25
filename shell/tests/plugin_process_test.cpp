@@ -45,6 +45,15 @@ int main() {
     ready.notify_one();
   });
 
+  const bool denied = host.exec("=denied", R"(
+local ok, err = pcall(noctalia.runAsync, { "true" })
+assert(not ok and string.find(err, "process", 1, true), err)
+)");
+  if (!expect(denied, "runAsync without the process permission should be denied")) {
+    return 1;
+  }
+  host.setPermissions({.process = true});
+
   constexpr auto source = R"(
 assert(not noctalia.runAsync(""))
 assert(noctalia.runAsync(

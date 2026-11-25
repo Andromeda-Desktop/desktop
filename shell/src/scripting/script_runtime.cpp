@@ -7,6 +7,7 @@
 #include "scripting/luau_host.h"
 #include "scripting/plugin_bindings.h"
 #include "scripting/plugin_id.h"
+#include "scripting/plugin_registry.h"
 #include "scripting/plugin_state_store.h"
 #include "scripting/script_api_context.h"
 #include "scripting/script_worker_pool.h"
@@ -219,7 +220,13 @@ namespace scripting {
         HttpClient* httpClientPtr, ClipboardService* clipboardService, TogglePanelCallback panelToggleCallback
     )
         : runtimeName(std::move(name)), settings(std::move(widgetSettings)), scriptApi(api), pluginDir(std::move(dir)),
-          httpClient(httpClientPtr), clipboard(clipboardService), togglePanelCallback(std::move(panelToggleCallback)) {}
+          httpClient(httpClientPtr), clipboard(clipboardService), togglePanelCallback(std::move(panelToggleCallback)) {
+      // Read here, on the main thread that owns the registry; an id without a loaded manifest gets none.
+      const std::string_view id = std::string_view(runtimeName).substr(0, runtimeName.find(':'));
+      if (const PluginManifest* manifest = PluginRegistry::instance().findManifest(id); manifest != nullptr) {
+        permissions = manifest->permissions;
+      }
+    }
 
     mutable std::mutex mutex;
     std::condition_variable stopCv;
@@ -227,6 +234,7 @@ namespace scripting {
     ScriptSettings settings;
     ScriptApiContext& scriptApi;
     std::filesystem::path pluginDir;
+    PluginPermissions permissions;
     HttpClient* httpClient = nullptr;
     const std::uint64_t stateToken = nextStateToken();
     std::deque<ScriptEvent> queue;
@@ -773,6 +781,7 @@ namespace scripting {
       bindingContext.host = host.get();
       bindingContext.ownerId = runtimeName;
       host->setPluginDir(pluginDir);
+      host->setPermissions(permissions);
       host->loadTranslations();
       host->setHttpClient(httpClient);
       host->setScriptContext(&bindingContext);

@@ -2,6 +2,7 @@
 
 #include "scripting/plugin_i18n.h"
 #include "scripting/plugin_layer_config.h"
+#include "scripting/plugin_permissions.h"
 #include "scripting/script_arg.h"
 
 #include <atomic>
@@ -100,6 +101,9 @@ public:
   void setMuteErrors(bool mute) { m_muteErrors = mute; }
   // The plugin's own directory: relative filesystem/translation paths resolve against it.
   void setPluginDir(std::filesystem::path dir) { m_pluginDir = std::move(dir); }
+  // The manifest's [permissions]; the file, process, network, clipboard and environment bindings check them.
+  void setPermissions(scripting::PluginPermissions permissions) { m_permissions = std::move(permissions); }
+  [[nodiscard]] const scripting::PluginPermissions& permissions() const noexcept { return m_permissions; }
   [[nodiscard]] const std::filesystem::path& pluginDir() const noexcept { return m_pluginDir; }
   // The owning plugin id ("author/plugin"), derived from the runtime name: scopes the
   // shared state store.
@@ -274,6 +278,7 @@ private:
   CompositorPlatform* m_platform = nullptr;
   scripting::PluginBindingContext* m_scriptContext = nullptr;
   std::filesystem::path m_pluginDir;
+  scripting::PluginPermissions m_permissions;
   std::string m_pluginId;
   std::string m_runtimeName;
   scripting::PluginTranslationCatalog m_translations;
