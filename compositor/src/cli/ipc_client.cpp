@@ -107,6 +107,8 @@ namespace andromeda {
 
     if (spec.printHuman != nullptr) {
       spec.printHuman(ok);
+    } else if (spec.group == IpcCommandGroup::Inspect) {
+      std::println("{}", ok.dump(2));
     }
 
     return EXIT_SUCCESS;
