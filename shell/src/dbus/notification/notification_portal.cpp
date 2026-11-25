@@ -1,8 +1,10 @@
 #include "dbus/notification/notification_portal.h"
 
 #include "core/log.h"
+#include "dbus/caller.h"
 #include "dbus/session_bus.h"
 #include "notification/notification_manager.h"
+#include "protocols/bus_names.h"
 #include "protocols/xdg_dirs.h"
 
 #include <algorithm>
@@ -130,11 +132,15 @@ NotificationPortal::NotificationPortal(SessionBus& bus, NotificationManager& man
           sdbus::registerMethod("AddNotification")
               .withInputParamNames("app_id", "id", "notification")
               .implementedAs([this](const std::string& appId, const std::string& id, const Options& n) {
-                add(appId, id, n, m_object->getCurrentlyProcessedMessage().getSender());
+                requirePortalFrontend(m_bus.connection());
+                add(appId, id, n);
               }),
           sdbus::registerMethod("RemoveNotification")
               .withInputParamNames("app_id", "id")
-              .implementedAs([this](const std::string& appId, const std::string& id) { remove(appId, id); }),
+              .implementedAs([this](const std::string& appId, const std::string& id) {
+                requirePortalFrontend(m_bus.connection());
+                remove(appId, id);
+              }),
           sdbus::registerSignal("ActionInvoked")
               .withParameters<std::string, std::string, std::string, std::vector<sdbus::Variant>>(
                   "app_id", "id", "action", "parameter"
@@ -165,26 +171,29 @@ NotificationPortal::NotificationPortal(SessionBus& bus, NotificationManager& man
   m_manager.addCloseObserver([this, alive = std::weak_ptr<bool>(m_alive)](
                                  std::uint32_t id, CloseReason /*reason*/, const std::string& /*sender*/
                              ) {
-    if (alive.expired()) {
-      return;
+    if (!alive.expired()) {
+      dropEntry(id);
     }
-    const auto it = m_entries.find(id);
-    if (it == m_entries.end()) {
-      return;
-    }
-    m_byKey.erase({it->second.appId, it->second.id});
-    if (!it->second.iconFile.empty()) {
-      std::error_code ec;
-      fs::remove(it->second.iconFile, ec);
-    }
-    m_entries.erase(it);
   });
   kLog.info("serving {}", kInterface);
 }
 
 NotificationPortal::~NotificationPortal() { m_manager.setPortalCallbacks(nullptr, nullptr); }
 
-void NotificationPortal::add(const std::string& appId, const std::string& id, const Options& n, const std::string& sender) {
+void NotificationPortal::dropEntry(std::uint32_t managerId) {
+  const auto it = m_entries.find(managerId);
+  if (it == m_entries.end()) {
+    return;
+  }
+  m_byKey.erase({it->second.appId, it->second.id});
+  if (!it->second.iconFile.empty()) {
+    std::error_code ec;
+    fs::remove(it->second.iconFile, ec);
+  }
+  m_entries.erase(it);
+}
+
+void NotificationPortal::add(const std::string& appId, const std::string& id, const Options& n) {
   Entry entry{.appId = appId, .id = id, .defaultAction = {}, .buttons = {}, .iconFile = {}};
   entry.defaultAction = {.name = option<std::string>(n, "default-action").value_or(""),
                          .target = variantOption(n, "default-action-target")};
@@ -214,12 +223,12 @@ void NotificationPortal::add(const std::string& appId, const std::string& id, co
   }
 
   const auto old = m_byKey.find({appId, id});
+  const std::uint32_t oldId = old != m_byKey.end() ? old->second : 0;
   NotificationRequest request{
-      .replacesId = old != m_byKey.end() ? old->second : 0,
+      .replacesId = oldId,
       .appName = appId,
       .summary = option<std::string>(n, "title").value_or(""),
       .body = std::move(body),
-      .sender = sender,
       .urgency = priority == "low" ? Urgency::Low : (priority == "urgent" ? Urgency::Critical : Urgency::Normal),
       .timeout = hinted("persistent") ? 0 : kDefaultNotificationTimeout,
       .origin = NotificationOrigin::Portal,
@@ -231,8 +240,10 @@ void NotificationPortal::add(const std::string& appId, const std::string& id, co
       .portalPriority = priority,
   };
   const std::uint32_t managerId = m_manager.addOrReplace(std::move(request));
-  if (old != m_byKey.end() && old->second != managerId) {
-    m_entries.erase(old->second);
+  // An expired id waiting for its close is not replaced in place: it closes, so it leaves no entry or icon file.
+  if (oldId != 0 && oldId != managerId) {
+    (void)m_manager.close(oldId, CloseReason::ClosedByCall);
+    dropEntry(oldId);
   }
   if (const auto replaced = m_entries.find(managerId); replaced != m_entries.end() && !replaced->second.iconFile.empty()
       && replaced->second.iconFile != entry.iconFile) {
@@ -282,7 +293,11 @@ void NotificationPortal::invoke(
   }
   const std::string name = action->name.empty() ? "default" : action->name;
   try {
-    m_object->emitSignal("ActionInvoked").onInterface(kInterface).withArguments(entry.appId, entry.id, name, parameter);
+    // Only the frontend hears it: the parameter may hold reply text.
+    auto signal = m_object->createSignal(sdbus::InterfaceName{kInterface}, sdbus::SignalName{"ActionInvoked"});
+    signal.setDestination(busname::kPortalFrontend);
+    signal << entry.appId << entry.id << name << parameter;
+    m_object->emitSignal(signal);
   } catch (const sdbus::Error& e) {
     kLog.warn("ActionInvoked {} {}: {}", entry.appId, entry.id, e.what());
   }

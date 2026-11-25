@@ -1651,6 +1651,19 @@ if build_tests
     )
   endif
 
+  notification_portal_exe = executable('notification_portal_test',
+    sources: files('tests/notification_portal_test.cpp'),
+    dependencies: noctalia_core_dep,
+    override_options: ['b_ndebug=false'],
+  )
+  if dbus_run_session.found()
+    test('notification_portal',
+      dbus_run_session,
+      args: ['--', notification_portal_exe.full_path()],
+      depends: notification_portal_exe,
+    )
+  endif
+
   notification_reply_integration_exe = executable('notification_reply_integration_test',
     sources: files('tests/notification_reply_integration_test.cpp'),
     dependencies: noctalia_core_dep,

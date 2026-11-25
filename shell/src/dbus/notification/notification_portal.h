@@ -37,8 +37,9 @@ private:
     std::string iconFile;                  // written from bytes or a file descriptor; removed with the entry
   };
 
-  void add(const std::string& appId, const std::string& id, const Options& n, const std::string& sender);
+  void add(const std::string& appId, const std::string& id, const Options& n);
   void remove(const std::string& appId, const std::string& id);
+  void dropEntry(std::uint32_t managerId);
   void invoke(std::uint32_t managerId, const std::string& key, const std::string& token,
               const std::optional<std::string>& response);
 

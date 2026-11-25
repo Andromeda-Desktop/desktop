@@ -36,7 +36,8 @@ namespace notification_dbus {
   uint32_t ingestNotify(
       NotificationManager& manager, const std::string& app_name, uint32_t replaces_id, const std::string& app_icon,
       const std::string& summary, const std::string& body, const std::vector<std::string>& actions,
-      const std::map<std::string, sdbus::Variant>& hints, int32_t expire_timeout, const std::string& sender = ""
+      const std::map<std::string, sdbus::Variant>& hints, int32_t expire_timeout, NotificationOwner owner = {},
+      const std::string& sender = ""
   );
 
 } // namespace notification_dbus
@@ -50,6 +51,9 @@ public:
   [[nodiscard]] bool isHealthy() const override;
 
 private:
+  // The current call's identity; throws AccessDenied when the bus cannot name it.
+  [[nodiscard]] NotificationOwner callerOwner() const;
+
   SessionBus& m_bus;
   NotificationManager& m_manager;
   std::unique_ptr<sdbus::IObject> m_object;

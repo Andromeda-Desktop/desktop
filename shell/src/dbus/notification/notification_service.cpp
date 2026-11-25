@@ -2,6 +2,7 @@
 #include "protocols/bus_names.h"
 
 #include "core/log.h"
+#include "dbus/caller.h"
 #include "dbus/session_bus.h"
 #include "i18n/i18n.h"
 #include "net/uri.h"
@@ -394,7 +395,8 @@ namespace notification_dbus {
   uint32_t ingestNotify(
       NotificationManager& manager, const std::string& app_name, uint32_t replaces_id, const std::string& app_icon,
       const std::string& summary, const std::string& body, const std::vector<std::string>& actions,
-      const std::map<std::string, sdbus::Variant>& hints, int32_t expire_timeout, const std::string& sender
+      const std::map<std::string, sdbus::Variant>& hints, int32_t expire_timeout, NotificationOwner owner,
+      const std::string& sender
   ) {
     const int32_t timeout = normalizeNotifyExpireTimeout(expire_timeout);
     const auto sanitizedActions = sanitizeNotifyActions(actions);
@@ -408,6 +410,7 @@ namespace notification_dbus {
             .appName = StringUtils::truncateUtf8(app_name, kMaxStringLen),
             .summary = StringUtils::truncateUtf8(summary, kMaxStringLen),
             .body = StringUtils::sanitizeMarkup(StringUtils::truncateUtf8(body, kMaxStringLen)),
+            .owner = std::move(owner),
             .sender = sender,
             .urgency = notifyUrgencyFromHints(hints),
             .timeout = timeout,
@@ -436,10 +439,21 @@ uint32_t NotificationService::onNotify(
     const std::string& body, const std::vector<std::string>& actions,
     const std::map<std::string, sdbus::Variant>& hints, int32_t expire_timeout
 ) {
-  const std::string sender = m_object->getCurrentlyProcessedMessage().getSender();
   return notification_dbus::ingestNotify(
-      m_manager, app_name, replaces_id, app_icon, summary, body, actions, hints, expire_timeout, sender
+      m_manager, app_name, replaces_id, app_icon, summary, body, actions, hints, expire_timeout, callerOwner(),
+      m_object->getCurrentlyProcessedMessage().getSender()
   );
+}
+
+NotificationOwner NotificationService::callerOwner() const {
+  const auto caller = busCaller(m_bus.connection(), m_object->getCurrentlyProcessedMessage().getSender());
+  if (!caller.has_value()) {
+    throw sdbus::Error(sdbus::Error::Name{"org.freedesktop.DBus.Error.AccessDenied"}, "caller identity unknown");
+  }
+  if (caller->kind == BusCaller::Kind::Host) {
+    return NotificationOwner{.kind = NotificationOwner::Kind::Host};
+  }
+  return NotificationOwner{.kind = NotificationOwner::Kind::App, .appId = caller->appId};
 }
 
 std::vector<std::string> NotificationService::onGetCapabilities() {
@@ -448,7 +462,11 @@ std::vector<std::string> NotificationService::onGetCapabilities() {
 
 std::vector<std::map<std::string, sdbus::Variant>> NotificationService::onGetNotifications() {
   std::vector<std::map<std::string, sdbus::Variant>> result;
+  const NotificationOwner owner = callerOwner();
   for (const auto& n : m_manager.all()) {
+    if (n.owner != owner) {
+      continue;
+    }
     std::map<std::string, sdbus::Variant> notif;
     notif["id"] = sdbus::Variant(n.id);
     notif["app_name"] = sdbus::Variant(n.appName);
@@ -466,7 +484,7 @@ std::vector<std::map<std::string, sdbus::Variant>> NotificationService::onGetNot
 }
 
 void NotificationService::onCloseNotification(uint32_t id) {
-  if (!m_manager.close(id, CloseReason::ClosedByCall)) {
+  if (!m_manager.isOwnedBy(id, callerOwner()) || !m_manager.close(id, CloseReason::ClosedByCall)) {
     throw sdbus::Error(
         sdbus::Error::Name{"org.freedesktop.Notifications.Error.NotFound"}, "notification id was not found"
     );
@@ -509,7 +527,7 @@ void NotificationService::onInvokeAction(uint32_t id, const std::string& actionK
     );
   }
 
-  if (!m_manager.invokeAction(id, sanitizedKey, false)) {
+  if (!m_manager.isOwnedBy(id, callerOwner()) || !m_manager.invokeAction(id, sanitizedKey, false)) {
     throw sdbus::Error(
         sdbus::Error::Name{"org.freedesktop.Notifications.Error.InvalidAction"},
         "action_key is not available for this notification"

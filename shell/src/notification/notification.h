@@ -48,6 +48,16 @@ struct NotificationImageData {
   bool operator==(const NotificationImageData&) const = default;
 };
 
+// Who may replace, close, list or invoke a notification. Host processes share one trust domain (same user);
+// a sandboxed app is its app id. Shell (in-process and the portal) is never reachable from the fdo D-Bus API.
+struct NotificationOwner {
+  enum class Kind : std::uint8_t { Shell, Host, App };
+  Kind kind = Kind::Shell;
+  std::string appId;
+
+  bool operator==(const NotificationOwner&) const = default;
+};
+
 struct Notification {
   uint32_t id;
   NotificationOrigin origin;
@@ -60,7 +70,8 @@ struct Notification {
   std::string appName;
   std::string summary;
   std::string body;
-  std::string sender;
+  NotificationOwner owner;
+  std::string sender; // D-Bus destination of the notification's signals; empty broadcasts
   int32_t timeout;
   Urgency urgency;
   std::vector<std::string> actions; // pairs: [key, label, key, label, ...]

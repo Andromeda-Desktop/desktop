@@ -347,6 +347,7 @@ uint32_t NotificationManager::addOrReplace(NotificationRequest request) {
   auto& appName = request.appName;
   auto& summary = request.summary;
   auto& body = request.body;
+  auto& owner = request.owner;
   auto& sender = request.sender;
   const Urgency urgency = request.urgency;
   int32_t timeout = request.timeout;
@@ -418,7 +419,8 @@ uint32_t NotificationManager::addOrReplace(NotificationRequest request) {
     timeout = kDefaultNotificationTimeout;
   }
 
-  if (replacesId != 0) {
+  // Another owner's id is not replaced: the request becomes a new notification.
+  if (replacesId != 0 && isOwnedBy(replacesId, owner)) {
     if (m_suppressedIds.contains(replacesId)) {
       if (dispatch.fullySuppress) {
         kLog.debug("notification suppressed #{} from=\"{}\" urgency={}", replacesId, appName, urgencyStr(urgency));
@@ -494,7 +496,7 @@ uint32_t NotificationManager::addOrReplace(NotificationRequest request) {
   }
 
   if (dispatch.fullySuppress) {
-    return suppressExternal(appName, urgency);
+    return suppressExternal(appName, urgency, std::move(owner));
   }
 
   // Suppress immediate duplicate bursts. Later same-content notifications should still be visible.
@@ -521,6 +523,7 @@ uint32_t NotificationManager::addOrReplace(NotificationRequest request) {
           .appName = std::move(appName),
           .summary = std::move(summary),
           .body = std::move(body),
+          .owner = std::move(owner),
           .sender = std::move(sender),
           .timeout = timeout,
           .urgency = urgency,
@@ -624,6 +627,17 @@ void NotificationManager::setReplyCallback(ReplyCallback callback) { m_replyCall
 
 bool NotificationManager::hasPendingDBusClose(uint32_t id) const noexcept { return m_pendingDBusClose.contains(id); }
 
+bool NotificationManager::isOwnedBy(uint32_t id, const NotificationOwner& owner) const {
+  if (const auto it = m_suppressedIds.find(id); it != m_suppressedIds.end()) {
+    return it->second == owner;
+  }
+  if (const auto it = m_idToIndex.find(id); it != m_idToIndex.end()) {
+    return m_notifications[it->second].owner == owner;
+  }
+  const auto it = m_pendingDBusClose.find(id);
+  return it != m_pendingDBusClose.end() && it->second.owner == owner;
+}
+
 bool NotificationManager::invokeAction(uint32_t id, const std::string& actionKey, bool closeAfterInvoke) {
   return invokeAction(id, actionKey, {}, closeAfterInvoke);
 }
@@ -725,7 +739,7 @@ void NotificationManager::emitPendingDBusClose(uint32_t id, CloseReason reason) 
   if (it == m_pendingDBusClose.end()) {
     return;
   }
-  const std::string sender = std::move(it->second);
+  const std::string sender = std::move(it->second.sender);
   m_pendingDBusClose.erase(it);
   if (m_closeCallback) {
     m_closeCallback(id, reason, sender);
@@ -795,7 +809,7 @@ bool NotificationManager::close(uint32_t id, CloseReason reason) {
 
   const bool deferDBusClose = reason == CloseReason::Expired && notificationHasInvokableActions(closed);
   if (deferDBusClose) {
-    m_pendingDBusClose.emplace(id, closed.sender);
+    m_pendingDBusClose.emplace(id, PendingClose{.owner = closed.owner, .sender = closed.sender});
   } else {
     if (m_closeCallback) {
       m_closeCallback(id, reason, closed.sender);
@@ -971,9 +985,9 @@ NotificationManager::ExternalNotificationDispatch NotificationManager::evaluateE
   return dispatch;
 }
 
-uint32_t NotificationManager::suppressExternal(std::string_view appName, Urgency urgency) {
+uint32_t NotificationManager::suppressExternal(std::string_view appName, Urgency urgency, NotificationOwner owner) {
   const uint32_t id = m_nextId++;
-  m_suppressedIds.insert(id);
+  m_suppressedIds.emplace(id, std::move(owner));
   kLog.debug("notification suppressed #{} from=\"{}\" urgency={}", id, appName, urgencyStr(urgency));
   return id;
 }
@@ -1290,7 +1304,7 @@ bool NotificationManager::clearEncryptedHistoryForRecovery() {
 void NotificationManager::flushPersistedHistory() {
   std::vector<uint32_t> pending;
   pending.reserve(m_pendingDBusClose.size());
-  for (const auto& [id, sender] : m_pendingDBusClose) {
+  for (const auto& [id, entry] : m_pendingDBusClose) {
     pending.push_back(id);
   }
   for (const uint32_t id : pending) {

@@ -1,6 +1,7 @@
 #include "dbus/notification/notification_service.h"
 #include "dbus/session_bus.h"
 #include "notification/notification_manager.h"
+#include "tests/sandboxed_peer.h"
 #include "tests/test_check.h"
 
 #include <atomic>
@@ -373,6 +374,83 @@ int main() {
   TEST_CHECK(client2ActionId == 0);
   TEST_CHECK(client2ClosedId == 0);
   TEST_CHECK(!client2TokenReceived);
+
+  // 7. A sandboxed app cannot close, invoke, replace or list a host notification. Host connections share one
+  // identity (notify-send -r opens a new connection per call): client 2 replaces and closes client 1's notification.
+  const auto call = [&](sdbus::IProxy& proxy, const char* method, auto... args) {
+    std::atomic<bool> done{false};
+    std::optional<sdbus::Error> failure;
+    auto pending = proxy.callMethodAsync(method).onInterface(kNotificationsInterface);
+    pending.withArguments(args...).uponReplyInvoke([&](std::optional<sdbus::Error> error) {
+      failure = std::move(error);
+      done = true;
+    });
+    TEST_CHECK(drainUntil(bus, [&] { return done.load(); }));
+    return failure;
+  };
+  const auto notify = [&](sdbus::IProxy& proxy, uint32_t replaces, const std::string& summary) {
+    std::atomic<uint32_t> id{0};
+    proxy.callMethodAsync("Notify")
+        .onInterface(kNotificationsInterface)
+        .withArguments(
+            std::string{"owner"}, replaces, std::string{""}, summary, std::string{"Body"},
+            std::vector<std::string>{"default", "Open"}, std::map<std::string, sdbus::Variant>{}, int32_t{0}
+        )
+        .uponReplyInvoke([&](std::optional<sdbus::Error> error, uint32_t newId) {
+          TEST_CHECK(!error.has_value());
+          id = newId;
+        });
+    TEST_CHECK(drainUntil(bus, [&] { return id.load() != 0; }));
+    return id.load();
+  };
+  const auto summaryOf = [&](uint32_t id) -> std::optional<std::string> {
+    for (const Notification& n : manager.all()) {
+      if (n.id == id) {
+        return n.summary;
+      }
+    }
+    return std::nullopt;
+  };
+  const NotificationOwner host{.kind = NotificationOwner::Kind::Host};
+  const uint32_t owned = notify(*proxy1, 0, "Owned");
+  client1ActionId = 0;
+
+  // Exits with the number of calls that reached the host notification.
+  const char* script =
+      "import sys\n"
+      "from gi.repository import Gio, GLib\n"
+      "bus = Gio.bus_get_sync(Gio.BusType.SESSION)\n"
+      "owned = int(sys.argv[1])\n"
+      "def call(method, args, reply):\n"
+      "  return bus.call_sync('org.freedesktop.Notifications', '/org/freedesktop/Notifications',"
+      " 'org.freedesktop.Notifications', method, args, reply, 0, 5000, None)\n"
+      "reached = 0\n"
+      "for method, args in (('CloseNotification', GLib.Variant('(u)', (owned,))),"
+      " ('InvokeAction', GLib.Variant('(us)', (owned, 'default')))):\n"
+      "  try:\n"
+      "    call(method, args, None)\n"
+      "    reached += 1\n"
+      "  except GLib.Error:\n"
+      "    pass\n"
+      "mine = call('Notify', GLib.Variant('(susssasa{sv}i)', ('sandboxed', owned, '', 'Hijacked', 'x', [], {}, 0)),"
+      " GLib.VariantType('(u)')).unpack()[0]\n"
+      "reached += mine == owned\n"
+      "listed = call('GetNotifications', None, GLib.VariantType('(aa{sv})')).unpack()[0]\n"
+      "reached += [e['id'] for e in listed] != [mine]\n"
+      "sys.exit(reached)\n";
+  {
+    SandboxedPeer sandboxed("org.test.Sandboxed", script, {std::to_string(owned)});
+    TEST_CHECK(drainUntil(bus, [&] { return sandboxed.exitCode().has_value(); }, 10000ms));
+    TEST_CHECK(sandboxed.exitCode() == 0);
+  }
+  TEST_CHECK(summaryOf(owned) == "Owned");
+  TEST_CHECK(manager.isOwnedBy(owned, host));
+  TEST_CHECK(client1ActionId == 0);
+
+  TEST_CHECK(notify(*proxy2, owned, "Replaced") == owned);
+  TEST_CHECK(summaryOf(owned) == "Replaced");
+  TEST_CHECK(!call(*proxy2, "CloseNotification", owned).has_value());
+  TEST_CHECK(!manager.isOwnedBy(owned, host));
 
   client1->leaveEventLoop();
   client2->leaveEventLoop();

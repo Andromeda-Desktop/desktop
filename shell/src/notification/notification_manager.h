@@ -15,7 +15,6 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 enum class NotificationEvent {
@@ -55,6 +54,7 @@ struct NotificationRequest {
   std::string appName;
   std::string summary;
   std::string body;
+  NotificationOwner owner;
   std::string sender;
   Urgency urgency = Urgency::Normal;
   int32_t timeout = kDefaultNotificationTimeout;
@@ -137,6 +137,9 @@ public:
   void addCloseObserver(CloseCallback callback);
   void setReplyCallback(ReplyCallback callback);
   [[nodiscard]] bool hasPendingDBusClose(uint32_t id) const noexcept;
+  // True when `owner` sent `id` and the shell still holds it: active, suppressed, or expired with its app waiting
+  // for NotificationClosed.
+  [[nodiscard]] bool isOwnedBy(uint32_t id, const NotificationOwner& owner) const;
   // True while the app can still receive an action: the notification is active, or expired with its app waiting.
   [[nodiscard]] bool canInvokeActions(uint32_t id) const { return findInvokable(id) != nullptr; }
   [[nodiscard]] bool invokeAction(uint32_t id, const std::string& actionKey, bool closeAfterInvoke = true);
@@ -260,7 +263,7 @@ private:
       const std::optional<std::string>& desktopEntry, std::string_view summary, std::string_view body, bool transient,
       bool persistInHistory
   ) const;
-  uint32_t suppressExternal(std::string_view appName, Urgency urgency);
+  uint32_t suppressExternal(std::string_view appName, Urgency urgency, NotificationOwner owner);
 
   int m_historyRetentionHours = 0;
   bool m_keepDismissedInHistory = true;
@@ -284,11 +287,15 @@ private:
 
   std::deque<Notification> m_notifications;
   std::unordered_map<uint32_t, size_t> m_idToIndex;
-  std::unordered_set<uint32_t> m_suppressedIds;
+  std::unordered_map<uint32_t, NotificationOwner> m_suppressedIds;
   std::vector<NotificationFilterConfig> m_filters;
   /// Expired notifications with actions: NotificationClosed deferred until dismiss, action, or history removal.
-  /// Maps id -> D-Bus sender, so the deferred signal still reaches the notification's owner.
-  std::unordered_map<uint32_t, std::string> m_pendingDBusClose;
+  /// The deferred signal still reaches the notification's sender, and its owner can still close it.
+  struct PendingClose {
+    NotificationOwner owner;
+    std::string sender;
+  };
+  std::unordered_map<uint32_t, PendingClose> m_pendingDBusClose;
   std::deque<NotificationHistoryEntry> m_history;
   std::unordered_map<uint32_t, size_t> m_historyIndex;
   std::vector<std::pair<int, EventCallback>> m_eventCallbacks;
