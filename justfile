@@ -129,11 +129,13 @@ macos-check:
     set -euo pipefail
     cross=$HOME/.cache/andromeda-mac/cross.ini
     [ -f "$cross" ] || tools/macos/deps.py
-    [ -d libdesk-app/build-macos ] || tools/build.sh meson setup libdesk-app/build-macos libdesk-app --cross-file "$cross" -Dplatform=macos
+    sdk=$(grep -m1 -o "'-isysroot', '[^']*" "$cross" | cut -d"'" -f4)
+    [ -d "$sdk" ] || { echo "macos-check: no Darwin SDK at $sdk; run 'xtool sdk' (needs Xcode.xip)" >&2; exit 1; }
+    [ -f libdesk-app/build-macos/build.ninja ] || tools/build.sh meson setup libdesk-app/build-macos libdesk-app --cross-file "$cross" -Dplatform=macos
     tools/build.sh ninja -C libdesk-app/build-macos
     tools/macos/link-check.sh libdesk-app/build-macos
     tools/build-libghostty.sh macos
-    [ -d apps/terminal/build-macos ] || tools/build.sh meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos --buildtype=release
+    [ -f apps/terminal/build-macos/build.ninja ] || tools/build.sh meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos --buildtype=release
     tools/build.sh ninja -C apps/terminal/build-macos
     tools/macos/link-check.sh apps/terminal/build-macos andromeda-terminal libdesk-term/libghostty-vt/prefix-macos/lib/libghostty-vt.dylib
     for crate in ptyd agentd; do cargo check -q --locked --target aarch64-apple-darwin --tests --manifest-path apps/terminal/$crate/Cargo.toml --target-dir /var/tmp/andromeda-macos-cargo; done
