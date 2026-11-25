@@ -152,7 +152,7 @@ async fn work(
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> zbus::Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    andromeda_rt::init_log();
     let root = cache::default_root().ok_or_else(|| zbus::Error::Failure("no HOME".into()))?;
     let sandboxed = std::env::var_os("ANDROMEDA_THUMBNAILER_NO_SANDBOX").is_none();
     let registry = Registry::load(&Registry::system_dirs(), sandboxed);

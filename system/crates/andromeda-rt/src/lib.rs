@@ -88,9 +88,32 @@ pub fn runtime(blocking_threads: usize) -> std::io::Result<tokio::runtime::Runti
     tokio::runtime::Builder::new_current_thread().enable_all().max_blocking_threads(blocking_threads).build()
 }
 
-/// `env_logger` at `info` unless `RUST_LOG` says otherwise.
+/// `env_logger` at `info` unless `RUST_LOG` says otherwise. When stderr is the journal stream (`$JOURNAL_STREAM` is its
+/// "dev:inode"), each line starts with its sd-daemon priority, so journald stores it instead of 6.
+pub fn log_builder() -> env_logger::Builder {
+    use std::io::Write as _;
+    use std::os::unix::fs::MetadataExt as _;
+    let mut builder = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    let journal = std::env::var_os("JOURNAL_STREAM").is_some_and(|stream| {
+        std::fs::metadata("/proc/self/fd/2").is_ok_and(|m| stream.to_str() == Some(&format!("{}:{}", m.dev(), m.ino())))
+    });
+    if journal {
+        builder.format(|buf, record| {
+            let priority = match record.level() {
+                log::Level::Error => 3,
+                log::Level::Warn => 4,
+                log::Level::Info => 6,
+                log::Level::Debug | log::Level::Trace => 7,
+            };
+            writeln!(buf, "<{priority}>[{} {}] {}", record.level(), record.target(), record.args())
+        });
+    }
+    builder
+}
+
+/// Installs `log_builder` as the process logger.
 pub fn init_log() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    log_builder().init();
 }
 
 /// Runs a daemon: `runtime(blocking_threads)`, a `Shutdown` that SIGTERM and SIGINT cancel (they no longer end the

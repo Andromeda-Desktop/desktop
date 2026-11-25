@@ -3,8 +3,6 @@
 //! system service writes to `$STATE_DIRECTORY/crashes`; a user process to `$XDG_STATE_HOME/andromeda/crashes`.
 
 use std::fmt::Write as _;
-use std::io::Write as _;
-use std::os::unix::fs::MetadataExt as _;
 use std::panic::PanicHookInfo;
 use std::path::PathBuf;
 use std::sync::{Mutex, TryLockError};
@@ -80,28 +78,9 @@ fn ring_snapshot() -> Option<Vec<String>> {
     }
 }
 
-/// The sd-daemon level prefix when stderr is the journal stream (`$JOURNAL_STREAM` is its "dev:inode"), so journald
-/// stores the line's real priority instead of 6.
-fn stderr_is_journal() -> bool {
-    let Some(stream) = std::env::var_os("JOURNAL_STREAM") else { return false };
-    std::fs::metadata("/proc/self/fd/2").is_ok_and(|m| stream.to_str() == Some(&format!("{}:{}", m.dev(), m.ino())))
-}
-
-/// Installs `env_logger` (`RUST_LOG`, default info) behind the ring, and the panic hook.
+/// Installs the `andromeda_rt::log_builder` logger behind the ring, and the panic hook.
 pub fn init(component: &'static str) {
-    let mut builder = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
-    if stderr_is_journal() {
-        builder.format(|buf, record| {
-            let priority = match record.level() {
-                log::Level::Error => 3,
-                log::Level::Warn => 4,
-                log::Level::Info => 6,
-                log::Level::Debug | log::Level::Trace => 7,
-            };
-            writeln!(buf, "<{priority}>[{} {}] {}", record.level(), record.target(), record.args())
-        });
-    }
-    let inner = builder.build();
+    let inner = andromeda_rt::log_builder().build();
     let filter = inner.filter();
     if log::set_boxed_logger(Box::new(RingLogger { inner })).is_ok() {
         log::set_max_level(filter);

@@ -11,7 +11,6 @@ command-fds = "0.3"
 crc32fast = "1"
 libc = "0.2"
 log = "0.4"
-env_logger = { version = "0.11", default-features = false }
 md-5 = "0.10"
 tokio = { version = "1", features = ["rt", "macros", "time", "sync", "signal"] }
 zbus = { version = "6", default-features = false, features = ["tokio", "service"] }

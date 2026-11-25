@@ -29,7 +29,6 @@ dependencies = [
  "andromeda-rt",
  "command-fds",
  "crc32fast",
- "env_logger",
  "libc",
  "log",
  "md-5",
