@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# The Link app against a private andromeda-linkd and the headless phone, driven from the keyboard:
-# before the service runs, Home says Link is not running; with the service and no phone, No phone yet; Pair a phone
-# opens a dialog with the code and a QR code, and pairing the phone with that code closes it. With the phone away the
-# header says Not connected and the composer is off. Once the phone holds with a status and a player, the header shows
-# Wi-Fi, 82%, charging, 3 bars, and the player; the seam shows a notification with Reply, a missed call, and the
-# phone's file offer. Text typed in the composer and Send clipboard both reach the phone.
-# Writes app-down.png, app-empty.png, app-pairing.png, app-away.png, app-player.png, app-light.png, app-dark.png,
-# app-settings.png, app-settings-away.png, app-settings-dark.png, steps.txt,
+# The Link app (andromeda-link-app) against a private andromeda-linkd and the headless phone: before the service runs,
+# the page says Link is not running; with the service and no phone, the app opens Pair a Phone with a QR code, and
+# pairing the phone with that code lists it. Once the phone holds with a status and a player, the daemon exports its
+# MPRIS player; Waiting shows a notification with Reply, a missed call, and the phone's file offer. A reply typed on
+# the notification and the phone card's Send clipboard both reach the phone. The dark shots follow the shell's theme.
+# Writes app-down.png, app-empty.png, app-pairing.png, app-away.png, app-player.png, app-waiting.png, app-light.png,
+# app-dark.png, app-settings.png, app-settings-away.png, app-<view>[-away|-dark].png, steps.txt,
 # hold.jsonl, linkd.log, session.log, app.log, and phone.log to $OUT (default ./artifacts/link-app).
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/link-app}
 source "$(dirname "$0")/lib.sh"
 LINK_BIN=${LINK_BIN:-$ROOT/link/target/debug}
+LINK_APP=${LINK_APP:-$ROOT/apps/link-app/build/andromeda-link-app}
 boot_headless 1
 rm -f "$OUT"/*.png "$OUT/steps.txt" "$OUT/phone.log" "$OUT/hold.jsonl" "$OUT/app.log"
 
@@ -39,7 +39,7 @@ EOF
 
 with_noctalia '
   BIN='"$LINK_BIN"'
-  DATA='"$ROOT/link/crates/link-app/data"'
+  LINK_APP='"$LINK_APP"'
   fail() { grim "$OUT/app-fail.png" || true; echo "FAIL: $*" >&2; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   step() { printf "%s\n" "$*" >> "$OUT/steps.txt"; }
@@ -48,20 +48,34 @@ with_noctalia '
   shot() { sleep 1.5; grim "$OUT/app-$1.png"; } # real time: the window repaints
   # -s: wtype waits after its keymap upload, else the compositor drops the first key.
   key() { wtype -s 300 "$@"; }
-  app() { GTK_A11Y=none ANDROMEDA_LINK_DATA=$DATA ADW_DEBUG_COLOR_SCHEME=$1 "$BIN/andromeda-link" >> "$OUT/app.log" 2>&1 & app_pid=$!; }
   click() { "'"$ROOT"'/compositor/build-debug/tests/pointer-client" 1280 720 move "$1" "$2" click 272 > /dev/null; }
-  # The sidebar rows of the Qt app, 1280x720 points.
+  app() {
+    "$LINK_APP" >> "$OUT/app.log" 2>&1 &
+    app_pid=$!
+    w=
+    for _ in $(seq 100); do
+      w=$("$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"dev.andromeda.Link\")][0] // empty")
+      [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
+      sleep 0.1
+    done
+    [[ -n $w ]] || fail "the Link window did not map"
+    [[ $(jq -r "[.w, .h] | join(\"x\")" <<< "$w") == 1200x592 ]] || fail "the points below assume a 1200x592 window: $w"
+    WX=$(jq .x <<< "$w") WY=$(jq .y <<< "$w")
+  }
+  # Window points of the sidebar rows and the phone card.
+  at() { click $((WX + $1)) $((WY + $2)); }
   view() {
     case $1 in
-      home) click 140 172 ;; messages) click 140 211 ;; calls) click 140 251 ;; photos) click 140 292 ;;
-      files) click 140 332 ;; screen) click 140 371 ;; settings) click 115 652 ;; *) fail "no view $1" ;;
+      waiting) at 68 88 ;; messages) at 75 140 ;; calls) at 59 193 ;; photos) at 65 244 ;; files) at 59 290 ;;
+      activity) at 68 351 ;; settings) at 62 449 ;; *) fail "no view $1" ;;
     esac
   }
   clips() { grep -c "\"event\":\"clip-offered\"" "$OUT/hold.jsonl" || true; }
 
-  app prefer-light
+  msg theme-mode-set light > /dev/null
+  app
   shot down
-  step "down: Home before andromeda-linkd runs"
+  step "down: the page before andromeda-linkd runs"
 
   XDG_STATE_HOME=$RUNTIME/linkd "$BIN/andromeda-linkd" > "$OUT/linkd.log" 2>&1 &
   wait_for "shell never saw andromeda-linkd" eval "[[ \$(msg link-devices) != *error* ]]"
@@ -72,9 +86,8 @@ with_noctalia '
   step "empty: the service runs and no phone is paired"
 
   prop() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m org.freedesktop.DBus.Properties.Get org.andromeda.Link1 "$1"; }
-  # Pair a phone on the Home card (no button has keyboard focus at start), 1280x720 points.
-  click 397 247
-  wait_for "Pair a phone opened no pairing window" eval "[[ \$(prop Pairing) == *true* ]]"
+  # With no phone the app opens Pair a Phone by itself.
+  wait_for "the app did not start pairing" eval "[[ \$(prop Pairing) == *true* ]]"
   shot pairing
   # The phone scans the QR code on the screen, as the camera would.
   URI=$(zbarimg -q --raw "$OUT/app-pairing.png") || fail "no QR code on the screen"
@@ -96,9 +109,9 @@ with_noctalia '
   grant browse; grant messages; grant screen
   # The phone keeps its own switches for this desk; turn the same ones on, as its user would.
   python3 -c "import json,sys; s=json.load(open(sys.argv[1])); s[\"peers\"][0].setdefault(\"grants\", {}).update(browse=True, messages=True); json.dump(s, open(sys.argv[1], \"w\"))" "$RUNTIME/phone/devices.json"
-  for v in messages calls photos files screen; do view $v; shot $v-away; done
+  for v in messages calls photos files activity; do view $v; shot $v-away; done
   step "away: every view with its switch on and the phone not connected"
-  view home
+  view waiting
 
   mkfifo "$RUNTIME/phone.in"
   exec 3<> "$RUNTIME/phone.in"
@@ -120,9 +133,9 @@ with_noctalia '
   head -c 4200000 /dev/urandom > "$RUNTIME/src/IMG_2201.jpg"
   say "send $RUNTIME/src/IMG_2201.jpg"
 
-  # Reply on the WhatsApp notification (Home, right column) opens its inline field with the focus.
-  sleep 1 # real time: the notification row paints
-  click 897 196
+  # Reply on the WhatsApp notification in Waiting opens its inline field with the focus.
+  shot waiting
+  at 600 260
   sleep 0.5 # real time: the field takes the focus
   key "See you at 6"
   key -k Return
@@ -131,26 +144,28 @@ with_noctalia '
 
   printf "INV-2026-1043, Rs 13,000" | wl-copy
   wait_for "link-session never synced the copy" eval "(( \$(clips) >= 1 ))"
-  before=$(clips)
-  # Send clipboard on the Home card.
-  view home
-  click 544 334
-  wait_for "Send clipboard did not reach the phone" eval "(( \$(clips) > before ))"
-  grep "\"event\":\"clip-offered\"" "$OUT/hold.jsonl" | tail -1 | grep -q "INV-2026-1043" || fail "the clip had other text"
-  step "send clipboard: $(clips) offers, the last from the button"
+  # Send clipboard on the phone card shares the text with the phone.
+  at 120 551
+  wait_for "Send clipboard did not reach the phone" grep -q "\"event\":\"received\",\"kind\":\"text\",\"text\":\"INV-2026-1043" "$OUT/hold.jsonl"
+  step "send clipboard: the phone received the copied text"
   shot light
-  view settings
+  # The player on the phone card covers Settings: scroll the sidebar to it, then back for the rows above.
+  wheel() { "'"$ROOT"'/compositor/build-debug/tests/pointer-client" 1280 720 move $((WX + 100)) $((WY + 250)) notch "$1" > /dev/null; } # one notch: 1 down, -1 up
+  wheel 1
+  sleep 0.5 # real time: the scroll settles
+  at 62 405
   shot settings
+  wheel -1
   step "settings: grants of the connected phone"
-  for v in messages calls photos files screen; do view $v; shot $v; done
-  step "views: messages, calls (the missed call), photos, files, screen with the phone connected"
+  for v in messages calls photos files activity; do view $v; shot $v; done
+  step "views: messages, calls (the missed call), photos, files, activity with the phone connected"
   folder() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m org.andromeda.Link1.ListFiles "$ID" "$1"; }
   folder "/Internal storage/Download" | grep -q "Lease agreement" || fail "ListFiles did not reach the phone storage"
 
-  kill $app_pid
-  app prefer-dark
+  msg theme-mode-set dark > /dev/null
+  view waiting
   shot dark
-  for v in settings messages calls photos files screen; do view $v; shot $v-dark; done
-  step "dark: the same phone, restarted app (history starts empty)"
+  for v in messages calls photos files activity; do view $v; shot $v-dark; done
+  step "dark: the same phone after the shell switched to dark"
 '
 echo "PASS; artifacts: $OUT"

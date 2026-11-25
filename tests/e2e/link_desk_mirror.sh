@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# The Screen page of the Qt Link app (andromeda-link) mirrors inside the page: against a private andromeda-linkd and the
+# The Mirror page of the Link app (andromeda-link-app) mirrors inside the page: against a private andromeda-linkd and the
 # headless phone, which streams an H.264 file of SMPTE bars as the app streams its encoder's output. Proves:
-# 1. Mirror the screen shows the bars inside the page, with no other window.
+# 1. Opening the Mirror page shows the bars inside the page, with no other window.
 # 2. A click on the picture reaches the phone as a tap at that point, a drag as a swipe, and typed text as text.
-# 3. Stop tells the phone to stop, and the page goes back to its button.
+# 3. Stop tells the phone to stop.
 # Writes screen-idle.png, screen-live.png, screen-stopped.png, steps.txt, hold.jsonl, linkd.log, app.log to $OUT
 # (default ./artifacts/link-desk-mirror).
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/link-desk-mirror}
 source "$(dirname "$0")/lib.sh"
 LINK_BIN=${LINK_BIN:-$ROOT/link/target/debug}
+LINK_APP=${LINK_APP:-$ROOT/apps/link-app/build/andromeda-link-app}
 POINTER=$ROOT/compositor/build-debug/tests/pointer-client
 boot_headless 1
 rm -f "$OUT"/*.png "$OUT/steps.txt" "$OUT/hold.jsonl" "$OUT/app.log"
@@ -20,6 +21,7 @@ gst-launch-1.0 -q videotestsrc num-buffers=60 pattern=smpte \
 
 with_noctalia '
   BIN='"$LINK_BIN"'
+  LINK_APP='"$LINK_APP"'
   POINTER='"$POINTER"'
   fail() { grim "$OUT/fail.png" || true; echo "FAIL: $*" >&2; exit 1; }
   step() { printf "%s\n" "$*" | tee -a "$OUT/steps.txt"; }
@@ -42,18 +44,25 @@ with_noctalia '
     --mirror-size 720x1280 hold > "$OUT/hold.jsonl" 2>> "$OUT/phone.log" &
   wait_for "the phone never connected" grep -q "\"event\":\"connected\"" "$OUT/hold.jsonl"
 
-  QT_FORCE_STDERR_LOGGING=1 "$BIN/andromeda-link" >> "$OUT/app.log" 2>&1 &
+  "$LINK_APP" >> "$OUT/app.log" 2>&1 &
   APP=$!
-  sleep 2 # real time: the window maps
-  # 1280x720 points: Screen in the sidebar, Mirror the screen, the picture (x 634..886, y 136..560 for 720x1280), Stop.
-  click 143 367
+  for _ in $(seq 100); do
+    w=$("$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"dev.andromeda.Link\")][0] // empty")
+    [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
+    sleep 0.1
+  done
+  [[ -n ${w:-} ]] || fail "the Link window did not map"
+  [[ $(jq -r "[.w, .h] | join(\"x\")" <<< "$w") == 1200x592 ]] || fail "the points below assume a 1200x592 window: $w"
+  WX=$(jq .x <<< "$w") WY=$(jq .y <<< "$w")
+  # Window points: Mirror in the sidebar, the picture (x 596..834, y 88..513 for 720x1280), Stop in the caption.
+  at() { click $((WX + $1)) $((WY + $2)); }
   shot screen-idle
-  click 759 605
+  at 114 404
   wait_for "the mirror never started" grep -q "mirroring at" "$OUT/linkd.log"
   shot screen-live
   [[ -z $(pgrep -P "$APP" || true) ]] || fail "the app started a separate mirror: $(pgrep -a -P "$APP")"
   pixel() { magick "$OUT/screen-live.png" -format "%[fx:int(255*r)],%[fx:int(255*g)],%[fx:int(255*b)]" -crop "1x1+$1+$2" info:; }
-  YELLOW=$(pixel 688 250) BLUE=$(pixel 868 250)
+  YELLOW=$(pixel $((WX + 648)) $((WY + 202))) BLUE=$(pixel $((WX + 820)) $((WY + 202)))
   python3 - "$YELLOW" "$BLUE" <<PY || fail "the page does not show the bars: yellow=$YELLOW blue=$BLUE"
 import sys
 yellow, blue = ([int(c) for c in arg.split(",")] for arg in sys.argv[1:])
@@ -62,9 +71,11 @@ assert blue[2] > 150 and blue[0] < 60 and blue[1] < 60, blue
 PY
   step "live: the bars show inside the page (yellow $YELLOW, blue $BLUE)"
 
-  click 760 348
-  "$POINTER" 1280 720 move 760 500 press 272 move 760 420 move 760 300 move 760 200 release 272 > /dev/null
-  "$POINTER" 1280 720 move 760 348 notch 1 > /dev/null
+  at 715 300
+  X=$((WX + 715))
+  "$POINTER" 1280 720 move $X $((WY + 452)) press 272 move $X $((WY + 372)) move $X $((WY + 252)) move $X $((WY + 152)) \
+    release 272 > /dev/null
+  "$POINTER" 1280 720 move $X $((WY + 300)) notch 1 > /dev/null
   wtype -s 300 hi
   wait_for "the input did not all reach the phone" eval "(( \$(events mirror-input) >= 5 ))"
   grep "\"event\":\"mirror-input\"" "$OUT/hold.jsonl" > "$OUT/input.jsonl"
@@ -84,7 +95,7 @@ assert "".join(e["text"] for e in got if e["action"] == "text") == "hi", got
 PY
   step "input: a tap, a drag, a wheel notch, and typed text reach the phone: $(tr -d "\n" < "$OUT/input.jsonl" | head -c 400)"
 
-  click 909 650
+  at 1053 28
   wait_for "Stop did not stop the phone" grep -q "\"event\":\"mirror-stop\".*viewer closed" "$OUT/hold.jsonl"
   shot screen-stopped
   step "stopped: Stop ended the phone stream"
