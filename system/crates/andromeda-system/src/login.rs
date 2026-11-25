@@ -439,8 +439,12 @@ fn create_tally(dir: &Path, user: &str, uid: u32) -> std::io::Result<()> {
         .mode(0o660)
         .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed())
         .open(dir.join(user))?;
-    file.set_permissions(fs::Permissions::from_mode(0o660))?;
-    if file.metadata()?.uid() != uid {
+    // Without CAP_FOWNER only the owner may chmod: set the mode while the file is ours, before it goes to the user.
+    let owner = file.metadata()?.uid();
+    if owner == rustix::process::geteuid().as_raw() {
+        file.set_permissions(fs::Permissions::from_mode(0o660))?;
+    }
+    if owner != uid {
         std::os::unix::fs::fchown(&file, Some(uid), None)?;
     }
     Ok(())
