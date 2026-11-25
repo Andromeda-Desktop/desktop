@@ -4,6 +4,7 @@
 
 #include "config/config_service.h"
 #include "config/config_types.h"
+#include "core/timer_manager.h"
 #include "i18n/i18n.h"
 #include "render/scene/accessible.h"
 #include "render/scene/input_area.h"
@@ -31,6 +32,7 @@
 #include "util/string_utils.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -43,6 +45,7 @@
 namespace settings {
 
   namespace {
+    constexpr std::chrono::milliseconds kTextSaveDelay{700};
     // Fixed-width slot so unit suffixes (%, °C, MB/s, s) left-align into one column across rows,
     // keeping every slider's value box at the same right edge.
     constexpr float kSuffixSlotWidth = 36.0F;
@@ -488,13 +491,25 @@ namespace settings {
     if (!subtitle.empty()) {
       copy->addChild(makeSettingSubtitleLabel(subtitle, scale));
     }
+    // A click anywhere on a switch or menu row acts on its control; the actions stay above the row's cover.
+    std::function<void()> rowClick;
+    Node* control = actions->children().empty() ? nullptr : actions->children().back().get();
+    if (auto* toggle = dynamic_cast<Toggle*>(control)) {
+      rowClick = [toggle] { toggle->activate(); };
+    } else if (auto* select = dynamic_cast<Select*>(control)) {
+      rowClick = [select] { select->toggleOpen(); };
+    }
+    if (rowClick) {
+      actions->setZIndex(2);
+    }
     return ui::row(
         {.align = FlexAlign::Center,
          .justify = FlexJustify::SpaceBetween,
          .gap = Style::spaceXs * scale,
          .paddingV = 2.0F * scale,
          .paddingH = 0.0F,
-         .minHeight = (subtitle.empty() ? metrics::kRowHeight : metrics::kRowHeightTwoLine) * scale},
+         .minHeight = (subtitle.empty() ? metrics::kRowHeight : metrics::kRowHeightTwoLine) * scale,
+         .onClick = std::move(rowClick)},
         std::move(copy), std::move(actions)
     );
   }
@@ -1358,21 +1373,32 @@ namespace settings {
         .height = Style::controlHeight * scale,
         .submitOnFocusLoss = true,
     });
-    input->setOnChange([inputPtr](const std::string& /*text*/) { inputPtr->setInvalid(false); });
-    input->setOnSubmit([configService = ctx.configService, setOverride = ctx.setOverride, path, effectiveValue = value,
-                        inputPtr](const std::string& text) {
-      if (configService != nullptr && !configService->validateOverride(path, ConfigOverrideValue{text})) {
-        inputPtr->setInvalid(true);
-        // Send the rejected mutation through the normal error-reporting path so the
-        // editor sheet shows the shared schema diagnostic beside this control.
-        setOverride(path, text);
-        return;
-      }
+    auto submit = std::make_shared<std::function<void(const std::string&)>>(
+        [configService = ctx.configService, setOverride = ctx.setOverride, path, effectiveValue = value,
+         inputPtr](const std::string& text) {
+          if (configService != nullptr && !configService->validateOverride(path, ConfigOverrideValue{text})) {
+            inputPtr->setInvalid(true);
+            // Send the rejected mutation through the normal error-reporting path so the
+            // editor sheet shows the shared schema diagnostic beside this control.
+            setOverride(path, text);
+            return;
+          }
+          inputPtr->setInvalid(false);
+          if (text == effectiveValue) {
+            return;
+          }
+          setOverride(path, text);
+        }
+    );
+    // Typing saves after a pause, as other settings save on change: closing or locking never loses the text.
+    auto saveTimer = std::make_shared<Timer>();
+    input->setOnChange([inputPtr, submit, saveTimer](const std::string& text) {
       inputPtr->setInvalid(false);
-      if (text == effectiveValue) {
-        return;
-      }
-      setOverride(path, text);
+      saveTimer->start(kTextSaveDelay, [submit, text] { (*submit)(text); });
+    });
+    input->setOnSubmit([submit, saveTimer](const std::string& text) {
+      saveTimer->stop();
+      (*submit)(text);
     });
     return input;
   }

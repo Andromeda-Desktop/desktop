@@ -29,6 +29,8 @@ public:
   [[nodiscard]] bool pressed() const noexcept;
   [[nodiscard]] bool checked() const noexcept { return m_checked; }
   [[nodiscard]] bool enabled() const noexcept { return m_enabled; }
+  // Flips the switch as a click would; does nothing while disabled.
+  void activate();
   [[nodiscard]] ToggleSize toggleSize() const noexcept { return m_size; }
 
 private:

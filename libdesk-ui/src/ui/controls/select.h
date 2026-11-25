@@ -48,6 +48,8 @@ public:
   [[nodiscard]] std::string_view selectedText() const noexcept;
   [[nodiscard]] bool enabled() const noexcept { return m_enabled; }
   [[nodiscard]] bool open() const noexcept { return m_open; }
+  // Opens or closes the menu as a click on the field would; does nothing while disabled.
+  void toggleOpen();
 
 private:
   static constexpr std::size_t npos = static_cast<std::size_t>(-1);
@@ -61,7 +63,6 @@ private:
   void animateCaret(bool open);
   void setSelectedIndexInternal(std::size_t index, bool notify);
   void handleKey(std::uint32_t sym, std::uint32_t utf32, std::uint32_t modifiers, bool pressed);
-  void toggleOpen();
   void closeMenu();
   void openPopupDropdown();
 

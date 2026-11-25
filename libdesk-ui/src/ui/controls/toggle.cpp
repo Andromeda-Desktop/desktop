@@ -152,6 +152,12 @@ void Toggle::activateFromInput() {
   }
 }
 
+void Toggle::activate() {
+  if (m_enabled) {
+    activateFromInput();
+  }
+}
+
 bool Toggle::hovered() const noexcept { return m_inputArea != nullptr && m_inputArea->hovered(); }
 
 bool Toggle::pressed() const noexcept { return m_inputArea != nullptr && m_inputArea->pressed(); }

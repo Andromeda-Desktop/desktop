@@ -253,8 +253,7 @@ void SettingsWindow::clearSettingOverrides(std::vector<std::vector<std::string>>
       && std::ranges::all_of(paths, [](const auto& path) { return settings::compositorSettingKey(path).has_value(); });
   std::erase_if(paths, [this](const std::vector<std::string>& path) { return commitCompositorSetting(path, {}); });
   if (compositorOnly) {
-    m_pendingResetPageScope.clear();
-    requestContentRebuild(/*refreshRegistry=*/false, /*refreshFilterRow=*/true);
+    markSettingsWriteSuccess(/*requestRebuild=*/true);
     return;
   }
   DeferredCall::callLater([this, paths = std::move(paths)]() mutable {
