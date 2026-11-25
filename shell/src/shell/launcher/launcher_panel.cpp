@@ -49,7 +49,7 @@ float LauncherPanel::measureContentHeight(Renderer& /*renderer*/, float /*conten
                                + (picture ? Tokens::componentLauncherPreviewMedia - Tokens::componentLauncherIcon : 0.0F))
       * scale;
   // Mode tabs and the chip row (file kinds, sticker packs) each add a row inside the results piece.
-  const float rows = (modeProviderId().empty() ? 0.0F : 1.0F) + (m_kindTabs != nullptr && m_kindTabs->visible() ? 1.0F : 0.0F);
+  const float rows = (pasteModeActive() ? 1.0F : 0.0F) + (m_kindTabs != nullptr && m_kindTabs->visible() ? 1.0F : 0.0F);
   return field + Tokens::spaceP8 * scale + 2.0F * Tokens::componentLauncherResultsPadding * scale
       + rows * Tokens::componentLauncherTabs * scale + std::max(list, previewHeight)
       + (split ? 0.0F : Tokens::componentLauncherFooter * scale);
@@ -550,6 +550,26 @@ void LauncherPanel::create() {
       area->setOnClick([this, i](const InputArea::PointerData&) { toggleModeDrop(i); });
       node->addChild(std::move(area));
       m_modeDrops[i].node = node.get();
+      searchRow->addChild(std::move(node));
+    }
+    {
+      // Power: Lock, Log Out, Sleep, Restart, Shut Down, one click from the launcher as in a Start menu.
+      auto node = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .minHeight = drop});
+      node->setMinWidth(drop);
+      node->setMaxWidth(drop);
+      styleGlassPiece(*node, drop * 0.5F, scale, panelCardOpacity());
+      node->addChild(ui::glyph({
+          .glyph = "power",
+          .glyphSize = Tokens::sizeSymbolL * scale,
+          .color = colorSpecFromRole(ColorRole::Label1),
+      }));
+      auto area = std::make_unique<InputArea>();
+      area->setParticipatesInLayout(false);
+      area->setCursorShape(CursorShape::Pointer);
+      area->setSize(drop, drop);
+      area->setTooltip(i18n::tr("launcher.mode.power"));
+      area->setOnClick([this](const InputArea::PointerData&) { setMode(kSessionProviderId); });
+      node->addChild(std::move(area));
       searchRow->addChild(std::move(node));
     }
     container->addChild(std::move(searchRow));
@@ -1480,7 +1500,7 @@ void LauncherPanel::applyEmptyState() {
         area->setFrameSize(m_filesToken->width(), m_filesToken->height());
       }
     }
-    const bool pasteMode = !modeProviderId().empty();
+    const bool pasteMode = pasteModeActive();
     m_pillOpenHint->setText(i18n::tr(pasteMode ? "launcher.pill.paste" : "launcher.pill.open"));
   }
   if (empty) {

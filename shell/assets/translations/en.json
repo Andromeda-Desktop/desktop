@@ -1540,7 +1540,8 @@
       "apps": "Apps",
       "files": "Files",
       "clipboard": "Clipboard",
-      "emoji": "Emoji"
+      "emoji": "Emoji",
+      "power": "Power"
     }
   },
   "live-activity": {
@@ -1984,13 +1985,13 @@
       "custom": "Custom",
       "hibernate": "Hibernate",
       "lock": "Lock",
-      "lock-and-suspend": "Lock & Suspend",
+      "lock-and-suspend": "Lock & Sleep",
       "logout": "Log Out",
-      "reboot": "Reboot",
-      "reboot-uefi": "Reboot to UEFI",
+      "reboot": "Restart",
+      "reboot-uefi": "Restart to UEFI",
       "shutdown": "Shut Down",
-      "suspend": "Suspend",
-      "suspend-then-hibernate": "Suspend then Hibernate"
+      "suspend": "Sleep",
+      "suspend-then-hibernate": "Sleep then Hibernate"
     },
     "errors": {
       "lock-body": "The session lock protocol is not available.",

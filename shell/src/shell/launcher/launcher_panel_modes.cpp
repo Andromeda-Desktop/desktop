@@ -5,6 +5,10 @@
 #include "shell/panel/glass_piece.h"
 
 
+bool LauncherPanel::pasteModeActive() const noexcept {
+  return std::ranges::find(kModeProviders, modeProviderId()) != kModeProviders.end();
+}
+
 void LauncherPanel::syncModeTabs() {
   if (m_modeTabs == nullptr) {
     return;
@@ -37,7 +41,7 @@ void LauncherPanel::syncModeTabs() {
       m_modeTabItems.emplace_back(std::string(id), tabPtr);
     }
   }
-  const bool show = m_browserMode && !modeProviderId().empty();
+  const bool show = m_browserMode && pasteModeActive();
   m_modeTabs->setVisible(show);
   m_modeTabs->setParticipatesInLayout(show);
   for (auto& [id, tab] : m_modeTabItems) {
@@ -353,7 +357,7 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   m_previewGlyph->setParticipatesInLayout(!imageReady && !emoji);
   m_previewOpen->setText(
       i18n::tr(
-          emoji || (!modeProviderId().empty() && result.presentation != "action") ? "launcher.pill.paste-hint"
+          emoji || (pasteModeActive() && result.presentation != "action") ? "launcher.pill.paste-hint"
                                                                                   : "launcher.pill.open-hint"
       )
   );

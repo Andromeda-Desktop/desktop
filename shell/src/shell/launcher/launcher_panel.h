@@ -323,6 +323,8 @@ private:
   // Only the clipboard shows the list in a 360 pane beside a preview; every other list is full width.
   [[nodiscard]] bool previewSplit() const noexcept { return m_view.mediaProviderId() == "Clipboard"; }
   [[nodiscard]] std::string_view modeProviderId() const noexcept { return m_view.mediaProviderId(); }
+  // A paste mode (clipboard, emoji, ...) shows the mode tabs and pastes; the power mode runs its rows.
+  [[nodiscard]] bool pasteModeActive() const noexcept;
   [[nodiscard]] bool showingProviderOverview() const noexcept { return m_view.is<launcher_view::ProviderOverview>(); }
   // Leaves a provider view for plain search; the Files and overview views stay.
   void leaveProviderView();
