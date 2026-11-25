@@ -3,8 +3,9 @@
 # backend-boundary input: a denial starts nothing, an allowed session moves the pointer through the portal's EIS
 # sender, a remembered grant restores without asking and hands out an EIS fd, revoking it ends the session, a
 # caller other than the frontend cannot create a session, a session with sources streams the chooser's output and
-# places absolute motion on it, a remembered token restores devices and sources without panel or chooser, and a
-# mode-1 grant ends when its app leaves the bus.
+# places absolute motion on it, a remembered token restores devices and sources without panel or chooser, a
+# mode-1 grant ends when its app leaves the bus, and the clipboard moves both ways only for a session whose consent
+# covered it, pauses while locked and ends with the session.
 set -euo pipefail
 umask 077
 
@@ -32,7 +33,10 @@ trap cleanup EXIT
 for executable in "$COMPOSITOR" "$PORTAL" "$FRONTEND" "$STORE" "$BUILD/andromeda"; do
   [[ -x $executable ]] || { echo "Missing executable: $executable"; exit 2; }
 done
-command -v pipewire > /dev/null || { echo "Missing test command: pipewire"; exit 2; }
+for command in pipewire wl-copy wl-paste; do
+  command -v "$command" > /dev/null || { echo "Missing test command: $command"; exit 2; }
+done
+[[ -x $BUILD/tests/lock-client ]] || { echo "Missing executable: $BUILD/tests/lock-client"; exit 2; }
 
 export XDG_RUNTIME_DIR=$RUNTIME XDG_CONFIG_HOME=$RUNTIME/config XDG_DATA_HOME=$RUNTIME/data-home
 export XDG_CACHE_HOME=$RUNTIME/cache XDG_STATE_HOME=$RUNTIME/state XDG_DATA_DIRS=$RUNTIME/data
@@ -68,6 +72,7 @@ mkfifo "$RUNTIME/physical.fifo"
 exec {PHYSICAL_FD}<> "$RUNTIME/physical.fifo"
 WAYLAND_DISPLAY=remote-desktop-isolated-parent WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=1 \
   "$COMPOSITOR" "$RUNTIME/config.toml" --trust-binary "$BUILD/" --trust-binary "$PORTAL_BUILD/" \
+  --trust-binary "$(command -v wl-copy)" --trust-binary "$(command -v wl-paste)" \
   <&"$PHYSICAL_FD" > "$RUNTIME/compositor.log" 2>&1 &
 PIDS+=("$!")
 source "$REPO/tests/harness/lib.sh"
@@ -249,6 +254,91 @@ for _ in $(seq 50); do
   status > /dev/null
 done
 (($(grants) == 0)) || { echo "the mode-1 grant outlived its app: $("$BUILD/andromeda" input-capture-permissions --json)"; exit 1; }
+
+# Clipboard: RequestClipboard before Start puts it in the consent; Enter enables it.
+"$BUILD/andromeda" input-capture-revoke all > /dev/null
+client clip
+send_clip 'session 0 -'
+await_events "$RUNTIME/clip.log" 'selected response=0' 1 "clip: devices selected"
+send_clip clipboard
+await_events "$RUNTIME/clip.log" clipboard-requested 1 "RequestClipboard"
+send_clip start
+wait_confirmation
+physical 'tap 28'
+await_events "$RUNTIME/clip.log" clipboard-enabled 1 "the consent enables the clipboard"
+await_events "$RUNTIME/clip.log" 'started response=0 devices=3' 1 "clip: started"
+
+# A local copy reaches the session, and SelectionRead returns it.
+wl-copy --foreground --type text/plain 'local text' > "$RUNTIME/wl-copy.log" 2>&1 &
+PIDS+=("$!")
+await_events "$RUNTIME/clip.log" 'owner-changed owner=0 types=text/plain' 1 "a local copy reaches the session"
+send_clip 'read text/plain'
+await_events "$RUNTIME/clip.log" 'read local text' 1 "SelectionRead returns the local copy"
+
+# SetSelection makes the session the owner; a local paste gets its text through SelectionTransfer.
+send_clip 'set text/plain remote text'
+await_events "$RUNTIME/clip.log" 'owner-changed owner=1 types=text/plain' 1 "SetSelection makes the session the owner"
+pasted=$(timeout 10 wl-paste --no-newline --type text/plain) || { echo "wl-paste failed"; exit 1; }
+[[ $pasted == "remote text" ]] || { echo "a local paste got '$pasted', not the session's text"; exit 1; }
+await_events "$RUNTIME/clip.log" 'transferred text/plain ok=1' 1 "the session answered the transfer"
+
+# A session that did not ask for the clipboard can neither read it nor hear of changes.
+client noclip
+send_noclip 'session 0 -'
+await_events "$RUNTIME/noclip.log" 'selected response=0' 1 "noclip: devices selected"
+send_noclip start
+wait_confirmation
+physical 'tap 28'
+await_events "$RUNTIME/noclip.log" 'started response=0 devices=3' 1 "noclip: started"
+send_noclip 'read text/plain'
+await_events "$RUNTIME/noclip.log" error 1 "SelectionRead without clipboard access fails"
+send_noclip 'set text/plain stolen'
+await_events "$RUNTIME/noclip.log" error 2 "SetSelection without clipboard access fails"
+(($(events "$RUNTIME/noclip.log" owner-changed) == 0)) || { echo "a session without clipboard access heard a change"; exit 1; }
+
+# A lock pauses the clipboard; unlocking announces the selection again.
+mkfifo "$RUNTIME/lock.fifo"
+exec {LOCK_FD}<> "$RUNTIME/lock.fifo"
+"$BUILD/tests/lock-client" <&"$LOCK_FD" > "$RUNTIME/lock.log" 2>&1 &
+lock_pid=$!
+PIDS+=("$lock_pid")
+await_events "$RUNTIME/lock.log" locked 1 "session lock"
+errors=$(events "$RUNTIME/clip.log" error)
+send_clip 'read text/plain'
+await_events "$RUNTIME/clip.log" error "$((errors + 1))" "SelectionRead while locked fails"
+printf 'unlock\n' >&"$LOCK_FD"
+wait "$lock_pid"
+await_events "$RUNTIME/clip.log" 'owner-changed owner=1 types=text/plain' 2 "unlocking announces the selection"
+
+# Closing the owning session withdraws its selection.
+send_clip close
+await_events "$RUNTIME/clip.log" closed 1 "clip: closed"
+withdrawn=0
+for _ in $(seq 50); do
+  if ! timeout 5 wl-paste --list-types > "$RUNTIME/types.log" 2>&1 && grep -q 'Nothing is copied' "$RUNTIME/types.log"; then
+    withdrawn=1
+    break
+  fi
+  sleep 0.1
+done
+(( withdrawn )) || { echo "the closed session still owns the selection: $(cat "$RUNTIME/types.log")"; exit 1; }
+
+# Model: random sequences of local copies and pastes, session sets and reads, races and locks over two sessions.
+for name in model_a model_b; do
+  client "$name"
+  "send_$name" 'session 0 -'
+  await_events "$RUNTIME/$name.log" 'selected response=0' 1 "$name: devices selected"
+  "send_$name" clipboard
+  "send_$name" start
+  wait_confirmation
+  physical 'tap 28'
+  await_events "$RUNTIME/$name.log" clipboard-enabled 1 "$name: clipboard enabled"
+  await_events "$RUNTIME/$name.log" owner-changed 1 "$name: the start announces the selection"
+done
+for seed in ${CLIPBOARD_SEEDS:-1 2 3}; do
+  python3 -I "$HERE/clipboard_model.py" "$seed" "${CLIPBOARD_STEPS:-30}" "$BUILD/tests/lock-client" "$RUNTIME" \
+    model_a model_b
+done
 SUCCESS=1
 echo "remote desktop portal: frontend check, consent, EIS motion, restore, ConnectToEIS, revoke, sources," \
-  "absolute motion, source restore and mode-1 expiry hold"
+  "absolute motion, source restore, mode-1 expiry and the clipboard hold"

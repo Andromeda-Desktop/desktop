@@ -3,12 +3,13 @@
 #include "loop/loop.h"
 
 #include <algorithm>
+#include <andromeda-remote-input-v1-client-protocol.h>
 #include <cerrno>
 #include <climits>
 #include <cstdio>
 #include <cstring>
 #include <drm_fourcc.h>
-#include <andromeda-remote-input-v1-client-protocol.h>
+#include <ext-data-control-v1-client-protocol.h>
 #include <ext-foreign-toplevel-list-v1-client-protocol.h>
 #include <ext-image-capture-source-v1-client-protocol.h>
 #include <ext-image-copy-capture-v1-client-protocol.h>
@@ -70,6 +71,7 @@ namespace xdpu {
     ext_foreign_toplevel_image_capture_source_manager_v1* toplevelSourceManager = nullptr;
     ext_image_copy_capture_manager_v1* captureManager = nullptr;
     andromeda_remote_input_manager_v1* remoteInputManager = nullptr;
+    ext_data_control_manager_v1* dataControlManager = nullptr;
     ext_foreign_toplevel_list_v1* toplevelList = nullptr;
     zxdg_output_manager_v1* xdgOutputManager = nullptr;
 
@@ -269,6 +271,10 @@ namespace xdpu {
       if (remoteInputManager != nullptr) {
         andromeda_remote_input_manager_v1_destroy(remoteInputManager);
         remoteInputManager = nullptr;
+      }
+      if (dataControlManager != nullptr) {
+        ext_data_control_manager_v1_destroy(dataControlManager);
+        dataControlManager = nullptr;
       }
       if (toplevelSourceManager != nullptr) {
         ext_foreign_toplevel_image_capture_source_manager_v1_destroy(toplevelSourceManager);
@@ -1082,6 +1088,12 @@ namespace xdpu {
         );
         return;
       }
+      if (iface == ext_data_control_manager_v1_interface.name && impl->dataControlManager == nullptr) {
+        impl->dataControlManager = static_cast<ext_data_control_manager_v1*>(
+            wl_registry_bind(registry, name, &ext_data_control_manager_v1_interface, std::min(version, 1U))
+        );
+        return;
+      }
       if (iface == ext_foreign_toplevel_list_v1_interface.name) {
         impl->toplevelList = static_cast<ext_foreign_toplevel_list_v1*>(
             wl_registry_bind(registry, name, &ext_foreign_toplevel_list_v1_interface, std::min(version, 1U))
@@ -1459,6 +1471,12 @@ namespace xdpu {
                 handler();
               }
             },
+        .paused =
+            [](void* data, andromeda_remote_input_session_v1*, uint32_t paused) {
+              if (auto& handler = remoteSession(data).events.paused) {
+                handler(paused != 0);
+              }
+            },
     };
 
   } // namespace
@@ -1511,6 +1529,268 @@ namespace xdpu {
     return std::make_unique<RemoteInputSession>(
         *this, andromeda_remote_input_manager_v1_create_session(m_impl->remoteInputManager), std::move(events)
     );
+  }
+
+  namespace {
+
+    // Bounds what another client's offer may make the portal store and forward.
+    constexpr size_t kMaxMimeTypes = 256;
+    constexpr size_t kMaxMimeTypeLength = 4095;
+
+  } // namespace
+
+  struct WaylandContext::Clipboard::State {
+    WaylandContext* context = nullptr;
+    ext_data_control_manager_v1* manager = nullptr;
+    ext_data_control_device_v1* device = nullptr;
+    Events events;
+    // Offers announced by data_offer and not yet named selection or primary selection.
+    std::unordered_map<ext_data_control_offer_v1*, std::vector<std::string>> offers;
+    ext_data_control_offer_v1* current = nullptr;
+    std::vector<std::string> mimeTypes;
+    std::unordered_map<ext_data_control_source_v1*, uint64_t> sources;
+    uint64_t nextSource = 1;
+    // The own source last set and not yet cancelled or withdrawn; it holds the selection once its sync is done.
+    uint64_t lastSet = 0;
+    uint64_t owner = 0;
+    std::vector<wl_callback*> syncs;
+    bool finished = false;
+
+    ~State() {
+      for (wl_callback* sync : syncs) {
+        wl_callback_destroy(sync);
+      }
+      for (const auto& [offer, types] : offers) {
+        (void)types;
+        ext_data_control_offer_v1_destroy(offer);
+      }
+      if (current != nullptr) {
+        ext_data_control_offer_v1_destroy(current);
+      }
+      for (const auto& [source, id] : sources) {
+        (void)id;
+        ext_data_control_source_v1_destroy(source);
+      }
+      if (device != nullptr) {
+        ext_data_control_device_v1_destroy(device);
+      }
+    }
+
+    void announce() {
+      if (syncs.empty() && events.selection) {
+        events.selection(mimeTypes, owner);
+      }
+    }
+
+    // The selection event that follows a cancel or withdraw announces the change.
+    void forget(uint64_t id) {
+      if (lastSet == id) {
+        lastSet = 0;
+      }
+      if (owner == id) {
+        owner = 0;
+      }
+    }
+  };
+
+  namespace {
+
+    using ClipboardState = WaylandContext::Clipboard::State;
+
+    const ext_data_control_offer_v1_listener kOfferListener = {
+        .offer = [](void* data, ext_data_control_offer_v1* offer, const char* mimeType) {
+          auto& state = *static_cast<ClipboardState*>(data);
+          const auto found = state.offers.find(offer);
+          if (found == state.offers.end() || mimeType == nullptr || found->second.size() >= kMaxMimeTypes) {
+            return;
+          }
+          const std::string_view type(mimeType);
+          if (!type.empty() && type.size() <= kMaxMimeTypeLength) {
+            found->second.emplace_back(type);
+          }
+        },
+    };
+
+    const ext_data_control_device_v1_listener kDeviceListener = {
+        .data_offer =
+            [](void* data, ext_data_control_device_v1*, ext_data_control_offer_v1* offer) {
+              auto& state = *static_cast<ClipboardState*>(data);
+              state.offers.emplace(offer, std::vector<std::string>{});
+              ext_data_control_offer_v1_add_listener(offer, &kOfferListener, &state);
+            },
+        .selection =
+            [](void* data, ext_data_control_device_v1*, ext_data_control_offer_v1* offer) {
+              auto& state = *static_cast<ClipboardState*>(data);
+              if (state.current != nullptr) {
+                ext_data_control_offer_v1_destroy(state.current);
+              }
+              state.current = offer;
+              state.mimeTypes.clear();
+              if (const auto found = state.offers.find(offer); found != state.offers.end()) {
+                state.mimeTypes = std::move(found->second);
+                state.offers.erase(found);
+              }
+              // Without a pending set, the change came from another client.
+              if (state.syncs.empty()) {
+                state.owner = 0;
+              }
+              state.announce();
+            },
+        .finished =
+            [](void* data, ext_data_control_device_v1* device) {
+              auto& state = *static_cast<ClipboardState*>(data);
+              ext_data_control_device_v1_destroy(device);
+              state.device = nullptr;
+              state.finished = true;
+              state.mimeTypes.clear();
+              state.owner = 0;
+              state.announce();
+              if (state.events.finished) {
+                state.events.finished();
+              }
+            },
+        .primary_selection =
+            [](void* data, ext_data_control_device_v1*, ext_data_control_offer_v1* offer) {
+              auto& state = *static_cast<ClipboardState*>(data);
+              if (offer != nullptr) {
+                state.offers.erase(offer);
+                ext_data_control_offer_v1_destroy(offer);
+              }
+            },
+    };
+
+    ClipboardState& sourceState(void* data) { return *static_cast<ClipboardState*>(data); }
+
+    const ext_data_control_source_v1_listener kSourceListener = {
+        .send =
+            [](void* data, ext_data_control_source_v1* source, const char* mimeType, int32_t fd) {
+              auto& state = sourceState(data);
+              const auto found = state.sources.find(source);
+              if (found == state.sources.end() || !state.events.send || mimeType == nullptr) {
+                close(fd);
+                return;
+              }
+              state.events.send(found->second, mimeType, fd);
+            },
+        .cancelled =
+            [](void* data, ext_data_control_source_v1* source) {
+              auto& state = sourceState(data);
+              const auto found = state.sources.find(source);
+              if (found == state.sources.end()) {
+                return;
+              }
+              const uint64_t id = found->second;
+              state.sources.erase(found);
+              ext_data_control_source_v1_destroy(source);
+              if (state.events.cancelled) {
+                state.events.cancelled(id);
+              }
+              state.forget(id);
+            },
+    };
+
+    const wl_callback_listener kSetDoneListener = {
+        .done = [](void* data, wl_callback* callback, uint32_t) {
+          auto& state = sourceState(data);
+          std::erase(state.syncs, callback);
+          wl_callback_destroy(callback);
+          if (state.syncs.empty()) {
+            // The compositor applied every set: the last live one holds the selection unless another client
+            // replaced it, which cancelled that source.
+            state.owner = state.lastSet;
+            state.announce();
+          }
+        },
+    };
+
+  } // namespace
+
+  WaylandContext::Clipboard::Clipboard(WaylandContext& context, std::unique_ptr<State> state)
+      : m_context(context), m_state(std::move(state)) {
+    ext_data_control_device_v1_add_listener(m_state->device, &kDeviceListener, m_state.get());
+  }
+
+  WaylandContext::Clipboard::~Clipboard() {
+    if (m_context.connected()) {
+      m_state.reset();
+      m_context.flush();
+    } else {
+      // The proxies died with the display.
+      m_state->syncs.clear();
+      m_state->offers.clear();
+      m_state->current = nullptr;
+      m_state->sources.clear();
+      m_state->device = nullptr;
+    }
+  }
+
+  uint64_t WaylandContext::Clipboard::offer(const std::vector<std::string>& mimeTypes) {
+    State& state = *m_state;
+    if (state.finished || !m_context.connected()) {
+      return 0;
+    }
+    ext_data_control_source_v1* source = ext_data_control_manager_v1_create_data_source(state.manager);
+    ext_data_control_source_v1_add_listener(source, &kSourceListener, &state);
+    for (const std::string& type : mimeTypes) {
+      ext_data_control_source_v1_offer(source, type.c_str());
+    }
+    const uint64_t id = state.nextSource++;
+    state.sources.emplace(source, id);
+    state.lastSet = id;
+    ext_data_control_device_v1_set_selection(state.device, source);
+    wl_callback* sync = wl_display_sync(m_context.m_impl->display);
+    wl_callback_add_listener(sync, &kSetDoneListener, &state);
+    state.syncs.push_back(sync);
+    m_context.flush();
+    return id;
+  }
+
+  void WaylandContext::Clipboard::withdraw(uint64_t source) {
+    State& state = *m_state;
+    const auto found =
+        std::ranges::find_if(state.sources, [source](const auto& entry) { return entry.second == source; });
+    if (found == state.sources.end()) {
+      return;
+    }
+    ext_data_control_source_v1_destroy(found->first);
+    state.sources.erase(found);
+    m_context.flush();
+    state.forget(source);
+  }
+
+  int WaylandContext::Clipboard::receive(const std::string& mimeType) {
+    State& state = *m_state;
+    if (state.current == nullptr || !m_context.connected() || !std::ranges::contains(state.mimeTypes, mimeType)) {
+      return -1;
+    }
+    int ends[2];
+    if (pipe2(ends, O_CLOEXEC) != 0) {
+      return -1;
+    }
+    ext_data_control_offer_v1_receive(state.current, mimeType.c_str(), ends[1]);
+    m_context.flush();
+    close(ends[1]);
+    return ends[0];
+  }
+
+  const std::vector<std::string>& WaylandContext::Clipboard::mimeTypes() const { return m_state->mimeTypes; }
+
+  uint64_t WaylandContext::Clipboard::owner() const { return m_state->syncs.empty() ? m_state->owner : 0; }
+
+  bool WaylandContext::Clipboard::ended() const { return m_state->finished; }
+
+  std::unique_ptr<WaylandContext::Clipboard> WaylandContext::createClipboard(Clipboard::Events events) {
+    if (!connected() || m_impl->dataControlManager == nullptr || m_impl->seat == nullptr) {
+      return nullptr;
+    }
+    auto state = std::make_unique<Clipboard::State>();
+    state->context = this;
+    state->manager = m_impl->dataControlManager;
+    state->device = ext_data_control_manager_v1_get_data_device(m_impl->dataControlManager, m_impl->seat);
+    state->events = std::move(events);
+    auto clipboard = std::make_unique<Clipboard>(*this, std::move(state));
+    flush();
+    return clipboard;
   }
 
   void WaylandContext::flush() {

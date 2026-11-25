@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Drives org.freedesktop.portal.RemoteDesktop through the real frontend, one stdin command per line:
   session <persist_mode> <restore_token|->   sources   start   move <dx> <dy>   abs <stream> <x> <y>
-  key <evdev code>   eis   close   quit
+  key <evdev code>   eis   clipboard   set <mime> <text>   read <mime>   close   quit
+SelectionOwnerChanged and SelectionTransfer print lines too; a transfer is answered with the text of the last set.
 Each result is one stdout line."""
 import os
 import stat
 import sys
+import threading
 
 import gi
 
@@ -18,7 +20,8 @@ PATH = "/org/freedesktop/portal/desktop"
 IFACE = "org.freedesktop.portal.RemoteDesktop"
 SENDER = BUS.get_unique_name()[1:].replace(".", "_")
 LOOP = GLib.MainLoop()
-state = {"session": None, "counter": 0}
+state = {"session": None, "counter": 0, "text": ""}
+CLIPBOARD = "org.freedesktop.portal.Clipboard"
 
 
 def say(line):
@@ -40,6 +43,39 @@ def request(method, args, on_response, iface=IFACE):
                                Gio.DBusSignalFlags.NO_MATCH_RULE, response)
     BUS.call_sync(NAME, PATH, iface, method, args(token), None,
                   Gio.DBusCallFlags.NONE, -1, None)
+
+
+def on_owner_changed(_bus, _sender, _path, _iface, _signal, params):
+    session, options = params.unpack()
+    if session == state["session"]:
+        say(f"owner-changed owner={int(options.get('session_is_owner', False))} "
+            f"types={','.join(options.get('mime_types', [])) or '-'}")
+
+
+def on_transfer(_bus, _sender, _path, _iface, _signal, params):
+    session, mime, serial = params.unpack()
+    if session != state["session"]:
+        return
+    try:
+        reply, fds = BUS.call_with_unix_fd_list_sync(
+            NAME, PATH, CLIPBOARD, "SelectionWrite", GLib.Variant("(ou)", (session, serial)),
+            None, Gio.DBusCallFlags.NONE, -1, None, None)
+        fd = fds.get(reply.unpack()[0])
+        with os.fdopen(fd, "wb") as pipe:
+            pipe.write(state["text"].encode())
+        ok = True
+    except (GLib.Error, OSError) as error:
+        say(f"write-failed {error}")
+        ok = False
+    BUS.call_sync(NAME, PATH, CLIPBOARD, "SelectionWriteDone", GLib.Variant("(oub)", (session, serial, ok)),
+                  None, Gio.DBusCallFlags.NONE, -1, None)
+    say(f"transferred {mime} ok={int(ok)}")
+
+
+def read_pipe(fd):
+    with os.fdopen(fd, "rb") as pipe:
+        data = pipe.read().decode(errors="replace")
+    GLib.idle_add(lambda: say(f"read {data or '-'}"))
 
 
 def notify(method, args):
@@ -67,6 +103,10 @@ def command(line):
             state["session"] = results["session_handle"]
             BUS.signal_subscribe(NAME, "org.freedesktop.portal.Session", "Closed", state["session"], None,
                                  Gio.DBusSignalFlags.NO_MATCH_RULE, lambda *_: say("session-closed"))
+            BUS.signal_subscribe(NAME, CLIPBOARD, "SelectionOwnerChanged", PATH, None, Gio.DBusSignalFlags.NONE,
+                                 on_owner_changed)
+            BUS.signal_subscribe(NAME, CLIPBOARD, "SelectionTransfer", PATH, None, Gio.DBusSignalFlags.NONE,
+                                 on_transfer)
             options = {"types": GLib.Variant("u", 3), "persist_mode": GLib.Variant("u", mode)}
             if token != "-":
                 options["restore_token"] = GLib.Variant("s", token)
@@ -83,6 +123,8 @@ def command(line):
     elif action == "start":
         def started(code, results):
             streams = ",".join(str(node) for node, _props in results.get("streams", [])) or "-"
+            if results.get("clipboard_enabled"):
+                say("clipboard-enabled")
             say(f"started response={code} devices={results.get('devices', 0)} "
                 f"streams={streams} token={results.get('restore_token', '-')}")
 
@@ -109,6 +151,30 @@ def command(line):
             os.close(fd)
         except GLib.Error as error:
             say(f"eis-failed {error.message}")
+    elif action == "clipboard":
+        try:
+            BUS.call_sync(NAME, PATH, CLIPBOARD, "RequestClipboard", GLib.Variant("(oa{sv})", (state["session"], {})),
+                          None, Gio.DBusCallFlags.NONE, -1, None)
+            say("clipboard-requested")
+        except GLib.Error as error:
+            say(f"error {error.message}")
+    elif action == "set":
+        state["text"] = " ".join(words[2:])
+        try:
+            BUS.call_sync(NAME, PATH, CLIPBOARD, "SetSelection", GLib.Variant("(oa{sv})", (state["session"], {
+                "mime_types": GLib.Variant("as", [words[1]])})), None, Gio.DBusCallFlags.NONE, -1, None)
+            say("set")
+        except GLib.Error as error:
+            say(f"error {error.message}")
+    elif action == "read":
+        try:
+            reply, fds = BUS.call_with_unix_fd_list_sync(
+                NAME, PATH, CLIPBOARD, "SelectionRead", GLib.Variant("(os)", (state["session"], words[1])),
+                None, Gio.DBusCallFlags.NONE, -1, None, None)
+            # A thread reads: the data may come from this client's own SelectionTransfer answer.
+            threading.Thread(target=read_pipe, args=(fds.get(reply.unpack()[0]),), daemon=True).start()
+        except GLib.Error as error:
+            say(f"error {error.message}")
     elif action == "close":
         BUS.call_sync(NAME, state["session"], "org.freedesktop.portal.Session", "Close", None, None,
                       Gio.DBusCallFlags.NONE, -1, None)

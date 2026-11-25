@@ -31,6 +31,7 @@ namespace xdpu {
   namespace {
 
     constexpr char kInterface[] = "org.freedesktop.impl.portal.RemoteDesktop";
+    constexpr char kClipboardInterface[] = "org.freedesktop.impl.portal.Clipboard";
     constexpr char kFrontendName[] = "org.freedesktop.portal.Desktop";
     constexpr char kSessionPrefix[] = "/org/freedesktop/portal/desktop/session/";
     constexpr char kRestoreVendor[] = "andromeda-rd";
@@ -40,6 +41,12 @@ namespace xdpu {
     constexpr uint32_t kKeyboard = 1;
     constexpr uint32_t kPointer = 2;
     constexpr uint32_t kAvailableDeviceTypes = kKeyboard | kPointer;
+    // Compositor capability bit: the consent also covers the session's clipboard.
+    constexpr uint32_t kClipboard = 4;
+    // SetSelection limits, and transfers an app may leave unanswered per session (the oldest closes first).
+    constexpr size_t kMaxMimeTypes = 256;
+    constexpr size_t kMaxMimeTypeLength = 4095;
+    constexpr size_t kMaxTransfers = 16;
     // Events an app sends before the EIS handshake ends wait here; more are dropped.
     constexpr size_t kMaxQueued = 512;
 
@@ -281,6 +288,8 @@ namespace xdpu {
     // Start: Open -> Consent (compositor panel or restored grant) -> Sources (when SelectSources ran) -> Started.
     struct Remote {
       enum class Phase : uint8_t { Open, Consent, Sources, Started, Ended };
+      // Off -> Requested (RequestClipboard before Start) -> Enabled (the consent covered it). Only Enabled acts.
+      enum class ClipboardAccess : uint8_t { Off, Requested, Enabled };
 
       std::string appId;
       std::string instance;
@@ -301,6 +310,18 @@ namespace xdpu {
       // Waiting connect_eis consumers by request id.
       std::map<uint32_t, std::move_only_function<void(int fd)>> connects;
       std::unique_ptr<EiSender> sender;
+      ClipboardAccess clipboard = ClipboardAccess::Off;
+      // The compositor blocks emulated input (lock, inactive session): no clipboard data moves.
+      bool paused = false;
+      // The own selection source (WaylandContext::Clipboard id), or 0.
+      uint64_t source = 0;
+    };
+
+    // One answer the app owes for a SelectionTransfer: the reader's pipe until SelectionWrite hands it out.
+    struct Transfer {
+      std::string path;
+      uint64_t source = 0;
+      std::optional<sdbus::UnixFd> fd;
     };
 
     Loop& loop;
@@ -313,6 +334,10 @@ namespace xdpu {
     std::map<std::string, std::unique_ptr<Remote>> remotes;
     // Application instances that hold mode-one grants; their grants expire when the app leaves the bus.
     std::map<std::string, NameOwnerWatch> scopedInstances;
+    // Exists while a session has clipboard access.
+    std::unique_ptr<WaylandContext::Clipboard> clipboard;
+    std::map<uint32_t, Transfer> transfers;
+    uint32_t nextSerial = 1;
 
     Impl(
         Loop& loop, sdbus::IConnection& connection, sdbus::IObject& object, SessionTable& sessions,
@@ -325,6 +350,7 @@ namespace xdpu {
       );
       sessions.addClosedListener([this](Session& session) { end(session.path()); });
       registerVTable();
+      registerClipboard();
     }
 
     ~Impl() { remotes.clear(); }
@@ -455,6 +481,7 @@ namespace xdpu {
                 }
               },
           .started = [this, path](uint32_t status, uint32_t capabilities) { started(path, status, capabilities); },
+          .paused = [this, path](bool paused) { pause(path, paused); },
           .eisFd = [this, path](uint32_t request, int fd) { answerConnect(path, request, fd); },
           .result = [this, path](uint32_t request, uint32_t) { answerConnect(path, request, -1); },
           .closed = [this, path]() { closeLater(path); },
@@ -465,7 +492,9 @@ namespace xdpu {
         return;
       }
       remote->input->setPersistence(remote->persistMode, remote->restoreToken, remote->instance);
-      remote->input->start(remote->appId, remote->types);
+      remote->input->start(
+          remote->appId, remote->types | (remote->clipboard == Remote::ClipboardAccess::Requested ? kClipboard : 0)
+      );
     }
 
     // The compositor answered: on success, share the screen next when the app also selected sources.
@@ -482,6 +511,9 @@ namespace xdpu {
         watchScope(remote->instance);
       }
       remote->capabilities = capabilities & remote->types;
+      if (remote->clipboard == Remote::ClipboardAccess::Requested && (capabilities & kClipboard) != 0) {
+        enableClipboard(*remote);
+      }
       const auto session = sessions.find(path);
       if (!session || !session->sourcesSelected()) {
         finishStart(path, *remote, 0);
@@ -511,6 +543,11 @@ namespace xdpu {
       if (response == 0) {
         remote.phase = Remote::Phase::Started;
         results.emplace("devices", sdbus::Variant(remote.capabilities));
+        if (remote.clipboard == Remote::ClipboardAccess::Enabled) {
+          results.emplace("clipboard_enabled", sdbus::Variant(true));
+          // After the Start reply: the frontend relays clipboard signals only once it saw clipboard_enabled.
+          loop.addTimer(0, [this, path]() { announceSelection(path); });
+        }
         if (!remote.grantToken.empty()) {
           PortalResults data{{"token", sdbus::Variant(remote.grantToken)}};
           if (session && session->sourcesSelected()) {
@@ -525,6 +562,10 @@ namespace xdpu {
       } else {
         remote.phase = Remote::Phase::Ended;
         retire(std::move(remote.input));
+        if (remote.clipboard == Remote::ClipboardAccess::Enabled) {
+          remote.clipboard = Remote::ClipboardAccess::Off;
+          releaseClipboard();
+        }
         if (const auto cancel = std::exchange(remote.cancelSources, nullptr)) {
           cancel();
         }
@@ -569,7 +610,253 @@ namespace xdpu {
         (void)request;
         consumer(-1);
       }
+      dropSource(remote);
       remotes.erase(it);
+      releaseClipboard();
+    }
+
+    void enableClipboard(Remote& remote) {
+      if (!clipboard) {
+        createClipboard();
+        if (!clipboard) {
+          std::fprintf(stderr, "remote desktop: the compositor offers no ext_data_control_manager_v1\n");
+          return;
+        }
+      }
+      remote.clipboard = Remote::ClipboardAccess::Enabled;
+    }
+
+    void createClipboard() {
+      clipboard = wayland.createClipboard({
+          .selection = [this](const std::vector<std::string>&, uint64_t) { announceSelection({}); },
+          .send = [this](uint64_t source, const std::string& mimeType, int fd) { transfer(source, mimeType, fd); },
+          .cancelled =
+              [this](uint64_t source) {
+                for (auto& [path, remote] : remotes) {
+                  (void)path;
+                  if (remote->source == source) {
+                    dropSource(*remote);
+                  }
+                }
+              },
+          // Sessions refuse clipboard calls until the next enableClipboard makes a new device; no retry loop when
+          // the compositor ends every device.
+          .finished =
+              [this]() {
+                loop.addTimer(0, [this]() {
+                  if (!clipboard || !clipboard->ended()) {
+                    return;
+                  }
+                  for (auto& [path, remote] : remotes) {
+                    (void)path;
+                    dropSource(*remote);
+                  }
+                  clipboard.reset();
+                });
+              },
+      });
+    }
+
+    // Ends the data-control device when no session uses the clipboard.
+    void releaseClipboard() {
+      if (clipboard && std::ranges::none_of(remotes, [](const auto& entry) {
+            return entry.second->clipboard == Remote::ClipboardAccess::Enabled;
+          })) {
+        loop.addTimer(0, [this]() {
+          if (std::ranges::none_of(remotes, [](const auto& entry) {
+                return entry.second->clipboard == Remote::ClipboardAccess::Enabled;
+              })) {
+            clipboard.reset();
+          }
+        });
+      }
+    }
+
+    // A session that may use the clipboard now: started, consented and not paused.
+    Remote* clipboardRemote(const std::string& path) {
+      Remote* remote = remoteFor(path);
+      return remote != nullptr
+              && remote->phase == Remote::Phase::Started
+              && remote->clipboard == Remote::ClipboardAccess::Enabled
+              && !remote->paused
+              && clipboard
+          ? remote
+          : nullptr;
+    }
+
+    // Tells one session (path) or every active session (empty path) the current selection.
+    void announceSelection(const std::string& only) {
+      if (!clipboard) {
+        return;
+      }
+      for (const auto& [path, remote] : remotes) {
+        if ((!only.empty() && path != only)
+            || remote->phase != Remote::Phase::Started
+            || remote->clipboard != Remote::ClipboardAccess::Enabled
+            || remote->paused) {
+          continue;
+        }
+        const PortalResults options{
+            {"mime_types", sdbus::Variant(clipboard->mimeTypes())},
+            {"session_is_owner", sdbus::Variant(remote->source != 0 && remote->source == clipboard->owner())},
+        };
+        object.emitSignal("SelectionOwnerChanged")
+            .onInterface(kClipboardInterface)
+            .withArguments(sdbus::ObjectPath{path}, options);
+      }
+    }
+
+    void dropSource(Remote& remote) {
+      const uint64_t source = std::exchange(remote.source, 0);
+      if (source == 0) {
+        return;
+      }
+      std::erase_if(transfers, [source](const auto& entry) { return entry.second.source == source; });
+      if (clipboard) {
+        clipboard->withdraw(source);
+      }
+    }
+
+    void pause(const std::string& path, bool paused) {
+      Remote* remote = live(path);
+      if (remote == nullptr || remote->paused == paused) {
+        return;
+      }
+      remote->paused = paused;
+      std::fprintf(stderr, "remote desktop: %s %s\n", path.c_str(), paused ? "paused" : "resumed");
+      if (paused) {
+        std::erase_if(transfers, [&path](const auto& entry) { return entry.second.path == path; });
+      } else {
+        announceSelection(path);
+      }
+    }
+
+    void transfer(uint64_t source, const std::string& mimeType, int fd) {
+      sdbus::UnixFd pipe{fd, sdbus::adopt_fd};
+      const auto found =
+          std::ranges::find_if(remotes, [source](const auto& entry) { return entry.second->source == source; });
+      if (found == remotes.end() || found->second->paused) {
+        return;
+      }
+      const std::string& path = found->first;
+      size_t owed = 0;
+      for (auto it = transfers.rbegin(); it != transfers.rend(); ++it) {
+        if (it->second.path == path && ++owed >= kMaxTransfers) {
+          transfers.erase(std::next(it).base());
+          break;
+        }
+      }
+      uint32_t serial = nextSerial++;
+      while (serial == 0 || transfers.contains(serial)) {
+        serial = nextSerial++;
+      }
+      transfers.emplace(serial, Transfer{.path = path, .source = source, .fd = std::move(pipe)});
+      object.emitSignal("SelectionTransfer")
+          .onInterface(kClipboardInterface)
+          .withArguments(sdbus::ObjectPath{path}, mimeType, serial);
+    }
+
+    void requestClipboard(const std::string& path) {
+      Remote* remote = remoteFor(path);
+      if (remote != nullptr
+          && remote->phase == Remote::Phase::Open
+          && remote->clipboard == Remote::ClipboardAccess::Off) {
+        remote->clipboard = Remote::ClipboardAccess::Requested;
+      }
+    }
+
+    static sdbus::Error clipboardError(const char* message) {
+      return sdbus::Error(sdbus::Error::Name{"org.freedesktop.DBus.Error.Failed"}, message);
+    }
+
+    void setSelection(const std::string& path, const PortalResults& options) {
+      Remote* remote = clipboardRemote(path);
+      if (remote == nullptr) {
+        throw clipboardError("Clipboard not enabled");
+      }
+      const auto types =
+          optionValue<std::vector<std::string>>(options, "mime_types").value_or(std::vector<std::string>{});
+      if (types.size() > kMaxMimeTypes || std::ranges::any_of(types, [](const std::string& type) {
+            return type.empty() || type.size() > kMaxMimeTypeLength;
+          })) {
+        throw clipboardError("Invalid mime types");
+      }
+      // The new source replaces the old one before the old one goes, so the selection is never empty between them.
+      const uint64_t source = types.empty() ? 0 : clipboard->offer(types);
+      if (!types.empty() && source == 0) {
+        throw clipboardError("Clipboard unavailable");
+      }
+      dropSource(*remote);
+      remote->source = source;
+    }
+
+    sdbus::UnixFd selectionWrite(const std::string& path, uint32_t serial) {
+      const auto found = transfers.find(serial);
+      if (clipboardRemote(path) == nullptr
+          || found == transfers.end()
+          || found->second.path != path
+          || !found->second.fd) {
+        throw clipboardError("Unknown transfer");
+      }
+      sdbus::UnixFd fd = std::move(*found->second.fd);
+      found->second.fd.reset();
+      return fd;
+    }
+
+    void selectionWriteDone(const std::string& path, uint32_t serial) {
+      if (const auto found = transfers.find(serial);
+          found != transfers.end() && found->second.path == path && remoteFor(path) != nullptr) {
+        transfers.erase(found);
+      }
+    }
+
+    sdbus::UnixFd selectionRead(const std::string& path, const std::string& mimeType) {
+      if (clipboardRemote(path) == nullptr) {
+        throw clipboardError("Clipboard not enabled");
+      }
+      const int fd = clipboard->receive(mimeType);
+      if (fd < 0) {
+        throw clipboardError("The selection does not offer this type");
+      }
+      return sdbus::UnixFd{fd, sdbus::adopt_fd};
+    }
+
+    void registerClipboard() {
+      using Path = sdbus::ObjectPath;
+      object
+          .addVTable(
+              sdbus::registerMethod("RequestClipboard")
+                  .implementedAs([this](const Path& session, const PortalResults&) { requestClipboard(session); })
+                  .withInputParamNames("session_handle", "options"),
+              sdbus::registerMethod("SetSelection")
+                  .implementedAs([this](const Path& session, const PortalResults& options) {
+                    setSelection(session, options);
+                  })
+                  .withInputParamNames("session_handle", "options"),
+              sdbus::registerMethod("SelectionWrite")
+                  .implementedAs([this](const Path& session, uint32_t serial) {
+                    return selectionWrite(session, serial);
+                  })
+                  .withInputParamNames("session_handle", "serial")
+                  .withOutputParamNames("fd"),
+              sdbus::registerMethod("SelectionWriteDone")
+                  .implementedAs([this](const Path& session, uint32_t serial, bool) {
+                    selectionWriteDone(session, serial);
+                  })
+                  .withInputParamNames("session_handle", "serial", "success"),
+              sdbus::registerMethod("SelectionRead")
+                  .implementedAs([this](const Path& session, const std::string& mimeType) {
+                    return selectionRead(session, mimeType);
+                  })
+                  .withInputParamNames("session_handle", "mime_type")
+                  .withOutputParamNames("fd"),
+              sdbus::registerSignal("SelectionOwnerChanged")
+                  .withParameters<Path, PortalResults>("session_handle", "options"),
+              sdbus::registerSignal("SelectionTransfer")
+                  .withParameters<Path, std::string, uint32_t>("session_handle", "mime_type", "serial"),
+              sdbus::registerProperty("version").withGetter([]() { return uint32_t{1}; })
+          )
+          .forInterface(kClipboardInterface);
     }
 
     void answerConnect(const std::string& path, uint32_t request, int fd) {

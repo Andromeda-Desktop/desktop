@@ -203,6 +203,7 @@ namespace xdpu {
       struct Events {
         std::function<void(uint32_t persistMode, std::string token)> grant;
         std::function<void(uint32_t status, uint32_t capabilities)> started;
+        std::function<void(bool paused)> paused;
         std::function<void(uint32_t request, int fd)> eisFd; // the handler owns fd
         std::function<void(uint32_t request, uint32_t status)> result;
         std::function<void()> closed;
@@ -226,6 +227,42 @@ namespace xdpu {
     std::unique_ptr<RemoteInputSession> createRemoteInputSession(RemoteInputSession::Events events);
     // Ends mode-one remote input grants issued for this application instance (its D-Bus peer is gone).
     void expireRemoteInputScope(const std::string& instance);
+
+    // The seat's selection through one ext_data_control_v1 device. Own sources have ids; the owner of the selection
+    // is settled after a roundtrip, so a selection another client set meanwhile never counts as own.
+    class Clipboard {
+    public:
+      struct Events {
+        // The selection changed; `owner` is the own source that holds it, or 0.
+        std::function<void(const std::vector<std::string>& mimeTypes, uint64_t owner)> selection;
+        // A reader wants `mimeType` from an own source; the handler owns fd.
+        std::function<void(uint64_t source, const std::string& mimeType, int fd)> send;
+        std::function<void(uint64_t source)> cancelled;
+        // The compositor ended the device: this clipboard does nothing more.
+        std::function<void()> finished;
+      };
+      struct State;
+      Clipboard(WaylandContext& context, std::unique_ptr<State> state);
+      ~Clipboard();
+      Clipboard(const Clipboard&) = delete;
+      Clipboard& operator=(const Clipboard&) = delete;
+
+      // Offers the selection in these types; returns the source id.
+      uint64_t offer(const std::vector<std::string>& mimeTypes);
+      // Destroys an own source; the compositor clears the selection when it held it.
+      void withdraw(uint64_t source);
+      // The read end of a pipe that receives the selection as mimeType; -1 when the selection lacks that type.
+      int receive(const std::string& mimeType);
+      const std::vector<std::string>& mimeTypes() const;
+      uint64_t owner() const;
+      bool ended() const;
+
+    private:
+      WaylandContext& m_context;
+      std::unique_ptr<State> m_state;
+    };
+    // nullptr when the compositor offers no ext_data_control_manager_v1 or seat to this binary.
+    std::unique_ptr<Clipboard> createClipboard(Clipboard::Events events);
 
     struct ScreenshotResult {
       std::vector<uint8_t> pixels;
