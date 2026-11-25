@@ -44,6 +44,8 @@ andromeda_version_h = vcs_tag(
 andromeda_data_dir = get_option('prefix') / get_option('datadir')
 andromeda_data_dir_config = configuration_data()
 andromeda_data_dir_config.set_quoted('ANDROMEDA_DATA_DIR', andromeda_data_dir)
+andromeda_data_dir_config.set_quoted('ANDROMEDA_BIN_DIR', get_option('prefix') / get_option('bindir'))
+andromeda_data_dir_config.set_quoted('ANDROMEDA_LIBEXEC_DIR', get_option('prefix') / get_option('libexecdir'))
 andromeda_data_dir_config.set_quoted('ANDROMEDA_TRANSLATIONS_SOURCE_DIR', meson.current_source_dir() / 'translations')
 configure_file(
   input: 'src/config/data_dir.h.in',
@@ -974,6 +976,7 @@ pure_sources = files(
   'src/view/snap_flyout.cpp',
   'src/view/drag_physics.cpp',
   'src/xwayland/xsettings.cpp',
+  'src/server/client_trust.cpp',
 )
 
 andromeda_pure_deps = [

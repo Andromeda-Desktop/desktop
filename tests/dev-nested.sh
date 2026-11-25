@@ -27,7 +27,7 @@ done
 sed -e '/^autostart *=/d' ~/.config/andromeda/config.toml > "$RUNTIME/andromeda.toml"
 
 env -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY="$PARENT" WLR_BACKENDS=wayland \
-  "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" > "$RUNTIME/andromeda.log" 2>&1 &
+  "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" --trust-binary "$ROOT/" --trust-binary /usr/bin/ > "$RUNTIME/andromeda.log" 2>&1 &
 for _ in $(seq 100); do [[ -S $RUNTIME/wayland-0 ]] && break; sleep 0.05; done
 [[ -S $RUNTIME/wayland-0 ]] || { echo "andromeda did not start:" >&2; tail -n 20 "$RUNTIME/andromeda.log" >&2; exit 1; }
 

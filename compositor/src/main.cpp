@@ -19,6 +19,7 @@
 #include "config/store.h"
 #include "protocols/toml.h"
 #include "server/agent_session.h"
+#include "server/client_trust.h"
 #include "server/greeter_mode.h"
 #include "server/server.h"
 #include "protocols/crash_capture.h"
@@ -126,6 +127,7 @@ namespace {
     heading("Compositor options");
     row("-s <command>", "spawn <command> once the compositor starts");
     row("-c <config>", "use <config> instead of the default config path");
+    row("--trust-binary <path>", "grant privileged globals to <path> (a path ending in / grants all under it); dev and test runs");
     row("--greeter", "login screen session: run only the -s client, exit with it (default config /etc/andromeda/greeter.toml)");
 
     heading("Control the running compositor");
@@ -484,6 +486,8 @@ int main(int argc, char** argv) {
       startupCmd = argv[++i];
     } else if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
       configPath = argv[++i];
+    } else if (std::strcmp(argv[i], "--trust-binary") == 0 && i + 1 < argc) {
+      andromeda::addTestBinary(argv[++i]);
     } else if (std::strcmp(argv[i], "--greeter") == 0) {
       andromeda::setGreeterMode(true);
     } else if (std::strcmp(argv[i], "--agent-session") == 0 && i + 1 < argc) {

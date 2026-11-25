@@ -15,9 +15,6 @@ namespace andromeda {
   [[nodiscard]] bool greeterMode();
   void setGreeterMode(bool enabled);
 
-  // Globals no client of the greeter session sees: capture, clipboard managers, input injection, window lists, and output
-  // control. dsk_settings_manager_v1 stays visible so the greeter reads appearance; its writes fail.
-  [[nodiscard]] bool greeterHidesGlobal(std::string_view interface);
 
   // The greeter process. Its exit, seen through a pidfd (the SIGCHLD reaper may collect the status first), calls
   // `onExit` from the event loop.

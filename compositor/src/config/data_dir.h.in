@@ -2,6 +2,9 @@
 
 namespace andromeda {
   inline constexpr char kDataDir[] = @ANDROMEDA_DATA_DIR@;
+  // Installed binaries that hold Wayland grants (server/client_trust.cpp).
+  inline constexpr char kBinDir[] = @ANDROMEDA_BIN_DIR@;
+  inline constexpr char kLibexecDir[] = @ANDROMEDA_LIBEXEC_DIR@;
   // The source tree catalogs: an uninstalled build reads them before the installed ones.
   inline constexpr char kTranslationsSourceDir[] = @ANDROMEDA_TRANSLATIONS_SOURCE_DIR@;
 }

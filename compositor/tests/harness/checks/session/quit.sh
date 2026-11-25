@@ -67,7 +67,7 @@ env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
   WLR_BACKENDS=headless \
   WLR_LIBINPUT_NO_DEVICES=1 \
   WLR_HEADLESS_OUTPUTS=1 \
-  "$ANDROMEDA" -c "$CONFIG" > "$LOG" 2>&1 &
+  "$ANDROMEDA" -c "$CONFIG" --trust-binary "$ANDROMEDA_REPO/" --trust-binary /usr/bin/ > "$LOG" 2>&1 &
 SERVER_PID=$!
 export ANDROMEDA_SOCKET=$SOCKET
 

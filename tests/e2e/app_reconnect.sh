@@ -103,7 +103,7 @@ with open(log, "a") as out:
 PY
 env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
   WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 \
-  python3 -I "$RUNTIME/held-socket.py" "$RUNTIME/wayland-0" "$OUT/andromeda-held.log" "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" &
+  python3 -I "$RUNTIME/held-socket.py" "$RUNTIME/wayland-0" "$OUT/andromeda-held.log" "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" --trust-binary "$ROOT/" --trust-binary /usr/bin/ &
 SUPERVISOR=$!
 await_mapped Files "on the socket-activated compositor"
 await_mapped Terminal "on the socket-activated compositor"

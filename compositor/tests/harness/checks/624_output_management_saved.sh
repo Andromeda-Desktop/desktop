@@ -51,7 +51,7 @@ env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
   WLR_BACKENDS=headless \
   WLR_LIBINPUT_NO_DEVICES=1 \
   WLR_HEADLESS_OUTPUTS=2 \
-  "$ANDROMEDA" -c "$CONFIG" > "$RUNTIME_DIR/compositor.log" 2>&1 &
+  "$ANDROMEDA" -c "$CONFIG" --trust-binary "$ANDROMEDA_REPO/" --trust-binary /usr/bin/ > "$RUNTIME_DIR/compositor.log" 2>&1 &
 SERVER_PID=$!
 for _ in $(seq 40); do
   [[ -S $SOCKET ]] && break

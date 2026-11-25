@@ -3,7 +3,8 @@
 # `andromeda --greeter` runs `andromeda-shell greeter` as its only client and ends when it exits.
 set -eu
 
-NOCTALIA_BIN="${NOCTALIA_BIN:-$(command -v andromeda-shell || echo /usr/bin/andromeda-shell)}"
+_installed_shell="$(command -v andromeda-shell || echo /usr/bin/andromeda-shell)"
+NOCTALIA_BIN="${NOCTALIA_BIN:-${_installed_shell}}"
 COMPOSITOR_BIN="${ANDROMEDA_GREETER_COMPOSITOR_BIN:-$(command -v andromeda || echo /usr/bin/andromeda)}"
 # Outputs, cursor and keyboard for andromeda --greeter; unset = its own default (/etc/andromeda/greeter.toml).
 GREETER_CONFIG="${ANDROMEDA_GREETER_ANDROMEDA_CONFIG:-}"
@@ -40,6 +41,10 @@ for _arg in "$@"; do
   _cmd="${_cmd} $(_quote "${_arg}")"
 done
 set -- --greeter -s "${_cmd}"
+# The compositor grants the greeter globals only to its installed shell; a NOCTALIA_BIN override (dev, tests) is trusted by path.
+if [ "${NOCTALIA_BIN}" != "${_installed_shell}" ]; then
+  set -- "$@" --trust-binary "${NOCTALIA_BIN}"
+fi
 if [ -n "${GREETER_CONFIG}" ]; then
   set -- "$@" -c "${GREETER_CONFIG}"
 fi

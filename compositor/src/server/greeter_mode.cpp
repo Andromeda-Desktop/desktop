@@ -3,8 +3,6 @@
 #include "core/log.h"
 #include "core/process.h"
 
-#include <algorithm>
-#include <array>
 #include <cstdlib>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -15,32 +13,10 @@ namespace andromeda {
   namespace {
     constexpr Logger kLog("greeter");
     bool g_greeterMode = false;
-
-    constexpr std::array<std::string_view, 15> kHiddenGlobals = {
-        "zwlr_screencopy_manager_v1",
-        "ext_image_copy_capture_manager_v1",
-        "ext_output_image_capture_source_manager_v1",
-        "ext_foreign_toplevel_image_capture_source_manager_v1",
-        "zwlr_data_control_manager_v1",
-        "ext_data_control_manager_v1",
-        "zwp_virtual_keyboard_manager_v1",
-        "zwlr_virtual_pointer_manager_v1",
-        "andromeda_input_capture_manager_v1",
-        "zwlr_foreign_toplevel_manager_v1",
-        "ext_foreign_toplevel_list_v1",
-        "dsk_output_manager_v1",
-        "zwlr_output_manager_v1",
-        "zwlr_gamma_control_manager_v1",
-        "zwlr_output_power_manager_v1",
-    };
   } // namespace
 
   bool greeterMode() { return g_greeterMode; }
   void setGreeterMode(bool enabled) { g_greeterMode = enabled; }
-
-  bool greeterHidesGlobal(std::string_view interface) {
-    return g_greeterMode && std::ranges::find(kHiddenGlobals, interface) != kHiddenGlobals.end();
-  }
 
   GreeterChild::GreeterChild(wl_event_loop* loop, const char* command, std::function<void()> onExit)
       : m_onExit(std::move(onExit)) {

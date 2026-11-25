@@ -22,7 +22,7 @@ mirror = "WL-1"
 CONF
 
 before=$(andromeda windows --json | jq '[.[].id]')
-WLR_WL_OUTPUTS=2 "$ANDROMEDA" -c "$CONFIG" -s 'foot --config=/dev/null --override=colors-dark.background=00ff00' \
+WLR_WL_OUTPUTS=2 "$ANDROMEDA" -c "$CONFIG" --trust-binary "$ROOT/" --trust-binary /usr/bin/ -s 'foot --config=/dev/null --override=colors-dark.background=00ff00' \
   > "$OUT/andromeda.log" 2>&1 &
 NESTED=$!
 

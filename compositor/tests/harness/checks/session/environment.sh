@@ -207,10 +207,10 @@ start_private() {
 
   if [[ $nested == true ]]; then
     env "${unset[@]}" WAYLAND_DISPLAY=host-wayland "${environment[@]}" \
-      "$ANDROMEDA" -c "$runtime/config.toml" > "$runtime/compositor.log" 2>&1 &
+      "$ANDROMEDA" -c "$runtime/config.toml" --trust-binary "$ANDROMEDA_REPO/" --trust-binary /usr/bin/ > "$runtime/compositor.log" 2>&1 &
   else
     env "${unset[@]}" -u WAYLAND_DISPLAY "${environment[@]}" \
-      "$ANDROMEDA" -c "$runtime/config.toml" > "$runtime/compositor.log" 2>&1 &
+      "$ANDROMEDA" -c "$runtime/config.toml" --trust-binary "$ANDROMEDA_REPO/" --trust-binary /usr/bin/ > "$runtime/compositor.log" 2>&1 &
   fi
   PRIVATE_PID=$!
 }

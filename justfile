@@ -183,6 +183,9 @@ dev-live:
     tools/f7.sh andromeda-shell noctalia-calc.so
     mkdir -p ~/.config/systemd/user/andromeda-shell.service.d /tmp/andromeda-live
     printf '[Service]\nEnvironment=ANDROMEDA_DEV_TOKENS=%s/protocol/design-tokens.toml\nExecStart=\nExecStart=%s/shell/build-f7/andromeda-shell\n' "$PWD" "$PWD" > ~/.config/systemd/user/andromeda-shell.service.d/dev-live.conf
+    # The compositor grants the shell globals only to installed binaries: trust the repo from the next login (dev-comp does it too).
+    mkdir -p ~/.config/systemd/user/andromeda.service.d
+    [ -f ~/.config/systemd/user/andromeda.service.d/dev-live.conf ] || printf '[Service]\nExecStart=\nExecStart=/usr/bin/andromeda --trust-binary %s/\n' "$PWD" > ~/.config/systemd/user/andromeda.service.d/dev-live.conf
     systemctl --user daemon-reload && systemctl --user restart andromeda-shell.service
     # Restart only on a new binary: a source watch restarts the live shell on every half-done agent edit.
     watchexec -p -w shell/build-f7/andromeda-shell --debounce 500ms -- 'systemctl --user restart andromeda-shell.service && sleep 1 && grim /tmp/andromeda-live/last.png'
@@ -190,6 +193,7 @@ dev-live:
 # Back to the packaged shell.
 dev-live-off:
     rm -f ~/.config/systemd/user/andromeda-shell.service.d/dev-live.conf ~/.config/systemd/user/noctalia.service.d/dev-live.conf
+    ! grep -qs 'ExecStart=/usr/bin/andromeda ' ~/.config/systemd/user/andromeda.service.d/dev-live.conf || rm ~/.config/systemd/user/andromeda.service.d/dev-live.conf
     systemctl --user daemon-reload && systemctl --user restart andromeda-shell.service
 
 # The session compositor runs compositor/build-live/andromeda from the next login. A compositor cannot restart under a live session: rebuild, then log out and in.
@@ -199,7 +203,7 @@ dev-comp:
     # A relink drops the file cap; without it the GPU context is not high priority.
     sudo setcap cap_sys_nice=ep compositor/build-live/andromeda || echo 'run: sudo setcap cap_sys_nice=ep compositor/build-live/andromeda (GPU high priority)'
     mkdir -p ~/.config/systemd/user/andromeda.service.d
-    printf '[Service]\nExecStart=\nExecStart=%s/compositor/build-live/andromeda\n' "$PWD" > ~/.config/systemd/user/andromeda.service.d/dev-live.conf
+    printf '[Service]\nExecStart=\nExecStart=%s/compositor/build-live/andromeda --trust-binary %s/\n' "$PWD" "$PWD" > ~/.config/systemd/user/andromeda.service.d/dev-live.conf
     systemctl --user daemon-reload
 
 # Back to the packaged compositor from the next login. From a TTY after a dev compositor crash: run this, then log in again.

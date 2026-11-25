@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A [[security_context_rule]] grants extra globals to security-context clients whose metadata matches, on top of the
 # fixed base allowlist. Grants do not leak between rules, an unmatched app keeps the base set, the security-context
-# manager itself stays blocked even when a rule lists it, and a reload leaves connected clients as they were.
+# manager and privileged globals stay blocked even when a rule lists them, and a reload leaves connected clients as they were.
 set -euo pipefail
 
 readonly GLOBAL_CLIENT="${ANDROMEDA_GLOBAL_CLIENT:-./build-debug/tests/global-client}"
@@ -47,7 +47,7 @@ allow_globals = ["ext_idle_notifier_v1", "wp_security_context_manager_v1"]
 
 [[security_context_rule]]
 match.app_id = '^org\.andromeda\.OtherApp$'
-allow_globals = ["ext_data_control_manager_v1"]
+allow_globals = ["ext_data_control_manager_v1", "ext_workspace_manager_v1"]
 
 [[security_context_rule]]
 match.app_id = 'SecurityContextTest'
@@ -69,10 +69,12 @@ fi
 
 # The matching rule grants the idle notifier to connections made after the reload.
 "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" ext_idle_notifier_v1 present
-# The other rule's grant does not leak across app ids.
+# The other rule's grant does not leak across app ids, and a rule never grants a privileged global.
 "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" ext_data_control_manager_v1 absent
 SECURITY_CONTEXT_APP_ID=org.andromeda.OtherApp "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" \
-  ext_data_control_manager_v1 present
+  ext_workspace_manager_v1 present
+SECURITY_CONTEXT_APP_ID=org.andromeda.OtherApp "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" \
+  ext_data_control_manager_v1 absent
 SECURITY_CONTEXT_APP_ID=org.andromeda.OtherApp "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" \
   ext_idle_notifier_v1 absent
 # A pattern must match the entire app ID; a substring grants nothing.

@@ -147,7 +147,7 @@ if gst-inspect-1.0 gtk4paintablesink > /dev/null 2>&1; then
   chmod 700 "$WL"
   printf '[general]\nautostart = []\n' > "$WL/andromeda.toml"
   env -u WAYLAND_DISPLAY -u DISPLAY XDG_RUNTIME_DIR="$WL" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
-    WLR_HEADLESS_OUTPUTS=1 "${ANDROMEDA:-$ROOT/compositor/build-debug/andromeda}" -c "$WL/andromeda.toml" \
+    WLR_HEADLESS_OUTPUTS=1 "${ANDROMEDA:-$ROOT/compositor/build-debug/andromeda}" -c "$WL/andromeda.toml" --trust-binary "$ROOT/" --trust-binary /usr/bin/ \
     > "$OUT/andromeda.log" 2>&1 &
   WAIT_S=10 wait_for "andromeda did not start" test -S "$WL/wayland-0"
   in_session() { env -u DISPLAY XDG_RUNTIME_DIR="$WL" WAYLAND_DISPLAY=wayland-0 "$@"; }

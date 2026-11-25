@@ -31,7 +31,7 @@ boot_headless() {
   [[ -S $RUNTIME/bus ]] && session_bus=unix:path=$RUNTIME/bus
   env -u WAYLAND_DISPLAY -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$session_bus" DBUS_SYSTEM_BUS_ADDRESS="$BUS_ADDRESS" XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
     ${NESTED_PARENT:+WAYLAND_DISPLAY=$NESTED_PARENT} ${SLEEP_ON_TEST_BUS:+ANDROMEDA_TEST_SLEEP_HOLD=1} WLR_BACKENDS=$backend WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS="$1" \
-    "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" > "$OUT/andromeda.log" 2>&1 &
+    "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" --trust-binary "$ROOT/" --trust-binary /usr/bin/ > "$OUT/andromeda.log" 2>&1 &
   # The IPC socket comes after the Wayland socket (server.cpp creates Ipc later); `msg` needs it.
   for _ in $(seq 100); do [[ -S $RUNTIME/wayland-0 && -S $RUNTIME/andromeda-wayland-0.sock ]] && break; sleep 0.05; done
   [[ -S $RUNTIME/andromeda-wayland-0.sock ]] || { echo "andromeda did not start" >&2; exit 1; }

@@ -92,7 +92,7 @@ CONFIG
 write_config normal
 # The fake inherited display also prevents global activation-environment updates.
 WAYLAND_DISPLAY=screencast-isolated-parent WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=1 \
-  "$ANDROMEDA" -c "$CONFIG" >"$RUNTIME/compositor.log" 2>&1 &
+  "$ANDROMEDA" -c "$CONFIG" --trust-binary "$BUILD/" --trust-binary "$PORTAL_BUILD/" --trust-binary /usr/bin/ >"$RUNTIME/compositor.log" 2>&1 &
 PIDS+=("$!")
 export WAYLAND_DISPLAY=wayland-0
 export ANDROMEDA_SOCKET=$RUNTIME/andromeda-wayland-0.sock

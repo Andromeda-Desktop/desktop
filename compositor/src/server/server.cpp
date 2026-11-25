@@ -1,4 +1,6 @@
 #include "protocols/glass_material.h"
+#include "protocols/ipc_channel.h"
+#include "server/client_trust.h"
 #include "design_tokens.h"
 #include "core/cpu_boost.h"
 #include "core/systemd_units.h"
@@ -91,6 +93,7 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <sys/syscall.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <filesystem>
@@ -207,7 +210,36 @@ namespace andromeda {
       bool advertisePrimarySelection = true;
       // Resolved on first use: security-context metadata is attached after the client-created signal.
       std::optional<std::vector<std::string>> securityContextGlobals;
+      // Resolved on first use, then fixed for the connection: a restarted client connects again.
+      std::optional<Grant> grant;
     };
+
+    // The client's binary: SO_PEERPIDFD on its socket, /proc/<pid>/exe, then the pidfd must still name a live
+    // process (a pid reused after the read would name another binary). No pidfd, no identity.
+    std::string clientBinary(const wl_client* client) {
+      const int fd = fcntl(wl_client_get_fd(const_cast<wl_client*>(client)), F_DUPFD_CLOEXEC, 0);
+      if (fd < 0) {
+        return {};
+      }
+      const std::optional<ipc::Peer> peer = ipc::checkPeer(ipc::Fd(fd));
+      if (!peer) {
+        return {};
+      }
+      std::error_code ec;
+      const std::string exe = std::filesystem::read_symlink(std::format("/proc/{}/exe", peer->pid), ec).native();
+      if (ec || syscall(SYS_pidfd_send_signal, peer->pidfd.get(), 0, nullptr, 0) != 0) {
+        return {};
+      }
+      return std::string(stripDeleted(exe));
+    }
+
+    Grant clientGrant(const wl_client* client, ClientGlobalPolicy& policy) {
+      if (!policy.grant) {
+        const std::string exe = clientBinary(client);
+        policy.grant = grantFor({.exe = exe, .greeterMode = greeterMode(), .userBinaries = {}, .testBinaries = testBinaries()});
+      }
+      return *policy.grant;
+    }
 
     void onClientGlobalPolicyDestroy(wl_listener* listener, void* /*data*/) {
       ClientGlobalPolicy* policy;
@@ -247,13 +279,13 @@ namespace andromeda {
         return true;
       }
       const std::string_view interfaceName(interface->name);
-      if (greeterHidesGlobal(interfaceName)) {
-        return false;
-      }
       // A global filter is consulted both when a global is advertised and when
       // it is bound, so each client's decisions must remain stable for its
       // entire connection.
       ClientGlobalPolicy* policy = clientGlobalPolicy(client);
+      if (privilegedGlobal(interfaceName)) {
+        return server->clientSecurityContext(client) == nullptr && grantAllows(clientGrant(client, *policy), interfaceName);
+      }
       if (const wlr_security_context_v1_state* context = server->clientSecurityContext(client);
           context != nullptr && !isAllowedSecurityContextGlobal(interfaceName)) {
         // Nested contexts stay blocked unconditionally: per-app grants are only

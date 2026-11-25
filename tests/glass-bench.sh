@@ -116,7 +116,7 @@ run_mode() {
   "${SLICE[@]}" env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$R" WLR_BACKENDS=headless \
     ${RENDER_NODE:+WLR_RENDER_DRM_DEVICE=$RENDER_NODE} \
     WLR_HEADLESS_OUTPUTS=1 WLR_LIBINPUT_NO_DEVICES=1 \
-    ANDROMEDA_FRAME_LOG="$dir/frames.log" ANDROMEDA_LENS="$([[ $mode == nolens ]] && echo 0 || echo 1)" "$ANDROMEDA" -c "$R/andromeda.toml" > "$R/andromeda.log" 2>&1 &
+    ANDROMEDA_FRAME_LOG="$dir/frames.log" ANDROMEDA_LENS="$([[ $mode == nolens ]] && echo 0 || echo 1)" "$ANDROMEDA" -c "$R/andromeda.toml" --trust-binary "$ROOT/" --trust-binary /usr/bin/ > "$R/andromeda.log" 2>&1 &
   local comp=$!
   for _ in $(seq 100); do [[ -S $R/wayland-0 ]] && break; sleep 0.05; done
   [[ -S $R/wayland-0 ]] || { echo "andromeda did not start ($mode)" >&2; tail -n 20 "$R/andromeda.log" >&2; kill $comp; return 1; }
