@@ -6,6 +6,8 @@ Andromeda keeps the current desktop visible while an `ext-session-lock-v1` clien
 
 If a client stalls or omits an output, the handoff continues after the deadline with an opaque compositor-owned blank. Its RGB color comes from `[colors].backdrop`; its alpha is always fully opaque. A client that exits after the secure handoff leaves this blank in place, so the desktop cannot be exposed by a crashed locker.
 
+While the session is locked, no capture sees the desktop or the lock screen. Running screen and window captures (screencopy, export-dmabuf, image-copy) receive black frames and resume at unlock. A new window capture stops at once.
+
 ## X11 desktop input
 
 X11 applications can request control of the pointer and keyboard through XTest. Steam uses this for its desktop controller mappings. Andromeda receives these requests through its native EIS backend and asks for permission before allowing desktop input.
