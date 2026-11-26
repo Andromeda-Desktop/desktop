@@ -500,6 +500,10 @@ namespace settings {
       appendRow(entries, launcherRows, key);
       entries.back().visibleWhen = launcherFull;
     }
+    appendRow(entries, launcherRows, "start_view");
+    entries.back().visibleWhen = [](const Config& c) {
+      return c.shell.launcher.layout == ShellConfig::LauncherLayout::Start;
+    };
     appendRow(entries, launcherRows, "categories");
     entries.back().visibleWhen = launcherSimple;
     appendRow(entries, launcherRows, "category_icons_only");

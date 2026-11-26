@@ -4,6 +4,7 @@
 
 #include "shell/launcher/launcher_adapters.h"
 #include "shell/launcher/launcher_panel_detail.h"
+#include "shell/launcher/launcher_start.h"
 
 #include "core/scoped_timer.h"
 #include "core/shared_worker.h"
@@ -22,13 +23,21 @@ bool LauncherPanel::usesBrowserLayout() const {
       && (m_config == nullptr || m_config->config().shell.launcher.layout == ShellConfig::LauncherLayout::Full);
 }
 
-float LauncherPanel::preferredWidth() const { return scaled(Tokens::componentLauncherWidth); }
+float LauncherPanel::preferredWidth() const {
+  return scaled(usesStartLayout() ? Tokens::componentLauncherStartWidth : Tokens::componentLauncherWidth);
+}
 
 float LauncherPanel::preferredHeight() const {
+  if (usesStartLayout()) {
+    return scaled(Tokens::componentLauncherStartMaxHeight);
+  }
   return scaled(usesBrowserLayout() ? std::max(launcherSheetHeight(), launcherListSheetHeight()) : 500.0F);
 }
 
 float LauncherPanel::measureContentHeight(Renderer& /*renderer*/, float /*contentWidth*/) {
+  if (usesStartLayout()) {
+    return startHomeHeight();
+  }
   const float scale = contentScale();
   const float field = Tokens::componentLauncherSearch * scale;
   if (!pillExpanded()) {
@@ -126,7 +135,7 @@ void LauncherPanel::prefetchAppIcons() {
   }
   // The size the next open resolves at: create() sets the layout mode and the panel scale only on open.
   const int size = static_cast<int>(std::round(launcherIconSize(launcherListStyleFrom(
-      usesBrowserLayout(), m_config, shell::panel_surface::contentScale(m_config), panelCardOpacity()
+      usesBrowserLayout(), usesStartLayout(), m_config, shell::panel_surface::contentScale(m_config), panelCardOpacity()
   ))));
   const std::uint64_t key = (desktopEntriesVersion() << 32U) ^ (IconResolver::themeGeneration() << 16U)
       ^ static_cast<std::uint64_t>(size);
@@ -234,25 +243,31 @@ void LauncherPanel::setScopedProvider(std::string_view providerId, std::string_v
   m_scopedProviderId = providerId;
   m_scopedPlaceholder = placeholder;
   if (m_input != nullptr) {
-    m_input->setPlaceholder(
-        m_scopedPlaceholder.empty() ? i18n::tr("launcher.search-placeholder") : m_scopedPlaceholder
-    );
+    m_input->setPlaceholder(launcherPlaceholder());
   }
 }
 
 void LauncherPanel::create() {
   m_launcherRowHeight = 0.0F;
   m_browserMode = usesBrowserLayout();
+  const bool start = usesStartLayout();
+  const bool bareField = m_browserMode || start;
   const float scale = contentScale();
 
   auto input = ui::input({
       .out = &m_input,
-      .placeholder = m_scopedPlaceholder.empty() ? i18n::tr("launcher.search-placeholder") : m_scopedPlaceholder,
-      .fontSize = (m_browserMode ? Tokens::componentLauncherFieldText : Style::fontSizeBody) * scale,
-      .controlHeight = (m_browserMode ? Tokens::componentLauncherSearch : Style::controlHeight) * scale,
-      .horizontalPadding = m_browserMode ? 0.0F : Style::spaceMd * scale,
-      .clearButtonEnabled = !m_browserMode,
-      .frameVisible = !m_browserMode,
+      .placeholder = launcherPlaceholder(),
+      .fontSize = (m_browserMode ? Tokens::componentLauncherFieldText
+                       : start   ? Tokens::componentLauncherStartFieldText
+                                 : Style::fontSizeBody)
+          * scale,
+      .controlHeight = (m_browserMode ? Tokens::componentLauncherSearch
+                            : start   ? Tokens::componentLauncherStartField
+                                      : Style::controlHeight)
+          * scale,
+      .horizontalPadding = bareField ? 0.0F : Style::spaceMd * scale,
+      .clearButtonEnabled = !bareField,
+      .frameVisible = !bareField,
       .surfaceOpacity = panelCardOpacity(),
       .onChange =
           [this](const std::string& text) {
@@ -266,7 +281,13 @@ void LauncherPanel::create() {
               m_input->setValue(preview);
             }
           },
-      .onSubmit = [this](const std::string& /*text*/) { activateSelected(); },
+      .onSubmit =
+          [this](const std::string& /*text*/) {
+            // The Start home with category cards has no current result: Enter waits for a query.
+            if (m_startCardGrid == nullptr || !m_startCardGrid->visible()) {
+              activateSelected();
+            }
+          },
       .onKeyEvent = [this](std::uint32_t sym, std::uint32_t modifiers) { return handleKeyEvent(sym, modifiers); },
   });
   if (m_input != nullptr && m_input->inputArea() != nullptr) {
@@ -311,7 +332,7 @@ void LauncherPanel::create() {
       .flexGrow = 1.0F,
   });
 
-  const LauncherListStyle initialStyle = launcherListStyleFrom(m_browserMode, m_config, scale, panelCardOpacity());
+  const LauncherListStyle initialStyle = launcherListStyleFrom(m_browserMode, usesStartLayout(), m_config, scale, panelCardOpacity());
   m_listAdapter = std::make_unique<LauncherResultAdapter>(initialStyle);
   m_gridAdapter = std::make_unique<LauncherAppGridAdapter>(initialStyle);
   m_listAdapter->setResults(&m_results);
@@ -488,7 +509,10 @@ void LauncherPanel::create() {
     body->addChild(std::move(resultsViewport));
   }
 
-  if (m_browserMode) {
+  if (start) {
+    createStartSheet(std::move(input), std::move(body));
+    m_categoryFilter = nullptr;
+  } else if (m_browserMode) {
     // The panel does not pad this content (padsContent): the field fills the 56 pill edge to edge.
     auto container = ui::column({
         .out = &m_container,
@@ -876,7 +900,7 @@ void LauncherPanel::refreshLauncherAppIconColorization() {
   if (m_listAdapter == nullptr || m_gridAdapter == nullptr || m_grid == nullptr) {
     return;
   }
-  const LauncherListStyle style = launcherListStyleFrom(m_browserMode, m_config, contentScale(), panelCardOpacity());
+  const LauncherListStyle style = launcherListStyleFrom(m_browserMode, usesStartLayout(), m_config, contentScale(), panelCardOpacity());
   m_listAdapter->setListStyle(style);
   m_gridAdapter->setListStyle(style);
   if (m_launcherSectionsAdapter != nullptr) {
@@ -929,6 +953,10 @@ void LauncherPanel::updatePageDots(std::size_t page, std::size_t pages) {
 }
 
 bool LauncherPanel::shouldUseAppGrid() const {
+  if (usesStartLayout()) {
+    return m_query.empty() && m_view.providerViewId().empty() && startView() == ShellConfig::LauncherStartView::Grid
+        && !m_results.empty();
+  }
   if (m_browserMode) {
     return appsView() && !m_results.empty() && supportsResultGrid();
   }
@@ -1031,7 +1059,7 @@ void LauncherPanel::doLayout(Renderer& renderer, float width, float height) {
 }
 
 void LauncherPanel::doUpdate(Renderer& renderer) {
-  if (m_browserMode) {
+  if (m_browserMode || usesStartLayout()) {
     syncLauncherAvatar(renderer);
   }
 }
@@ -1061,7 +1089,7 @@ void LauncherPanel::syncLauncherAvatar(Renderer& renderer) {
     m_launcherAvatarFallback->setParticipatesInLayout(true);
   }
 
-  const int targetSize = static_cast<int>(std::round(kLauncherAvatarSize * contentScale()));
+  const int targetSize = static_cast<int>(std::round(Tokens::componentLauncherStartAvatar * contentScale()));
   const bool ready =
       m_launcherAvatar->load(renderer, displayPath, {.targetSize = targetSize, .decode = {.centerSquareCrop = true}})
       == ImageLoad::Ready;
@@ -1099,6 +1127,7 @@ void LauncherPanel::onOpen(std::string_view context) {
   m_hasPinnedApplications = false;
   m_categoryFilterRebuildPending = true;
   m_applyDefaultViewPending = m_browserMode;
+  m_startShowAllPins = false;
   if (filesScope()) {
     setFilesScope(false);
   }
@@ -1137,9 +1166,7 @@ void LauncherPanel::onOpen(std::string_view context) {
     syncModeTabs();
   }
   if (m_input != nullptr) {
-    m_input->setPlaceholder(
-        m_scopedPlaceholder.empty() ? i18n::tr("launcher.search-placeholder") : m_scopedPlaceholder
-    );
+    m_input->setPlaceholder(launcherPlaceholder());
     m_input->setValue(singleLinePreview(initialValue));
   }
   if (m_grid != nullptr) {
@@ -1233,6 +1260,15 @@ void LauncherPanel::onClose() {
   m_detailSubtitle = nullptr;
   m_detailBody = nullptr;
   m_emptyLabel = nullptr;
+  m_startPinnedHead = nullptr;
+  m_startShowAll = nullptr;
+  m_startPinnedGrid = nullptr;
+  m_startAllHead = nullptr;
+  m_startViewButton = nullptr;
+  m_startBack = nullptr;
+  m_startCardGrid = nullptr;
+  m_startName = nullptr;
+  m_startInitials = nullptr;
   m_launcherAvatarPath.clear();
   clearReleasedRoot();
 }
@@ -1317,7 +1353,7 @@ void LauncherPanel::onInputChanged(const std::string& text) {
   if (showingProviderOverview()) {
     m_view.set(launcher_view::Default{});
   }
-  if (m_browserMode && !text.empty() && m_activeCategoryType != All) {
+  if ((m_browserMode || usesStartLayout()) && !text.empty() && m_activeCategoryType != All) {
     m_activeCategoryType = All;
     const auto allSlot = std::ranges::find(m_categoryFilterSlots, All, &CategoryFilterSlot::type);
     m_activeCategorySlotIndex =
@@ -1334,7 +1370,8 @@ void LauncherPanel::onInputChanged(const std::string& text) {
           : !modeProviderId().empty()
           ? std::string(modeProviderId())
           : (m_scopedProviderId.empty() ? std::string(m_view.providerViewId()) : std::string()),
-      .applicationsOnly = m_browserMode && modeProviderId().empty() && (text.empty() || appsView()),
+      .applicationsOnly = (m_browserMode && modeProviderId().empty() && (text.empty() || appsView()))
+          || (usesStartLayout() && text.empty()),
       .trackUsage = trackUsage,
       .sortByUsage = trackUsage && m_config != nullptr && launcher.sortByUsage,
   });
@@ -1351,7 +1388,7 @@ void LauncherPanel::onInputChanged(const std::string& text) {
     m_view.set(launcher_view::ProviderOverview{});
   }
 
-  if (m_browserMode) {
+  if (m_browserMode || usesStartLayout()) {
     const auto applications =
         std::ranges::find(m_providers, kApplicationsProviderId, [](const auto& provider) { return provider->id(); });
     if (applications != m_providers.end()) {
@@ -1361,7 +1398,7 @@ void LauncherPanel::onInputChanged(const std::string& text) {
   }
 
   const int iconTargetSize = static_cast<int>(
-      std::round(launcherIconSize(launcherListStyleFrom(m_browserMode, m_config, contentScale(), panelCardOpacity())))
+      std::round(launcherIconSize(launcherListStyleFrom(m_browserMode, usesStartLayout(), m_config, contentScale(), panelCardOpacity())))
   );
   for (auto& result : m_allResults) {
     if (result.iconPath.empty() && !result.iconName.empty()) {
@@ -1412,6 +1449,9 @@ void LauncherPanel::onInputChanged(const std::string& text) {
 
   m_anyProviderLoading = anyProviderLoading;
 
+  if (usesStartLayout() && text.empty()) {
+    rebuildStartHome();
+  }
   applyActiveCategory();
 }
 
@@ -1531,5 +1571,7 @@ void LauncherPanel::applyEmptyState() {
           m_query.empty() ? i18n::tr("launcher.empty.type-to-search") : i18n::tr("launcher.empty.no-results")
       );
     }
+  }  if (usesStartLayout()) {
+    syncStartSheet();
   }
 }

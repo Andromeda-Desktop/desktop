@@ -589,6 +589,7 @@ _noctalia_source_paths = [
   'src/shell/launcher/launcher_panel_input.cpp',
   'src/shell/launcher/launcher_panel_modes.cpp',
   'src/shell/launcher/launcher_panel_navigation.cpp',
+  'src/shell/launcher/launcher_panel_start.cpp',
   'src/shell/switcher/window_switcher.cpp',
   'src/shell/switcher/window_switcher_style.cpp',
   'src/shell/switcher/window_switcher_carousel_style.cpp',

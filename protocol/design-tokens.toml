@@ -787,6 +787,27 @@ tabs = 40.0
 list_pane = 360.0
 preview_min = 320.0
 preview_media = 160.0
+hover_scale = 1.05  # an app tile's icon on hover or selection, eased on spring.snap, as the dock
+hover_glow = 16.0  # the soft halo around a hovered tile's icon fades over this many px
+hover_glow_alpha = 0.12  # label_1 at this alpha under the halo
+
+[component.launcher_start]  # Start sheet (launcher layout start, Windows Desktop Layout)
+width = 688.0
+max_height = 760.0
+padding_top = 24.0
+padding_h = 32.0
+field = 40.0  # search field, a capsule
+field_text = 15.0
+section_gap = 24.0  # space above a section head
+section_head = 24.0
+columns = 8  # Pinned and the All grid
+rows = 2  # Pinned rows before Show all
+tile = 80.0  # icon 32 at the top inset 10, two caption lines
+tile_icon = 32.0
+card_columns = 4  # All by category
+card_icon = 36.0
+footer = 64.0
+avatar = 32.0
 
 [component.lock]  # 9.15
 dim = 0.2

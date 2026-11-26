@@ -1171,11 +1171,26 @@ struct ShellConfig {
   enum class LauncherLayout : std::uint8_t {
     Full = 0,
     Simple = 1,
+    Start = 2,
   };
 
   static constexpr EnumOption<LauncherLayout> kLauncherLayouts[] = {
       {LauncherLayout::Full, "full", "settings.options.shell.launcher-layout.full"},
       {LauncherLayout::Simple, "simple", "settings.options.shell.launcher-layout.simple"},
+      {LauncherLayout::Start, "start", "settings.options.shell.launcher-layout.start"},
+  };
+
+  // How the Start layout shows all apps.
+  enum class LauncherStartView : std::uint8_t {
+    Category = 0,
+    Grid = 1,
+    List = 2,
+  };
+
+  static constexpr EnumOption<LauncherStartView> kLauncherStartViews[] = {
+      {LauncherStartView::Category, "category", "settings.options.shell.launcher-start-view.category"},
+      {LauncherStartView::Grid, "grid", "settings.options.shell.launcher-start-view.grid"},
+      {LauncherStartView::List, "list", "settings.options.shell.launcher-start-view.list"},
   };
 
   enum class LauncherDefaultView : std::uint8_t {
@@ -1198,6 +1213,7 @@ struct ShellConfig {
     LauncherLayout layout = LauncherLayout::Full;
     std::int32_t width = kDefaultWidth;
     LauncherDefaultView defaultView = LauncherDefaultView::Recent;
+    LauncherStartView startView = LauncherStartView::Category;
     // Simple layout only: show the category chip row under the search field.
     bool categories = true;
     bool categoryIconsOnly = false;

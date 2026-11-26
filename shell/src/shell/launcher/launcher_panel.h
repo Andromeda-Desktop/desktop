@@ -21,6 +21,7 @@
 #include <vector>
 
 class ContextMenuPopup;
+struct ContextMenuControlEntry;
 class DragIconSurface;
 class AccountsService;
 class Button;
@@ -31,6 +32,8 @@ class Input;
 class Label;
 class LauncherResultAdapter;
 class LauncherAppGridAdapter;
+class LauncherStartCardAdapter;
+struct LauncherStartCard;
 class FilesProvider;
 class KlipyProvider;
 class LauncherSectionsAdapter;
@@ -83,9 +86,9 @@ public:
 
   [[nodiscard]] float preferredWidth() const override;
   [[nodiscard]] float preferredHeight() const override;
-  [[nodiscard]] bool fitsContentHeight() const noexcept override { return usesBrowserLayout(); }
+  [[nodiscard]] bool fitsContentHeight() const noexcept override { return usesBrowserLayout() || usesStartLayout(); }
   [[nodiscard]] float centerTopFraction() const noexcept override { return usesBrowserLayout() ? 0.2F : 0.0F; }
-  [[nodiscard]] bool padsContent() const noexcept override { return !usesBrowserLayout(); }
+  [[nodiscard]] bool padsContent() const noexcept override { return !usesBrowserLayout() && !usesStartLayout(); }
   // Concept C: the search capsule, each mode drop and the results are separate glass pieces.
   [[nodiscard]] bool usesGlassPieces() const override { return usesBrowserLayout(); }
   // proto P19: the pieces grow out of the launcher button and return into it.
@@ -139,6 +142,11 @@ private:
   void finishActivation(LauncherProvider& provider, const std::string& resultId, bool copied, bool appLaunch = false);
   [[nodiscard]] std::vector<LauncherResult> providerOverviewResults(std::string_view text) const;
   [[nodiscard]] bool openAppActionsMenu(std::size_t index, float anchorX, float anchorY);
+  // Opens the launcher's one context menu at a point in panel coordinates.
+  bool openMenu(
+      std::vector<ContextMenuControlEntry> entries, float anchorX, float anchorY,
+      std::function<void(const ContextMenuControlEntry&)> onActivate
+  );
   void updateCategoryFilterModel(const std::vector<LauncherCategory>& categories);
   void rebuildCategoryFilter();
   void rebuildLauncherNavigation();
@@ -195,6 +203,17 @@ private:
   void showProviderOverview();
   void showSessionActions();
   [[nodiscard]] bool usesBrowserLayout() const;
+  // Start layout (Windows): Pinned and All around one search field, the account footer under them.
+  [[nodiscard]] bool usesStartLayout() const;
+  [[nodiscard]] std::string launcherPlaceholder() const;
+  void createStartSheet(std::unique_ptr<Input> input, std::unique_ptr<Flex> body);
+  // Shows the home (Pinned, All) for an empty query and the results list for a search.
+  void syncStartSheet();
+  void rebuildStartHome();
+  void setStartView(ShellConfig::LauncherStartView view);
+  void openStartViewMenu();
+  [[nodiscard]] ShellConfig::LauncherStartView startView() const;
+  [[nodiscard]] float startHomeHeight() const;
 
   std::vector<std::unique_ptr<LauncherProvider>> m_providers;
   std::vector<LauncherResult> m_results;
@@ -228,8 +247,22 @@ private:
   std::vector<AppsCategoryRow> m_appsCategoryRows;
   Flex* m_launcherToolbar = nullptr;
   Segmented* m_launcherNavigation = nullptr;
+  std::vector<LauncherResult> m_startPinned;
+  std::unique_ptr<LauncherAppGridAdapter> m_startPinnedAdapter;
+  std::vector<LauncherStartCard> m_startCards;
+  std::unique_ptr<LauncherStartCardAdapter> m_startCardAdapter;
+  Flex* m_startPinnedHead = nullptr;
+  Button* m_startShowAll = nullptr;
+  VirtualGridView* m_startPinnedGrid = nullptr;
+  Flex* m_startAllHead = nullptr;
+  Button* m_startViewButton = nullptr;
+  Button* m_startBack = nullptr;
+  VirtualGridView* m_startCardGrid = nullptr;
+  Label* m_startName = nullptr;
+  Label* m_startInitials = nullptr;
+  bool m_startShowAllPins = false;
   Image* m_launcherAvatar = nullptr;
-  Glyph* m_launcherAvatarFallback = nullptr;
+  Node* m_launcherAvatarFallback = nullptr;
   Button* m_launcherUsageButton = nullptr;
   Button* m_launcherGridButton = nullptr;
   Button* m_launcherPowerButton = nullptr;

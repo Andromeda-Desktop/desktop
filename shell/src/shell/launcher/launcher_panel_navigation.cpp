@@ -2,6 +2,7 @@
 
 #include "shell/launcher/launcher_adapters.h"
 #include "shell/launcher/launcher_panel_detail.h"
+#include "shell/launcher/launcher_start.h"
 #include "i18n/i18n.h"
 #include <unordered_map>
 
@@ -199,7 +200,7 @@ void LauncherPanel::syncLauncherViewLayout(Renderer* renderer) {
 
   const bool useGrid = shouldUseAppGrid();
   const float scale = contentScale();
-  const LauncherListStyle style = launcherListStyleFrom(m_browserMode, m_config, scale, panelCardOpacity());
+  const LauncherListStyle style = launcherListStyleFrom(m_browserMode, usesStartLayout(), m_config, scale, panelCardOpacity());
   m_grid->setScale(scale);
   m_listAdapter->setListStyle(style);
   m_gridAdapter->setListStyle(style);
@@ -216,6 +217,12 @@ void LauncherPanel::syncLauncherViewLayout(Renderer* renderer) {
   if (renderer != nullptr) {
     m_listAdapter->setRenderer(renderer);
     m_gridAdapter->setRenderer(renderer);
+    if (m_startPinnedAdapter != nullptr) {
+      m_startPinnedAdapter->setRenderer(renderer);
+    }
+    if (m_startCardAdapter != nullptr) {
+      m_startCardAdapter->setRenderer(renderer);
+    }
   }
 
   const bool modeChanged = useGrid != m_usingAppGrid;
@@ -225,10 +232,11 @@ void LauncherPanel::syncLauncherViewLayout(Renderer* renderer) {
   }
 
   if (m_browserMode && m_body != nullptr && m_resultsViewport != nullptr && m_previewPane != nullptr) {
-    // Concept C: the grid sits at p 8 24 inside the results piece.
+    // Concept C: the grid alone sits at p 8 24 inside the results piece; beside the category list both sit at p 8,
+    // so the list is as far from the side as from the top.
     const bool split = !useGrid && pillExpanded() && previewSplit();
     if (useGrid) {
-      m_body->setPadding(Tokens::spaceP8 * scale, Tokens::spaceP24 * scale);
+      m_body->setPadding(Tokens::spaceP8 * scale, (showAppsCategoryList() ? Tokens::spaceP8 : Tokens::spaceP24) * scale);
     } else {
       m_body->setPadding(0.0F);
     }
@@ -259,7 +267,19 @@ void LauncherPanel::syncLauncherViewLayout(Renderer* renderer) {
     m_appsCategoryList->setVisible(categoryList);
     m_appsCategoryList->setParticipatesInLayout(categoryList);
   }
-  if (useGrid) {
+  if (useGrid && usesStartLayout()) {
+    // The Start sheet's All grid: the Pinned tiles, scrolled, not paged.
+    m_grid->setColumns(static_cast<std::size_t>(Tokens::componentLauncherStartColumns));
+    m_grid->setSquareCells(false);
+    m_grid->setColumnGap(Tokens::spaceP4 * scale);
+    m_grid->setRowGap(Tokens::spaceP4 * scale);
+    m_grid->setCellHeight(Tokens::componentLauncherStartTile * scale);
+    m_grid->setPaged(0, 0.0F);
+    m_grid->setSelectionFollowsHover(false);
+    if (modeChanged) {
+      m_grid->setAdapter(m_gridAdapter.get());
+    }
+  } else if (useGrid) {
     m_grid->setColumns(categoryList ? kAppGridColumnsBesideCategories : kAppGridColumns);
     m_grid->setSquareCells(false);
     m_grid->setColumnGap(Style::spaceXs * scale);
@@ -329,7 +349,7 @@ void LauncherPanel::updateLauncherGridMetrics(Renderer& renderer) {
     return;
   }
 
-  const LauncherListStyle style = launcherListStyleFrom(m_browserMode, m_config, contentScale(), panelCardOpacity());
+  const LauncherListStyle style = launcherListStyleFrom(m_browserMode, usesStartLayout(), m_config, contentScale(), panelCardOpacity());
   float cellHeight = launcherRowHeight(renderer, style);
   if (m_usingAppGrid) {
     cellHeight = Tokens::componentLauncherCellHeight * contentScale();

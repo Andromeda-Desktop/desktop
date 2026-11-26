@@ -2470,6 +2470,16 @@ namespace noctalia::config::schema {
                   .tags = "launcher default view recent pinned all apps categories",
               }
           ),
+          enumField(
+              &ShellConfig::LauncherConfig::startView, "start_view", ShellConfig::kLauncherStartViews,
+              RowSpec{
+                  .kind = RowSpec::Kind::Select,
+                  .section = "launcher",
+                  .group = "launcher",
+                  .label = "panels.launcher-start-view",
+                  .tags = "launcher start all apps view category grid list",
+              }
+          ),
           field(
               &ShellConfig::LauncherConfig::categories, "categories",
               launcherToggle("panels.launcher-categories", "launcher categories chips filter recent all")

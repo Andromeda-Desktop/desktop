@@ -169,7 +169,6 @@ namespace launcher_detail {
   }};
   constexpr std::string_view kModeContextPrefix = "mode:";
   constexpr std::int32_t kCompactNavigationWidth = 680;
-  constexpr float kLauncherAvatarSize = 48.0F;
   constexpr std::string_view kApplicationsProviderId = "Applications";
   constexpr std::string_view kSessionProviderId = "Session";
   constexpr std::string_view kProviderOverviewProviderId = "__launcher_provider_overview__";
@@ -224,6 +223,8 @@ namespace launcher_detail {
     bool compact = false;
     // Rulebook 9.14 pill rows: icon 24, one line, lens selection.
     bool pill = false;
+    // Start sheet tiles: icon 32, two caption lines, r 8.
+    bool start = false;
     std::optional<ColorSpec> appIconColorizeTint;
     std::optional<ColorSpec> listItemBackground;
   };
@@ -242,7 +243,9 @@ namespace launcher_detail {
     return (style.compact ? Style::spaceSm : Style::spaceMd) * style.scale;
   }
 
-  [[nodiscard]] inline float launcherGridIconSize(const LauncherListStyle& style) { return Tokens::componentLauncherIcon * style.scale; }
+  [[nodiscard]] inline float launcherGridIconSize(const LauncherListStyle& style) {
+    return (style.start ? Tokens::componentLauncherStartTileIcon : Tokens::componentLauncherIcon) * style.scale;
+  }
 
   [[nodiscard]] inline float stableLabelHeight(const TextMetrics& metrics) { return std::round(metrics.bottom - metrics.top); }
 
@@ -277,9 +280,10 @@ namespace launcher_detail {
   }
 
   [[nodiscard]] inline LauncherListStyle
-  launcherListStyleFrom(bool pill, const ConfigService* config, float scale, float cardOpacity) {
+  launcherListStyleFrom(bool pill, bool start, const ConfigService* config, float scale, float cardOpacity) {
     LauncherListStyle style{
-        .scale = scale, .pill = pill, .appIconColorizeTint = std::nullopt, .listItemBackground = std::nullopt
+        .scale = scale, .pill = pill || start, .start = start, .appIconColorizeTint = std::nullopt,
+        .listItemBackground = std::nullopt
     };
     if (config != nullptr) {
       const auto& launcher = config->config().shell.launcher;
@@ -655,27 +659,32 @@ namespace launcher_detail {
   public:
     LauncherAppGridTile(LauncherListStyle style)
         : m_style(style) {
-      const float gap = Style::spaceXs * m_style.scale;
+      // Start tiles: p 8, icon 32, g 8, two 16 caption lines fill the 80 tile.
+      const float gap = (m_style.start ? Tokens::spaceP8 : Style::spaceXs) * m_style.scale;
       const float padding = Style::spaceSm * m_style.scale;
+      const float radius = Style::scaledRadius(m_style.start ? Tokens::radiusR8 : Tokens::radiusR16, m_style.scale);
       auto col = ui::column({
           .out = &m_col,
           .align = FlexAlign::Center,
+          .justify = FlexJustify::Start,
           .gap = gap,
           .paddingV = gap,
-          .paddingH = padding,
-          .radius = Style::scaledRadius(Tokens::radiusR16, m_style.scale),
+          .paddingH = m_style.start ? Tokens::spaceP4 * m_style.scale : padding,
+          .radius = radius,
           .fillWidth = true,
           .fillHeight = true,
       });
-      // Rulebook §6: the current cell is the lens, a lifted pane with the E1 shadow under it.
-      addChild(ui::box({
-          .out = &m_lensShadow,
-          .radius = Style::scaledRadius(Tokens::radiusR16, m_style.scale),
-          .visible = false,
+      // The hovered or current tile lifts its icon (scale + halo, as the dock), no lens box (rulebook 9.14).
+      const float icon = launcherGridIconSize(m_style);
+      col->addChild(ui::box({
+          .out = &m_glow,
+          .fill = colorSpecFromRole(ColorRole::Label1, Tokens::componentLauncherHoverGlowAlpha),
+          .radius = icon * 0.25F,
+          .width = icon,
+          .height = icon,
+          .opacity = 0.0F,
           .participatesInLayout = false,
-          .configure = [scale = m_style.scale](Box& box) {
-            box.setShadow(Tokens::elevationE1.keyBlur * scale, Tokens::elevationE1.keyY * scale);
-          },
+          .configure = [scale = m_style.scale](Box& box) { box.setGlow(Tokens::componentLauncherHoverGlow * scale); },
       }));
       addChild(std::move(col));
       m_focusRing.attach(*this);
@@ -755,7 +764,8 @@ namespace launcher_detail {
               .fontSize = Style::fontSizeCaption * m_style.scale,
               .fontWeight = FontWeight::Normal,
               .color = colorSpecFromRole(ColorRole::Label1),
-              .maxLines = 1,
+              .maxLines = m_style.start ? 2 : 1,
+              .ellipsize = TextEllipsize::End,
               .configure = [](Label& label) { label.setTextAlign(TextAlign::Center); },
           })
       );
@@ -782,7 +792,11 @@ namespace launcher_detail {
 
       setSize(width, height);
       m_col->setSize(width, height);
-      placeLensShadow();
+      // A recycled tile shows its new item at rest at once; the same item eases.
+      if (result.id != m_boundId) {
+        m_boundId = result.id;
+        setLift(selected || hovered, false);
+      }
       m_isAppIcon = !result.desktopEntryPath.empty();
 
       const float pinSize = Style::fontSizeBody * m_style.scale;
@@ -836,7 +850,7 @@ namespace launcher_detail {
         m_image->clear(renderer);
       }
 
-      const float horizontalPad = Style::spaceSm * m_style.scale * 2.0F;
+      const float horizontalPad = (m_style.start ? Tokens::spaceP4 : Style::spaceSm) * m_style.scale * 2.0F;
       const float textWidth = std::max(0.0F, width - horizontalPad);
       m_title->setText(singleLinePreview(result.title));
       m_title->setMaxWidth(textWidth);
@@ -867,31 +881,57 @@ namespace launcher_detail {
   protected:
     void doLayout(Renderer& renderer) override {
       m_col->setSize(width(), height());
-      placeLensShadow();
       if (m_style.showIcons && !m_badgeVisible && !m_iconPath.empty()) {
         (void)refreshAsyncIcon(renderer);
       }
+      m_image->setScale(1.0F);
+      m_glyph->setScale(1.0F);
       Node::doLayout(renderer);
+      Node* icon = m_image->participatesInLayout() && m_image->visible() ? static_cast<Node*>(m_image) : m_glyph;
+      m_iconX = icon->x();
+      m_iconY = icon->y();
+      applyLift(m_lift);
       m_focusRing.place(*m_col);
     }
 
   private:
-    void placeLensShadow() {
-      m_lensShadow->setPosition(0.0F, Tokens::elevationE1.keyY * m_style.scale);
-      m_lensShadow->setSize(width(), height());
+    // t 0 rest, 1 lifted: the icon scales about its centre and the halo fades in under it.
+    void applyLift(float t) {
+      m_lift = t;
+      const float icon = launcherGridIconSize(m_style);
+      const float scale = 1.0F + (Tokens::componentLauncherHoverScale - 1.0F) * t;
+      const float shift = icon * (scale - 1.0F) * 0.5F;
+      for (Node* node : {static_cast<Node*>(m_image), static_cast<Node*>(m_glyph), static_cast<Node*>(m_glow)}) {
+        node->setScale(scale);
+        node->setPosition(m_iconX - shift, m_iconY - shift);
+      }
+      m_glow->setOpacity(t);
+    }
+
+    void setLift(bool on, bool animate) {
+      const float target = on ? 1.0F : 0.0F;
+      if (target == m_liftTarget && (animate || m_lift == target)) {
+        return;
+      }
+      m_liftTarget = target;
+      AnimationManager* animations = animationManager();
+      if (m_liftAnim != 0 && animations != nullptr) {
+        animations->cancel(m_liftAnim);
+        m_liftAnim = 0;
+      }
+      if (!animate || animations == nullptr) {
+        applyLift(target);
+        return;
+      }
+      m_liftAnim = animations->animateSpring(
+          m_lift, target, Style::spring(Tokens::springSnap), [this](float t) { applyLift(t); }, [this] { m_liftAnim = 0; }
+      );
     }
 
     void applyVisualState() {
       m_focusRing.sync(m_selected);
-      m_lensShadow->setVisible(m_selected);
-      m_lensShadow->setFill(colorSpecFromRole(
-          ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE1.keyLight : Tokens::elevationE1.keyDark
-      ));
-      if (m_selected) {
-        m_col->setFill(colorSpecFromRole(ColorRole::Lens));
-      } else {
-        m_col->setFill(m_style.listItemBackground.value_or(clearColorSpec()));
-      }
+      setLift(m_selected || m_hovered, true);
+      m_col->setFill(m_style.listItemBackground.value_or(clearColorSpec()));
       if (m_reorderTarget) {
         m_col->setBorder(colorSpecFromRole(ColorRole::Accent), Style::focusRingWidth);
       } else {
@@ -914,7 +954,13 @@ namespace launcher_detail {
     LauncherListStyle m_style{};
     bool m_selected = false;
     bool m_hovered = false;
-    Box* m_lensShadow = nullptr;
+    Box* m_glow = nullptr;
+    std::string m_boundId;
+    float m_iconX = 0.0F;
+    float m_iconY = 0.0F;
+    float m_lift = 0.0F;
+    float m_liftTarget = 0.0F;
+    std::uint32_t m_liftAnim = 0;
     Flex* m_col = nullptr;
     KeyFocusRing m_focusRing;
     Box* m_badgeHost = nullptr;

@@ -95,6 +95,7 @@ void AccountsService::bindUser(const std::string& userPath) {
         }
         std::optional<std::uint64_t> uid;
         std::string iconFile;
+        std::string realName;
         try {
           if (!error.has_value()) {
             if (const auto it = properties.find("Uid"); it != properties.end()) {
@@ -102,6 +103,9 @@ void AccountsService::bindUser(const std::string& userPath) {
             }
             if (const auto it = properties.find("IconFile"); it != properties.end()) {
               iconFile = it->second.get<std::string>();
+            }
+            if (const auto it = properties.find("RealName"); it != properties.end()) {
+              realName = it->second.get<std::string>();
             }
           }
         } catch (const sdbus::Error& e) {
@@ -124,18 +128,19 @@ void AccountsService::bindUser(const std::string& userPath) {
               if (interfaceName != kUserInterface) {
                 return;
               }
-              const auto it = changedProperties.find("IconFile");
-              if (it == changedProperties.end()) {
-                return;
-              }
+              const auto icon = changedProperties.find("IconFile");
+              const auto name = changedProperties.find("RealName");
               try {
-                emitChangedIfNeeded(it->second.get<std::string>());
+                emitChangedIfNeeded(
+                    icon == changedProperties.end() ? m_iconFile : icon->second.get<std::string>(),
+                    name == changedProperties.end() ? m_realName : name->second.get<std::string>()
+                );
               } catch (const sdbus::Error& e) {
-                kLog.warn("failed to decode IconFile property change: {}", e.what());
+                kLog.warn("failed to decode a user property change: {}", e.what());
               }
             });
         kLog.info("session user avatar path: {}", iconFile.empty() ? "<unset>" : iconFile);
-        emitChangedIfNeeded(iconFile);
+        emitChangedIfNeeded(iconFile, realName);
       });
 }
 
@@ -184,7 +189,7 @@ bool AccountsService::setIconFile(std::string_view filename) {
                 if (iconFile == m_iconFile && m_changeCallback) {
                   m_changeCallback();
                 } else {
-                  emitChangedIfNeeded(iconFile);
+                  emitChangedIfNeeded(iconFile, m_realName);
                 }
               });
         });
@@ -195,12 +200,12 @@ bool AccountsService::setIconFile(std::string_view filename) {
   }
 }
 
-void AccountsService::emitChangedIfNeeded(std::string_view nextIconFile) {
-  const std::string next(nextIconFile);
-  if (next == m_iconFile) {
+void AccountsService::emitChangedIfNeeded(std::string_view nextIconFile, std::string_view nextRealName) {
+  if (nextIconFile == m_iconFile && nextRealName == m_realName) {
     return;
   }
-  m_iconFile = next;
+  m_iconFile = std::string(nextIconFile);
+  m_realName = std::string(nextRealName);
   if (m_changeCallback) {
     m_changeCallback();
   }

@@ -1307,6 +1307,18 @@
     }
   },
   "launcher": {
+    "start": {
+      "all": "All",
+      "back": "All apps",
+      "files": "Files",
+      "pinned": "Pinned",
+      "power": "Power",
+      "search-placeholder": "Search for apps, settings and documents",
+      "settings": "Settings",
+      "show-all": "Show all",
+      "show-less": "Show less",
+      "view": "View: {view}"
+    },
     "top-hit": {
       "application": "Application",
       "windows-open": "{count} window open",
@@ -3148,7 +3160,13 @@
         },
         "launcher-layout": {
           "full": "Full",
-          "simple": "Simple"
+          "simple": "Simple",
+          "start": "Start"
+        },
+        "launcher-start-view": {
+          "category": "Category",
+          "grid": "Grid",
+          "list": "List"
         },
         "launcher-search-position": {
           "bottom": "Bottom",
@@ -4413,8 +4431,12 @@
           "label": "Panels Ignored"
         },
         "launcher-layout": {
-          "description": "Full adds view tabs and a toolbar with your profile and shortcuts; Simple shows a search field, optional category chips, and results",
+          "description": "Full adds view tabs and a toolbar with your profile and shortcuts; Simple shows a search field, optional category chips, and results; Start shows pinned apps, all apps and your account",
           "label": "Layout"
+        },
+        "launcher-start-view": {
+          "description": "How the Start layout shows all apps",
+          "label": "All Apps View"
         },
         "launcher-pinned-apps": {
           "description": "Desktop entry IDs shown in manual order in the Pinned view",

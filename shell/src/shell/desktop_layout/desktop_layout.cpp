@@ -136,6 +136,17 @@ namespace desktop_layout {
           : preset == "macos"    ? std::span<const WidgetSetting>(kMacos)
                                  : std::span<const WidgetSetting>{};
     }
+    // Windows: Start opens 12 above the taskbar, centred on it, as every flyout does.
+    std::vector<Write> shellSettings(std::string_view preset) {
+      if (preset != "windows") {
+        return {};
+      }
+      return {
+          {Path{"shell", "launcher", "layout"}, std::string("start")},
+          {Path{"shell", "panel", "launcher_position"}, std::string("auto")},
+          {Path{"shell", "panel", "floating_offset"}, std::int64_t{12}},
+      };
+    }
     constexpr std::array<std::string_view, 4> kBareKeys{"background_opacity", "compositor_blur", "shadow", "border_width"};
 
     std::span<const std::string_view> capsuledWidgets(std::string_view preset) {
@@ -164,6 +175,9 @@ namespace desktop_layout {
         out.push_back(Path{"bar", first, std::string(field.key)});
       }
       out.push_back(Path{"shell", "panel", "control_center_placement"});
+      for (const auto& [path, value] : shellSettings("windows")) {
+        out.push_back(path);
+      }
       for (const std::string_view widget : capsuledWidgets("windows")) {
         out.push_back(Path{"widget", std::string(widget), "capsule"});
         out.push_back(Path{"widget", std::string(widget), "capsule_fill"});
@@ -441,6 +455,9 @@ namespace desktop_layout {
         }
         // Status flyouts float with a gap off a full-width bar, as on macOS and Windows.
         out.emplace_back(Path{"shell", "panel", "control_center_placement"}, std::string("floating"));
+        for (auto& [path, value] : shellSettings(preset)) {
+          out.emplace_back(std::move(path), std::move(value));
+        }
       }
     }
     out.emplace_back(Path{"dock", "enabled"}, p->dock);

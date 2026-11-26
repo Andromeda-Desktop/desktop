@@ -24,6 +24,8 @@ public:
 
   [[nodiscard]] uid_t sessionUid() const noexcept { return m_sessionUid; }
   [[nodiscard]] const std::string& iconFile() const noexcept { return m_iconFile; }
+  // The session user's full name; empty until AccountsService answers or when the user has none.
+  [[nodiscard]] const std::string& realName() const noexcept { return m_realName; }
 
   [[nodiscard]] bool setIconFile(std::string_view filename);
 
@@ -39,7 +41,7 @@ public:
 private:
   void findSessionUser();
   void bindUser(const std::string& userPath);
-  void emitChangedIfNeeded(std::string_view nextIconFile);
+  void emitChangedIfNeeded(std::string_view nextIconFile, std::string_view nextRealName);
 
   SystemBus& m_bus;
   std::unique_ptr<sdbus::IProxy> m_accountsProxy;
@@ -47,6 +49,7 @@ private:
   std::unique_ptr<sdbus::IProxy> m_userProxy;
   uid_t m_sessionUid = 0;
   std::string m_iconFile;
+  std::string m_realName;
   ChangeCallback m_changeCallback;
   std::shared_ptr<int> m_aliveToken = std::make_shared<int>(0);
   NameOwnerWatch m_ownerWatch;

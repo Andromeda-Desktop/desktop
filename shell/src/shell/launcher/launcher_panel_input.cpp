@@ -67,21 +67,6 @@ bool LauncherPanel::openAppActionsMenu(std::size_t index, float anchorX, float a
     return false;
   }
 
-  WaylandConnection* wl = PanelManager::instance().wayland();
-  RenderContext* rc = PanelManager::instance().renderContext();
-  if (wl == nullptr || rc == nullptr) {
-    return false;
-  }
-
-  const auto parentCtx = PanelManager::instance().fallbackPopupParentContext();
-  if (!parentCtx.has_value()) {
-    return false;
-  }
-
-  if (m_actionsMenu == nullptr) {
-    m_actionsMenu = std::make_unique<ContextMenuPopup>(*wl, *rc);
-  }
-
   std::vector<DesktopAction> actionsCopy = match->actions;
   const bool launcherPinned =
       m_config != nullptr && shell::dock::pinned_apps::containsEntry(m_config->config().shell.launcher.pinned, *match);
@@ -157,22 +142,7 @@ bool LauncherPanel::openAppActionsMenu(std::size_t index, float anchorX, float a
     entries.push_back(ContextMenuControlEntry{.id = kActionAddToDesktop, .label = i18n::tr("launcher.context-menu.add-to-desktop")});
   }
 
-  const float scale = contentScale();
-  constexpr float kMenuWidth = 240.0F;
-  const float minMenuWidth = kMenuWidth * scale;
-
-  if (m_config != nullptr) {
-    m_actionsMenu->setShadowConfig(m_config->config().shell.shadow);
-  }
-  PanelManager::instance().beginAttachedPopup(parentCtx->surface);
-  PanelManager::instance().setActivePopup(m_actionsMenu.get());
-
-  m_actionsMenu->setOnDismissed([parentSurface = parentCtx->surface] {
-    PanelManager::instance().clearActivePopup();
-    PanelManager::instance().endAttachedPopup(parentSurface);
-  });
-
-  m_actionsMenu->setOnActivate([this, base, actionsCopy = std::move(actionsCopy), entryForPin = *match,
+  return openMenu(std::move(entries), anchorX, anchorY, [this, base, actionsCopy = std::move(actionsCopy), entryForPin = *match,
                                 dockPinned](const ContextMenuControlEntry& entry) {
     LauncherResult result = base;
     if (entry.id == kActionAddToDesktop) {
@@ -222,6 +192,37 @@ bool LauncherPanel::openAppActionsMenu(std::size_t index, float anchorX, float a
     }
     return;
   });
+}
+
+bool LauncherPanel::openMenu(
+    std::vector<ContextMenuControlEntry> entries, float anchorX, float anchorY,
+    std::function<void(const ContextMenuControlEntry&)> onActivate
+) {
+  WaylandConnection* wl = PanelManager::instance().wayland();
+  RenderContext* rc = PanelManager::instance().renderContext();
+  if (wl == nullptr || rc == nullptr) {
+    return false;
+  }
+  const auto parentCtx = PanelManager::instance().fallbackPopupParentContext();
+  if (!parentCtx.has_value()) {
+    return false;
+  }
+  if (m_actionsMenu == nullptr) {
+    m_actionsMenu = std::make_unique<ContextMenuPopup>(*wl, *rc);
+  }
+  const float scale = contentScale();
+  constexpr float kMenuWidth = 240.0F;
+  const float minMenuWidth = kMenuWidth * scale;
+  if (m_config != nullptr) {
+    m_actionsMenu->setShadowConfig(m_config->config().shell.shadow);
+  }
+  PanelManager::instance().beginAttachedPopup(parentCtx->surface);
+  PanelManager::instance().setActivePopup(m_actionsMenu.get());
+  m_actionsMenu->setOnDismissed([parentSurface = parentCtx->surface] {
+    PanelManager::instance().clearActivePopup();
+    PanelManager::instance().endAttachedPopup(parentSurface);
+  });
+  m_actionsMenu->setOnActivate(std::move(onActivate));
 
   const float inset = std::round(std::max(4.0F, Style::spaceXs * scale));
   const auto ax = static_cast<std::int32_t>(std::round(anchorX - inset));
