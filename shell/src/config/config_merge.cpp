@@ -2,6 +2,7 @@
 
 #include "config/config_service.h"
 #include "core/log.h"
+#include "protocols/path_expand.h"
 #include "protocols/xdg_dirs.h"
 #include "util/file_utils.h"
 
@@ -36,11 +37,7 @@ namespace noctalia::config {
       return files;
     }
 
-    std::filesystem::path canonicalKey(const std::filesystem::path& path) {
-      std::error_code ec;
-      auto key = std::filesystem::weakly_canonical(path, ec);
-      return ec ? path.lexically_normal() : key;
-    }
+    using paths::canonicalKey;
 
     struct IncludeEntry {
       std::string value;

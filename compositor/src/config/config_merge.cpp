@@ -2,6 +2,7 @@
 
 #include "config/config_diag.h"
 #include "core/log.h"
+#include "protocols/path_expand.h"
 
 #include <algorithm>
 #include <cctype>
@@ -50,11 +51,7 @@ namespace andromeda::configmerge {
       report(result, severity, src, std::move(msg));
     }
 
-    std::filesystem::path canonicalKey(const std::filesystem::path& path) {
-      std::error_code error;
-      auto key = std::filesystem::weakly_canonical(path, error);
-      return error ? path.lexically_normal() : key;
-    }
+    using paths::canonicalKey;
 
     // toml++ 3.4 corrupts quoted duplicate keys in parse-error descriptions.
     // Reconstruct the key from source until the minimum supported version fixes it.
@@ -124,68 +121,8 @@ namespace andromeda::configmerge {
       return message.substr(0, recordedKey + 1) + "'" + key + "'";
     }
 
-    std::string expandEnvironment(std::string_view input) {
-      std::string result;
-      result.reserve(input.size());
-      const auto isNameStart = [](char c) {
-        const auto value = static_cast<unsigned char>(c);
-        return std::isalpha(value) != 0 || c == '_';
-      };
-      const auto isNameCharacter = [](char c) {
-        const auto value = static_cast<unsigned char>(c);
-        return std::isalnum(value) != 0 || c == '_';
-      };
-
-      for (std::size_t i = 0; i < input.size();) {
-        if (input[i] != '$') {
-          result.push_back(input[i++]);
-          continue;
-        }
-        if (i + 1 < input.size() && input[i + 1] == '{') {
-          const std::size_t close = input.find('}', i + 2);
-          if (close != std::string_view::npos) {
-            const std::string name(input.substr(i + 2, close - i - 2));
-            if (const char* value = std::getenv(name.c_str()); value != nullptr) {
-              result.append(value);
-            }
-            i = close + 1;
-            continue;
-          }
-        } else if (i + 1 < input.size() && isNameStart(input[i + 1])) {
-          std::size_t end = i + 2;
-          while (end < input.size() && isNameCharacter(input[end])) {
-            ++end;
-          }
-          const std::string name(input.substr(i + 1, end - i - 1));
-          if (const char* value = std::getenv(name.c_str()); value != nullptr) {
-            result.append(value);
-          }
-          i = end;
-          continue;
-        }
-        result.push_back(input[i++]);
-      }
-      return result;
-    }
-
     std::filesystem::path expandPath(std::string_view raw, const std::filesystem::path& baseDir) {
-      std::string expanded = expandEnvironment(raw);
-      std::filesystem::path path;
-      if (expanded == "~") {
-        if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-          path = home;
-        } else {
-          path = expanded;
-        }
-      } else if (expanded.starts_with("~/")) {
-        if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-          path = std::filesystem::path(home) / expanded.substr(2);
-        } else {
-          path = expanded;
-        }
-      } else {
-        path = expanded;
-      }
+      std::filesystem::path path = paths::expandHome(paths::expandEnvironment(raw));
       if (!path.is_absolute()) {
         path = baseDir / path;
       }
