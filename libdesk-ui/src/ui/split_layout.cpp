@@ -108,6 +108,15 @@ namespace ui {
     }
   }
 
+  bool SplitTrees::rotate(std::uint64_t id) {
+    for (andromeda::tiling::DwindleTree& tree : m_trees) {
+      if (auto* leaf = tree.find(id); leaf != nullptr) {
+        return tree.toggleSplit(leaf);
+      }
+    }
+    return false;
+  }
+
   std::vector<PaneRect> arrangePanes(andromeda::tiling::DwindleTree& tree, const std::vector<std::uint64_t>& panes,
                                      const andromeda::tiling::TileBox& area, int gap) {
     std::vector<PaneRect> out(panes.size());

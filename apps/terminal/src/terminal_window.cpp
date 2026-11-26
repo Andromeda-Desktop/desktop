@@ -1187,12 +1187,46 @@ namespace term {
       case Action::MovePaneDown: return movePane(0.0F, 1.0F);
       case Action::SplitRight: splitNew(andromeda::tiling::EdgeRight); return true;
       case Action::SplitDown: splitNew(andromeda::tiling::EdgeBottom); return true;
+      case Action::SplitLeft: splitNew(andromeda::tiling::EdgeLeft); return true;
+      case Action::SplitUp: splitNew(andromeda::tiling::EdgeTop); return true;
+      case Action::RotateSplit:
+        if (!m_split.rotateSplit()) {
+          return false;
+        }
+        m_rebuildPending = true;
+        m_window.requestRebuild();
+        return true;
+      case Action::MoveSessionUp: return moveShownBlock(true);
+      case Action::MoveSessionDown: return moveShownBlock(false);
       case Action::ResizeSplitLeft: return m_split.nudgeDivider(-1.0F, 0.0F);
       case Action::ResizeSplitRight: return m_split.nudgeDivider(1.0F, 0.0F);
       case Action::ResizeSplitUp: return m_split.nudgeDivider(0.0F, -1.0F);
       case Action::ResizeSplitDown: return m_split.nudgeDivider(0.0F, 1.0F);
       default: return false; // the grid's own actions (TerminalView::key)
     }
+  }
+
+  bool TerminalWindow::moveShownBlock(bool up) {
+    const auto shown = m_sessions.shown();
+    if (!shown) {
+      return false;
+    }
+    // One lead per sidebar block in list order; a split sits where its earliest member is.
+    std::vector<std::uint64_t> leads;
+    for (const SessionInfo& session : m_sessions.sessions()) {
+      const auto* split = m_sessions.splitOf(session.id);
+      if (split == nullptr || std::ranges::none_of(leads, [&](std::uint64_t id) { return std::ranges::contains(*split, id); })) {
+        leads.push_back(session.id);
+      }
+    }
+    const auto* own = m_sessions.splitOf(*shown);
+    const auto it = std::ranges::find_if(leads, [&](std::uint64_t id) { return id == *shown || (own != nullptr && std::ranges::contains(*own, id)); });
+    if (it == leads.end() || (up ? it == leads.begin() : it + 1 == leads.end())) {
+      return false;
+    }
+    // Down moves the next block up instead: a split's lead moved down would leave its other members in place.
+    apply(up ? session_event::Move{.id = *it, .before = *(it - 1)} : session_event::Move{.id = *(it + 1), .before = *it});
+    return true;
   }
 
   std::vector<std::uint64_t> TerminalWindow::sidebarOrder() const {
@@ -1285,6 +1319,8 @@ namespace term {
          std::vector<ContextMenuControlEntry>{entry(Action::Copy, i18n::tr("terminal.menu.copy"), view->hasSelection()), entry(Action::Paste, i18n::tr("terminal.menu.paste")),
                                               entry(Action::SelectAll, i18n::tr("terminal.menu.select-all")), {.separator = true},
                                               entry(Action::SplitRight, i18n::tr("terminal.menu.split-right"), roomy), entry(Action::SplitDown, i18n::tr("terminal.menu.split-down"), roomy),
+                                              entry(Action::SplitLeft, i18n::tr("terminal.menu.split-left"), roomy), entry(Action::SplitUp, i18n::tr("terminal.menu.split-up"), roomy),
+                                              entry(Action::RotateSplit, i18n::tr("terminal.menu.rotate-split"), split != nullptr),
                                               {.separator = true}, entry(Action::Find, i18n::tr("terminal.find.title")),
                                               entry(Action::ClearScrollback, i18n::tr("terminal.menu.clear-scrollback")),
                                               entry(Action::ResetTerminal, i18n::tr("terminal.menu.reset")), {.separator = true},
@@ -2045,11 +2081,13 @@ namespace term {
       }
       const bool focus = action == Action::FocusLeft || action == Action::FocusRight || action == Action::FocusUp ||
                          action == Action::FocusDown || action == Action::ResizeSplitLeft || action == Action::ResizeSplitRight
-                         || action == Action::ResizeSplitUp || action == Action::ResizeSplitDown;
+                         || action == Action::ResizeSplitUp || action == Action::ResizeSplitDown || action == Action::RotateSplit;
+      const bool opensSplit = action == Action::SplitRight || action == Action::SplitDown || action == Action::SplitLeft ||
+                              action == Action::SplitUp;
       std::string off;
       if (focus && !m_split.split()) {
         off = i18n::tr("terminal.palette.not-in-split");
-      } else if ((action == Action::SplitRight || action == Action::SplitDown) && m_split.split() &&
+      } else if (opensSplit && m_split.split() &&
                  m_sessions.splitOf(*m_sessions.shown())->size() >= kMaxPanes) {
         off = i18n::tr("terminal.palette.split-full");
       } else if (action == Action::Copy && (shownTerminal() == nullptr || !shownTerminal()->hasSelection())) {

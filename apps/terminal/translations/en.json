@@ -155,6 +155,9 @@
     "select-all": "Select All",
     "split-right": "Split right",
     "split-down": "Split down",
+    "split-left": "Split left",
+    "split-up": "Split up",
+    "rotate-split": "Rotate split",
     "clear-scrollback": "Clear Scrollback",
     "reset": "Reset",
     "preferences": "Preferences…"

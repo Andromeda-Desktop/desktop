@@ -102,6 +102,9 @@ public:
   void pendJoin(const ui::SplitTrees::Join& join, std::optional<PaneRect> from = std::nullopt);
   // Two panes of one split trade tiles; the caller applies the same swap to its pane order.
   void swapPanes(std::uint64_t a, std::uint64_t b);
+  // The split holding the focused pane turns between side by side and stacked; false without a split. The caller
+  // rebuilds (fill): the cards travel to their new rects, and the window buttons move to the new top right card.
+  bool rotateSplit();
   void adoptTree(andromeda::tiling::DwindleTree tree) { m_trees.adopt(std::move(tree)); }
   // m_trees.sync, and treeChanged when it changed a tree.
   andromeda::tiling::DwindleTree* syncTrees(const std::vector<std::uint64_t>& panes);

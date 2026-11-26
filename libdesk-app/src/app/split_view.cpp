@@ -509,6 +509,14 @@ void SplitView::swapPanes(std::uint64_t a, std::uint64_t b) {
   if (m_callbacks.treeChanged) m_callbacks.treeChanged();
 }
 
+bool SplitView::rotateSplit() {
+  if (!m_trees.rotate(m_ringPane)) {
+    return false;
+  }
+  if (m_callbacks.treeChanged) m_callbacks.treeChanged();
+  return true;
+}
+
 andromeda::tiling::DwindleTree* SplitView::syncTrees(const std::vector<std::uint64_t>& panes) {
   const auto shapes = [this] {
     std::vector<std::vector<andromeda::tiling::DwindleTree::ShapeNode>> out;
