@@ -33,8 +33,8 @@ names=("$@")
 scripts=tests/e2e/*.sh
 if [[ ${#names[@]} -gt 0 ]]; then scripts=$(printf 'tests/e2e/%s.sh ' "${names[@]}"); fi
 status=0
-# The compositor's renderer needs a DRM render node: pass the host GPU and its render group.
-gpu=()
+# Pass the host GPU and its render group; with no render node (GitHub runners) the compositor renders with llvmpipe.
+gpu=(-e WLR_RENDERER_FORCE_SOFTWARE=1)
 [[ -e /dev/dri/renderD128 ]] && gpu=(--device /dev/dri --group-add "$(stat -c %g /dev/dri/renderD128)")
 # quickshare and link_mirror unshare a user and net namespace; the default seccomp profile refuses it.
 docker run --rm --security-opt seccomp=unconfined --user "$(id -u):$(id -g)" "${gpu[@]}" -e HOME=/tmp --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT/src:/src" -w /src \
