@@ -4,7 +4,10 @@
 set -euo pipefail
 
 readonly GLOBAL_CLIENT="${ANDROMEDA_GLOBAL_CLIENT:-./build-debug/tests/global-client}"
-readonly UNTRUSTED="$ANDROMEDA_RUNTIME_DIR/untrusted-global-client"
+# Outside the runtime dir: headless starts trust binaries there (tests/headless.sh --trust-binary "$runtime/").
+UNTRUSTED_DIR=$(mktemp -d /tmp/untrusted.XXXXXX)
+trap 'rm -rf "$UNTRUSTED_DIR"' EXIT
+readonly UNTRUSTED="$UNTRUSTED_DIR/untrusted-global-client"
 cp "$GLOBAL_CLIENT" "$UNTRUSTED"
 
 for global in dsk_shell_v1 zwlr_screencopy_manager_v1 ext_data_control_manager_v1 zwp_virtual_keyboard_manager_v1 \
