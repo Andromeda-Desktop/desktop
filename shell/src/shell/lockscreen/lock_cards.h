@@ -137,6 +137,7 @@ private:
   Node* m_group = nullptr;
   std::vector<Card> m_cards;
   std::vector<Chip> m_chips;
+  std::string m_loggedChips;
   std::vector<Widget> m_widgets;
   std::array<Button, 3> m_buttons{};
   bool m_buttonsShown = false;

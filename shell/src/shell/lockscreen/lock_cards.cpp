@@ -1,5 +1,6 @@
 #include "shell/lockscreen/lock_cards.h"
 
+#include "core/log.h"
 #include "dbus/link/link_phone_state.h"
 #include "dbus/mpris/mpris_art.h"
 #include "dbus/mpris/mpris_service.h"
@@ -25,6 +26,8 @@
 #include <memory>
 
 namespace {
+
+  constexpr Logger kLog("lockscreen");
 
   // The lock screen is always the dark scheme (rulebook 9.15): white labels, dark regular glass.
   constexpr Color kLabel1 = rgba(1.0F, 1.0F, 1.0F, 0.96F);
@@ -317,6 +320,15 @@ void LockCards::layout(Renderer& renderer, const AuthPlacement& place, float sca
   // Chips row (concept C .o-chip): h 24, r 12, p 0 / 8, the well fill, symbol 16 g 4, footnote label_2, g 8, centred.
   if (!place.chips.empty()) {
     const std::vector<ChipText> chips = chipTexts();
+    std::string shown;
+    for (const ChipText& chip : chips) {
+      shown += (shown.empty() ? "" : " | ") + chip.text;
+    }
+    // E2E tests read the chips from this line: captures are black while locked.
+    if (shown != m_loggedChips) {
+      m_loggedChips = shown;
+      kLog.info("lock chips: {}", shown);
+    }
     while (m_chips.size() < chips.size()) {
       m_chips.push_back({addRect(*m_group), addGlyph(*m_group), addLabel(*m_group, FontWeight::Normal)});
     }

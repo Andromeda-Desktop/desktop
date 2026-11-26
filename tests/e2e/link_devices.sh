@@ -27,6 +27,9 @@ with_noctalia '
   say() { printf "%s\n" "$*" >&3; }
   prop() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m org.freedesktop.DBus.Properties.Get org.andromeda.Link1 "$1"; }
   shot() { sleep 1.5; grim "$OUT/$1.png"; } # real time: the surface maps and paints
+  # The lock owner logs its chips ("lock chips: <n> notifications | ..."); a capture is black while locked.
+  chip() { grep -o "lock chips: [0-9]* notification" "$OUT/noctalia.log" | tail -n 1 | grep -o "[0-9][0-9]*"; }
+  raised() { local n; n=$(chip); [[ -n $n ]] && ((n > before)); }
 
   [[ $(msg link-devices) == *"not running"* ]] || fail "link-devices answered without a daemon: $(msg link-devices)"
   step "no daemon: $(msg link-devices)"
@@ -79,14 +82,13 @@ with_noctalia '
   msg session lock > /dev/null
   sleep 1 # real time: the lock surface maps and paints
   shot lock-screen
+  wait_for "the lock screen shows no notification chip" eval "[[ -n \$(chip) ]]"
+  before=$(chip)
   say "notify {\"id\":\"n2\",\"app\":\"Messages\",\"title\":\"Ana\",\"text\":\"Parked outside\"}"
   wait_for "no held notification in NotificationCounts" eval "prop NotificationCounts | grep -qF \"'"'"'$ID'"'"': uint32 2\""
   shot lock-screen-held
   # The "<n> notifications" chip counts desktop and phone notices together: holding one raises it.
-  chip() { magick "$OUT/$1.png" -crop 500x60+390+270 -resize 300% -colorspace gray -threshold 60% -negate png:- | tesseract - - --psm 7 2> /dev/null | sed -n "s/.*\b\([0-9][0-9]*\) notification.*/\1/p" | head -n 1; }
-  before=$(chip lock-screen) held=$(chip lock-screen-held)
-  [[ -n $before && -n $held ]] && ((held > before)) \
-    || fail "the lock screen does not count the held notification (chip ${before:-none} -> ${held:-none})"
+  wait_for "the lock screen does not count the held notification (chip $before)" raised
   step "screenshots: bar, popover, quick-settings, lock-screen; held while locked: $(prop NotificationCounts)"
 
   kill "$hold"
