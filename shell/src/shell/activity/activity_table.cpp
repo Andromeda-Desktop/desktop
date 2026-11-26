@@ -342,7 +342,7 @@ std::unique_ptr<Flex> ActivityWindow::buildToolbar(float scale) {
         .minHeight = Tokens::sizeControlS * scale,
         .padding = 0.0F,
         .radius = Tokens::sizeControlS * 0.5F * scale,
-        .onClick = [this] { DeferredCall::callLater([this] { close(); }); },
+        .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { close(); }); },
         .configure = [](Button& button) {
           button.setTabStop(false);
           button.accessibleState().name = i18n::tr("activity.close");

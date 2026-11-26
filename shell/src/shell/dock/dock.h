@@ -135,4 +135,5 @@ private:
   bool m_smartAutoHideReevalQueued = false;
   DesktopFileOps* m_fileOps = nullptr;
   bool m_trashFull = false;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

@@ -118,4 +118,5 @@ private:
 
   Timer m_retryTimer;
   std::function<void()> m_closedCallback;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

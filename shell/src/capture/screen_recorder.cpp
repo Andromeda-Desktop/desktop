@@ -197,7 +197,7 @@ void ScreenRecorder::portalRequest(
       .call([this, onResponse, method, seq](std::uint32_t response, const Results& results) {
         kLog.debug("{} answered {}", method, response);
         // The request proxy is running this handler; replace it only once the handler has returned.
-        DeferredCall::callLater([this, onResponse, response, results, seq]() {
+        DeferredCall::callLaterIfAlive(m_alive, [this, onResponse, response, results, seq]() {
           // A start that ended, or a newer request, makes this answer stale.
           if (m_state == State::Starting && seq == m_tokenSeq) {
             onResponse(response, results);
@@ -492,7 +492,7 @@ void ScreenRecorder::watchPortalOwner() {
           return;
         }
         // finish() drops this match, so it runs after the handler returns.
-        DeferredCall::callLater([this]() {
+        DeferredCall::callLaterIfAlive(m_alive, [this]() {
           if (m_state == State::Starting) {
             finish("the portal stopped");
           }

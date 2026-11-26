@@ -96,4 +96,5 @@ private:
   CropGeometry m_crop;
   // Starting or Stopping ends by then.
   std::optional<std::chrono::steady_clock::time_point> m_deadline;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

@@ -353,7 +353,7 @@ bool TrayMenu::onKeyboardEvent(const KeyboardEvent& event) {
     return false;
   }
   if (event.pressed && !event.preedit && KeybindMatcher::matches(KeybindAction::Cancel, event.sym, event.modifiers)) {
-    DeferredCall::callLater([this] { close(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { close(); });
   }
   // The menu holds a modal grab while open — swallow keys so they don't leak.
   return true;
@@ -767,7 +767,7 @@ void TrayMenu::ensureSurface() {
   // after the configure round-trip completes; committing the grab synchronously
   // here makes the compositor fire `cleared` immediately and the menu never
   // appears.
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     if (!m_visible || m_instance == nullptr || m_wayland == nullptr) {
       return;
     }
@@ -947,7 +947,7 @@ void TrayMenu::buildScene(MenuInstance& inst, uint32_t width, uint32_t height) {
   });
   menu->setOnActivate([this](const ContextMenuControlEntry& entry) {
     if (entry.id == kPinToggleEntryId) {
-      DeferredCall::callLater([this] {
+      DeferredCall::callLaterIfAlive(m_alive, [this] {
         (void)toggleActiveItemPinned();
         close();
         closeTrayDrawerPanelIfOpen();
@@ -957,7 +957,7 @@ void TrayMenu::buildScene(MenuInstance& inst, uint32_t width, uint32_t height) {
     if (m_tray == nullptr || m_activeItemId.empty()) {
       return;
     }
-    DeferredCall::callLater([this, entry] {
+    DeferredCall::callLaterIfAlive(m_alive, [this, entry] {
       if (m_tray != nullptr) {
         (void)m_tray->activateMenuEntry(m_activeItemId, entry.id);
       }
@@ -1313,7 +1313,7 @@ void TrayMenu::buildSubmenuScene(std::size_t levelIndex, MenuInstance& inst, uin
     if (m_tray == nullptr || m_activeItemId.empty()) {
       return;
     }
-    DeferredCall::callLater([this, entry] {
+    DeferredCall::callLaterIfAlive(m_alive, [this, entry] {
       if (m_tray != nullptr) {
         (void)m_tray->activateMenuEntry(m_activeItemId, entry.id);
       }

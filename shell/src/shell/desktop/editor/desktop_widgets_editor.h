@@ -251,4 +251,5 @@ private:
   float m_currentEventSceneY = 0.0F;
   std::string m_currentEventOutputName;
   bool m_inspectorOpen = false;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

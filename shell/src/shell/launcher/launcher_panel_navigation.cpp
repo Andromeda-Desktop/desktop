@@ -704,7 +704,7 @@ void LauncherPanel::rebuildLauncherNavigation() {
     if (m_syncingLauncherNavigation) {
       return;
     }
-    DeferredCall::callLater([this, index] {
+    DeferredCall::callLaterIfAlive(m_alive, [this, index] {
       if (index < m_categoryFilterSlots.size()) {
         setActiveCategorySlot(index);
       } else {

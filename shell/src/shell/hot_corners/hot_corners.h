@@ -66,4 +66,5 @@ private:
   bool m_migrated = false;
 
   std::vector<std::unique_ptr<OutputInstance>> m_instances;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

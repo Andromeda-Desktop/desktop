@@ -805,7 +805,7 @@ void ControlCenterPanel::scheduleMprisRefreshFor(TabId tab) {
 
   m_lastMprisRefreshAt = now;
   m_mprisRefreshScheduled = true;
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     m_mprisRefreshScheduled = false;
     if (m_mpris == nullptr || !PanelManager::instance().isOpenPanel("control-center")) {
       return;

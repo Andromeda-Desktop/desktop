@@ -1130,7 +1130,7 @@ void ScreenshotService::beginRegionCapture(RenderContext& renderContext, const O
   m_regionFullscreenPick = false;
 
   if (options.freezeScreen) {
-    DeferredCall::callLater([this] { beginFreezeCapture(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { beginFreezeCapture(); });
     return;
   }
 
@@ -1180,7 +1180,7 @@ void ScreenshotService::beginFullscreenCapture(RenderContext& renderContext, con
   m_regionFullscreenPick = true;
 
   if (options.freezeScreen) {
-    DeferredCall::callLater([this] { beginFreezeCapture(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { beginFreezeCapture(); });
     return;
   }
 
@@ -1357,7 +1357,7 @@ void ScreenshotService::onFreezeFrameCaptured(
     m_frozenScreenshots.push_back(capture::FrozenScreenshot{.output = request.output, .image = std::move(*image)});
   }
 
-  DeferredCall::callLater([this, generation] { startNextFreezeCapture(generation); });
+  DeferredCall::callLaterIfAlive(m_alive, [this, generation] { startNextFreezeCapture(generation); });
 }
 
 void ScreenshotService::finishFreezeCapture() {
@@ -1590,7 +1590,7 @@ void ScreenshotService::beginAnnotation(RenderContext& renderContext, const Outp
 
   if (freezeFirst) {
     m_freezeTarget = FreezeTarget::Annotation;
-    DeferredCall::callLater([this] { beginFreezeCapture(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { beginFreezeCapture(); });
     return;
   }
 
@@ -1773,7 +1773,7 @@ void ScreenshotService::onGlobalRegionFrameCaptured(
           .image = std::move(*image),
       }
   );
-  DeferredCall::callLater([this] { startNextGlobalRegionCapture(); });
+  DeferredCall::callLaterIfAlive(m_alive, [this] { startNextGlobalRegionCapture(); });
 }
 
 void ScreenshotService::finishGlobalRegionBatch() {
@@ -1900,7 +1900,7 @@ void ScreenshotService::startNextQueuedCapture() {
   if (m_captureQueue.empty() || m_capture.busy()) {
     return;
   }
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     if (m_captureQueue.empty() || m_capture.busy()) {
       return;
     }
@@ -2003,7 +2003,7 @@ void ScreenshotService::onAllOutputsFrameCaptured(
   }
 
   m_allOutputsBatch->frames.push_back(capture::FrozenScreenshot{.output = output, .image = std::move(*image)});
-  DeferredCall::callLater([this] { startNextAllOutputsCapture(); });
+  DeferredCall::callLaterIfAlive(m_alive, [this] { startNextAllOutputsCapture(); });
 }
 
 void ScreenshotService::finishAllOutputsBatch() {

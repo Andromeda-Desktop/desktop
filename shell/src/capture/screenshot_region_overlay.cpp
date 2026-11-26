@@ -412,7 +412,7 @@ namespace capture {
     if (!m_active) {
       return;
     }
-    DeferredCall::callLater([this] {
+    DeferredCall::callLaterIfAlive(m_alive, [this] {
       if (!m_active) {
         return;
       }
@@ -594,7 +594,7 @@ namespace capture {
         if (picked == nullptr) {
           picked = surfaceOutput;
         }
-        DeferredCall::callLater([this, picked] { completeFullscreenPick(picked); });
+        DeferredCall::callLaterIfAlive(m_alive, [this, picked] { completeFullscreenPick(picked); });
       });
     } else {
       input->setOnPress([this, output = inst.output](const InputArea::PointerData& data) {
@@ -607,7 +607,7 @@ namespace capture {
           m_dragging = false;
           m_dragButton = 0;
           // completeSelection() tears down surfaces; defer past InputDispatcher::pointerButton.
-          DeferredCall::callLater([this] { completeSelection(); });
+          DeferredCall::callLaterIfAlive(m_alive, [this] { completeSelection(); });
           return;
         }
 
@@ -803,20 +803,20 @@ namespace capture {
       }
       if (m_confirming) {
         if (KeybindMatcher::matches(KeybindAction::Copy, key.sym, key.modifiers)) {
-          DeferredCall::callLater([this] { confirmPendingSelection(ConfirmAction::ForceClipboard); });
+          DeferredCall::callLaterIfAlive(m_alive, [this] { confirmPendingSelection(ConfirmAction::ForceClipboard); });
           return;
         }
         if (KeybindMatcher::matches(KeybindAction::Save, key.sym, key.modifiers)) {
-          DeferredCall::callLater([this] { confirmPendingSelection(ConfirmAction::ForceSave); });
+          DeferredCall::callLaterIfAlive(m_alive, [this] { confirmPendingSelection(ConfirmAction::ForceSave); });
           return;
         }
         if (confirmsSelection(key.sym)) {
-          DeferredCall::callLater([this] { confirmPendingSelection(ConfirmAction::None); });
+          DeferredCall::callLaterIfAlive(m_alive, [this] { confirmPendingSelection(ConfirmAction::None); });
           return;
         }
       }
       if (KeybindMatcher::matches(KeybindAction::SelectAll, key.sym, key.modifiers)) {
-        DeferredCall::callLater([this] { selectEntireDesktop(); });
+        DeferredCall::callLaterIfAlive(m_alive, [this] { selectEntireDesktop(); });
         return;
       }
       if (KeybindMatcher::matches(KeybindAction::Cancel, key.sym, key.modifiers)) {
@@ -895,7 +895,7 @@ namespace capture {
 
     if (m_fullscreenPick) {
       auto pickerBar = buildFullscreenPickerBar(*m_wayland, [this](wl_output* output) {
-        DeferredCall::callLater([this, output] { completeFullscreenPick(output); });
+        DeferredCall::callLaterIfAlive(m_alive, [this, output] { completeFullscreenPick(output); });
       });
       Flex* pickerBarPtr = pickerBar.get();
       inst.sceneRoot->addChild(std::move(pickerBar));
@@ -1054,7 +1054,7 @@ namespace capture {
     kLog.warn("aborting screenshot region overlay: {}", message);
     FailureCallback onFailure = m_onFailure;
     // Defer past the surface's prepareFrame callback before destroying its surfaces.
-    DeferredCall::callLater([this, onFailure, message] {
+    DeferredCall::callLaterIfAlive(m_alive, [this, onFailure, message] {
       cancel();
       if (onFailure) {
         onFailure(message);

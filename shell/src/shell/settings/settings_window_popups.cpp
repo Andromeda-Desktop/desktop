@@ -327,13 +327,13 @@ void SettingsWindow::openActionsMenu() {
         if (m_actionsMenuPopup != nullptr) {
           m_actionsMenuPopup->close();
         }
-        DeferredCall::callLater([this] { saveSupportReport(); });
+        DeferredCall::callLaterIfAlive(m_aliveGuard, [this] { saveSupportReport(); });
         break;
       case kActionExportConfig:
         if (m_actionsMenuPopup != nullptr) {
           m_actionsMenuPopup->close();
         }
-        DeferredCall::callLater([this] { openConfigExportDialog(); });
+        DeferredCall::callLaterIfAlive(m_aliveGuard, [this] { openConfigExportDialog(); });
         break;
       case kActionResetPage:
         if (m_actionsMenuPopup != nullptr) {
@@ -1893,7 +1893,7 @@ void SettingsWindow::openCalendarAccountEditor(std::optional<std::string> accoun
         }
         markSettingsWriteSuccess(closeAfter);
         if (connectAfter && m_calendarService != nullptr) {
-          DeferredCall::callLater([this, accountId = draft->id, activationToken = std::move(connectActivationToken)] {
+          DeferredCall::callLaterIfAlive(m_aliveGuard, [this, accountId = draft->id, activationToken = std::move(connectActivationToken)] {
             m_calendarService->connectGoogleAccount(accountId, activationToken);
           });
         }
@@ -2040,7 +2040,7 @@ void SettingsWindow::openBarWidgetEditorSheet(
       m_editorSheetModal->rebuildBody();
     }
   };
-  sctx.closeHostedEditor = [this] { DeferredCall::callLater([this] { closeWidgetInspectorPopup(); }); };
+  sctx.closeHostedEditor = [this] { DeferredCall::callLaterIfAlive(m_aliveGuard, [this] { closeWidgetInspectorPopup(); }); };
   // A rename changes the edited widget's id: apply it, then retitle and rebuild the sheet.
   sctx.renameWidgetInstance =
       [this](
@@ -2074,7 +2074,7 @@ void SettingsWindow::openBarWidgetEditorSheet(
 }
 
 void SettingsWindow::openWidgetInspectorEditor(std::vector<std::string> laneListPath, std::string widgetName) {
-  DeferredCall::callLater([this, laneListPath = std::move(laneListPath), widgetName = std::move(widgetName)] mutable {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, laneListPath = std::move(laneListPath), widgetName = std::move(widgetName)] mutable {
     m_editingWidgetName = widgetName;
     m_editingCapsuleGroupId.clear();
     m_renamingWidgetName.clear();
@@ -2098,7 +2098,7 @@ void SettingsWindow::openWidgetInspectorEditor(std::vector<std::string> laneList
 }
 
 void SettingsWindow::openCapsuleGroupEditor(std::vector<std::string> laneListPath, std::string groupId) {
-  DeferredCall::callLater([this, laneListPath = std::move(laneListPath), groupId = std::move(groupId)] mutable {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, laneListPath = std::move(laneListPath), groupId = std::move(groupId)] mutable {
     m_editingCapsuleGroupId = std::move(groupId);
     m_editingWidgetName.clear();
     m_renamingWidgetName.clear();
@@ -2115,7 +2115,7 @@ void SettingsWindow::openCapsuleGroupEditor(std::vector<std::string> laneListPat
 }
 
 void SettingsWindow::openPluginSourceCreateEditor(std::optional<PluginSourceConfig> existing) {
-  DeferredCall::callLater([this, existing = std::move(existing)] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, existing = std::move(existing)] {
     if (m_config == nullptr || m_pluginManager == nullptr) {
       return;
     }
@@ -2142,7 +2142,7 @@ void SettingsWindow::openPluginSourceCreateEditor(std::optional<PluginSourceConf
         m_pluginManager->removeSource(name);
         markPluginListDirty();
         markSettingsWriteSuccess(false);
-        DeferredCall::callLater([this] {
+        DeferredCall::callLaterIfAlive(m_aliveGuard, [this] {
           if (m_editorSheetModal != nullptr) {
             m_editorSheetModal->close();
           }
@@ -2314,7 +2314,7 @@ void SettingsWindow::openPluginSourceCreateEditor(std::optional<PluginSourceConf
                     );
                     markPluginListDirty();
                     markSettingsWriteSuccess(false);
-                    DeferredCall::callLater([this] {
+                    DeferredCall::callLaterIfAlive(m_aliveGuard, [this] {
                       if (m_editorSheetModal != nullptr) {
                         m_editorSheetModal->close();
                       }
@@ -2331,7 +2331,7 @@ void SettingsWindow::openPluginSourceCreateEditor(std::optional<PluginSourceConf
 }
 
 void SettingsWindow::openPluginSettingsEditor(std::string pluginId) {
-  DeferredCall::callLater([this, pluginId = std::move(pluginId)] mutable {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, pluginId = std::move(pluginId)] mutable {
     if (m_config == nullptr) {
       return;
     }

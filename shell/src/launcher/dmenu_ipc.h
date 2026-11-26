@@ -62,4 +62,5 @@ private:
   PanelManager* m_panelManager = nullptr;
   std::size_t m_nextToken = 1;
   std::vector<std::unique_ptr<Session>> m_sessions;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

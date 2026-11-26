@@ -1028,7 +1028,7 @@ void OsdOverlay::runReveal(Instance& inst, OsdReveal::Cmd cmd) {
         [this, &inst] {
           inst.animId = 0;
           runReveal(inst, inst.reveal.hideSettled());
-          DeferredCall::callLater([this] {
+          DeferredCall::callLaterIfAlive(m_alive, [this] {
             if (std::ranges::none_of(m_instances, [](const auto& i) { return i->reveal.visible(); })) {
               destroySurfaces();
               m_targetOutput = nullptr;

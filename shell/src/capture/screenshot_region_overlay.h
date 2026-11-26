@@ -125,6 +125,7 @@ namespace capture {
     double m_startGlobalY = 0.0;
     double m_currentGlobalX = 0.0;
     double m_currentGlobalY = 0.0;
+    std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   };
 
 } // namespace capture

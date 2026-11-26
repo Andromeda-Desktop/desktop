@@ -888,7 +888,7 @@ void WindowSwitcher::driveShown(bool shown) {
       [this, inst] {
         inst->shownOpacityAnim = 0;
         // Never from inside the surface's own frame tick.
-        DeferredCall::callLater([this, inst] {
+        DeferredCall::callLaterIfAlive(m_alive, [this, inst] {
           if (m_mode == Mode::Closing && m_instance == inst) {
             hide();
           }
@@ -1467,7 +1467,7 @@ void WindowSwitcher::scheduleShortcutModifierReleaseCheck() {
   }
 
   const std::uint64_t generation = m_shortcutSessionGeneration;
-  DeferredCall::callLater([this, generation] {
+  DeferredCall::callLaterIfAlive(m_alive, [this, generation] {
     if (generation != m_shortcutSessionGeneration) {
       return;
     }

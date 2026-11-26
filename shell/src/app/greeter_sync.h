@@ -55,4 +55,5 @@ private:
   LockscreenConfig m_lockscreen;
   bool m_clock24h = true; // the greeter clock follows the system hour cycle
   std::uint64_t m_generation = 0;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

@@ -107,6 +107,7 @@ namespace noctalia::theme {
     std::optional<double> m_autoLatitude;
     std::optional<double> m_autoLongitude;
     Timer m_autoTimer;
+    std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   };
 
 } // namespace noctalia::theme

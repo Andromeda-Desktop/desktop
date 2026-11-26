@@ -1086,7 +1086,7 @@ void ActivityWindow::onKeyboardEvent(const KeyboardEvent& event) {
     return;
   }
   if (closeKey) {
-    DeferredCall::callLater([this] { close(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { close(); });
     return;
   }
   if (event.pressed) {

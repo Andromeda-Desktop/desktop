@@ -419,7 +419,7 @@ void PowerOverlay::buildScene(float width, float height) {
       .onClick =
           [this](const InputArea::PointerData&) {
             if (m_mode == Mode::Choices) {
-              DeferredCall::callLater([this] { hide(); });
+              DeferredCall::callLaterIfAlive(m_aliveToken, [this] { hide(); });
             }
           },
   }));
@@ -532,7 +532,7 @@ void PowerOverlay::pick(std::size_t index) {
   }
   const std::string action = kChoices[index].action;
   if (action == "reboot" || action == "shutdown" || action == "logout") {
-    DeferredCall::callLater([this, action] {
+    DeferredCall::callLaterIfAlive(m_aliveToken, [this, action] {
       // A block inhibitor (pacman, firmware) would refuse the action after every window closed: wait for it instead.
       if (m_guard != nullptr && !m_guard->blockers().empty()) {
         m_guard->queue(action);
@@ -544,7 +544,7 @@ void PowerOverlay::pick(std::size_t index) {
     return;
   }
   // Deferred: running it here would free the clicked area inside its own click handler.
-  DeferredCall::callLater([this, index] { run(kChoices[index].action); });
+  DeferredCall::callLaterIfAlive(m_aliveToken, [this, index] { run(kChoices[index].action); });
 }
 
 void PowerOverlay::run(const char* action) {
@@ -581,7 +581,7 @@ void PowerOverlay::startHold() {
                 m_root->setOpacity(v);
               }
             },
-            [this] { DeferredCall::callLater([this] { run("shutdown"); }); }
+            [this] { DeferredCall::callLaterIfAlive(m_aliveToken, [this] { run("shutdown"); }); }
         );
       }
   );
@@ -805,7 +805,7 @@ void PowerOverlay::startCountdown() {
 
 void PowerOverlay::onToplevelChange() {
   if (m_mode == Mode::Closing || m_mode == Mode::Blockers) {
-    DeferredCall::callLater([this] { checkWindows(); });
+    DeferredCall::callLaterIfAlive(m_aliveToken, [this] { checkWindows(); });
   }
 }
 
@@ -986,9 +986,9 @@ void PowerOverlay::buildCountdown(Node& root, float s) {
   auto buttons = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
   buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F); // 24 above the buttons with the card gap 8
   buttons->addChild(alertButton(i18n::tr("control-center.power-menu.cancel"), ButtonVariant::Default, s,
-                                [this] { DeferredCall::callLater([this] { hide(); }); }));
+                                [this] { DeferredCall::callLaterIfAlive(m_aliveToken, [this] { hide(); }); }));
   auto primary = alertButton(i18n::tr(endText("button").c_str()), ButtonVariant::Primary, s,
-                             [this] { DeferredCall::callLater([this] { finishEnd(); }); });
+                             [this] { DeferredCall::callLaterIfAlive(m_aliveToken, [this] { finishEnd(); }); });
   auto sweep = ui::box({});
   sweep->setFill(fixedColorSpec(rgba(1.0F, 1.0F, 1.0F, 0.18F)));
   sweep->setRadius(Tokens::componentButtonHeightM * 0.5F * s);
@@ -1041,7 +1041,7 @@ void PowerOverlay::buildBlockers(Node& root, float s) {
     const ToplevelInfo copy = window;
     auto show = alertButton(i18n::tr("control-center.power-menu.show"), ButtonVariant::Default, s, [this, copy] {
       // Show drops the sheet but keeps the session end: closing that window lets the action go on.
-      DeferredCall::callLater([this, copy] {
+      DeferredCall::callLaterIfAlive(m_aliveToken, [this, copy] {
         hideSurface();
         if (m_platform != nullptr) {
           m_platform->activateToplevelInfo(copy);
@@ -1076,9 +1076,9 @@ void PowerOverlay::buildBlockers(Node& root, float s) {
   auto buttons = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
   buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F); // 24 above the buttons with the card gap 8
   buttons->addChild(alertButton(i18n::tr("control-center.power-menu.cancel"), ButtonVariant::Default, s,
-                                [this] { DeferredCall::callLater([this] { hide(); }); }));
+                                [this] { DeferredCall::callLaterIfAlive(m_aliveToken, [this] { hide(); }); }));
   buttons->addChild(alertButton(i18n::tr(endText("anyway").c_str()), ButtonVariant::Destructive, s,
-                                [this] { DeferredCall::callLater([this] { finishEnd(); }); }));
+                                [this] { DeferredCall::callLaterIfAlive(m_aliveToken, [this] { finishEnd(); }); }));
   card->addChild(std::move(buttons));
   m_content = root.addChild(std::move(card));
 }

@@ -355,10 +355,7 @@ void SessionActionRunner::runQueued(
     BlockingPool::instance().run([this, guard, call = power.call, plainSuspend = power.plainSuspend, action, failed] {
       nameThisThread("dsk-action");
       const bool ok = call();
-      DeferredCall::callLater([this, guard, ok, plainSuspend, action, failed] {
-        if (guard.expired()) {
-          return;
-        }
+      DeferredCall::callLaterIfAlive(guard, [this, ok, plainSuspend, action, failed] {
         m_powerRun = PowerRun::Idle;
         if (ok) {
           return;

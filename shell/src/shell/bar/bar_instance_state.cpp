@@ -283,7 +283,7 @@ void Bar::createInstance(const WaylandOutput& output, std::size_t barIndex, cons
     tickWidgets(inst->endWidgets, deltaMs);
     if (inst->autoLayer == BarInstance::AutoLayer::Settling) {
       // Frame work runs before this frame renders; the deferred call runs after it, so the final state is painted.
-      DeferredCall::callLater([this, output = inst->output, barName = inst->barConfig.name] {
+      DeferredCall::callLaterIfAlive(m_alive, [this, output = inst->output, barName = inst->barConfig.name] {
         BarInstance* instance = instanceForBar(output, barName);
         if (instance != nullptr && instance->surface != nullptr
             && instance->autoLayer == BarInstance::AutoLayer::Settling) {

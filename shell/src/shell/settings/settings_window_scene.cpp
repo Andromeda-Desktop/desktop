@@ -1761,7 +1761,7 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
   for (auto& entry : m_settingsRegistry) {
     if (entry.section == settings::SettingsSection::Appearance && entry.path.empty() && entry.group == "theme") {
       if (auto* button = std::get_if<settings::ButtonSetting>(&entry.control)) {
-        button->action = [this] { DeferredCall::callLater([this] { openPaletteInspector(); }); };
+        button->action = [this] { DeferredCall::callLaterIfAlive(m_aliveGuard, [this] { openPaletteInspector(); }); };
       }
     }
   }

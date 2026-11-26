@@ -245,6 +245,7 @@ namespace capture {
     int m_backdropLayoutPadding = 0;
 
     std::vector<std::uint8_t> m_uploadScratch;
+    std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   };
 
 } // namespace capture

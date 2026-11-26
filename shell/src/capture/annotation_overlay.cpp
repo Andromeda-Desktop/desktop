@@ -722,7 +722,7 @@ namespace capture {
     });
     if (m_mode == AnnotationMode::Image) {
       if (findOutput(*m_wayland, m_imageOutput) == nullptr) {
-        DeferredCall::callLater([this] { cancel(); });
+        DeferredCall::callLaterIfAlive(m_alive, [this] { cancel(); });
       }
       return;
     }
@@ -957,7 +957,7 @@ namespace capture {
     m_active = false;
     kLog.warn("aborting annotation overlay: {}", message);
     FailureCallback onFailure = m_onFailure;
-    DeferredCall::callLater([this, onFailure, message] {
+    DeferredCall::callLaterIfAlive(m_alive, [this, onFailure, message] {
       m_active = true; // cancel() only fires the closed callback for an active overlay
       cancel();
       if (onFailure) {
@@ -2730,7 +2730,7 @@ namespace capture {
     if (!m_active) {
       return;
     }
-    DeferredCall::callLater([this] { cancel(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { cancel(); });
   }
 
   std::unique_ptr<Flex> AnnotationOverlay::buildBackdropPanel(Instance& inst) {

@@ -129,7 +129,7 @@ void CalendarReminderMonitor::schedulePersist() {
     return;
   }
   m_persistScheduled = true;
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     if (m_persistScheduled) {
       persistState();
     }
@@ -143,7 +143,7 @@ void CalendarReminderMonitor::onSnapshotChanged(const CalendarSnapshot& snapshot
 
 void CalendarReminderMonitor::onConfigReload() {
   m_nextWake.reset();
-  DeferredCall::callLater([this] { evaluate(std::chrono::system_clock::now()); });
+  DeferredCall::callLaterIfAlive(m_alive, [this] { evaluate(std::chrono::system_clock::now()); });
 }
 
 int CalendarReminderMonitor::pollTimeoutMs() const {

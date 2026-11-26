@@ -597,7 +597,7 @@ void LauncherPanel::startAppDrag(const LauncherResult& result) {
              kLog.debug("launcher app drag ended dropped {}", dropped);
              // The compositor may still draw the icon this frame: drop it after. The launcher closes either way
              // (Launchpad does): its outside-click shield is gone.
-             DeferredCall::callLater([this] {
+             DeferredCall::callLaterIfAlive(m_alive, [this] {
                m_dragIcon.reset();
                m_dragImage.reset();
                PanelManager::instance().closePanel();

@@ -55,4 +55,5 @@ private:
   Node* m_capsule = nullptr;
   Label* m_label = nullptr;
   Glyph* m_glyph = nullptr;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

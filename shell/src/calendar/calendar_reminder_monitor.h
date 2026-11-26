@@ -84,4 +84,5 @@ private:
   std::vector<LiveCountdown> m_countdowns;
   bool m_initialized = false;
   bool m_persistScheduled = false;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

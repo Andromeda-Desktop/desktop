@@ -157,7 +157,7 @@ void LockEditor::open() {
     prepareFrame(needsUpdate, needsLayout);
   });
   // An unplugged output or a compositor close ends the session; the close runs after the callback returns.
-  m_surface->setClosedCallback([this] { DeferredCall::callLater([this] { close(); }); });
+  m_surface->setClosedCallback([this] { DeferredCall::callLaterIfAlive(m_alive, [this] { close(); }); });
   if (!m_surface->initialize(target->output)) {
     kLog.warn("failed to open the lock screen editor on {}", m_connector);
     m_surface.reset();

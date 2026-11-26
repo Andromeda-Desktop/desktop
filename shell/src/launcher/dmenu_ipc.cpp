@@ -266,7 +266,7 @@ void DmenuIpcService::completeSession(int connFd, std::optional<std::string> sel
 
   // The provider is being iterated by LauncherPanel during activate()/reset(); mutate
   // the panel after this event completes.
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     if (m_launcherPanel != nullptr) {
       m_launcherPanel->clearProvidersWithIdPrefix("dmenu.stdin.");
       m_launcherPanel->setScopedProvider({});

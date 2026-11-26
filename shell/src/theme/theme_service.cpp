@@ -168,7 +168,7 @@ namespace noctalia::theme {
     m_pendingResolvedMode.clear();
 
     if (defer) {
-      DeferredCall::callLater([this, generation, generated = std::move(generated), mode = std::move(mode)] mutable {
+      DeferredCall::callLaterIfAlive(m_alive, [this, generation, generated = std::move(generated), mode = std::move(mode)] mutable {
         if (generation == m_resolvedCallbackGeneration && m_resolvedCallback) {
           m_resolvedCallback(generated, mode);
         }

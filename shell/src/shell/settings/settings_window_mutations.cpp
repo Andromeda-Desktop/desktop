@@ -150,7 +150,7 @@ void SettingsWindow::setSettingOverride(std::vector<std::string> path, ConfigOve
     text::invalidateFontWeightCatalogCache();
   }
   const bool isAvatarPath = path.size() == 2 && path[0] == "shell" && path[1] == "avatar_path";
-  DeferredCall::callLater([this, path = std::move(path), value = std::move(value), isAvatarPath] mutable {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, path = std::move(path), value = std::move(value), isAvatarPath] mutable {
     if (m_config == nullptr) {
       return;
     }
@@ -221,10 +221,10 @@ void SettingsWindow::setSettingOverrides(
     setCompositorSetting(key, value);
   }
   if (overrides.empty()) {
-    DeferredCall::callLater([this] { markSettingsWriteSuccess(!m_statusMessage.empty()); });
+    DeferredCall::callLaterIfAlive(m_aliveGuard, [this] { markSettingsWriteSuccess(!m_statusMessage.empty()); });
     return;
   }
-  DeferredCall::callLater([this, changed, needsSceneRebuild, resetPathsChanged, registryPatched] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, changed, needsSceneRebuild, resetPathsChanged, registryPatched] {
     finishSettingsWrite(changed, needsSceneRebuild, resetPathsChanged, registryPatched);
   });
 }
@@ -233,7 +233,7 @@ void SettingsWindow::clearSettingOverride(std::vector<std::string> path) {
   if (commitCompositorSetting(path, {})) {
     return;
   }
-  DeferredCall::callLater([this, path = std::move(path)]() mutable {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, path = std::move(path)]() mutable {
     if (m_config == nullptr) {
       return;
     }
@@ -261,7 +261,7 @@ void SettingsWindow::clearSettingOverrides(std::vector<std::vector<std::string>>
     markSettingsWriteSuccess(/*requestRebuild=*/true);
     return;
   }
-  DeferredCall::callLater([this, paths = std::move(paths)]() mutable {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, paths = std::move(paths)]() mutable {
     if (m_config == nullptr || paths.empty()) {
       return;
     }
@@ -321,13 +321,13 @@ void SettingsWindow::mutateSettingOverrides(
     setCompositorSetting(key, value);
   }
   const bool resetPathsChanged = previousResetPaths != currentPageResetPaths();
-  DeferredCall::callLater([this, changed, needsSceneRebuild, resetPathsChanged] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, changed, needsSceneRebuild, resetPathsChanged] {
     finishSettingsWrite(changed, needsSceneRebuild, resetPathsChanged, false);
   });
 }
 
 void SettingsWindow::resetBarLane(std::vector<std::string> lanePath) {
-  DeferredCall::callLater([this, lanePath = std::move(lanePath)] mutable {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, lanePath = std::move(lanePath)] mutable {
     if (m_config == nullptr) {
       return;
     }
@@ -351,7 +351,7 @@ void SettingsWindow::renameWidgetInstance(
     std::string oldName, std::string newName,
     std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> referenceOverrides
 ) {
-  DeferredCall::callLater([this, oldName = std::move(oldName), newName = std::move(newName),
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, oldName = std::move(oldName), newName = std::move(newName),
                            referenceOverrides = std::move(referenceOverrides)] mutable {
     if (m_config == nullptr) {
       return;
@@ -379,7 +379,7 @@ void SettingsWindow::renameWidgetInstance(
 }
 
 void SettingsWindow::createBar(std::string name) {
-  DeferredCall::callLater([this, name = std::move(name)] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, name = std::move(name)] {
     if (m_config == nullptr) {
       return;
     }
@@ -398,7 +398,7 @@ void SettingsWindow::createBar(std::string name) {
 }
 
 void SettingsWindow::renameBar(std::string oldName, std::string newName) {
-  DeferredCall::callLater([this, oldName = std::move(oldName), newName = std::move(newName)] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, oldName = std::move(oldName), newName = std::move(newName)] {
     if (m_config == nullptr) {
       return;
     }
@@ -419,7 +419,7 @@ void SettingsWindow::renameBar(std::string oldName, std::string newName) {
 }
 
 void SettingsWindow::deleteBar(std::string name) {
-  DeferredCall::callLater([this, name = std::move(name)] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, name = std::move(name)] {
     if (m_config == nullptr) {
       return;
     }
@@ -440,7 +440,7 @@ void SettingsWindow::deleteBar(std::string name) {
 }
 
 void SettingsWindow::moveBar(std::string name, int direction) {
-  DeferredCall::callLater([this, name = std::move(name), direction] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, name = std::move(name), direction] {
     if (m_config == nullptr) {
       return;
     }
@@ -453,7 +453,7 @@ void SettingsWindow::moveBar(std::string name, int direction) {
 }
 
 void SettingsWindow::createMonitorOverride(std::string barName, std::string match) {
-  DeferredCall::callLater([this, barName = std::move(barName), match = std::move(match)] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, barName = std::move(barName), match = std::move(match)] {
     if (m_config == nullptr) {
       return;
     }
@@ -470,7 +470,7 @@ void SettingsWindow::createMonitorOverride(std::string barName, std::string matc
 }
 
 void SettingsWindow::renameMonitorOverride(std::string barName, std::string oldMatch, std::string newMatch) {
-  DeferredCall::callLater([this, barName = std::move(barName), oldMatch = std::move(oldMatch),
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, barName = std::move(barName), oldMatch = std::move(oldMatch),
                            newMatch = std::move(newMatch)] {
     if (m_config == nullptr) {
       return;
@@ -490,7 +490,7 @@ void SettingsWindow::renameMonitorOverride(std::string barName, std::string oldM
 }
 
 void SettingsWindow::deleteMonitorOverride(std::string barName, std::string match) {
-  DeferredCall::callLater([this, barName = std::move(barName), match = std::move(match)] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, barName = std::move(barName), match = std::move(match)] {
     if (m_config == nullptr) {
       return;
     }
@@ -509,7 +509,7 @@ void SettingsWindow::deleteMonitorOverride(std::string barName, std::string matc
 }
 
 void SettingsWindow::createDockMonitorOverride(std::string match) {
-  DeferredCall::callLater([this, match = std::move(match)] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, match = std::move(match)] {
     if (m_config == nullptr) {
       return;
     }
@@ -525,7 +525,7 @@ void SettingsWindow::createDockMonitorOverride(std::string match) {
 }
 
 void SettingsWindow::renameDockMonitorOverride(std::string oldTableName, std::string newMatch) {
-  DeferredCall::callLater([this, oldTableName = std::move(oldTableName), newMatch = std::move(newMatch)] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, oldTableName = std::move(oldTableName), newMatch = std::move(newMatch)] {
     if (m_config == nullptr) {
       return;
     }
@@ -543,7 +543,7 @@ void SettingsWindow::renameDockMonitorOverride(std::string oldTableName, std::st
 }
 
 void SettingsWindow::deleteDockMonitorOverride(std::string tableName) {
-  DeferredCall::callLater([this, tableName = std::move(tableName)] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, tableName = std::move(tableName)] {
     if (m_config == nullptr) {
       return;
     }

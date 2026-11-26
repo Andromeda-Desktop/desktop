@@ -346,7 +346,7 @@ void DesktopWidgetsEditor::handleWidgetPress(const std::string& id) {
   }
 
   if (selectionChanged) {
-    DeferredCall::callLater([this] { requestLayout(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { requestLayout(); });
   }
   startDrag(DragMode::Move, id, false);
 }
@@ -1887,7 +1887,7 @@ void DesktopWidgetsEditor::clampInspectorPosition(
 // buildInspector and applySettingChange are in desktop_widgets_editor_settings.cpp
 
 void DesktopWidgetsEditor::deferEditorMutation(std::function<void()> action) {
-  DeferredCall::callLater([this, action = std::move(action)] mutable {
+  DeferredCall::callLaterIfAlive(m_alive, [this, action = std::move(action)] mutable {
     if (m_open) {
       action();
     }
@@ -1898,7 +1898,7 @@ void DesktopWidgetsEditor::requestExit() {
   if (!m_exitRequestedCallback) {
     return;
   }
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     if (m_open && m_exitRequestedCallback) {
       m_exitRequestedCallback();
     }

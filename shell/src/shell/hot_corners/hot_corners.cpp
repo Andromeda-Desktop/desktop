@@ -55,7 +55,7 @@ void HotCorners::initialize(ShellWaylandConnection& wayland, ConfigService* conf
     m_migration = std::make_unique<SettingsControl>(wayland.registry(), name, version, [this]() {
       if (m_migration != nullptr && m_migration->ready() && !std::exchange(m_migrated, true)) {
         migrateToCompositor();
-        DeferredCall::callLater([this]() { m_migration.reset(); });
+        DeferredCall::callLaterIfAlive(m_alive, [this]() { m_migration.reset(); });
       }
     });
   }

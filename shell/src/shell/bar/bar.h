@@ -272,4 +272,5 @@ private:
   bool m_overlayDisplaySuppressed = false;
   bool m_wasVisibleBeforeOverlaySuppress = false;
   bool m_smartAutoHideReevalQueued = false;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

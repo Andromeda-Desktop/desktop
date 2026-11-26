@@ -620,7 +620,7 @@ void PanelManager::unregisterPanel(const std::string& id) {
       // panel alive and destroy it from the main loop once the open has returned.
       m_retiredActivePanel = std::move(it->second);
       m_panels.erase(it);
-      DeferredCall::callLater([this] {
+      DeferredCall::callLaterIfAlive(m_alive, [this] {
         if (m_activePanel != nullptr && m_activePanel == m_retiredActivePanel.get()) {
           ++m_destroyGeneration;
           destroyPanel();
@@ -1713,7 +1713,7 @@ void PanelManager::closePanel(bool animateClose) {
             m_attachedRevealAnimId, m_attachedRevealProgress, 0.0F, Style::spring(Tokens::springClose),
             [this](float v) { applyAttachedReveal(v); },
             [this, gen] {
-              DeferredCall::callLater([this, gen] {
+              DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
                 if (m_destroyGeneration == gen) {
                   destroyPanel();
                 }
@@ -1727,7 +1727,7 @@ void PanelManager::closePanel(bool animateClose) {
       fadeSceneRoot(
           0.0F,
           [this, gen] {
-            DeferredCall::callLater([this, gen] {
+            DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
               if (m_destroyGeneration == gen) {
                 destroyPanel();
               }
@@ -1744,13 +1744,13 @@ void PanelManager::closePanel(bool animateClose) {
 void PanelManager::endInitialization(bool ok) {
   auto ended = m_lifecycle.apply(panel_lifecycle::InitEnded{ok});
   if (auto* open = std::get_if<PendingOpen>(&ended.replay)) {
-    DeferredCall::callLater([this, open = std::move(*open)]() mutable {
+    DeferredCall::callLaterIfAlive(m_alive, [this, open = std::move(*open)]() mutable {
       open.request.context = open.context;
       open.request.sourceBarName = open.sourceBarName;
       openPanel(open.panelId, open.request);
     });
   } else if (const auto* close = std::get_if<panel_lifecycle::CloseRequest>(&ended.replay)) {
-    DeferredCall::callLater([this, animate = close->animate] { closePanel(animate); });
+    DeferredCall::callLaterIfAlive(m_alive, [this, animate = close->animate] { closePanel(animate); });
   }
 }
 
@@ -2510,7 +2510,7 @@ bool PanelManager::startAttachedCompositorClose(std::uint64_t gen) {
   m_dsk->set(Property::Clip, attachedRevealClip(0.0));
   m_dsk->animate(Property::Translate, Curve::SpringClose, attachedRevealShift(travel));
   m_dsk->animate(Property::Clip, Curve::SpringClose, attachedRevealClip(travel), [this, gen](DskSurfaceClient::EndReason) {
-    DeferredCall::callLater([this, gen] {
+    DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
       if (m_destroyGeneration == gen) {
         destroyPanel();
       }
@@ -3095,7 +3095,7 @@ bool PanelManager::startPiecesClose(std::uint64_t gen) {
   m_animations.animateSpring(
       1.0F, 0.0F, Style::spring(Tokens::springClose), [](float) {},
       [this, gen] {
-        DeferredCall::callLater([this, gen] {
+        DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
           if (m_destroyGeneration == gen) {
             destroyPanel();
           }
@@ -3340,7 +3340,7 @@ bool PanelManager::startDetachedScaleClose(std::uint64_t gen) {
         }
       },
       [this, gen] {
-        DeferredCall::callLater([this, gen] {
+        DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
           if (m_destroyGeneration == gen) {
             destroyPanel();
           }
@@ -3651,7 +3651,7 @@ bool PanelManager::startDetachedMorphClose(std::uint64_t gen) {
   m_dsk->animate(
       Property::Clip, Curve::SpringClose, *m_dsk->mappedClip(),
       [this, gen](DskSurfaceClient::EndReason) {
-        DeferredCall::callLater([this, gen] {
+        DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
           if (m_destroyGeneration == gen) {
             destroyPanel();
           }

@@ -367,7 +367,7 @@ void WallpaperWindow::onKeyboardEvent(const KeyboardEvent& event) {
     return;
   }
   if (event.pressed && (event.modifiers & KeyMod::Ctrl) != 0 && (event.sym == XKB_KEY_w || event.sym == XKB_KEY_q)) {
-    DeferredCall::callLater([this] { close(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { close(); });
     return;
   }
   if (m_panel->handleGlobalKey(event.sym, event.modifiers, event.pressed, event.preedit)) {
@@ -375,7 +375,7 @@ void WallpaperWindow::onKeyboardEvent(const KeyboardEvent& event) {
     return;
   }
   if (event.pressed && !event.preedit && event.sym == XKB_KEY_Escape) {
-    DeferredCall::callLater([this] { close(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { close(); });
     return;
   }
   m_inputDispatcher.keyEvent(event.sym, event.utf32, event.modifiers, event.pressed, event.preedit);

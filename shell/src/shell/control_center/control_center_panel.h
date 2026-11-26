@@ -208,4 +208,5 @@ private:
   TabId m_detailExitFrom = TabId::Quick;
   bool beginDetailExit(TabId from);
   void finishDetailExit(const Node* tile);
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

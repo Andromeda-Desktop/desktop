@@ -506,7 +506,7 @@ void SettingsWindow::open(std::string context) {
     DeferredCall::callLater(refocus);
     // E2E hook: a second settings-open shows a modal, since headless tests have no pointer to reach the menus.
     if (const char* modal = (std::getenv("ANDROMEDA_SETTINGS_TEST_MODAL") ? std::getenv("ANDROMEDA_SETTINGS_TEST_MODAL") : std::getenv("NOCTALIA_SETTINGS_TEST_MODAL")); modal != nullptr && !m_modalHost.isOpen()) {
-      DeferredCall::callLater([this, kind = std::string(modal)] {
+      DeferredCall::callLaterIfAlive(m_aliveGuard, [this, kind = std::string(modal)] {
         if (kind == "export") {
           openConfigExportDialog();
         } else if (kind == "file") {
@@ -667,7 +667,7 @@ void SettingsWindow::closeForWidgetEditor() {
     return;
   }
   m_reopenAfterWidgetEditorSection = m_selectedSection;
-  DeferredCall::callLater([this] { close(); });
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this] { close(); });
 }
 
 void SettingsWindow::reopenAfterWidgetEditor() {
@@ -996,7 +996,7 @@ void SettingsWindow::scheduleDeferredRebuild() {
     return;
   }
   m_deferredRebuildQueued = true;
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this] {
     m_deferredRebuildQueued = false;
     const bool sceneRebuild = m_deferredSceneRebuild;
     const bool refreshRegistry = m_deferredRefreshRegistry;

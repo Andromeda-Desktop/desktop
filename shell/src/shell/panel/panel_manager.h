@@ -535,4 +535,5 @@ private:
   std::unique_ptr<SelectDropdownPopup> m_selectPopup;
   std::unique_ptr<ContextMenuPopup> m_panelMenu;
   std::uint64_t m_destroyGeneration = 0; // invalidates stale deferred destroyPanel calls
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

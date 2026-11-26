@@ -90,7 +90,7 @@ void ToastOverlay::startHide() {
     if (reason != DskSurfaceClient::EndReason::Finished) {
       return;
     }
-    DeferredCall::callLater([this] {
+    DeferredCall::callLaterIfAlive(m_alive, [this] {
       if (m_phase == Phase::Hiding) {
         destroySurface();
       }

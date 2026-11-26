@@ -76,4 +76,5 @@ private:
   bool m_pointerInside = false;
   bool m_glass = false;
   bool m_rebuildRequested = false;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

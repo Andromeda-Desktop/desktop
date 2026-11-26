@@ -120,4 +120,5 @@ private:
   // Rejects what windowSwitcherModeAllowed rejects.
   bool setMode(Mode next);
   Mode m_mode = Mode::Hidden;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

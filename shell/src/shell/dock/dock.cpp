@@ -827,7 +827,7 @@ void Dock::scheduleSmartAutoHideReevaluation() {
     return;
   }
   m_smartAutoHideReevalQueued = true;
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     m_smartAutoHideReevalQueued = false;
     reevaluateSmartAutoHide();
   });

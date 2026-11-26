@@ -50,7 +50,7 @@ void GreeterSync::sync(bool quiet) {
   const std::uint64_t generation = m_generation + 1;
 
   const auto complete = [this, generation, quiet](bool success) {
-    DeferredCall::callLater([this, generation, quiet, success] {
+    DeferredCall::callLaterIfAlive(m_alive, [this, generation, quiet, success] {
       if (generation != m_generation) {
         return;
       }
@@ -129,7 +129,7 @@ void GreeterSync::onLaunched(std::uint64_t generation, bool quiet, greeter::Gree
     if (generation != m_generation) {
       return;
     }
-    DeferredCall::callLater([this, generation, inSessionPolkit, legacySync] {
+    DeferredCall::callLaterIfAlive(m_alive, [this, generation, inSessionPolkit, legacySync] {
       if (generation != m_generation) {
         return;
       }

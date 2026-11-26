@@ -153,4 +153,5 @@ private:
   std::optional<bool> m_runtimeEnabledOverride;
   bool m_lastConfiguredEnabled = true;
   std::vector<std::unique_ptr<Instance>> m_instances;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

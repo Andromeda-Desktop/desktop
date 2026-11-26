@@ -375,7 +375,7 @@ namespace {
 
     // The session hooks run before LockScreen destroys its surfaces, so the release waits for the next loop turn.
     void releaseWhenIdle() {
-      DeferredCall::callLater([this] {
+      DeferredCall::callLaterIfAlive(m_alive, [this] {
         if (m_lock.isActive()) {
           return;
         }
@@ -578,6 +578,7 @@ namespace {
         .prepareLockForSleep = [this] { m_lock.prepareForSleep(); },
         .sleepReady = [this] { m_wayland.sendSleepReady(); },
     }};
+    std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   };
 
 } // namespace

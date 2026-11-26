@@ -672,7 +672,7 @@ void ConfigService::setNotificationManager(NotificationManager* manager) {
   if (m_notificationManager != nullptr && !m_pendingError.empty()) {
     ConfigProblem pendingError = std::move(m_pendingError);
     m_pendingError = {};
-    DeferredCall::callLater([this, pendingError = std::move(pendingError)] mutable {
+    DeferredCall::callLaterIfAlive(m_alive, [this, pendingError = std::move(pendingError)] mutable {
       if (m_notificationManager == nullptr) {
         m_pendingError = std::move(pendingError);
         return;
@@ -681,7 +681,7 @@ void ConfigService::setNotificationManager(NotificationManager* manager) {
     });
   }
   if (m_notificationManager != nullptr && m_legacyReminderPending) {
-    DeferredCall::callLater([this] { notifyLegacyConfigIssues(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { notifyLegacyConfigIssues(); });
   }
 }
 
