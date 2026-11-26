@@ -1030,8 +1030,7 @@ void WorkspacesWidget::onWorkspaceSlide() {
   if (following) {
     m_slideFollow->slide = std::move(*slide);
   } else {
-    const double timeMs = slide->timeMs;
-    m_slideFollow = SlideFollow{.slide = std::move(*slide), .timeMs = timeMs};
+    m_slideFollow = SlideFollow{.slide = std::move(*slide), .trailStart = m_lens.start(), .trailEnd = m_lens.end()};
   }
   if (!applySlide() && following) {
     // The slide left the workspaces this bar shows: the dots and capsule travel back on their own springs.
@@ -1096,46 +1095,48 @@ bool WorkspacesWidget::applySlide() {
   const std::optional<std::size_t> to = indexOf(follow.slide.to);
   if (!m_islandDots || isMinimal() || !from.has_value() || !to.has_value()) {
     m_slideFollow.reset();
-    cancelStretchDecay();
+    cancelTrail();
     return false;
   }
   cancelAnimation();
   follow.span = layoutSlide(m_items, *from, *to, follow.slide.progress, m_gap);
-  // P1 stretch: the trailing edge lags by the trail spring's steady-state lag (2 zeta / omega) at the capsule's
-  // speed, at most one gap; the leading edge stays on the compositor's position. Reduced motion has no stretch.
-  const double dt = (follow.slide.timeMs - follow.timeMs) / 1000.0;
-  if (dt > 0.0) {
-    // A jump fades instead of travelling, so it has no speed to stretch by.
-    follow.velocity = follow.span.opacity < 1.0F ? 0.0F : static_cast<float>((follow.span.start - follow.lensStart) / dt);
-  }
-  follow.lensStart = follow.span.start;
-  follow.timeMs = follow.slide.timeMs;
-  const float trailLag = 2.0F * Tokens::springTrail.damping / std::sqrt(Tokens::springTrail.stiffness);
-  const float stretch =
-      MotionService::instance().reduced() ? 0.0F : std::min(m_gap, std::abs(follow.velocity) * trailLag);
-  if (dt > 0.0) {
-    follow.stretch = follow.velocity > 0.0F ? stretch : -stretch;
-  }
   applyItemLayouts();
   updateContainerSize();
-  placeSlideLens();
-  // Lines stop while the fingers rest: the stretch then relaxes on the trail spring until the next line. A repeat of
-  // the same frame (dt == 0) keeps the stretch and its running decay.
-  if (dt > 0.0) {
-    cancelStretchDecay();
-  }
-  if (dt > 0.0 && follow.stretch != 0.0F && m_animations != nullptr) {
-    m_stretchDecayId = m_animations->drive(
-        0, follow.stretch, 0.0F, Style::spring(Tokens::springTrail),
+  // A jump fades instead of travelling, so its edges have nothing to trail.
+  if (follow.span.opacity < 1.0F || m_animations == nullptr) {
+    cancelTrail();
+    follow.trailStart = follow.span.start;
+    follow.trailEnd = follow.span.end;
+  } else {
+    const auto spring = Style::spring(Tokens::springTrail);
+    m_trailStartId = m_animations->drive(
+        m_trailStartId, follow.trailStart, follow.span.start, spring,
         [this](float v) {
           if (m_slideFollow.has_value()) {
-            m_slideFollow->stretch = v;
+            m_slideFollow->trailStart = v;
             placeSlideLens();
           }
         },
-        [this] { m_stretchDecayId = 0; }, this, 0.0F, Unit::Px
+        [this] { m_trailStartId = 0; }, this, 0.0F, Unit::Px, true
     );
+    m_trailEndId = m_animations->drive(
+        m_trailEndId, follow.trailEnd, follow.span.end, spring,
+        [this](float v) {
+          if (m_slideFollow.has_value()) {
+            m_slideFollow->trailEnd = v;
+            placeSlideLens();
+          }
+        },
+        [this] { m_trailEndId = 0; }, this, 0.0F, Unit::Px, true
+    );
+    if (m_trailStartId == 0) {
+      follow.trailStart = follow.span.start;
+    }
+    if (m_trailEndId == 0) {
+      follow.trailEnd = follow.span.end;
+    }
   }
+  placeSlideLens();
   if (root() != nullptr) {
     root()->markPaintDirty();
   }
@@ -1144,21 +1145,27 @@ bool WorkspacesWidget::applySlide() {
 }
 
 void WorkspacesWidget::placeSlideLens() {
+  // The capsule always covers the compositor's span; the edge behind the motion trails it by at most one gap, so it
+  // never covers the dot it left (P1).
   const SlideFollow& follow = *m_slideFollow;
-  m_lens.follow(
-      follow.span.start - std::max(follow.stretch, 0.0F), follow.span.end + std::max(-follow.stretch, 0.0F), 0.0F,
-      m_indicatorHeight, m_indicatorHeight * 0.5F, follow.span.opacity
-  );
+  const float start = std::max(std::min(follow.span.start, follow.trailStart), follow.span.start - m_gap);
+  const float end = std::min(std::max(follow.span.end, follow.trailEnd), follow.span.end + m_gap);
+  m_lens.follow(start, end, 0.0F, m_indicatorHeight, m_indicatorHeight * 0.5F, follow.span.opacity);
   if (root() != nullptr) {
     root()->markPaintDirty();
   }
 }
 
-void WorkspacesWidget::cancelStretchDecay() {
-  if (m_stretchDecayId != 0 && m_animations != nullptr) {
-    m_animations->cancel(m_stretchDecayId);
+void WorkspacesWidget::cancelTrail() {
+  if (m_animations != nullptr) {
+    for (const AnimationManager::Id id : {m_trailStartId, m_trailEndId}) {
+      if (id != 0) {
+        m_animations->cancel(id);
+      }
+    }
   }
-  m_stretchDecayId = 0;
+  m_trailStartId = 0;
+  m_trailEndId = 0;
 }
 
 void WorkspacesWidget::endSlide() {
@@ -1166,7 +1173,7 @@ void WorkspacesWidget::endSlide() {
     return;
   }
   m_slideFollow.reset();
-  cancelStretchDecay();
+  cancelTrail();
   computeTargets();
   for (auto& item : m_items) {
     item.currentWidth = item.targetWidth;

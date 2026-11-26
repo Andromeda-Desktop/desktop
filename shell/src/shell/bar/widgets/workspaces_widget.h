@@ -85,7 +85,7 @@ private:
   // False when this bar cannot show the slide; the follow state is then dropped.
   bool applySlide();
   void placeSlideLens();
-  void cancelStretchDecay();
+  void cancelTrail();
   void endSlide();
   void applyItemLayout(Item& item);
   void applyItemLayouts();
@@ -172,16 +172,13 @@ private:
   layoutSlide(std::vector<Item>& items, std::size_t from, std::size_t to, double progress, float gap);
   static void flowItems(std::vector<Item>& items, float gap);
 
-  // The slide the capsule follows, with the capsule's last start edge, its speed (px/s) and the compositor time of
-  // the frame it was drawn for. `span` is the capsule without stretch; `stretch` (px) widens its start edge when
-  // positive and its end edge when negative.
+  // The slide the capsule follows. `span` is the capsule without stretch; `trailStart` and `trailEnd` follow its two
+  // edges on the trail spring, so the edge behind the motion lags and widens the capsule (P1).
   struct SlideFollow {
     WorkspaceSlide slide;
-    float lensStart = 0.0F;
-    float velocity = 0.0F;
-    double timeMs = 0.0;
     LensSpan span;
-    float stretch = 0.0F;
+    float trailStart = 0.0F;
+    float trailEnd = 0.0F;
   };
 
   struct ItemSnapshot {
@@ -243,7 +240,8 @@ private:
   bool m_isVertical = false;
 
   AnimationManager::Id m_animId = 0;
-  AnimationManager::Id m_stretchDecayId = 0;
+  AnimationManager::Id m_trailStartId = 0;
+  AnimationManager::Id m_trailEndId = 0;
   ColorSpec m_focusedColor = colorSpecFromRole(ColorRole::Accent);
   ColorSpec m_occupiedColor = colorSpecFromRole(ColorRole::Accent);
   ColorSpec m_emptyColor = colorSpecFromRole(ColorRole::Accent);
