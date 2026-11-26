@@ -87,11 +87,14 @@ bool LauncherPanel::openAppActionsMenu(std::size_t index, float anchorX, float a
       m_config != nullptr && shell::dock::pinned_apps::containsEntry(m_config->config().shell.launcher.pinned, *match);
   const bool canPin = m_config != nullptr && !launcherPinned;
   const bool canUnpin = m_config != nullptr && launcherPinned;
+  const bool dockPinned =
+      m_config != nullptr && shell::dock::pinned_apps::containsEntry(m_config->config().dock.pinned, *match);
 
   constexpr std::int32_t kActionOpen = -1;
   constexpr std::int32_t kActionPin = -2;
   constexpr std::int32_t kActionUnpin = -3;
   constexpr std::int32_t kActionAddToDesktop = -4;
+  constexpr std::int32_t kActionDockPin = -5;
 
   std::vector<ContextMenuControlEntry> entries;
   entries.reserve(actionsCopy.size() + 2);
@@ -138,6 +141,18 @@ bool LauncherPanel::openAppActionsMenu(std::size_t index, float anchorX, float a
     );
   }
 
+  if (m_config != nullptr && !match->id.empty()) {
+    entries.push_back(
+        ContextMenuControlEntry{
+            .id = kActionDockPin,
+            .label = i18n::tr(dockPinned ? "launcher.context-menu.unpin-from-dock" : "launcher.context-menu.pin-to-dock"),
+            .enabled = true,
+            .separator = false,
+            .hasSubmenu = false,
+        }
+    );
+  }
+
   if (m_addToDesktop && m_config != nullptr && m_config->config().desktopIcons.enabled) {
     entries.push_back(ContextMenuControlEntry{.id = kActionAddToDesktop, .label = i18n::tr("launcher.context-menu.add-to-desktop")});
   }
@@ -157,8 +172,8 @@ bool LauncherPanel::openAppActionsMenu(std::size_t index, float anchorX, float a
     PanelManager::instance().endAttachedPopup(parentSurface);
   });
 
-  m_actionsMenu->setOnActivate([this, base, actionsCopy = std::move(actionsCopy),
-                                entryForPin = *match](const ContextMenuControlEntry& entry) {
+  m_actionsMenu->setOnActivate([this, base, actionsCopy = std::move(actionsCopy), entryForPin = *match,
+                                dockPinned](const ContextMenuControlEntry& entry) {
     LauncherResult result = base;
     if (entry.id == kActionAddToDesktop) {
       if (m_addToDesktop) {
@@ -166,27 +181,24 @@ bool LauncherPanel::openAppActionsMenu(std::size_t index, float anchorX, float a
       }
       return;
     }
-    if (entry.id == kActionPin) {
-      if (m_config == nullptr
-          || entryForPin.id.empty()
-          || shell::dock::pinned_apps::containsEntry(m_config->config().shell.launcher.pinned, entryForPin)) {
-        return;
-      }
-      std::vector<std::string> pinned = m_config->config().shell.launcher.pinned;
-      pinned.push_back(entryForPin.id);
-      if (m_config->setOverride({"shell", "launcher", "pinned"}, std::move(pinned))) {
-        reapplyCurrentQuery();
-      }
-      return;
-    }
-    if (entry.id == kActionUnpin) {
+    if (entry.id == kActionPin || entry.id == kActionUnpin) {
       if (m_config == nullptr) {
         return;
       }
       std::vector<std::string> pinned = m_config->config().shell.launcher.pinned;
-      shell::dock::pinned_apps::removeEntry(pinned, entryForPin);
-      if (m_config->setOverride({"shell", "launcher", "pinned"}, std::move(pinned))) {
+      if (shell::dock::pinned_apps::setEntryPinned(pinned, entryForPin, entry.id == kActionPin)
+          && m_config->setOverride({"shell", "launcher", "pinned"}, std::move(pinned))) {
         reapplyCurrentQuery();
+      }
+      return;
+    }
+    if (entry.id == kActionDockPin) {
+      if (m_config == nullptr) {
+        return;
+      }
+      std::vector<std::string> pinned = m_config->config().dock.pinned;
+      if (shell::dock::pinned_apps::setEntryPinned(pinned, entryForPin, !dockPinned)) {
+        (void)m_config->setOverride({"dock", "pinned"}, std::move(pinned));
       }
       return;
     }

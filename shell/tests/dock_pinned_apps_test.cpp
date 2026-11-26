@@ -2,7 +2,11 @@
 #include "system/internal_app_metadata.h"
 #include "tests/test_check.h"
 
+#include <algorithm>
+#include <array>
+#include <map>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -60,6 +64,42 @@ int main() {
 
   shell::dock::pinned_apps::removeEntry(pinned, chat);
   TEST_CHECK((pinned == std::vector<std::string>{"calendar", "samplechat"}));
+
+  // Two menus (launcher, dock) read the pinned state when they open and act later on the live list.
+  // Invariants: no duplicate ids, the last activated intent per app wins, and other apps' pins survive.
+  std::vector<DesktopEntry> apps;
+  for (const char* id : {"a.desktop", "b.desktop", "c.desktop"}) {
+    DesktopEntry entry;
+    entry.id = id;
+    apps.push_back(entry);
+  }
+  std::mt19937 rng(7);
+  for (int run = 0; run < 200; ++run) {
+    std::vector<std::string> live = {"other.desktop"};
+    std::map<std::string, bool> expected;
+    struct Menu {
+      std::size_t app = 0;
+      bool pin = false;
+      bool open = false;
+    };
+    std::array<Menu, 2> menus{};
+    for (int step = 0; step < 40; ++step) {
+      Menu& menu = menus[rng() % menus.size()];
+      if (!menu.open || rng() % 3 == 0) {
+        menu.app = rng() % apps.size();
+        menu.pin = !shell::dock::pinned_apps::containsEntry(live, apps[menu.app]);
+        menu.open = true;
+        continue;
+      }
+      (void)shell::dock::pinned_apps::setEntryPinned(live, apps[menu.app], menu.pin);
+      expected[apps[menu.app].id] = menu.pin;
+      menu.open = false;
+      for (const auto& [id, pin] : expected) {
+        TEST_CHECK(std::ranges::count(live, id) == (pin ? 1 : 0));
+      }
+      TEST_CHECK(std::ranges::count(live, "other.desktop") == 1);
+    }
+  }
 
   return 0;
 }

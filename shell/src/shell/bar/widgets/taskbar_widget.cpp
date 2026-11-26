@@ -841,13 +841,8 @@ void TaskbarWidget::setEntryPinned(const DesktopEntry& entry, bool pinned) {
     return;
   }
   std::vector<std::string> pinnedList = pinnedConfigIds();
-  if (pinned) {
-    if (shell::dock::pinned_apps::containsEntry(pinnedList, entry)) {
-      return;
-    }
-    pinnedList.push_back(entry.id);
-  } else {
-    shell::dock::pinned_apps::removeEntry(pinnedList, entry);
+  if (!shell::dock::pinned_apps::setEntryPinned(pinnedList, entry, pinned)) {
+    return;
   }
 
   ConfigService* config = &m_configService;

@@ -36,6 +36,18 @@ namespace shell::dock::pinned_apps {
     std::erase_if(pinned, [&](const std::string& pinnedId) { return matchesEntry(entry, pinnedId); });
   }
 
+  bool setEntryPinned(std::vector<std::string>& pinned, const DesktopEntry& entry, bool pin) {
+    if (entry.id.empty() || containsEntry(pinned, entry) == pin) {
+      return false;
+    }
+    if (pin) {
+      pinned.push_back(entry.id);
+    } else {
+      removeEntry(pinned, entry);
+    }
+    return true;
+  }
+
   std::vector<DesktopEntry> resolveEntries(const std::vector<std::string>& pinned) {
     std::vector<DesktopEntry> resolved;
     resolved.reserve(pinned.size());

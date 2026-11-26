@@ -341,6 +341,17 @@ namespace {
     return {"dock", "pinned"};
   }
 
+  [[nodiscard]] std::vector<std::string> dockPinnedAt(const DockConfig& cfg, const std::vector<std::string>& path) {
+    if (path.size() == 4) {
+      for (const DockMonitorOverride& override : cfg.monitorOverrides) {
+        if (override.tableName == path[2] && override.pinned.has_value()) {
+          return *override.pinned;
+        }
+      }
+    }
+    return cfg.pinned;
+  }
+
 } // namespace
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -1496,7 +1507,6 @@ void Dock::openItemMenu(shell::dock::DockInstance& instance, const shell::dock::
   const bool entryTerminal = action.entry.terminal;
   const DesktopEntry entryForPin = action.entry;
   const auto pinnedPath = dockPinnedOverridePath(instance);
-  const auto configuredPinned = instance.config.pinned;
 
   shell::dock::DockMenuCallbacks callbacks{
       .closeWindow =
@@ -1519,20 +1529,14 @@ void Dock::openItemMenu(shell::dock::DockInstance& instance, const shell::dock::
             );
           },
       .setEntryPinned =
-          [this, entryForPin, pinnedPath, configuredPinned](bool pinned) {
+          [this, entryForPin, pinnedPath](bool pinned) {
             if (m_config == nullptr) {
               return;
             }
-            std::vector<std::string> pinnedList = configuredPinned;
-            if (pinned) {
-              if (shell::dock::pinned_apps::containsEntry(pinnedList, entryForPin)) {
-                return;
-              }
-              pinnedList.push_back(entryForPin.id);
-            } else {
-              shell::dock::pinned_apps::removeEntry(pinnedList, entryForPin);
+            std::vector<std::string> pinnedList = dockPinnedAt(m_config->config().dock, pinnedPath);
+            if (shell::dock::pinned_apps::setEntryPinned(pinnedList, entryForPin, pinned)) {
+              (void)m_config->setOverride(pinnedPath, std::move(pinnedList));
             }
-            (void)m_config->setOverride(pinnedPath, std::move(pinnedList));
           },
       .closeMenu = [this] { closeItemMenu(); },
   };
