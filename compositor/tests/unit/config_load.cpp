@@ -3,6 +3,7 @@
 #include "config/overrides.h"
 #include "config/resolve.h"
 #include "config/store.h"
+#include "protocols/async_file_writer.h"
 
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <algorithm>
@@ -10,12 +11,14 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <future>
 #include <fstream>
 #include <linux/input-event-codes.h>
 #include <optional>
 #include <regex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unistd.h>
 #include <utility>
 #include <variant>
@@ -904,6 +907,38 @@ ANDROMEDA_TEST(settingsKeybindReplacesConfigChordSpelledDifferently) {
   CHECK(spawns("new-terminal"));
   CHECK(!spawns("old-terminal"));
   CHECK(!containsDiagnostic(store, "duplicate keybind"));
+}
+
+// A Settings change saved while no config.toml exists applies at the reload that follows the save, while the write
+// still runs.
+ANDROMEDA_TEST(aQueuedSettingsWriteAppliesWithoutAConfigFile) {
+  const TempConfig file;
+  const auto settingsPath = andromeda::managedSettingsFile(file.path());
+  std::filesystem::remove(settingsPath);
+  ConfigStore& store = andromeda::configStore();
+  store.setRootPath(file.path(), true);
+
+  std::promise<void> release;
+  std::shared_future<void> released = release.get_future().share();
+  andromeda::writeFileAsync(
+      settingsPath, "[keybinds]\n'Mod+t' = 'spawn:queued-terminal'\n",
+      [released](const std::filesystem::path& path, const std::string& text) {
+        released.wait();
+        std::ofstream(path) << text;
+        return true;
+      }
+  );
+  (void)store.reload();
+  release.set_value();
+  for (int i = 0; i < 500 && andromeda::pendingFileText(settingsPath).has_value(); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  std::filesystem::remove(settingsPath);
+
+  CHECK(std::ranges::any_of(store.config().keybinds, [](const auto& bind) {
+    const auto* spawn = andromeda::payloadIf<andromeda::SpawnArg>(bind);
+    return spawn != nullptr && spawn->command == "queued-terminal";
+  }));
 }
 
 ANDROMEDA_TEST(keybindTableLoadsAllowWhenInhibited) {

@@ -4,6 +4,7 @@
 #include "config/keybind_parse.h"
 #include "config/managed_settings.h"
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "andromeda_data_dir.h"
 #include "protocols/xdg_dirs.h"
 
@@ -169,7 +170,8 @@ namespace andromeda {
       configStore().addWatchPath(settingsFile);
       const ConfigPathProbe root = probeConfigPath(rootPath);
       std::error_code settingsError;
-      if (root.kind == ConfigPathKind::Missing && !std::filesystem::exists(settingsFile, settingsError)) {
+      if (root.kind == ConfigPathKind::Missing && !std::filesystem::exists(settingsFile, settingsError) &&
+          !pendingFileText(settingsFile)) {
         if (configStore().overrides().empty()) {
           return ConfigParseOutcome::Missing;
         }
