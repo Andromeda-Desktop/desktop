@@ -278,7 +278,7 @@ private:
   // Received shares by the id of the notification that offers them, until it closes.
   std::unordered_map<std::uint32_t, ReceivedShare> m_received;
   std::unordered_map<std::string, Transfer> m_transfers;
-  std::uint64_t m_progressSerial = 0;
+  std::uint64_t m_progressVersion = 0;
   ChangeCallback m_activityCallback;
   std::unordered_map<std::uint32_t, TransferAction> m_transferActions;
   std::vector<std::string> m_autoAccept;

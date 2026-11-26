@@ -525,7 +525,7 @@ void ClipboardService::setHistoryRetentionEnabled(bool enabled) {
     m_historyBytes = m_history.empty() ? 0 : m_history.front().byteSize;
   }
 
-  ++m_changeSerial;
+  ++m_changeVersion;
   notifyChanged();
 }
 
@@ -550,7 +550,7 @@ void ClipboardService::setMaxHistoryEntries(std::size_t maxEntries) {
     return;
   }
   trimHistoryToBudget();
-  ++m_changeSerial;
+  ++m_changeVersion;
   notifyChanged();
 }
 
@@ -670,7 +670,7 @@ bool ClipboardService::isAvailable() const noexcept { return m_device != nullptr
 
 const std::deque<ClipboardEntry>& ClipboardService::history() const noexcept { return m_history; }
 
-std::uint64_t ClipboardService::changeSerial() const noexcept { return m_changeSerial; }
+std::uint64_t ClipboardService::changeSerial() const noexcept { return m_changeVersion; }
 
 ClipboardPersistenceState ClipboardService::persistenceState() const noexcept { return m_persistenceState; }
 
@@ -727,7 +727,7 @@ void ClipboardService::clearEncryptedPersistenceForRecovery(std::function<void(b
     }
     m_history.clear();
     m_historyBytes = 0;
-    ++m_changeSerial;
+    ++m_changeVersion;
     notifyChanged();
     setPersistenceState(ClipboardPersistenceState::Opening, m_persistenceMigrationPending);
     done(true);
@@ -804,7 +804,7 @@ void ClipboardService::applyOpen(OpenResult result) {
   if (m_historyRetention && !result.entries.empty()) {
     mergePersistedHistory(std::move(result.entries));
     trimHistoryToBudget();
-    ++m_changeSerial;
+    ++m_changeVersion;
     notifyChanged();
   }
   // Captures made while Opening are not on disk yet.
@@ -1243,7 +1243,7 @@ bool ClipboardService::promoteEntry(std::size_t index) {
   entry.capturedAt = std::chrono::system_clock::now();
   entry.timestamp = std::chrono::steady_clock::now();
   m_history.insert(m_history.begin() + static_cast<std::ptrdiff_t>(target), std::move(entry));
-  ++m_changeSerial;
+  ++m_changeVersion;
   persistHistory();
   notifyChanged();
   return true;
@@ -1271,7 +1271,7 @@ bool ClipboardService::setEntryPinned(std::size_t index, bool pinned) {
     m_history.insert(m_history.begin() + static_cast<std::ptrdiff_t>(target), std::move(entry));
   }
 
-  ++m_changeSerial;
+  ++m_changeVersion;
   persistHistory();
   notifyChanged();
   return true;
@@ -1288,7 +1288,7 @@ bool ClipboardService::removeHistoryEntry(std::size_t index) {
   } else {
     m_historyBytes = 0;
   }
-  ++m_changeSerial;
+  ++m_changeVersion;
   persistHistory();
   notifyChanged();
   return true;
@@ -1310,7 +1310,7 @@ void ClipboardService::clearUnpinnedHistory() {
   } else {
     m_historyBytes = 0;
   }
-  ++m_changeSerial;
+  ++m_changeVersion;
   persistHistory();
   notifyChanged();
 }
@@ -1321,7 +1321,7 @@ void ClipboardService::clearHistory() {
   }
   m_history.clear();
   m_historyBytes = 0;
-  ++m_changeSerial;
+  ++m_changeVersion;
   persistHistory();
   notifyChanged();
 }
@@ -1728,7 +1728,7 @@ void ClipboardService::finishRead(bool discard) {
   }
   // Paste and scripts follow the live text, so a selection history declines to
   // keep still has to be reported.
-  const std::uint64_t serialBefore = m_changeSerial;
+  const std::uint64_t serialBefore = m_changeVersion;
 
   // A selection too large to hold is simply not backed up; the reset in
   // handleSelection already dropped the previous one, so nothing stale can be
@@ -1771,7 +1771,7 @@ void ClipboardService::finishRead(bool discard) {
   entry.textPreview = previewText(mimeType, entry.data.span());
 
   addToHistory(std::move(entry));
-  if (m_changeSerial == serialBefore) {
+  if (m_changeVersion == serialBefore) {
     notifyChanged();
   }
 }
@@ -1817,7 +1817,7 @@ void ClipboardService::addToHistory(ClipboardEntry entry) {
     m_history.clear();
     m_historyBytes = entry.byteSize;
     m_history.push_back(std::move(entry));
-    ++m_changeSerial;
+    ++m_changeVersion;
     notifyChanged();
     return;
   }
@@ -1860,7 +1860,7 @@ void ClipboardService::addToHistory(ClipboardEntry entry) {
   m_historyBytes += entryBytes;
   trimHistoryToBudget();
 
-  ++m_changeSerial;
+  ++m_changeVersion;
   // Trimming can take the entry that was just inserted straight back out, when
   // that entry alone does not fit the budget, so the slot cannot be indexed
   // unconditionally afterwards.
@@ -1915,7 +1915,7 @@ void ClipboardService::migrateLegacyHistory(std::deque<ClipboardEntry> entries) 
   if (m_historyRetention) {
     mergePersistedHistory(std::move(entries));
     trimHistoryToBudget();
-    ++m_changeSerial;
+    ++m_changeVersion;
     notifyChanged();
     queued = persistHistory();
   } else {

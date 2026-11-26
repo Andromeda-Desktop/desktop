@@ -182,7 +182,7 @@ namespace ui {
     const Node* m_pointerOwner = nullptr;
     // Source of per-graph coalescing stream keys. Monotonic so a rebuilt or
     // rewired graph never inherits a stream that still has an event queued.
-    std::uint64_t m_pointerStreamSeq = 0;
+    std::uint64_t m_nextPointerStreamId = 0;
     std::unique_ptr<DragDropController> m_dragDropController;
     std::vector<Slot> m_rootSlots;
   };

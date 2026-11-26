@@ -83,7 +83,7 @@ void InhibitPortal::inhibit(
                   })
   ).forInterface(kRequestInterface);
 
-  entry.serial = ++m_nextSerial;
+  entry.serial = ++m_nextEntryId;
   const std::string who = appId.empty() ? std::string("an app") : appId;
   for (const auto& [flag, what] : {std::pair{kFlagIdle, "idle"}, std::pair{kFlagSuspend, "sleep"}}) {
     if ((flags & flag) == 0 || m_logind == nullptr) {

@@ -217,7 +217,7 @@ void NotificationPortal::add(const std::string& appId, const std::string& id, co
   }
   std::string icon = appId;
   if (const auto value = variantOption(n, "icon"); value.has_value()) {
-    if (std::string named = iconFor(*value, ++m_iconSerial, entry.iconFile); !named.empty()) {
+    if (std::string named = iconFor(*value, ++m_nextIconId, entry.iconFile); !named.empty()) {
       icon = std::move(named);
     }
   }

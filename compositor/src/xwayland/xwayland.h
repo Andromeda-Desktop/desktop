@@ -115,7 +115,7 @@ namespace andromeda {
     xcb_connection_t* m_xsettingsConnection = nullptr;
     uint32_t m_xsettingsWindow = 0;
     uint32_t m_xsettingsSettingsAtom = 0;
-    uint32_t m_xsettingsSerial = 0;
+    uint32_t m_xsettingsVersion = 0;
     XsettingsValues m_xsettings;
     wl_event_source* m_focusClearTimer = nullptr;
     // The surface the XWM holds as focused, as wlr_xwayland_surface_activate maintains it.

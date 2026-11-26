@@ -149,7 +149,7 @@ public:
   // Registers audio-related IPC commands (set/raise/lower-volume, mute, set/raise/lower-mic-volume, mute-mic).
   void registerIpc(IpcService& ipc, const ConfigService& config);
 
-  [[nodiscard]] std::uint64_t changeSerial() const noexcept { return m_changeSerial; }
+  [[nodiscard]] std::uint64_t changeSerial() const noexcept { return m_changeVersion; }
 
   // Called from C callbacks in the .cpp - must be public
   struct DeviceRouteData {
@@ -352,7 +352,7 @@ private:
   VolumePreviewCallback m_volumePreviewCallback;
   ChangeCallback m_headphonesUnplugged;
   WirePlumberMixer* m_wpMixer = nullptr;
-  std::uint64_t m_changeSerial = 0;
+  std::uint64_t m_changeVersion = 0;
 
   void emitChanged();
 };

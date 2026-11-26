@@ -48,6 +48,6 @@ private:
   std::unique_ptr<sdbus::IObject> m_object;
   std::map<std::uint32_t, Entry> m_entries;               // by manager id
   std::map<std::pair<std::string, std::string>, std::uint32_t> m_byKey; // (app_id, id) -> manager id
-  std::uint64_t m_iconSerial = 0;
+  std::uint64_t m_nextIconId = 0;
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };

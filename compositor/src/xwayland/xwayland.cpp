@@ -428,7 +428,7 @@ namespace andromeda {
     const xcb_window_t root = screens.data->root;
     m_xsettingsConnection = connection;
     m_xsettingsWindow = xcb_generate_id(connection);
-    m_xsettingsSerial = 0;
+    m_xsettingsVersion = 0;
     xcb_create_window(
         connection, 0, m_xsettingsWindow, root, -1, -1, 1, 1, 0, XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT, 0,
         nullptr
@@ -456,19 +456,19 @@ namespace andromeda {
     }
     const Config::Input::Cursor& cursor = config().input.cursor;
     XsettingsValues values = xsettingsFor(m_outputs->scale(), cursor.theme, cursor.size);
-    if (m_xsettingsSerial != 0 && values == m_xsettings) {
+    if (m_xsettingsVersion != 0 && values == m_xsettings) {
       return;
     }
     m_xsettings = std::move(values);
-    ++m_xsettingsSerial;
-    const std::vector<uint8_t> data = encodeXsettings(m_xsettingsSerial, m_xsettings);
+    ++m_xsettingsVersion;
+    const std::vector<uint8_t> data = encodeXsettings(m_xsettingsVersion, m_xsettings);
     xcb_change_property(
         connection, XCB_PROP_MODE_REPLACE, m_xsettingsWindow, m_xsettingsSettingsAtom, m_xsettingsSettingsAtom, 8,
         static_cast<uint32_t>(data.size()), data.data()
     );
     xcb_flush(connection);
     kLog.debug(
-        "XSETTINGS {}: scale {} unscaled DPI {} Xft/DPI {}", m_xsettingsSerial, m_xsettings.windowScalingFactor,
+        "XSETTINGS {}: scale {} unscaled DPI {} Xft/DPI {}", m_xsettingsVersion, m_xsettings.windowScalingFactor,
         m_xsettings.unscaledDpi, m_xsettings.xftDpi
     );
   }

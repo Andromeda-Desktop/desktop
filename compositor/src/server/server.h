@@ -331,8 +331,8 @@ namespace andromeda {
     // committed its latest configure.
     [[nodiscard]] bool settled() const;
     // Counts configured-state requests: an IPC reply waits for the configured work its request started.
-    void noteConfiguredRequest() { ++m_configuredRequests; }
-    [[nodiscard]] uint64_t configuredRequests() const { return m_configuredRequests; }
+    void noteConfiguredRequest() { ++m_configuredCount; }
+    [[nodiscard]] uint64_t configuredRequests() const { return m_configuredCount; }
     [[nodiscard]] bool configuredWorkPending() const;
     [[nodiscard]] const std::optional<OutputMode>& pendingOutputMode() const { return m_pendingOutputMode; }
     // Whole milliseconds on the clock every animation ticks from, for timers and effect time. It follows the monotonic
@@ -979,7 +979,7 @@ namespace andromeda {
     // Layout mutations emit synchronously. Hold manager publication until a
     // multi-output transaction has reached its final logical state.
     bool m_deferOutputManagerConfig = false;
-    uint64_t m_configuredRequests = 0;
+    uint64_t m_configuredCount = 0;
     std::unique_ptr<OutputManagerApply> m_outputApplyInFlight;
     std::deque<QueuedOutputConfig> m_queuedOutputConfigs;
     // Test IPC: the next output-management commit fails, and the next GPU submit after it stalls this long (ms).

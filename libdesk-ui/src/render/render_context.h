@@ -76,7 +76,7 @@ public:
 
   // Texture/text-generation access for ScaledRenderer views and graphics-lifecycle owners.
   [[nodiscard]] TextureManager& textureManager();
-  [[nodiscard]] std::uint64_t textMetricsGeneration() const noexcept { return m_textMetricsGeneration; }
+  [[nodiscard]] std::uint64_t textMetricsGeneration() const noexcept { return m_textMetricsVersion; }
   [[nodiscard]] float textScale() const noexcept { return m_textScale; }
 
   // Frees every unused GPU cache entry: text and glyph textures here, then each cache connected to
@@ -144,9 +144,9 @@ private:
   AsyncTextureCache* m_asyncTextures = nullptr;
   std::string m_textFontFamily{Tokens::fontFamily}; // the design font; the shell overrides it from its config
   bool m_textBaseDirRtl = false;
-  std::uint64_t m_textMetricsGeneration = 1;
+  std::uint64_t m_textMetricsVersion = 1;
   float m_textScale = 1.0F;
-  std::uint64_t m_gpuResourceGeneration = 0;
+  std::uint64_t m_gpuResourceVersion = 0;
   bool m_glyphTexturesDirty = false;
   // ANDROMEDA_PROFILE frame stats: nodes drawn and culled in the current renderScene.
   std::uint32_t m_statDrawn = 0;

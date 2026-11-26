@@ -74,7 +74,7 @@ private:
   TextInputClient* m_activeClient = nullptr;
   bool m_activeAcceptsKeyboardFocusActivation = false;
   TextInputEdit m_pendingEdit;
-  std::uint32_t m_commitSerial = 0;
+  std::uint32_t m_commitCount = 0;
   // Last state committed since the most recent enable or enter; deduplicates commits.
   std::optional<StateSignature> m_lastCommittedState;
   std::uint32_t m_textInputVersion = 0;

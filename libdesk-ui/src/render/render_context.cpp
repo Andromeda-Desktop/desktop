@@ -321,7 +321,7 @@ void RenderContext::initializeText() {
   m_glyphRenderer.initialize(paths::assetPath("fonts/noctalia-tabler.ttf").string(), nullptr, nullptr);
   m_textRenderer.setFontFamily(m_textFontFamily);
   m_textRenderer.setBaseDirection(m_textBaseDirRtl);
-  ++m_textMetricsGeneration;
+  ++m_textMetricsVersion;
 }
 
 void RenderContext::attachGlLater(std::function<void()> attach) {
@@ -429,14 +429,14 @@ void RenderContext::setTextFontFamily(std::string family) {
   makeCurrentIfGlReady();
   m_textFontFamily = std::move(family);
   m_textRenderer.setFontFamily(m_textFontFamily);
-  ++m_textMetricsGeneration;
+  ++m_textMetricsVersion;
 }
 
 void RenderContext::setTextScale(float scale) {
   makeCurrentIfGlReady();
   m_textRenderer.setTextScale(scale);
   m_textScale = scale;
-  ++m_textMetricsGeneration;
+  ++m_textMetricsVersion;
 }
 
 void RenderContext::setTextBaseDirection(bool rtl) {
@@ -446,12 +446,12 @@ void RenderContext::setTextBaseDirection(bool rtl) {
   makeCurrentIfGlReady();
   m_textBaseDirRtl = rtl;
   m_textRenderer.setBaseDirection(rtl);
-  ++m_textMetricsGeneration;
+  ++m_textMetricsVersion;
 }
 
 void RenderContext::notifyFontConfigChanged() {
   m_textRenderer.notifyFontConfigChanged();
-  ++m_textMetricsGeneration;
+  ++m_textMetricsVersion;
 }
 
 bool RenderContext::renderScene(RenderTarget& target, Node* sceneRoot, const WallpaperMaskDrawParams* wallpaperMask) {
@@ -479,7 +479,7 @@ bool RenderContext::renderScene(RenderTarget& target, Node* sceneRoot, const Wal
       : sceneRoot == nullptr         ? "no-root"
       : maskChanged                  ? "wallpaper-mask"
       : m_glyphTexturesDirty         ? "glyphs"
-      : (m_gpuResourceGeneration != 0 && sceneRoot->gpuResourceGeneration() != m_gpuResourceGeneration) ? "gpu-reset"
+      : (m_gpuResourceVersion != 0 && sceneRoot->gpuResourceGeneration() != m_gpuResourceVersion) ? "gpu-reset"
                                      : nullptr;
   bool full = fullReason != nullptr;
   DamageRegion damage;
@@ -516,9 +516,9 @@ bool RenderContext::renderScene(RenderTarget& target, Node* sceneRoot, const Wal
   target.damageHistory().push(damage);
 
   if (sceneRoot != nullptr
-      && m_gpuResourceGeneration != 0
-      && sceneRoot->gpuResourceGeneration() != m_gpuResourceGeneration) {
-    sceneRoot->invalidateGpuResources(target.renderer(), m_gpuResourceGeneration);
+      && m_gpuResourceVersion != 0
+      && sceneRoot->gpuResourceGeneration() != m_gpuResourceVersion) {
+    sceneRoot->invalidateGpuResources(target.renderer(), m_gpuResourceVersion);
   }
 
   if (m_glyphTexturesDirty) {
@@ -740,7 +740,7 @@ TextureManager& RenderContext::textureManager() {
 }
 
 void RenderContext::invalidateGpuResourcesNextFrame() noexcept {
-  ++m_gpuResourceGeneration;
+  ++m_gpuResourceVersion;
   m_glyphTexturesDirty = true;
 }
 

@@ -79,7 +79,7 @@ namespace ui {
       inputArea->setOnLeave(nullptr);
       return;
     }
-    slot.pointerStreamKey = std::format("graph-pointer:{}", ++m_pointerStreamSeq);
+    slot.pointerStreamKey = std::format("graph-pointer:{}", ++m_nextPointerStreamId);
 
     // Position is normalized to [0,1] over the graph's content area, which fills
     // the whole control (Graph::setSize puts the render node at 0,0, no inset).
@@ -246,7 +246,7 @@ namespace ui {
     // A drag that began under the old callbacks ends under them.
     view.cancelDrag();
     slot.pixelStreamCallbackNames = names;
-    slot.pointerStreamKey = std::format("pixel-stream:{}", ++m_pointerStreamSeq);
+    slot.pointerStreamKey = std::format("pixel-stream:{}", ++m_nextPointerStreamId);
 
     const auto wants = [&names](PixelStreamCallback callback) { return !names[callback].empty(); };
     std::uint32_t buttons = 0;

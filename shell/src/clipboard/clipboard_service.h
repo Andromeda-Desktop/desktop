@@ -355,7 +355,7 @@ private:
 
   std::deque<ClipboardEntry> m_history;
   std::size_t m_historyBytes = 0;
-  std::uint64_t m_changeSerial = 0;
+  std::uint64_t m_changeVersion = 0;
   bool m_historyRetention = true;
   bool m_keepFromClosedApps = true;
   bool m_pendingOrphanAdopt = false;

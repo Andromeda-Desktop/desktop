@@ -144,7 +144,7 @@ void WaylandTextInputService::cleanup() {
   m_activeClient = nullptr;
   m_activeAcceptsKeyboardFocusActivation = false;
   m_pendingEdit = {};
-  m_commitSerial = 0;
+  m_commitCount = 0;
   m_textInputVersion = 0;
   m_enabled = false;
 }
@@ -281,7 +281,7 @@ void WaylandTextInputService::handleDone(std::uint32_t serial) {
 
   if (m_activeClient != nullptr) {
     m_activeClient->textInputApplyEdit(edit);
-    if (serial == m_commitSerial) {
+    if (serial == m_commitCount) {
       commitActiveState(TextInputChangeCause::InputMethod);
     }
   }
@@ -372,7 +372,7 @@ void WaylandTextInputService::commitActiveState(TextInputChangeCause cause) {
 
 void WaylandTextInputService::commitProtocolState() {
   zwp_text_input_v3_commit(m_textInput);
-  ++m_commitSerial;
+  ++m_commitCount;
 }
 
 void WaylandTextInputService::deactivateClient(TextInputClient* client) {

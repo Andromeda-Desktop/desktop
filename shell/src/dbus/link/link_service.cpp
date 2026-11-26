@@ -690,7 +690,7 @@ void LinkService::onProgress(const std::string& transferId, std::uint64_t bytes,
   Transfer& transfer = it->second;
   transfer.bytes = bytes;
   transfer.total = total;
-  transfer.progressSerial = ++m_progressSerial;
+  transfer.progressSerial = ++m_progressVersion;
   closeTransferNotification(transfer.offerNotification);
   if (m_activityCallback) {
     m_activityCallback();

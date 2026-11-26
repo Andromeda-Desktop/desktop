@@ -59,7 +59,7 @@ private:
   SessionBus& m_bus;
   std::unique_ptr<sdbus::IObject> m_object;
   LogindService* m_logind;
-  std::uint64_t m_nextSerial = 0;
+  std::uint64_t m_nextEntryId = 0;
   std::shared_ptr<int> m_aliveToken = std::make_shared<int>(0);
   std::map<std::string, Handle> m_handles;
   SessionState m_state = SessionState::Running;

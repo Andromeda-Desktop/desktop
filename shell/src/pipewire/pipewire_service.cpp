@@ -2066,7 +2066,7 @@ void PipeWireService::rebuildState() {
 
   m_state = std::move(next);
   m_privacyState = std::move(nextPrivacy);
-  ++m_changeSerial;
+  ++m_changeVersion;
   emitChanged();
 }
 
