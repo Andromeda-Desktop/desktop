@@ -10,7 +10,7 @@
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/mirror-mode-change}
 source "$(dirname "$0")/lib.sh"
-gcc -shared -fPIC -DWLR_USE_UNSTABLE $(pkg-config --cflags wlroots-0.20) -o "$RUNTIME/commit-fail.so" \
+gcc -shared -fPIC -DWLR_USE_UNSTABLE $(PKG_CONFIG_PATH="$(dirname "$ANDROMEDA")/meson-uninstalled" pkg-config --cflags wlroots-0.20) -o "$RUNTIME/commit-fail.so" \
   "$(dirname "$0")/commit_fail_shim.c" -ldl
 echo 0 > "$RUNTIME/fail-count"
 LD_PRELOAD=$RUNTIME/commit-fail.so FAIL_COMMIT_OUTPUT=HEADLESS-1 FAIL_COMMIT_FILE=$RUNTIME/fail-count boot_headless 2
