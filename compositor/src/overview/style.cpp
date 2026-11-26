@@ -100,7 +100,7 @@ namespace andromeda::ov {
         tw = std::max(1.0, (avail - static_cast<double>(n) * kThumbGap) / (static_cast<double>(n) + kPlusShare));
         th = tw / ar;
       }
-      const double y = top ? std::max(kThumbTop * in.ui, in.usable.y + kBarThumbGap * in.ui) : in.height - kThumbBottom * in.ui - th;
+      const double y = top ? std::max(kThumbTop * in.ui, in.usable.y + kBarThumbGap * in.ui) : in.usable.y + in.usable.h - kThumbBottom * in.ui - th;
       double x = (in.width - need()) / 2;
       for (size_t i = 0; i < n; ++i) {
         out.cards.push_back({i, {x, y, tw, th}, CardKind::Thumb});
