@@ -478,17 +478,15 @@ GammaService::GammaTarget GammaService::computeTarget() const {
     if (!coords.latitude.has_value() || !coords.longitude.has_value()) {
       if (m_locationResolving || networkLocationConfigured()) {
         kLog.debug("night light schedule waiting for location resolution");
-      } else if (m_location.latitude.has_value() != m_location.longitude.has_value()) {
+        return {};
+      }
+      if (m_location.latitude.has_value() != m_location.longitude.has_value()) {
         kLog.warn("need both latitude and longitude for manual location");
       } else if (!m_location.customSchedule && customTimesUsable) {
         kLog.warn("sunrise/sunset times are set but the custom schedule is off; enable it in Location settings");
-      } else if (!m_location.customSchedule) {
-        kLog.warn(
-            "no schedule: enable auto-locate, set an address, set latitude/longitude, or enable the custom schedule in "
-            "location settings"
-        );
       }
-      return {};
+      // No usable schedule: the switch alone means "warm now", as with Force.
+      return {.kelvin = nightTemp, .transitioning = false};
     }
   }
 
