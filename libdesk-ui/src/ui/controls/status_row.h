@@ -40,7 +40,9 @@ public:
   // A secondary click, at its scene position (the row's context menu).
   void setOnSecondaryClick(std::function<void(float sceneX, float sceneY)> callback);
   // A left-button drag past a few px: Move per motion, then Drop on release (no click). The row dims while it drags.
-  enum class DragPhase : std::uint8_t { Move, Drop };
+  enum class DragPhase : std::uint8_t { Move, Drop, Cancel };
+  // Ends a drag in progress with Cancel (Escape); the release that follows neither drops nor clicks.
+  void cancelDrag();
   void setOnDrag(std::function<void(DragPhase phase, float sceneX, float sceneY)> callback) { m_onDrag = std::move(callback); }
   // The name becomes a field holding `name`; done gets the new text on Return or focus loss, nullopt on Escape.
   // Focus renameArea() after this call.
@@ -81,7 +83,7 @@ private:
   std::function<void(float, float)> m_onSecondaryClick;
   std::function<void(DragPhase, float, float)> m_onDrag;
   // Dropped: the release ended a drag; its click is not a click.
-  enum class Drag : std::uint8_t { Idle, Pressed, Dragging, Dropped };
+  enum class Drag : std::uint8_t { Idle, Pressed, Dragging, Cancelled, Dropped };
   Drag m_drag = Drag::Idle;
   float m_pressX = 0.0F; // scene point of the left press
   float m_pressY = 0.0F;

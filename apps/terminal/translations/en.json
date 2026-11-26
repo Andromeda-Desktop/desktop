@@ -179,6 +179,7 @@
   },
   "palette": {
     "not-in-split": "Not in a split",
+    "split-full": "A split holds 4 panes at most",
     "no-selection": "No selection",
     "split-with": "Split with…",
     "no-join": "No session can join",

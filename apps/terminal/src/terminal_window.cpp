@@ -392,6 +392,13 @@ namespace term {
           .keep = m_agentBar->children().empty() ? floor : AgentView::bandKeep(*m_agentBar->children().front(), renderer)};
     });
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
+      constexpr std::uint32_t kEscape = 0xff1b;
+      if (m_dragGhost && event.pressed && event.sym == kEscape) {
+        for (const auto& [id, row] : m_rows) {
+          row->cancelDrag();
+        }
+        return true;
+      }
       // Browse mode takes every key, so none reaches the shell; its own binding closes it.
       if (auto* browse = std::get_if<BrowseOpen>(&m_browse); browse != nullptr) {
         const auto action = event.pressed ? m_settings.settings().keys.match(event.sym, event.unshifted, event.modifiers)
@@ -1208,10 +1215,12 @@ namespace term {
       entries.push_back({.id = kCopyLink, .label = i18n::tr("terminal.menu.copy-link")});
       entries.push_back({.separator = true});
     }
+    const auto* split = m_sessions.splitOf(id);
+    const bool roomy = split == nullptr || split->size() < kMaxPanes;
     for (ContextMenuControlEntry& item :
          std::vector<ContextMenuControlEntry>{entry(Action::Copy, i18n::tr("terminal.menu.copy"), view->hasSelection()), entry(Action::Paste, i18n::tr("terminal.menu.paste")),
                                               entry(Action::SelectAll, i18n::tr("terminal.menu.select-all")), {.separator = true},
-                                              entry(Action::SplitRight, i18n::tr("terminal.menu.split-right")), entry(Action::SplitDown, i18n::tr("terminal.menu.split-down")),
+                                              entry(Action::SplitRight, i18n::tr("terminal.menu.split-right"), roomy), entry(Action::SplitDown, i18n::tr("terminal.menu.split-down"), roomy),
                                               {.separator = true}, entry(Action::Find, i18n::tr("terminal.find.title")),
                                               entry(Action::ClearScrollback, i18n::tr("terminal.menu.clear-scrollback")),
                                               entry(Action::ResetTerminal, i18n::tr("terminal.menu.reset")), {.separator = true},
@@ -1931,6 +1940,9 @@ namespace term {
       std::string off;
       if (focus && !m_split.split()) {
         off = i18n::tr("terminal.palette.not-in-split");
+      } else if ((action == Action::SplitRight || action == Action::SplitDown) && m_split.split() &&
+                 m_sessions.splitOf(*m_sessions.shown())->size() >= kMaxPanes) {
+        off = i18n::tr("terminal.palette.split-full");
       } else if (action == Action::Copy && (shownTerminal() == nullptr || !shownTerminal()->hasSelection())) {
         off = i18n::tr("terminal.palette.no-selection");
       }
@@ -2551,8 +2563,7 @@ namespace term {
         StatusRow::Data data = rowData(*session);
         data.chip = view->view->surface();
         ghost->setData(data);
-        ghost->setMinWidth(row->second->width());
-        ghost->setMaxWidth(row->second->width());
+        ghost->setSize(row->second->width(), row->second->height());
         m_window.setDragGhost(std::move(ghost));
         m_dragGhost = true;
       }

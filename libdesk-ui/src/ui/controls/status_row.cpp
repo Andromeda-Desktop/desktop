@@ -73,7 +73,7 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
       return;
     }
     const bool dropped = m_drag == Drag::Dragging;
-    m_drag = dropped ? Drag::Dropped : Drag::Idle;
+    m_drag = dropped || m_drag == Drag::Cancelled ? Drag::Dropped : Drag::Idle;
     if (dropped) {
       setOpacity(1.0F);
       m_onDrag(DragPhase::Drop, data.sceneX, data.sceneY);
@@ -136,6 +136,16 @@ void StatusRow::setTime(const std::string& time) {
   if (m_time->setText(time)) {
     markLayoutDirty();
   }
+}
+
+void StatusRow::cancelDrag() {
+  if (m_drag != Drag::Dragging) {
+    return;
+  }
+  m_drag = Drag::Cancelled;
+  setOpacity(1.0F);
+  applyState();
+  m_onDrag(DragPhase::Cancel, m_pressX, m_pressY);
 }
 
 void StatusRow::setOneLine(bool oneLine) {
