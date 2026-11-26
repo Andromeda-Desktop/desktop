@@ -2583,6 +2583,7 @@
       "limit-failed": "Could not change the charge limit.",
       "limit-to": "Limit Charging to {percent}%",
       "mode": "Power Mode",
+      "mode-failed": "Could not switch to {profile}.",
       "power-key": "Power Button",
       "schedule": "Shut Down Later",
       "schedule-off": "Off",

@@ -52,6 +52,8 @@ public:
   [[nodiscard]] const std::vector<std::string>& profiles() const noexcept { return m_state.profiles; }
 
   [[nodiscard]] bool setActiveProfile(std::string_view profile);
+  /// The profile of the last change the daemon refused; empty after the next change starts.
+  [[nodiscard]] const std::string& failedProfile() const noexcept { return m_failedProfile; }
   /// Step through profiles in canonical power order, wrapping at the ends.
   /// direction >= 0 moves toward performance, direction < 0 toward power-saver.
   /// Returns false when no active profile is known and UPower returned no profile list,
@@ -60,6 +62,7 @@ public:
 
 private:
   [[nodiscard]] PowerProfilesChangeOrigin consumeActiveProfileChangeOrigin(std::string_view profile);
+  void reportFailure(const std::string& profile);
   void emitChangedIfNeeded(PowerProfilesState next, bool stateSnapshot);
 
   SystemBus& m_bus;
@@ -67,6 +70,7 @@ private:
   std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);
   PowerProfilesState m_state;
   std::optional<std::string> m_pendingLocalActiveProfile;
+  std::string m_failedProfile;
   ChangeCallback m_changeCallback;
   bool m_hasStateSnapshot = false;
   bool m_refreshInFlight = false;

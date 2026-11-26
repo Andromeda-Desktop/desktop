@@ -247,7 +247,12 @@ namespace settings {
       Flex* card = addCard(content, scale);
       auto r = row(scale);
       const std::string limitedBy = health != nullptr ? health->limitedBy("power.profile") : std::string{};
-      if (limitedBy.empty()) {
+      if (!profiles.failedProfile().empty()) {
+        r->addChild(twoLines(
+            i18n::tr("settings.power.mode"),
+            i18n::tr("settings.power.mode-failed", "profile", profileLabel(profiles.failedProfile())), scale
+        ));
+      } else if (limitedBy.empty()) {
         r->addChild(title(i18n::tr("settings.power.mode"), scale));
       } else {
         r->addChild(twoLines(

@@ -227,6 +227,7 @@ bool PowerProfilesService::setActiveProfile(std::string_view profile) {
   }
 
   const std::string requested(profile);
+  m_failedProfile.clear();
   if (requested != m_state.activeProfile) {
     m_pendingLocalActiveProfile = requested;
   }
@@ -238,18 +239,20 @@ bool PowerProfilesService::setActiveProfile(std::string_view profile) {
     knobs->callMethodAsync("Set")
         .onInterface(kKnobsInterface)
         .withArguments(std::string("power.profile"), sdbus::Variant(requested))
-        .uponReplyInvoke([lifetimeToken, requested, knobs](std::optional<sdbus::Error> err) {
+        .uponReplyInvoke([this, lifetimeToken, requested, knobs](std::optional<sdbus::Error> err) {
           if (lifetimeToken.expired() || !err.has_value()) {
             return;
           }
-          // The optimistic update below already reconciles via refresh(); just surface the failure.
+          // The optimistic update below already reconciles via refresh(); this only tells the UI.
           kLog.warn("power profile change failed profile={} err={}", requested, err->what());
+          reportFailure(requested);
         });
   } catch (const sdbus::Error& e) {
     if (m_pendingLocalActiveProfile.has_value() && *m_pendingLocalActiveProfile == requested) {
       m_pendingLocalActiveProfile.reset();
     }
     kLog.warn("power profile change dispatch failed profile={} err={}", requested, e.what());
+    reportFailure(requested);
     return false;
   }
 
@@ -288,6 +291,13 @@ PowerProfilesChangeOrigin PowerProfilesService::consumeActiveProfileChangeOrigin
   const bool matchesLocalRequest = *m_pendingLocalActiveProfile == profile;
   m_pendingLocalActiveProfile.reset();
   return matchesLocalRequest ? PowerProfilesChangeOrigin::Noctalia : PowerProfilesChangeOrigin::External;
+}
+
+void PowerProfilesService::reportFailure(const std::string& profile) {
+  m_failedProfile = profile;
+  if (m_changeCallback) {
+    m_changeCallback(m_state, PowerProfilesChangeOrigin::Noctalia);
+  }
 }
 
 void PowerProfilesService::emitChangedIfNeeded(PowerProfilesState next, bool stateSnapshot) {
