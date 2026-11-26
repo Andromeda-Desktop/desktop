@@ -1164,6 +1164,8 @@ void LauncherPanel::onOpen(std::string_view context) {
       initialValue.clear(); // an unknown mode opens plain search, never a search for "mode:..."
     }
     syncModeTabs();
+  } else if (isAppsQuery(initialValue)) {
+    initialValue.clear(); // the Start and plain layouts open on their app list
   }
   if (m_ui.input != nullptr) {
     m_ui.input->setPlaceholder(launcherPlaceholder());

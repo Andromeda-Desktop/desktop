@@ -402,7 +402,7 @@ bool LauncherPanel::isContextActive(std::string_view context) const {
   if (modeProviderId().empty()) {
     // "apps" opens the apps grid; another plain context opens as the field text and stays active until the user edits it.
     if (isAppsQuery(context)) {
-      return appsView();
+      return m_browserMode ? appsView() : m_query.empty();
     }
     return !context.starts_with(kModeContextPrefix) && m_query == context;
   }
