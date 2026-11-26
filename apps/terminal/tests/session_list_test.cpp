@@ -58,7 +58,7 @@ void checkInvariants(const SessionList& list) {
 
 // The saved layout survives JSON and a restore into new sessions unchanged: shell sessions, names, splits, shown.
 void checkRestore(const SessionList& list) {
-  const SavedWindow saved = saveLayout(list, [](std::uint64_t id) { return "/d" + std::to_string(id); });
+  const SavedWindow saved = saveLayout(list, [](std::uint64_t id) { return "/d" + std::to_string(id); }, [](std::uint64_t) { return nullptr; });
   CHECK(saved.sessions.size() == static_cast<std::size_t>(std::ranges::count(list.sessions(), SessionKind::Shell, &SessionInfo::kind)));
   const auto loaded = windowsFromJson(nlohmann::json::parse(toJson({saved}).dump()));
   if (saved.sessions.empty()) {
@@ -78,7 +78,7 @@ void checkRestore(const SessionList& list) {
   for (const SessionListEvent& event : restoreEvents(loaded.at(0), ids)) {
     CHECK(restored.apply(event) != ApplyResult::Rejected);
   }
-  CHECK(saveLayout(restored, [&](std::uint64_t id) { return cwds[id]; }) == saved);
+  CHECK(saveLayout(restored, [&](std::uint64_t id) { return cwds[id]; }, [](std::uint64_t) { return nullptr; }) == saved);
   checkInvariants(restored);
 }
 

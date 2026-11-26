@@ -151,6 +151,10 @@ namespace term {
     }
     // The holder's workspace table changed.
     void workspacesChanged();
+    // The name in the window bar: the user's name for the window, else the shown session's row name.
+    [[nodiscard]] std::string windowName() const;
+    void renameWindow(std::string name); // empty: follows the shown session again
+    void setNameChanged(std::function<void()> changed) { m_nameChanged = std::move(changed); }
     // The app's text zoom (steps added to the size setting), shared by all windows; save keeps it for the next start.
     void setZoomStore(int steps, std::function<void(int)> save) {
       m_saveZoom = std::move(save);
@@ -233,7 +237,11 @@ namespace term {
     void openTerminalMenu(std::uint64_t id, float sceneX, float sceneY);
     void openRowMenu(std::uint64_t id, float sceneX, float sceneY);
     void renameSession(std::uint64_t id);
-    void renameInSheet(std::uint64_t id, const std::string& name);
+    void renameInSheet(std::string_view title, std::string_view placeholder, const std::string& name,
+                       std::function<void(std::string)> done);
+    void renameWindowInSheet();
+    // Tells the app when windowName() changed.
+    void syncName();
     void duplicateSession(std::uint64_t id);
     // Closes `ids`; asks once first when a command runs in any of them.
     void askClipboardRead(std::function<void(bool)> decide);
@@ -268,6 +276,9 @@ namespace term {
     static inline std::uint32_t s_nextWindowId = 1;
     const std::uint32_t m_windowId = s_nextWindowId++;
     std::string m_filter; // the sidebar search text
+    std::string m_name;   // the user's name for the window; empty: the shown session's row name
+    std::string m_publishedName;
+    std::function<void()> m_nameChanged;
     Input* m_search = nullptr;
     bool m_rail = false; // the sidebar is an icon rail
     Flex* m_agentBar = nullptr; // title band pills of the shown agent session

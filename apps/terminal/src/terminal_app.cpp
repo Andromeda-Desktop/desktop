@@ -115,7 +115,7 @@ namespace term {
           std::vector<workspace_bar::Window> shown;
           std::uint64_t here = 0;
           for (const auto& [app, terminal] : m_windows) {
-            shown.push_back({.id = terminal->windowId(), .workspace = m_windowWorkspaces.workspaceOf(app)});
+            shown.push_back({.id = terminal->windowId(), .workspace = m_windowWorkspaces.workspaceOf(app), .name = terminal->windowName()});
             if (app == &window) here = terminal->windowId();
           }
           std::ranges::sort(shown, {}, &workspace_bar::Window::id);
@@ -127,6 +127,10 @@ namespace term {
           }
         },
         [this, &window] { addWorkspace(window); });
+    m_windows[&window]->setNameChanged([this] {
+      workspacesChanged();
+      saveLayouts();
+    });
     workspacesChanged(); // the other windows' bars gain this one
     m_windows[&window]->setZoomStore(state().get("/terminal/zoom", 0),
                                      [this](int steps) { state().set("/terminal/zoom", steps); });
@@ -163,6 +167,17 @@ namespace term {
   }
 
   void TerminalApp::workspacesChanged() {
+    // The holder's workspace name follows its window's name, so the CLI lists what the bar shows.
+    for (const auto& [window, terminal] : m_windows) {
+      const auto id = m_windowWorkspaces.workspaceOf(window);
+      const auto& table = m_workspaces.workspaces().workspaces;
+      const auto it = id ? std::ranges::find(table, *id, &holder::WorkspaceInfo::id) : table.end();
+      if (std::string name = terminal->windowName(); it != table.end() && it->name != name) {
+        holder::WorkspaceInfo renamed = *it;
+        renamed.name = std::move(name);
+        (void)m_workspaces.put(renamed, [](std::uint32_t, std::optional<std::uint64_t>) {});
+      }
+    }
     for (const auto& [window, terminal] : m_windows) terminal->workspacesChanged();
     if (m_control != nullptr) m_control->emitSignal("WorkspacesChanged");
   }

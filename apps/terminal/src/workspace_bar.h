@@ -16,6 +16,7 @@ namespace term::workspace_bar {
   struct Window {
     std::uint64_t id = 0;                    // TerminalWindow::windowId
     std::optional<std::uint64_t> workspace; // nullopt until the holder answers its PutWorkspace
+    std::string name;                        // TerminalWindow::windowName
   };
 
   struct Item {

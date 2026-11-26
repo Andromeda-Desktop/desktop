@@ -92,6 +92,11 @@ namespace ui {
   }
 
 
+  const andromeda::tiling::DwindleTree* SplitTrees::treeOf(std::uint64_t key) const {
+    const auto it = std::ranges::find_if(m_trees, [key](const auto& tree) { return tree.find(key) != nullptr; });
+    return it != m_trees.end() ? &*it : nullptr;
+  }
+
   void SplitTrees::swap(std::uint64_t a, std::uint64_t b) {
     for (andromeda::tiling::DwindleTree& tree : m_trees) {
       auto* first = tree.find(a);

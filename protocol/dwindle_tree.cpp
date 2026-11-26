@@ -62,6 +62,51 @@ namespace andromeda::tiling {
     return out;
   }
 
+  std::vector<DwindleTree::ShapeNode> DwindleTree::shape() const {
+    std::vector<ShapeNode> out;
+    const auto walk = [&out](const auto& self, const Node* node) -> void {
+      if (node == nullptr) {
+        return;
+      }
+      out.push_back({.type = node->type, .ratio = node->ratio, .locked = node->locked, .key = node->key});
+      self(self, node->left.get());
+      self(self, node->right.get());
+    };
+    walk(walk, m_root.get());
+    return out;
+  }
+
+  bool DwindleTree::setShape(std::span<const ShapeNode> shape) {
+    std::size_t next = 0;
+    const auto build = [&](const auto& self, Node* parent) -> std::unique_ptr<Node> {
+      if (next >= shape.size()) {
+        return nullptr;
+      }
+      const ShapeNode& at = shape[next++];
+      auto node = std::make_unique<Node>();
+      node->parent = parent;
+      node->type = at.type;
+      node->locked = at.locked;
+      if (at.type == Node::Leaf) {
+        node->key = at.key;
+        return at.key != 0 ? std::move(node) : nullptr;
+      }
+      if (at.type > Node::VSplit || !(at.ratio > 0.0 && at.ratio < 1.0)) {
+        return nullptr;
+      }
+      node->ratio = at.ratio;
+      node->left = self(self, node.get());
+      node->right = node->left != nullptr ? self(self, node.get()) : nullptr;
+      return node->right != nullptr ? std::move(node) : nullptr;
+    };
+    auto root = build(build, nullptr);
+    if (root == nullptr || next != shape.size()) {
+      return false;
+    }
+    m_root = std::move(root);
+    return true;
+  }
+
   void DwindleTree::addRoot(TileKey key) {
     if (m_root != nullptr) {
       return;

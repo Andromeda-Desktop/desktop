@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <vector>
 
 // The dwindle tiling tree, shared by the compositor's dwindle layout and app split views (terminal panes). Pure
@@ -56,6 +57,19 @@ namespace andromeda::tiling {
     // The leaf at a position in left-to-right, top-to-bottom tree order.
     [[nodiscard]] Node* leafAt(int index) const;
     [[nodiscard]] std::vector<TileKey> keys() const;
+
+    // One node of shape() in pre-order: a split, then its left/top subtree, then its right/bottom one.
+    struct ShapeNode {
+      Node::Type type = Node::Leaf;
+      double ratio = 0.5; // a split's share of its first child
+      bool locked = false;
+      TileKey key = 0; // a leaf's tile
+      bool operator==(const ShapeNode&) const = default;
+    };
+    // The tree without its boxes, to save and restore it.
+    [[nodiscard]] std::vector<ShapeNode> shape() const;
+    // Builds the tree from a shape(); false and no change for a malformed one (bad order, bad ratio, tile 0).
+    bool setShape(std::span<const ShapeNode> shape);
 
     // The first tile: the root leaf. No effect on a tree that has one.
     void addRoot(TileKey key);

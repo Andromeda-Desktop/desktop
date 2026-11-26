@@ -94,6 +94,8 @@ public:
   void pendJoin(const ui::SplitTrees::Join& join, std::optional<PaneRect> from = std::nullopt);
   // Two panes of one split trade tiles; the caller applies the same swap to its pane order.
   void swapPanes(std::uint64_t a, std::uint64_t b) { m_trees.swap(a, b); }
+  void adoptTree(andromeda::tiling::DwindleTree tree) { m_trees.adopt(std::move(tree)); }
+  [[nodiscard]] const andromeda::tiling::DwindleTree* treeOf(std::uint64_t id) const { return m_trees.treeOf(id); }
   // The nearest divider beside the focused card on the axis of (dx, dy) moves one step that way; false: none there.
   bool nudgeDivider(float dx, float dy);
 

@@ -29,6 +29,9 @@ namespace ui {
     void pendJoin(const Join& join) { m_pending = join; }
     // `a` and `b` trade tiles in the tree that holds both; the layout keeps its shape.
     void swap(std::uint64_t a, std::uint64_t b);
+    // A saved tree for a split; sync keeps it while it follows that split.
+    void adopt(andromeda::tiling::DwindleTree tree) { m_trees.push_back(std::move(tree)); }
+    [[nodiscard]] const andromeda::tiling::DwindleTree* treeOf(std::uint64_t key) const;
     // Where a split lays out: its area (px), the gap between panes and the narrowest pane.
     struct Room {
       andromeda::tiling::TileBox area;

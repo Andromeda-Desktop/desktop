@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <deque>
+#include <format>
 #include <map>
 #include <memory>
 #include <random>
@@ -158,13 +159,20 @@ struct Sim {
       CHECK(std::ranges::any_of(windows, [&](const auto& w) { return w.second.contains(held); })); // no shell unseen
     }
     std::vector<workspace_bar::Window> shown;
-    for (const auto& [w, held] : windows) shown.push_back({.id = static_cast<std::uint64_t>(w), .workspace = model->workspaceOf(key(w))});
+    for (const auto& [w, held] : windows) shown.push_back({.id = static_cast<std::uint64_t>(w), .workspace = model->workspaceOf(key(w)), .name = std::format("w{}", w)});
     holder::Workspaces table;
     for (const std::uint64_t ws : holder.workspaces) table.workspaces.push_back({.id = ws, .name = "u", .root = "/home/u"});
     for (const auto& [w, held] : windows) {
       const auto bar = workspace_bar::barFor(table, shown, static_cast<std::uint64_t>(w));
       CHECK(bar.size() == (windows.size() < 2 ? 0 : windows.size()));
       CHECK(windows.size() < 2 || std::ranges::count(bar, true, &workspace_bar::Item::here) == 1);
+      // Each item is told apart: its window's own name, and a mark no other item has (up to 9 windows).
+      std::set<std::string> marks;
+      for (std::size_t i = 0; i < bar.size(); ++i) {
+        CHECK(bar[i].name == shown[i].name);
+        marks.insert(bar[i].symbol);
+      }
+      CHECK(bar.size() > 9 || marks.size() == bar.size());
     }
   }
 };

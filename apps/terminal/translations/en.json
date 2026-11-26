@@ -106,7 +106,8 @@
     "settings-error": "{name}: {message}. The last good settings stay in use.",
     "show-file": "Show file",
     "preferences": "Preferences",
-    "new": "New window"
+    "new": "New window",
+    "untitled": "Terminal"
   },
   "sidebar": {
     "sessions": "Sessions",
@@ -158,7 +159,9 @@
   },
   "rename": {
     "title": "Rename session",
-    "placeholder": "Automatic name"
+    "placeholder": "Automatic name",
+    "window-title": "Rename window",
+    "window-placeholder": "Shown session's name"
   },
   "clipboard": {
     "title": "Allow clipboard access?",
@@ -185,6 +188,7 @@
     "split-with": "Split with…",
     "no-join": "No session can join",
     "rename": "Rename…",
+    "rename-window": "Rename window…",
     "duplicate": "Duplicate session",
     "only-one": "Only one session",
     "not-terminal": "Not a terminal",

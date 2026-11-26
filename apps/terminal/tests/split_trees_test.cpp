@@ -1,8 +1,10 @@
+#include "session_layout.h"
 #include "session_list.h"
 #include "ui/split_layout.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <nlohmann/json.hpp>
 #include <random>
 #include <optional>
 #include <set>
@@ -19,6 +21,32 @@ int failures = 0;
 unsigned seed = 0;
 int step = 0;
 #define CHECK(c) do { if (!(c)) { std::fprintf(stderr, "FAIL %s:%d %s (seed %u step %d)\n", __FILE__, __LINE__, #c, seed, step); ++failures; } } while (0)
+
+// A restart (save, JSON, restore into new sessions) brings the shown split back with the same tiles at the same boxes.
+void checkRestart(const SessionList& list, const SplitTrees& trees, DwindleTree& own, const SplitTrees::Room& room) {
+  const SavedWindow saved = saveLayout(list, [](std::uint64_t) { return std::string(); },
+                                       [&trees](std::uint64_t id) { return trees.treeOf(id); });
+  const auto loaded = windowsFromJson(nlohmann::json::parse(toJson({saved}).dump()));
+  CHECK(loaded.size() == 1 && loaded[0] == saved);
+  if (loaded.empty()) return;
+  const auto restoredId = [&list](std::uint64_t id) {
+    return 1000 + static_cast<std::uint64_t>(std::ranges::find(list.sessions(), id, &SessionInfo::id) - list.sessions().begin());
+  };
+  std::vector<std::uint64_t> ids;
+  for (std::size_t i = 0; i < saved.sessions.size(); ++i) ids.push_back(1000 + i);
+  auto restored = restoreTrees(loaded[0], ids);
+  const auto it = std::ranges::find_if(restored, [&](const DwindleTree& t) { return t.find(restoredId(own.keys().front())) != nullptr; });
+  CHECK(it != restored.end());
+  if (it == restored.end()) return;
+  const auto want = own.arrange(room.area, room.gap, true);
+  const auto got = it->arrange(room.area, room.gap, true);
+  CHECK(got.size() == want.size());
+  for (const Tile& tile : want) {
+    const auto match = std::ranges::find(got, restoredId(tile.key), &Tile::key);
+    CHECK(match != got.end() && match->box.x == tile.box.x && match->box.y == tile.box.y &&
+          match->box.width == tile.box.width && match->box.height == tile.box.height);
+  }
+}
 
 SessionListEvent randomEvent(std::mt19937& rng) {
   const std::uint64_t id = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
@@ -162,6 +190,10 @@ int main() {
         if (edge == andromeda::tiling::EdgeTop) CHECK(j.y < t.y);
         if (edge == andromeda::tiling::EdgeBottom) CHECK(j.y > t.y);
       }
+      // With a dragged divider: its ratio comes back too.
+      const double ratio = std::exchange(own->root()->ratio, std::uniform_real_distribution<double>(0.2, 0.8)(rng));
+      checkRestart(list, trees, *own, room);
+      own->root()->ratio = ratio;
     }
   }
   if (failures == 0) {

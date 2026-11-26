@@ -9,10 +9,13 @@ namespace term::workspace_bar {
     std::vector<Item> items;
     if (windows.size() < 2) return items;
     for (const Window& w : windows) {
-      Item item{.window = w.id, .name = "Terminal", .here = w.id == here};
+      // The mark is the window's place in the bar, 1 to 9: no two windows share one.
+      const std::size_t place = items.size() + 1;
+      Item item{.window = w.id, .name = w.name, .symbol = place <= 9 ? std::format("square-rounded-number-{}", place) : "folder",
+                .here = w.id == here};
       if (w.workspace) {
-        if (const auto it = std::ranges::find(table.workspaces, *w.workspace, &holder::WorkspaceInfo::id); it != table.workspaces.end()) {
-          item.name = it->name;
+        if (const auto it = std::ranges::find(table.workspaces, *w.workspace, &holder::WorkspaceInfo::id);
+            it != table.workspaces.end() && !it->symbol.empty()) {
           item.symbol = it->symbol;
         }
         for (const holder::SessionInfo& s : table.sessions) {

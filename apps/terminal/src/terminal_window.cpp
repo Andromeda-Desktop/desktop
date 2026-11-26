@@ -715,14 +715,17 @@ namespace term {
   }
 
   SavedWindow TerminalWindow::layout() const {
-    return saveLayout(m_sessions, [this](std::uint64_t id) {
+    SavedWindow saved = saveLayout(m_sessions, [this](std::uint64_t id) {
       const auto it = std::ranges::find(m_views, id, &Session::id);
       const auto* view = it != m_views.end() ? dynamic_cast<const TerminalView*>(it->view.get()) : nullptr;
       return view != nullptr ? view->cwd() : std::string();
-    });
+    }, [this](std::uint64_t id) { return m_split.treeOf(id); });
+    saved.name = m_name;
+    return saved;
   }
 
   void TerminalWindow::restore(const SavedWindow& saved) {
+    m_name = saved.name;
     std::vector<std::uint64_t> ids;
     for (const SavedSession& session : saved.sessions) {
       std::error_code error;
@@ -731,6 +734,9 @@ namespace term {
     }
     for (const SessionListEvent& event : restoreEvents(saved, ids)) {
       apply(event);
+    }
+    for (andromeda::tiling::DwindleTree& tree : restoreTrees(saved, ids)) {
+      m_split.adoptTree(std::move(tree));
     }
   }
 
@@ -781,7 +787,8 @@ namespace term {
                                      .radius = item / 2.0F, .clipChildren = true, .height = item}));
         row->addChild(ui::button({.glyph = glyph, .glyphSize = symbol,
                                   .customPalette = palette(ColorRole::AccentText, ColorRole::Lens),
-                                  .tooltip = workspace_bar::tooltip(w), .radius = item / 2.0F, .width = item, .height = item}));
+                                  .tooltip = workspace_bar::tooltip(w), .radius = item / 2.0F, .width = item, .height = item,
+                                  .onClick = [this] { renameWindowInSheet(); }}));
         if (nameWidth >= item) {
           Label* name = nullptr;
           row->addChild(ui::label({.out = &name, .text = w.name, .fontSize = Tokens::typeBody.size * s,
@@ -1329,7 +1336,8 @@ namespace term {
       return;
     }
     if (m_rail) {
-      renameInSheet(id, rowData(*session).name);
+      renameInSheet(i18n::tr("terminal.rename.title"), i18n::tr("terminal.rename.placeholder"), rowData(*session).name,
+                    [this, id](std::string name) { apply(session_event::Rename{id, std::move(name)}); });
       return;
     }
     // An empty name gives the row its automatic name (cwd or agent title) back.
@@ -1430,23 +1438,48 @@ namespace term {
   }
 
   // The rail's icon rows have no room for a name field: rename in a sheet.
-  void TerminalWindow::renameInSheet(std::uint64_t id, const std::string& name) {
+  std::string TerminalWindow::windowName() const {
+    if (!m_name.empty()) return m_name;
+    const auto id = m_sessions.shown();
+    const SessionInfo* session = id ? m_sessions.find(*id) : nullptr;
+    return session != nullptr ? rowData(*session).name : std::string(i18n::tr("terminal.window.untitled"));
+  }
+
+  void TerminalWindow::renameWindow(std::string name) {
+    m_name = std::move(name);
+    syncName();
+  }
+
+  void TerminalWindow::syncName() {
+    if (std::string name = windowName(); name != m_publishedName) {
+      m_publishedName = std::move(name);
+      if (m_nameChanged) m_nameChanged();
+    }
+  }
+
+  void TerminalWindow::renameWindowInSheet() {
+    renameInSheet(i18n::tr("terminal.rename.window-title"), i18n::tr("terminal.rename.window-placeholder"), m_name,
+                  [this](std::string name) { renameWindow(std::move(name)); });
+  }
+
+  void TerminalWindow::renameInSheet(std::string_view title, std::string_view placeholder, const std::string& name,
+                                     std::function<void(std::string)> done) {
     auto text = std::make_shared<std::string>(name);
-    const auto commit = [this, id, text] {
+    const auto commit = [this, done = std::move(done), text] {
       m_window.dismissSheet();
-      apply(session_event::Rename{id, *text});
+      done(*text);
       focusGrid();
     };
     m_window.presentSheet(
-        [this, text, commit](float s) {
+        [this, text, commit, title = std::string(title), placeholder = std::string(placeholder)](float s) {
           auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
                                  .width = Tokens::componentTerminalFindWidth * s});
-          box->addChild(ui::label({.text = std::string(i18n::tr("terminal.rename.title")),
+          box->addChild(ui::label({.text = title,
                                    .fontSize = Tokens::typeTitle3.size * s,
                                    .fontWeight = FontWeight::SemiBold,
                                    .color = colorSpecFromRole(ColorRole::Label1)}));
           box->addChild(ui::input({.value = *text,
-                                   .placeholder = std::string(i18n::tr("terminal.rename.placeholder")),
+                                   .placeholder = placeholder,
                                    .onChange = [text](const std::string& value) { *text = value; },
                                    .onSubmit = [commit](const std::string&) { commit(); },
                                    .configure = [this](Input& field) {
@@ -1542,6 +1575,7 @@ namespace term {
   }
 
   void TerminalWindow::syncTitle() {
+    syncName();
     const auto id = m_sessions.shown();
     const SessionInfo* session = id ? m_sessions.find(*id) : nullptr;
     if (session == nullptr) {
@@ -1985,6 +2019,7 @@ namespace term {
     addAction("menu:leave", i18n::tr("terminal.session.leave-split"), {}, m_sessions.splitOf(shown) != nullptr ? "" : i18n::tr("terminal.palette.not-in-split"),
               [this, shown] { apply(session_event::Leave{shown}); });
     addAction("menu:rename", i18n::tr("terminal.palette.rename"), {}, "", [this, shown] { renameSession(shown); });
+    addAction("menu:rename-window", i18n::tr("terminal.palette.rename-window"), {}, "", [this] { renameWindowInSheet(); });
     addAction("menu:duplicate", i18n::tr("terminal.palette.duplicate"), {}, "", [this, shown] { duplicateSession(shown); });
     addAction("menu:move", i18n::tr("terminal.session.move-to-window"), {}, others ? "" : i18n::tr("terminal.palette.only-one"),
               [this, shown] { moveToNewWindow(shown); });
