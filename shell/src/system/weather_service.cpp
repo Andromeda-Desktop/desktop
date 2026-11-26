@@ -5,6 +5,7 @@
 #include "core/log.h"
 #include "i18n/i18n.h"
 #include "net/http_client.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 #include "time/time_format.h"
 
@@ -703,14 +704,19 @@ std::string WeatherService::formatCoordinate(double value) { return std::format(
 void WeatherService::loadCache() {
   clearState();
   const auto path = stateCacheFilePath();
+  // A queued cache write wins over the disk (a disable and re-enable before the write lands).
+  const std::optional<std::string> pending = andromeda::pendingFileText(path);
   std::error_code ec;
-  if (!std::filesystem::exists(path, ec)) {
+  if (!pending && !std::filesystem::exists(path, ec)) {
     return;
   }
 
   try {
-    std::ifstream file(path);
-    const auto json = nlohmann::json::parse(file);
+    std::ifstream file;
+    if (!pending) {
+      file.open(path);
+    }
+    const auto json = pending ? nlohmann::json::parse(*pending) : nlohmann::json::parse(file);
 
     const auto& snapshot = json.at("snapshot");
     if (!readBool(snapshot, "valid")) {
