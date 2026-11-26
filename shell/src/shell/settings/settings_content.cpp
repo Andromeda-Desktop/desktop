@@ -59,7 +59,8 @@ namespace settings {
       if (ctx.registerIdleLiveStatusLabel) {
         ctx.registerIdleLiveStatusLabel(linePtr);
       }
-      section.addChild(std::move(line));
+      // As tall as a one-line row, so the line keeps a row's air from the card edge and the divider.
+      section.addChild(ui::row({.align = FlexAlign::Center, .minHeight = metrics::kRowHeight * scale}, std::move(line)));
     }
 
   } // namespace
@@ -1115,6 +1116,9 @@ namespace settings {
           target->setRadius(Style::scaledRadiusMd(scale));
           if (ctx.setScrollTarget) {
             ctx.setScrollTarget(target);
+          }
+          if (ctx.fadeHighlight) {
+            ctx.fadeHighlight(*target);
           }
         }
       }

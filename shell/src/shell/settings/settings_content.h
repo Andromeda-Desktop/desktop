@@ -99,6 +99,8 @@ namespace settings {
     std::function<void()> requestContentRebuild;
     std::function<void()> resetContentScroll;
     std::function<void(Node*)> setScrollTarget;
+    // Holds the search highlight on the row a search opened, then fades it out.
+    std::function<void(Flex&)> fadeHighlight;
     std::function<void(const Node&)> scrollContentToTop;
     std::function<void(InputArea*)> focusArea;
     std::function<void(const std::vector<std::string>&)> openBarWidgetAddPopup;

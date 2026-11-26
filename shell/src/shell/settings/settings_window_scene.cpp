@@ -904,6 +904,27 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
             m_pendingContentScrollTarget = target;
             m_scrollToPendingContentTarget = true;
           },
+      // The row owns both steps: a rebuild that drops it cancels them.
+      .fadeHighlight =
+          [this](Flex& row) {
+            const ColorSpec fill = row.fill();
+            m_animations.animateTimer(
+                0.0F, 1.0F, static_cast<float>(Tokens::componentSearchHighlightHoldMs), Easing::EaseOutQuad,
+                [](float) {},
+                [this, &row, fill] {
+                  m_animations.animateSpring(
+                      1.0F, 0.0F, Style::spring(Tokens::springFadeOut),
+                      [&row, fill](float v) {
+                        ColorSpec faded = fill;
+                        faded.alpha = fill.alpha * v;
+                        row.setFill(faded);
+                      },
+                      {}, &row
+                  );
+                },
+                &row
+            );
+          },
       .scrollContentToTop =
           [this](const Node& target) {
             if (m_contentScrollView != nullptr) {
