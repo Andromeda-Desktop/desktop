@@ -1475,6 +1475,15 @@ void WaylandConnection::clearDropTarget(const Surface& surface) {
   }
 }
 
+bool WaylandConnection::startDrag(const Surface& origin, DragSource source) {
+  DragAndDrop* dnd = dragAndDrop();
+  return dnd != nullptr && dnd->startDrag(wlSurfaceOf(origin), lastInputSerial(),
+                                          {.mimeTypes = std::move(source.mimeTypes),
+                                           .data = std::move(source.data),
+                                           .actions = source.actions,
+                                           .finished = std::move(source.finished)});
+}
+
 std::string WaylandConnection::requestActivationToken(const Surface& surface, const std::string& appId) const {
   return requestActivationToken(wlSurfaceOf(surface), appId);
 }

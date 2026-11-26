@@ -124,6 +124,8 @@ public:
   // drag and drop. A second call for the same surface replaces its target.
   virtual bool setDropTarget(const Surface& surface, std::vector<std::string> acceptedTypes, DropTarget target) = 0;
   virtual void clearDropTarget(const Surface& surface) = 0;
+  // Starts a drag from the last pointer press on origin. False when the window system has no drag and drop.
+  virtual bool startDrag(const Surface& origin, DragSource source) = 0;
 
   // False once the window system is gone for good (its socket removed at logout): a reconnect stops waiting.
   [[nodiscard]] virtual bool serverPresent() const = 0;

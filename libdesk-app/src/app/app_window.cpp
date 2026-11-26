@@ -1908,7 +1908,8 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
   }
   const auto x = static_cast<float>(event.sx);
   const auto y = static_cast<float>(event.sy);
-  const std::uint32_t edges = resizeEdgesAt(x, y);
+  // A held button keeps its motion in the scene (the pressed area's drag), also past the window edge.
+  const std::uint32_t edges = event.type == PointerEvent::Type::Motion && m_buttonsHeld > 0 ? 0 : resizeEdgesAt(x, y);
   if (event.type == PointerEvent::Type::Button || event.type == PointerEvent::Type::Enter) {
     kLog.debug("pointer {} at {:.0f},{:.0f} of {}x{}, edges {}", event.type == PointerEvent::Type::Enter ? "enter" : "button",
                x, y, m_surface->windowWidth(), m_surface->windowHeight(), edges);

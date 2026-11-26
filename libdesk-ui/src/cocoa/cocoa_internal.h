@@ -103,6 +103,7 @@ public:
 
   bool setDropTarget(const Surface& surface, std::vector<std::string> acceptedTypes, DropTarget target) override;
   void clearDropTarget(const Surface& surface) override;
+  bool startDrag(const Surface& origin, DragSource source) override;
 
   [[nodiscard]] bool serverPresent() const override { return true; }
   [[nodiscard]] std::unique_ptr<TextInputService> createTextInputService() override;

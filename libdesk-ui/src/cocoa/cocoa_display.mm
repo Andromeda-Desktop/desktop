@@ -556,6 +556,9 @@ void CocoaDisplay::clearDropTarget(const Surface& surface) {
   }
 }
 
+// No NSDraggingSession source yet: a drag stays inside its window.
+bool CocoaDisplay::startDrag(const Surface& /*origin*/, DragSource /*source*/) { return false; }
+
 std::unique_ptr<TextInputService> CocoaDisplay::createTextInputService() {
   return std::make_unique<CocoaTextInputService>();
 }

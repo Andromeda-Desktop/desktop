@@ -49,6 +49,7 @@
 #include "core/input/input_codes.h"
 
 #include <algorithm>
+#include <charconv>
 #include <csignal>
 #include <format>
 #include <ranges>
@@ -66,6 +67,9 @@ namespace term {
                 "keybindings.cpp mirrors the KeyMod bits");
 
   namespace {
+    // A session row dragged between windows: "<pid>:<session id>", taken only by this process.
+    constexpr std::string_view kSessionMime = "application/x-andromeda-terminal-session";
+
     std::optional<AppWindow::Scene> windowScene(const SettingsStore& settings) {
       const ThemeSpec theme = resolveTheme(settings.settings().theme, settings.themes());
       if (!hasScene(theme)) {
@@ -776,6 +780,7 @@ namespace term {
   void TerminalWindow::fillFootBar(Renderer& renderer) {
     m_shownBar = m_bar != nullptr ? m_bar() : std::vector<workspace_bar::Item>{};
     if (m_footBar == nullptr) return;
+    m_barWindows.clear();
     while (!m_footBar->children().empty()) m_footBar->removeChild(m_footBar->children().back().get());
     m_footTrack->setVisible(!m_shownBar.empty());
     const auto here = std::ranges::find(m_shownBar, true, &workspace_bar::Item::here);
@@ -837,6 +842,7 @@ namespace term {
                                       .customPalette = palette(ColorRole::Label2, ColorRole::Fill2),
                                       .tooltip = workspace_bar::tooltip(w), .radius = item / 2.0F, .width = item,
                                       .height = item, .onClick = [this, id = w.window] { m_pickWorkspace(id); }}));
+      m_barWindows.emplace_back(static_cast<std::uint32_t>(w.window), other);
       if (w.status != workspace_bar::Status::None) {
         const float dot = Tokens::componentTerminalWorkspaceDot * s;
         Box* badge = nullptr;
@@ -2436,17 +2442,27 @@ namespace term {
       TerminalView* view = shownTerminal();
       return view != nullptr && view->focusArea() != nullptr && view->focusArea()->containsScenePoint(x, y) ? view : nullptr;
     };
-    const bool registered = m_loop.display().setDropTarget(*surface, {uri::kUriListMime, "text/plain;charset=utf-8", "text/plain"}, {
-        .enter = [](const std::vector<std::string>& /*mimes*/) { return true; },
-        .motion = [over](float x, float y) -> std::uint32_t { return over(x, y) != nullptr ? DropCopy : DropNone; },
-        .leave = [] {},
-        .drop =
-            [over](float x, float y, std::uint32_t /*action*/, const std::string& mime, std::string data) {
-              if (TerminalView* view = over(x, y); view != nullptr) {
-                view->pasteDrop(mime, data);
-              }
+    const bool registered = m_loop.display().setDropTarget(
+        *surface, {std::string(kSessionMime), uri::kUriListMime, "text/plain;charset=utf-8", "text/plain"},
+        {
+            .enter =
+                [this](const std::vector<std::string>& mimes) {
+                  m_sessionOffer = std::ranges::contains(mimes, kSessionMime);
+                  return true;
+                },
+            .motion = [this, over](float x, float y) -> std::uint32_t {
+              return m_sessionOffer ? DropMove : over(x, y) != nullptr ? DropCopy : DropNone;
             },
-    });
+            .leave = [] {},
+            .drop =
+                [this, over](float x, float y, std::uint32_t /*action*/, const std::string& mime, std::string data) {
+                  if (mime == kSessionMime) {
+                    dropSession(x, y, data);
+                  } else if (TerminalView* view = over(x, y); view != nullptr) {
+                    view->pasteDrop(mime, data);
+                  }
+                },
+        });
     if (registered) {
       m_dropSurface = surface;
     }
@@ -2663,8 +2679,57 @@ namespace term {
     m_dropLine->setSize(m_rowList->width(), line);
   }
 
+  bool TerminalWindow::dragOutOfWindow(std::uint64_t id, float sceneX, float sceneY) {
+    const Node* root = m_rowList;
+    while (root != nullptr && root->parent() != nullptr) {
+      root = root->parent();
+    }
+    const bool inside = root == nullptr || (sceneX >= 0.0F && sceneY >= 0.0F && sceneX < root->width() && sceneY < root->height());
+    const auto row = std::ranges::find(m_rows, id, &std::pair<std::uint64_t, StatusRow*>::first);
+    if (inside || row == m_rows.end() || m_window.surface() == nullptr || (m_windows ? m_windows().size() : 0) < 2) {
+      return false;
+    }
+    const std::string data = std::format("{}:{}", ::getpid(), id);
+    if (!m_loop.display().startDrag(*m_window.surface(),
+                                    {.mimeTypes = {std::string(kSessionMime)},
+                                     .data = [data](const std::string& /*mime*/) { return data; },
+                                     .actions = DropMove})) {
+      return false;
+    }
+    // The window system holds the pointer now: the row sees no release, so its drag ends here.
+    row->second->cancelDrag();
+    return true;
+  }
+
+  void TerminalWindow::dropSession(float x, float y, const std::string& data) {
+    std::uint64_t pid = 0;
+    std::uint64_t id = 0;
+    const auto colon = data.find(':');
+    if (colon == std::string::npos || std::from_chars(data.data(), data.data() + colon, pid).ec != std::errc{} ||
+        std::from_chars(data.data() + colon + 1, data.data() + data.size(), id).ec != std::errc{} ||
+        pid != static_cast<std::uint64_t>(::getpid())) {
+      return;
+    }
+    const std::uint32_t to = barWindowAt(x, y).value_or(m_windowId);
+    for (TerminalWindow* from : m_windows ? m_windows() : std::vector<TerminalWindow*>{}) {
+      if (from->m_sessions.find(id) != nullptr && from->windowId() != to) {
+        from->moveToWindow(id, to);
+        return;
+      }
+    }
+  }
+
+  std::optional<std::uint32_t> TerminalWindow::barWindowAt(float sceneX, float sceneY) const {
+    const auto hit = std::ranges::find_if(m_barWindows, [&](const auto& item) { return item.second->containsScenePoint(sceneX, sceneY); });
+    return hit != m_barWindows.end() ? std::optional(hit->first) : std::nullopt;
+  }
+
   void TerminalWindow::rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY) {
-    const auto target = dropTarget(id, sceneX, sceneY);
+    if (phase == StatusRow::DragPhase::Move && dragOutOfWindow(id, sceneX, sceneY)) {
+      return;
+    }
+    const auto barWindow = barWindowAt(sceneX, sceneY);
+    const auto target = barWindow ? std::nullopt : dropTarget(id, sceneX, sceneY);
     // A raised chip of the row under the pointer, its symbol where the pointer holds it.
     const float s = m_window.uiScale();
     if (phase == StatusRow::DragPhase::Move && !m_dragGhost) {
@@ -2684,6 +2749,19 @@ namespace term {
       m_window.moveDragGhost(sceneX - Tokens::spaceP16 * s, sceneY - Tokens::sizeRowTwoCompact * s / 2.0F);
     } else if (std::exchange(m_dragGhost, false)) {
       m_window.clearDragGhost();
+    }
+    if (barWindow) {
+      m_split.showDropPreview(std::nullopt);
+      showDropLine(std::nullopt);
+      if (phase == StatusRow::DragPhase::Drop) {
+        // Later: the move frees the row whose release runs this.
+        DeferredCall::callLater([this, id, to = *barWindow, alive = std::weak_ptr<bool>(m_alive)] {
+          if (!alive.expired()) {
+            moveToWindow(id, to);
+          }
+        });
+      }
+      return;
     }
     m_split.showDropPreview(target && phase == StatusRow::DragPhase::Move ? std::optional(target->rect) : std::nullopt);
     // Off a pane, the row lands in the sidebar order; a split member only once it leaves its block.

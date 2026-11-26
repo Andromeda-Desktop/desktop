@@ -342,6 +342,13 @@ namespace term {
     static inline std::uint64_t s_nextId = 1;
     void registerDropTarget();
     Toplevel* m_dropSurface = nullptr; // the surface the drop target is on
+    bool m_sessionOffer = false;       // the drag over this window carries a session row
+    // A row dragged past the window edge becomes a drag between windows; true once it started.
+    bool dragOutOfWindow(std::uint64_t id, float sceneX, float sceneY);
+    // A session row dropped here: it moves to the bar item's window under (x, y), else to this window.
+    void dropSession(float x, float y, const std::string& data);
+    [[nodiscard]] std::optional<std::uint32_t> barWindowAt(float sceneX, float sceneY) const;
+    std::vector<std::pair<std::uint32_t, Button*>> m_barWindows; // the foot bar's other-window items
     // Agent session keys are unique in the app: all windows share one host.
     static inline std::uint64_t s_nextAgentKey = 0;
     // The panes whose views are in the slot, in layout order: the shown session alone, or its split.

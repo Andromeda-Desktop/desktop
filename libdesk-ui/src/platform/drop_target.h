@@ -17,3 +17,12 @@ struct DropTarget {
   // The dropped data of the first accepted type, read off the main thread and delivered on it.
   std::function<void(float x, float y, std::uint32_t action, const std::string& mime, std::string data)> drop;
 };
+
+// A drag this app starts from a pointer press, offered to every drop target (its own surfaces too).
+struct DragSource {
+  std::vector<std::string> mimeTypes;
+  std::function<std::string(const std::string& mime)> data; // bytes for one offered type
+  std::uint32_t actions = DropCopy | DropMove;
+  // The action the target took and whether it dropped; called once.
+  std::function<void(std::uint32_t action, bool dropped)> finished;
+};
