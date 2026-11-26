@@ -347,6 +347,7 @@ namespace settings {
     bool lightSensorAvailable = false;          // System1 Sensors.HasLight
     bool presenceSensorAvailable = false;       // System1 Sensors.HasPresence
     std::vector<std::string> powerProfiles;     // power-profiles-daemon profiles; empty without the daemon
+    bool keyboardBacklightAvailable = false;
     std::string schedExtScheduler; // the running sched_ext scheduler; app priority (CPU weights) has no effect under it
     std::optional<std::size_t> backgroundActivityCount; // flagged background services at the last check; none = not checked
     std::function<void()> openActivity;

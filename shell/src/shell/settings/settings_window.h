@@ -175,6 +175,7 @@ public:
     m_powerProfilesProvider = std::move(profiles);
   }
   void setPowerConfigProvider(std::function<PowerConfigService*()> config) { m_powerConfigProvider = std::move(config); }
+  void setKeyboardBacklightProbe(std::function<bool()> available) { m_keyboardBacklightProbe = std::move(available); }
   // Battery page Apps card: the Activity monitor (created on demand), its details, screen time, and opening Activity.
   void setBatteryAppsSources(std::function<ActivityMonitor*()> activity, const ActivityDetails* details,
                              ScreenTimeService* screenTime, std::function<void(const std::string&)> openActivity) {
@@ -567,6 +568,7 @@ private:
   std::function<PipeWireService*()> m_audioProvider;
   std::function<PowerProfilesService*()> m_powerProfilesProvider;
   std::function<PowerConfigService*()> m_powerConfigProvider;
+  std::function<bool()> m_keyboardBacklightProbe;
   std::function<SystemHealthService*()> m_systemHealthProvider;
   std::function<SoftwareUpdateService*()> m_softwareUpdateProvider;
   std::function<std::vector<std::pair<std::string, std::string>>()> m_hookFailuresProvider;

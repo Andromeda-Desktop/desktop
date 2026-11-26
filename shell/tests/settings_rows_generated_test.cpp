@@ -175,6 +175,7 @@ namespace {
     env.lightSensorAvailable = true;
     env.presenceSensorAvailable = true;
     env.powerProfiles = {"power-saver", "balanced", "performance"};
+    env.keyboardBacklightAvailable = true;
     env.greeterSyncAvailable = true;
     env.batteryAvailable = true;
     env.systemBatteryAvailable = true;

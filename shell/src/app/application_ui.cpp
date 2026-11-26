@@ -14,6 +14,7 @@
 #include "core/log.h"
 #include "core/process/process.h"
 #include "shell/settings/speaker_sound.h"
+#include "system/keyboard_backlight_service.h"
 #include "system/crash_report.h"
 #include "core/input/cursor_shape.h"
 #include "dbus/accounts/accounts_service.h"
@@ -253,6 +254,9 @@ void Application::initUiRenderSurfacesAndSettings() {
   m_settingsWindow.setConnectivityProviders([this] { return network(); }, [this] { return bluetooth(); });
   m_settingsWindow.setAudioProvider([this] { return pipewire(); });
   m_settingsWindow.setPowerProfilesProvider([this] { return powerProfiles(); });
+  m_settingsWindow.setKeyboardBacklightProbe([this] {
+    return m_keyboardBacklightService != nullptr && m_keyboardBacklightService->available();
+  });
   m_settingsWindow.setPowerConfigProvider([this] { return m_powerConfigService.get(); });
   m_settingsWindow.setSystemHealthProvider([this] { return m_systemHealthService.get(); });
   m_notificationManager.setSettingsPageCallback([this](const std::string& page) { m_panelManager.openSettingsWindow(page); });

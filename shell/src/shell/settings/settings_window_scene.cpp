@@ -710,6 +710,7 @@ settings::RegistryEnvironment SettingsWindow::buildRegistryEnvironment() const {
   if (const PowerProfilesService* profiles = m_powerProfilesProvider ? m_powerProfilesProvider() : nullptr) {
     env.powerProfiles = profiles->profiles();
   }
+  env.keyboardBacklightAvailable = m_keyboardBacklightProbe && m_keyboardBacklightProbe();
   if (std::ifstream state("/sys/kernel/sched_ext/state"); state) {
     std::string value;
     std::getline(state, value);

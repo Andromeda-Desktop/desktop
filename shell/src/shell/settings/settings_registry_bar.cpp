@@ -64,6 +64,10 @@ namespace settings {
     auto kindRows = generateSchemaEntries(noctalia::config::schema::osdKindsSchema(), cfg.osd.kinds, {"osd", "kinds"});
     for (auto& row : kindRows) {
       const std::string& key = row.path.back();
+      if ((key == "power_profile" && env.powerProfiles.empty())
+          || (key == "keyboard_backlight" && !env.keyboardBacklightAvailable)) {
+        continue;
+      }
       if (key == "volume_output" || key == "volume_input") {
         row.visibleWhen = [](const Config& c) { return c.osd.kinds.volume; };
       } else if (key == "media_volume") {
