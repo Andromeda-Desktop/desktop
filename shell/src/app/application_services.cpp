@@ -575,6 +575,15 @@ void Application::syncPolkitAgent() {
   m_polkitAgent->start();
 }
 
+void Application::syncToolkitTheme() {
+  if (m_configService.config().theme.toolkitThemes) {
+    const auto& toolkit = m_themeService.toolkitColors();
+    toolkit_theme::write(m_themeService.resolvedMode(), toolkit.accent, toolkit.accentText, toolkit.onAccent);
+  } else {
+    toolkit_theme::remove();
+  }
+}
+
 void Application::applyPowerSourceProfile() {
   if (upower() == nullptr) {
     return;
@@ -970,12 +979,15 @@ void Application::initStyleThemeAndWayland() {
     publishAppSettings();
     m_configService.addReloadCallback(publishAppSettings);
   }
-  if (m_configService.config().theme.toolkitThemes) {
-    const auto& toolkit = m_themeService.toolkitColors();
-    toolkit_theme::write(m_themeService.resolvedMode(), toolkit.accent, toolkit.accentText, toolkit.onAccent);
-  } else {
-    toolkit_theme::remove();
-  }
+  syncToolkitTheme();
+  m_configService.addReloadCallback(
+      [this, last = m_configService.config().theme.toolkitThemes] mutable {
+        if (std::exchange(last, m_configService.config().theme.toolkitThemes) != last) {
+          syncToolkitTheme();
+        }
+      },
+      "toolkit-themes"
+  );
   if (m_configService.config().theme.syncColorScheme) {
     syncGSettingsColorScheme(m_bus.get(), m_themeService.resolvedMode());
   }

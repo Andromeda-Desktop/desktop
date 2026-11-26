@@ -115,7 +115,6 @@
 #include "ui/dialogs/color_picker_dialog.h"
 #include "ui/dialogs/file_dialog.h"
 #include "ui/dialogs/glyph_picker_dialog.h"
-#include "theme/toolkit_theme_files.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "util/file_utils.h"
@@ -1589,12 +1588,7 @@ void Application::initWidgetControllersAndCallbacks() {
       m_settingsPortal->setGlassStyle(static_cast<std::uint32_t>(g.style), g.edgeReflection, g.liquidTint, g.liquidBlur);
       m_settingsPortal->setButtonsLeft(appearance.titleBarButtonsLeft);
     }
-    if (m_configService.config().theme.toolkitThemes) {
-      const auto& toolkit = m_themeService.toolkitColors();
-      toolkit_theme::write(m_themeService.resolvedMode(), toolkit.accent, toolkit.accentText, toolkit.onAccent);
-    } else {
-      toolkit_theme::remove();
-    }
+    syncToolkitTheme();
     // Bar and dock re-apply their material fills on this signal; the other glass surfaces re-read them on reload.
     paletteChanged().emit();
     m_panelManager.onConfigReloaded();

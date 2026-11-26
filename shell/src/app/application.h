@@ -288,6 +288,7 @@ private:
   // Battery and network for the lock screen's status island.
   void refreshLockStatus();
   void applyPowerSourceProfile();
+  void syncToolkitTheme();
   [[nodiscard]] UPowerService* upower() const noexcept {
     return m_upowerModule != nullptr ? m_upowerModule->service() : nullptr;
   }
