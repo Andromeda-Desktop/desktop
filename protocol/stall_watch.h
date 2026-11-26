@@ -24,6 +24,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <string>
+#include <cstdio>
 #include <string_view>
 #include <sys/timerfd.h>
 #include <systemd/sd-bus.h>
@@ -420,10 +421,23 @@ namespace andromeda::stall {
       const std::size_t paren = stat.rfind(')');
       const char state = paren != std::string::npos && paren + 2 < stat.size() ? stat[paren + 2] : '?';
       const std::string syscall = detail::readSmallFile(m_task + "syscall");
-      return std::format(
+      std::string out = std::format(
           "{}ms:state={},wchan={},syscall={}", atMs, state, wchan.empty() ? "?" : wchan,
           syscall.substr(0, syscall.find(' '))
       );
+      // /proc syscall text: "nr arg1 ..." with hex args; for an fd syscall, name the file it blocks on.
+      int nr = -1;
+      unsigned long long fd = 0;
+      if (std::sscanf(syscall.c_str(), "%d %llx", &nr, &fd) == 2 &&
+          (nr == 0 || nr == 1 || nr == 17 || nr == 18 || nr == 19 || nr == 20 || nr == 74 || nr == 75 || nr == 77 ||
+           nr == 285)) {
+        char target[256];
+        const ssize_t n = ::readlink(std::format("/proc/self/fd/{}", fd).c_str(), target, sizeof target - 1);
+        if (n > 0) {
+          out += std::format(",fd={}", std::string_view(target, static_cast<std::size_t>(n)));
+        }
+      }
+      return out;
     }
 
     const std::string m_component;
