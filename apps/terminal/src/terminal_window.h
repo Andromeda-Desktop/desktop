@@ -396,6 +396,7 @@ namespace term {
     [[nodiscard]] std::pair<float, float> paneMinimum() const;
     // A sidebar row dragged onto a pane: the half under the pointer previews where it joins.
     [[nodiscard]] std::optional<ui::SplitDrop> dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const;
+    [[nodiscard]] bool splitFull(std::uint64_t dragged, std::uint64_t target) const;
     void rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY);
     [[nodiscard]] bool leavesGroup(std::uint64_t id, float sceneX, float sceneY) const;
     // The session a row dropped at sceneY lands before in sidebar order (0: the end); nullopt off the list.

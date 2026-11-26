@@ -358,8 +358,11 @@ namespace viewer {
     if (!m_docs.contains(id)) {
       drop = true; // the document closed while it dragged: end the drag with no target
     }
-    const auto target =
-        m_docs.contains(id) && canJoin(id) ? m_split.dropAt(*m_set.focused(), sceneX, sceneY) : std::nullopt;
+    const auto focused = m_set.focused();
+    const auto aim = m_docs.contains(id) && focused ? m_split.dropAt(*focused, sceneX, sceneY) : std::nullopt;
+    const auto target = aim && canJoin(id) ? aim : std::nullopt;
+    const auto* into = focused ? m_set.splitOf(*focused) : nullptr;
+    const bool full = aim && m_set.splitOf(id) == nullptr && into != nullptr && into->size() >= kMaxPanes;
     const float s = m_window.uiScale();
     if (!drop && !m_dragGhost) {
       m_window.setDragGhost(documentRow("file", m_docs.at(id)->title(), false, ColorRole::Label1,
@@ -371,7 +374,13 @@ namespace viewer {
     } else if (std::exchange(m_dragGhost, false)) {
       m_window.clearDragGhost();
     }
-    m_split.showDropPreview(target && !drop ? std::optional(target->rect) : std::nullopt);
+    SplitView::DropHint hint;
+    if (!drop && target) {
+      hint = target->rect;
+    } else if (!drop && full) {
+      hint = SplitView::DropRefusal{i18n::tr("viewer.tabs.split-full", "count", std::to_string(kMaxPanes))};
+    }
+    m_split.showDropPreview(hint);
     if (target && drop) {
       join(id, target);
     }
@@ -552,7 +561,7 @@ namespace viewer {
             // A drag whose row went away mid-drag never dropped: its ghost goes now.
             if (std::exchange(m_dragGhost, false)) {
               m_window.clearDragGhost();
-              m_split.showDropPreview(std::nullopt);
+              m_split.showDropPreview({});
             }
             return;
           }

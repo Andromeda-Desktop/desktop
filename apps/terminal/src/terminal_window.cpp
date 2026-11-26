@@ -2701,12 +2701,13 @@ namespace term {
     if (!drop || drop->target == dragged) {
       return std::nullopt;
     }
-    // A member re-joins elsewhere in its own split without growing it; another split must have room.
-    const auto* into = m_sessions.splitOf(drop->target);
-    if (into != nullptr && !std::ranges::contains(*into, dragged) && into->size() >= kMaxPanes) {
-      return std::nullopt;
-    }
     return drop;
+  }
+
+  // A member re-joins elsewhere in its own split without growing it; another split must have room.
+  bool TerminalWindow::splitFull(std::uint64_t dragged, std::uint64_t target) const {
+    const auto* into = m_sessions.splitOf(target);
+    return into != nullptr && !std::ranges::contains(*into, dragged) && into->size() >= kMaxPanes;
   }
 
   // A member dropped outside its sidebar block leaves the split.
@@ -2904,7 +2905,9 @@ namespace term {
       return;
     }
     const auto barWindow = barWindowAt(sceneX, sceneY);
-    const auto target = barWindow ? std::nullopt : dropTarget(id, sceneX, sceneY);
+    const auto aim = barWindow ? std::nullopt : dropTarget(id, sceneX, sceneY);
+    const bool full = aim && splitFull(id, aim->target);
+    const auto target = full ? std::nullopt : aim;
     // A raised chip of the row under the pointer, its symbol where the pointer holds it.
     const float s = m_window.uiScale();
     // A drag between windows has its own image: no ghost when it comes back here.
@@ -2924,7 +2927,7 @@ namespace term {
       m_window.clearDragGhost();
     }
     if (barWindow) {
-      m_split.showDropPreview(std::nullopt);
+      m_split.showDropPreview({});
       showDropLine(std::nullopt);
       if (phase == StatusRow::DragPhase::Drop) {
         // Later: the move frees the row whose release runs this.
@@ -2939,11 +2942,21 @@ namespace term {
       }
       return;
     }
-    m_split.showDropPreview(target && phase == StatusRow::DragPhase::Move ? std::optional(target->rect) : std::nullopt);
-    // Off a pane, the row lands in the sidebar order; a split member only once it leaves its block.
-    const bool leaves = !target && leavesGroup(id, sceneX, sceneY);
-    const auto lands = target || (m_sessions.splitOf(id) != nullptr && !leaves) ? std::nullopt : dropBefore(id, sceneX, sceneY);
+    SplitView::DropHint hint;
+    if (phase == StatusRow::DragPhase::Move && target) {
+      hint = target->rect;
+    } else if (phase == StatusRow::DragPhase::Move && full) {
+      hint = SplitView::DropRefusal{i18n::tr("terminal.palette.split-full")};
+    }
+    m_split.showDropPreview(hint);
+    // Off a pane, the row lands in the sidebar order; a split member only once it leaves its block. A full split
+    // takes nothing, so a drop on it changes nothing.
+    const bool leaves = !aim && leavesGroup(id, sceneX, sceneY);
+    const auto lands = aim || (m_sessions.splitOf(id) != nullptr && !leaves) ? std::nullopt : dropBefore(id, sceneX, sceneY);
     showDropLine(phase == StatusRow::DragPhase::Move ? lands : std::nullopt);
+    if (full) {
+      return;
+    }
     if (phase == StatusRow::DragPhase::Drop && m_sessions.find(id) == nullptr) {
       // A row of another window moves here first, then lands where it was aimed (computed before the move).
       TerminalWindow* from = holderOf(id);

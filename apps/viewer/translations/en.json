@@ -27,6 +27,7 @@
   "tabs": {
     "split": "Split with current",
     "leave-split": "Leave split",
+    "split-full": "A split holds {count} panes at most",
     "edited": "Edited",
     "documents": "Documents",
     "more": "{count} more",

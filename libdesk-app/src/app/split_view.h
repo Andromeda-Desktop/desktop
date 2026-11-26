@@ -97,8 +97,13 @@ public:
 
   // Where `dragged` would join at the scene point: a half of a card, or of the single item `shown`.
   [[nodiscard]] std::optional<ui::SplitDrop> dropAt(std::uint64_t shown, float sceneX, float sceneY) const;
-  // The drop preview at `rect` in the slot, or hidden.
-  void showDropPreview(const std::optional<PaneRect>& rect);
+  // What a dragged item would do here: nothing, take `PaneRect` in the slot, or nothing because the split refuses it
+  // (the text says why, over the whole split).
+  struct DropRefusal {
+    std::string reason;
+  };
+  using DropHint = std::variant<std::monostate, PaneRect, DropRefusal>;
+  void showDropPreview(const DropHint& hint);
   // The next fill puts `join.joining` on `join.edge` of `join.target`; from: its card starts at this rect.
   void pendJoin(const ui::SplitTrees::Join& join, std::optional<PaneRect> from = std::nullopt);
   // Two panes of one split trade tiles; the caller applies the same swap to its pane order.
@@ -179,7 +184,9 @@ private:
   std::variant<std::monostate, DividerDrag, PaneDrag> m_drag;
   [[nodiscard]] bool isPaneDrag(std::uint64_t id) const;
   [[nodiscard]] bool isDividerDrag(std::size_t index) const;
-  Box* m_dropPreview = nullptr;
+  Flex* m_dropPreview = nullptr;
+  Flex* m_dropReasonChip = nullptr;
+  Label* m_dropReason = nullptr;
   std::optional<ClosedCard> m_closedCard;
   std::optional<std::pair<std::uint64_t, PaneRect>> m_dropFrom;
   std::uint64_t m_ringPane = 0;

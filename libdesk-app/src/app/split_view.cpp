@@ -47,6 +47,8 @@ void SplitView::reset() {
   cancelPaneDrag();
   m_drag = std::monostate{};
   m_dropPreview = nullptr;
+  m_dropReasonChip = nullptr;
+  m_dropReason = nullptr;
   m_ringPane = 0;
 }
 
@@ -70,6 +72,8 @@ void SplitView::fill(Renderer& renderer, Node* slot, float width, float height, 
   cancelPaneDrag();
   m_drag = std::monostate{};
   m_dropPreview = nullptr;
+  m_dropReasonChip = nullptr;
+  m_dropReason = nullptr;
   m_ringPane = 0;
   m_built.clear();
   if (panes.empty()) {
@@ -90,13 +94,26 @@ void SplitView::fill(Renderer& renderer, Node* slot, float width, float height, 
     }
   }
   const float s = m_window.uiScale();
-  m_slot->addChild(ui::box({.out = &m_dropPreview,
-                            .fill = colorSpecFromRole(ColorRole::Accent, Tokens::componentSplitDropFill),
-                            .border = focusRingColorSpec(),
-                            .borderWidth = Tokens::componentSplitFocusRing * s,
-                            .radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s),
-                            .visible = false,
-                            .participatesInLayout = false}));
+  auto reason = ui::row({.out = &m_dropReasonChip,
+                          .paddingV = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s,
+                          .fill = colorSpecFromRole(ColorRole::SolidRegular),
+                          .radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s)});
+  reason->addChild(ui::label({.out = &m_dropReason,
+                              .fontSize = Tokens::typeBody.size * s,
+                              .color = colorSpecFromRole(ColorRole::DangerText),
+                              .maxLines = 1,
+                              .ellipsize = TextEllipsize::End}));
+  m_dropReason->setLineHeight(Tokens::typeBody.line * s);
+  auto preview = ui::column({.out = &m_dropPreview,
+                           .align = FlexAlign::Center,
+                           .justify = FlexJustify::Center,
+                           .padding = Tokens::spaceP16 * s,
+                           .radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s),
+                           .borderWidth = Tokens::componentSplitFocusRing * s,
+                           .visible = false,
+                           .participatesInLayout = false});
+  preview->addChild(std::move(reason));
+  m_slot->addChild(std::move(preview));
   if (const auto closed = std::exchange(m_closedCard, std::nullopt); closed) {
     const PaneRect& r = closed->rect;
     Box* plate = nullptr;
@@ -771,15 +788,25 @@ std::optional<ui::SplitDrop> SplitView::dropAt(std::uint64_t shown, float sceneX
   return ui::splitDrop(panes, sceneX - x, sceneY - y);
 }
 
-void SplitView::showDropPreview(const std::optional<PaneRect>& rect) {
+void SplitView::showDropPreview(const DropHint& hint) {
   if (m_dropPreview == nullptr) {
     return;
   }
-  if (rect) {
+  const float ring = Tokens::componentSplitFocusRing * m_window.uiScale();
+  if (const auto* rect = std::get_if<PaneRect>(&hint)) {
     m_dropPreview->setPosition(rect->x, rect->y);
     m_dropPreview->setSize(rect->width, rect->height);
+    m_dropPreview->setFill(colorSpecFromRole(ColorRole::Accent, Tokens::componentSplitDropFill));
+    m_dropPreview->setBorder(focusRingColorSpec(), ring);
+  } else if (const auto* refusal = std::get_if<DropRefusal>(&hint)) {
+    m_dropPreview->setPosition(0.0F, 0.0F);
+    m_dropPreview->setSize(m_width, m_height);
+    m_dropPreview->setFill(colorSpecFromRole(ColorRole::Danger, Tokens::componentSplitDropFill));
+    m_dropPreview->setBorder(colorSpecFromRole(ColorRole::Danger), ring);
+    m_dropReason->setText(refusal->reason);
   }
-  m_dropPreview->setVisible(rect.has_value());
+  m_dropReasonChip->setVisible(std::holds_alternative<DropRefusal>(hint));
+  m_dropPreview->setVisible(!std::holds_alternative<std::monostate>(hint));
   m_window.invalidate();
 }
 
