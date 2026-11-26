@@ -77,15 +77,17 @@ void IdleInhibitor::setEnabled(bool enabled) {
 
 void IdleInhibitor::setChangeCallback(ChangeCallback callback) { m_changeCallback = std::move(callback); }
 
-// Caffeine holds logind's idle lock when it can; the compositor sees only Wayland inhibitors, so it gets one for
-// Caffeine or an app inhibit either way.
+// Caffeine holds logind's idle lock when it can, and a Wayland inhibitor only without one: a Wayland inhibitor also
+// stops the shell's own idle heartbeat, which the presence lock needs while Caffeine is on. An app inhibit always
+// gets one, so the compositor's idle state follows it.
 void IdleInhibitor::syncInhibitor(bool logTransitions) {
   if (m_enabled) {
     syncLogindInhibit(logTransitions);
   } else {
     releaseLogindInhibit();
   }
-  if (m_enabled || m_appInhibited) {
+  const bool caffeineNeedsWayland = m_enabled && (m_logind == nullptr || !m_logind->hasIdleInhibit());
+  if (m_appInhibited || caffeineNeedsWayland) {
     syncWaylandInhibitors(logTransitions);
   } else {
     destroyWaylandInhibitors(false);

@@ -121,7 +121,7 @@ void GammaService::setForceEnabled(bool enabled) {
   if (enabled) {
     setMode(Mode::Forced);
   } else if (mode() == Mode::Forced) {
-    setMode(Mode::Scheduled);
+    setMode(m_config.enabled ? Mode::Scheduled : Mode::Off);
   }
 }
 

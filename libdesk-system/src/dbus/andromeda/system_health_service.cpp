@@ -78,6 +78,10 @@ SystemHealthService::SystemHealthService(SessionBus& bus) : m_bus(bus) {
         if (!newOwner.empty()) {
           refresh();
           loadKnobs();
+        } else if (!m_rules.empty()) {
+          // System1 left: no rule runs, so owners of a rule's job (the critical battery alert) take it back.
+          m_rules.clear();
+          notify();
         }
       });
   refresh();

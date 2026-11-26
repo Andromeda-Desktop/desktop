@@ -198,10 +198,12 @@ void BatteryWarningMonitor::evaluate(
     // Level-triggered: fire once per level as the battery drains into it. Empty state on the first
     // evaluate (startup) fires whatever level the battery already sits in — this is a deliberate
     // safety notification at boot, not a baseline state transition.
+    // While System1 owns the critical tier, the tier is not recorded as fired, so it fires if System1 leaves.
+    if (isSystem && currentLevel <= kCriticalLevel && m_systemCriticalOwned) {
+      continue;
+    }
     if (currentLevel < state.firedLevel) {
-      if (!(isSystem && currentLevel <= kCriticalLevel && m_systemCriticalOwned)) {
-        fireLowBatteryNotification(notifications, device, warningState, currentLevel, isSystem);
-      }
+      fireLowBatteryNotification(notifications, device, warningState, currentLevel, isSystem);
       state.firedLevel = currentLevel;
     } else if (currentLevel > state.firedLevel) {
       state.firedLevel = currentLevel; // partial recharge → arm so re-dropping re-alerts
