@@ -1,7 +1,6 @@
 #include "async_file_writer.h"
 #include "crash_capture.h"
 #include "log.h"
-#include "xdg_dirs.h"
 
 #include <algorithm>
 #include <atomic>
@@ -13,7 +12,9 @@
 #include <format>
 #include <random>
 #include <sys/file.h>
+#include <linux/magic.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
 #include <mutex>
 #include <pthread.h>
 #include <set>
@@ -266,11 +267,17 @@ namespace andromeda {
     if (!t_loopRunning) {
       return;
     }
-    const std::string runtime = xdg::runtimeDir();
-    const std::string& text = path.native();
-    if (!runtime.empty() && text.starts_with(runtime) && (text.size() == runtime.size() || text[runtime.size()] == '/')) {
+    // tmpfs ($XDG_RUNTIME_DIR, /dev/shm) is memory: its writes never wait on a disk.
+    // The nearest existing directory: the owner may create the rest.
+    std::filesystem::path dir = path.parent_path();
+    struct statfs fs{};
+    while (::statfs(dir.c_str(), &fs) != 0 && dir.has_relative_path()) {
+      dir = dir.parent_path();
+    }
+    if (fs.f_type == TMPFS_MAGIC) {
       return;
     }
+    const std::string& text = path.native();
     g_blockingLoopWrites.fetch_add(1, std::memory_order_relaxed);
     static auto* logged = new std::set<std::filesystem::path>;
     static auto* loggedMutex = new std::mutex;

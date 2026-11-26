@@ -52,8 +52,8 @@ namespace andromeda {
     LoopThreadScope& operator=(const LoopThreadScope&) = delete;
   };
 
-  // Every synchronous write owner calls this before it writes `path`: a write on a running loop thread to a path
-  // outside $XDG_RUNTIME_DIR (tmpfs) is logged once per path and counted.
+  // Every synchronous write owner calls this before it writes `path`: a write on a running loop thread to a directory
+  // that is not tmpfs is logged once per path and counted.
   void noteBlockingWrite(const std::filesystem::path& path);
   // Writes noteBlockingWrite counted in this process.
   [[nodiscard]] std::uint64_t blockingLoopWrites() noexcept;
