@@ -2339,7 +2339,11 @@ void Application::initSessionBusServices() {
     }
     try {
       m_systemHealthService = std::make_unique<SystemHealthService>(*m_bus);
-      m_systemHealthService->setChangeCallback([this] { m_settingsWindow.onPowerChanged(); });
+      m_systemHealthService->setChangeCallback([this] {
+        const SystemRule* critical = m_systemHealthService->rule("battery.critical");
+        m_batteryWarningMonitor.setSystemCriticalAlertOwned(critical != nullptr && critical->enabled && critical->error.empty());
+        m_settingsWindow.onPowerChanged();
+      });
       m_systemHealthService->setKnobCallback([this] {
         applyBrightnessStep();
         applyRuleDoNotDisturb();

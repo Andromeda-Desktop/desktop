@@ -320,8 +320,10 @@ namespace {
     std::string_view iconOff() const override { return "caffeine-on"; }
     bool isToggle() const override { return true; }
     bool active() const override { return m_svc != nullptr && m_svc->enabled(); }
+    // The same gate as the caffeine IPC: without a Wayland or logind backend the toggle would hold nothing.
+    bool enabled() const override { return m_svc != nullptr && m_svc->available(); }
     void onClick() override {
-      if (m_svc != nullptr) {
+      if (enabled()) {
         m_svc->toggle();
       }
     }

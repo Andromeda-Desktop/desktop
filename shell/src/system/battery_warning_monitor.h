@@ -26,6 +26,8 @@ public:
   // notifications. Safe to call at startup, on UPower changes, and on config reload — the
   // per-device fired-level bookkeeping keeps each level to a single notification per discharge cycle.
   void evaluate(const BatteryConfig& config, const UPowerService& upower, NotificationManager& notifications);
+  // System1's battery.critical rule alerts for the system battery's critical tier; the monitor then skips that tier.
+  void setSystemCriticalAlertOwned(bool owned) noexcept { m_systemCriticalOwned = owned; }
 
 private:
   struct DeviceWarningState {
@@ -33,4 +35,5 @@ private:
   };
 
   std::unordered_map<std::string, DeviceWarningState> m_devices;
+  bool m_systemCriticalOwned = false;
 };

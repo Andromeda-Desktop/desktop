@@ -12,6 +12,8 @@
 #include <vector>
 
 namespace {
+  // Percent at or below which the system battery alert is the critical, persistent one.
+  constexpr int kCriticalLevel = 2;
 
   bool isAutoSelector(std::string_view selector) {
     const std::string normalized = StringUtils::toLower(StringUtils::trim(selector));
@@ -134,7 +136,7 @@ namespace {
     int32_t timeout = kDefaultNotificationTimeout * 2;
     std::string title;
     std::string body;
-    if (isSystem && level <= 2) {
+    if (isSystem && level <= kCriticalLevel) {
       timeout = 0; // persistent: imminent shutdown stays on screen until charged or dismissed
       title = i18n::tr("notifications.internal.battery-critical-title");
       body = i18n::tr("notifications.internal.battery-critical-body", "device", label, "percent", percent);
@@ -197,7 +199,9 @@ void BatteryWarningMonitor::evaluate(
     // evaluate (startup) fires whatever level the battery already sits in — this is a deliberate
     // safety notification at boot, not a baseline state transition.
     if (currentLevel < state.firedLevel) {
-      fireLowBatteryNotification(notifications, device, warningState, currentLevel, isSystem);
+      if (!(isSystem && currentLevel <= kCriticalLevel && m_systemCriticalOwned)) {
+        fireLowBatteryNotification(notifications, device, warningState, currentLevel, isSystem);
+      }
       state.firedLevel = currentLevel;
     } else if (currentLevel > state.firedLevel) {
       state.firedLevel = currentLevel; // partial recharge → arm so re-dropping re-alerts
