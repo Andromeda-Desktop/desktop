@@ -13,6 +13,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
+#include <chrono>
 #include <cstring>
 #include <exception>
 #include <fstream>
@@ -28,6 +29,7 @@
 #include <sdbus-c++/Types.h>
 #include <sdbus-c++/VTableItems.h>
 #include <signal.h>
+#include <sys/syscall.h>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -246,13 +248,15 @@ namespace {
   // ends with SUCCESS or FAILURE; each answer goes back as one line.
   class HelperConversation {
   public:
-    HelperConversation(int fd, pid_t pid) : m_fd(fd), m_pid(pid) {}
+    // `child` is empty for the socket-activated helper, which systemd owns.
+    HelperConversation(int fd, std::optional<process::Child> child) : m_fd(fd), m_child(std::move(child)) {}
 
+    // Never waits on the main thread: a helper stuck in PAM is killed and reaped once it exits.
     ~HelperConversation() {
       ::close(m_fd);
-      if (m_pid > 0) {
-        ::kill(m_pid, SIGTERM);
-        ::waitpid(m_pid, nullptr, 0);
+      if (m_child) {
+        (void)::syscall(SYS_pidfd_send_signal, m_child->pidfd.get(), SIGKILL, nullptr, 0);
+        process::reapWhenExited(std::move(*m_child));
       }
     }
 
@@ -327,7 +331,7 @@ namespace {
         kLog.warn("polkit helper socket {}: {}; spawning the helper", kHelperSocket, std::strerror(errno));
         return nullptr;
       }
-      return std::make_unique<HelperConversation>(fd.release(), -1);
+      return std::make_unique<HelperConversation>(fd.release(), std::nullopt);
     }
 
     static std::unique_ptr<HelperConversation> spawn(const std::string& user) {
@@ -346,7 +350,7 @@ namespace {
       if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets.data()) != 0) {
         return nullptr;
       }
-      const auto child = process::spawn({
+      auto child = process::spawn({
           .argv = {helper, user},
           .fds = {{sockets[1], STDIN_FILENO}, {sockets[1], STDOUT_FILENO}},
       });
@@ -357,11 +361,11 @@ namespace {
         ::close(sockets[0]);
         return nullptr;
       }
-      return std::make_unique<HelperConversation>(sockets[0], child->pid);
+      return std::make_unique<HelperConversation>(sockets[0], std::move(*child));
     }
 
     int m_fd;
-    pid_t m_pid;
+    std::optional<process::Child> m_child;
     std::string m_buffer;
   };
 
@@ -443,6 +447,9 @@ struct PolkitAgent::Impl {
   std::unique_ptr<HelperConversation> conversation;
   // Bumped per conversation, so a line handler can tell that the one it reads from has ended.
   std::uint64_t conversationSerial = 0;
+  // A PAM module that hangs after an answer (as SM-004 on the lock screen) must not hold the dialog forever.
+  static constexpr std::chrono::seconds kAnswerTimeout{60};
+  std::optional<std::chrono::steady_clock::time_point> answerDeadline;
   // A FAILURE before any answer would restart the helper in a loop; only an answered attempt retries.
   bool answered = false;
   std::string activeUser;
@@ -584,6 +591,7 @@ struct PolkitAgent::Impl {
   }
 
   void clearConversationState() {
+    answerDeadline.reset();
     face = PolkitFaceState::None;
     faceConfirm = false;
     faceConfirmIsPrompt = false;
@@ -802,6 +810,16 @@ struct PolkitAgent::Impl {
     conversation->send(line);
     util::secureWipe(line);
     answered = true;
+    answerDeadline = std::chrono::steady_clock::now() + kAnswerTimeout;
+  }
+
+  // Until the helper answers a sent response; -1 otherwise.
+  [[nodiscard]] int answerTimeoutMs() const {
+    if (conversation == nullptr || !answerDeadline || responseRequired) {
+      return -1;
+    }
+    const auto left = std::chrono::ceil<std::chrono::milliseconds>(*answerDeadline - std::chrono::steady_clock::now());
+    return static_cast<int>(std::max<std::int64_t>(left.count(), 0));
   }
 
   void confirmFace() {
@@ -891,6 +909,11 @@ struct PolkitAgent::Impl {
   }
 
   void dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) {
+    if (answerTimeoutMs() == 0) {
+      kLog.warn("polkit helper gave no answer within {} s; stopping it", kAnswerTimeout.count());
+      clearPending(kErrorFailed, "Authentication helper did not answer");
+      return;
+    }
     if (conversation == nullptr || polledFd != conversation->fd() || startIdx >= fds.size() ||
         fds[startIdx].revents == 0) {
       return;
@@ -998,7 +1021,7 @@ void PolkitAgent::markNextRequestInternal() { m_impl->m_nextInternal = true; }
 
 void PolkitAgent::addPollFds(std::vector<pollfd>& fds) const { m_impl->addPollFds(fds); }
 
-int PolkitAgent::pollTimeoutMs() const { return -1; }
+int PolkitAgent::pollTimeoutMs() const { return m_impl->answerTimeoutMs(); }
 
 void PolkitAgent::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) { m_impl->dispatch(fds, startIdx); }
 
