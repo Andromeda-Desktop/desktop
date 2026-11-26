@@ -6,6 +6,7 @@
 #include "render/scene/input_dispatcher.h"
 #include "shell/session/session_end_phase.h"
 #include "wayland/layer_surface.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/ipc_channel.h"
 
 
@@ -158,7 +159,8 @@ private:
   bool m_guardWatched = false;
   bool m_reopen = true;
   std::vector<std::string> m_reopenApps;
-  void saveReopen(const std::vector<std::string>& apps) const;
+  // Writes on the file writer; `done` runs on the main loop once the file landed (or failed).
+  void saveReopen(const std::vector<std::string>& apps, andromeda::WriteDone done = {}) const;
   void readUnresponsive();
   // Window ids the compositor reports as not answering its close ping; read when the blocker list changes.
   std::vector<std::string> m_unresponsive;

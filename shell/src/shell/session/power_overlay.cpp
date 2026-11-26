@@ -92,11 +92,11 @@ void PowerOverlay::initialize(
   }
 }
 
-void PowerOverlay::saveReopen(const std::vector<std::string>& apps) const {
-  std::error_code ec;
-  std::filesystem::create_directories(std::filesystem::path(reopenPath()).parent_path(), ec);
-  std::ofstream out(reopenPath());
-  out << nlohmann::json{{"reopen", m_reopen}, {"apps", m_reopen ? apps : std::vector<std::string>{}}}.dump();
+void PowerOverlay::saveReopen(const std::vector<std::string>& apps, andromeda::WriteDone done) const {
+  andromeda::writeFileAsync(
+      reopenPath(), nlohmann::json{{"reopen", m_reopen}, {"apps", m_reopen ? apps : std::vector<std::string>{}}}.dump(),
+      {}, std::move(done)
+  );
 }
 
 std::vector<std::string> PowerOverlay::takeReopenApps() {
@@ -111,7 +111,7 @@ std::vector<std::string> PowerOverlay::takeReopenApps() {
   std::vector<std::string> apps = state["apps"].get<std::vector<std::string>>();
   in.close();
   state["apps"] = nlohmann::json::array();
-  std::ofstream(reopenPath()) << state.dump();
+  andromeda::writeFileAsync(reopenPath(), state.dump());
   return apps;
 }
 
@@ -875,7 +875,6 @@ void PowerOverlay::finishEnd() {
   (void)m_sessionEnd.apply(session_end::Run{.action = m_endAction});
   const std::uint64_t generation = m_sessionEnd.generation();
   syncPortal();
-  saveReopen(m_reopenApps);
   const std::string action = m_endAction;
   m_closeTimer.stop();
   m_tickTimer.stop();
@@ -886,7 +885,8 @@ void PowerOverlay::finishEnd() {
       }
     }
   }
-  DeferredCall::callLater([this, action, generation] { runEnd(action, generation); });
+  // The session ends only after the reopen list landed: a logout must not race its own save.
+  saveReopen(m_reopenApps, [this, action, generation](bool /*saved*/) { runEnd(action, generation); });
 }
 
 void PowerOverlay::runEnd(const std::string& action, std::uint64_t generation) {
