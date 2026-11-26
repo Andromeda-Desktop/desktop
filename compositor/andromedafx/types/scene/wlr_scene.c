@@ -1,5 +1,6 @@
 #include "andromedafx/types/wlr_scene.h"
 #include "andromedafx/render/backdrop_probe.h"
+#include "render/fx_renderer/backdrop_probe.h"
 
 #include "render/color.h"
 #include "render/fx_renderer/animation_history.h"
@@ -1475,6 +1476,9 @@ static bool blur_node_is_glass(const struct wlr_scene_blur* blur) {
 }
 
 static bool blur_node_draws(const struct wlr_scene_blur* blur, struct blur_data* scene_blur_data) {
+  if (blur->probe_only) {
+    return blur->backdrop_sampling;
+  }
   if (blur_samples_cache(blur) && blur->strength == 1.0) {
     return true;
   }
@@ -3041,6 +3045,14 @@ bool wlr_scene_blur_poll_backdrop(struct wlr_scene_blur* blur, struct fx_backdro
     scene_node_update(&blur->node, NULL);
   }
   return blur->backdrop_probe != NULL && fx_backdrop_probe_poll(blur->backdrop_probe, luminance);
+}
+
+void wlr_scene_blur_set_probe_only(struct wlr_scene_blur* blur, bool probe_only) {
+  if (blur->probe_only == probe_only) {
+    return;
+  }
+  blur->probe_only = probe_only;
+  scene_node_update(&blur->node, NULL);
 }
 
 bool wlr_scene_blur_backdrop_pending(const struct wlr_scene_blur* blur) {
@@ -4827,6 +4839,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         blur->backdrop_probe = fx_backdrop_probe_create(renderer);
       }
       blur_options.backdrop_probe = blur->backdrop_probe;
+      blur_options.probe_only = blur->probe_only;
     }
     fx_render_pass_add_blur(fx_pass, &blur_options);
     break;
@@ -7459,6 +7472,12 @@ static bool should_blur_node_extend_damage(
     // what's needed
     if (blur_node->strength < 1.0f) {
       *blur_data = blur_data_apply_strength(blur_data, blur_node->strength);
+    }
+    // A probe-only node draws only on the frames its probe samples; between them it needs no offscreen buffers.
+    if (blur_node->probe_only) {
+      fx_pass->has_blur = fx_pass->has_blur
+          || (blur_node->backdrop_probe != NULL && fx_backdrop_probe_due(blur_node->backdrop_probe));
+      return false;
     }
     // Glass without a blur pass reads only its own rectangle: it needs the offscreen buffers, not wider damage.
     if (!is_scene_blur_enabled(blur_data) && blur_node_is_glass(blur_node)) {

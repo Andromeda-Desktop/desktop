@@ -10,7 +10,7 @@
 namespace andromeda {
 
   namespace {
-    constexpr int kVersion = 20;
+    constexpr int kVersion = 21;
     constexpr uint32_t kPropertyCount = 14;
     constexpr uint32_t kCurveCount = 16;
     constexpr uint32_t kElevationCount = 3;
@@ -59,6 +59,7 @@ namespace andromeda {
       .set_secure = handleSetSecure,
       .set_content_region = handleSetContentRegion,
       .window_icon = handleWindowIcon,
+      .set_backdrop_probe = handleSetBackdropProbe,
   };
 
   const struct dsk_shape_v1_interface DskSurfaceManager::kShapeImplementation = {
@@ -105,6 +106,18 @@ namespace andromeda {
     }
     state->current.density = density;
     dsk_surface_v1_send_density(state->resource, wl_fixed_from_double(density));
+  }
+
+  void DskSurfaceManager::sendLuminance(wlr_surface* surface, float luminance) const {
+    wlr_addon* addon = wlr_addon_find(&surface->addons, this, &kAddonInterface);
+    if (addon == nullptr) {
+      return;
+    }
+    Surface* state = wl_container_of(addon, state, addon);
+    if (wl_resource_get_version(state->resource) < DSK_SURFACE_V1_BACKDROP_LUMINANCE_SINCE_VERSION) {
+      return;
+    }
+    dsk_surface_v1_send_backdrop_luminance(state->resource, wl_fixed_from_double(luminance));
   }
 
   void DskSurfaceManager::sendPresence(wlr_surface* surface, Presence presence) const {
@@ -529,6 +542,14 @@ namespace andromeda {
     state->pendingSecure = secure != 0;
   }
 
+  void DskSurfaceManager::handleSetBackdropProbe(wl_client* /*client*/, wl_resource* resource, uint32_t enabled) {
+    Surface* state = fromResource(resource);
+    if (state == nullptr) {
+      return;
+    }
+    state->pendingProbe = enabled != 0;
+  }
+
   void DskSurfaceManager::handleLaunchFrom(
       wl_client* client, wl_resource* resource, int32_t x, int32_t y, int32_t width, int32_t height
   ) {
@@ -707,6 +728,12 @@ namespace andromeda {
 
   void DskSurfaceManager::handleClientCommit(wl_listener* listener, void* /*data*/) {
     Surface* state = wl_container_of(listener, state, clientCommit);
+    if (state->pendingProbe == true && wlr_layer_surface_v1_try_from_wlr_surface(state->surface) == nullptr) {
+      wl_resource_post_error(
+          state->resource, DSK_SURFACE_V1_ERROR_INVALID_VALUE, "set_backdrop_probe needs a layer-shell surface"
+      );
+      return;
+    }
     // A fifo barrier or an acquire fence can hold this state for frames: its ops wait for it, so the glass and the
     // clip never run ahead of the pixels they frame.
     const uint32_t seq = state->surface->pending.seq;
@@ -732,6 +759,9 @@ namespace andromeda {
       state->secureClearSeq = seq;
     }
     state->pendingSecure.reset();
+    if (state->pendingProbe.has_value()) {
+      state->current.probe = *std::exchange(state->pendingProbe, std::nullopt);
+    }
   }
 
   void DskSurfaceManager::applyCommitted(Surface* state, Committed& batch) {

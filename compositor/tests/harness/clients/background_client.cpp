@@ -208,6 +208,7 @@ namespace {
         std::println("{} {}", static_cast<const char*>(label), presence);
         std::fflush(stdout);
       },
+      .backdrop_luminance = [](void*, dsk_surface_v1*, wl_fixed_t) {},
   };
   void addDskListener(State& state, wl_surface* surface, const char* label) {
     if (state.dskManager != nullptr) {

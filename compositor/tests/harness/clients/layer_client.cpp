@@ -69,6 +69,10 @@ namespace {
         std::println("dsk-presence {}", presence);
         std::fflush(stdout);
       },
+      .backdrop_luminance = [](void* /*data*/, dsk_surface_v1* /*surface*/, wl_fixed_t luminance) {
+        std::println("dsk-luminance {:.2f}", wl_fixed_to_double(luminance));
+        std::fflush(stdout);
+      },
   };
   const dsk_tracker_v1_listener kDskTrackerListener = {
       .interacting = [](void* /*data*/, dsk_tracker_v1* /*tracker*/, uint32_t /*time*/) {
@@ -490,6 +494,19 @@ namespace {
         dsk_surface_v1_add_listener(state.dskSurface, &kDskSurfaceListener, nullptr);
       }
       dsk_surface_v1_set_secure(state.dskSurface, secure);
+    } else if (action == "dsk-probe") {
+      // dsk-probe <label> <0|1>: needs LAYER_DSK_VERSION=21; prints dsk-luminance lines.
+      uint32_t enabled = 0;
+      command >> enabled;
+      if (state.dskManager == nullptr || command.fail()) {
+        state.failed = state.closed = true;
+        return;
+      }
+      if (state.dskSurface == nullptr) {
+        state.dskSurface = dsk_surface_manager_v1_get_surface(state.dskManager, state.surface);
+        dsk_surface_v1_add_listener(state.dskSurface, &kDskSurfaceListener, nullptr);
+      }
+      dsk_surface_v1_set_backdrop_probe(state.dskSurface, enabled);
     } else if (action == "dsk-track") {
       // dsk-track <label> <fingers> <min> <max> <snap>...: a vertical tracker bound to translate.y over min..max.
       if (state.dskManager == nullptr) {

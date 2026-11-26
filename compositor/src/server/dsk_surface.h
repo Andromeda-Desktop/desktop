@@ -39,6 +39,7 @@ namespace andromeda {
     struct State {
       SurfaceMotion motion;
       float density = -1.0F; // last dsk_surface_v1.density sent, -1 = none yet
+      bool probe = false; // dsk_surface_v1.set_backdrop_probe (v21)
       std::optional<Presence> presence; // last dsk_surface_v1.presence sent (v20)
       int version = 0; // dsk_surface_v1 version the client bound
       // dsk_surface_v1.set_visible_region (v8), surface-local; nullopt = the whole surface.
@@ -100,6 +101,8 @@ namespace andromeda {
     // Also advances the trackers of `surface` and writes their bound values.
     bool tick(wlr_surface* surface, uint32_t nowMs) const;
     void sendDensity(wlr_surface* surface, float density) const;
+    // dsk_surface_v1.backdrop_luminance (v21), 0 to 1.
+    void sendLuminance(wlr_surface* surface, float luminance) const;
     // dsk_surface_v1.presence (v20) of one surface; sends only a changed value.
     void sendPresence(wlr_surface* surface, Presence presence) const;
     // sendPresence to root and every mapped subsurface and popup below it (xdg or layer-shell root).
@@ -211,6 +214,7 @@ namespace andromeda {
       wlr_buffer* pendingGlassMask = nullptr;
       wlr_box pendingGlassMaskBox{};
       std::optional<bool> pendingSecure{};
+      std::optional<bool> pendingProbe{};
       // The wl_surface state seq whose application clears current.secure; a cached commit (sync subsurface, fifo,
       // syncobj) applies later, and its old buffer stays on screen until then.
       std::optional<uint32_t> secureClearSeq{};
@@ -246,6 +250,7 @@ namespace andromeda {
         int32_t height
     );
     static void handleSetSecure(wl_client* client, wl_resource* resource, uint32_t secure);
+    static void handleSetBackdropProbe(wl_client* client, wl_resource* resource, uint32_t enabled);
     static void
     handleSet(wl_client* client, wl_resource* resource, uint32_t property, int32_t a, int32_t b, int32_t c, int32_t d);
     static void handleAnimate(

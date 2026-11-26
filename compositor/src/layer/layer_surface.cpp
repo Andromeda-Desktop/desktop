@@ -967,9 +967,21 @@ namespace andromeda {
         shape->setBackdropLuminance(m_backdropLuminance);
       }
       densityChanged(m_density.sample(m_glass, darkest, brightest));
+      sendLuminance();
     }
     constexpr int kBackdropRecheckMs = 16;
     return pending ? kBackdropRecheckMs : 0;
+  }
+
+  void LayerSurface::sendLuminance() {
+    const DskSurfaceManager* dsk = m_server->dskSurfaces();
+    const DskSurfaceManager::State* state = dsk != nullptr ? dsk->state(m_layerSurface->surface) : nullptr;
+    if (state == nullptr || !state->probe
+        || (m_sentLuminance && std::abs(*m_sentLuminance - m_backdropLuminance) < glass::kAdaptDeadband)) {
+      return;
+    }
+    m_sentLuminance = m_backdropLuminance;
+    dsk->sendLuminance(m_layerSurface->surface, m_backdropLuminance);
   }
 
   void LayerSurface::densityChanged(bool glides) {
@@ -1265,10 +1277,28 @@ namespace andromeda {
         firstShapeBlur == 1 && !shapes.empty() && clip ? shapes.front().exact : std::nullopt,
         static_cast<float>(!shapes.empty() ? shapes.front().exactRadius * motionScale : 0.0)
     );
+    // set_backdrop_probe (v21): a surface with no blur of its own still measures the backdrop under it, drawing
+    // nothing; the probe reads the clip box, so the whole surface stands in for a missing clip.
+    const bool probe = state != nullptr && state->probe;
+    m_blur.setProbe(probe);
+    if (probe) {
+      m_blur.setBackdropSampling(true);
+    }
+    if (probe && !clip) {
+      clip = nodeBox;
+      m_nodeArea[0] = nodeBox.width * nodeBox.height;
+    }
+    if (!probe) {
+      m_sentLuminance.reset();
+    }
     m_blur.update(
         m_scene->tree, m_layerSurface->surface, nodeBox, box, corners, clip ? &*clip : nullptr, options, 1.0F, nullptr,
         region
     );
+    // A glass that already samples may see no new sample after the probe turns on: send the value it holds.
+    if (probe && !m_sentLuminance && m_density.measured()) {
+      sendLuminance();
+    }
     m_glassMask.update(m_scene->tree, m_layerSurface->surface, state);
     pixman_region32_fini(&scaledRegion);
     pixman_region32_fini(&rest);

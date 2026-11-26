@@ -99,11 +99,10 @@ namespace andromeda {
     // A compositor opacity below 1 makes even a client-declared opaque surface
     // reveal the backdrop, so it also requires a blur node. Its opacity does
     // not attenuate the blur itself: client-provided alpha does not either.
-    const bool want = cfg.enabled
-        && options.enabled.value_or(false)
-        && drawBox.width > 0
-        && drawBox.height > 0
+    const bool glass = cfg.enabled && options.enabled.value_or(false)
         && (options.always || surfaceOpacity < 1.0F || surfaceTransparent(surface, surfaceBox));
+    const bool probeOnly = m_probe && !glass;
+    const bool want = (glass || probeOnly) && drawBox.width > 0 && drawBox.height > 0;
     if (!want) {
       if (m_node != nullptr) {
         wlr_scene_node_set_enabled(&m_node->node, false);
@@ -164,6 +163,7 @@ namespace andromeda {
     wlr_scene_blur_set_lens(m_node, m_lens);
     wlr_scene_blur_set_tint_mix(m_node, m_tintRgb.data(), m_tintAmount);
     wlr_scene_blur_set_backdrop_sampling(m_node, m_backdropSampling);
+    wlr_scene_blur_set_probe_only(m_node, probeOnly);
     wlr_scene_blur_set_fade_from_source(m_node, m_fadeFromSource);
     wlr_scene_blur_set_strength(m_node, glass::blurStrength(m_clarity) * m_fade);
     wlr_scene_blur_set_full_strength(m_node, glass::blurStrength(m_clarity));
@@ -238,6 +238,8 @@ namespace andromeda {
       wlr_scene_blur_set_backdrop_sampling(m_node, enabled);
     }
   }
+
+  void SurfaceBlur::setProbe(bool probe) { m_probe = probe; }
 
   void SurfaceBlur::setFadeFromSource(bool enabled) {
     m_fadeFromSource = enabled;

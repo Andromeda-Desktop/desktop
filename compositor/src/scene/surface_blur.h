@@ -99,6 +99,9 @@ namespace andromeda {
     void setFadeFromSource(bool enabled);
     // Samples the blurred backdrop on each render of the node (wlr_scene_blur_set_backdrop_sampling).
     void setBackdropSampling(bool enabled);
+    // The backdrop probe: when the surface draws no glass (none asked, blur off, opaque), the node still samples the
+    // backdrop's luminance and draws nothing.
+    void setProbe(bool probe);
     // Never blocks: true with the sample's luminance when a sample finished since the last call.
     bool pollBackdrop(fx_backdrop_luminance* luminance);
     [[nodiscard]] bool backdropPending() const;
@@ -129,6 +132,7 @@ namespace andromeda {
     float m_tintAmount = 0.0F;
     float m_fade = 1.0F;
     bool m_backdropSampling = false;
+    bool m_probe = false;
     bool m_fadeFromSource = false;
     std::vector<MergedShape> m_merge;
     int m_mergeReach = 0;

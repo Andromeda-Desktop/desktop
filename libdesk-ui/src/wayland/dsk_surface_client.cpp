@@ -21,6 +21,7 @@ const dsk_surface_v1_listener DskSurfaceClient::kListener = {
     .backdrop = handleBackdrop,
     .density = handleDensity,
     .presence = handlePresence,
+    .backdrop_luminance = handleBackdropLuminance,
 };
 
 DskSurfaceClient::DskSurfaceClient(dsk_surface_manager_v1* manager, wl_surface* surface)
@@ -45,6 +46,17 @@ bool DskSurfaceClient::setSecure(bool secure) {
     return false;
   }
   dsk_surface_v1_set_secure(m_surface, secure ? 1U : 0U);
+  return true;
+}
+
+bool DskSurfaceClient::setBackdropProbe(bool enabled) {
+  if (wl_proxy_get_version(reinterpret_cast<wl_proxy*>(m_surface)) < DSK_SURFACE_V1_SET_BACKDROP_PROBE_SINCE_VERSION) {
+    return false;
+  }
+  if (m_backdropProbe != enabled) {
+    m_backdropProbe = enabled;
+    dsk_surface_v1_set_backdrop_probe(m_surface, enabled ? 1U : 0U);
+  }
   return true;
 }
 
@@ -246,6 +258,13 @@ void DskSurfaceClient::handleDensity(void* data, dsk_surface_v1* /*surface*/, in
   self->m_density = static_cast<float>(wl_fixed_to_double(density));
   if (self->m_onDensity) {
     self->m_onDensity(self->m_density);
+  }
+}
+
+void DskSurfaceClient::handleBackdropLuminance(void* data, dsk_surface_v1* /*surface*/, int32_t luminance) {
+  auto* self = static_cast<DskSurfaceClient*>(data);
+  if (self->m_onLuminance) {
+    self->m_onLuminance(static_cast<float>(wl_fixed_to_double(luminance)));
   }
 }
 

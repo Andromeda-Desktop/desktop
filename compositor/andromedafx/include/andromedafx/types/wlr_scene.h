@@ -302,6 +302,7 @@ struct wlr_scene_blur {
   struct linked_node transparency_mask_source;
 
   bool backdrop_sampling;
+  bool probe_only; // see wlr_scene_blur_set_probe_only
   struct fx_backdrop_probe* backdrop_probe; // created on the first render with sampling on
 };
 
@@ -1092,6 +1093,12 @@ bool wlr_scene_blur_poll_backdrop(struct wlr_scene_blur* blur, struct fx_backdro
 
 /** True while a sample waits for the GPU. */
 bool wlr_scene_blur_backdrop_pending(const struct wlr_scene_blur* blur);
+
+/**
+ * A probe-only node draws nothing and widens no damage: it blurs its region only on the frames its backdrop sampling
+ * takes a sample, for content with no glass that still needs the backdrop's luminance. Needs sampling on.
+ */
+void wlr_scene_blur_set_probe_only(struct wlr_scene_blur* blur, bool probe_only);
 
 /**
  * Sets the shape whose edge gets the liquid rim (node-local, logical px), when it differs from the node box.

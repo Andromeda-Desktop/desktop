@@ -52,6 +52,9 @@ public:
   void setElevation(Elevation level);
   // Protocol version 14: captures show the surface and its subsurfaces as black. False on an older compositor.
   bool setSecure(bool secure);
+  // Protocol version 21: the compositor measures the backdrop under a surface with no glass (setOnLuminance). Layer-shell
+  // surfaces only (another role is a protocol error). False on an older compositor.
+  bool setBackdropProbe(bool enabled);
   void set(Property property, const Value& value);
   // Runs from the property's current value; `onDone` fires once when it settles, is retargeted or is cancelled.
   void animate(Property property, Curve curve, const Value& to, DoneCallback onDone = {}, StartedCallback onStarted = {});
@@ -103,6 +106,8 @@ public:
   void setOnDensity(std::function<void(float density)> callback) { m_onDensity = std::move(callback); }
   // dsk_surface_v1.presence (v20) of a toplevel's root surface: the protocol value, which matches SurfacePresence.
   void setOnPresence(std::function<void(uint32_t presence)> callback) { m_onPresence = std::move(callback); }
+  // dsk_surface_v1.backdrop_luminance (v21): the backdrop's mean luminance, 0 to 1, while the probe is on.
+  void setOnLuminance(std::function<void(float luminance)> callback) { m_onLuminance = std::move(callback); }
 
   [[nodiscard]] dsk_surface_v1* resource() const noexcept { return m_surface; }
 
@@ -114,14 +119,17 @@ private:
   static void handleBackdrop(void* data, dsk_surface_v1* surface, uint32_t tone);
   static void handleDensity(void* data, dsk_surface_v1* surface, int32_t density);
   static void handlePresence(void* data, dsk_surface_v1* surface, uint32_t presence);
+  static void handleBackdropLuminance(void* data, dsk_surface_v1* surface, int32_t luminance);
 
   dsk_surface_v1* m_surface = nullptr;
   uint32_t m_nextSerial = 1;
   std::optional<Value> m_mappedClip;
   std::function<void(const Value&)> m_onClipMapped;
   float m_density = 0.0F;
+  bool m_backdropProbe = false; // last set_backdrop_probe sent
   std::function<void(float)> m_onDensity;
   std::function<void(uint32_t)> m_onPresence;
+  std::function<void(float)> m_onLuminance;
   std::unordered_map<uint32_t, DoneCallback> m_pending;
   std::unordered_map<uint32_t, StartedCallback> m_started;
 };

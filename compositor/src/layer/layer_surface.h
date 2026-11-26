@@ -67,6 +67,8 @@ namespace andromeda {
     // Moves the density toward the tone of the last backdrop sample.
     // Sends the density target to the client and draws the tint at the current density; `glides` asks for a frame.
     void densityChanged(bool glides);
+    // dsk_surface_v1.backdrop_luminance (v21) after a sample, when the probe is on and the value moved a visible step.
+    void sendLuminance();
     // Sends the density to the blur nodes as a backdrop pre-mix toward the tint.
     void applyDensity();
     [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const;
@@ -132,6 +134,7 @@ namespace andromeda {
     // The surface's dsk_surface_v1 glass; shapes without their own material take it.
     DskGlass m_glass;
     float m_backdropLuminance = 0.5F; // the last probe sample, 0 to 1
+    std::optional<float> m_sentLuminance; // the last backdrop_luminance sent; nullopt = none since the probe turned on
     // Per blur node (m_blur, then m_shapeBlurs): the last backdrop sample and the node's area in px; m_backdropLuminance
     // is their area-weighted mean (the shadow), so every glass shape of a surface takes one tone.
     std::vector<std::optional<fx_backdrop_luminance>> m_nodeLuminance;

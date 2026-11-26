@@ -3553,15 +3553,21 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
       && (tex_options->base.clip == NULL
           || pixman_region32_contains_rectangle(tex_options->base.clip, &probe_extents) == PIXMAN_REGION_IN);
   const bool probe_due = probe_redrawn && fx_backdrop_probe_due(fx_options->backdrop_probe);
-  if (probe_redrawn && !probe_due) {
+  // A probe-only node widens no damage, so a partial redraw over it marks the probe stale; the next poll redraws it whole.
+  if ((probe_redrawn && !probe_due)
+      || (fx_options->probe_only && !probe_redrawn && fx_options->backdrop_probe != NULL && !wlr_box_empty(&probe_box))) {
     fx_backdrop_probe_mark_stale(fx_options->backdrop_probe);
+  }
+  // A probe-only node draws nothing: it blurs only on the frames its probe samples.
+  if (fx_options->probe_only && !probe_due) {
+    goto finish;
   }
   const bool glass_fuse = glass_fuse_enabled();
   // Glass whose strength leaves no blur pass (clear Liquid) tints and bends a copy of the sharp backdrop.
   struct blur_data applied = blur_data_apply_strength(fx_options->blur_data, fx_options->blur_strength);
   const bool sharp_glass = glass && !is_scene_blur_enabled(&applied);
   // A run of live nodes blurred together (fx_render_pass_begin_shared_blur); a probe reads the shared blur.
-  const bool shared = pass->shared_blur.active && !use_optimized && !sharp_glass
+  const bool shared = pass->shared_blur.active && !use_optimized && !sharp_glass && !fx_options->probe_only
       && fx_options->blur_strength == pass->shared_blur.strength && pass->group_depth == 0
       && pass->animation_depth == 0 && (!pass->shared_blur.fused || blur_composite_is_copy(pass, tex_options));
   if (shared) {
@@ -3608,7 +3614,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   const bool fuse = shared ? pass->shared_blur.fused
                            : (!use_optimized || has_strength) && buffer_cached == NULL
           && !(glass && (probe_due || !glass_fuse))
-          && !sharp_glass
+          && !sharp_glass && !fx_options->probe_only
           && blur_composite_is_copy(pass, tex_options);
   struct blur_data final_upsample = shared ? pass->shared_blur.final_upsample : (struct blur_data){0};
   TRACY_ZONE_TEXT_f("Use Optimized Blur: %d", fx_options->use_optimized_blur);
@@ -3685,6 +3691,10 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
         buffer->buffer->height, &probe_box, pass->has_color_transform
     );
     fx_framebuffer_bind(pass->buffer);
+  }
+  if (fx_options->probe_only) {
+    wlr_texture_destroy(&blur_texture->wlr_texture);
+    goto finish;
   }
 
   // Get a stencil of the window ignoring transparent regions

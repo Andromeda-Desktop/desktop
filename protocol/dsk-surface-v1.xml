@@ -17,7 +17,7 @@
     Only unsandboxed clients see this global.
   </description>
 
-  <interface name="dsk_surface_manager_v1" version="20">
+  <interface name="dsk_surface_manager_v1" version="21">
     <request name="destroy" type="destructor"/>
 
     <request name="get_surface">
@@ -44,7 +44,7 @@
     </enum>
   </interface>
 
-  <interface name="dsk_surface_v1" version="20">
+  <interface name="dsk_surface_v1" version="21">
     <description summary="shape, elevation and animations of one surface">
       All requests are double-buffered and apply on the next wl_surface.commit,
       so new pixels and the motion that shows them start in the same frame.
@@ -339,6 +339,31 @@
         them while hidden.
       </description>
       <arg name="presence" type="uint" enum="presence"/>
+    </event>
+
+    <request name="set_backdrop_probe" since="21">
+      <description summary="measure the backdrop under a surface with no glass">
+        While enabled is 1, the compositor measures the luminance of the
+        backdrop under this surface's clip, even when the surface asks for no
+        glass and no blur, and reports it with backdrop_luminance. It draws
+        nothing for the probe. A measurement runs only when the backdrop under
+        the surface changes. Double-buffered: applies on the next
+        wl_surface.commit. Only a layer-shell surface measures: a commit that
+        enables the probe on a surface of another role is an invalid_value
+        error.
+      </description>
+      <arg name="enabled" type="uint"/>
+    </request>
+
+    <event name="backdrop_luminance" since="21">
+      <description summary="the mean luminance of the backdrop">
+        The mean relative luminance, 0 (black) to 1 (white), of the backdrop
+        under this surface. Sent with the first measurement after
+        set_backdrop_probe enables the probe, then each time the value moves
+        by a visible step. Content drawn with no surface (text on the
+        wallpaper) picks its ink from it.
+      </description>
+      <arg name="luminance" type="fixed"/>
     </event>
   </interface>
 
