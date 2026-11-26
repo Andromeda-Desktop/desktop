@@ -6,6 +6,7 @@ set -euo pipefail
 declare -A BUDGET=(
   [andro-log]=1 [andro-render]=1 [andro-residency]=1 [andro-icons]=1 [andro-keymap]=1 [andro-activity]=1
   [andro-filewrite]=1 [andro-scanout]=1 [andro-slack]=1 [andromeda-stall]=1 [andromeda-text]=1
+  [andro-filedone]=1 [andro-shortcuts]=1 [andro-layerperm]=1 [andro-inputperm]=1
 )
 readonly TOTAL=32
 
