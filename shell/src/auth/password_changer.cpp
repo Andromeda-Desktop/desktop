@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include <fstream>
+#include <sys/syscall.h>
 #include <sstream>
 #include <string_view>
 #include <vector>
@@ -169,6 +170,16 @@ namespace password_change {
           ::kill(pid, SIGTERM);
         }
         ::close(master);
+        // passwd may hang in a PAM module or ignore SIGTERM: past the deadline it is killed, so the wait below ends.
+        const int pidfd = static_cast<int>(::syscall(SYS_pidfd_open, pid, 0));
+        pollfd exited{.fd = pidfd, .events = POLLIN, .revents = 0};
+        if (pidfd < 0 || ::poll(&exited, 1, kPromptTimeoutMs) <= 0) {
+          kLog.warn("passwd did not exit within {} ms; stopping it", kPromptTimeoutMs);
+          ::kill(pid, SIGKILL);
+        }
+        if (pidfd >= 0) {
+          ::close(pidfd);
+        }
         int status = 0;
         while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {
         }
