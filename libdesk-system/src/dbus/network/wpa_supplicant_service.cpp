@@ -21,6 +21,7 @@ namespace {
   constexpr auto kWpaInterface = "fi.w1.wpa_supplicant1";
   constexpr auto kWpaIfaceInterface = "fi.w1.wpa_supplicant1.Interface";
   constexpr auto kWpaBssInterface = "fi.w1.wpa_supplicant1.BSS";
+  constexpr auto kWpaNetworkInterface = "fi.w1.wpa_supplicant1.Network";
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
 
   constexpr auto kStateCompleted = "completed";
@@ -29,10 +30,15 @@ namespace {
   constexpr auto kStateGroupHandshake = "group_handshake";
   constexpr auto k_state4wayHandshake = "4way_handshake";
 
-  template <typename T>
-  T getPropertyOr(sdbus::IProxy& proxy, std::string_view iface, std::string_view prop, T fallback) {
+  using VariantMap = std::map<std::string, sdbus::Variant>;
+
+  template <typename T> T propOr(const VariantMap& props, const char* name, T fallback) {
+    const auto it = props.find(name);
+    if (it == props.end()) {
+      return fallback;
+    }
     try {
-      return proxy.getProperty(prop).onInterface(iface).template get<T>();
+      return it->second.get<T>();
     } catch (const sdbus::Error&) {
       return fallback;
     }
@@ -51,55 +57,36 @@ namespace {
     return sdbus::Variant{std::vector<std::uint8_t>{ssid.begin(), ssid.end()}};
   }
 
-  // Read all BSS properties in one GetAll round-trip.
   struct BssInfo {
     std::string ssid;
     std::int16_t signal = -100;
     bool secured = false;
   };
 
-  std::optional<BssInfo> readBssInfo(sdbus::IProxy& proxy) {
-    try {
-      using VariantMap = std::map<std::string, sdbus::Variant>;
-      VariantMap all;
-      proxy.callMethod("GetAll")
-          .onInterface(kPropertiesInterface)
-          .withArguments(std::string{kWpaBssInterface})
-          .storeResultsTo(all);
-
-      const auto ssidIt = all.find("SSID");
-      if (ssidIt == all.end())
-        return std::nullopt;
-      const auto ssidBytes = ssidIt->second.get<std::vector<std::uint8_t>>();
-      if (ssidBytes.empty())
-        return std::nullopt;
-
-      BssInfo info;
-      info.ssid = {reinterpret_cast<const char*>(ssidBytes.data()), ssidBytes.size()};
-
-      if (const auto it = all.find("Signal"); it != all.end()) {
-        info.signal = it->second.get<std::int16_t>();
-      }
-
-      // Secured if RSN or WPA map is non-empty.
-      for (const auto* key : {"RSN", "WPA"}) {
-        if (const auto it = all.find(key); it != all.end()) {
-          try {
-            VariantMap vm;
-            vm = it->second.get<VariantMap>();
-            if (!vm.empty()) {
-              info.secured = true;
-              break;
-            }
-          } catch (const sdbus::Error&) {
-          }
-        }
-      }
-
-      return info;
-    } catch (const sdbus::Error&) {
+  std::optional<BssInfo> bssInfo(const VariantMap& props) {
+    const auto ssidBytes = propOr(props, "SSID", std::vector<std::uint8_t>{});
+    if (ssidBytes.empty()) {
       return std::nullopt;
     }
+    BssInfo info;
+    info.ssid = {reinterpret_cast<const char*>(ssidBytes.data()), ssidBytes.size()};
+    info.signal = propOr(props, "Signal", std::int16_t{-100});
+    // Secured if RSN or WPA map is non-empty.
+    info.secured = !propOr(props, "RSN", VariantMap{}).empty() || !propOr(props, "WPA", VariantMap{}).empty();
+    return info;
+  }
+
+  // A saved network's ssid: wpa_supplicant reports it quoted.
+  std::string networkSsid(const VariantMap& networkProps) {
+    auto ssid = propOr(propOr(networkProps, "Properties", VariantMap{}), "ssid", std::string{});
+    if (ssid.size() >= 2 && ssid.front() == '"' && ssid.back() == '"') {
+      ssid = ssid.substr(1, ssid.size() - 2);
+    }
+    return ssid;
+  }
+
+  bool under(const std::string& path, const std::string& parent) {
+    return path.size() > parent.size() && path.starts_with(parent) && path[parent.size()] == '/';
   }
 
 } // namespace
@@ -116,14 +103,18 @@ WpaSupplicantService::WpaSupplicantService(SystemBus& bus) : m_bus(bus) {
 
   m_wpa->uponSignal("InterfaceAdded")
       .onInterface(kWpaInterface)
-      .call([this](const sdbus::ObjectPath& path, const std::map<std::string, sdbus::Variant>&) {
+      .call([this](const sdbus::ObjectPath& path, const VariantMap&) {
         subscribeInterface(std::string(path));
-        scheduleRebuild();
+        rebuildState();
       });
 
   m_wpa->uponSignal("InterfaceRemoved").onInterface(kWpaInterface).call([this](const sdbus::ObjectPath& path) {
-    m_interfaces.erase(std::string(path));
-    scheduleRebuild();
+    const std::string ifacePath(path);
+    m_interfaces.erase(ifacePath);
+    std::erase_if(m_bsses, [&](const auto& entry) { return under(entry.first, ifacePath); });
+    std::erase_if(m_networks, [&](const auto& entry) { return under(entry.first, ifacePath); });
+    std::erase_if(m_savedNetworks, [&](const auto& entry) { return under(entry.second, ifacePath); });
+    rebuildState();
   });
 
   // A wpa_supplicant restart makes new interface objects: forget the old ones. No call while it is gone, as a call
@@ -132,28 +123,37 @@ WpaSupplicantService::WpaSupplicantService(SystemBus& bus) : m_bus(bus) {
       m_bus.connection(), std::string(kWpaBusName),
       [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
         m_interfaces.clear();
-        m_bssProxies.clear();
-        m_currentNetworkProxy.reset();
+        m_bsses.clear();
+        m_networks.clear();
         m_savedNetworks.clear();
         if (newOwner.empty()) {
           m_accessPoints.clear();
           emitChangedIfNeeded(NetworkState{});
         } else {
           subscribeInterfaces();
-          scheduleRebuild();
         }
       });
   subscribeInterfaces();
-  rebuildState();
 }
 
 void WpaSupplicantService::subscribeInterfaces() {
   try {
-    const auto ifaces =
-        m_wpa->getProperty("Interfaces").onInterface(kWpaInterface).get<std::vector<sdbus::ObjectPath>>();
-    for (const auto& p : ifaces) {
-      subscribeInterface(std::string(p));
-    }
+    m_wpa->getPropertyAsync("Interfaces")
+        .onInterface(kWpaInterface)
+        .uponReplyInvoke([this](std::optional<sdbus::Error> error, sdbus::Variant value) {
+          if (error) {
+            kLog.warn("failed to enumerate interfaces: {}", error->what());
+            return;
+          }
+          try {
+            for (const auto& path : value.get<std::vector<sdbus::ObjectPath>>()) {
+              subscribeInterface(std::string(path));
+            }
+          } catch (const sdbus::Error& e) {
+            kLog.warn("bad Interfaces property: {}", e.what());
+          }
+          rebuildState();
+        });
   } catch (const sdbus::Error& e) {
     kLog.warn("failed to enumerate interfaces: {}", e.what());
   }
@@ -171,168 +171,239 @@ void WpaSupplicantService::subscribeInterface(const std::string& ifacePath) {
 
     proxy->uponSignal("PropertiesChanged")
         .onInterface(kPropertiesInterface)
-        .call([this](
-                  const std::string&, const std::map<std::string, sdbus::Variant>&, const std::vector<std::string>&
-              ) { scheduleRebuild(); });
-
-    proxy->uponSignal("ScanDone").onInterface(kWpaIfaceInterface).call([this](bool) { scheduleRebuild(); });
-
-    // Maintain BSS proxy cache via signals — avoids createProxy in rebuildState.
-    proxy->uponSignal("BSSAdded")
-        .onInterface(kWpaIfaceInterface)
-        .call([this](const sdbus::ObjectPath& bssPath, const std::map<std::string, sdbus::Variant>&) {
-          const std::string& key{bssPath};
-          if (!m_bssProxies.contains(key)) {
-            try {
-              m_bssProxies.emplace(key, sdbus::createProxy(m_bus.connection(), kWpaBusName, bssPath));
-            } catch (const sdbus::Error&) {
-            }
+        .call([this, ifacePath](
+                  const std::string& interface, const VariantMap& changed, const std::vector<std::string>& invalidated
+              ) {
+          const auto it = m_interfaces.find(ifacePath);
+          if (interface != kWpaIfaceInterface || it == m_interfaces.end()) {
+            return;
           }
-          scheduleRebuild();
+          for (const auto& [name, value] : changed) {
+            it->second.props.insert_or_assign(name, value);
+          }
+          if (!invalidated.empty()) {
+            loadProperties(m_interfaces, ifacePath, kWpaIfaceInterface);
+          }
+          syncInterfaceObjects(ifacePath);
+          rebuildState();
         });
 
-    proxy->uponSignal("BSSRemoved").onInterface(kWpaIfaceInterface).call([this](const sdbus::ObjectPath& bssPath) {
-      m_bssProxies.erase(std::string(bssPath));
-      scheduleRebuild();
-    });
-
-    // Pre-populate BSS cache for already-visible BSSes.
-    try {
-      const auto bssPaths =
-          proxy->getProperty("BSSs").onInterface(kWpaIfaceInterface).get<std::vector<sdbus::ObjectPath>>();
-      for (const auto& bssPath : bssPaths) {
-        const std::string& key{bssPath};
-        if (!m_bssProxies.contains(key)) {
-          try {
-            m_bssProxies.emplace(key, sdbus::createProxy(m_bus.connection(), kWpaBusName, bssPath));
-          } catch (const sdbus::Error&) {
-          }
+    // A scan updates every BSS signal: read them again.
+    proxy->uponSignal("ScanDone").onInterface(kWpaIfaceInterface).call([this, ifacePath](bool) {
+      for (const auto& [bssPath, bss] : m_bsses) {
+        (void)bss;
+        if (under(bssPath, ifacePath)) {
+          loadProperties(m_bsses, bssPath, kWpaBssInterface);
         }
       }
-    } catch (const sdbus::Error&) {
-    }
+    });
 
-    auto& ref = *proxy;
-    m_interfaces.emplace(ifacePath, std::move(proxy));
-    loadSavedNetworks(ifacePath, ref);
+    proxy->uponSignal("BSSAdded")
+        .onInterface(kWpaIfaceInterface)
+        .call([this](const sdbus::ObjectPath& bssPath, const VariantMap&) { trackBss(std::string(bssPath)); });
+
+    proxy->uponSignal("BSSRemoved").onInterface(kWpaIfaceInterface).call([this](const sdbus::ObjectPath& bssPath) {
+      m_bsses.erase(std::string(bssPath));
+      rebuildState();
+    });
+
+    m_interfaces.emplace(ifacePath, CachedObject{.proxy = std::move(proxy), .props = {}});
+    loadProperties(m_interfaces, ifacePath, kWpaIfaceInterface);
   } catch (const sdbus::Error& e) {
     kLog.warn("failed to subscribe interface {}: {}", ifacePath, e.what());
   }
 }
 
-void WpaSupplicantService::scheduleRebuild() {
-  if (m_rebuildPending)
+void WpaSupplicantService::loadProperties(
+    std::unordered_map<std::string, CachedObject>& objects, const std::string& path, const char* interface
+) {
+  const auto it = objects.find(path);
+  if (it == objects.end()) {
     return;
-  m_rebuildPending = true;
-  // Rebuild is deferred to the next poll-loop dispatch via refresh().
-  // For immediate correctness on the first call we also rebuild now,
-  // but subsequent rapid signals within the same dispatch batch are coalesced.
-  rebuildState();
-  m_rebuildPending = false;
+  }
+  try {
+    it->second.proxy->callMethodAsync("GetAll")
+        .onInterface(kPropertiesInterface)
+        .withArguments(std::string{interface})
+        .uponReplyInvoke([this, &objects, path, interface](std::optional<sdbus::Error> error, VariantMap props) {
+          const auto entry = objects.find(path);
+          if (entry == objects.end()) {
+            return;
+          }
+          if (error) {
+            kLog.debug("GetAll {} failed on {}: {}", interface, path, error->what());
+            return;
+          }
+          entry->second.props = std::move(props);
+          if (&objects == &m_interfaces) {
+            syncInterfaceObjects(path);
+          } else if (&objects == &m_networks) {
+            if (const auto ssid = networkSsid(entry->second.props); !ssid.empty()) {
+              m_savedNetworks[ssid] = path;
+            }
+          }
+          rebuildState();
+        });
+  } catch (const sdbus::Error& e) {
+    kLog.debug("GetAll {} failed on {}: {}", interface, path, e.what());
+  }
 }
 
-void WpaSupplicantService::loadSavedNetworks(const std::string& /*ifacePath*/, sdbus::IProxy& proxy) {
-  if (&proxy != firstInterface())
+// Tracks the BSS and network objects an interface lists, so their properties are cached before a rebuild needs them.
+void WpaSupplicantService::syncInterfaceObjects(const std::string& ifacePath) {
+  const auto it = m_interfaces.find(ifacePath);
+  if (it == m_interfaces.end()) {
     return;
-  m_savedNetworks.clear();
+  }
+  const VariantMap& props = it->second.props;
+  for (const auto& bssPath : propOr(props, "BSSs", std::vector<sdbus::ObjectPath>{})) {
+    trackBss(std::string(bssPath));
+  }
+  for (const auto& networkPath : propOr(props, "Networks", std::vector<sdbus::ObjectPath>{})) {
+    trackNetwork(std::string(networkPath));
+  }
+  if (const auto current = std::string(propOr(props, "CurrentNetwork", sdbus::ObjectPath{"/"})); current != "/") {
+    trackNetwork(current);
+  }
+}
+
+void WpaSupplicantService::trackBss(const std::string& bssPath) {
+  if (m_bsses.contains(bssPath)) {
+    return;
+  }
   try {
-    const auto paths =
-        proxy.getProperty("Networks").onInterface(kWpaIfaceInterface).get<std::vector<sdbus::ObjectPath>>();
-    for (const auto& netPath : paths) {
-      try {
-        auto netProxy = sdbus::createProxy(m_bus.connection(), kWpaBusName, netPath);
-        using VariantMap = std::map<std::string, sdbus::Variant>;
-        const auto props =
-            netProxy->getProperty("Properties").onInterface("fi.w1.wpa_supplicant1.Network").get<VariantMap>();
-        if (const auto it = props.find("ssid"); it != props.end()) {
-          auto ssid = it->second.get<std::string>();
-          if (ssid.size() >= 2 && ssid.front() == '"' && ssid.back() == '"') {
-            ssid = ssid.substr(1, ssid.size() - 2);
-          }
-          if (!ssid.empty()) {
-            m_savedNetworks[ssid] = std::string(netPath);
-          }
-        }
-      } catch (const sdbus::Error&) {
-      }
-    }
+    m_bsses.emplace(
+        bssPath, CachedObject{.proxy = sdbus::createProxy(m_bus.connection(), kWpaBusName, sdbus::ObjectPath{bssPath}), .props = {}}
+    );
+    loadProperties(m_bsses, bssPath, kWpaBssInterface);
   } catch (const sdbus::Error& e) {
-    kLog.debug("loadSavedNetworks failed: {}", e.what());
+    kLog.debug("failed to track BSS {}: {}", bssPath, e.what());
+  }
+}
+
+void WpaSupplicantService::trackNetwork(const std::string& networkPath) {
+  if (m_networks.contains(networkPath)) {
+    return;
+  }
+  try {
+    m_networks.emplace(
+        networkPath,
+        CachedObject{.proxy = sdbus::createProxy(m_bus.connection(), kWpaBusName, sdbus::ObjectPath{networkPath}), .props = {}}
+    );
+    loadProperties(m_networks, networkPath, kWpaNetworkInterface);
+  } catch (const sdbus::Error& e) {
+    kLog.debug("failed to track network {}: {}", networkPath, e.what());
   }
 }
 
 sdbus::IProxy* WpaSupplicantService::firstInterface() const {
-  return m_interfaces.empty() ? nullptr : m_interfaces.begin()->second.get();
+  return m_interfaces.empty() ? nullptr : m_interfaces.begin()->second.proxy.get();
 }
 
 bool WpaSupplicantService::hasSavedConnection(const std::string& ssid) const { return m_savedNetworks.contains(ssid); }
+
+bool WpaSupplicantService::addAndSelect(const VariantMap& args, const char* what) {
+  auto* iface = firstInterface();
+  if (iface == nullptr)
+    return false;
+  const std::string ifacePath(iface->getObjectPath());
+  try {
+    iface->callMethodAsync("AddNetwork")
+        .onInterface(kWpaIfaceInterface)
+        .withArguments(args)
+        .uponReplyInvoke([this, ifacePath, what](std::optional<sdbus::Error> error, sdbus::ObjectPath netPath) {
+          const auto it = m_interfaces.find(ifacePath);
+          if (error || it == m_interfaces.end()) {
+            kLog.warn("activateAccessPoint ({}) failed: {}", what, error ? error->what() : "interface gone");
+            return;
+          }
+          try {
+            it->second.proxy->callMethodAsync("SelectNetwork")
+                .onInterface(kWpaIfaceInterface)
+                .withArguments(netPath)
+                .uponReplyInvoke([this, ifacePath, what](std::optional<sdbus::Error> selectError) {
+                  const auto iface = m_interfaces.find(ifacePath);
+                  if (selectError || iface == m_interfaces.end()) {
+                    kLog.warn("SelectNetwork ({}) failed: {}", what, selectError ? selectError->what() : "interface gone");
+                    return;
+                  }
+                  try {
+                    iface->second.proxy->callMethodAsync("SaveConfig")
+                        .onInterface(kWpaIfaceInterface)
+                        .uponReplyInvoke([](std::optional<sdbus::Error> saveError) {
+                          if (saveError) {
+                            kLog.warn("SaveConfig failed: {}", saveError->what());
+                          }
+                        });
+                  } catch (const sdbus::Error& e) {
+                    kLog.warn("SaveConfig failed: {}", e.what());
+                  }
+                });
+          } catch (const sdbus::Error& e) {
+            kLog.warn("SelectNetwork ({}) failed: {}", what, e.what());
+          }
+        });
+    return true;
+  } catch (const sdbus::Error& e) {
+    kLog.warn("activateAccessPoint ({}) failed: {}", what, e.what());
+    return false;
+  }
+}
+
+namespace {
+  // Fire and forget: the proxy belongs to the service, so it outlives the call.
+  void callAsync(sdbus::IProxy& proxy, const char* method, const sdbus::ObjectPath* argument = nullptr) {
+    auto onReply = [method = std::string(method)](std::optional<sdbus::Error> error) {
+      if (error) {
+        kLog.warn("{} failed: {}", method, error->what());
+      }
+    };
+    try {
+      if (argument != nullptr) {
+        proxy.callMethodAsync(method).onInterface(kWpaIfaceInterface).withArguments(*argument).uponReplyInvoke(onReply);
+      } else {
+        proxy.callMethodAsync(method).onInterface(kWpaIfaceInterface).uponReplyInvoke(onReply);
+      }
+    } catch (const sdbus::Error& e) {
+      kLog.warn("{} failed: {}", method, e.what());
+    }
+  }
+} // namespace
 
 bool WpaSupplicantService::activateAccessPoint(const AccessPointInfo& ap) {
   auto* iface = firstInterface();
   if (iface == nullptr)
     return false;
   if (const auto it = m_savedNetworks.find(ap.ssid); it != m_savedNetworks.end()) {
-    try {
-      iface->callMethod("SelectNetwork").onInterface(kWpaIfaceInterface).withArguments(sdbus::ObjectPath{it->second});
-      return true;
-    } catch (const sdbus::Error& e) {
-      kLog.warn("SelectNetwork failed: {}", e.what());
-      return false;
-    }
-  }
-  try {
-    using VariantMap = std::map<std::string, sdbus::Variant>;
-    VariantMap args;
-    args["ssid"] = ssidVariant(ap.ssid);
-    args["key_mgmt"] = sdbus::Variant{std::string{"NONE"}};
-    sdbus::ObjectPath netPath;
-    iface->callMethod("AddNetwork").onInterface(kWpaIfaceInterface).withArguments(args).storeResultsTo(netPath);
-    iface->callMethod("SelectNetwork").onInterface(kWpaIfaceInterface).withArguments(netPath);
-    iface->callMethod("SaveConfig").onInterface(kWpaIfaceInterface);
+    const sdbus::ObjectPath network{it->second};
+    callAsync(*iface, "SelectNetwork", &network);
     return true;
-  } catch (const sdbus::Error& e) {
-    kLog.warn("activateAccessPoint (open) failed: {}", e.what());
-    return false;
   }
+  VariantMap args;
+  args["ssid"] = ssidVariant(ap.ssid);
+  args["key_mgmt"] = sdbus::Variant{std::string{"NONE"}};
+  return addAndSelect(args, "open");
 }
 
 bool WpaSupplicantService::activateAccessPoint(const AccessPointInfo& ap, const std::string& psk) {
-  auto* iface = firstInterface();
-  if (iface == nullptr)
-    return false;
-  try {
-    using VariantMap = std::map<std::string, sdbus::Variant>;
-    VariantMap args;
-    args["ssid"] = ssidVariant(ap.ssid);
-    args["psk"] = sdbus::Variant{psk}; // raw passphrase, no quotes
-    sdbus::ObjectPath netPath;
-    iface->callMethod("AddNetwork").onInterface(kWpaIfaceInterface).withArguments(args).storeResultsTo(netPath);
-    iface->callMethod("SelectNetwork").onInterface(kWpaIfaceInterface).withArguments(netPath);
-    iface->callMethod("SaveConfig").onInterface(kWpaIfaceInterface);
-    return true;
-  } catch (const sdbus::Error& e) {
-    kLog.warn("activateAccessPoint (psk) failed: {}", e.what());
-    return false;
-  }
+  VariantMap args;
+  args["ssid"] = ssidVariant(ap.ssid);
+  args["psk"] = sdbus::Variant{psk}; // raw passphrase, no quotes
+  return addAndSelect(args, "psk");
 }
 
 void WpaSupplicantService::disconnect() {
-  auto* iface = firstInterface();
-  if (iface == nullptr)
-    return;
-  try {
-    iface->callMethod("Disconnect").onInterface(kWpaIfaceInterface);
-  } catch (const sdbus::Error& e) {
-    kLog.warn("Disconnect failed: {}", e.what());
+  if (auto* iface = firstInterface(); iface != nullptr) {
+    callAsync(*iface, "Disconnect");
   }
 }
 
 void WpaSupplicantService::setWirelessEnabled(bool enabled, WirelessEnabledCompletion onComplete) {
   const bool softBlocked = !enabled;
   bool rfkillDone = false;
-  for (const auto& [ifacePath, proxy] : m_interfaces) {
+  for (const auto& [ifacePath, iface] : m_interfaces) {
     (void)ifacePath;
-    const auto ifname = getPropertyOr<std::string>(*proxy, kWpaIfaceInterface, "Ifname", "");
+    const auto ifname = propOr(iface.props, "Ifname", std::string{});
     if (ifname.empty()) {
       continue;
     }
@@ -358,24 +429,15 @@ void WpaSupplicantService::setWirelessEnabled(bool enabled, WirelessEnabledCompl
     }
   }
 
-  bool fallbackCommandSucceeded = false;
+  bool fallbackCommandSent = false;
   if (!rfkillDone) {
-    auto* iface = firstInterface();
-    if (iface != nullptr) {
-      try {
-        if (enabled) {
-          iface->callMethod("Reconnect").onInterface(kWpaIfaceInterface);
-        } else {
-          iface->callMethod("Disconnect").onInterface(kWpaIfaceInterface);
-        }
-        fallbackCommandSucceeded = true;
-      } catch (const sdbus::Error& e) {
-        kLog.warn("setWirelessEnabled({}) fallback failed: {}", enabled, e.what());
-      }
+    if (auto* iface = firstInterface(); iface != nullptr) {
+      callAsync(*iface, enabled ? "Reconnect" : "Disconnect");
+      fallbackCommandSent = true;
     }
   }
 
-  const bool success = rfkillDone || fallbackCommandSucceeded;
+  const bool success = rfkillDone || fallbackCommandSent;
   if (success) {
     m_wirelessEnabledOverride = enabled;
   }
@@ -392,9 +454,19 @@ void WpaSupplicantService::forgetSsid(const std::string& ssid) {
   const auto it = m_savedNetworks.find(ssid);
   if (it == m_savedNetworks.end())
     return;
+  const sdbus::ObjectPath network{it->second};
   try {
-    iface->callMethod("RemoveNetwork").onInterface(kWpaIfaceInterface).withArguments(sdbus::ObjectPath{it->second});
-    iface->callMethod("SaveConfig").onInterface(kWpaIfaceInterface);
+    iface->callMethodAsync("RemoveNetwork")
+        .onInterface(kWpaIfaceInterface)
+        .withArguments(network)
+        .uponReplyInvoke([iface](std::optional<sdbus::Error> error) {
+          if (error) {
+            kLog.warn("forgetSsid failed: {}", error->what());
+            return;
+          }
+          callAsync(*iface, "SaveConfig");
+        });
+    m_networks.erase(it->second);
     m_savedNetworks.erase(it);
   } catch (const sdbus::Error& e) {
     kLog.warn("forgetSsid failed: {}", e.what());
@@ -406,12 +478,10 @@ void WpaSupplicantService::rebuildState() {
   next.wirelessEnabled = m_wirelessEnabledOverride.value_or(!m_interfaces.empty());
 
   std::vector<AccessPointInfo> aps;
-  std::string activeBssPath;
-
-  for (const auto& [ifacePath, proxy] : m_interfaces) {
-    const auto state = getPropertyOr<std::string>(*proxy, kWpaIfaceInterface, "State", "inactive");
-    const auto ifname = getPropertyOr<std::string>(*proxy, kWpaIfaceInterface, "Ifname", "");
-    next.scanning = next.scanning || getPropertyOr(*proxy, kWpaIfaceInterface, "Scanning", false);
+  for (const auto& [ifacePath, iface] : m_interfaces) {
+    const VariantMap& props = iface.props;
+    const auto state = propOr(props, "State", std::string{"inactive"});
+    next.scanning = next.scanning || propOr(props, "Scanning", false);
 
     const bool connected =
         (state == kStateCompleted
@@ -419,91 +489,50 @@ void WpaSupplicantService::rebuildState() {
          || state == kStateGroupHandshake
          || state == k_state4wayHandshake);
     const bool associating = (state == kStateAssociating);
+    const std::string activeBssPath =
+        connected || associating ? std::string(propOr(props, "CurrentBSS", sdbus::ObjectPath{"/"})) : std::string{};
 
     if (connected || associating) {
       next.kind = NetworkConnectivity::Wireless;
       next.connected = connected;
-      next.interfaceName = ifname;
-
-      try {
-        const auto currentBss =
-            proxy->getProperty("CurrentBSS").onInterface(kWpaIfaceInterface).get<sdbus::ObjectPath>();
-        activeBssPath = std::string(currentBss);
-      } catch (const sdbus::Error&) {
-      }
-
-      try {
-        const auto currentNetwork =
-            proxy->getProperty("CurrentNetwork").onInterface(kWpaIfaceInterface).get<sdbus::ObjectPath>();
-        if (std::string(currentNetwork) != "/") {
-          if (m_currentNetworkProxy == nullptr || m_currentNetworkProxy->getObjectPath() != currentNetwork) {
-            m_currentNetworkProxy = sdbus::createProxy(m_bus.connection(), kWpaBusName, currentNetwork);
-          }
-          using VariantMap = std::map<std::string, sdbus::Variant>;
-          const auto props =
-              m_currentNetworkProxy->getProperty("Properties").onInterface("fi.w1.wpa_supplicant1.Network").get<VariantMap>();
-          if (const auto it = props.find("ssid"); it != props.end()) {
-            try {
-              next.ssid = it->second.get<std::string>();
-              if (next.ssid.size() >= 2 && next.ssid.front() == '"' && next.ssid.back() == '"') {
-                next.ssid = next.ssid.substr(1, next.ssid.size() - 2);
-              }
-            } catch (const sdbus::Error&) {
-            }
-          }
-        }
-      } catch (const sdbus::Error&) {
+      next.interfaceName = propOr(props, "Ifname", std::string{});
+      const auto current = std::string(propOr(props, "CurrentNetwork", sdbus::ObjectPath{"/"}));
+      if (const auto network = m_networks.find(current); network != m_networks.end()) {
+        next.ssid = networkSsid(network->second.props);
       }
     }
 
-    // Enumerate BSSes using cached proxies — one GetAll per BSS, no createProxy.
-    try {
-      const auto bssPaths =
-          proxy->getProperty("BSSs").onInterface(kWpaIfaceInterface).get<std::vector<sdbus::ObjectPath>>();
-      for (const auto& bssPath : bssPaths) {
-        const std::string& key{bssPath};
-        auto cacheIt = m_bssProxies.find(key);
-        if (cacheIt == m_bssProxies.end()) {
-          // Not yet in cache (race between BSSAdded signal and this rebuild) — create and cache now.
-          try {
-            auto p = sdbus::createProxy(m_bus.connection(), kWpaBusName, bssPath);
-            cacheIt = m_bssProxies.emplace(key, std::move(p)).first;
-          } catch (const sdbus::Error&) {
-            continue;
-          }
-        }
-
-        const auto info = readBssInfo(*cacheIt->second);
-        if (!info)
-          continue;
-
-        const bool active = (key == activeBssPath);
-        const std::uint8_t pct = signalToPercent(info->signal);
-
-        auto existing = std::ranges::find(aps, info->ssid, &AccessPointInfo::ssid);
-        if (existing != aps.end()) {
-          existing->strength = std::max(pct, existing->strength);
-          if (active)
-            existing->active = true;
-        } else {
-          AccessPointInfo ap;
-          ap.path = key;
-          ap.devicePath = ifacePath;
-          ap.ssid = info->ssid;
-          ap.strength = pct;
-          ap.secured = info->secured;
-          ap.active = active;
-          aps.push_back(std::move(ap));
-        }
+    for (const auto& bssPath : propOr(props, "BSSs", std::vector<sdbus::ObjectPath>{})) {
+      const std::string key(bssPath);
+      const auto bss = m_bsses.find(key);
+      if (bss == m_bsses.end()) {
+        continue;
       }
-    } catch (const sdbus::Error&) {
-    }
+      const auto info = bssInfo(bss->second.props);
+      if (!info)
+        continue;
 
-    if ((connected || associating) && !activeBssPath.empty()) {
-      if (const auto it = m_bssProxies.find(activeBssPath); it != m_bssProxies.end()) {
-        const auto signal = getPropertyOr<std::int16_t>(*it->second, kWpaBssInterface, "Signal", std::int16_t{-100});
-        next.signalStrength = signalToPercent(signal);
-        next.frequencyMhz = getPropertyOr<std::uint16_t>(*it->second, kWpaBssInterface, "Frequency", std::uint16_t{0});
+      const bool active = (key == activeBssPath);
+      const std::uint8_t pct = signalToPercent(info->signal);
+      if (active) {
+        next.signalStrength = pct;
+        next.frequencyMhz = propOr(bss->second.props, "Frequency", std::uint16_t{0});
+      }
+
+      auto existing = std::ranges::find(aps, info->ssid, &AccessPointInfo::ssid);
+      if (existing != aps.end()) {
+        existing->strength = std::max(pct, existing->strength);
+        if (active)
+          existing->active = true;
+      } else {
+        AccessPointInfo ap;
+        ap.path = key;
+        ap.devicePath = ifacePath;
+        ap.ssid = info->ssid;
+        ap.strength = pct;
+        ap.secured = info->secured;
+        ap.active = active;
+        aps.push_back(std::move(ap));
       }
     }
   }
@@ -518,13 +547,25 @@ void WpaSupplicantService::rebuildState() {
   emitChangedIfNeeded(std::move(next));
 }
 
-void WpaSupplicantService::refresh() { rebuildState(); }
+void WpaSupplicantService::refresh() {
+  for (const auto& [ifacePath, iface] : m_interfaces) {
+    (void)iface;
+    loadProperties(m_interfaces, ifacePath, kWpaIfaceInterface);
+  }
+}
 
 void WpaSupplicantService::requestScan() {
-  for (const auto& [ifacePath, proxy] : m_interfaces) {
+  const std::map<std::string, sdbus::Variant> args{{"Type", sdbus::Variant{std::string{"passive"}}}};
+  for (const auto& [ifacePath, iface] : m_interfaces) {
     try {
-      const std::map<std::string, sdbus::Variant> args{{"Type", sdbus::Variant{std::string{"passive"}}}};
-      proxy->callMethod("Scan").onInterface(kWpaIfaceInterface).withArguments(args);
+      iface.proxy->callMethodAsync("Scan")
+          .onInterface(kWpaIfaceInterface)
+          .withArguments(args)
+          .uponReplyInvoke([ifacePath](std::optional<sdbus::Error> error) {
+            if (error) {
+              kLog.debug("Scan failed on {}: {}", ifacePath, error->what());
+            }
+          });
     } catch (const sdbus::Error& e) {
       kLog.debug("Scan failed on {}: {}", ifacePath, e.what());
     }

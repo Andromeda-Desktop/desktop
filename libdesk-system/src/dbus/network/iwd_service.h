@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dbus/name_owner_watch.h"
+#include "core/latest_request.h"
 #include "dbus/network/inetwork_service.h"
 #include "security/secure_buffer.h"
 
@@ -53,6 +54,12 @@ private:
   void subscribeObject(
       const std::string& path, const std::map<std::string, std::map<std::string, sdbus::Variant>>& interfaces
   );
+  struct RefreshPass;
+  void applyObjects(LatestRequest::Ticket ticket, std::map<sdbus::ObjectPath, std::map<std::string, std::map<std::string, sdbus::Variant>>> objects);
+  void stationReplyDone();
+  void finishRefresh();
+  // Async on a proxy that outlives the call (a local proxy would cancel it).
+  void callOnObject(const std::string& path, const char* interface, const char* method);
   void emitChangedIfNeeded(NetworkState next);
 
   SystemBus& m_bus;
@@ -69,7 +76,9 @@ private:
   std::unique_ptr<IwdSecretAgent> m_secretAgent;
   std::optional<security::SecureBuffer> m_pendingPsk;
   bool m_hasStateSnapshot = false;
-  bool m_refreshInFlight = false;
+  // The refresh that runs (GetManagedObjects, then station calls); a reply for an older ticket is dropped.
+  std::unique_ptr<RefreshPass> m_refresh;
+  LatestRequest m_refreshRequest;
   bool m_refreshQueued = false;
   ChangeCallback m_changeCallback;
   NameOwnerWatch m_iwdOwner;

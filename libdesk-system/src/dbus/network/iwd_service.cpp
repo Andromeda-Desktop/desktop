@@ -94,6 +94,9 @@ IwdService::IwdService(SystemBus& bus) : m_bus(bus) {
   m_iwdOwner = NameOwnerWatch::changes(
       m_bus.connection(), std::string(kIwdBusName),
       [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        m_refreshRequest.cancel();
+        m_refresh.reset();
+        m_refreshQueued = false;
         m_objectProxies.clear();
         m_connectProxy.reset();
         m_knownNetworks.clear();
@@ -157,48 +160,63 @@ void IwdService::subscribeObject(const std::string& path, const ObjectInterfaces
   }
 }
 
+struct IwdService::RefreshPass {
+  ManagedObjects objects;
+  std::map<sdbus::ObjectPath, std::vector<OrderedNetwork>> ordered;
+  std::map<sdbus::ObjectPath, VariantMap> diagnostics;
+  std::size_t pending = 0; // station replies still out
+};
+
 void IwdService::refresh() {
-  if (m_refreshInFlight) {
+  if (m_refresh != nullptr) {
     m_refreshQueued = true;
     return;
   }
-  m_refreshInFlight = true;
-
-  ManagedObjects objects;
+  m_refresh = std::make_unique<RefreshPass>();
+  const LatestRequest::Ticket ticket = m_refreshRequest.begin();
   try {
-    m_iwd->callMethod("GetManagedObjects").onInterface(kObjectManagerInterface).storeResultsTo(objects);
+    m_iwd->callMethodAsync("GetManagedObjects")
+        .onInterface(kObjectManagerInterface)
+        .uponReplyInvoke([this, ticket](std::optional<sdbus::Error> error, ManagedObjects objects) {
+          if (!m_refreshRequest.current(ticket)) {
+            return;
+          }
+          if (error) {
+            kLog.warn("GetManagedObjects failed: {}", error->what());
+            m_refresh.reset();
+            return;
+          }
+          applyObjects(ticket, std::move(objects));
+        });
   } catch (const sdbus::Error& e) {
     kLog.warn("GetManagedObjects failed: {}", e.what());
-    m_refreshInFlight = false;
-    return;
+    m_refresh.reset();
   }
+}
 
-  NetworkState next;
-  std::vector<AccessPointInfo> aps;
-  std::vector<std::string> liveObjects;
+void IwdService::applyObjects(LatestRequest::Ticket ticket, ManagedObjects objects) {
+  RefreshPass& pass = *m_refresh;
+  pass.objects = std::move(objects);
   m_knownNetworks.clear();
   m_deviceNames.clear();
-
-  for (const auto& [path, interfaces] : objects) {
+  std::vector<std::string> liveObjects;
+  for (const auto& [path, interfaces] : pass.objects) {
     const std::string pathString = std::string(path);
     subscribeObject(pathString, interfaces);
     liveObjects.push_back(pathString);
 
     if (const auto it = interfaces.find(kDeviceInterface); it != interfaces.end()) {
       const auto name = stringProp(it->second, "Name").value_or("");
-      const auto powered = boolProp(it->second, "Powered").value_or(true);
-      next.wirelessEnabled = next.wirelessEnabled || powered;
       if (!name.empty()) {
-        m_deviceNames[std::string(path)] = name;
+        m_deviceNames[pathString] = name;
       }
     }
     if (const auto it = interfaces.find(kKnownNetworkInterface); it != interfaces.end()) {
       if (auto name = stringProp(it->second, "Name"); name.has_value() && !name->empty()) {
-        m_knownNetworks[*name] = std::string(path);
+        m_knownNetworks[*name] = pathString;
       }
     }
   }
-
   for (auto it = m_objectProxies.begin(); it != m_objectProxies.end();) {
     if (std::ranges::find(liveObjects, it->first) == liveObjects.end()) {
       it = m_objectProxies.erase(it);
@@ -207,20 +225,86 @@ void IwdService::refresh() {
     }
   }
 
-  for (const auto& [stationPath, interfaces] : objects) {
+  // Station replies land on m_objectProxies, which only an iwd restart clears, and that drops this pass too.
+  const auto dispatch = [&](const sdbus::ObjectPath& stationPath, auto&& call) {
+    const auto proxy = m_objectProxies.find(std::string(stationPath));
+    if (proxy == m_objectProxies.end()) {
+      kLog.debug("no proxy for IWD station {}", std::string(stationPath));
+      return;
+    }
+    ++pass.pending;
+    try {
+      call(*proxy->second);
+    } catch (const sdbus::Error& e) {
+      --pass.pending;
+      kLog.debug("station call failed on {}: {}", std::string(stationPath), e.what());
+    }
+  };
+  for (const auto& [stationPath, interfaces] : pass.objects) {
     const auto stationIt = interfaces.find(kStationInterface);
     if (stationIt == interfaces.end()) {
       continue;
     }
+    dispatch(stationPath, [&](sdbus::IProxy& proxy) {
+      proxy.callMethodAsync("GetOrderedNetworks")
+          .onInterface(kStationInterface)
+          .uponReplyInvoke([this, ticket, stationPath](
+                               std::optional<sdbus::Error> error, std::vector<OrderedNetwork> networks
+                           ) {
+            if (!m_refreshRequest.current(ticket)) {
+              return;
+            }
+            if (error) {
+              kLog.debug("GetOrderedNetworks failed on {}: {}", std::string(stationPath), error->what());
+            } else {
+              m_refresh->ordered[stationPath] = std::move(networks);
+            }
+            stationReplyDone();
+          });
+    });
+    if (stringProp(stationIt->second, "State").value_or("") == "connected") {
+      dispatch(stationPath, [&](sdbus::IProxy& proxy) {
+        proxy.callMethodAsync("GetDiagnostics")
+            .onInterface(kStationDiagnosticInterface)
+            .uponReplyInvoke([this, ticket, stationPath](std::optional<sdbus::Error> error, VariantMap diagnostics) {
+              if (!m_refreshRequest.current(ticket)) {
+                return;
+              }
+              if (error) {
+                kLog.debug("GetDiagnostics failed on {}: {}", std::string(stationPath), error->what());
+              } else {
+                m_refresh->diagnostics[stationPath] = std::move(diagnostics);
+              }
+              stationReplyDone();
+            });
+      });
+    }
+  }
+  if (pass.pending == 0) {
+    finishRefresh();
+  }
+}
 
-    // subscribeObject above holds a proxy for every station; a station it failed to subscribe gets a local one.
-    std::unique_ptr<sdbus::IProxy> unsubscribed;
-    sdbus::IProxy* stationProxy = nullptr;
-    if (const auto it = m_objectProxies.find(std::string(stationPath)); it != m_objectProxies.end()) {
-      stationProxy = it->second.get();
-    } else {
-      unsubscribed = sdbus::createProxy(m_bus.connection(), kIwdBusName, stationPath);
-      stationProxy = unsubscribed.get();
+void IwdService::stationReplyDone() {
+  if (--m_refresh->pending == 0) {
+    finishRefresh();
+  }
+}
+
+void IwdService::finishRefresh() {
+  const RefreshPass& pass = *m_refresh;
+  NetworkState next;
+  std::vector<AccessPointInfo> aps;
+  for (const auto& [path, interfaces] : pass.objects) {
+    if (const auto it = interfaces.find(kDeviceInterface); it != interfaces.end()) {
+      next.wirelessEnabled = next.wirelessEnabled || boolProp(it->second, "Powered").value_or(true);
+    }
+  }
+
+  for (const auto& [stationPath, interfaces] : pass.objects) {
+    const auto stationIt = interfaces.find(kStationInterface);
+    if (stationIt == interfaces.end()) {
+      continue;
     }
     const auto state = stringProp(stationIt->second, "State").value_or("");
     const bool connected = state == "connected";
@@ -240,16 +324,11 @@ void IwdService::refresh() {
       next.interfaceName = m_deviceNames[std::string(stationPath)];
     }
 
-    std::vector<OrderedNetwork> orderedNetworks;
-    try {
-      stationProxy->callMethod("GetOrderedNetworks").onInterface(kStationInterface).storeResultsTo(orderedNetworks);
-    } catch (const sdbus::Error& e) {
-      kLog.debug("GetOrderedNetworks failed on {}: {}", std::string(stationPath), e.what());
-    }
-
-    for (const auto& [networkPath, signal] : orderedNetworks) {
-      const auto objectIt = objects.find(networkPath);
-      if (objectIt == objects.end()) {
+    static const std::vector<OrderedNetwork> kNoNetworks;
+    const auto ordered = pass.ordered.find(stationPath);
+    for (const auto& [networkPath, signal] : ordered != pass.ordered.end() ? ordered->second : kNoNetworks) {
+      const auto objectIt = pass.objects.find(networkPath);
+      if (objectIt == pass.objects.end()) {
         continue;
       }
       const auto networkIt = objectIt->second.find(kNetworkInterface);
@@ -288,14 +367,9 @@ void IwdService::refresh() {
       }
     }
 
-    if (connected) {
-      try {
-        VariantMap diagnostics;
-        stationProxy->callMethod("GetDiagnostics").onInterface(kStationDiagnosticInterface).storeResultsTo(diagnostics);
-        iwd_diagnostics::applyStationDiagnostics(next, diagnostics);
-      } catch (const sdbus::Error& e) {
-        kLog.debug("GetDiagnostics failed on {}: {}", std::string(stationPath), e.what());
-      }
+    if (const auto diagnostics = pass.diagnostics.find(stationPath);
+        connected && diagnostics != pass.diagnostics.end()) {
+      iwd_diagnostics::applyStationDiagnostics(next, diagnostics->second);
     }
   }
 
@@ -306,25 +380,38 @@ void IwdService::refresh() {
     return a.strength > b.strength;
   });
 
+  m_refresh.reset();
   m_accessPoints = std::move(aps);
   emitChangedIfNeeded(std::move(next));
-
-  m_refreshInFlight = false;
   if (m_refreshQueued) {
     m_refreshQueued = false;
     refresh();
   }
 }
 
+void IwdService::callOnObject(const std::string& path, const char* interface, const char* method) {
+  const auto proxy = m_objectProxies.find(path);
+  if (proxy == m_objectProxies.end()) {
+    kLog.debug("{} skipped: no proxy for IWD object {}", method, path);
+    return;
+  }
+  try {
+    proxy->second->callMethodAsync(method).onInterface(interface).uponReplyInvoke(
+        [path, method = std::string(method)](std::optional<sdbus::Error> error) {
+          if (error) {
+            kLog.debug("{} failed on {}: {}", method, path, error->what());
+          }
+        }
+    );
+  } catch (const sdbus::Error& e) {
+    kLog.debug("{} failed on {}: {}", method, path, e.what());
+  }
+}
+
 void IwdService::requestScan() {
   for (const auto& [stationPath, ifname] : m_deviceNames) {
     (void)ifname;
-    try {
-      auto station = sdbus::createProxy(m_bus.connection(), kIwdBusName, sdbus::ObjectPath{stationPath});
-      station->callMethod("Scan").onInterface(kStationInterface);
-    } catch (const sdbus::Error& e) {
-      kLog.debug("Scan failed on {}: {}", stationPath, e.what());
-    }
+    callOnObject(stationPath, kStationInterface, "Scan");
   }
   refresh();
 }
@@ -398,9 +485,19 @@ void IwdService::setWirelessEnabled(bool enabled, WirelessEnabledCompletion onCo
   bool poweredUpdated = false;
   for (const auto& [stationPath, ifname] : m_deviceNames) {
     (void)ifname;
+    const auto device = m_objectProxies.find(stationPath);
+    if (device == m_objectProxies.end()) {
+      continue;
+    }
     try {
-      auto device = sdbus::createProxy(m_bus.connection(), kIwdBusName, sdbus::ObjectPath{stationPath});
-      device->setProperty("Powered").onInterface(kDeviceInterface).toValue(enabled);
+      device->second->setPropertyAsync("Powered")
+          .onInterface(kDeviceInterface)
+          .toValue(enabled)
+          .uponReplyInvoke([path = stationPath](std::optional<sdbus::Error> error) {
+            if (error) {
+              kLog.debug("setting IWD Powered failed on {}: {}", path, error->what());
+            }
+          });
       poweredUpdated = true;
     } catch (const sdbus::Error& e) {
       kLog.debug("setting IWD Powered failed on {}: {}", stationPath, e.what());
@@ -416,12 +513,7 @@ void IwdService::setWirelessEnabled(bool enabled, WirelessEnabledCompletion onCo
 void IwdService::disconnect() {
   for (const auto& [stationPath, ifname] : m_deviceNames) {
     (void)ifname;
-    try {
-      auto station = sdbus::createProxy(m_bus.connection(), kIwdBusName, sdbus::ObjectPath{stationPath});
-      station->callMethod("Disconnect").onInterface(kStationInterface);
-    } catch (const sdbus::Error& e) {
-      kLog.debug("Disconnect failed on {}: {}", stationPath, e.what());
-    }
+    callOnObject(stationPath, kStationInterface, "Disconnect");
   }
   refresh();
 }
@@ -431,14 +523,9 @@ void IwdService::forgetSsid(const std::string& ssid) {
   if (it == m_knownNetworks.end()) {
     return;
   }
-  try {
-    auto knownNetwork = sdbus::createProxy(m_bus.connection(), kIwdBusName, sdbus::ObjectPath{it->second});
-    knownNetwork->callMethod("Forget").onInterface(kKnownNetworkInterface);
-    m_knownNetworks.erase(it);
-    refresh();
-  } catch (const sdbus::Error& e) {
-    kLog.warn("Forget failed for {}: {}", ssid, e.what());
-  }
+  callOnObject(it->second, kKnownNetworkInterface, "Forget");
+  m_knownNetworks.erase(it);
+  refresh();
 }
 
 bool IwdService::hasSavedConnection(const std::string& ssid) const { return m_knownNetworks.contains(ssid); }

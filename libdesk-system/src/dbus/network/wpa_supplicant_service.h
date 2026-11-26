@@ -3,7 +3,9 @@
 #include "dbus/name_owner_watch.h"
 #include "dbus/network/inetwork_service.h"
 
+#include <map>
 #include <memory>
+#include <sdbus-c++/Types.h>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -47,27 +49,37 @@ public:
   [[nodiscard]] bool hasSavedConnection(const std::string& ssid) const override;
 
 private:
+  using VariantMap = std::map<std::string, sdbus::Variant>;
+  // A wpa_supplicant object and its last known properties. Destroying the proxy cancels its pending replies.
+  struct CachedObject {
+    std::unique_ptr<sdbus::IProxy> proxy;
+    VariantMap props;
+  };
+
   void subscribeInterfaces();
   void subscribeInterface(const std::string& ifacePath);
-  void scheduleRebuild();
+  void loadProperties(std::unordered_map<std::string, CachedObject>& objects, const std::string& path, const char* interface);
+  void syncInterfaceObjects(const std::string& ifacePath);
+  void trackBss(const std::string& bssPath);
+  void trackNetwork(const std::string& networkPath);
   void rebuildState();
   void emitChangedIfNeeded(NetworkState next);
-  void loadSavedNetworks(const std::string& ifacePath, sdbus::IProxy& proxy);
   sdbus::IProxy* firstInterface() const;
+  // AddNetwork, then SelectNetwork and SaveConfig, all async on the first interface.
+  bool addAndSelect(const VariantMap& args, const char* what);
 
   SystemBus& m_bus;
   std::unique_ptr<sdbus::IProxy> m_wpa;
-  std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> m_interfaces;
-  // BSS path -> cached proxy, populated via BSSAdded/BSSRemoved signals.
-  std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> m_bssProxies;
-  std::unique_ptr<sdbus::IProxy> m_currentNetworkProxy;
+  std::unordered_map<std::string, CachedObject> m_interfaces;
+  std::unordered_map<std::string, CachedObject> m_bsses;
+  // Network objects (saved networks) by path; their "Properties" map holds the ssid.
+  std::unordered_map<std::string, CachedObject> m_networks;
   // ssid -> network object path.
   std::unordered_map<std::string, std::string> m_savedNetworks;
   NetworkState m_state;
   std::vector<AccessPointInfo> m_accessPoints;
   const std::vector<VpnConnectionInfo> m_vpnConnections; // always empty
   bool m_hasStateSnapshot = false;
-  bool m_rebuildPending = false;
   std::optional<bool> m_wirelessEnabledOverride;
   ChangeCallback m_changeCallback;
   NameOwnerWatch m_wpaOwner;

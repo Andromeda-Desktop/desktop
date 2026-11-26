@@ -1198,6 +1198,7 @@ if build_tests
   )
 
   _cpp_test_names = [
+    'async_file_writer',
     'crash_records',
     'damage_region',
     'key_chord_names',
@@ -1622,6 +1623,40 @@ if build_tests
         'sh', bluetooth_property_integration_exe.full_path(),
       ],
       depends: bluetooth_property_integration_exe,
+    )
+  endif
+
+  iwd_async_integration_exe = executable('iwd_async_integration_test',
+    sources: files('tests/iwd_async_integration_test.cpp'),
+    dependencies: noctalia_core_dep,
+    override_options: ['b_ndebug=false'],
+  )
+  if dbus_run_session.found()
+    test('iwd_async_integration',
+      dbus_run_session,
+      args: [
+        '--', 'sh', '-c',
+        'export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"; exec "$1"',
+        'sh', iwd_async_integration_exe.full_path(),
+      ],
+      depends: iwd_async_integration_exe,
+    )
+  endif
+
+  wpa_async_integration_exe = executable('wpa_async_integration_test',
+    sources: files('tests/wpa_async_integration_test.cpp'),
+    dependencies: noctalia_core_dep,
+    override_options: ['b_ndebug=false'],
+  )
+  if dbus_run_session.found()
+    test('wpa_async_integration',
+      dbus_run_session,
+      args: [
+        '--', 'sh', '-c',
+        'export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"; exec "$1"',
+        'sh', wpa_async_integration_exe.full_path(),
+      ],
+      depends: wpa_async_integration_exe,
     )
   endif
 
