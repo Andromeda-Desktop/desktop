@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <poll.h>
 #include <print>
 #include <string>
@@ -105,6 +106,26 @@ int main() {
   writeFileAtomic(overrides, "[plugins]\nenabled = [\"ext/after-lost-echo\"]\n");
   expect(
       waitFor(dirs, [&] { return enabled(config, "ext/after-lost-echo"); }), "external edit after a lost echo reloads"
+  );
+
+  // External edit back to the exact text of the shell's last write, after another edit was loaded.
+  config.setOverride({"wallpaper", "fill_mode"}, std::string("stretch"));
+  const auto fill = [&] { return config.config().wallpaper.fillMode; };
+  std::string ownWrite;
+  waitFor(dirs, [&] {
+    std::ifstream in(overrides);
+    ownWrite.assign(std::istreambuf_iterator<char>(in), {});
+    return ownWrite.contains("stretch");
+  });
+  waitFor(dirs, [] { return false; });
+  std::string edited = ownWrite;
+  edited.replace(edited.find("stretch"), 7, "center");
+  writeFileAtomic(overrides, edited);
+  expect(waitFor(dirs, [&] { return fill() == WallpaperFillMode::Center; }), "external fill edit reloads");
+  writeFileAtomic(overrides, ownWrite);
+  expect(
+      waitFor(dirs, [&] { return fill() == WallpaperFillMode::Stretch; }),
+      "external edit restoring the last written text reloads"
   );
 
   std::filesystem::remove_all(root);
