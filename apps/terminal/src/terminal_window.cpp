@@ -2451,11 +2451,16 @@ namespace term {
                   return true;
                 },
             .motion = [this, over](float x, float y) -> std::uint32_t {
-              return m_sessionOffer ? DropMove : over(x, y) != nullptr ? DropCopy : DropNone;
+              if (m_sessionOffer) {
+                markBar(barWindowAt(x, y));
+                return DropMove;
+              }
+              return over(x, y) != nullptr ? DropCopy : DropNone;
             },
-            .leave = [] {},
+            .leave = [this] { markBar(std::nullopt); },
             .drop =
                 [this, over](float x, float y, std::uint32_t /*action*/, const std::string& mime, std::string data) {
+                  markBar(std::nullopt);
                   if (mime == kSessionMime) {
                     dropSession(x, y, data);
                   } else if (TerminalView* view = over(x, y); view != nullptr) {
@@ -2690,10 +2695,42 @@ namespace term {
       return false;
     }
     const std::string data = std::format("{}:{}", ::getpid(), id);
+    // The drag image: the same chip as the in-window ghost, on its own surface.
+    m_dragImage = dragChip(id);
+    m_dragIcon.reset();
+    if (m_dragImage != nullptr) {
+      const float s = m_window.uiScale();
+      m_dragIcon = m_loop.display().createDragIcon(static_cast<std::uint32_t>(std::ceil(m_dragImage->width())),
+                                                   static_cast<std::uint32_t>(std::ceil(m_dragImage->height())),
+                                                   std::max(1, static_cast<int>(std::ceil(s))));
+    }
+    if (m_dragIcon != nullptr) {
+      m_dragIcon->setRenderContext(&m_loop.renderContext());
+      m_dragIcon->setPrepareFrameCallback([this, raw = m_dragIcon.get()](bool, bool) {
+        m_loop.renderContext().makeCurrent(raw->renderTarget());
+        if (m_dragImage != nullptr) {
+          m_dragImage->layout(raw->renderTarget().renderer());
+        }
+      });
+      m_dragIcon->setSceneRoot(m_dragImage.get());
+      if (!m_dragIcon->initialize()) {
+        m_dragIcon.reset();
+      }
+    }
     if (!m_loop.display().startDrag(*m_window.surface(),
                                     {.mimeTypes = {std::string(kSessionMime)},
                                      .data = [data](const std::string& /*mime*/) { return data; },
-                                     .actions = DropMove})) {
+                                     .actions = DropMove,
+                                     .icon = m_dragIcon.get(),
+                                     .finished =
+                                         [this, alive = std::weak_ptr<bool>(m_alive)](std::uint32_t, bool) {
+                                           if (!alive.expired()) {
+                                             m_dragIcon.reset();
+                                             m_dragImage.reset();
+                                           }
+                                         }})) {
+      m_dragIcon.reset();
+      m_dragImage.reset();
       return false;
     }
     // The window system holds the pointer now: the row sees no release, so its drag ends here.
@@ -2719,6 +2756,27 @@ namespace term {
     }
   }
 
+  std::unique_ptr<StatusRow> TerminalWindow::dragChip(std::uint64_t id) const {
+    const auto row = std::ranges::find(m_rows, id, &std::pair<std::uint64_t, StatusRow*>::first);
+    const auto view = std::ranges::find(m_views, id, &Session::id);
+    const SessionInfo* session = m_sessions.find(id);
+    if (session == nullptr || row == m_rows.end() || view == m_views.end()) {
+      return nullptr;
+    }
+    auto chip = std::make_unique<StatusRow>(m_window.uiScale());
+    StatusRow::Data data = rowData(*session);
+    data.chip = view->view->surface();
+    chip->setData(data);
+    chip->setSize(row->second->width(), row->second->height());
+    return chip;
+  }
+
+  void TerminalWindow::markBar(std::optional<std::uint32_t> window) {
+    for (const auto& [id, button] : m_barWindows) {
+      button->setHoveredVisual(window == id);
+    }
+  }
+
   std::optional<std::uint32_t> TerminalWindow::barWindowAt(float sceneX, float sceneY) const {
     const auto hit = std::ranges::find_if(m_barWindows, [&](const auto& item) { return item.second->containsScenePoint(sceneX, sceneY); });
     return hit != m_barWindows.end() ? std::optional(hit->first) : std::nullopt;
@@ -2733,20 +2791,17 @@ namespace term {
     // A raised chip of the row under the pointer, its symbol where the pointer holds it.
     const float s = m_window.uiScale();
     if (phase == StatusRow::DragPhase::Move && !m_dragGhost) {
-      const auto row = std::ranges::find(m_rows, id, &std::pair<std::uint64_t, StatusRow*>::first);
-      const auto view = std::ranges::find(m_views, id, &Session::id);
-      if (const SessionInfo* session = m_sessions.find(id); session != nullptr && row != m_rows.end() && view != m_views.end()) {
-        auto ghost = std::make_unique<StatusRow>(s);
-        StatusRow::Data data = rowData(*session);
-        data.chip = view->view->surface();
-        ghost->setData(data);
-        ghost->setSize(row->second->width(), row->second->height());
+      if (auto ghost = dragChip(id); ghost != nullptr) {
         m_window.setDragGhost(std::move(ghost));
         m_dragGhost = true;
       }
     }
+    markBar(phase == StatusRow::DragPhase::Move ? barWindow : std::nullopt);
     if (phase == StatusRow::DragPhase::Move) {
-      m_window.moveDragGhost(sceneX - Tokens::spaceP16 * s, sceneY - Tokens::sizeRowTwoCompact * s / 2.0F);
+      // Over a bar item the chip rises above it, so the marked item stays in sight.
+      const float lift = barWindow ? (Tokens::sizeRowTwoCompact + Tokens::sizeControlM / 2.0F + Tokens::spaceP4) * s
+                                   : Tokens::sizeRowTwoCompact * s / 2.0F;
+      m_window.moveDragGhost(sceneX - Tokens::spaceP16 * s, sceneY - lift);
     } else if (std::exchange(m_dragGhost, false)) {
       m_window.clearDragGhost();
     }

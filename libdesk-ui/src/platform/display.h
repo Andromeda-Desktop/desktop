@@ -126,6 +126,8 @@ public:
   virtual void clearDropTarget(const Surface& surface) = 0;
   // Starts a drag from the last pointer press on origin. False when the window system has no drag and drop.
   virtual bool startDrag(const Surface& origin, DragSource source) = 0;
+  // An unmapped surface for DragSource::icon, in logical px; nullptr when the window system has none.
+  [[nodiscard]] virtual std::unique_ptr<Surface> createDragIcon(std::uint32_t width, std::uint32_t height, std::int32_t bufferScale) = 0;
 
   // False once the window system is gone for good (its socket removed at logout): a reconnect stops waiting.
   [[nodiscard]] virtual bool serverPresent() const = 0;

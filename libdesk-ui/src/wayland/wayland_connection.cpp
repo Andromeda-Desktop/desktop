@@ -18,6 +18,7 @@
 #include "viewporter-client-protocol.h"
 #include "presentation-time-client-protocol.h"
 #include "wayland/drag_and_drop.h"
+#include "wayland/drag_icon_surface.h"
 #include "wayland/popup_surface.h"
 #include "wayland/subsurface.h"
 #include "wayland/toplevel_surface.h"
@@ -1481,7 +1482,12 @@ bool WaylandConnection::startDrag(const Surface& origin, DragSource source) {
                                           {.mimeTypes = std::move(source.mimeTypes),
                                            .data = std::move(source.data),
                                            .actions = source.actions,
+                                           .icon = source.icon != nullptr ? wlSurfaceOf(*source.icon) : nullptr,
                                            .finished = std::move(source.finished)});
+}
+
+std::unique_ptr<Surface> WaylandConnection::createDragIcon(std::uint32_t width, std::uint32_t height, std::int32_t bufferScale) {
+  return std::make_unique<DragIconSurface>(*this, width, height, bufferScale);
 }
 
 std::string WaylandConnection::requestActivationToken(const Surface& surface, const std::string& appId) const {

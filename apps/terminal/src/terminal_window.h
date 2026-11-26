@@ -349,6 +349,10 @@ namespace term {
     void dropSession(float x, float y, const std::string& data);
     [[nodiscard]] std::optional<std::uint32_t> barWindowAt(float sceneX, float sceneY) const;
     std::vector<std::pair<std::uint32_t, Button*>> m_barWindows; // the foot bar's other-window items
+    void markBar(std::optional<std::uint32_t> window); // the bar item a dragged row would move to
+    [[nodiscard]] std::unique_ptr<StatusRow> dragChip(std::uint64_t id) const; // the raised chip of a dragged row
+    std::unique_ptr<Surface> m_dragIcon; // the image of a drag between windows
+    std::unique_ptr<StatusRow> m_dragImage;
     // Agent session keys are unique in the app: all windows share one host.
     static inline std::uint64_t s_nextAgentKey = 0;
     // The panes whose views are in the slot, in layout order: the shown session alone, or its split.

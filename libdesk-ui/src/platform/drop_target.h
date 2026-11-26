@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+class Surface;
+
 enum DropAction : std::uint32_t { DropNone = 0, DropCopy = 1, DropMove = 2, DropAsk = 4 };
 
 // A surface that takes drops from other apps.
@@ -23,6 +25,7 @@ struct DragSource {
   std::vector<std::string> mimeTypes;
   std::function<std::string(const std::string& mime)> data; // bytes for one offered type
   std::uint32_t actions = DropCopy | DropMove;
+  Surface* icon = nullptr; // the drag image (Display::createDragIcon), its top left at the pointer; the caller owns it
   // The action the target took and whether it dropped; called once.
   std::function<void(std::uint32_t action, bool dropped)> finished;
 };
