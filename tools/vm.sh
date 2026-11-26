@@ -111,6 +111,16 @@ case ${1:-} in
       scp -P "$PORT" "${OPTS[@]}" "$ROOT/install.sh" "$VMUSER@localhost:/tmp/install.sh"
       # install.sh reads apt's questions from /dev/tty: give it one.
       ssh -tt -p "$PORT" "${OPTS[@]}" "$VMUSER@localhost" "yes | sudo DEBIAN_FRONTEND=noninteractive bash /tmp/install.sh"
+      # The cloud kernel has no DRM drivers (no /dev/dri); the preseed lets apt remove the running one.
+      # GDM logs straight into Andromeda.
+      "${SSH[@]}" "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y linux-image-amd64 &&
+        echo 'linux-base linux-base/removing-running-kernel boolean false' | sudo debconf-set-selections &&
+        sudo DEBIAN_FRONTEND=noninteractive apt-get purge -y \$(dpkg-query -W -f '\${Package}\n' 'linux-image-*cloud*') &&
+        sudo update-grub &&
+        sudo sed -i 's/^#\? *AutomaticLoginEnable.*/AutomaticLoginEnable = true/; s/^#\? *AutomaticLogin *=.*/AutomaticLogin = $VMUSER/' /etc/gdm3/daemon.conf &&
+        sudo mkdir -p /var/lib/AccountsService/users &&
+        printf '[User]\nSession=andromeda\nSystemAccount=false\n' | sudo tee /var/lib/AccountsService/users/$VMUSER > /dev/null &&
+        sudo reboot"
       exit
     fi
     if [[ $DISTRO == ubuntu ]]; then
