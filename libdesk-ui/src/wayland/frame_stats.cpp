@@ -81,12 +81,19 @@ void FrameStats::dropFrame() {
     return;
   }
   std::erase(m_afterIdle, m_pending.back());
+  std::erase(m_beforeStateCommit, m_pending.back());
   wp_presentation_feedback_destroy(m_pending.back());
   m_pending.pop_back();
   m_idleTick = true;
   m_frameInRun = false;
   m_cpuMs = 0.0F;
   finishIfDone();
+}
+
+void FrameStats::stateCommit() {
+  if (!m_pending.empty() && !m_frameInRun) {
+    m_beforeStateCommit.push_back(m_pending.back());
+  }
 }
 
 void FrameStats::idleTick() {
@@ -106,6 +113,7 @@ void FrameStats::endFrame() {
 void FrameStats::onPresented(struct wp_presentation_feedback* feedback, std::uint64_t presentedNs, std::uint32_t refreshNs) {
   std::erase(m_pending, feedback);
   const bool afterIdle = std::erase(m_afterIdle, feedback) > 0;
+  std::erase(m_beforeStateCommit, feedback);
   wp_presentation_feedback_destroy(feedback);
   if (!afterIdle && m_lastPresentedNs != 0 && refreshNs != 0 && presentedNs > m_lastPresentedNs) {
     const double intervals = static_cast<double>(presentedNs - m_lastPresentedNs) / refreshNs;
@@ -119,9 +127,12 @@ void FrameStats::onPresented(struct wp_presentation_feedback* feedback, std::uin
 void FrameStats::onDiscarded(struct wp_presentation_feedback* feedback) {
   std::erase(m_pending, feedback);
   std::erase(m_afterIdle, feedback);
+  const bool shown = std::erase(m_beforeStateCommit, feedback) > 0;
   wp_presentation_feedback_destroy(feedback);
-  ++m_missed;
-  ++m_discarded;
+  if (!shown) {
+    ++m_missed;
+    ++m_discarded;
+  }
   m_lastPresentedNs = 0; // the gap to the next presented frame is this miss, already counted
   finishIfDone();
 }

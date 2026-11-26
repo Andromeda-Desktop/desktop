@@ -213,7 +213,12 @@ void WaylandSurface::cancelFrameCallback() {
   }
 }
 
-void WaylandSurface::commitNative() { wl_surface_commit(m_surface); }
+void WaylandSurface::commitNative() {
+  if (m_frameStats != nullptr) {
+    m_frameStats->stateCommit();
+  }
+  wl_surface_commit(m_surface);
+}
 
 bool WaylandSurface::scalesByViewport() const noexcept { return m_fractionalScale != nullptr && m_viewport != nullptr; }
 

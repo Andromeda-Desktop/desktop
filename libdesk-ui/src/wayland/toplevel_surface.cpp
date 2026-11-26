@@ -137,7 +137,7 @@ bool ToplevelSurface::initialize(wl_output* output, const ToplevelSurfaceConfig&
     xdg_toplevel_set_maximized(m_toplevel);
   }
 
-  wl_surface_commit(m_surface);
+  commitNative();
   wl_display_flush(m_connection.display());
   if (wl_display_roundtrip(m_connection.display()) < 0) {
     kLog.warn("toplevel: initial roundtrip failed");

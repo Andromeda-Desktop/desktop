@@ -29,6 +29,9 @@ public:
   void dropFrame() override;
   void idleTick() override;
   void endFrame() override;
+  // Before a commit with no new buffer. The compositor discards the pending frame's feedback, but its buffer stays
+  // on screen, so that discard is not a miss.
+  void stateCommit();
 
   void onPresented(wp_presentation_feedback* feedback, std::uint64_t presentedNs, std::uint32_t refreshNs);
   void onDiscarded(wp_presentation_feedback* feedback);
@@ -42,6 +45,7 @@ private:
   std::vector<wp_presentation_feedback*> m_pending;
   // Pending frames that follow a tick with nothing to draw: the gap before them is idle, not missed.
   std::vector<wp_presentation_feedback*> m_afterIdle;
+  std::vector<wp_presentation_feedback*> m_beforeStateCommit;
   bool m_idleTick = false;
   std::vector<float> m_cpu;
   float m_cpuMs = 0.0F;

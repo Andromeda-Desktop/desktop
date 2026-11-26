@@ -167,7 +167,7 @@ bool PopupSurface::initialize(zwlr_layer_surface_v1* parentLayerSurface, wl_outp
 
   wireGrab();
 
-  wl_surface_commit(m_surface);
+  commitNative();
   // Flush before the roundtrip to ensure any pending destroy messages from a previous
   // popup are delivered to the compositor before we ask it to configure the new one.
   wl_display_flush(m_connection.display());
@@ -229,7 +229,7 @@ bool PopupSurface::resize(std::uint32_t width, std::uint32_t height, bool commit
   }
 
   if (commit) {
-    wl_surface_commit(m_surface);
+    commitNative();
     wl_display_flush(m_connection.display());
   }
   return true;
@@ -259,7 +259,7 @@ bool PopupSurface::repositionAnchor(const PopupSurfaceConfig& anchorConfig, bool
   }
 
   if (commit) {
-    wl_surface_commit(m_surface);
+    commitNative();
     wl_display_flush(m_connection.display());
   }
   return true;
@@ -360,7 +360,7 @@ bool PopupSurface::initializeAsChild(xdg_surface* parentXdgSurface, wl_output* o
 
   wireGrab();
 
-  wl_surface_commit(m_surface);
+  commitNative();
   wl_display_flush(m_connection.display());
   // The roundtrip pumps the event queue, which can re-enter input dispatch and destroy
   // this popup mid-init (e.g. the owning menu closes on the same press that opened it).
