@@ -3,6 +3,7 @@
 #include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "core/sys/sys.h"
 #include "i18n/i18n.h"
 
@@ -515,8 +516,4 @@ void Cloud::loadPins() {
   }
 }
 
-void Cloud::savePins() const {
-  std::error_code ec;
-  fs::create_directories(pinsFile().parent_path(), ec);
-  std::ofstream(pinsFile()) << nlohmann::json{{"pinned", m_pins}}.dump();
-}
+void Cloud::savePins() const { andromeda::writeFileAsync(pinsFile(), nlohmann::json{{"pinned", m_pins}}.dump()); }

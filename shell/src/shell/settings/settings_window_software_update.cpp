@@ -8,7 +8,6 @@
 #include "shell/settings/settings_window.h"
 
 #include <filesystem>
-#include <fstream>
 #include <string>
 
 namespace {
@@ -60,9 +59,7 @@ void SettingsWindow::addSoftwareUpdateContent(float scale) {
                         std::filesystem::remove(checkOff, error);
                         return !error;
                       }
-                      std::filesystem::create_directories(checkOff.parent_path(), error);
-                      std::ofstream file(checkOff);
-                      return static_cast<bool>(file);
+                      return andromeda::writeFileReplacing(checkOff, "");
                     },
                     [this, alive = std::weak_ptr<void>(m_aliveGuard), checkOff](bool ok) {
                       if (alive.expired()) {

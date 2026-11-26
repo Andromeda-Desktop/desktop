@@ -2,6 +2,7 @@
 
 #include "config/config_service.h"
 #include "config/config_types.h"
+#include "protocols/async_file_writer.h"
 #include "core/blocking_pool.h"
 #include "core/log.h"
 #include "dbus/accounts/accounts_service.h"
@@ -12,7 +13,6 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <fstream>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -86,42 +86,15 @@ namespace {
     }
 
     auto destination = cacheDir / "avatar.png";
-    const auto tempPath = cacheDir / "avatar.png.tmp";
-    {
-      std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
-      if (!out.is_open()) {
-        errorOut = AvatarPrepareError::WriteFailed;
-        if (logDetail != nullptr) {
-          *logDetail = "failed to open avatar cache file";
-        }
-        return std::nullopt;
-      }
-      out.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()));
-      if (!out) {
-        errorOut = AvatarPrepareError::WriteFailed;
-        if (logDetail != nullptr) {
-          *logDetail = "failed to write avatar cache file";
-        }
-        std::filesystem::remove(tempPath, ec);
-        return std::nullopt;
-      }
-    }
-
-    ec.clear();
-    std::filesystem::rename(tempPath, destination, ec);
-    if (ec) {
+    if (!andromeda::writeFileReplacing(
+            destination, std::string_view(reinterpret_cast<const char*>(png.data()), png.size()), 0600
+        )) {
       errorOut = AvatarPrepareError::WriteFailed;
       if (logDetail != nullptr) {
-        *logDetail = ec.message();
+        *logDetail = "failed to write avatar cache file";
       }
-      std::filesystem::remove(tempPath, ec);
       return std::nullopt;
     }
-
-    std::filesystem::permissions(
-        destination, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
-        std::filesystem::perm_options::replace, ec
-    );
 
     return destination;
   }

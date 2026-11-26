@@ -1,5 +1,7 @@
 #include "util/private_state_file.h"
 
+#include "protocols/async_file_writer.h"
+
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -55,6 +57,7 @@ namespace andromeda::private_state {
 
     // Writes a temporary file, fsyncs it, renames it over `file`, then fsyncs the directory.
     bool writeAtomic(const std::filesystem::path& file, std::string_view bytes) {
+      noteBlockingWrite(file);
       const int directory = openPrivateDirectory(file);
       if (directory < 0) {
         return false;

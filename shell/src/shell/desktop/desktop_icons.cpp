@@ -36,11 +36,14 @@
 #include "wayland/wayland_seat.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <cstdlib>
+#include <fcntl.h>
 #include <format>
 #include <fstream>
 #include <set>
+#include <unistd.h>
 #include <nlohmann/json.hpp>
 #include <sdbus-c++/sdbus-c++.h>
 #include <gio/gio.h>
@@ -612,8 +615,12 @@ void DesktopIcons::createNew(bool folder, std::optional<std::pair<float, float>>
         }
         std::error_code error;
         std::filesystem::create_directories(dir, error);
-        const bool made =
-            folder ? std::filesystem::create_directory(*path, error) : static_cast<bool>(std::ofstream(*path));
+        // O_EXCL: a file that appeared after the name search is never truncated.
+        const int fd = folder ? -1 : ::open(path->c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+        if (!folder && fd < 0) {
+          error = std::error_code(errno, std::system_category());
+        }
+        const bool made = folder ? std::filesystem::create_directory(*path, error) : fd >= 0 && ::close(fd) == 0;
         if (!made) {
           kLog.warn("new {} failed: {}", path->string(), error.message());
         }

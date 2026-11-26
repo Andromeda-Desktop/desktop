@@ -1,5 +1,6 @@
 #include "theme_cli.h"
 #include "core/sys/sys.h"
+#include "protocols/async_file_writer.h"
 
 #include "settings_store.h"
 #include "theme_store.h"
@@ -10,7 +11,6 @@
 #include <cmath>
 #include <cstdio>
 #include <format>
-#include <fstream>
 #include <string>
 #include <string_view>
 
@@ -72,16 +72,13 @@ namespace term {
         std::fprintf(stderr, "%s: exists\n", folder.c_str());
         return 1;
       }
-      std::filesystem::create_directories(folder, ec);
-      std::ofstream out(folder / "theme.toml");
-      out << std::format("name = \"{}\"\n", id);
+      std::string text = std::format("name = \"{}\"\n", id);
       for (const bool light : {true, false}) {
         const Palette p = tokenPalette(light);
-        out << std::format("\n[{}]\nsurface = \"#{:06x}\"\ntext = \"#{:06x}\"\naccent = \"#{:06x}\"\n", light ? "light" : "dark",
-                           rgb(p.solidRegular), rgb(p.label1), rgb(p.accent));
+        text += std::format("\n[{}]\nsurface = \"#{:06x}\"\ntext = \"#{:06x}\"\naccent = \"#{:06x}\"\n", light ? "light" : "dark",
+                            rgb(p.solidRegular), rgb(p.label1), rgb(p.accent));
       }
-      out.close();
-      if (!out) {
+      if (!andromeda::writeFileReplacing(folder / "theme.toml", text)) {
         std::fprintf(stderr, "%s: cannot write\n", folder.c_str());
         return 1;
       }

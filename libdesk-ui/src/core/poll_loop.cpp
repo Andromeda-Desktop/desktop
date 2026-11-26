@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/timer_manager.h"
+#include "protocols/async_file_writer.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -90,6 +91,7 @@ void PollLoop::dispatch(const std::vector<pollfd>& fds) {
 }
 
 int PollLoop::run() {
+  const andromeda::LoopThreadScope loopThread;
   std::vector<pollfd> fds;
   while (runDeferred()) {
     fds.clear();

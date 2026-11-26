@@ -1,5 +1,6 @@
 #include "config/change.h"
 #include "config/config.h"
+#include "protocols/async_file_writer.h"
 #include "config/config_watcher.h"
 #include "config/resolve.h"
 #include "config/store.h"
@@ -50,7 +51,6 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <fstream>
 #include <memory>
 #include <optional>
 #include <span>
@@ -181,10 +181,8 @@ namespace andromeda {
   void Server::lockBehindBlank() {
     if (m_lockFileManaged) {
       const std::string path = lockFilePath();
-      mkdir(path.substr(0, path.rfind('/')).c_str(), 0700);
       // Holds the logind session ID: only a restart inside the same login stays locked.
-      std::ofstream file(path, std::ios::trunc);
-      if (!(file << (std::getenv("XDG_SESSION_ID") ?: ""))) {
+      if (!writeFileReplacing(path, std::getenv("XDG_SESSION_ID") ?: "", 0666, 0700)) {
         kLog.error("cannot write the lock file {}: {}", path, std::strerror(errno));
       }
     }

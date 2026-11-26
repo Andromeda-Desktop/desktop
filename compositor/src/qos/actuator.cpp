@@ -1,4 +1,5 @@
 #include "qos/actuator.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/crash_capture.h"
 
 #include "core/log.h"
@@ -23,9 +24,7 @@ namespace andromeda::qos {
       if (cgroupDir.empty()) {
         return;
       }
-      std::ofstream freeze(cgroupDir + "/cgroup.freeze");
-      freeze << "0";
-      if (!freeze.flush()) {
+      if (!writeKernelAttribute(cgroupDir + "/cgroup.freeze", "0")) {
         kLog.debug("thaw of {} failed", cgroupDir);
       }
     }

@@ -1,13 +1,13 @@
 #include "system_portals.h"
 
 #include "core/deferred_call.h"
+#include "protocols/async_file_writer.h"
 #include "core/log.h"
 #include "dbus/caller.h"
 #include "dbus/session_bus.h"
 #include "protocols/uri.h"
 
 #include <filesystem>
-#include <fstream>
 #include <gio/gio.h>
 #include <glib.h>
 #include <optional>
@@ -52,11 +52,12 @@ namespace {
       if (kind == "bytes") {
         const auto bytes = icon.get<1>().get<std::vector<std::uint8_t>>();
         const fs::path dir = fs::path(g_get_user_runtime_dir()) / "andromeda-files";
-        std::error_code ec;
-        fs::create_directories(dir, ec);
         const fs::path file = dir / (stem + ".png");
-        std::ofstream(file, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()),
-                                                    static_cast<std::streamsize>(bytes.size()));
+        if (!andromeda::writeFileReplacing(
+                file, std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size())
+            )) {
+          return {};
+        }
         return file.string();
       }
       if (kind == "file") {

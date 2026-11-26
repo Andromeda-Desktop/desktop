@@ -2,6 +2,7 @@
 
 #include "core/files/directory_scanner.h"
 #include "core/freedesktop_thumbnails.h"
+#include "protocols/async_file_writer.h"
 #include "core/log.h"
 #include "core/sys/sys.h"
 #include "protocols/xdg_dirs.h"
@@ -16,7 +17,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <stb/stb_image_resize2.h>
 #include <system_error>
 #include <unistd.h>
@@ -85,28 +85,8 @@ namespace thumbnail_pipeline {
     }
 
     bool writeFile(const std::filesystem::path& path, const std::uint8_t* data, std::size_t size) {
-      std::error_code ec;
-      std::filesystem::create_directories(path.parent_path(), ec);
-      if (ec) {
-        return false;
-      }
-      // Readers on other threads see the whole file or none: write aside, then rename.
-      auto tmp = path;
-      tmp += ".tmp." + std::to_string(::getpid()) + "." + std::to_string(sys::currentThreadId());
-      {
-        std::ofstream file(tmp, std::ios::binary | std::ios::trunc);
-        file.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
-        if (!file.flush()) {
-          std::filesystem::remove(tmp, ec);
-          return false;
-        }
-      }
-      std::filesystem::rename(tmp, path, ec);
-      if (ec) {
-        std::filesystem::remove(tmp, ec);
-        return false;
-      }
-      return true;
+      // Readers on other threads see the whole file or none.
+      return andromeda::writeFileReplacing(path, std::string_view(reinterpret_cast<const char*>(data), size));
     }
 
     std::vector<std::uint8_t> rgbaToRgb(const std::vector<std::uint8_t>& rgba) {

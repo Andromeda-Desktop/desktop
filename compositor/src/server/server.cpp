@@ -2447,6 +2447,7 @@ namespace andromeda {
 
   bool Server::run() {
     StallProbe::setDeveloper(config().general.developerDiagnostics);
+    const LoopThreadScope loopThread;
     wl_display_run(m_display);
     return m_startPhase != StartPhase::Failed;
   }

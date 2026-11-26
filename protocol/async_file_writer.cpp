@@ -1,7 +1,10 @@
 #include "async_file_writer.h"
 #include "crash_capture.h"
 #include "log.h"
+#include "xdg_dirs.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
@@ -85,7 +88,7 @@ namespace andromeda {
       return ::mkdir(dir.c_str(), mode) == 0 || errno == EEXIST;
     }
 
-    bool writeAll(int fd, const std::string& text) {
+    bool writeAll(int fd, std::string_view text) {
       std::size_t done = 0;
       while (done < text.size()) {
         const ssize_t n = ::write(fd, text.data() + done, text.size() - done);
@@ -205,7 +208,15 @@ namespace andromeda {
 
   } // namespace
 
-  bool writeFileReplacing(const std::filesystem::path& path, const std::string& text, unsigned fileMode, unsigned dirMode) {
+  bool writeFileReplacing(const std::filesystem::path& path, std::string_view text, unsigned fileMode, unsigned dirMode) {
+    return writeFileReplacing(path, {text}, fileMode, dirMode);
+  }
+
+  bool writeFileReplacing(
+      const std::filesystem::path& path, std::initializer_list<std::string_view> parts, unsigned fileMode,
+      unsigned dirMode
+  ) {
+    noteBlockingWrite(path);
     // Each directory is swept once per process; leaked, so a write that drains at exit never sees it destroyed.
     static auto* swept = new std::set<std::filesystem::path>;
     static auto* sweptMutex = new std::mutex;
@@ -224,13 +235,51 @@ namespace andromeda {
     // Held until close: the sweep in another process leaves a locked temporary alone.
     ::flock(fd, LOCK_EX);
     // rename is atomic: a crash mid-write keeps the previous file.
-    const bool ok = writeAll(fd, text) && ::rename(temporary.c_str(), path.c_str()) == 0;
+    const bool ok = std::ranges::all_of(parts, [fd](std::string_view part) { return writeAll(fd, part); }) &&
+                    ::rename(temporary.c_str(), path.c_str()) == 0;
     if (!ok) {
       ::unlink(temporary.c_str());
     }
     ::close(fd);
     return ok;
   }
+
+  bool writeKernelAttribute(const std::filesystem::path& path, std::string_view value) {
+    const int fd = ::open(path.c_str(), O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) {
+      return false;
+    }
+    const bool ok = writeAll(fd, value);
+    ::close(fd);
+    return ok;
+  }
+
+  namespace {
+    thread_local bool t_loopRunning = false;
+    std::atomic<std::uint64_t> g_blockingLoopWrites{0};
+  } // namespace
+
+  LoopThreadScope::LoopThreadScope() noexcept { t_loopRunning = true; }
+  LoopThreadScope::~LoopThreadScope() { t_loopRunning = false; }
+
+  void noteBlockingWrite(const std::filesystem::path& path) {
+    if (!t_loopRunning) {
+      return;
+    }
+    const std::string runtime = xdg::runtimeDir();
+    const std::string& text = path.native();
+    if (!runtime.empty() && text.starts_with(runtime) && (text.size() == runtime.size() || text[runtime.size()] == '/')) {
+      return;
+    }
+    g_blockingLoopWrites.fetch_add(1, std::memory_order_relaxed);
+    static auto* logged = new std::set<std::filesystem::path>;
+    static auto* loggedMutex = new std::mutex;
+    if (const std::scoped_lock lock(*loggedMutex); logged->insert(path).second) {
+      kLog.warn("blocking write on the main loop: {}", text);
+    }
+  }
+
+  std::uint64_t blockingLoopWrites() noexcept { return g_blockingLoopWrites.load(std::memory_order_relaxed); }
 
   void setFileWriteDonePoster(MainLoopPoster poster) { writer().setPoster(std::move(poster)); }
 

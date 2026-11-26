@@ -182,11 +182,11 @@ RULES = {
                  r"getenv\(\"XDG_(?:(?:CONFIG|DATA|STATE|CACHE)_HOME|RUNTIME_DIR|(?:DATA|CONFIG)_DIRS)\"\)", ()),
     "protocol-copy": ("a Wayland protocol XML used by more than one module lives once in protocol/; module protocols/ "
                       "dirs link to it", ("",), ("/protocols/",), r"", ()),
-    "main-io": ("a file write blocks its thread for 100s of ms under disk load: the compositor and the shell write through "
-                "protocol/async_file_writer.h writeFileAsync (the shell passes its WriteFn), MainLoopWorker or SharedWorker::post; "
-                "a direct write here must run off the main thread", ("compositor/src/", "shell/src/", "libdesk-ui/src/"),
-                CPP, r"\bstd::ofstream\b|\b(fsync|fdatasync)\s*\(|\bfopen\s*\([^;]*\"[wa]\+?b?\"|"
-                r"\b(writeTextFileAtomic|writeEncryptedFile|rewriteGeneratedToml)\s*\(",
+    "main-io": ("a file write blocks its thread for 100s of ms under disk load: write through protocol/async_file_writer.h "
+                "(writeFileAsync, runFileOpAsync; the sync owners writeFileReplacing, writeKernelAttribute, writeTextFileAtomic "
+                "report a disk write on a running loop at run time), or put the raw write inside a runFileOpAsync, "
+                "SharedWorker::post or BlockingPool::run call", ("compositor/src/", "shell/src/", "libdesk-ui/src/"),
+                CPP, r"\bstd::ofstream\b|\b(fsync|fdatasync)\s*\(|\bfopen\s*\([^;]*\"[wa]\+?b?\"",
                 ("compositor/src/config/generated_file.", "compositor/src/util/private_state_file.",
                  "shell/src/config/atomic_file.", "shell/src/security/encrypted_file_store.")),
     "final-path-write": ("a write to the final path leaves a truncated file after a full disk or a crash: replace the file "
@@ -256,6 +256,15 @@ def async_hits(text, rx):
             if any(a <= m.start() <= b for a, b in inside) and not any(a <= m.start() <= b for a, b in blocking)]
 
 
+WORKER_CALL = re.compile(r"\b(?:runFileOpAsync|SharedWorker::instance\(\)\.post(?:<[^>]*>)?|BlockingPool::instance\(\)\.run(?:<[^>]*>)?)\s*\(")
+
+
+def outside_workers(text, rx):
+    """Matches outside the argument list of a call that runs its work off the loop thread."""
+    spans = [(m.end() - 1, _span_end(text, m.end() - 1, "(", ")")) for m in WORKER_CALL.finditer(text)]
+    return [m.group(0) for m in rx.finditer(text) if not any(a <= m.start() <= b for a, b in spans)]
+
+
 def outside_function(text, rx, name):
     """Matches outside the body of function `name` (the one place a rule allows its pattern)."""
     bodies = [(m.end() - 1, _span_end(text, m.end() - 1, "{", "}"))
@@ -290,6 +299,8 @@ def scan():
                 text = LINE_COMMENT.sub("", text)
             if rule == "std-fs-async":
                 hits = async_hits(text, rx)
+            elif rule == "main-io":
+                hits = outside_workers(text, rx)
             elif rule == "clipboard-wait":
                 hits = outside_function(text, rx, "ClipboardService::drainPendingWrites")
             elif rule == "shell-timer":

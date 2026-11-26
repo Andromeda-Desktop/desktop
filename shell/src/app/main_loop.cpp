@@ -6,6 +6,7 @@
 #include "core/log.h"
 #include "wayland/surface.h"
 #include "wayland/wayland_connection.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/stall_watch.h"
 
 #include <algorithm>
@@ -316,6 +317,7 @@ void MainLoop::setDeveloperDiagnostics(bool on) {
 }
 
 void MainLoop::run() {
+  const andromeda::LoopThreadScope loopThread;
   if (idleProfileEnabled()) {
     kLog.info(
         "ANDROMEDA_IDLE_PROFILE enabled; logging idle wake/render profile every {}s",

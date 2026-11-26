@@ -90,6 +90,7 @@ bool writeTextFileAtomic(
   if (!target.has_value() || target->path.empty()) {
     return false;
   }
+  andromeda::noteBlockingWrite(target->path);
 
   std::error_code ec;
   const auto parent = target->path.parent_path();

@@ -1,6 +1,7 @@
 #include "render/text/cairo_text_renderer.h"
 
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "render/backend/render_backend.h"
 #include "render/core/texture_manager.h"
 #include "render/text/font_registry.h"
@@ -341,12 +342,12 @@ void CairoTextRenderer::recordFontsTo(std::filesystem::path file) { g_recordFont
 
 void CairoTextRenderer::cleanup() {
   if (!m_recordedFonts.empty()) {
-    std::error_code ec;
-    std::filesystem::create_directories(g_recordFontsFile.parent_path(), ec);
-    std::ofstream out(g_recordFontsFile, std::ios::trunc);
+    std::string text;
     for (const auto& font : m_recordedFonts) {
-      out << font << '\n';
+      text += font + '\n';
     }
+    // Runs at exit, after the loop stopped.
+    andromeda::writeFileReplacing(g_recordFontsFile, text);
     m_recordedFonts.clear();
   }
   clearCaches();

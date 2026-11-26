@@ -2,6 +2,7 @@
 #include "view/popup.h"
 
 #include "config/config.h"
+#include "protocols/async_file_writer.h"
 #include "config/resolve.h"
 #include "core/log.h"
 #include "core/scanout_keeper.h"
@@ -1847,16 +1848,21 @@ namespace andromeda {
     std::size_t next = 0;
     std::size_t built = kDepth;
 
-    static FILE* log() {
-      static FILE* file = [] {
-        const char* path = std::getenv("ANDROMEDA_FRAME_LOG");
-        FILE* f = path != nullptr && path[0] != '\0' ? std::fopen(path, "w") : nullptr;
-        if (f != nullptr) {
-          std::setvbuf(f, nullptr, _IOLBF, 0);
-        }
-        return f;
+    // The ANDROMEDA_FRAME_LOG path, or nullptr when the frame log is off.
+    static const char* logPath() {
+      static const char* path = [] {
+        const char* value = std::getenv("ANDROMEDA_FRAME_LOG");
+        return value != nullptr && value[0] != '\0' ? value : nullptr;
       }();
-      return file;
+      return path;
+    }
+
+    // Appends on the file writer thread, in order: a frame never waits on the disk.
+    static void logLine(std::string line) {
+      andromeda::runFileOpAsync([line = std::move(line)] {
+        static FILE* file = std::fopen(logPath(), "w");
+        return file != nullptr && std::fputs(line.c_str(), file) >= 0 && std::fflush(file) == 0;
+      });
     }
 
     // Writes the slot's finished frame, then hands the slot to the next build.
@@ -1875,7 +1881,8 @@ namespace andromeda {
           int64_t gpuExecNs = -1;
           (void)fx_render_timer_split(timer->render_timer, &cpuNs, &gpuExecNs);
           const auto& dmg = damage[next];
-          std::fprintf(log(), "%lld %s %lld %lld %u %llu %u %llu %u %llu %u %lld %lld %u %llu %lld %lld %lld %lld %lld %llu %llu %llu\n", static_cast<long long>(startNs[next]),
+          char line[512];
+          std::snprintf(line, sizeof(line), "%lld %s %lld %lld %u %llu %u %llu %u %llu %u %lld %lld %u %llu %lld %lld %lld %lld %lld %llu %llu %llu\n", static_cast<long long>(startNs[next]),
                        output, static_cast<long long>(timer->pre_render_duration),
                        static_cast<long long>(total - timer->pre_render_duration), st.blurs,
                        static_cast<unsigned long long>(st.blur_px), st.lens, static_cast<unsigned long long>(st.lens_px),
@@ -1886,6 +1893,7 @@ namespace andromeda {
                        static_cast<long long>(dmg[4]), static_cast<unsigned long long>(present[next][0]),
                        static_cast<unsigned long long>(present[next][1]),
                        static_cast<unsigned long long>(present[next][2]));
+          logLine(line);
         }
       }
       built = next;
@@ -3101,7 +3109,7 @@ namespace andromeda {
         sceneOptions.workspace_from = m_workspaceGroup->revealRoot(false);
         sceneOptions.workspace_to = m_workspaceGroup->revealRoot(true);
       }
-      if (FrameTimers::log() != nullptr) {
+      if (FrameTimers::logPath() != nullptr) {
         if (m_frameTimers == nullptr) {
           m_frameTimers = std::make_unique<FrameTimers>();
         }

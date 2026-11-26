@@ -7,6 +7,7 @@
 #include "tests/test_check.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <condition_variable>
 #include <filesystem>
 #include <fstream>
@@ -182,6 +183,26 @@ int main() {
   TEST_CHECK(wrotePrivate == true);
   TEST_CHECK(mode(dir / "cache") == 0700U && mode(dir / "cache" / "programs") == 0700U);
   TEST_CHECK(mode(privateFile) == 0600U);
+
+  // A sync disk write counts only on a thread inside a running loop, and never under the runtime dir (tmpfs); a
+  // sibling whose name only starts with the runtime dir's name is not under it.
+  const auto runtime = dir / "run";
+  ::setenv("XDG_RUNTIME_DIR", runtime.c_str(), 1);
+  const std::uint64_t before = andromeda::blockingLoopWrites();
+  TEST_CHECK(andromeda::writeFileReplacing(dir / "off-loop", "x"));
+  TEST_CHECK(andromeda::blockingLoopWrites() == before);
+  {
+    const andromeda::LoopThreadScope loop;
+    TEST_CHECK(andromeda::writeFileReplacing(runtime / "marker", "x"));
+    TEST_CHECK(andromeda::blockingLoopWrites() == before);
+    std::thread([&] { TEST_CHECK(andromeda::writeFileReplacing(dir / "worker", "x")); }).join();
+    TEST_CHECK(andromeda::blockingLoopWrites() == before);
+    TEST_CHECK(andromeda::writeFileReplacing(dir / "run-sibling" / "state", {"head:", "body"}));
+    TEST_CHECK(andromeda::blockingLoopWrites() == before + 1);
+  }
+  TEST_CHECK(readFile(dir / "run-sibling" / "state") == "head:body");
+  TEST_CHECK(andromeda::writeFileReplacing(dir / "after-loop", "x"));
+  TEST_CHECK(andromeda::blockingLoopWrites() == before + 1);
 
   std::filesystem::remove_all(dir);
   return 0;

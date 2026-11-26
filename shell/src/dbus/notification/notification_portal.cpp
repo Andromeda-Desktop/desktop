@@ -1,6 +1,7 @@
 #include "dbus/notification/notification_portal.h"
 
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "dbus/caller.h"
 #include "dbus/session_bus.h"
 #include "notification/notification_manager.h"
@@ -10,7 +11,6 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -111,10 +111,11 @@ namespace {
         kLog.warn("icon kind \"{}\" dropped", kind);
         return {};
       }
-      std::error_code ec;
-      fs::create_directories(iconDir(), ec);
       const fs::path path = iconDir() / ("icon-" + std::to_string(serial));
-      std::ofstream(path, std::ios::binary).write(bytes->data(), static_cast<std::streamsize>(bytes->size()));
+      if (!andromeda::writeFileReplacing(path, std::string_view(bytes->data(), bytes->size()))) {
+        kLog.warn("icon dropped: cannot write {}", path.string());
+        return {};
+      }
       file = path.string();
       return file;
     } catch (const sdbus::Error& e) {

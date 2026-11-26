@@ -1,6 +1,7 @@
 #include "cli/debug.h"
 
 #include "core/process.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 
 #include <algorithm>
@@ -831,7 +832,7 @@ namespace andromeda {
       if (dir.empty() || ec) {
         std::println("full report: not written ({})", dir.empty() ? "no HOME" : ec.message());
       } else {
-        const auto write = [&dir](const char* name, const std::string& text) { std::ofstream(dir / name) << text; };
+        const auto write = [&dir](const char* name, const std::string& text) { writeFileReplacing(dir / name, text); };
         write("summary.txt", summary);
         std::string versionsText;
         for (const auto& line : versions) {

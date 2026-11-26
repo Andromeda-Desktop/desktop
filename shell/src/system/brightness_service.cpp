@@ -1252,15 +1252,8 @@ struct BrightnessService::Impl {
   void writeSysfsBacklight(const DisplayInternal& display, std::uint32_t rawValue) {
     const std::string brightnessPath = display.sysfsPath + "/brightness";
     const std::weak_ptr<int> token = aliveToken;
-    // sysfs takes the value in place: no temporary file and rename.
     const andromeda::WriteFn writeInPlace = [](const std::filesystem::path& path, const std::string& text) {
-      std::ofstream file(path);
-      if (!file.is_open()) {
-        return false;
-      }
-      file << text;
-      file.close();
-      return !file.fail();
+      return andromeda::writeKernelAttribute(path, text);
     };
     andromeda::writeFileAsync(
         brightnessPath, std::to_string(rawValue), writeInPlace,
