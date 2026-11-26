@@ -34,7 +34,6 @@ public:
   void toggleEnabled();
   void setForceEnabled(bool enabled);
   void toggleForceEnabled();
-  void clearForceOverride();
   void setChangeCallback(ChangeCallback callback);
   void setStateFeedbackCallback(StateFeedbackCallback callback);
   void onOutputsChanged();
@@ -54,9 +53,12 @@ public:
   static void onGammaFailed(void* data, zwlr_gamma_control_v1* ctrl);
 
 private:
-  [[nodiscard]] bool effectiveConfiguredEnabled() const;
-  [[nodiscard]] bool effectiveEnabled() const;
-  [[nodiscard]] bool effectiveForce() const;
+  // Off; on with the schedule; on all the time.
+  enum class Mode : std::uint8_t { Off, Scheduled, Forced };
+  [[nodiscard]] Mode mode() const;
+  void setMode(Mode mode);
+  [[nodiscard]] bool effectiveEnabled() const { return mode() != Mode::Off; }
+  [[nodiscard]] bool effectiveForce() const { return mode() == Mode::Forced; }
   [[nodiscard]] bool networkLocationConfigured() const;
 
   void scheduleManualTimer();
@@ -105,8 +107,8 @@ private:
   ShellWaylandConnection& m_wayland;
   NightLightConfig m_config;
   LocationConfig m_location;
-  std::optional<bool> m_enabledOverride;
-  std::optional<bool> m_forceOverride;
+  // The session's choice from the tile, the bar or the CLI; a config change to enabled or force drops it.
+  std::optional<Mode> m_modeOverride;
   bool m_locationResolving = false;
   std::optional<double> m_resolvedLatitude;
   std::optional<double> m_resolvedLongitude;

@@ -61,33 +61,38 @@ void GammaService::notifyStateFeedback() {
 }
 
 void GammaService::reload(const NightLightConfig& config, const LocationConfig& location) {
-  if (config.enabled != m_config.enabled) {
-    m_enabledOverride.reset();
-  }
-  if (config.force != m_config.force) {
-    m_forceOverride.reset();
+  if (config.enabled != m_config.enabled || config.force != m_config.force) {
+    m_modeOverride.reset();
   }
   m_config = config;
   m_location = location;
   apply();
 }
 
-void GammaService::setEnabled(bool enabled) {
-  m_enabledOverride = enabled;
+GammaService::Mode GammaService::mode() const {
+  if (m_modeOverride.has_value()) {
+    return *m_modeOverride;
+  }
+  return !m_config.enabled ? Mode::Off : m_config.force ? Mode::Forced : Mode::Scheduled;
+}
+
+void GammaService::setMode(Mode mode) {
+  m_modeOverride = mode;
   apply();
   notifyStateFeedback();
 }
 
-void GammaService::toggleEnabled() {
-  // Toggling out of the forced state lands on scheduled-on rather than off, so the force override
-  // stays reachable in both directions.
-  if (effectiveForce()) {
-    m_forceOverride.reset();
-    setEnabled(true);
-    return;
+void GammaService::setEnabled(bool enabled) {
+  if (!enabled) {
+    setMode(Mode::Off);
+  } else if (mode() == Mode::Off) {
+    setMode(Mode::Scheduled);
   }
-  setEnabled(!enabled());
 }
+
+// Toggling out of the forced state lands on scheduled-on rather than off, so the force override stays reachable in
+// both directions.
+void GammaService::toggleEnabled() { setMode(mode() == Mode::Scheduled ? Mode::Off : Mode::Scheduled); }
 
 void GammaService::setLocationResolving(bool resolving) {
   if (m_locationResolving == resolving) {
@@ -113,20 +118,16 @@ void GammaService::setResolvedCoordinates(std::optional<double> latitude, std::o
 }
 
 void GammaService::setForceEnabled(bool enabled) {
-  m_forceOverride = enabled;
-  apply();
-  notifyStateFeedback();
+  if (enabled) {
+    setMode(Mode::Forced);
+  } else if (mode() == Mode::Forced) {
+    setMode(Mode::Scheduled);
+  }
 }
 
 void GammaService::toggleForceEnabled() { setForceEnabled(!forceEnabled()); }
 
-void GammaService::clearForceOverride() {
-  m_forceOverride.reset();
-  apply();
-  notifyStateFeedback();
-}
-
-bool GammaService::enabled() const { return effectiveConfiguredEnabled(); }
+bool GammaService::enabled() const { return effectiveEnabled(); }
 
 bool GammaService::forceEnabled() const { return effectiveForce(); }
 
@@ -148,22 +149,6 @@ void GammaService::onOutputsChanged() {
 }
 
 void GammaService::reevaluateSchedule() { apply(); }
-
-bool GammaService::effectiveConfiguredEnabled() const {
-  if (m_enabledOverride.has_value()) {
-    return *m_enabledOverride;
-  }
-  return m_config.enabled;
-}
-
-bool GammaService::effectiveEnabled() const { return effectiveConfiguredEnabled() || m_forceOverride.value_or(false); }
-
-bool GammaService::effectiveForce() const {
-  if (m_forceOverride.has_value()) {
-    return *m_forceOverride;
-  }
-  return m_config.force;
-}
 
 bool GammaService::networkLocationConfigured() const { return m_location.autoLocate || !m_location.address.empty(); }
 
