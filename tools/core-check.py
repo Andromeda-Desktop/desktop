@@ -185,7 +185,7 @@ RULES = {
                 "a direct write here must run off the main thread", ("compositor/src/", "shell/src/", "libdesk-ui/src/"),
                 CPP, r"\bstd::ofstream\b|\b(fsync|fdatasync)\s*\(|\bfopen\s*\([^;]*\"[wa]\+?b?\"|"
                 r"\b(writeTextFileAtomic|writeEncryptedFile|rewriteGeneratedToml)\s*\(",
-                ("compositor/src/config/generated_file.",
+                ("compositor/src/config/generated_file.", "compositor/src/util/private_state_file.",
                  "shell/src/config/atomic_file.", "shell/src/security/encrypted_file_store.")),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",
                     ("apps/",), ("meson.build",), r"subproject\('libdesk-ui'|\b_?desk_ui_dep\b", ()),
@@ -194,6 +194,10 @@ RULES = {
                    "token; a surface's closed callback is already deferred and dropped with the surface",
                    CPP_DIRS, CPP, r"DeferredCall::callLater\(\s*\[(?![^\]]*(?:[Aa]live|Guard))[^\]]*\bthis\b",
                    ("libdesk-ui/src/core/deferred_call.",)),
+    "request-gen": ("a hand-rolled request counter: a late reply applies only while its request is current, through "
+                    "LatestRequest (libdesk-ui core/latest_request.h: begin, cancel, current)",
+                    CPP_DIRS, CPP, r"\+\+m_\w*(?:Generation|Serial|Seq|Request|Ticket|Epoch)\w*\b",
+                    ("libdesk-ui/src/core/latest_request.",)),
 }
 
 
