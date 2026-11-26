@@ -8,6 +8,9 @@ source "$ANDROMEDA_REPO/../tests/headless.sh"
 
 readonly OUTPUT_MANAGEMENT=${ANDROMEDA_OUTPUT_MANAGEMENT_CLIENT:-./build-debug/tests/output-management-client}
 readonly SAVED=$(dirname "$ANDROMEDA_CONFIG")/displays.toml
+# As the default config does: the compositor saves display state only into an included displays.toml.
+printf '\n[include.optional]\nfiles = ["displays.toml"]\n' >> "$ANDROMEDA_CONFIG"
+"$ANDROMEDA" msg config-reload > /dev/null
 
 "$OUTPUT_MANAGEMENT" apply enable HEADLESS-2 0 720 > /dev/null
 for _ in $(seq 40); do
@@ -50,11 +53,7 @@ EOF
 headless_compositor "$RUNTIME_DIR" 2 "$CONFIG" -uDBUS_SESSION_BUS_ADDRESS \
   > "$RUNTIME_DIR/compositor.log" 2>&1 &
 SERVER_PID=$!
-for _ in $(seq 40); do
-  [[ -S $SOCKET ]] && break
-  sleep 0.25
-done
-if [[ ! -S $SOCKET ]]; then
+if ! wait_compositor "$SERVER_PID" "$SOCKET"; then
   echo "the private compositor never exposed its IPC socket"
   sed 's/^/  | /' "$RUNTIME_DIR/compositor.log"
   exit 1

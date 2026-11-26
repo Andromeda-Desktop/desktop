@@ -5,7 +5,7 @@ NOCTALIA=${NOCTALIA:-$ROOT/shell/build-debug/andromeda-shell}
 DESKTOP_CLIENT=${DESKTOP_CLIENT:-$ROOT/compositor/build-debug/tests/desktop-client}
 RUNTIME=$(mktemp -d /tmp/dsk.XXXX)
 source "$ROOT/tests/headless.sh"
-trap 'kill $(jobs -p) 2>/dev/null || true; wait 2>/dev/null; rm -rf "$RUNTIME"' EXIT
+trap rm_runtime EXIT
 
 # boot_headless OUTPUTS: start Andromeda with that many headless outputs; its log goes to $OUT/andromeda.log. The private
 # bus is its session and system bus, so the host's power profile, keymap and logind never reach a test.

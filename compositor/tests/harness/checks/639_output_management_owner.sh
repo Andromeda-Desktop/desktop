@@ -7,6 +7,9 @@ set -euo pipefail
 
 readonly OUTPUT_MANAGEMENT=${ANDROMEDA_OUTPUT_MANAGEMENT_CLIENT:-./build-debug/tests/output-management-client}
 readonly SAVED=$(dirname "$ANDROMEDA_CONFIG")/displays.toml
+# As the default config does: the compositor saves display state only into an included displays.toml.
+printf '\n[include.optional]\nfiles = ["displays.toml"]\n' >> "$ANDROMEDA_CONFIG"
+"$ANDROMEDA" msg config-reload > /dev/null
 
 position_of() {
   for _ in $(seq 40); do

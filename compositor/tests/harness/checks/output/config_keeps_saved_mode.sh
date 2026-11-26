@@ -46,10 +46,7 @@ start_server() {
   headless_compositor "$RUNTIME_DIR" 1 "$CONFIG" -uDBUS_SESSION_BUS_ADDRESS \
     >> "$RUNTIME_DIR/compositor.log" 2>&1 &
   SERVER_PID=$!
-  for _ in $(seq 40); do
-    [[ -S $SOCKET ]] && return 0
-    sleep 0.25
-  done
+  wait_compositor "$SERVER_PID" "$SOCKET" && return 0
   echo "the private compositor never exposed its IPC socket"
   sed 's/^/  | /' "$RUNTIME_DIR/compositor.log"
   exit 1

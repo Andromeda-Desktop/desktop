@@ -68,16 +68,7 @@ headless_compositor "$RUNTIME_DIR" 1 "$CONFIG" -uDBUS_SESSION_BUS_ADDRESS \
 SERVER_PID=$!
 export ANDROMEDA_SOCKET=$SOCKET
 
-for _ in $(seq 40); do
-  [[ -S $SOCKET ]] && break
-  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-    echo "the private compositor died during boot"
-    sed 's/^/  | /' "$LOG"
-    exit 1
-  fi
-  sleep 0.25
-done
-if [[ ! -S $SOCKET ]]; then
+if ! wait_compositor "$SERVER_PID" "$SOCKET"; then
   echo "the private compositor never exposed its IPC socket"
   sed 's/^/  | /' "$LOG"
   exit 1

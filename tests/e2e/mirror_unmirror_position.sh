@@ -22,7 +22,7 @@ apart() {
   (( ${a%,*} - ${b%,*} >= 1280 || ${b%,*} - ${a%,*} >= 1280 || ${a#*,} - ${b#*,} >= 720 || ${b#*,} - ${a#*,} >= 720 ))
 }
 
-sed -i 's/files = \["input.toml"\]/files = ["input.toml", "displays.toml"]/' "$RUNTIME/andromeda.toml"
+printf '\n[include.optional]\nfiles = ["displays.toml"]\n' >> "$RUNTIME/andromeda.toml"
 run "$ANDROMEDA" msg config-reload > /dev/null
 run "$DESKTOP_CLIENT" mirror HEADLESS-2 HEADLESS-1
 wait_for "no log line: output 'HEADLESS-2': mirroring 'HEADLESS-1'" log_since "$OUT/andromeda.log" 0 "output 'HEADLESS-2': mirroring 'HEADLESS-1'"
