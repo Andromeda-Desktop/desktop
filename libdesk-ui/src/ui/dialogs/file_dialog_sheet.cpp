@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/files/directory_watcher.h"
 #include "core/input/key_modifiers.h"
+#include "core/input/keybind_matcher.h"
 #include "i18n/i18n.h"
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
@@ -18,7 +19,6 @@
 
 #include <algorithm>
 #include <glib.h>
-#include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace fs = std::filesystem;
 
@@ -231,7 +231,7 @@ bool FileDialogSheet::handleKey(const KeyboardEvent& event) {
   if (!event.pressed || event.preedit || m_browser == nullptr) {
     return false;
   }
-  if (event.sym == XKB_KEY_Escape && m_browser->selectionCount() == 0) {
+  if (KeybindMatcher::matches(KeybindAction::Cancel, event.sym, event.modifiers) && m_browser->selectionCount() == 0) {
     if (m_host != nullptr) {
       m_host->cancel();
     }
@@ -240,7 +240,7 @@ bool FileDialogSheet::handleKey(const KeyboardEvent& event) {
   if (nameFocused()) {
     return false; // the name field takes its keys; Enter submits through onSubmit
   }
-  if ((event.sym == XKB_KEY_Return || event.sym == XKB_KEY_KP_Enter) && m_browser->selectionCount() == 0) {
+  if (KeybindMatcher::matches(KeybindAction::Validate, event.sym, event.modifiers) && m_browser->selectionCount() == 0) {
     submit();
     return true;
   }
