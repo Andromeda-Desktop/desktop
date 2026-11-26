@@ -1,5 +1,5 @@
 #include "config/generated_file.h"
-#include "core/async_file_writer.h"
+#include "protocols/async_file_writer.h"
 #include "config/managed_settings.h"
 
 #include "check.h"

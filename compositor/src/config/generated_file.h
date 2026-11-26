@@ -20,7 +20,7 @@ namespace andromeda {
   // missing.
   [[nodiscard]] std::string readGeneratedFile(const std::filesystem::path& file);
 
-  // editGeneratedToml on readGeneratedFile(file), written by core/async_file_writer: the main thread never waits on
+  // editGeneratedToml on readGeneratedFile(file), written by async_file_writer: the main thread never waits on
   // a write. A failed write is logged by the writer.
   void rewriteGeneratedTomlAsync(
       const std::filesystem::path& file, std::string_view header, const std::function<void(toml::table&)>& edit

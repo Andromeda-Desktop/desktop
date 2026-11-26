@@ -1,6 +1,6 @@
 #include "server/xdg_session.h"
 
-#include "core/async_file_writer.h"
+#include "protocols/async_file_writer.h"
 #include "core/log.h"
 #include "output/output.h"
 #include "server/server.h"

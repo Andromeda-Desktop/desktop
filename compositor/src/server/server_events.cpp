@@ -43,7 +43,7 @@
 #include "server/server.h"
 #include "server/event_pacer.h"
 #include "util/driver_threads.h"
-#include "core/async_file_writer.h"
+#include "protocols/async_file_writer.h"
 #include "core/screen_activity_recorder.h"
 #include "server/server_events_internal.h"
 #include "server/xdg_session.h"

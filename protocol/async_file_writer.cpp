@@ -1,7 +1,6 @@
-#include "core/async_file_writer.h"
-#include "protocols/crash_capture.h"
-
-#include "core/log.h"
+#include "async_file_writer.h"
+#include "crash_capture.h"
+#include "log.h"
 
 #include <condition_variable>
 #include <deque>
@@ -18,17 +17,39 @@ namespace andromeda {
 
     constexpr Logger kLog("file-writer");
 
+    struct Job {
+      std::filesystem::path path;
+      std::string text;
+      WriteFn write;
+    };
+
+    bool writeReplacing(const std::filesystem::path& path, const std::string& text) {
+      std::error_code error;
+      std::filesystem::create_directories(path.parent_path(), error);
+      const std::filesystem::path temporary = path.string() + ".tmp";
+      {
+        std::ofstream out(temporary, std::ios::trunc);
+        out << text;
+        if (!out) {
+          return false;
+        }
+      }
+      // rename is atomic: a crash mid-write keeps the previous file.
+      std::filesystem::rename(temporary, path, error);
+      return !error;
+    }
+
     class Writer {
     public:
-      void post(std::filesystem::path path, std::string text) {
+      void post(Job job) {
         std::scoped_lock lock(m_mutex);
         for (auto& pending : m_queue) {
-          if (pending.first == path) {
-            pending.second = std::move(text);
+          if (pending.path == job.path) {
+            pending = std::move(job);
             return;
           }
         }
-        m_queue.emplace_back(std::move(path), std::move(text));
+        m_queue.push_back(std::move(job));
         if (!m_thread.joinable()) {
           m_thread = std::jthread([this](const std::stop_token& stop) { run(stop); });
         }
@@ -38,12 +59,12 @@ namespace andromeda {
       std::optional<std::string> pending(const std::filesystem::path& path) {
         std::scoped_lock lock(m_mutex);
         for (const auto& queued : m_queue) {
-          if (queued.first == path) {
-            return queued.second;
+          if (queued.path == path) {
+            return queued.text;
           }
         }
-        if (m_running && m_running->first == path) {
-          return m_running->second;
+        if (m_running && m_running->path == path) {
+          return m_running->text;
         }
         return std::nullopt;
       }
@@ -58,7 +79,7 @@ namespace andromeda {
 
     private:
       void run(const std::stop_token& stop) {
-      pthread_setname_np(pthread_self(), "andro-filewrite");
+        pthread_setname_np(pthread_self(), "andro-filewrite");
         andromeda::crash::installThreadStack();
         std::unique_lock lock(m_mutex);
         while (true) {
@@ -69,33 +90,21 @@ namespace andromeda {
           m_running = std::move(m_queue.front());
           m_queue.pop_front();
           lock.unlock();
-          write(m_running->first, m_running->second);
+          const bool ok = m_running->write ? m_running->write(m_running->path, m_running->text)
+                                           : writeReplacing(m_running->path, m_running->text);
+          if (!ok) {
+            kLog.warn("cannot write {}", m_running->path.string());
+          }
           lock.lock();
           m_running.reset();
         }
       }
 
-      static void write(const std::filesystem::path& path, const std::string& text) {
-        std::error_code error;
-        std::filesystem::create_directories(path.parent_path(), error);
-        const std::filesystem::path temporary = path.string() + ".tmp";
-        {
-          std::ofstream out(temporary, std::ios::trunc);
-          out << text;
-          if (!out) {
-            kLog.warn("cannot write {}", temporary.string());
-            return;
-          }
-        }
-        // rename is atomic: a crash mid-write keeps the previous file.
-        std::filesystem::rename(temporary, path, error);
-      }
-
       std::mutex m_mutex;
       std::condition_variable_any m_wake;
-      std::deque<std::pair<std::filesystem::path, std::string>> m_queue;
-      // The write in progress, until its rename lands; only the writer thread sets it, under m_mutex.
-      std::optional<std::pair<std::filesystem::path, std::string>> m_running;
+      std::deque<Job> m_queue;
+      // The write in progress, until it lands; only the writer thread sets it, under m_mutex.
+      std::optional<Job> m_running;
       std::jthread m_thread; // last: joined before the queue goes away
     };
 
@@ -106,7 +115,9 @@ namespace andromeda {
 
   } // namespace
 
-  void writeFileAsync(std::filesystem::path path, std::string text) { writer().post(std::move(path), std::move(text)); }
+  void writeFileAsync(std::filesystem::path path, std::string text, WriteFn write) {
+    writer().post({std::move(path), std::move(text), std::move(write)});
+  }
 
   std::optional<std::string> pendingFileText(const std::filesystem::path& path) { return writer().pending(path); }
 

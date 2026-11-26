@@ -1,6 +1,6 @@
 #include "config/generated_file.h"
 
-#include "core/async_file_writer.h"
+#include "protocols/async_file_writer.h"
 
 #include <fstream>
 #include <sstream>
