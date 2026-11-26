@@ -35,15 +35,15 @@ bool LauncherPanel::handleGlobalKey(std::uint32_t sym, std::uint32_t modifiers, 
   auto& dispatcher = PanelManager::instance().inputDispatcher();
   InputArea* const focused = dispatcher.focusedArea();
   if (focused != nullptr) {
-    const bool onInput = (m_input != nullptr && focused == m_input->inputArea());
-    const bool inResults = (m_grid != nullptr && isDescendantOf(focused, m_grid))
-        || (m_launcherSections != nullptr && isDescendantOf(focused, m_launcherSections));
+    const bool onInput = (m_ui.input != nullptr && focused == m_ui.input->inputArea());
+    const bool inResults = (m_ui.grid != nullptr && isDescendantOf(focused, m_ui.grid))
+        || (m_ui.launcherSections != nullptr && isDescendantOf(focused, m_ui.launcherSections));
     if (!onInput && !inResults) {
       return false;
     }
   }
 
-  if (m_categoryFilter != nullptr && m_categoryFilter->visible() && focused == m_categoryFilter->focusArea()) {
+  if (m_ui.categoryFilter != nullptr && m_ui.categoryFilter->visible() && focused == m_ui.categoryFilter->focusArea()) {
     return false;
   }
 
@@ -285,11 +285,11 @@ void LauncherPanel::activateSelected() {
     if (!prefix.empty()) {
       prefix += ' ';
     }
-    if (m_input != nullptr) {
-      m_input->setValue(prefix);
+    if (m_ui.input != nullptr) {
+      m_ui.input->setValue(prefix);
     }
-    if (m_grid != nullptr) {
-      m_grid->scrollView().setScrollOffset(0.0F);
+    if (m_ui.grid != nullptr) {
+      m_ui.grid->scrollView().setScrollOffset(0.0F);
     }
     onInputChanged(prefix);
     return;
@@ -303,11 +303,11 @@ void LauncherPanel::activateSelected() {
     }
 
     if (!result.desktopEntryPath.empty()) {
-      const Node* cell = m_launcherSections != nullptr && m_launcherSections->visible()
-          ? sectionCellForResult(*m_launcherSections, m_selectedIndex)
+      const Node* cell = m_ui.launcherSections != nullptr && m_ui.launcherSections->visible()
+          ? sectionCellForResult(*m_ui.launcherSections, m_selectedIndex)
           : nullptr;
-      if (cell == nullptr && m_grid != nullptr) {
-        cell = m_grid->nodeForIndex(m_selectedIndex);
+      if (cell == nullptr && m_ui.grid != nullptr) {
+        cell = m_ui.grid->nodeForIndex(m_selectedIndex);
       }
       const Node* icon = cell != nullptr ? cellIcon(*cell) : nullptr;
       if (icon != nullptr) {
@@ -326,15 +326,15 @@ void LauncherPanel::activateSelected() {
 }
 
 void LauncherPanel::showKeyFocus() {
-  if (InputDispatcher* dispatcher = InputDispatcher::owning(m_input); dispatcher != nullptr) {
+  if (InputDispatcher* dispatcher = InputDispatcher::owning(m_ui.input); dispatcher != nullptr) {
     dispatcher->setKeyboardFocus(dispatcher->focusedArea());
   }
 }
 
 bool LauncherPanel::handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers) {
   const bool sectionNav =
-      shouldUseLauncherSections() && m_launcherSectionsAdapter != nullptr && m_launcherSections != nullptr;
-  const bool gridNav = !sectionNav && m_usingAppGrid && m_grid != nullptr;
+      shouldUseLauncherSections() && m_launcherSectionsAdapter != nullptr && m_ui.launcherSections != nullptr;
+  const bool gridNav = !sectionNav && m_usingAppGrid && m_ui.grid != nullptr;
   if (filesScope() && sym == XKB_KEY_BackSpace && m_query.empty()) {
     setFilesScope(false);
     return true;
@@ -343,7 +343,7 @@ bool LauncherPanel::handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers) {
     setQuery("");
     return true;
   }
-  const int columns = gridNav ? static_cast<int>(std::max<std::size_t>(1, m_grid->layoutColumnCount())) : 1;
+  const int columns = gridNav ? static_cast<int>(std::max<std::size_t>(1, m_ui.grid->layoutColumnCount())) : 1;
 
   const auto moveSelection = [this](int delta) {
     if (m_results.empty()) {
@@ -397,12 +397,12 @@ bool LauncherPanel::handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers) {
   if (KeySymbol::isPageUp(sym)) {
     if (sectionNav) {
       const std::size_t rows = m_launcherSectionsAdapter->estimatedVisibleApplicationRows(
-          m_launcherSections->scrollView().contentViewportHeight()
+          m_ui.launcherSections->scrollView().contentViewportHeight()
       );
       moveSectionSelection(true, -1, rows);
       return true;
     }
-    const int stride = m_grid != nullptr ? static_cast<int>(m_grid->pageItemStride()) : 1;
+    const int stride = m_ui.grid != nullptr ? static_cast<int>(m_ui.grid->pageItemStride()) : 1;
     moveSelection(-stride);
     return true;
   }
@@ -410,12 +410,12 @@ bool LauncherPanel::handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers) {
   if (KeySymbol::isPageDown(sym)) {
     if (sectionNav) {
       const std::size_t rows = m_launcherSectionsAdapter->estimatedVisibleApplicationRows(
-          m_launcherSections->scrollView().contentViewportHeight()
+          m_ui.launcherSections->scrollView().contentViewportHeight()
       );
       moveSectionSelection(true, 1, rows);
       return true;
     }
-    const int stride = m_grid != nullptr ? static_cast<int>(m_grid->pageItemStride()) : 1;
+    const int stride = m_ui.grid != nullptr ? static_cast<int>(m_ui.grid->pageItemStride()) : 1;
     moveSelection(stride);
     return true;
   }
@@ -463,14 +463,14 @@ bool LauncherPanel::handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers) {
       || (modifiers == KeyMod::Ctrl && (sym == XKB_KEY_k || sym == XKB_KEY_K))) {
     float anchorX = 0.0F;
     float anchorY = 0.0F;
-    if (sectionNav && m_launcherSections != nullptr) {
-      Node::absolutePosition(m_launcherSections, anchorX, anchorY);
-      anchorX += m_launcherSections->width() * 0.5F;
-      anchorY += m_launcherSections->height() * 0.5F;
-    } else if (m_grid != nullptr && !m_grid->absoluteAnchorForIndex(m_selectedIndex, anchorX, anchorY)) {
-      Node::absolutePosition(m_grid, anchorX, anchorY);
-      anchorX += m_grid->width() * 0.5F;
-      anchorY += m_grid->height() * 0.5F;
+    if (sectionNav && m_ui.launcherSections != nullptr) {
+      Node::absolutePosition(m_ui.launcherSections, anchorX, anchorY);
+      anchorX += m_ui.launcherSections->width() * 0.5F;
+      anchorY += m_ui.launcherSections->height() * 0.5F;
+    } else if (m_ui.grid != nullptr && !m_ui.grid->absoluteAnchorForIndex(m_selectedIndex, anchorX, anchorY)) {
+      Node::absolutePosition(m_ui.grid, anchorX, anchorY);
+      anchorX += m_ui.grid->width() * 0.5F;
+      anchorY += m_ui.grid->height() * 0.5F;
     }
 
     return openAppActionsMenu(m_selectedIndex, anchorX, anchorY);
@@ -506,7 +506,7 @@ bool LauncherPanel::interceptPointerEvent(const PointerEvent& event, float width
       Node::absolutePosition(view, x, y);
       return event.sx >= x && event.sx < x + view->width() && event.sy >= y && event.sy < y + view->height();
     };
-    m_dragArmed = event.pressed && (onResults(m_launcherSections) || onResults(m_grid));
+    m_dragArmed = event.pressed && (onResults(m_ui.launcherSections) || onResults(m_ui.grid));
     if (event.pressed) {
       kLog.debug("launcher press {:.0f},{:.0f} on results {}", event.sx, event.sy, m_dragArmed);
     }
@@ -516,11 +516,11 @@ bool LauncherPanel::interceptPointerEvent(const PointerEvent& event, float width
   }
   if (event.type == PointerEvent::Type::Enter && m_selectedIndex < m_results.size()) {
     // Test hook (E2E desktop_shortcuts.sh): where the selected row is, in surface coordinates.
-    const Node* cell = m_launcherSections != nullptr && m_launcherSections->visible()
-        ? sectionCellForResult(*m_launcherSections, m_selectedIndex)
+    const Node* cell = m_ui.launcherSections != nullptr && m_ui.launcherSections->visible()
+        ? sectionCellForResult(*m_ui.launcherSections, m_selectedIndex)
         : nullptr;
-    if (cell == nullptr && m_grid != nullptr) {
-      cell = m_grid->nodeForIndex(m_selectedIndex);
+    if (cell == nullptr && m_ui.grid != nullptr) {
+      cell = m_ui.grid->nodeForIndex(m_selectedIndex);
     }
     if (cell != nullptr) {
       float x = 0.0F;

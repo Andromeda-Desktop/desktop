@@ -10,11 +10,11 @@ bool LauncherPanel::pasteModeActive() const noexcept {
 }
 
 void LauncherPanel::syncModeTabs() {
-  if (m_modeTabs == nullptr) {
+  if (m_ui.modeTabs == nullptr) {
     return;
   }
   const float scale = contentScale();
-  if (m_modeTabItems.empty()) {
+  if (m_ui.modeTabItems.empty()) {
     for (const std::string_view id : kModeProviders) {
       const auto provider = std::ranges::find(m_providers, id, [](const auto& p) { return p->id(); });
       if (provider == m_providers.end()) {
@@ -37,14 +37,14 @@ void LauncherPanel::syncModeTabs() {
       area->setOnClick([this, modeId = std::string(id)](const InputArea::PointerData&) { setMode(modeId); });
       Flex* tabPtr = tab.get();
       tab->addChild(std::move(area));
-      m_modeTabs->addChild(std::move(tab));
-      m_modeTabItems.emplace_back(std::string(id), tabPtr);
+      m_ui.modeTabs->addChild(std::move(tab));
+      m_ui.modeTabItems.emplace_back(std::string(id), tabPtr);
     }
   }
   const bool show = m_browserMode && pasteModeActive();
-  m_modeTabs->setVisible(show);
-  m_modeTabs->setParticipatesInLayout(show);
-  for (auto& [id, tab] : m_modeTabItems) {
+  m_ui.modeTabs->setVisible(show);
+  m_ui.modeTabs->setParticipatesInLayout(show);
+  for (auto& [id, tab] : m_ui.modeTabItems) {
     const bool on = id == modeProviderId();
     tab->setFill(on ? colorSpecFromRole(ColorRole::Lens) : clearColorSpec());
     if (auto* label = dynamic_cast<Label*>(tab->children().front().get())) {
@@ -57,16 +57,16 @@ void LauncherPanel::syncModeTabs() {
 }
 
 void LauncherPanel::syncPackStrip() {
-  if (m_packStrip == nullptr) {
+  if (m_ui.packStrip == nullptr) {
     return;
   }
   const bool show = m_browserMode && modeProviderId() == "Stickers";
-  m_packStrip->setVisible(show);
-  m_packStrip->setParticipatesInLayout(show);
-  if (show && m_packStrip->children().empty()) {
+  m_ui.packStrip->setVisible(show);
+  m_ui.packStrip->setParticipatesInLayout(show);
+  if (show && m_ui.packStrip->children().empty()) {
     const float scale = contentScale();
     for (std::size_t i = 0; i < kStickerPacks.size(); ++i) {
-      m_packStrip->addChild(ui::button({
+      m_ui.packStrip->addChild(ui::button({
           .text = i18n::tr(std::format("launcher.stickers.packs.{}", kStickerPacks[i].second)),
           .controlHeight = Tokens::sizeControlS * scale,
           .variant = ButtonVariant::Ghost,
@@ -74,21 +74,21 @@ void LauncherPanel::syncPackStrip() {
       }));
     }
   }
-  for (std::size_t i = 0; i < m_packStrip->children().size(); ++i) {
-    if (auto* chip = dynamic_cast<Button*>(m_packStrip->children()[i].get())) {
+  for (std::size_t i = 0; i < m_ui.packStrip->children().size(); ++i) {
+    if (auto* chip = dynamic_cast<Button*>(m_ui.packStrip->children()[i].get())) {
       chip->setVariant(i == m_packIndex ? ButtonVariant::Tonal : ButtonVariant::Ghost);
     }
   }
 }
 
 void LauncherPanel::syncEmojiStrip() {
-  if (m_emojiStrip == nullptr) {
+  if (m_ui.emojiStrip == nullptr) {
     return;
   }
   const bool show = m_browserMode && modeProviderId() == "Emoji" && m_query.empty();
-  m_emojiStrip->setVisible(show);
-  m_emojiStrip->setParticipatesInLayout(show);
-  if (!show || !m_emojiStrip->children().empty()) {
+  m_ui.emojiStrip->setVisible(show);
+  m_ui.emojiStrip->setParticipatesInLayout(show);
+  if (!show || !m_ui.emojiStrip->children().empty()) {
     return;
   }
   const auto emoji = std::ranges::find(m_providers, "Emoji", [](const auto& p) { return p->id(); });
@@ -99,7 +99,7 @@ void LauncherPanel::syncEmojiStrip() {
   std::vector<LauncherCategory> groups{{i18n::tr("launcher.pill.recent"), "clock"}};
   std::ranges::copy((*emoji)->categories(), std::back_inserter(groups));
   for (const LauncherCategory& group : groups) {
-    m_emojiStrip->addChild(ui::button({
+    m_ui.emojiStrip->addChild(ui::button({
         .glyph = group.glyphName,
         .glyphSize = Tokens::sizeSymbol * scale,
         .controlHeight = Tokens::sizeControlS * scale,
@@ -108,11 +108,11 @@ void LauncherPanel::syncEmojiStrip() {
         .minWidth = Tokens::sizeControlS * scale,
         .onClick =
             [this, label = group.label] {
-              if (m_launcherSectionsAdapter == nullptr || m_launcherSections == nullptr) {
+              if (m_launcherSectionsAdapter == nullptr || m_ui.launcherSections == nullptr) {
                 return;
               }
               if (const auto row = m_launcherSectionsAdapter->rowForHeader(label)) {
-                m_launcherSections->scrollToIndex(*row);
+                m_ui.launcherSections->scrollToIndex(*row);
               }
             },
     }));
@@ -137,8 +137,8 @@ bool LauncherPanel::modeDropOn(std::size_t index) const {
 
 void LauncherPanel::syncModeDrops() {
   const float scale = contentScale();
-  for (std::size_t i = 0; i < m_modeDrops.size(); ++i) {
-    auto& drop = m_modeDrops[i];
+  for (std::size_t i = 0; i < m_ui.modeDrops.size(); ++i) {
+    auto& drop = m_ui.modeDrops[i];
     if (drop.node == nullptr) {
       continue;
     }
@@ -153,18 +153,18 @@ void LauncherPanel::syncModeDrops() {
     }
     drop.glyph->setColor(colorSpecFromRole(on ? ColorRole::OnAccent : ColorRole::Label1));
   }
-  if (m_input != nullptr && m_scopedPlaceholder.empty()) {
+  if (m_ui.input != nullptr && m_scopedPlaceholder.empty()) {
     constexpr std::array<std::string_view, 4> kModePlaceholders{
         "launcher.mode-placeholder.apps", "launcher.mode-placeholder.files", "launcher.mode-placeholder.clipboard",
         "launcher.mode-placeholder.emoji"
     };
     std::string_view key = "launcher.search-placeholder";
-    for (std::size_t i = 0; i < m_modeDrops.size() && i < kModePlaceholders.size(); ++i) {
+    for (std::size_t i = 0; i < m_ui.modeDrops.size() && i < kModePlaceholders.size(); ++i) {
       if (modeDropOn(i)) {
         key = kModePlaceholders[i];
       }
     }
-    m_input->setPlaceholder(i18n::tr(key));
+    m_ui.input->setPlaceholder(i18n::tr(key));
   }
 }
 
@@ -186,8 +186,8 @@ void LauncherPanel::toggleModeDrop(std::size_t index) {
   }
   m_selectedIndex = 0;
   syncModeTabs();
-  if (m_input != nullptr && !m_input->value().empty()) {
-    m_input->setValue("");
+  if (m_ui.input != nullptr && !m_ui.input->value().empty()) {
+    m_ui.input->setValue("");
   }
   onInputChanged("");
 }
@@ -196,8 +196,8 @@ void LauncherPanel::setMode(std::string_view providerId) {
   m_view.set(launcher_view::Media{.providerId = std::string(providerId)});
   m_selectedIndex = 0;
   syncModeTabs();
-  if (m_input != nullptr && !m_input->value().empty()) {
-    m_input->setValue("");
+  if (m_ui.input != nullptr && !m_ui.input->value().empty()) {
+    m_ui.input->setValue("");
   }
   onInputChanged("");
 }
@@ -220,17 +220,17 @@ void LauncherPanel::setFilesScope(bool on) {
     if (auto* files = filesProvider()) {
       files->setScopeKind({});
     }
-    if (m_filesTokenLabel != nullptr) {
-      m_filesTokenLabel->setText(i18n::tr("launcher.files.title"));
+    if (m_ui.filesTokenLabel != nullptr) {
+      m_ui.filesTokenLabel->setText(i18n::tr("launcher.files.title"));
     }
   }
   syncKindTabs();
-  if (m_filesToken != nullptr) {
-    m_filesToken->setVisible(on);
-    m_filesToken->setParticipatesInLayout(on);
+  if (m_ui.filesToken != nullptr) {
+    m_ui.filesToken->setVisible(on);
+    m_ui.filesToken->setParticipatesInLayout(on);
   }
-  if (m_launcherSections != nullptr) {
-    m_launcherSections->scrollView().setScrollOffset(0.0F);
+  if (m_ui.launcherSections != nullptr) {
+    m_ui.launcherSections->scrollView().setScrollOffset(0.0F);
   }
   queueResultsTransition(on ? ResultsTransition::NavigationForward : ResultsTransition::NavigationBackward);
   onInputChanged(m_query);
@@ -242,8 +242,8 @@ void LauncherPanel::setFilesKind(std::size_t index) {
   if (auto* files = filesProvider()) {
     files->setScopeKind(std::string(word));
   }
-  if (m_filesTokenLabel != nullptr) {
-    m_filesTokenLabel->setText(
+  if (m_ui.filesTokenLabel != nullptr) {
+    m_ui.filesTokenLabel->setText(
         word.empty() ? i18n::tr("launcher.files.title")
                      : i18n::tr("launcher.files.title") + " · " + i18n::tr(std::format("launcher.files.kinds.{}", key))
     );
@@ -269,11 +269,11 @@ KlipyProvider* LauncherPanel::stickersProvider() const {
 }
 
 void LauncherPanel::syncKindTabs() {
-  if (m_kindTabs == nullptr) {
+  if (m_ui.kindTabs == nullptr) {
     return;
   }
   const float scale = contentScale();
-  if (m_kindTabItems.empty()) {
+  if (m_ui.kindTabItems.empty()) {
     for (std::size_t i = 0; i < kFileKinds.size(); ++i) {
       auto tab = ui::row({
           .align = FlexAlign::Center,
@@ -292,15 +292,15 @@ void LauncherPanel::syncKindTabs() {
       area->setOnClick([this, i](const InputArea::PointerData&) { setFilesKind(i); });
       Flex* tabPtr = tab.get();
       tab->addChild(std::move(area));
-      m_kindTabs->addChild(std::move(tab));
-      m_kindTabItems.push_back(tabPtr);
+      m_ui.kindTabs->addChild(std::move(tab));
+      m_ui.kindTabItems.push_back(tabPtr);
     }
   }
   const bool show = m_browserMode && filesScope();
-  m_kindTabs->setVisible(show);
-  m_kindTabs->setParticipatesInLayout(show);
-  for (std::size_t i = 0; i < m_kindTabItems.size(); ++i) {
-    Flex* tab = m_kindTabItems[i];
+  m_ui.kindTabs->setVisible(show);
+  m_ui.kindTabs->setParticipatesInLayout(show);
+  for (std::size_t i = 0; i < m_ui.kindTabItems.size(); ++i) {
+    Flex* tab = m_ui.kindTabItems[i];
     const bool on = i == m_kindIndex;
     tab->setFill(on ? colorSpecFromRole(ColorRole::Lens) : clearColorSpec());
     if (auto* label = dynamic_cast<Label*>(tab->children().front().get())) {
@@ -313,49 +313,49 @@ void LauncherPanel::syncKindTabs() {
 }
 
 void LauncherPanel::cycleMode(int direction) {
-  if (m_modeTabItems.empty() || modeProviderId().empty()) {
+  if (m_ui.modeTabItems.empty() || modeProviderId().empty()) {
     return;
   }
-  const auto it = std::ranges::find(m_modeTabItems, modeProviderId(), &std::pair<std::string, Flex*>::first);
-  const auto count = static_cast<int>(m_modeTabItems.size());
-  const int index = it == m_modeTabItems.end() ? 0 : static_cast<int>(it - m_modeTabItems.begin());
-  setMode(m_modeTabItems[static_cast<std::size_t>((index + direction + count) % count)].first);
+  const auto it = std::ranges::find(m_ui.modeTabItems, modeProviderId(), &std::pair<std::string, Flex*>::first);
+  const auto count = static_cast<int>(m_ui.modeTabItems.size());
+  const int index = it == m_ui.modeTabItems.end() ? 0 : static_cast<int>(it - m_ui.modeTabItems.begin());
+  setMode(m_ui.modeTabItems[static_cast<std::size_t>((index + direction + count) % count)].first);
 }
 
 void LauncherPanel::bindPreview(Renderer& renderer) {
-  if (m_previewPane == nullptr || !m_previewPane->visible()) {
+  if (m_ui.previewPane == nullptr || !m_ui.previewPane->visible()) {
     return;
   }
   const LauncherResult& result = m_results[m_selectedIndex];
   const float scale = contentScale();
   const int iconSize = static_cast<int>(std::round(Tokens::componentLauncherIcon * scale));
   const bool emoji = !result.badge.empty();
-  m_previewEmoji->setVisible(emoji);
-  m_previewEmoji->setParticipatesInLayout(emoji);
-  m_previewEmoji->setText(result.badge);
-  const bool tones = emoji && result.variants.size() == m_previewToneLabels.size();
-  m_previewTones->setVisible(tones);
-  m_previewTones->setParticipatesInLayout(tones);
-  for (std::size_t i = 0; tones && i < m_previewToneLabels.size(); ++i) {
-    m_previewToneLabels[i]->setText(result.variants[i]);
+  m_ui.previewEmoji->setVisible(emoji);
+  m_ui.previewEmoji->setParticipatesInLayout(emoji);
+  m_ui.previewEmoji->setText(result.badge);
+  const bool tones = emoji && result.variants.size() == m_ui.previewToneLabels.size();
+  m_ui.previewTones->setVisible(tones);
+  m_ui.previewTones->setParticipatesInLayout(tones);
+  for (std::size_t i = 0; tones && i < m_ui.previewToneLabels.size(); ++i) {
+    m_ui.previewToneLabels[i]->setText(result.variants[i]);
   }
   bool imageReady = false;
   const bool media = isMediaPresentation(result);
   // A clipboard image row keeps its thumbnail in iconPath; the preview shows the full picture instead.
   if (!emoji && !media && !result.iconPath.empty() && result.presentation != "clipboard-image") {
     if (result.iconPath != m_previewIconPath) {
-      m_previewImage->clear(renderer);
+      m_ui.previewImage->clear(renderer);
       m_previewIconPath = result.iconPath;
     }
     imageReady =
-        m_previewImage->load(renderer, result.iconPath, {.targetSize = iconSize, .mipmap = true}) == ImageLoad::Ready;
+        m_ui.previewImage->load(renderer, result.iconPath, {.targetSize = iconSize, .mipmap = true}) == ImageLoad::Ready;
   }
-  m_previewImage->setVisible(imageReady);
-  m_previewImage->setParticipatesInLayout(imageReady);
-  m_previewGlyph->setGlyph(result.glyphName.empty() ? "app-window" : result.glyphName);
-  m_previewGlyph->setVisible(!imageReady && !emoji);
-  m_previewGlyph->setParticipatesInLayout(!imageReady && !emoji);
-  m_previewOpen->setText(
+  m_ui.previewImage->setVisible(imageReady);
+  m_ui.previewImage->setParticipatesInLayout(imageReady);
+  m_ui.previewGlyph->setGlyph(result.glyphName.empty() ? "app-window" : result.glyphName);
+  m_ui.previewGlyph->setVisible(!imageReady && !emoji);
+  m_ui.previewGlyph->setParticipatesInLayout(!imageReady && !emoji);
+  m_ui.previewOpen->setText(
       i18n::tr(
           emoji || (pasteModeActive() && result.presentation != "action") ? "launcher.pill.paste-hint"
                                                                                   : "launcher.pill.open-hint"
@@ -367,12 +367,12 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
     // CLDR emoji names are lower case; the preview shows them in sentence case.
     title[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(title[0])));
   }
-  m_previewTitle->setText(title);
-  m_previewTitle->setMaxWidth(m_previewPane->width() - 2.0F * Tokens::spaceP16 * scale);
+  m_ui.previewTitle->setText(title);
+  m_ui.previewTitle->setMaxWidth(m_ui.previewPane->width() - 2.0F * Tokens::spaceP16 * scale);
   const std::string kind = result.origin.empty() ? result.subtitle : result.subtitle + " · " + result.origin;
-  m_previewKind->setText(singleLinePreview(kind));
+  m_ui.previewKind->setText(singleLinePreview(kind));
   // A clipboard entry shows its own meta line (bindPreview details).
-  m_previewKind->setVisible(!kind.empty() && !result.presentation.starts_with("clipboard"));
+  m_ui.previewKind->setVisible(!kind.empty() && !result.presentation.starts_with("clipboard"));
 
   const DesktopEntry* entry = nullptr;
   if (!result.desktopEntryPath.empty()) {
@@ -385,33 +385,33 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   const bool hasAction = clip || file || (entry != nullptr && !entry->actions.empty());
   const bool clipImage = result.presentation == "clipboard-image";
   const bool clipFiles = result.presentation == "clipboard-files";
-  m_previewOpenImage->setText(i18n::tr(clipFiles ? "launcher.files.reveal" : "launcher.clipboard.open"));
-  m_previewOpenImage->setVisible(clipImage || clipFiles);
-  m_previewOpenImage->setParticipatesInLayout(clipImage || clipFiles);
-  m_previewCopyPath->setVisible(clipFiles);
-  m_previewCopyPath->setParticipatesInLayout(clipFiles);
-  m_previewAction->setVisible(hasAction);
-  m_previewAction->setParticipatesInLayout(hasAction);
+  m_ui.previewOpenImage->setText(i18n::tr(clipFiles ? "launcher.files.reveal" : "launcher.clipboard.open"));
+  m_ui.previewOpenImage->setVisible(clipImage || clipFiles);
+  m_ui.previewOpenImage->setParticipatesInLayout(clipImage || clipFiles);
+  m_ui.previewCopyPath->setVisible(clipFiles);
+  m_ui.previewCopyPath->setParticipatesInLayout(clipFiles);
+  m_ui.previewAction->setVisible(hasAction);
+  m_ui.previewAction->setParticipatesInLayout(hasAction);
   if (clip) {
-    m_previewAction->setText(i18n::tr(result.pinned ? "launcher.clipboard.unpin" : "launcher.clipboard.pin"));
+    m_ui.previewAction->setText(i18n::tr(result.pinned ? "launcher.clipboard.unpin" : "launcher.clipboard.pin"));
   } else if (file) {
-    m_previewAction->setText(i18n::tr("launcher.files.reveal"));
+    m_ui.previewAction->setText(i18n::tr("launcher.files.reveal"));
   } else if (hasAction) {
-    m_previewAction->setText(entry->actions.front().name);
+    m_ui.previewAction->setText(entry->actions.front().name);
   }
-  m_previewDelete->setText(i18n::tr(file ? "launcher.files.copy-path" : "launcher.clipboard.delete"));
-  m_previewDelete->setVisible(clip || file);
-  m_previewDelete->setParticipatesInLayout(clip || file);
+  m_ui.previewDelete->setText(i18n::tr(file ? "launcher.files.copy-path" : "launcher.clipboard.delete"));
+  m_ui.previewDelete->setVisible(clip || file);
+  m_ui.previewDelete->setParticipatesInLayout(clip || file);
   const bool body = result.presentation == "clipboard-text" || clipFiles;
-  m_previewBodyBox->setVisible(body);
-  m_previewBodyBox->setParticipatesInLayout(body);
-  m_previewTitle->setVisible(!body);
-  m_previewTitle->setParticipatesInLayout(!body);
+  m_ui.previewBodyBox->setVisible(body);
+  m_ui.previewBodyBox->setParticipatesInLayout(body);
+  m_ui.previewTitle->setVisible(!body);
+  m_ui.previewTitle->setParticipatesInLayout(!body);
   if (body) {
     const auto provider = std::ranges::find(m_providers, "Clipboard", [](const auto& p) { return p->id(); });
     const auto* clipboard = provider == m_providers.end() ? nullptr : dynamic_cast<const ClipboardProvider*>(provider->get());
-    m_previewBody->setText(clipboard == nullptr ? result.title : clipboard->text(result));
-    m_previewBody->setMaxWidth(m_previewPane->width() - 2.0F * (Tokens::spaceP16 + Tokens::spaceP12) * scale);
+    m_ui.previewBody->setText(clipboard == nullptr ? result.title : clipboard->text(result));
+    m_ui.previewBody->setMaxWidth(m_ui.previewPane->width() - 2.0F * (Tokens::spaceP16 + Tokens::spaceP12) * scale);
   }
   bool shot = result.presentation == "clipboard-image";
   std::string gif;
@@ -428,17 +428,17 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
     stopPreviewGif();
     m_previewShotId.clear();
     shot = !result.iconPath.empty()
-        && m_previewShot->load(
+        && m_ui.previewShot->load(
                renderer, result.iconPath,
                {.targetSize = static_cast<int>(std::round(Tokens::componentLauncherPreviewMedia * 1.75F * scale)),
                 .mipmap = true}
            ) == ImageLoad::Ready;
   }
-  m_previewShot->setVisible(shot);
-  m_previewShot->setParticipatesInLayout(shot);
+  m_ui.previewShot->setVisible(shot);
+  m_ui.previewShot->setParticipatesInLayout(shot);
   ClipboardProvider* clipboard = nullptr;
   if (clip) {
-    m_previewOpen->setText(i18n::tr("launcher.pill.paste-hint"));
+    m_ui.previewOpen->setText(i18n::tr("launcher.pill.paste-hint"));
     const auto provider = std::ranges::find(m_providers, "Clipboard", [](const auto& p) { return p->id(); });
     clipboard = provider == m_providers.end() ? nullptr : dynamic_cast<ClipboardProvider*>(provider->get());
   }
@@ -450,18 +450,18 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   if (shot && clipboard != nullptr && m_previewShotId != result.id + result.iconPath) {
     m_previewShotId = result.id + result.iconPath;
     if (result.iconPath.empty()) {
-      m_previewShot->clear(renderer);
+      m_ui.previewShot->clear(renderer);
       clipboard->requestThumbnail(result);
     } else {
-      m_previewShot->load(
+      m_ui.previewShot->load(
           renderer, result.iconPath,
           {.targetSize = static_cast<int>(std::round(Tokens::componentLauncherPreviewMedia * 1.75F * scale))}
       );
     }
   }
   if (shot || media || body) {
-    m_previewGlyph->setVisible(false);
-    m_previewGlyph->setParticipatesInLayout(false);
+    m_ui.previewGlyph->setVisible(false);
+    m_ui.previewGlyph->setParticipatesInLayout(false);
   }
 
   std::array<std::pair<std::string, std::string>, 3> meta{};
@@ -495,8 +495,8 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
     if (!result.subtitle.empty()) {
       line += ", " + result.subtitle;
     }
-    m_previewKind->setText(line);
-    m_previewKind->setVisible(true);
+    m_ui.previewKind->setText(line);
+    m_ui.previewKind->setVisible(true);
   } else if (file) {
     // One stat on selection: the index answer carries no sizes, and the file may have changed since.
     std::error_code ec;
@@ -529,13 +529,13 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
     }
     meta[count++] = {i18n::tr("launcher.pill.unicode"), codepoints};
   }
-  for (std::size_t i = 0; i < m_previewMetaRows.size(); ++i) {
+  for (std::size_t i = 0; i < m_ui.previewMetaRows.size(); ++i) {
     const bool show = i < count;
-    m_previewMetaRows[i]->setVisible(show);
-    m_previewMetaRows[i]->setParticipatesInLayout(show);
+    m_ui.previewMetaRows[i]->setVisible(show);
+    m_ui.previewMetaRows[i]->setParticipatesInLayout(show);
     if (show) {
-      m_previewMetaKeys[i]->setText(meta[i].first);
-      m_previewMetaValues[i]->setText(meta[i].second);
+      m_ui.previewMetaKeys[i]->setText(meta[i].first);
+      m_ui.previewMetaValues[i]->setText(meta[i].second);
     }
   }
 }
@@ -669,7 +669,7 @@ bool LauncherPanel::playPreviewGif(Renderer& renderer, const std::string& path) 
   m_previewRenderer = &renderer;
   m_previewGifPath = path;
   m_previewFrame = 0;
-  m_previewShot->setExternalTexture(renderer, m_previewFrames.front().handle);
+  m_ui.previewShot->setExternalTexture(renderer, m_previewFrames.front().handle);
   if (m_previewFrames.size() > 1) {
     m_previewFrameTimer.start(m_previewFrames.front().duration, [this] { showNextPreviewFrame(); });
   }
@@ -677,11 +677,11 @@ bool LauncherPanel::playPreviewGif(Renderer& renderer, const std::string& path) 
 }
 
 void LauncherPanel::showNextPreviewFrame() {
-  if (m_previewFrames.size() <= 1 || m_previewRenderer == nullptr || m_previewShot == nullptr) {
+  if (m_previewFrames.size() <= 1 || m_previewRenderer == nullptr || m_ui.previewShot == nullptr) {
     return;
   }
   m_previewFrame = (m_previewFrame + 1) % m_previewFrames.size();
-  m_previewShot->setExternalTexture(*m_previewRenderer, m_previewFrames[m_previewFrame].handle);
+  m_ui.previewShot->setExternalTexture(*m_previewRenderer, m_previewFrames[m_previewFrame].handle);
   PanelManager::instance().requestRedraw();
   m_previewFrameTimer.start(m_previewFrames[m_previewFrame].duration, [this] { showNextPreviewFrame(); });
 }
@@ -691,8 +691,8 @@ void LauncherPanel::stopPreviewGif() {
   if (m_previewFrames.empty()) {
     return;
   }
-  if (m_previewShot != nullptr && m_previewRenderer != nullptr) {
-    m_previewShot->clear(*m_previewRenderer);
+  if (m_ui.previewShot != nullptr && m_previewRenderer != nullptr) {
+    m_ui.previewShot->clear(*m_previewRenderer);
   }
   for (PreviewFrame& frame : m_previewFrames) {
     m_previewRenderer->textureManager().unload(frame.handle);
@@ -707,17 +707,17 @@ bool LauncherPanel::shouldUseDetailPresentation() const {
 
 void LauncherPanel::bindDetailResult() {
   if (!shouldUseDetailPresentation()
-      || m_detailScroll == nullptr
-      || m_detailSubtitle == nullptr
-      || m_detailBody == nullptr) {
+      || m_ui.detailScroll == nullptr
+      || m_ui.detailSubtitle == nullptr
+      || m_ui.detailBody == nullptr) {
     return;
   }
 
   const LauncherResult& result = m_results.front();
   const bool hasSubtitle = !result.subtitle.empty();
-  m_detailSubtitle->setVisible(hasSubtitle);
-  m_detailSubtitle->setParticipatesInLayout(hasSubtitle);
-  m_detailSubtitle->setText(singleLinePreview(result.subtitle));
-  m_detailBody->setText(result.title.empty() ? result.id : result.title);
-  m_detailScroll->setScrollOffset(0.0F);
+  m_ui.detailSubtitle->setVisible(hasSubtitle);
+  m_ui.detailSubtitle->setParticipatesInLayout(hasSubtitle);
+  m_ui.detailSubtitle->setText(singleLinePreview(result.subtitle));
+  m_ui.detailBody->setText(result.title.empty() ? result.id : result.title);
+  m_ui.detailScroll->setScrollOffset(0.0F);
 }

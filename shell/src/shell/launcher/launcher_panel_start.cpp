@@ -110,7 +110,7 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
   const float padH = Tokens::componentLauncherStartPaddingH * scale;
   const float field = Tokens::componentLauncherStartField * scale;
 
-  auto container = ui::column({.out = &m_container, .align = FlexAlign::Stretch, .fillWidth = true, .fillHeight = true});
+  auto container = ui::column({.out = &m_ui.container, .align = FlexAlign::Stretch, .fillWidth = true, .fillHeight = true});
   auto content = ui::column({.align = FlexAlign::Stretch, .fillWidth = true, .flexGrow = 1.0F});
   content->setPadding(Tokens::componentLauncherStartPaddingTop * scale, padH, Tokens::spaceP8 * scale, padH);
 
@@ -166,9 +166,9 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
   };
   const auto spacer = [] { return ui::row({.flexGrow = 1.0F}); };
 
-  auto pinnedHead = sectionHead(&m_startPinnedHead, i18n::tr("launcher.start.pinned"));
+  auto pinnedHead = sectionHead(&m_ui.startPinnedHead, i18n::tr("launcher.start.pinned"));
   pinnedHead->addChild(spacer());
-  pinnedHead->addChild(smallButton(&m_startShowAll, i18n::tr("launcher.start.show-all"), "chevron-down", true, [this] {
+  pinnedHead->addChild(smallButton(&m_ui.startShowAll, i18n::tr("launcher.start.show-all"), "chevron-down", true, [this] {
     m_startShowAllPins = !m_startShowAllPins;
     syncStartSheet();
   }));
@@ -196,7 +196,7 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
     }
   });
   content->addChild(ui::virtualGridView({
-      .out = &m_startPinnedGrid,
+      .out = &m_ui.startPinnedGrid,
       .contentScale = scale,
       .columns = static_cast<std::size_t>(Tokens::componentLauncherStartColumns),
       .cellHeight = Tokens::componentLauncherStartTile * scale,
@@ -209,14 +209,14 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
       .configure = [](VirtualGridView& grid) { grid.setFillWidth(true); },
   }));
 
-  auto allHead = sectionHead(&m_startAllHead, i18n::tr("launcher.start.all"));
-  allHead->addChild(smallButton(&m_startBack, {}, "chevron-left", false, [this] {
+  auto allHead = sectionHead(&m_ui.startAllHead, i18n::tr("launcher.start.all"));
+  allHead->addChild(smallButton(&m_ui.startBack, {}, "chevron-left", false, [this] {
     m_activeCategoryType = All;
     m_activeCategory.clear();
     applyActiveCategory();
   }));
   allHead->addChild(spacer());
-  allHead->addChild(smallButton(&m_startViewButton, {}, "chevron-down", true, [this] { openStartViewMenu(); }));
+  allHead->addChild(smallButton(&m_ui.startViewButton, {}, "chevron-down", true, [this] { openStartViewMenu(); }));
   content->addChild(std::move(allHead));
 
   m_startCardAdapter = std::make_unique<LauncherStartCardAdapter>(&m_startCards, scale, [this](std::size_t card) {
@@ -229,7 +229,7 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
   });
   const float cardWidth = startCardWidth(scale);
   content->addChild(ui::virtualGridView({
-      .out = &m_startCardGrid,
+      .out = &m_ui.startCardGrid,
       .contentScale = scale,
       .columns = static_cast<std::size_t>(Tokens::componentLauncherStartCardColumns),
       .cellHeight = launcher_start::cardCellHeight(cardWidth, scale),
@@ -266,16 +266,16 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
   avatarBox->setMaxWidth(avatar);
   const std::string name = startUserName(m_accounts);
   avatarBox->addChild(ui::label({
-      .out = &m_startInitials,
+      .out = &m_ui.startInitials,
       .text = initialsOf(name),
       .fontSize = Style::fontSizeCaption * scale,
       .fontWeight = FontWeight::SemiBold,
       .color = colorSpecFromRole(ColorRole::Label1),
       .maxLines = 1,
   }));
-  m_launcherAvatarFallback = m_startInitials;
+  m_ui.launcherAvatarFallback = m_ui.startInitials;
   avatarBox->addChild(ui::image({
-      .out = &m_launcherAvatar,
+      .out = &m_ui.launcherAvatar,
       .radius = avatar * 0.5F,
       .width = avatar,
       .height = avatar,
@@ -284,7 +284,7 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
   }));
   row->addChild(std::move(avatarBox));
   row->addChild(ui::label({
-      .out = &m_startName,
+      .out = &m_ui.startName,
       .text = name,
       .fontSize = Tokens::typeHeadline.size * scale,
       .fontWeight = FontWeight::SemiBold,
@@ -357,16 +357,16 @@ void LauncherPanel::rebuildStartHome() {
       m_startCards.push_back(std::move(card));
     }
   }
-  if (m_startPinnedGrid != nullptr) {
-    m_startPinnedGrid->notifyDataChanged();
+  if (m_ui.startPinnedGrid != nullptr) {
+    m_ui.startPinnedGrid->notifyDataChanged();
   }
-  if (m_startCardGrid != nullptr) {
-    m_startCardGrid->notifyDataChanged();
+  if (m_ui.startCardGrid != nullptr) {
+    m_ui.startCardGrid->notifyDataChanged();
   }
 }
 
 void LauncherPanel::syncStartSheet() {
-  if (m_startPinnedGrid == nullptr || m_body == nullptr) {
+  if (m_ui.startPinnedGrid == nullptr || m_ui.body == nullptr) {
     return;
   }
   const float scale = contentScale();
@@ -382,26 +382,26 @@ void LauncherPanel::syncStartSheet() {
   const std::size_t allRows = rowsFor(m_startPinned.size(), columns);
   const std::size_t rows = m_startShowAllPins ? allRows : std::min(allRows, maxRows);
   const bool pinned = home && !category && rows > 0;
-  show(m_startPinnedHead, pinned);
-  show(m_startPinnedGrid, pinned);
-  show(m_startShowAll, allRows > maxRows);
-  m_startShowAll->setText(i18n::tr(m_startShowAllPins ? "launcher.start.show-less" : "launcher.start.show-all"));
-  m_startShowAll->setGlyph(m_startShowAllPins ? "chevron-up" : "chevron-down");
+  show(m_ui.startPinnedHead, pinned);
+  show(m_ui.startPinnedGrid, pinned);
+  show(m_ui.startShowAll, allRows > maxRows);
+  m_ui.startShowAll->setText(i18n::tr(m_startShowAllPins ? "launcher.start.show-less" : "launcher.start.show-all"));
+  m_ui.startShowAll->setGlyph(m_startShowAllPins ? "chevron-up" : "chevron-down");
   const float tile = Tokens::componentLauncherStartTile * scale;
   const float gridHeight = static_cast<float>(rows) * tile + static_cast<float>(rows > 0 ? rows - 1 : 0) * Tokens::spaceP4 * scale;
-  m_startPinnedGrid->setMinHeight(gridHeight);
-  m_startPinnedGrid->setMaxHeight(gridHeight);
+  m_ui.startPinnedGrid->setMinHeight(gridHeight);
+  m_ui.startPinnedGrid->setMaxHeight(gridHeight);
 
-  show(m_startAllHead, home);
-  show(m_startBack, home && category);
+  show(m_ui.startAllHead, home);
+  show(m_ui.startBack, home && category);
   if (category) {
     const auto card = std::ranges::find(m_startCards, m_activeCategory, &LauncherStartCard::category);
-    m_startBack->setText(card != m_startCards.end() ? card->label : m_activeCategory);
+    m_ui.startBack->setText(card != m_startCards.end() ? card->label : m_activeCategory);
   }
-  m_startViewButton->setText(i18n::tr("launcher.start.view", "view", startViewLabel(startView())));
+  m_ui.startViewButton->setText(i18n::tr("launcher.start.view", "view", startViewLabel(startView())));
   const bool cards = home && !category && startView() == StartView::Category;
-  show(m_startCardGrid, cards);
-  show(m_body, !cards);
+  show(m_ui.startCardGrid, cards);
+  show(m_ui.body, !cards);
 }
 
 void LauncherPanel::setStartView(ShellConfig::LauncherStartView view) {
@@ -417,7 +417,7 @@ void LauncherPanel::setStartView(ShellConfig::LauncherStartView view) {
 }
 
 void LauncherPanel::openStartViewMenu() {
-  if (m_startViewButton == nullptr) {
+  if (m_ui.startViewButton == nullptr) {
     return;
   }
   std::vector<ContextMenuControlEntry> entries;
@@ -430,8 +430,8 @@ void LauncherPanel::openStartViewMenu() {
   }
   float x = 0.0F;
   float y = 0.0F;
-  Node::absolutePosition(m_startViewButton, x, y);
-  (void)openMenu(std::move(entries), x, y + m_startViewButton->height(), [this](const ContextMenuControlEntry& entry) {
+  Node::absolutePosition(m_ui.startViewButton, x, y);
+  (void)openMenu(std::move(entries), x, y + m_ui.startViewButton->height(), [this](const ContextMenuControlEntry& entry) {
     if (entry.id >= 0 && static_cast<std::size_t>(entry.id) < kStartViews.size()) {
       setStartView(kStartViews[static_cast<std::size_t>(entry.id)]);
     }

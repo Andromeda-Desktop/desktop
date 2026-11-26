@@ -233,48 +233,96 @@ private:
   bool m_iconPrefetching = false;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 
-  Flex* m_container = nullptr;
-  Input* m_input = nullptr;
-  Segmented* m_categoryFilter = nullptr;
-  Flex* m_body = nullptr;
-  Flex* m_resultsViewport = nullptr;
-  Flex* m_appsCategoryList = nullptr;
   struct AppsCategoryRow {
     ActiveCategoryType type;
     std::string category;
     Button* button = nullptr;
   };
-  std::vector<AppsCategoryRow> m_appsCategoryRows;
-  Flex* m_launcherToolbar = nullptr;
-  Segmented* m_launcherNavigation = nullptr;
+  // The mode drops right of the capsule: Apps, Files, Clipboard, Emoji.
+  struct ModeDrop {
+    Flex* node = nullptr;
+    Glyph* glyph = nullptr;
+  };
+  // Nodes of the tree create() builds. onClose drops the tree, so they reset together (m_ui = {}).
+  struct Nodes {
+    Flex* container = nullptr;
+    Input* input = nullptr;
+    Segmented* categoryFilter = nullptr;
+    Flex* body = nullptr;
+    Flex* resultsViewport = nullptr;
+    Flex* appsCategoryList = nullptr;
+    Flex* launcherToolbar = nullptr;
+    Segmented* launcherNavigation = nullptr;
+    Flex* startPinnedHead = nullptr;
+    Button* startShowAll = nullptr;
+    VirtualGridView* startPinnedGrid = nullptr;
+    Flex* startAllHead = nullptr;
+    Button* startViewButton = nullptr;
+    Button* startBack = nullptr;
+    VirtualGridView* startCardGrid = nullptr;
+    Label* startName = nullptr;
+    Label* startInitials = nullptr;
+    Image* launcherAvatar = nullptr;
+    Node* launcherAvatarFallback = nullptr;
+    Button* launcherUsageButton = nullptr;
+    Button* launcherGridButton = nullptr;
+    Button* launcherPowerButton = nullptr;
+    VirtualGridView* grid = nullptr;
+    Flex* pageDotsRow = nullptr;
+    VirtualListView* launcherSections = nullptr;
+    ScrollView* detailScroll = nullptr;
+    Label* detailSubtitle = nullptr;
+    Label* detailBody = nullptr;
+    Label* emptyLabel = nullptr;
+    Flex* pillFooter = nullptr;
+    Flex* resultsPiece = nullptr;
+    // Media modes (DESIGN.md "Launcher media modes"): the provider the tabs scope the search to; empty = search.
+    Flex* modeTabs = nullptr;
+    Flex* emojiStrip = nullptr;
+    Flex* packStrip = nullptr;
+    // Direction C preview pane (right of the result list).
+    Flex* previewPane = nullptr;
+    Image* previewImage = nullptr;
+    Glyph* previewGlyph = nullptr;
+    Glyph* pillSearchGlyph = nullptr;
+    Label* previewEmoji = nullptr;
+    Flex* previewTones = nullptr;
+    Label* previewTitle = nullptr;
+    Label* previewKind = nullptr;
+    Button* previewOpen = nullptr;
+    Button* previewOpenImage = nullptr;
+    Button* previewCopyPath = nullptr;
+    Button* previewAction = nullptr;
+    Button* previewDelete = nullptr;
+    Label* previewBody = nullptr;
+    Flex* previewBodyBox = nullptr;
+    Image* previewShot = nullptr;
+    Label* pillCount = nullptr;
+    Label* pillOpenHint = nullptr;
+    Flex* pillBackHint = nullptr;
+    // Files view ("Show all files"): a "Files" token in the field; every query goes to Files only (50 rows, newest first).
+    Flex* filesToken = nullptr;
+    Label* filesTokenLabel = nullptr;
+    // Kind chips of the Files scope (DESIGN.md "Show all" B, kind filter A).
+    Flex* kindTabs = nullptr;
+    Flex* pillKindHint = nullptr;
+    std::vector<AppsCategoryRow> appsCategoryRows;
+    std::vector<Flex*> pageDots;
+    std::array<ModeDrop, 4> modeDrops{};
+    std::vector<std::pair<std::string, Flex*>> modeTabItems;
+    std::array<Label*, 5> previewToneLabels{};
+    std::array<Flex*, 3> previewMetaRows{};
+    std::array<Label*, 3> previewMetaKeys{};
+    std::array<Label*, 3> previewMetaValues{};
+    std::vector<Flex*> kindTabItems;
+  };
+  Nodes m_ui;
   std::vector<LauncherResult> m_startPinned;
   std::unique_ptr<LauncherAppGridAdapter> m_startPinnedAdapter;
   std::vector<LauncherStartCard> m_startCards;
   std::unique_ptr<LauncherStartCardAdapter> m_startCardAdapter;
-  Flex* m_startPinnedHead = nullptr;
-  Button* m_startShowAll = nullptr;
-  VirtualGridView* m_startPinnedGrid = nullptr;
-  Flex* m_startAllHead = nullptr;
-  Button* m_startViewButton = nullptr;
-  Button* m_startBack = nullptr;
-  VirtualGridView* m_startCardGrid = nullptr;
-  Label* m_startName = nullptr;
-  Label* m_startInitials = nullptr;
   bool m_startShowAllPins = false;
-  Image* m_launcherAvatar = nullptr;
-  Node* m_launcherAvatarFallback = nullptr;
-  Button* m_launcherUsageButton = nullptr;
-  Button* m_launcherGridButton = nullptr;
-  Button* m_launcherPowerButton = nullptr;
-  VirtualGridView* m_grid = nullptr;
-  Flex* m_pageDotsRow = nullptr;
-  std::vector<Flex*> m_pageDots;
   bool m_pageDotsChanged = false;
-  VirtualListView* m_launcherSections = nullptr;
-  ScrollView* m_detailScroll = nullptr;
-  Label* m_detailSubtitle = nullptr;
-  Label* m_detailBody = nullptr;
-  Label* m_emptyLabel = nullptr;
   bool m_anyProviderLoading = false;
   std::unique_ptr<LauncherResultAdapter> m_listAdapter;
   std::unique_ptr<LauncherAppGridAdapter> m_gridAdapter;
@@ -296,38 +344,7 @@ private:
   std::size_t m_selectedIndex = 0;
   std::size_t m_activeCategorySlotIndex = 0;
   bool m_browserMode = false;
-  Flex* m_pillFooter = nullptr;
-  Flex* m_resultsPiece = nullptr;
-  // The mode drops right of the capsule: Apps, Files, Clipboard, Emoji.
-  struct ModeDrop {
-    Flex* node = nullptr;
-    Glyph* glyph = nullptr;
-  };
-  std::array<ModeDrop, 4> m_modeDrops{};
-  // Media modes (DESIGN.md "Launcher media modes"): the provider the tabs scope the search to; empty = search.
-  Flex* m_modeTabs = nullptr;
-  Flex* m_emojiStrip = nullptr;
-  Flex* m_packStrip = nullptr;
-  std::vector<std::pair<std::string, Flex*>> m_modeTabItems;
   float m_modeTabsWidth = 0.0F; // the mode tabs' natural width, measured in the clipboard split
-  // Direction C preview pane (right of the result list).
-  Flex* m_previewPane = nullptr;
-  Image* m_previewImage = nullptr;
-  Glyph* m_previewGlyph = nullptr;
-  Glyph* m_pillSearchGlyph = nullptr;
-  Label* m_previewEmoji = nullptr;
-  Flex* m_previewTones = nullptr;
-  std::array<Label*, 5> m_previewToneLabels{};
-  Label* m_previewTitle = nullptr;
-  Label* m_previewKind = nullptr;
-  Button* m_previewOpen = nullptr;
-  Button* m_previewOpenImage = nullptr;
-  Button* m_previewCopyPath = nullptr;
-  Button* m_previewAction = nullptr;
-  Button* m_previewDelete = nullptr;
-  Label* m_previewBody = nullptr;
-  Flex* m_previewBodyBox = nullptr;
-  Image* m_previewShot = nullptr;
   std::string m_previewShotId;
   // Last liquid strength sent to the panel surface; -1 = none since open.
   // Frames of the animated GIF preview; the textures belong to the panel and unload on change or close.
@@ -343,22 +360,9 @@ private:
   bool playPreviewGif(Renderer& renderer, const std::string& path);
   void stopPreviewGif();
   void showNextPreviewFrame();
-  std::array<Flex*, 3> m_previewMetaRows{};
-  std::array<Label*, 3> m_previewMetaKeys{};
-  std::array<Label*, 3> m_previewMetaValues{};
   std::string m_previewIconPath;
-  Label* m_pillCount = nullptr;
-  Label* m_pillOpenHint = nullptr;
-  Flex* m_pillBackHint = nullptr;
-  // Files view ("Show all files"): a "Files" token in the field; every query goes to Files only (50 rows, newest first).
-  Flex* m_filesToken = nullptr;
-  Label* m_filesTokenLabel = nullptr;
-  // Kind chips of the Files scope (DESIGN.md "Show all" B, kind filter A); index into kFileKinds.
-  Flex* m_kindTabs = nullptr;
-  std::vector<Flex*> m_kindTabItems;
-  std::size_t m_kindIndex = 0;
+  std::size_t m_kindIndex = 0; // index into kFileKinds
   std::size_t m_packIndex = 0;
-  Flex* m_pillKindHint = nullptr;
   launcher_view::State<BrowserViewState> m_view;
   [[nodiscard]] bool filesScope() const noexcept { return m_view.is<launcher_view::Files>(); }
   [[nodiscard]] bool appsView() const noexcept { return m_view.is<launcher_view::Apps>(); }

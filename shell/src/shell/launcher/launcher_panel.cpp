@@ -47,7 +47,7 @@ float LauncherPanel::measureContentHeight(Renderer& /*renderer*/, float /*conten
     return usesBrowserLayout() ? scaled(launcherSheetHeight()) : preferredHeight();
   }
   // Field, the taller of the list (p 8, 8 rows visible) and the preview, footer (rulebook 9.14, direction C).
-  const bool strip = (m_emojiStrip != nullptr && m_emojiStrip->visible()) || (m_packStrip != nullptr && m_packStrip->visible());
+  const bool strip = (m_ui.emojiStrip != nullptr && m_ui.emojiStrip->visible()) || (m_ui.packStrip != nullptr && m_ui.packStrip->visible());
   const bool split = previewSplit();
   const float list = m_launcherSectionsAdapter->pillContentHeight(8)
       + (strip ? Tokens::componentLauncherTabs * scale : 0.0F);
@@ -58,7 +58,7 @@ float LauncherPanel::measureContentHeight(Renderer& /*renderer*/, float /*conten
                                + (picture ? Tokens::componentLauncherPreviewMedia - Tokens::componentLauncherIcon : 0.0F))
       * scale;
   // Mode tabs and the chip row (file kinds, sticker packs) each add a row inside the results piece.
-  const float rows = (pasteModeActive() ? 1.0F : 0.0F) + (m_kindTabs != nullptr && m_kindTabs->visible() ? 1.0F : 0.0F);
+  const float rows = (pasteModeActive() ? 1.0F : 0.0F) + (m_ui.kindTabs != nullptr && m_ui.kindTabs->visible() ? 1.0F : 0.0F);
   return field + Tokens::spaceP8 * scale + 2.0F * Tokens::componentLauncherResultsPadding * scale
       + rows * Tokens::componentLauncherTabs * scale + std::max(list, previewHeight)
       + (split ? 0.0F : Tokens::componentLauncherFooter * scale);
@@ -242,8 +242,8 @@ void LauncherPanel::clearProvidersWithIdPrefix(std::string_view prefix) {
 void LauncherPanel::setScopedProvider(std::string_view providerId, std::string_view placeholder) {
   m_scopedProviderId = providerId;
   m_scopedPlaceholder = placeholder;
-  if (m_input != nullptr) {
-    m_input->setPlaceholder(launcherPlaceholder());
+  if (m_ui.input != nullptr) {
+    m_ui.input->setPlaceholder(launcherPlaceholder());
   }
 }
 
@@ -255,7 +255,7 @@ void LauncherPanel::create() {
   const float scale = contentScale();
 
   auto input = ui::input({
-      .out = &m_input,
+      .out = &m_ui.input,
       .placeholder = launcherPlaceholder(),
       .fontSize = (m_browserMode ? Tokens::componentLauncherFieldText
                        : start   ? Tokens::componentLauncherStartFieldText
@@ -273,38 +273,38 @@ void LauncherPanel::create() {
           [this](const std::string& text) {
             leaveProviderView();
             onInputChanged(text);
-            if (m_input == nullptr) {
+            if (m_ui.input == nullptr) {
               return;
             }
             const std::string preview = singleLinePreview(text);
             if (preview != text) {
-              m_input->setValue(preview);
+              m_ui.input->setValue(preview);
             }
           },
       .onSubmit =
           [this](const std::string& /*text*/) {
             // The Start home with category cards has no current result: Enter waits for a query.
-            if (m_startCardGrid == nullptr || !m_startCardGrid->visible()) {
+            if (m_ui.startCardGrid == nullptr || !m_ui.startCardGrid->visible()) {
               activateSelected();
             }
           },
       .onKeyEvent = [this](std::uint32_t sym, std::uint32_t modifiers) { return handleKeyEvent(sym, modifiers); },
   });
-  if (m_input != nullptr && m_input->inputArea() != nullptr) {
-    m_input->inputArea()->setTabFocusKey("launcher.search");
+  if (m_ui.input != nullptr && m_ui.input->inputArea() != nullptr) {
+    m_ui.input->inputArea()->setTabFocusKey("launcher.search");
     // The field keeps focus during key navigation, so it hears the ring show and hide; the current item redraws it.
-    m_input->inputArea()->setOnFocusVisibleChange([this] {
-      if (m_grid != nullptr) {
-        m_grid->notifyDataChanged();
+    m_ui.input->inputArea()->setOnFocusVisibleChange([this] {
+      if (m_ui.grid != nullptr) {
+        m_ui.grid->notifyDataChanged();
       }
-      if (m_launcherSections != nullptr) {
-        m_launcherSections->notifyDataChanged();
+      if (m_ui.launcherSections != nullptr) {
+        m_ui.launcherSections->notifyDataChanged();
       }
     });
   }
 
   auto categoryFilter = ui::segmented({
-      .out = &m_categoryFilter,
+      .out = &m_ui.categoryFilter,
       .scale = scale,
       .compact = true,
       .surfaceOpacity = panelCardOpacity(),
@@ -315,7 +315,7 @@ void LauncherPanel::create() {
   });
 
   auto body = ui::column({
-      .out = &m_body,
+      .out = &m_ui.body,
       .align = FlexAlign::Stretch,
       .fillWidth = true,
       .flexGrow = 1.0F,
@@ -325,7 +325,7 @@ void LauncherPanel::create() {
   }
 
   auto resultsViewport = ui::column({
-      .out = &m_resultsViewport,
+      .out = &m_ui.resultsViewport,
       .align = FlexAlign::Stretch,
       .gap = Style::spaceSm * scale,
       .fillWidth = true,
@@ -366,7 +366,7 @@ void LauncherPanel::create() {
 
   resultsViewport->addChild(
       ui::virtualListView({
-          .out = &m_launcherSections,
+          .out = &m_ui.launcherSections,
           .contentScale = scale,
           .itemGap = Style::spaceXs * scale,
           .overscanItems = kRowOverscan,
@@ -383,7 +383,7 @@ void LauncherPanel::create() {
 
   // Stickers mode: pack chips under the grid; a click filters to that pack (DESIGN.md media modes).
   resultsViewport->addChild(ui::row({
-      .out = &m_packStrip,
+      .out = &m_ui.packStrip,
       .align = FlexAlign::Center,
       .gap = Tokens::spaceP4 * scale,
       .paddingH = Tokens::spaceP4 * scale,
@@ -395,7 +395,7 @@ void LauncherPanel::create() {
 
   // Emoji mode: one button per group under the grid; a click scrolls to that group (DESIGN.md media modes).
   resultsViewport->addChild(ui::row({
-      .out = &m_emojiStrip,
+      .out = &m_ui.emojiStrip,
       .align = FlexAlign::Center,
       .justify = FlexJustify::SpaceBetween,
       .paddingH = Tokens::spaceP4 * scale,
@@ -407,7 +407,7 @@ void LauncherPanel::create() {
 
   resultsViewport->addChild(
       ui::virtualGridView({
-          .out = &m_grid,
+          .out = &m_ui.grid,
           .columns = 1,
           .cellHeight = launcherRowHeightEstimate(initialStyle),
           .squareCells = false,
@@ -426,11 +426,11 @@ void LauncherPanel::create() {
           .configure = [](VirtualGridView& grid) { grid.setFillWidth(true); },
       })
   );
-  m_grid->setOnPageChanged([this](std::size_t page, std::size_t pages) { updatePageDots(page, pages); });
+  m_ui.grid->setOnPageChanged([this](std::size_t page, std::size_t pages) { updatePageDots(page, pages); });
 
   resultsViewport->addChild(
       ui::row({
-          .out = &m_pageDotsRow,
+          .out = &m_ui.pageDotsRow,
           .align = FlexAlign::Center,
           .justify = FlexJustify::Center,
           .gap = Tokens::componentPageDotsGap * scale,
@@ -442,7 +442,7 @@ void LauncherPanel::create() {
   );
 
   auto detailScroll = ui::scrollView({
-      .out = &m_detailScroll,
+      .out = &m_ui.detailScroll,
       .contentScale = scale,
       .scrollbarVisible = true,
       .viewportPaddingH = Style::spaceSm * scale,
@@ -460,7 +460,7 @@ void LauncherPanel::create() {
   detailContent->setGap(Style::spaceSm * scale);
   detailContent->addChild(
       ui::label({
-          .out = &m_detailSubtitle,
+          .out = &m_ui.detailSubtitle,
           .fontSize = Style::fontSizeCaption * scale,
           .color = colorSpecFromRole(ColorRole::Label2),
           .maxLines = 1,
@@ -471,7 +471,7 @@ void LauncherPanel::create() {
   );
   detailContent->addChild(
       ui::label({
-          .out = &m_detailBody,
+          .out = &m_ui.detailBody,
           .fontSize = Style::fontSizeBody * scale,
           .color = colorSpecFromRole(ColorRole::Label1),
           .maxLines = 0,
@@ -482,7 +482,7 @@ void LauncherPanel::create() {
 
   resultsViewport->addChild(
       ui::label({
-          .out = &m_emptyLabel,
+          .out = &m_ui.emptyLabel,
           .fontSize = Style::fontSizeCaption * scale,
           .color = colorSpecFromRole(ColorRole::Label2),
           .visible = false,
@@ -497,7 +497,7 @@ void LauncherPanel::create() {
         .flexGrow = 1.0F,
     });
     appsRow->addChild(ui::column({
-        .out = &m_appsCategoryList,
+        .out = &m_ui.appsCategoryList,
         .align = FlexAlign::Stretch,
         .width = Tokens::componentLauncherCategoryList * scale,
         .visible = false,
@@ -511,11 +511,11 @@ void LauncherPanel::create() {
 
   if (start) {
     createStartSheet(std::move(input), std::move(body));
-    m_categoryFilter = nullptr;
+    m_ui.categoryFilter = nullptr;
   } else if (m_browserMode) {
     // The panel does not pad this content (padsContent): the field fills the 56 pill edge to edge.
     auto container = ui::column({
-        .out = &m_container,
+        .out = &m_ui.container,
         .align = FlexAlign::Stretch,
         .gap = Tokens::spaceP8 * scale,
         .fillWidth = true,
@@ -527,7 +527,7 @@ void LauncherPanel::create() {
     // DESIGN.md "Show all" B: fill_1 capsule h 24, footnote label_1, x symbol; a click leaves the scope.
     const auto filesToken = [this, scale] {
       auto token = ui::row({
-          .out = &m_filesToken,
+          .out = &m_ui.filesToken,
           .align = FlexAlign::Center,
           .gap = Tokens::spaceP4 * scale,
           .paddingH = Tokens::spaceP8 * scale,
@@ -538,7 +538,7 @@ void LauncherPanel::create() {
           .participatesInLayout = filesScope(),
       });
       token->addChild(ui::label({
-          .out = &m_filesTokenLabel,
+          .out = &m_ui.filesTokenLabel,
           .text = i18n::tr("launcher.files.title"),
           .fontSize = Style::fontSizeCaption * scale,
           .color = colorSpecFromRole(ColorRole::Label1),
@@ -558,7 +558,7 @@ void LauncherPanel::create() {
          .paddingH = Tokens::spaceP20 * scale,
          .minHeight = Tokens::componentLauncherSearch * scale},
         ui::glyph(
-            {.out = &m_pillSearchGlyph,
+            {.out = &m_ui.pillSearchGlyph,
              .glyph = "search",
              .glyphSize = Tokens::sizeSymbolL * scale,
              .color = colorSpecFromRole(ColorRole::Label2)}
@@ -573,13 +573,13 @@ void LauncherPanel::create() {
     constexpr std::array<std::string_view, 4> kDropGlyphs{"layout-grid", "folder", "clipboard", "mood-smile"};
     constexpr std::array<std::string_view, 4> kDropTips{"launcher.mode.apps", "launcher.mode.files", "launcher.mode.clipboard", "launcher.mode.emoji"};
     const float drop = Tokens::componentLauncherModeDrop * scale;
-    for (std::size_t i = 0; i < m_modeDrops.size(); ++i) {
+    for (std::size_t i = 0; i < m_ui.modeDrops.size(); ++i) {
       auto node = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .minHeight = drop});
       node->setMinWidth(drop);
       node->setMaxWidth(drop);
       styleGlassPiece(*node, drop * 0.5F, scale, panelCardOpacity());
       node->addChild(ui::glyph({
-          .out = &m_modeDrops[i].glyph,
+          .out = &m_ui.modeDrops[i].glyph,
           .glyph = std::string(kDropGlyphs[i]),
           .glyphSize = Tokens::sizeSymbolL * scale,
           .color = colorSpecFromRole(ColorRole::Label1),
@@ -591,7 +591,7 @@ void LauncherPanel::create() {
       area->setTooltip(i18n::tr(std::string(kDropTips[i])));
       area->setOnClick([this, i](const InputArea::PointerData&) { toggleModeDrop(i); });
       node->addChild(std::move(area));
-      m_modeDrops[i].node = node.get();
+      m_ui.modeDrops[i].node = node.get();
       searchRow->addChild(std::move(node));
     }
     if (m_config == nullptr || m_config->config().shell.launcher.showSessionButton) {
@@ -618,7 +618,7 @@ void LauncherPanel::create() {
 
     // The results: one glass piece under the search row (r 28, p 8); it shows only once the pill expands.
     auto results = ui::column({
-        .out = &m_resultsPiece,
+        .out = &m_ui.resultsPiece,
         .align = FlexAlign::Stretch,
         .padding = Tokens::componentLauncherResultsPadding * scale,
         .fillWidth = true,
@@ -628,7 +628,7 @@ void LauncherPanel::create() {
     styleGlassPiece(*results, Style::scaledRadius(Tokens::componentLauncherResultsRadius, scale), scale, panelCardOpacity());
     results->setFlexGrow(1.0F);
     results->addChild(ui::row({
-        .out = &m_modeTabs,
+        .out = &m_ui.modeTabs,
         .align = FlexAlign::Center,
         .gap = Tokens::spaceP4 * scale,
         .paddingH = Tokens::spaceP12 * scale,
@@ -637,9 +637,9 @@ void LauncherPanel::create() {
         .visible = false,
         .participatesInLayout = false,
     }));
-    m_modeTabItems.clear();
+    m_ui.modeTabItems.clear();
     results->addChild(ui::row({
-        .out = &m_kindTabs,
+        .out = &m_ui.kindTabs,
         .align = FlexAlign::Center,
         .gap = Tokens::spaceP4 * scale,
         .paddingH = Tokens::spaceP12 * scale,
@@ -648,7 +648,7 @@ void LauncherPanel::create() {
         .visible = false,
         .participatesInLayout = false,
     }));
-    m_kindTabItems.clear();
+    m_ui.kindTabItems.clear();
     body->setPadding(0.0F);
     body->setVisible(false);
     body->setParticipatesInLayout(false);
@@ -659,7 +659,7 @@ void LauncherPanel::create() {
     body->setGap(0.0F);
     // Clipboard: the preview is its own glass piece beside the list card (proto surfaces.css .s-clip, .s-prev).
     auto preview = ui::column({
-        .out = &m_previewPane,
+        .out = &m_ui.previewPane,
         .align = FlexAlign::Stretch,
         .gap = Tokens::spaceP8 * scale,
         .padding = Tokens::spaceP16 * scale,
@@ -669,15 +669,15 @@ void LauncherPanel::create() {
     });
     styleGlassPiece(*preview, Style::scaledRadius(Tokens::componentLauncherResultsRadius, scale), scale, panelCardOpacity());
     const float previewIcon = Tokens::componentLauncherIcon * scale;
-    preview->addChild(ui::image({.out = &m_previewImage, .width = previewIcon, .height = previewIcon, .visible = false}));
+    preview->addChild(ui::image({.out = &m_ui.previewImage, .width = previewIcon, .height = previewIcon, .visible = false}));
     preview->addChild(ui::glyph({
-        .out = &m_previewGlyph,
+        .out = &m_ui.previewGlyph,
         .glyphSize = previewIcon * 0.75F,
         .color = colorSpecFromRole(ColorRole::Label1),
         .visible = false,
     }));
     preview->addChild(ui::label({
-        .out = &m_previewEmoji,
+        .out = &m_ui.previewEmoji,
         .fontSize = Tokens::componentLauncherEmojiPreview * scale,
         .color = colorSpecFromRole(ColorRole::Label1),
         .maxLines = 1,
@@ -685,7 +685,7 @@ void LauncherPanel::create() {
         .participatesInLayout = false,
     }));
     preview->addChild(ui::label({
-        .out = &m_previewTitle,
+        .out = &m_ui.previewTitle,
         .fontSize = Tokens::typeTitle3.size * scale,
         .fontWeight = FontWeight::SemiBold,
         .color = colorSpecFromRole(ColorRole::Label1),
@@ -693,7 +693,7 @@ void LauncherPanel::create() {
         .ellipsize = TextEllipsize::End,
     }));
     preview->addChild(ui::label({
-        .out = &m_previewKind,
+        .out = &m_ui.previewKind,
         .fontSize = Style::fontSizeCaption * scale,
         .color = colorSpecFromRole(ColorRole::Label2),
         .maxLines = 1,
@@ -702,7 +702,7 @@ void LauncherPanel::create() {
     // A new preview image holds no picture yet: the next selection decodes again.
     m_previewShotId.clear();
     preview->addChild(ui::image({
-        .out = &m_previewShot,
+        .out = &m_ui.previewShot,
         .width = Tokens::componentLauncherPreviewMedia * scale * 1.75F,
         .height = Tokens::componentLauncherPreviewMedia * scale,
         .visible = false,
@@ -715,7 +715,7 @@ void LauncherPanel::create() {
     // Clipboard text: monospace in a fill_1 box (.agent/mockups/launcher-media.html clipboard).
     preview->addChild(ui::column(
         {
-            .out = &m_previewBodyBox,
+            .out = &m_ui.previewBodyBox,
             .align = FlexAlign::Start,
             .padding = Tokens::spaceP12 * scale,
             .fill = colorSpecFromRole(ColorRole::Fill1),
@@ -726,7 +726,7 @@ void LauncherPanel::create() {
             .participatesInLayout = false,
         },
         ui::label({
-            .out = &m_previewBody,
+            .out = &m_ui.previewBody,
             .fontSize = Style::fontSizeCaption * scale,
             .fontFamily = std::string("monospace"),
             .color = colorSpecFromRole(ColorRole::Label1),
@@ -735,15 +735,15 @@ void LauncherPanel::create() {
         })
     ));
     // The text box fills the card down to the actions (proto .s-prev pre flex 1).
-    m_previewBodyBox->setFlexGrow(1.0F);
+    m_ui.previewBodyBox->setFlexGrow(1.0F);
     auto tones = ui::row({
-        .out = &m_previewTones,
+        .out = &m_ui.previewTones,
         .align = FlexAlign::Center,
         .gap = Tokens::spaceP4 * scale,
         .visible = false,
         .participatesInLayout = false,
     });
-    for (std::size_t i = 0; i < m_previewToneLabels.size(); ++i) {
+    for (std::size_t i = 0; i < m_ui.previewToneLabels.size(); ++i) {
       auto cell = ui::row({
           .align = FlexAlign::Center,
           .justify = FlexJustify::Center,
@@ -751,7 +751,7 @@ void LauncherPanel::create() {
           .minWidth = Tokens::sizeControlM * scale,
           .minHeight = Tokens::sizeControlM * scale,
       });
-      cell->addChild(ui::label({.out = &m_previewToneLabels[i], .fontSize = Tokens::componentLauncherEmoji * scale, .maxLines = 1}));
+      cell->addChild(ui::label({.out = &m_ui.previewToneLabels[i], .fontSize = Tokens::componentLauncherEmoji * scale, .maxLines = 1}));
       auto area = std::make_unique<InputArea>();
       area->setParticipatesInLayout(false);
       area->setCursorShape(CursorShape::Pointer);
@@ -764,14 +764,14 @@ void LauncherPanel::create() {
     auto actions = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * scale});
     actions->setPadding(Tokens::spaceP12 * scale, 0.0F, 0.0F, 0.0F);
     actions->addChild(ui::button({
-        .out = &m_previewOpen,
+        .out = &m_ui.previewOpen,
         .text = i18n::tr("launcher.pill.open-hint"),
         .controlHeight = Tokens::sizeControlM * scale,
         .variant = ButtonVariant::Primary,
         .onClick = [this] { activateSelected(); },
     }));
     actions->addChild(ui::button({
-        .out = &m_previewOpenImage,
+        .out = &m_ui.previewOpenImage,
         .text = i18n::tr("launcher.clipboard.open"),
         .controlHeight = Tokens::sizeControlM * scale,
         .variant = ButtonVariant::Default,
@@ -780,7 +780,7 @@ void LauncherPanel::create() {
         .onClick = [this] { openSelectedClipboardImage(); },
     }));
     actions->addChild(ui::button({
-        .out = &m_previewCopyPath,
+        .out = &m_ui.previewCopyPath,
         .text = i18n::tr("launcher.files.copy-path"),
         .controlHeight = Tokens::sizeControlM * scale,
         .variant = ButtonVariant::Default,
@@ -789,7 +789,7 @@ void LauncherPanel::create() {
         .onClick = [this] { copySelectedClipboardPaths(); },
     }));
     actions->addChild(ui::button({
-        .out = &m_previewAction,
+        .out = &m_ui.previewAction,
         .controlHeight = Tokens::sizeControlM * scale,
         .variant = ButtonVariant::Default,
         .visible = false,
@@ -797,7 +797,7 @@ void LauncherPanel::create() {
         .onClick = [this] { activatePreviewAction(); },
     }));
     actions->addChild(ui::button({
-        .out = &m_previewDelete,
+        .out = &m_ui.previewDelete,
         .text = i18n::tr("launcher.clipboard.delete"),
         .controlHeight = Tokens::sizeControlM * scale,
         .variant = ButtonVariant::Default,
@@ -808,9 +808,9 @@ void LauncherPanel::create() {
     preview->addChild(std::move(actions));
     auto meta = ui::column({.align = FlexAlign::Stretch, .fillWidth = true});
     meta->setPadding(Tokens::spaceP12 * scale, 0.0F, 0.0F, 0.0F);
-    for (std::size_t i = 0; i < m_previewMetaRows.size(); ++i) {
+    for (std::size_t i = 0; i < m_ui.previewMetaRows.size(); ++i) {
       auto metaRow = ui::row({
-          .out = &m_previewMetaRows[i],
+          .out = &m_ui.previewMetaRows[i],
           .align = FlexAlign::Center,
           .justify = FlexJustify::SpaceBetween,
           .minHeight = Tokens::sizeControlM * scale,
@@ -818,8 +818,8 @@ void LauncherPanel::create() {
           .visible = false,
           .participatesInLayout = false,
       });
-      metaRow->addChild(ui::label({.out = &m_previewMetaKeys[i], .fontSize = Style::fontSizeCaption * scale, .color = colorSpecFromRole(ColorRole::Label2)}));
-      metaRow->addChild(ui::label({.out = &m_previewMetaValues[i], .fontSize = Style::fontSizeCaption * scale, .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1, .ellipsize = TextEllipsize::End}));
+      metaRow->addChild(ui::label({.out = &m_ui.previewMetaKeys[i], .fontSize = Style::fontSizeCaption * scale, .color = colorSpecFromRole(ColorRole::Label2)}));
+      metaRow->addChild(ui::label({.out = &m_ui.previewMetaValues[i], .fontSize = Style::fontSizeCaption * scale, .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1, .ellipsize = TextEllipsize::End}));
       meta->addChild(std::move(metaRow));
     }
     preview->addChild(std::move(meta));
@@ -839,7 +839,7 @@ void LauncherPanel::create() {
           )
       );
     };
-    auto footer = ui::column({.out = &m_pillFooter, .align = FlexAlign::Stretch, .visible = false, .participatesInLayout = false});
+    auto footer = ui::column({.out = &m_ui.pillFooter, .align = FlexAlign::Stretch, .visible = false, .participatesInLayout = false});
     // The hairline is part of the footer's height.
     constexpr float kHairline = 1.0F;
     footer->addChild(ui::separator({.color = colorSpecFromRole(ColorRole::Separator), .thickness = kHairline, .spacing = 0.0F}));
@@ -851,18 +851,18 @@ void LauncherPanel::create() {
         .fillWidth = true,
     });
     footerRow->addChild(ui::label({
-        .out = &m_pillCount,
+        .out = &m_ui.pillCount,
         .fontSize = Style::fontSizeCaption * scale,
         .color = colorSpecFromRole(ColorRole::Label3),
         .flexGrow = 1.0F,
     }));
-    footerRow->addChild(keyHint(i18n::tr("launcher.pill.open"), "↩", &m_pillOpenHint));
+    footerRow->addChild(keyHint(i18n::tr("launcher.pill.open"), "↩", &m_ui.pillOpenHint));
     footerRow->addChild(keyHint(i18n::tr("launcher.pill.actions-hint"), "Ctrl K"));
     auto kindHint = keyHint(i18n::tr("launcher.pill.kind-hint"), "⇥");
-    m_pillKindHint = kindHint.get();
+    m_ui.pillKindHint = kindHint.get();
     footerRow->addChild(std::move(kindHint));
     auto backHint = keyHint(i18n::tr("launcher.pill.back-hint"), "⌫");
-    m_pillBackHint = backHint.get();
+    m_ui.pillBackHint = backHint.get();
     footerRow->addChild(std::move(backHint));
     footerRow->addChild(keyHint(i18n::tr("launcher.pill.close-hint"), "Esc"));
     footer->addChild(std::move(footerRow));
@@ -874,10 +874,10 @@ void LauncherPanel::create() {
     container->addChild(std::move(stage));
     setRoot(std::move(container));
     // The rulebook 9.14 sheet has no category tabs: the filter is not in the tree and dies with this scope.
-    m_categoryFilter = nullptr;
+    m_ui.categoryFilter = nullptr;
   } else {
     auto container = ui::column({
-        .out = &m_container,
+        .out = &m_ui.container,
         .align = FlexAlign::Stretch,
         .gap = Style::spaceSm * scale,
     });
@@ -897,7 +897,7 @@ void LauncherPanel::create() {
 }
 
 void LauncherPanel::refreshLauncherAppIconColorization() {
-  if (m_listAdapter == nullptr || m_gridAdapter == nullptr || m_grid == nullptr) {
+  if (m_listAdapter == nullptr || m_gridAdapter == nullptr || m_ui.grid == nullptr) {
     return;
   }
   const LauncherListStyle style = launcherListStyleFrom(m_browserMode, usesStartLayout(), m_config, contentScale(), panelCardOpacity());
@@ -906,28 +906,28 @@ void LauncherPanel::refreshLauncherAppIconColorization() {
   if (m_launcherSectionsAdapter != nullptr) {
     m_launcherSectionsAdapter->setListStyle(style);
   }
-  m_grid->notifyDataChanged();
-  if (m_launcherSections != nullptr) {
-    m_launcherSections->notifyDataChanged();
+  m_ui.grid->notifyDataChanged();
+  if (m_ui.launcherSections != nullptr) {
+    m_ui.launcherSections->notifyDataChanged();
   }
 }
 
 void LauncherPanel::updatePageDots(std::size_t page, std::size_t pages) {
-  if (m_pageDotsRow == nullptr || m_grid == nullptr) {
+  if (m_ui.pageDotsRow == nullptr || m_ui.grid == nullptr) {
     return;
   }
   const bool show = m_usingAppGrid && pages > 1;
   // Called from inside the grid's layout pass, where these changes do not mark the panel dirty.
   m_pageDotsChanged = true;
-  m_pageDotsRow->setVisible(show);
-  m_pageDotsRow->setParticipatesInLayout(show);
+  m_ui.pageDotsRow->setVisible(show);
+  m_ui.pageDotsRow->setParticipatesInLayout(show);
   const float s = contentScale();
   const float dot = Tokens::componentPageDotsDot * s;
-  if (m_pageDots.size() != pages) {
-    while (!m_pageDotsRow->children().empty()) {
-      m_pageDotsRow->removeChild(m_pageDotsRow->children().back().get());
+  if (m_ui.pageDots.size() != pages) {
+    while (!m_ui.pageDotsRow->children().empty()) {
+      m_ui.pageDotsRow->removeChild(m_ui.pageDotsRow->children().back().get());
     }
-    m_pageDots.clear();
+    m_ui.pageDots.clear();
     for (std::size_t i = 0; i < pages; ++i) {
       auto pill = std::make_unique<Flex>();
       pill->setMinHeight(dot);
@@ -935,19 +935,19 @@ void LauncherPanel::updatePageDots(std::size_t page, std::size_t pages) {
       auto area = std::make_unique<InputArea>();
       area->setParticipatesInLayout(false);
       area->setHitTestOutset({.left = dot * 0.5F, .top = dot, .right = dot * 0.5F, .bottom = dot});
-      area->setOnClick([this, i](const InputArea::PointerData&) { m_grid->scrollToPage(i); });
-      m_pageDots.push_back(pill.get());
+      area->setOnClick([this, i](const InputArea::PointerData&) { m_ui.grid->scrollToPage(i); });
+      m_ui.pageDots.push_back(pill.get());
       pill->addChild(std::move(area));
-      m_pageDotsRow->addChild(std::move(pill));
+      m_ui.pageDotsRow->addChild(std::move(pill));
     }
   }
-  for (std::size_t i = 0; i < m_pageDots.size(); ++i) {
+  for (std::size_t i = 0; i < m_ui.pageDots.size(); ++i) {
     const bool current = i == page;
     const float width = dot;
-    m_pageDots[i]->setMinWidth(width);
-    m_pageDots[i]->setMaxWidth(width);
-    m_pageDots[i]->setFill(colorSpecFromRole(current ? ColorRole::Label1 : ColorRole::Label3));
-    auto* area = static_cast<InputArea*>(m_pageDots[i]->children().front().get());
+    m_ui.pageDots[i]->setMinWidth(width);
+    m_ui.pageDots[i]->setMaxWidth(width);
+    m_ui.pageDots[i]->setFill(colorSpecFromRole(current ? ColorRole::Label1 : ColorRole::Label3));
+    auto* area = static_cast<InputArea*>(m_ui.pageDots[i]->children().front().get());
     area->setFrameSize(width, dot);
   }
 }
@@ -991,24 +991,24 @@ void LauncherPanel::queueResultsTransition(ResultsTransition transition) {
 
 void LauncherPanel::animateResultsTransition() {
   const ResultsTransition transition = std::exchange(m_pendingResultsTransition, ResultsTransition::None);
-  if (transition == ResultsTransition::None || m_resultsViewport == nullptr) {
+  if (transition == ResultsTransition::None || m_ui.resultsViewport == nullptr) {
     return;
   }
 
-  AnimationManager* animations = m_resultsViewport->animationManager();
+  AnimationManager* animations = m_ui.resultsViewport->animationManager();
   if (animations == nullptr) {
-    m_resultsViewport->setOpacity(1.0F);
-    m_resultsViewport->setScale(1.0F);
+    m_ui.resultsViewport->setOpacity(1.0F);
+    m_ui.resultsViewport->setScale(1.0F);
     m_resultsTransitionActive = false;
     return;
   }
 
-  animations->cancelForOwner(m_resultsViewport);
+  animations->cancelForOwner(m_ui.resultsViewport);
   if (m_resultsTransitionActive) {
-    m_resultsViewport->setPosition(m_resultsTransitionBaseX, m_resultsViewport->y());
+    m_ui.resultsViewport->setPosition(m_resultsTransitionBaseX, m_ui.resultsViewport->y());
   }
   constexpr float startOpacity = 0.78F;
-  Flex* const viewport = m_resultsViewport;
+  Flex* const viewport = m_ui.resultsViewport;
   const float visualDirection = transition == ResultsTransition::NavigationForward ? 1.0F : -1.0F;
   const float direction = Style::rtl() ? -visualDirection : visualDirection;
   const float travel = std::min(viewport->width() * 0.12F, 72.0F * contentScale());
@@ -1034,7 +1034,7 @@ void LauncherPanel::animateResultsTransition() {
 }
 
 void LauncherPanel::doLayout(Renderer& renderer, float width, float height) {
-  if (m_container == nullptr || m_input == nullptr) {
+  if (m_ui.container == nullptr || m_ui.input == nullptr) {
     return;
   }
 
@@ -1048,13 +1048,13 @@ void LauncherPanel::doLayout(Renderer& renderer, float width, float height) {
     bindPreview(renderer);
   }
 
-  m_container->setSize(width, height);
-  m_container->layout(renderer);
+  m_ui.container->setSize(width, height);
+  m_ui.container->layout(renderer);
   const float previousRowHeight = m_launcherRowHeight;
   updateLauncherGridMetrics(renderer);
   if (std::abs(previousRowHeight - m_launcherRowHeight) >= 0.5F || m_pageDotsChanged) {
     m_pageDotsChanged = false;
-    m_container->layout(renderer);
+    m_ui.container->layout(renderer);
   }
 }
 
@@ -1065,39 +1065,39 @@ void LauncherPanel::doUpdate(Renderer& renderer) {
 }
 
 void LauncherPanel::syncLauncherAvatar(Renderer& renderer) {
-  if (m_launcherAvatar == nullptr || m_launcherAvatarFallback == nullptr || m_config == nullptr) {
+  if (m_ui.launcherAvatar == nullptr || m_ui.launcherAvatarFallback == nullptr || m_config == nullptr) {
     return;
   }
 
   const std::string displayPath = shell::avatarDisplayPath(m_accounts, m_config->config());
   if (displayPath.empty()) {
     m_launcherAvatarPath.clear();
-    m_launcherAvatar->clear(renderer);
-    m_launcherAvatar->setVisible(false);
-    m_launcherAvatar->setParticipatesInLayout(false);
-    m_launcherAvatarFallback->setVisible(true);
-    m_launcherAvatarFallback->setParticipatesInLayout(true);
+    m_ui.launcherAvatar->clear(renderer);
+    m_ui.launcherAvatar->setVisible(false);
+    m_ui.launcherAvatar->setParticipatesInLayout(false);
+    m_ui.launcherAvatarFallback->setVisible(true);
+    m_ui.launcherAvatarFallback->setParticipatesInLayout(true);
     return;
   }
 
   if (displayPath != m_launcherAvatarPath) {
     m_launcherAvatarPath = displayPath;
-    m_launcherAvatar->clear(renderer);
-    m_launcherAvatar->setVisible(false);
-    m_launcherAvatar->setParticipatesInLayout(false);
-    m_launcherAvatarFallback->setVisible(true);
-    m_launcherAvatarFallback->setParticipatesInLayout(true);
+    m_ui.launcherAvatar->clear(renderer);
+    m_ui.launcherAvatar->setVisible(false);
+    m_ui.launcherAvatar->setParticipatesInLayout(false);
+    m_ui.launcherAvatarFallback->setVisible(true);
+    m_ui.launcherAvatarFallback->setParticipatesInLayout(true);
   }
 
   const int targetSize = static_cast<int>(std::round(Tokens::componentLauncherStartAvatar * contentScale()));
   const bool ready =
-      m_launcherAvatar->load(renderer, displayPath, {.targetSize = targetSize, .decode = {.centerSquareCrop = true}})
+      m_ui.launcherAvatar->load(renderer, displayPath, {.targetSize = targetSize, .decode = {.centerSquareCrop = true}})
       == ImageLoad::Ready;
   if (ready) {
-    m_launcherAvatar->setVisible(true);
-    m_launcherAvatar->setParticipatesInLayout(true);
-    m_launcherAvatarFallback->setVisible(false);
-    m_launcherAvatarFallback->setParticipatesInLayout(false);
+    m_ui.launcherAvatar->setVisible(true);
+    m_ui.launcherAvatar->setParticipatesInLayout(true);
+    m_ui.launcherAvatarFallback->setVisible(false);
+    m_ui.launcherAvatarFallback->setParticipatesInLayout(false);
   }
 }
 
@@ -1165,15 +1165,15 @@ void LauncherPanel::onOpen(std::string_view context) {
     }
     syncModeTabs();
   }
-  if (m_input != nullptr) {
-    m_input->setPlaceholder(launcherPlaceholder());
-    m_input->setValue(singleLinePreview(initialValue));
+  if (m_ui.input != nullptr) {
+    m_ui.input->setPlaceholder(launcherPlaceholder());
+    m_ui.input->setValue(singleLinePreview(initialValue));
   }
-  if (m_grid != nullptr) {
-    m_grid->scrollView().setScrollOffset(0.0F);
+  if (m_ui.grid != nullptr) {
+    m_ui.grid->scrollView().setScrollOffset(0.0F);
   }
-  if (m_launcherSections != nullptr) {
-    m_launcherSections->scrollView().setScrollOffset(0.0F);
+  if (m_ui.launcherSections != nullptr) {
+    m_ui.launcherSections->scrollView().setScrollOffset(0.0F);
   }
   if (openFiles) {
     setFilesScope(true);
@@ -1228,47 +1228,18 @@ void LauncherPanel::onClose() {
   m_usingAppGrid = false;
   m_launcherRowHeight = 0.0F;
 
-  if (m_grid != nullptr) {
-    m_grid->setAdapter(nullptr);
+  if (m_ui.grid != nullptr) {
+    m_ui.grid->setAdapter(nullptr);
   }
-  if (m_launcherSections != nullptr) {
-    m_launcherSections->setAdapter(nullptr);
+  if (m_ui.launcherSections != nullptr) {
+    m_ui.launcherSections->setAdapter(nullptr);
   }
   m_listAdapter.reset();
   m_gridAdapter.reset();
   m_launcherSectionsAdapter.reset();
 
   // The scene tree (and all nodes) is destroyed by PanelManager after onClose().
-  m_container = nullptr;
-  m_input = nullptr;
-  m_pillSearchGlyph = nullptr;
-  m_categoryFilter = nullptr;
-  m_body = nullptr;
-  m_resultsViewport = nullptr;
-  m_launcherToolbar = nullptr;
-  m_launcherNavigation = nullptr;
-  m_launcherAvatar = nullptr;
-  m_launcherAvatarFallback = nullptr;
-  m_launcherUsageButton = nullptr;
-  m_launcherGridButton = nullptr;
-  m_launcherPowerButton = nullptr;
-  m_grid = nullptr;
-  m_pageDotsRow = nullptr;
-  m_pageDots.clear();
-  m_launcherSections = nullptr;
-  m_detailScroll = nullptr;
-  m_detailSubtitle = nullptr;
-  m_detailBody = nullptr;
-  m_emptyLabel = nullptr;
-  m_startPinnedHead = nullptr;
-  m_startShowAll = nullptr;
-  m_startPinnedGrid = nullptr;
-  m_startAllHead = nullptr;
-  m_startViewButton = nullptr;
-  m_startBack = nullptr;
-  m_startCardGrid = nullptr;
-  m_startName = nullptr;
-  m_startInitials = nullptr;
+  m_ui = {};
   m_launcherAvatarPath.clear();
   clearReleasedRoot();
 }
@@ -1277,13 +1248,13 @@ void LauncherPanel::onIconThemeChanged() { reapplyCurrentQuery(); }
 
 void LauncherPanel::clearUsage() {
   m_usageTracker.clear();
-  if (m_input != nullptr) {
+  if (m_ui.input != nullptr) {
     reapplyCurrentQuery();
   }
 }
 
 void LauncherPanel::syncUsageOrderingState() {
-  if (m_input != nullptr) {
+  if (m_ui.input != nullptr) {
     reapplyCurrentQuery();
   }
 }
@@ -1312,16 +1283,16 @@ void LauncherPanel::reapplyCurrentQuery() {
 }
 
 void LauncherPanel::setQuery(const std::string& query) {
-  if (m_input == nullptr) {
+  if (m_ui.input == nullptr) {
     return;
   }
   leaveProviderView();
-  m_input->setValue(singleLinePreview(query));
-  if (m_grid != nullptr) {
-    m_grid->scrollView().setScrollOffset(0.0F);
+  m_ui.input->setValue(singleLinePreview(query));
+  if (m_ui.grid != nullptr) {
+    m_ui.grid->scrollView().setScrollOffset(0.0F);
   }
-  if (m_launcherSections != nullptr) {
-    m_launcherSections->scrollView().setScrollOffset(0.0F);
+  if (m_ui.launcherSections != nullptr) {
+    m_ui.launcherSections->scrollView().setScrollOffset(0.0F);
   }
   onInputChanged(query);
 }
@@ -1329,13 +1300,13 @@ void LauncherPanel::setQuery(const std::string& query) {
 void LauncherPanel::onProviderResultsChanged(const LauncherProvider& provider) {
   // Only re-gather while the panel is open and built; after onClose the scene
   // nodes are gone and a refresh would touch null grid/label pointers.
-  if (m_input == nullptr || !m_searchBroker.acceptsAnswer(provider)) {
+  if (m_ui.input == nullptr || !m_searchBroker.acceptsAnswer(provider)) {
     return;
   }
   reapplyCurrentQuery();
 }
 
-InputArea* LauncherPanel::initialFocusArea() const { return m_input != nullptr ? m_input->inputArea() : nullptr; }
+InputArea* LauncherPanel::initialFocusArea() const { return m_ui.input != nullptr ? m_ui.input->inputArea() : nullptr; }
 
 bool LauncherPanel::ignorePointerEvent() const {
   return m_config != nullptr && m_config->config().shell.launcher.ignoreMouse;
@@ -1457,7 +1428,7 @@ void LauncherPanel::onInputChanged(const std::string& text) {
 
 void LauncherPanel::refreshResults() {
   uiAssertNotRendering("LauncherPanel::refreshResults");
-  if (m_grid == nullptr || m_emptyLabel == nullptr) {
+  if (m_ui.grid == nullptr || m_ui.emptyLabel == nullptr) {
     return;
   }
 
@@ -1476,12 +1447,12 @@ void LauncherPanel::refreshResults() {
   }
   syncLauncherViewLayout(nullptr);
   rebuildLauncherSections();
-  m_grid->notifyDataChanged();
+  m_ui.grid->notifyDataChanged();
   if (m_results.empty()) {
-    m_grid->setSelectedIndex(std::nullopt);
-    m_grid->scrollView().setScrollOffset(0.0F);
-    if (m_launcherSections != nullptr) {
-      m_launcherSections->scrollView().setScrollOffset(0.0F);
+    m_ui.grid->setSelectedIndex(std::nullopt);
+    m_ui.grid->scrollView().setScrollOffset(0.0F);
+    if (m_ui.launcherSections != nullptr) {
+      m_ui.launcherSections->scrollView().setScrollOffset(0.0F);
     }
   } else {
     selectResult(std::min(m_selectedIndex, m_results.size() - 1), false);
@@ -1496,78 +1467,78 @@ void LauncherPanel::selectResult(std::size_t index, bool scrollToSelection) {
     return;
   }
   m_selectedIndex = index;
-  if (shouldUseLauncherSections() && m_launcherSectionsAdapter != nullptr && m_launcherSections != nullptr) {
-    m_grid->setSelectedIndex(std::nullopt);
+  if (shouldUseLauncherSections() && m_launcherSectionsAdapter != nullptr && m_ui.launcherSections != nullptr) {
+    m_ui.grid->setSelectedIndex(std::nullopt);
     m_launcherSectionsAdapter->setSelectedResultIndex(index);
-    m_launcherSections->notifyDataChanged();
+    m_ui.launcherSections->notifyDataChanged();
     if (scrollToSelection) {
       if (const auto row = m_launcherSectionsAdapter->rowForResult(index)) {
-        m_launcherSections->scrollToIndex(*row);
+        m_ui.launcherSections->scrollToIndex(*row);
       }
     }
     return;
   }
-  if (m_grid != nullptr) {
-    m_grid->setSelectedIndex(index);
+  if (m_ui.grid != nullptr) {
+    m_ui.grid->setSelectedIndex(index);
   }
 }
 
 void LauncherPanel::applyEmptyState() {
-  if (m_grid == nullptr || m_emptyLabel == nullptr) {
+  if (m_ui.grid == nullptr || m_ui.emptyLabel == nullptr) {
     return;
   }
   const bool empty = m_results.empty();
   const bool detail = !empty && shouldUseDetailPresentation();
   const bool sections = !empty && !detail && shouldUseLauncherSections();
-  m_grid->setVisible(!empty && !detail && !sections);
-  m_grid->setParticipatesInLayout(!empty && !detail && !sections);
-  if (m_launcherSections != nullptr) {
-    m_launcherSections->setVisible(sections);
-    m_launcherSections->setParticipatesInLayout(sections);
+  m_ui.grid->setVisible(!empty && !detail && !sections);
+  m_ui.grid->setParticipatesInLayout(!empty && !detail && !sections);
+  if (m_ui.launcherSections != nullptr) {
+    m_ui.launcherSections->setVisible(sections);
+    m_ui.launcherSections->setParticipatesInLayout(sections);
   }
-  if (m_detailScroll != nullptr) {
-    m_detailScroll->setVisible(detail);
-    m_detailScroll->setParticipatesInLayout(detail);
+  if (m_ui.detailScroll != nullptr) {
+    m_ui.detailScroll->setVisible(detail);
+    m_ui.detailScroll->setParticipatesInLayout(detail);
   }
-  m_emptyLabel->setVisible(empty);
-  m_emptyLabel->setParticipatesInLayout(empty);
+  m_ui.emptyLabel->setVisible(empty);
+  m_ui.emptyLabel->setParticipatesInLayout(empty);
   syncEmojiStrip();
   syncPackStrip();
-  if (m_browserMode && m_body != nullptr && m_resultsPiece != nullptr && m_pillFooter != nullptr) {
+  if (m_browserMode && m_ui.body != nullptr && m_ui.resultsPiece != nullptr && m_ui.pillFooter != nullptr) {
     const bool expanded = pillExpanded();
-    m_body->setVisible(expanded);
-    m_body->setParticipatesInLayout(expanded);
-    m_resultsPiece->setVisible(expanded);
-    m_resultsPiece->setParticipatesInLayout(expanded);
+    m_ui.body->setVisible(expanded);
+    m_ui.body->setParticipatesInLayout(expanded);
+    m_ui.resultsPiece->setVisible(expanded);
+    m_ui.resultsPiece->setParticipatesInLayout(expanded);
     syncModeDrops();
     const bool footer = expanded && !previewSplit();
-    m_pillFooter->setVisible(footer);
-    m_pillFooter->setParticipatesInLayout(footer);
-    m_pillCount->setText(
+    m_ui.pillFooter->setVisible(footer);
+    m_ui.pillFooter->setParticipatesInLayout(footer);
+    m_ui.pillCount->setText(
         filesScope() ? i18n::trp("launcher.files.count", static_cast<long>(m_results.size()))
                      : i18n::trp("launcher.pill.result-count",
                                  static_cast<long>(std::ranges::count_if(m_results, [](const LauncherResult& r) {
                                    return r.id != FilesProvider::kShowAllId;
                                  })))
     );
-    m_pillBackHint->setVisible(filesScope());
-    m_pillBackHint->setParticipatesInLayout(filesScope());
-    m_pillKindHint->setVisible(filesScope());
-    m_pillKindHint->setParticipatesInLayout(filesScope());
+    m_ui.pillBackHint->setVisible(filesScope());
+    m_ui.pillBackHint->setParticipatesInLayout(filesScope());
+    m_ui.pillKindHint->setVisible(filesScope());
+    m_ui.pillKindHint->setParticipatesInLayout(filesScope());
     syncKindTabs();
-    if (m_filesToken != nullptr) {
-      if (auto* area = dynamic_cast<InputArea*>(m_filesToken->children().back().get())) {
-        area->setFrameSize(m_filesToken->width(), m_filesToken->height());
+    if (m_ui.filesToken != nullptr) {
+      if (auto* area = dynamic_cast<InputArea*>(m_ui.filesToken->children().back().get())) {
+        area->setFrameSize(m_ui.filesToken->width(), m_ui.filesToken->height());
       }
     }
     const bool pasteMode = pasteModeActive();
-    m_pillOpenHint->setText(i18n::tr(pasteMode ? "launcher.pill.paste" : "launcher.pill.open"));
+    m_ui.pillOpenHint->setText(i18n::tr(pasteMode ? "launcher.pill.paste" : "launcher.pill.open"));
   }
   if (empty) {
     if (m_anyProviderLoading && !m_query.empty()) {
-      m_emptyLabel->setText(i18n::tr("launcher.empty.loading"));
+      m_ui.emptyLabel->setText(i18n::tr("launcher.empty.loading"));
     } else {
-      m_emptyLabel->setText(
+      m_ui.emptyLabel->setText(
           m_query.empty() ? i18n::tr("launcher.empty.type-to-search") : i18n::tr("launcher.empty.no-results")
       );
     }
