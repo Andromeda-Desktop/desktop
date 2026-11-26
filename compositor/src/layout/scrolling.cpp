@@ -253,6 +253,7 @@ namespace andromeda {
     auto snapshot = std::make_shared<ScrollingSnapshot>();
     LayoutCapture capture{.snapshot = snapshot, .members = {}};
     snapshot->columns.reserve(m_columns.size());
+    const std::vector<ColumnSpan> spans = viewportPrimary > 0 ? columnSpans(viewportPrimary) : std::vector<ColumnSpan>{};
     for (size_t columnIndex = 0; columnIndex < m_columns.size(); ++columnIndex) {
       const Column& column = m_columns[columnIndex];
       ScrollingSnapshot::SavedColumn saved{
@@ -265,8 +266,8 @@ namespace andromeda {
           .tabs = column.tabs,
       };
       if (viewportPrimary > 0) {
-        const double center = static_cast<double>(columnX(static_cast<int>(columnIndex), viewportPrimary))
-            + static_cast<double>(columnWidth(static_cast<int>(columnIndex), viewportPrimary)) / 2.0;
+        const double center = static_cast<double>(spans[columnIndex].x)
+            + static_cast<double>(spans[columnIndex].width) / 2.0;
         saved.viewportCenterFraction = (center - m_scroll) / static_cast<double>(viewportPrimary);
       }
       saved.rows.reserve(column.views.size());
@@ -368,9 +369,9 @@ namespace andromeda {
     const int anchorColumn = columnOf(pending.anchor);
     bool columnGeometryMatches = m_columns.size() == snapshot->columns.size();
     if (columnGeometryMatches && snapshot->viewportPrimary == viewportPrimary) {
+      const std::vector<ColumnSpan> spans = columnSpans(viewportPrimary);
       for (size_t index = 0; index < m_columns.size(); ++index) {
-        const double center = static_cast<double>(columnX(static_cast<int>(index), viewportPrimary))
-            + static_cast<double>(columnWidth(static_cast<int>(index), viewportPrimary)) / 2.0;
+        const double center = static_cast<double>(spans[index].x) + static_cast<double>(spans[index].width) / 2.0;
         const double fraction = (center - snapshot->scroll) / static_cast<double>(viewportPrimary);
         if (std::abs(fraction - snapshot->columns[index].viewportCenterFraction) > 1e-9) {
           columnGeometryMatches = false;
@@ -405,7 +406,15 @@ namespace andromeda {
     if (columnIndex < 0 || columnIndex >= static_cast<int>(m_columns.size())) {
       return 0;
     }
-    const Column& column = m_columns[static_cast<size_t>(columnIndex)];
+    const auto slotExtent = static_cast<double>(viewportPrimary + m_config->totalGap);
+    double slotStart = 0.0;
+    for (int i = 0; i < columnIndex; ++i) {
+      slotStart += m_columns[static_cast<size_t>(i)].widthFrac * slotExtent;
+    }
+    return columnWidthAtSlot(m_columns[static_cast<size_t>(columnIndex)], slotStart, viewportPrimary);
+  }
+
+  int ScrollingLayout::columnWidthAtSlot(const Column& column, double slotStart, int viewportPrimary) const {
     // Fullscreen lanes fill the entire viewport, bypassing widthFrac and size-hint clamps.
     if (columnFillsViewport(column, *this)) {
       const int edgePad = m_config->edgePad;
@@ -413,10 +422,6 @@ namespace andromeda {
     }
     const int gap = m_config->totalGap;
     const auto slotExtent = static_cast<double>(viewportPrimary + gap);
-    double slotStart = 0.0;
-    for (int i = 0; i < columnIndex; ++i) {
-      slotStart += m_columns[static_cast<size_t>(i)].widthFrac * slotExtent;
-    }
     const double slotEnd = slotStart + column.widthFrac * slotExtent;
     int width = static_cast<int>(std::lround(slotEnd) - std::lround(slotStart)) - gap;
     // A client minimum widens a column up to one viewport, or to the column's own wider extent: only user-set extents
@@ -463,10 +468,14 @@ namespace andromeda {
   int ScrollingLayout::columnX(int columnIndex, int viewportPrimary) const {
     const int end = std::clamp(columnIndex, 0, static_cast<int>(m_columns.size()));
     const int gap = m_config->totalGap;
+    const auto slotExtent = static_cast<double>(viewportPrimary + gap);
     int x = centeringOffset(viewportPrimary);
+    double slotStart = 0.0;
     for (int i = 0; i < end; ++i) {
-      const ColumnBleed bleed = columnBleed(m_columns[static_cast<size_t>(i)], *this);
-      x += bleed.before + columnWidth(i, viewportPrimary) + gap + bleed.after;
+      const Column& column = m_columns[static_cast<size_t>(i)];
+      const ColumnBleed bleed = columnBleed(column, *this);
+      x += bleed.before + columnWidthAtSlot(column, slotStart, viewportPrimary) + gap + bleed.after;
+      slotStart += column.widthFrac * slotExtent;
     }
     if (columnIndex >= 0 && end < static_cast<int>(m_columns.size())) {
       // The column's own leading bleed. Presentation subtracts the same strut,
@@ -481,12 +490,32 @@ namespace andromeda {
       return 0;
     }
     const int gap = m_config->totalGap;
+    const auto slotExtent = static_cast<double>(viewportPrimary + gap);
     int total = -gap;
-    for (size_t i = 0; i < m_columns.size(); ++i) {
-      const ColumnBleed bleed = columnBleed(m_columns[i], *this);
-      total += bleed.before + columnWidth(static_cast<int>(i), viewportPrimary) + gap + bleed.after;
+    double slotStart = 0.0;
+    for (const Column& column : m_columns) {
+      const ColumnBleed bleed = columnBleed(column, *this);
+      total += bleed.before + columnWidthAtSlot(column, slotStart, viewportPrimary) + gap + bleed.after;
+      slotStart += column.widthFrac * slotExtent;
     }
     return std::max(0, total);
+  }
+
+  std::vector<ScrollingLayout::ColumnSpan> ScrollingLayout::columnSpans(int viewportPrimary) const {
+    const int gap = m_config->totalGap;
+    const auto slotExtent = static_cast<double>(viewportPrimary + gap);
+    std::vector<ColumnSpan> spans;
+    spans.reserve(m_columns.size());
+    int x = centeringOffset(viewportPrimary);
+    double slotStart = 0.0;
+    for (const Column& column : m_columns) {
+      const ColumnBleed bleed = columnBleed(column, *this);
+      const int width = columnWidthAtSlot(column, slotStart, viewportPrimary);
+      spans.push_back({.x = x + bleed.before, .width = width});
+      x += bleed.before + width + gap + bleed.after;
+      slotStart += column.widthFrac * slotExtent;
+    }
+    return spans;
   }
 
   int ScrollingLayout::totalWidth(int viewportPrimary) const { return rawTotalWidth(viewportPrimary); }
@@ -1195,21 +1224,16 @@ namespace andromeda {
     m_scroll = std::clamp(m_scroll, -viewport, maxScroll + viewport);
 
     const int gap = m_config->totalGap;
-    // columnX() re-sums every prior column each call; keep a running x instead of calling it per column.
-    int runningColumnX = centeringOffset(viewportPrimary);
+    const std::vector<ColumnSpan> spans = columnSpans(viewportPrimary);
     for (size_t columnIndex = 0; columnIndex < m_columns.size(); ++columnIndex) {
       Column& column = m_columns[columnIndex];
-      const ColumnBleed bleed = columnBleed(column, *this);
-      runningColumnX += bleed.before;
-      const int primarySize = columnWidth(static_cast<int>(columnIndex), viewportPrimary);
+      const int primarySize = spans[columnIndex].width;
       if (column.views.empty()) {
-        runningColumnX += primarySize + gap + bleed.after;
         continue;
       }
       ensureWeightCount(column);
       const int primary =
-          (v ? usable.y : usable.x) + edgePad + runningColumnX - static_cast<int>(std::lround(m_scroll));
-      runningColumnX += primarySize + gap + bleed.after;
+          (v ? usable.y : usable.x) + edgePad + spans[columnIndex].x - static_cast<int>(std::lround(m_scroll));
       // Rows stack as units: a window standing alone, or a tab group whose tabs all take the group's one share.
       const int rowCount = static_cast<int>(column.tabs.unitCount(column.views.size()));
       const int gapsTotal = std::max(0, rowCount - 1) * gap;

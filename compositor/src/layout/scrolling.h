@@ -131,6 +131,15 @@ namespace andromeda {
 
     [[nodiscard]] int totalWidth(int viewportPrimary) const;
     [[nodiscard]] int rawTotalWidth(int viewportPrimary) const;
+    // columnWidth for the column whose slot starts at `slotStart` (the sum of the earlier widthFracs times the slot
+    // extent), so a walk over the strip stays linear.
+    [[nodiscard]] int columnWidthAtSlot(const Column& column, double slotStart, int viewportPrimary) const;
+    struct ColumnSpan {
+      int x;
+      int width;
+    };
+    // columnX and columnWidth of every column in one linear walk.
+    [[nodiscard]] std::vector<ColumnSpan> columnSpans(int viewportPrimary) const;
     [[nodiscard]] int centeringOffset(int viewportPrimary) const;
     [[nodiscard]] double centeredScroll(int columnIndex, int viewportPrimary) const;
     [[nodiscard]] double
