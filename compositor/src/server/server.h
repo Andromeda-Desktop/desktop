@@ -1167,7 +1167,6 @@ namespace andromeda {
     std::string m_applicationScopeAfterProperty;
     SystemdControlEnvironment m_systemdControlEnvironment;
     ApplicationScopeEnvironmentArguments m_applicationScopeEnvironmentArguments;
-    uint64_t m_nextApplicationScopeId = 1;
 
     std::unique_ptr<InputCapture> m_inputCapture;
     uint32_t m_inputCaptureCapabilities = 0;

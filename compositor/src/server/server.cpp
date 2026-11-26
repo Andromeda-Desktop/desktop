@@ -47,6 +47,7 @@
 #include "scene/hint_rect.h"
 #include "scene/launch_feedback.h"
 #include "scene/quit_confirm.h"
+#include "util/private_state_file.h"
 #include "view/snap_assist.h"
 #include "scene/ssd_frame.h"
 #include "view/snap_flyout.h"
@@ -2668,13 +2669,19 @@ namespace andromeda {
       kLog.error("cannot launch application because systemd scope isolation is unavailable");
       return;
     }
+    // A random suffix: a counter restarts with the compositor and collides with scopes that outlived it.
+    const std::optional<std::string> scopeSuffix = scopeRequired ? private_state::randomHex(16) : std::string{};
+    if (!scopeSuffix) {
+      kLog.error("cannot launch application: no random scope name");
+      return;
+    }
     const std::string scopeUnitArgument = scopeRequired
         ? "--unit=app-andromeda-"
               + [&] {
                   const std::string app = scopeAppPart(command);
                   return app.empty() ? std::to_string(getpid()) : app;
                 }()
-              + "-" + std::to_string(m_nextApplicationScopeId++) + ".scope"
+              + "-" + *scopeSuffix + ".scope"
         : "";
 
     wlr_xdg_activation_token_v1* launchToken = nullptr;
