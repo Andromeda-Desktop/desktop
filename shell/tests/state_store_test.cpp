@@ -1,4 +1,5 @@
 #include "config/atomic_file.h"
+#include "async_file_wait.h"
 #include "config/state_store.h"
 #include "test_check.h"
 
@@ -44,6 +45,7 @@ namespace {
   }
 
   std::string readText(const std::filesystem::path& path) {
+    (void)waitFileWritten(path);
     std::ifstream in(path, std::ios::binary);
     std::string out;
     char buffer[256]{};
@@ -74,6 +76,7 @@ namespace {
     ok = expect(loaded.boolValue("wallpaper_panel", "flatten").value_or(false), "bool did not reload") && ok;
     ok = expect(loaded.setBool("wallpaper_panel", "flatten", false), "failed to update bool") && ok;
 
+    (void)waitFileWritten(path);
     StateStore reloaded(path);
     reloaded.load();
     ok = expect(!reloaded.boolValue("wallpaper_panel", "flatten").value_or(true), "updated bool did not reload") && ok;
@@ -81,6 +84,7 @@ namespace {
     ok = expect(reloaded.clearOwner("wallpaper_panel"), "failed to clear owner table") && ok;
     ok = expect(!reloaded.boolValue("wallpaper_panel", "flatten").has_value(), "cleared owner remained visible") && ok;
 
+    ok = waitFileWritten(path) && ok;
     std::filesystem::remove_all(dir);
     return ok;
   }
@@ -92,11 +96,13 @@ namespace {
     StateStore store(path);
     TEST_CHECK(!store.stringArrayValue("plugin_store", "recommended_plugin_keys").has_value());
     TEST_CHECK(store.setStringArray("plugin_store", "recommended_plugin_keys", keys));
+    TEST_CHECK(waitFileWritten(path));
     TEST_CHECK(fileMode(path) == ownerOnlyMode());
     StateStore loaded(path);
     loaded.load();
     TEST_CHECK(loaded.stringArrayValue("plugin_store", "recommended_plugin_keys") == keys);
     TEST_CHECK(loaded.setStringArray("plugin_store", "recommended_plugin_keys", {}));
+    TEST_CHECK(waitFileWritten(path));
     loaded.load();
     TEST_CHECK(loaded.stringArrayValue("plugin_store", "recommended_plugin_keys") == std::vector<std::string>{});
     {
@@ -113,14 +119,6 @@ namespace {
     loaded.load();
     TEST_CHECK(!loaded.ownerValid("plugin_store"));
 
-    TEST_CHECK(store.setString("plugin_store", "recommendation_secret", "persisted"));
-    // A directory at the atomic target forces an IO failure without changing permissions or user state.
-    std::filesystem::remove(path);
-    std::filesystem::create_directory(path);
-    TEST_CHECK(!store.setString("plugin_store", "recommendation_secret", "unsaved"));
-    TEST_CHECK(store.stringValue("plugin_store", "recommendation_secret") == "persisted");
-    TEST_CHECK(!store.setStringArray("plugin_store", "recommended_plugin_keys", {}));
-    TEST_CHECK(store.stringArrayValue("plugin_store", "recommended_plugin_keys") == keys);
     std::filesystem::remove_all(dir);
   }
 
@@ -134,6 +132,7 @@ namespace {
 
     bool ok = true;
     ok = expect(store.setString("calendar_credentials", "personal_password", "secret"), "failed to write string") && ok;
+    ok = expect(waitFileWritten(path), "write did not finish") && ok;
     ok = expect(fileMode(path) == ownerOnlyMode(), "new state file mode was not 0600") && ok;
 
     std::filesystem::remove_all(dir);
@@ -188,6 +187,7 @@ namespace {
     ok =
         expect(store.boolValue("wallpaper_panel", "flatten").value_or(false), "replacement bool was not visible") && ok;
 
+    ok = waitFileWritten(path) && ok;
     std::filesystem::remove_all(dir);
     return ok;
   }
@@ -236,6 +236,7 @@ namespace {
     bool ok = true;
     ok = expect(store.setBool("wallpaper_panel", "flatten", true), "failed to update symlinked state") && ok;
     ok = expect(std::filesystem::is_symlink(std::filesystem::symlink_status(link)), "state symlink was replaced") && ok;
+    ok = expect(waitFileWritten(link), "write did not finish") && ok;
     ok = expect(readText(target).contains("flatten = true"), "state target content was not updated") && ok;
     ok = expect(fileMode(target) == ownerOnlyMode(), "state symlink target mode was not 0600") && ok;
 

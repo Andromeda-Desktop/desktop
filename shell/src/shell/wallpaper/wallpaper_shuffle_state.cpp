@@ -1,5 +1,7 @@
 #include "shell/wallpaper/wallpaper_shuffle_state.h"
 
+#include "config/atomic_file.h"
+
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -117,12 +119,6 @@ namespace wallpaper {
       return;
     }
 
-    std::error_code ec;
-    std::filesystem::create_directories(m_statePath.parent_path(), ec);
-    if (ec) {
-      return;
-    }
-
     try {
       nlohmann::json scopes = nlohmann::json::object();
       for (const auto& [scope, seenBySource] : m_seenByScope) {
@@ -133,10 +129,7 @@ namespace wallpaper {
         scopes[scope] = std::move(sources);
       }
       const nlohmann::json root{{"version", 2}, {"scopes", std::move(scopes)}};
-      std::ofstream file(m_statePath, std::ios::trunc);
-      if (file.is_open()) {
-        file << root.dump(2) << '\n';
-      }
+      writeTextFileAtomicAsync(m_statePath, root.dump(2) + '\n');
     } catch (const nlohmann::json::exception&) {
       // A non-UTF-8 filesystem path cannot be represented in JSON. Runtime state still works.
     }

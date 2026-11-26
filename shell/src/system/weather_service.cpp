@@ -1,5 +1,6 @@
 #include "system/weather_service.h"
 
+#include "config/atomic_file.h"
 #include "config/config_service.h"
 #include "core/log.h"
 #include "i18n/i18n.h"
@@ -807,8 +808,6 @@ void WeatherService::saveCache() const {
   }
 
   const auto path = stateCacheFilePath();
-  std::error_code ec;
-  std::filesystem::create_directories(path.parent_path(), ec);
 
   nlohmann::json json{
       {"snapshot",
@@ -872,8 +871,7 @@ void WeatherService::saveCache() const {
   }
 
   try {
-    std::ofstream file(path);
-    file << json.dump(2);
+    writeTextFileAtomicAsync(path, json.dump(2));
   } catch (const std::exception& e) {
     kLog.warn("failed to save weather cache: {}", e.what());
   }

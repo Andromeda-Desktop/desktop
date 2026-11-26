@@ -289,5 +289,6 @@ bool StateStore::write() {
     return false;
   }
 
-  return writeTextFileAtomic(m_path, formatToml(m_state), FileUtils::privateFileMode());
+  writeTextFileAtomicAsync(m_path, formatToml(m_state), FileUtils::privateFileMode());
+  return true;
 }

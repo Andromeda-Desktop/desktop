@@ -19,6 +19,7 @@
 #include "ipc/ipc_service.h"
 #include "launcher/launcher_provider.h"
 #include "notification/notification_manager.h"
+#include "protocols/async_file_writer.h"
 #include "scripting/plugin_id.h"
 #include "shell/desktop/desktop_widget_settings_registry.h"
 #include "shell/settings/widget_settings_registry.h"
@@ -441,7 +442,25 @@ namespace {
     return files;
   }
 
+  // A queued overrides write wins over the disk: the file lands a moment after setOverride returns.
+  bool configFileExists(const std::filesystem::path& path) {
+    return andromeda::pendingFileText(path).has_value() || std::filesystem::exists(path);
+  }
+
+  toml::table parseConfigFile(const std::filesystem::path& path) {
+    if (auto pending = andromeda::pendingFileText(path)) {
+      return toml::parse(*pending, path.string());
+    }
+    return toml::parse_file(path.string());
+  }
+
   std::string readTextFile(const std::filesystem::path& path, std::string* error = nullptr) {
+    if (auto pending = andromeda::pendingFileText(path)) {
+      if (error != nullptr) {
+        error->clear();
+      }
+      return std::move(*pending);
+    }
     std::ifstream in(path, std::ios::binary);
     if (!in.is_open()) {
       if (error != nullptr) {
@@ -539,10 +558,10 @@ namespace {
       kLog.warn("skipping config error in merged user config export: {}", located);
     }
 
-    if (!settingsPath.empty() && std::filesystem::exists(std::filesystem::path(std::string(settingsPath)))) {
+    if (!settingsPath.empty() && configFileExists(std::filesystem::path(std::string(settingsPath)))) {
       const std::filesystem::path settingsFile{std::string(settingsPath)};
       try {
-        toml::table sidecar = toml::parse_file(settingsPath);
+        toml::table sidecar = parseConfigFile(settingsFile);
         noctalia::config::ConfigOriginIndex origins;
         origins.record(settingsFile, sidecar);
         schema::Diagnostics migrationDiag;
@@ -847,7 +866,7 @@ std::string ConfigService::buildSupportReport() const {
   state.insert_or_assign("relative_path", std::filesystem::path(m_overridesPath).filename().string());
   state.insert_or_assign("path", m_overridesPath);
 
-  const bool settingsExists = !m_overridesPath.empty() && std::filesystem::exists(m_overridesPath);
+  const bool settingsExists = !m_overridesPath.empty() && configFileExists(m_overridesPath);
   state.insert_or_assign("exists", settingsExists);
   if (settingsExists) {
     std::string readError;
@@ -856,7 +875,7 @@ std::string ConfigService::buildSupportReport() const {
       state.insert_or_assign("read_error", readError);
     } else {
       try {
-        auto table = toml::parse_file(m_overridesPath);
+        auto table = parseConfigFile(m_overridesPath);
         deepMerge(merged, table);
       } catch (const toml::parse_error& e) {
         state.insert_or_assign("parse_error", e.what());
@@ -1333,14 +1352,14 @@ void ConfigService::loadOverridesFromFile() {
   m_monitorWallpaperPaths.clear();
   m_overridesParseError = {};
 
-  if (m_overridesPath.empty() || !std::filesystem::exists(m_overridesPath)) {
+  if (m_overridesPath.empty() || !configFileExists(m_overridesPath)) {
     m_persistedOverridesTable = toml::table{};
     return;
   }
 
   kLog.info("loading {}", m_overridesPath);
   try {
-    m_overridesTable = toml::parse_file(m_overridesPath);
+    m_overridesTable = parseConfigFile(m_overridesPath);
     m_persistedOverridesTable = m_overridesTable;
   } catch (const toml::parse_error& e) {
     auto origin = noctalia::config::parseErrorOrigin(e, std::filesystem::path(m_overridesPath));

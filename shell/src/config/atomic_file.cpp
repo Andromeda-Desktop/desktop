@@ -1,6 +1,7 @@
 #include "config/atomic_file.h"
 
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 
 #include <cerrno>
 #include <fcntl.h>
@@ -141,4 +142,13 @@ bool writeTextFileAtomic(
     }
   }
   return true;
+}
+
+void writeTextFileAtomicAsync(
+    std::filesystem::path path, std::string content, std::optional<std::filesystem::perms> mode
+) {
+  andromeda::writeFileAsync(
+      std::move(path), std::move(content),
+      [mode](const std::filesystem::path& target, const std::string& text) { return writeTextFileAtomic(target, text, mode); }
+  );
 }

@@ -1,6 +1,7 @@
 #include "system/location_service.h"
 
 #include "cli/schema_msg.h"
+#include "config/atomic_file.h"
 #include "config/config_service.h"
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -495,8 +496,6 @@ void LocationService::saveCache() const {
     return;
   }
   const auto path = stateCacheFilePath();
-  std::error_code ec;
-  std::filesystem::create_directories(path.parent_path(), ec);
 
   const nlohmann::json json{
       {"auto_locate", m_resolvedAutoLocate},
@@ -507,8 +506,7 @@ void LocationService::saveCache() const {
       {"source_label", m_sourceLabel},
   };
   try {
-    std::ofstream file(path);
-    file << json.dump(2);
+    writeTextFileAtomicAsync(path, json.dump(2));
   } catch (const std::exception& e) {
     kLog.warn("failed to save location cache: {}", e.what());
   }

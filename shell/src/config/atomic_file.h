@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <string_view>
 
 struct AtomicWriteTarget {
@@ -17,4 +18,10 @@ enum class AtomicWrite : bool { Fast, Durable };
 [[nodiscard]] bool writeTextFileAtomic(
     const std::filesystem::path& path, std::string_view content,
     std::optional<std::filesystem::perms> mode = std::nullopt, AtomicWrite durability = AtomicWrite::Fast
+);
+
+// writeTextFileAtomic on the shared background writer (protocols/async_file_writer.h): the caller never waits on the
+// disk and pendingFileText(path) shows the content until it lands. A failed write is logged, not reported.
+void writeTextFileAtomicAsync(
+    std::filesystem::path path, std::string content, std::optional<std::filesystem::perms> mode = std::nullopt
 );

@@ -1,3 +1,4 @@
+#include "async_file_wait.h"
 #include "shell/wallpaper/wallpaper_shuffle_state.h"
 
 #include <chrono>
@@ -30,12 +31,14 @@ int main() {
 
   bool ok = true;
   {
+    ok = waitFileWritten(statePath) && ok;
     wallpaper::ShuffleState state;
     state.setStatePath(statePath);
     ok = expect(state.pick("global", "default", candidates, "a.jpg", 0.0F) == "b.jpg", "first pick excludes current")
         && ok;
   }
   {
+    ok = waitFileWritten(statePath) && ok;
     wallpaper::ShuffleState state;
     state.setStatePath(statePath);
     ok = expect(
@@ -45,6 +48,7 @@ int main() {
         && ok;
   }
   {
+    ok = waitFileWritten(statePath) && ok;
     wallpaper::ShuffleState state;
     state.setStatePath(statePath);
     ok = expect(
@@ -58,6 +62,7 @@ int main() {
         && ok;
   }
   {
+    ok = waitFileWritten(statePath) && ok;
     wallpaper::ShuffleState state;
     const std::vector<std::string> changedCandidates{"b.jpg", "c.jpg", "d.jpg"};
     state.setStatePath(statePath);
@@ -73,6 +78,7 @@ int main() {
         && ok;
   }
   {
+    ok = waitFileWritten(statePath) && ok;
     wallpaper::ShuffleState state;
     const std::vector<std::string> darkCandidates{"dark-a.jpg", "dark-b.jpg", "dark-c.jpg"};
     const std::vector<std::string> lightCandidates{"light-a.jpg", "light-b.jpg", "light-c.jpg"};
@@ -89,6 +95,7 @@ int main() {
         && ok;
   }
   {
+    ok = waitFileWritten(statePath) && ok;
     wallpaper::ShuffleState state;
     const std::vector<std::string> darkCandidates{"dark-a.jpg", "dark-b.jpg", "dark-c.jpg"};
     state.setStatePath(statePath);
@@ -99,10 +106,12 @@ int main() {
         && ok;
   }
   {
+    ok = waitFileWritten(statePath) && ok;
     std::ofstream malformed(statePath, std::ios::trunc);
     malformed << "not json\n";
     malformed.close();
 
+    ok = waitFileWritten(statePath) && ok;
     wallpaper::ShuffleState state;
     state.setStatePath(statePath);
     ok = expect(

@@ -2,6 +2,7 @@
 #include "shell/desktop/desktop_icons.h"
 #include "core/input/cursor_shape.h"
 
+#include "config/atomic_file.h"
 #include "config/config_service.h"
 #include "dbus/session_bus.h"
 #include "core/deferred_call.h"
@@ -9,6 +10,7 @@
 #include "i18n/i18n.h"
 #include "net/uri.h"
 #include "net/url_open.h"
+#include "protocols/async_file_writer.h"
 #include "render/render_context.h"
 #include "render/scene/input_area.h"
 #include "render/scene/node.h"
@@ -919,11 +921,19 @@ std::filesystem::path DesktopIcons::slotsFile() const {
   return std::filesystem::path(xdg::stateHome()) / "andromeda" / "desktop-icons.json";
 }
 
+// A queued save wins over the disk: saveSlots rewrites the whole file from what it reads.
+static nlohmann::json readSlotsJson(const std::filesystem::path& file) {
+  if (const auto pending = andromeda::pendingFileText(file)) {
+    return nlohmann::json::parse(*pending, nullptr, false);
+  }
+  std::ifstream in(file);
+  return nlohmann::json::parse(in, nullptr, false);
+}
+
 void DesktopIcons::loadSlots() {
   m_slots.clear();
   m_freeAt.clear();
-  std::ifstream in(slotsFile());
-  const auto json = nlohmann::json::parse(in, nullptr, false);
+  const auto json = readSlotsJson(slotsFile());
   const auto output = json.is_object() ? json.find(outputKey()) : json.end();
   if (!json.is_object() || output == json.end() || !output->is_object()) {
     return;
@@ -941,8 +951,7 @@ void DesktopIcons::loadSlots() {
 
 void DesktopIcons::saveSlots() const {
   const std::filesystem::path file = slotsFile();
-  std::ifstream in(file);
-  auto json = nlohmann::json::parse(in, nullptr, false);
+  auto json = readSlotsJson(file);
   if (!json.is_object()) {
     json = nlohmann::json::object();
   }
@@ -953,9 +962,7 @@ void DesktopIcons::saveSlots() const {
     output[name] = free != m_freeAt.end() ? nlohmann::json{slot.column, slot.row, free->second.first, free->second.second}
                                           : nlohmann::json{slot.column, slot.row};
   }
-  std::error_code error;
-  std::filesystem::create_directories(file.parent_path(), error);
-  std::ofstream(file) << json.dump(2) << '\n';
+  writeTextFileAtomicAsync(file, json.dump(2) + '\n');
 }
 
 void DesktopIcons::onCellMotion(float sceneX, float sceneY) {

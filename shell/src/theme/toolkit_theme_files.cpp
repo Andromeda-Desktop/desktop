@@ -1,6 +1,8 @@
 #include "theme/toolkit_theme_files.h"
 
+#include "config/atomic_file.h"
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 #include "ui/style.h"
 #include "util/file_utils.h"
@@ -30,7 +32,11 @@ namespace toolkit_theme {
     constexpr Logger kLog("toolkit-theme");
     constexpr std::string_view kGtkImport = R"(@import url("andromeda.css");)";
 
+    // A queued write wins over the disk, so a read never sees text older than the last writeIfChanged.
     std::optional<std::string> readFile(const std::filesystem::path& path) {
+      if (auto pending = andromeda::pendingFileText(path)) {
+        return pending;
+      }
       std::ifstream in(path, std::ios::binary);
       if (!in) {
         return std::nullopt;
@@ -40,32 +46,13 @@ namespace toolkit_theme {
       return text.str();
     }
 
-    // Atomic replace; no write when the content is already there, so apps do not reload for nothing.
+    // Atomic replace on the background writer (symlinks keep their target); no write when the content is already
+    // there, so apps do not reload for nothing.
     void writeIfChanged(const std::filesystem::path& linkPath, const std::string& content) {
       if (readFile(linkPath) == content) {
         return;
       }
-      std::error_code ec;
-      // A user's symlink (e.g. into a dotfiles repo) stays a symlink: write its target.
-      const std::filesystem::path path =
-          std::filesystem::is_symlink(linkPath, ec) ? std::filesystem::weakly_canonical(linkPath, ec) : linkPath;
-      std::filesystem::create_directories(path.parent_path(), ec);
-      const std::filesystem::path tmp = path.string() + ".tmp";
-      {
-        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-        out << content;
-        out.flush();
-        if (!out) {
-          kLog.warn("write {} failed", tmp.string());
-          out.close();
-          std::filesystem::remove(tmp, ec);
-          return;
-        }
-      }
-      std::filesystem::rename(tmp, path, ec);
-      if (ec) {
-        kLog.warn("write {} failed: {}", path.string(), ec.message());
-      }
+      writeTextFileAtomicAsync(linkPath, content);
     }
 
     // First match of `relative` in $XDG_DATA_HOME, then $XDG_DATA_DIRS.
