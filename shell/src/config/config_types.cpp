@@ -52,12 +52,6 @@ namespace {
 
 } // namespace
 
-std::vector<ShortcutConfig> defaultControlCenterShortcuts() {
-  return {
-      {"wifi"}, {"bluetooth"}, {"caffeine"}, {"nightlight"}, {"room_light"}, {"notification"}, {"power_profile"},
-  };
-}
-
 std::vector<PluginSourceConfig> defaultPluginSources() {
   return {
       {.kind = PluginSourceKind::Git,

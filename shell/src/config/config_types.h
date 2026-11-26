@@ -254,8 +254,6 @@ struct SessionPanelActionConfig {
   std::optional<KeyChord> shortcut = std::nullopt;
   // Lock-screen trigger. Never a text-producing key: the password field owns those.
   std::optional<KeyChord> lockscreenShortcut = std::nullopt;
-  /// When > 0, the action arms a countdown (seconds) before running; activate again to confirm immediately.
-  double countdownSeconds = 0.0;
 
   bool operator==(const SessionPanelActionConfig&) const = default;
 };
@@ -367,7 +365,6 @@ struct IdleConfig {
   bool operator==(const IdleConfig&) const = default;
 };
 
-[[nodiscard]] std::vector<ShortcutConfig> defaultControlCenterShortcuts();
 [[nodiscard]] std::vector<SessionPanelActionConfig> defaultSessionPanelActions();
 [[nodiscard]] std::vector<IdleBehaviorConfig> defaultIdleBehaviors();
 
@@ -1176,16 +1173,6 @@ struct ShellConfig {
   // Launcher behavior/appearance. Panel placement for the launcher surface stays
   // under [shell.panel] (launcher_placement/position/open_near_click_launcher),
   // parallel to every other surface.
-  enum class LauncherSearchPosition : std::uint8_t {
-    Top = 0,
-    Bottom = 1,
-  };
-
-  static constexpr EnumOption<LauncherSearchPosition> kLauncherSearchPositions[] = {
-      {LauncherSearchPosition::Top, "top", "settings.options.shell.launcher-search-position.top"},
-      {LauncherSearchPosition::Bottom, "bottom", "settings.options.shell.launcher-search-position.bottom"},
-  };
-
   enum class LauncherLayout : std::uint8_t {
     Full = 0,
     Simple = 1,
@@ -1215,13 +1202,11 @@ struct ShellConfig {
 
     LauncherLayout layout = LauncherLayout::Full;
     std::int32_t width = kDefaultWidth;
-    LauncherSearchPosition searchPosition = LauncherSearchPosition::Bottom;
     LauncherDefaultView defaultView = LauncherDefaultView::Recent;
     // Simple layout only: show the category chip row under the search field.
     bool categories = true;
     bool categoryIconsOnly = false;
     bool showNavigationLabels = true;
-    bool showSettingsButton = true;
     bool showSessionButton = true;
     bool showIcons = true;
     bool showAppOriginIndicator = true;
@@ -1516,22 +1501,6 @@ struct SystemConfig {
         noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::SwapPct).activityDefault;
     double swapPctCriticalThreshold =
         noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::SwapPct).criticalDefault;
-    double diskUsedPctActivityThreshold =
-        noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::DiskUsedPct).activityDefault;
-    double diskUsedPctCriticalThreshold =
-        noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::DiskUsedPct).criticalDefault;
-    double diskUsedActivityThreshold =
-        noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::DiskUsed).activityDefault;
-    double diskUsedCriticalThreshold =
-        noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::DiskUsed).criticalDefault;
-    double diskFreePctActivityThreshold =
-        noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::DiskFreePct).activityDefault;
-    double diskFreePctCriticalThreshold =
-        noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::DiskFreePct).criticalDefault;
-    double diskFreeActivityThreshold =
-        noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::DiskFree).activityDefault;
-    double diskFreeCriticalThreshold =
-        noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::DiskFree).criticalDefault;
     double netRxActivityThreshold = noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::NetRx).activityDefault;
     double netRxCriticalThreshold = noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::NetRx).criticalDefault;
     double netTxActivityThreshold = noctalia::sysmon::thresholdProfile(noctalia::sysmon::Stat::NetTx).activityDefault;
@@ -1838,12 +1807,7 @@ struct ControlCenterConfig {
     bool operator==(const MediaTabConfig&) const = default;
   };
 
-  std::vector<ShortcutConfig> shortcuts;
   std::vector<std::string> quickTiles; // quick-sheet tile ids in order (edit mode); empty = every available tile, default order
-  bool showShortcutLabels = true;
-  bool showSessionButton = true;
-  bool circularAvatar = true;
-  bool showAvatarBorder = true;
   CalendarTabConfig calendarTab;
   MediaTabConfig mediaTab;
   bool operator==(const ControlCenterConfig&) const = default;

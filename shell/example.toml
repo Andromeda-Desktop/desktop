@@ -74,12 +74,10 @@ open_near_click_wallpaper      = false # for attached/floating placement, follow
 [shell.launcher]
 layout = "full"                          # full | simple; simple is search, optional category chips, and results at 560x500
 width = 760                              # full layout: panel width in pixels (560–1200)
-search_position = "top"                  # full layout: top | bottom; whole launcher toolbar position
 default_view   = "recent"                # full layout: recent | pinned | all | categories
 categories = true                        # simple layout: show the category chip row under the search field
 category_icons_only = false             # hide app category labels; keep names in hover tooltips
 show_navigation_labels = true           # full layout: show Recent, Pinned, All, Categories, and Providers labels
-show_settings_button = true              # show the Settings shortcut beside search
 show_session_button = true               # show the session-actions shortcut beside search
 show_icons    = true                    # show application icons in launcher results
 show_app_origin_indicator = true        # show package origin indicators on application results
@@ -257,10 +255,6 @@ enabled              = true
 use_event_reminders  = true     # honor per-event reminders; off = always use the default lead below
 default_lead_minutes = 10       # used for events with no reminder of their own; 0 = at event start
 all_day_digest_time  = "09:00"  # one notification listing today's all-day events; "" disables it
-
-[control_center]
-circular_avatar             = true          # disable to use the shell's corner roundness
-show_avatar_border          = true          # disable to hide the accent ring around the avatar
 
 # Calendar tab of the control center.
 
@@ -514,22 +508,6 @@ enabled = false
 
 [control_center.media]
 show_visualizer = true              # PipeWire audio visualizer beside the playback controls
-
-# Shortcut buttons shown on the right side of the dashboard (up to 6).
-# [[control_center.shortcuts]]
-# type = "wifi"
-# [[control_center.shortcuts]]
-# type = "bluetooth"
-# [[control_center.shortcuts]]
-# type = "nightlight"
-# [[control_center.shortcuts]]
-# type = "notification"
-# [[control_center.shortcuts]]
-# type = "wallpaper"
-# [[control_center.shortcuts]]
-# type = "screen_recorder"
-# [[control_center.shortcuts]]
-# type = "session"
 
 # ── Hooks ─────────────────────────────────────────────────────────────────────
 

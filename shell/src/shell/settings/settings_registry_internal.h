@@ -70,7 +70,6 @@ namespace settings {
     plainSelect(std::initializer_list<std::pair<std::string_view, std::string_view>> items, std::string_view selected);
     [[nodiscard]] std::string_view barAutoHideMode(bool autoHide, bool smartAutoHide);
     [[nodiscard]] SelectSetting autoHideModeSelect(std::string_view mode, std::vector<std::string> smartPath);
-    std::vector<SelectOption> controlCenterShortcutOptions(const Config& cfg);
     [[nodiscard]] inline bool
     hasFeature(const RegistryEnvironment& env, noctalia::config::schema::RowSpec::Needs needs) {
       using Needs = noctalia::config::schema::RowSpec::Needs;

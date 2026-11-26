@@ -27,7 +27,6 @@ bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.scroll_right
 bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.scroll_up	gesture action control
 bar:default:monitor:DP-1	bar.default.monitor.DP-1.font_family	font picker: search list when fonts are known, else text; placeholder is the inherited font
 bar:default:monitor:DP-1	bar.default.monitor.DP-1.position	position is not in barFieldsSchema yet (parse order); override shows the inherited edge
-control-center	control_center.shortcuts	shortcut list control
 date-time	title:settings.datetime.local-rtc	systemd timedated call, no config key
 dock	dock.auto_hide	one select writes auto_hide and smart_auto_hide
 dock	dock.launcher_custom_image	image browse with a runtime fallback folder
@@ -80,10 +79,6 @@ shell	shell.keyboard_layout.custom_labels	string map control
 system	system.monitor.cpu_freq_activity_threshold	range control writes activity and critical thresholds
 system	system.monitor.cpu_temp_activity_threshold	range control writes activity and critical thresholds
 system	system.monitor.cpu_usage_activity_threshold	range control writes activity and critical thresholds
-system	system.monitor.disk_free_activity_threshold	range control writes activity and critical thresholds
-system	system.monitor.disk_free_pct_activity_threshold	range control writes activity and critical thresholds
-system	system.monitor.disk_used_activity_threshold	range control writes activity and critical thresholds
-system	system.monitor.disk_used_pct_activity_threshold	range control writes activity and critical thresholds
 system	system.monitor.gpu_temp_activity_threshold	range control writes activity and critical thresholds
 system	system.monitor.gpu_usage_activity_threshold	range control writes activity and critical thresholds
 system	system.monitor.gpu_vram_activity_threshold	range control writes activity and critical thresholds

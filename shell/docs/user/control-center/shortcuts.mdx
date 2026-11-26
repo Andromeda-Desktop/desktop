@@ -5,42 +5,12 @@ sidebar:
   order: 4
 ---
 
-The Home tab displays a row of shortcut buttons at the bottom. Up to 6 shortcuts are shown. You can configure the list in TOML or edit it from **Settings -> Control Center**.
-
-```toml
-[[control_center.shortcuts]]
-type = "wifi"
-
-[[control_center.shortcuts]]
-type = "bluetooth"
-
-[[control_center.shortcuts]]
-type = "nightlight"
-
-[[control_center.shortcuts]]
-type = "notification"
-
-[[control_center.shortcuts]]
-type = "wallpaper"
-
-[[control_center.shortcuts]]
-type = "session"
-```
-
-When no `[[control_center.shortcuts]]` entries are defined, the default set is: `wifi`, `bluetooth`, `caffeine`, `nightlight`, `notification`, `power_profile`. Set `shortcuts = []` under `[control_center]` to hide all Home shortcut buttons.
-
-Use `show_shortcut_labels` under `[control_center]` to show or hide the text under each shortcut icon (default `true`). When labels are off, the icons scale with the shortcut cell size, which is useful at narrower Control Center widths.
+The quick sheet shows the available shortcuts as tiles. Edit the tile order from the sheet's edit mode, or set `quick_tiles` under `[control_center]` to an array of the shortcut types below. When `quick_tiles` is empty, every available tile shows in the default order.
 
 ```toml
 [control_center]
-show_shortcut_labels = false
+quick_tiles = ["wifi", "bluetooth", "nightlight", "notification"]
 ```
-
-## Entry Fields
-
-| Field  | Type   | Default    | Description                       |
-| ------ | ------ | ---------- | --------------------------------- |
-| `type` | string | *required* | Shortcut type from the list below |
 
 ## Types
 

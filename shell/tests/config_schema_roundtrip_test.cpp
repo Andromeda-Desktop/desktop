@@ -455,11 +455,9 @@ location = "https://example.invalid/bad"
     c.battery.warningThreshold = 15;
     c.battery.deviceThresholds = {{"BAT0", 10}, {"hidpp:1", 25}};
     c.bluetooth.connectWhenEnabled = true;
-    c.controlCenter.circularAvatar = false;
     c.controlCenter.calendarTab.showEventsCard = false;
     c.controlCenter.calendarTab.showWeekNumbers = true;
     c.controlCenter.mediaTab.showVisualizer = false;
-    c.controlCenter.shortcuts = {{"wifi"}, {"bluetooth"}};
     c.calendar.enabled = true;
     c.calendar.dedupeEvents = true;
     c.calendar.dedupeIgnorePatterns = {R"(\s*\(.*\)$)", " - tentative"};
@@ -537,12 +535,10 @@ location = "https://example.invalid/bad"
     c.shell.panel.launcherPlacement = PanelPlacement::Floating;
     c.shell.launcher.layout = ShellConfig::LauncherLayout::Simple;
     c.shell.launcher.width = 680;
-    c.shell.launcher.searchPosition = ShellConfig::LauncherSearchPosition::Bottom;
     c.shell.launcher.defaultView = ShellConfig::LauncherDefaultView::Categories;
     c.shell.launcher.categories = false;
     c.shell.launcher.categoryIconsOnly = true;
     c.shell.launcher.showNavigationLabels = false;
-    c.shell.launcher.showSettingsButton = false;
     c.shell.launcher.showSessionButton = false;
     c.shell.launcher.compact = true;
     c.shell.launcher.trackUsage = false;
@@ -735,6 +731,56 @@ location = "https://example.invalid/bad"
       readInto(t, s, shellSchema(), "shell", d);
       if (s.clipboardHistoryMaxEntries != 10000) {
         fail("shell.clipboard_history_max_entries clamp: expected 10000");
+      }
+    }
+  }
+
+  void checkRetiredKeysLoadSilently() {
+    {
+      const toml::table t = toml::parse(R"(
+circular_avatar = false
+show_avatar_border = false
+show_session_button = false
+show_shortcut_labels = false
+quick_tiles = ["wifi"]
+
+[[shortcuts]]
+type = "wifi"
+)");
+      ControlCenterConfig c;
+      Diagnostics d;
+      readInto(t, c, controlCenterSchema(), "control_center", d);
+      if (!d.entries.empty()) {
+        fail("control_center: retired keys produced diagnostics");
+      }
+      if (c.quickTiles != std::vector<std::string>{"wifi"}) {
+        fail("control_center: live key next to retired keys was not read");
+      }
+    }
+    {
+      const toml::table t = toml::parse(R"(
+search_position = "top"
+show_settings_button = false
+width = 700
+)");
+      ShellConfig::LauncherConfig l;
+      Diagnostics d;
+      readInto(t, l, launcherSchema(), "shell.launcher", d);
+      if (!d.entries.empty() || l.width != 700) {
+        fail("shell.launcher: retired keys produced diagnostics or hid a live key");
+      }
+    }
+    {
+      const toml::table t = toml::parse(R"(
+[monitor]
+disk_used_pct_activity_threshold = 10
+disk_free_critical_threshold = 99
+)");
+      SystemConfig sys;
+      Diagnostics d;
+      readInto(t, sys, systemSchema(), "system", d);
+      if (!d.entries.empty()) {
+        fail("system.monitor: retired disk thresholds produced diagnostics");
       }
     }
   }
@@ -1298,6 +1344,7 @@ widget_spacing = 8
   checkStorageKeySourceValidation();
   checkPanelFloatingLayerValidation();
   checkClamps();
+  checkRetiredKeysLoadSilently();
   checkMonitorOverrideChangeSet();
   checkPluginAutoUpdateMode();
   checkAutoUpdateScopeSelection();

@@ -14,7 +14,6 @@
 #include "shell/bar/widget_gesture.h"
 #include "shell/bar/widget_gesture_defaults.h"
 #include "shell/control_center/control_center_panel.h"
-#include "shell/control_center/shortcut_registry.h"
 #include "shell/settings/color_spec_picker.h"
 #include "shell/settings/font_weight_catalog.h"
 #include "shell/wallpaper/wallpaper_paths.h"
@@ -134,21 +133,6 @@ namespace settings {
         };
       };
       return select;
-    }
-
-
-    std::vector<SelectOption> controlCenterShortcutOptions(const Config& cfg) {
-      auto catalog = ShortcutRegistry::catalog();
-      std::vector<SelectOption> opts;
-      opts.reserve(catalog.size());
-      for (auto& shortcut : catalog) {
-        if (!ShortcutRegistry::isAvailable(shortcut.type, cfg)) {
-          continue;
-        }
-        std::string label = shortcut.literalLabel ? std::move(shortcut.labelKey) : i18n::tr(shortcut.labelKey);
-        opts.push_back(SelectOption{std::move(shortcut.type), std::move(label)});
-      }
-      return opts;
     }
 
 

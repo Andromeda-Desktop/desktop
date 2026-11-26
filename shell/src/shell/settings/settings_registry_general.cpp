@@ -496,7 +496,7 @@ namespace settings {
         noctalia::config::schema::launcherSchema(), cfg.shell.launcher, {"shell", "launcher"}
     );
     appendRow(entries, launcherRows, "layout");
-    for (const auto* key : {"width", "search_position", "default_view"}) {
+    for (const auto* key : {"width", "default_view"}) {
       appendRow(entries, launcherRows, key);
       entries.back().visibleWhen = launcherFull;
     }
@@ -506,7 +506,7 @@ namespace settings {
     entries.back().visibleWhen = [](const Config& c) {
       return c.shell.launcher.layout == ShellConfig::LauncherLayout::Full || c.shell.launcher.categories;
     };
-    for (const auto* key : {"show_navigation_labels", "show_settings_button", "show_session_button"}) {
+    for (const auto* key : {"show_navigation_labels", "show_session_button"}) {
       appendRow(entries, launcherRows, key);
       entries.back().visibleWhen = launcherFull;
     }
@@ -593,14 +593,6 @@ namespace settings {
         generateSchemaEntries(noctalia::config::schema::controlCenterSchema(), cfg.controlCenter, {"control_center"});
     appendGroup(entries, controlCenterRows, "layout");
     appendGroup(entries, controlCenterRows, "navigation");
-    entries.push_back(makeEntry(
-        SettingsSection::ControlCenter, "home", tr("settings.schema.panels.home-shortcuts.label"),
-        tr("settings.schema.panels.home-shortcuts.description"), {"control_center", "shortcuts"},
-        ShortcutListSetting{
-            .items = cfg.controlCenter.shortcuts, .suggestedOptions = controlCenterShortcutOptions(cfg), .maxItems = 6
-        },
-        "quick settings shortcuts toggles wifi bluetooth caffeine night light dnd power media weather clipboard"
-    ));
     appendGroup(entries, controlCenterRows, "home");
     appendGroup(entries, controlCenterRows, "panel-look");
   }

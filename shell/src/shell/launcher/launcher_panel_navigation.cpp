@@ -359,7 +359,6 @@ void LauncherPanel::onPanelCardOpacityChanged(float opacity) {
   for (Button* button : {
            m_launcherUsageButton,
            m_launcherGridButton,
-           m_launcherSettingsButton,
            m_launcherPowerButton,
        }) {
     if (button != nullptr) {
@@ -664,12 +663,10 @@ void LauncherPanel::rebuildLauncherNavigation() {
 
   m_launcherNavigation->setOnChange({});
   m_launcherNavigation->clearOptions();
-  const float settingsButtonWidth =
-      m_launcherSettingsButton != nullptr ? Style::controlHeight + Style::spaceXs : 0.0F;
   const bool iconOnly = m_config != nullptr
       && (!m_config->config().shell.launcher.showNavigationLabels
           || static_cast<float>(m_config->config().shell.launcher.width)
-              < static_cast<float>(kCompactNavigationWidth) + settingsButtonWidth);
+              < static_cast<float>(kCompactNavigationWidth));
 
   std::size_t navigationIndex = 0;
   for (const CategoryFilterSlot& slot : m_categoryFilterSlots) {

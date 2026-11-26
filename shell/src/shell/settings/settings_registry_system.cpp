@@ -178,24 +178,6 @@ namespace settings {
           mon.swapPctCriticalThreshold, noctalia::sysmon::thresholdProfile(Stat::SwapPct), true, "%"
       );
       addThresholdPair(
-          "disk_used_pct", "settings.schema.services.system-monitor.stats.disk-used-pct",
-          mon.diskUsedPctActivityThreshold, mon.diskUsedPctCriticalThreshold,
-          noctalia::sysmon::thresholdProfile(Stat::DiskUsedPct), true, "%"
-      );
-      addThresholdPair(
-          "disk_used", "settings.schema.services.system-monitor.stats.disk-used", mon.diskUsedActivityThreshold,
-          mon.diskUsedCriticalThreshold, noctalia::sysmon::thresholdProfile(Stat::DiskUsed), true, "%"
-      );
-      addThresholdPair(
-          "disk_free_pct", "settings.schema.services.system-monitor.stats.disk-free-pct",
-          mon.diskFreePctActivityThreshold, mon.diskFreePctCriticalThreshold,
-          noctalia::sysmon::thresholdProfile(Stat::DiskFreePct), true, "%"
-      );
-      addThresholdPair(
-          "disk_free", "settings.schema.services.system-monitor.stats.disk-free", mon.diskFreeActivityThreshold,
-          mon.diskFreeCriticalThreshold, noctalia::sysmon::thresholdProfile(Stat::DiskFree), true, "%"
-      );
-      addThresholdPair(
           "net_rx", "settings.schema.services.system-monitor.stats.network-rx", mon.netRxActivityThreshold,
           mon.netRxCriticalThreshold, noctalia::sysmon::thresholdProfile(Stat::NetRx), false, "MB/s"
       );

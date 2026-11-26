@@ -933,7 +933,6 @@ Config ConfigService::makeDefaultConfig() {
   noctalia::config::seedBuiltinWidgets(config);
   config.idle.behaviors = defaultIdleBehaviors();
   config.bars.push_back(BarConfig{});
-  config.controlCenter.shortcuts = defaultControlCenterShortcuts();
   config.shell.session.actions = defaultSessionPanelActions();
   config.plugins.sources = defaultPluginSources();
   return config;
@@ -1855,9 +1854,6 @@ void ConfigService::parseConfigTable(
   }();
   if (!sessionActionsConfigured && config.shell.session.actions.empty()) {
     config.shell.session.actions = defaultSessionPanelActions();
-  }
-  if (!hasExplicitArray("control_center", "shortcuts") && config.controlCenter.shortcuts.empty()) {
-    config.controlCenter.shortcuts = defaultControlCenterShortcuts();
   }
   if (!hasExplicitArray("plugins", "source") && config.plugins.sources.empty()) {
     config.plugins.sources = defaultPluginSources();

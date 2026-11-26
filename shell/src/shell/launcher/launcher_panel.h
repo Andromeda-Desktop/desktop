@@ -220,7 +220,6 @@ private:
   Segmented* m_launcherNavigation = nullptr;
   Image* m_launcherAvatar = nullptr;
   Glyph* m_launcherAvatarFallback = nullptr;
-  Button* m_launcherSettingsButton = nullptr;
   Button* m_launcherUsageButton = nullptr;
   Button* m_launcherGridButton = nullptr;
   Button* m_launcherPowerButton = nullptr;

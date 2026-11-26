@@ -27,8 +27,7 @@ namespace {
 
   // Pages whose plain rows come from the config schema. Listed here, not read from the RowSpecs, so a
   // dropped RowSpec shows up as a missing row.
-  constexpr std::array<std::string_view, 21> kGeneratedPages{
-      "control-center",
+  constexpr std::array<std::string_view, 20> kGeneratedPages{
       "screenshot",
       "notifications",
       "appearance",

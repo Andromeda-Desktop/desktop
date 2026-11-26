@@ -383,7 +383,6 @@ namespace {
               if (item.lockscreenShortcut.has_value()) {
                 row.insert_or_assign("lockscreen_shortcut", keyChordToString(*item.lockscreenShortcut));
               }
-              row.insert_or_assign("countdown_seconds", item.countdownSeconds);
               array.push_back(std::move(row));
             }
             table.insert_or_assign(key, std::move(array));
@@ -1237,7 +1236,6 @@ std::optional<Config> ConfigService::configForOverrides(const toml::table& overr
   if (mergeResult.loadedFiles.empty() && overrides.empty()) {
     parsed.idle.behaviors = defaultIdleBehaviors();
     parsed.bars.push_back(BarConfig{});
-    parsed.controlCenter.shortcuts = defaultControlCenterShortcuts();
     parsed.shell.session.actions = defaultSessionPanelActions();
     return parsed;
   }

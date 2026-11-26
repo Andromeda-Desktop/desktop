@@ -562,14 +562,14 @@ namespace noctalia::config::schema {
           field(&SystemConfig::MonitorConfig::ramPctCriticalThreshold, "ram_pct_critical_threshold"),
           field(&SystemConfig::MonitorConfig::swapPctActivityThreshold, "swap_pct_activity_threshold"),
           field(&SystemConfig::MonitorConfig::swapPctCriticalThreshold, "swap_pct_critical_threshold"),
-          field(&SystemConfig::MonitorConfig::diskUsedPctActivityThreshold, "disk_used_pct_activity_threshold"),
-          field(&SystemConfig::MonitorConfig::diskUsedPctCriticalThreshold, "disk_used_pct_critical_threshold"),
-          field(&SystemConfig::MonitorConfig::diskUsedActivityThreshold, "disk_used_activity_threshold"),
-          field(&SystemConfig::MonitorConfig::diskUsedCriticalThreshold, "disk_used_critical_threshold"),
-          field(&SystemConfig::MonitorConfig::diskFreePctActivityThreshold, "disk_free_pct_activity_threshold"),
-          field(&SystemConfig::MonitorConfig::diskFreePctCriticalThreshold, "disk_free_pct_critical_threshold"),
-          field(&SystemConfig::MonitorConfig::diskFreeActivityThreshold, "disk_free_activity_threshold"),
-          field(&SystemConfig::MonitorConfig::diskFreeCriticalThreshold, "disk_free_critical_threshold"),
+          retiredField<SystemConfig::MonitorConfig>("disk_used_pct_activity_threshold"),
+          retiredField<SystemConfig::MonitorConfig>("disk_used_pct_critical_threshold"),
+          retiredField<SystemConfig::MonitorConfig>("disk_used_activity_threshold"),
+          retiredField<SystemConfig::MonitorConfig>("disk_used_critical_threshold"),
+          retiredField<SystemConfig::MonitorConfig>("disk_free_pct_activity_threshold"),
+          retiredField<SystemConfig::MonitorConfig>("disk_free_pct_critical_threshold"),
+          retiredField<SystemConfig::MonitorConfig>("disk_free_activity_threshold"),
+          retiredField<SystemConfig::MonitorConfig>("disk_free_critical_threshold"),
           field(&SystemConfig::MonitorConfig::netRxActivityThreshold, "net_rx_activity_threshold"),
           field(&SystemConfig::MonitorConfig::netRxCriticalThreshold, "net_rx_critical_threshold"),
           field(&SystemConfig::MonitorConfig::netTxActivityThreshold, "net_tx_activity_threshold"),
@@ -1274,11 +1274,6 @@ namespace noctalia::config::schema {
   }
 
   namespace {
-    const Schema<ShortcutConfig>& shortcutSchema() {
-      static const Schema<ShortcutConfig> s = {field(&ShortcutConfig::type, "type")};
-      return s;
-    }
-
     const Schema<ControlCenterConfig::CalendarTabConfig>& calendarTabSchema() {
       static const Schema<ControlCenterConfig::CalendarTabConfig> s = {
           field(&ControlCenterConfig::CalendarTabConfig::showEventsCard, "show_events_card"),
@@ -1342,49 +1337,14 @@ namespace noctalia::config::schema {
             "hidden_tabs", [](const toml::table&, ControlCenterConfig&, std::string_view, Diagnostics&) {},
             [](toml::table&, const ControlCenterConfig&) {}
         ),
-        field(
-            &ControlCenterConfig::showShortcutLabels, "show_shortcut_labels",
-            RowSpec{
-                .section = "control-center",
-                .group = "home",
-                .label = "panels.home-shortcuts-show-labels",
-                .tags = "shortcuts labels text hide show titles",
-            }
-        ),
-        field(
-            &ControlCenterConfig::showSessionButton, "show_session_button",
-            RowSpec{
-                .section = "control-center",
-                .group = "home",
-                .label = "panels.home-session-button",
-                .tags = "session button show hide",
-            }
-        ),
-        field(
-            &ControlCenterConfig::circularAvatar, "circular_avatar",
-            RowSpec{
-                .section = "control-center",
-                .group = "panel-look",
-                .label = "panels.home-circular-avatar",
-                .tags = "avatar profile picture circle radius roundness",
-            }
-        ),
-        field(
-            &ControlCenterConfig::showAvatarBorder, "show_avatar_border",
-            RowSpec{
-                .section = "control-center",
-                .group = "panel-look",
-                .label = "panels.home-avatar-border",
-                .tags = "avatar border ring accent hide show",
-            }
-        ),
+        retiredField<ControlCenterConfig>("show_shortcut_labels"),
+        retiredField<ControlCenterConfig>("show_session_button"),
+        retiredField<ControlCenterConfig>("circular_avatar"),
+        retiredField<ControlCenterConfig>("show_avatar_border"),
         field(&ControlCenterConfig::quickTiles, "quick_tiles"),
         subTable(&ControlCenterConfig::calendarTab, "calendar", calendarTabSchema()),
         subTable(&ControlCenterConfig::mediaTab, "media", mediaTabSchema()),
-        arrayOf<ControlCenterConfig, ShortcutConfig>(
-            &ControlCenterConfig::shortcuts, "shortcuts", shortcutSchema(),
-            [](const ShortcutConfig& sc) { return !sc.type.empty(); }
-        ),
+        retiredField<ControlCenterConfig>("shortcuts"),
     };
     return s;
   }
@@ -2500,17 +2460,7 @@ namespace noctalia::config::schema {
                   .suffix = "px",
               }
           ),
-          enumField(
-              &ShellConfig::LauncherConfig::searchPosition, "search_position", ShellConfig::kLauncherSearchPositions,
-              RowSpec{
-                  .kind = RowSpec::Kind::Select,
-                  .section = "launcher",
-                  .group = "launcher",
-                  .label = "panels.launcher-search-position",
-                  .tags = "launcher search toolbar position top bottom",
-                  .segmented = true,
-              }
-          ),
+          retiredField<ShellConfig::LauncherConfig>("search_position"),
           enumField(
               &ShellConfig::LauncherConfig::defaultView, "default_view", ShellConfig::kLauncherDefaultViews,
               RowSpec{
@@ -2536,10 +2486,7 @@ namespace noctalia::config::schema {
                   "launcher navigation tabs labels text recent pinned all categories providers icons"
               )
           ),
-          field(
-              &ShellConfig::LauncherConfig::showSettingsButton, "show_settings_button",
-              launcherToggle("panels.launcher-show-settings-button", "launcher settings shortcut button")
-          ),
+          retiredField<ShellConfig::LauncherConfig>("show_settings_button"),
           field(
               &ShellConfig::LauncherConfig::showSessionButton, "show_session_button",
               launcherToggle("panels.launcher-show-session-button", "launcher session power shortcut button")
@@ -3153,7 +3100,7 @@ namespace noctalia::config::schema {
                 );
               }
           ),
-          field(&SessionPanelActionConfig::countdownSeconds, "countdown_seconds"),
+          retiredField<SessionPanelActionConfig>("countdown_seconds"),
       };
       return s;
     }
