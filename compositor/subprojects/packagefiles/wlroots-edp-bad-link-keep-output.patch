@@ -1,0 +1,17 @@
+--- a/backend/drm/drm.c
++++ b/backend/drm/drm.c
+@@ -1857,7 +1857,13 @@
+ 				continue;
+ 			}
+ 
+-			if (link_status == DRM_MODE_LINK_STATUS_BAD) {
++			// An eDP panel has one fixed mode, so the kernel retrains it with the same link and does not
++			// fall back. Rebuilding the output for that forces a second training, which fails again on
++			// some panels and can hang the GPU; the panel keeps its link, as GNOME (mutter) does.
++			if (link_status == DRM_MODE_LINK_STATUS_BAD &&
++					drm_conn->connector_type == DRM_MODE_CONNECTOR_eDP) {
++				wlr_drm_conn_log(wlr_conn, WLR_INFO, "Bad link detected on eDP; keeping the output");
++			} else if (link_status == DRM_MODE_LINK_STATUS_BAD) {
+ 				// We need to reload our list of modes and force a modeset
+ 				wlr_drm_conn_log(wlr_conn, WLR_INFO, "Bad link detected");
+ 				disconnect_drm_connector(wlr_conn);

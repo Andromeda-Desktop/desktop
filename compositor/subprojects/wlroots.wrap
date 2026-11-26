@@ -19,7 +19,9 @@ depth = 1
 # Adds the libinput devices one per event loop turn from a path context and our own udev scan and monitor (keyboards
 # and switches first), with a settled signal; libinput_udev_assign_seat() set up every device in one ~430 ms call.
 # Logs the size, stride, format, modifier and fd size of a dma-buf whose plane 0 is out of bounds (the error named no values).
-diff_files = wlroots-cursor-plane-unchanged.patch, wlroots-feedback-unregistered-plane.patch, wlroots-register-planes-without-modeset.patch, wlroots-libliftoff-clear-in-fence.patch, wlroots-libliftoff-test-unshown-layer.patch, wlroots-session-close-removed-device.patch, wlroots-keep-previous-master-mode-blob.patch, wlroots-mode-change-without-modeset.patch, wlroots-dmabuf-feedback-unchanged.patch, wlroots-merge-queued-commits.patch, wlroots-nonblocking-modeset.patch, wlroots-deferred-capture.patch, wlroots-libinput-staged-start.patch, wlroots-dmabuf-reject-details.patch
+# Keeps an eDP output on a bad link status (no destroy, no forced modeset), as mutter does: the second training
+# failed and once hung an HP Victus after s2idle.
+diff_files = wlroots-cursor-plane-unchanged.patch, wlroots-feedback-unregistered-plane.patch, wlroots-register-planes-without-modeset.patch, wlroots-libliftoff-clear-in-fence.patch, wlroots-libliftoff-test-unshown-layer.patch, wlroots-session-close-removed-device.patch, wlroots-keep-previous-master-mode-blob.patch, wlroots-mode-change-without-modeset.patch, wlroots-dmabuf-feedback-unchanged.patch, wlroots-merge-queued-commits.patch, wlroots-nonblocking-modeset.patch, wlroots-deferred-capture.patch, wlroots-libinput-staged-start.patch, wlroots-dmabuf-reject-details.patch, wlroots-edp-bad-link-keep-output.patch
 
 [provide]
 dependency_names = wlroots-0.20
