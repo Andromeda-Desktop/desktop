@@ -29,26 +29,28 @@ std::uint32_t LinkPhoneState::notificationCount(const std::string& deviceId) con
 void LinkPhoneState::applyPhoneProperties(const std::map<std::string, sdbus::Variant>& properties) {
   if (const auto it = properties.find("Devices"); it != properties.end()) {
     try {
-      m_devices.clear();
+      std::vector<LinkDevice> devices;
       for (const auto& device : it->second.get<std::vector<sdbus::Struct<std::string, std::string, bool>>>()) {
-        m_devices.push_back({.id = device.get<0>(), .name = device.get<1>(), .connected = device.get<2>()});
+        devices.push_back({.id = device.get<0>(), .name = device.get<1>(), .connected = device.get<2>()});
       }
+      m_devices = std::move(devices);
     } catch (const sdbus::Error& e) {
       kLog.warn("malformed Devices: {}", e.what());
     }
   }
   if (const auto it = properties.find("DeviceStatus"); it != properties.end()) {
     try {
-      m_status.clear();
+      std::map<std::string, LinkStatus> statuses;
       for (const auto& [id, status] :
            it->second.get<std::map<std::string, sdbus::Struct<std::uint32_t, bool, std::string, std::int32_t>>>()) {
-        m_status[id] = LinkStatus{
+        statuses[id] = LinkStatus{
             .battery = status.get<0>(),
             .charging = status.get<1>(),
             .network = status.get<2>(),
             .signal = status.get<3>(),
         };
       }
+      m_status = std::move(statuses);
     } catch (const sdbus::Error& e) {
       kLog.warn("malformed DeviceStatus: {}", e.what());
     }

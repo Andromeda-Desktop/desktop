@@ -4,6 +4,7 @@
 #include "i18n/i18n.h"
 #include "dbus/session_bus.h"
 #include "dbus/reply_log.h"
+#include "protocols/async_file_writer.h"
 
 #include <cctype>
 #include <cerrno>
@@ -214,9 +215,7 @@ namespace linkapp {
   }
 
   LinkClient::~LinkClient() {
-    std::error_code error;
-    std::filesystem::create_directories(snapshotFile().parent_path(), error);
-    std::ofstream(snapshotFile(), std::ios::binary | std::ios::trunc) << encodeSnapshot(m_phones, m_feed, m_dismissed);
+    andromeda::writeFileAsync(snapshotFile(), encodeSnapshot(m_phones, m_feed, m_dismissed));
   }
 
   void LinkClient::changed() {
@@ -652,9 +651,7 @@ namespace linkapp {
     const std::vector<Photo>& photos = m_photos.items();
     if (!photos.empty() && photos.front().atS > m_photosSeenS) {
       m_photosSeenS = photos.front().atS;
-      std::error_code error;
-      std::filesystem::create_directories(photosSeenFile(m_photos.device()).parent_path(), error);
-      std::ofstream(photosSeenFile(m_photos.device())) << m_photosSeenS << '\n';
+      andromeda::writeFileAsync(photosSeenFile(m_photos.device()), std::format("{}\n", m_photosSeenS));
     }
     (void)m_feed.remove("p:new");
   }
@@ -1223,9 +1220,7 @@ namespace linkapp {
   void LinkClient::select(const std::string& deviceId) {
     if (deviceId == m_selected) return;
     m_selected = deviceId;
-    std::error_code error;
-    std::filesystem::create_directories(selectedFile().parent_path(), error);
-    std::ofstream(selectedFile()) << deviceId << '\n';
+    andromeda::writeFileAsync(selectedFile(), deviceId + '\n');
     refresh();
     changed();
   }

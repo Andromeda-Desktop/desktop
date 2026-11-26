@@ -1,6 +1,7 @@
 #include "core/screen_activity_recorder.h"
 
 #include "core/drm_clients.h"
+#include "protocols/async_file_writer.h"
 #include "qos/holds.h"
 
 #include <unistd.h>
@@ -47,21 +48,6 @@ namespace andromeda {
       std::stringstream text;
       text << in.rdbuf();
       return text.str();
-    }
-
-    // Replaces `path` whole, so the shell never reads half a file.
-    void writeFile(const std::filesystem::path& path, const std::string& text) {
-      std::error_code ec;
-      std::filesystem::create_directories(path.parent_path(), ec);
-      const std::filesystem::path tmp = path.string() + ".tmp";
-      {
-        std::ofstream out(tmp, std::ios::trunc);
-        out << text;
-        if (!out) {
-          return;
-        }
-      }
-      std::filesystem::rename(tmp, path, ec);
     }
 
     std::optional<std::uint64_t> readUsageUsec(const std::string& cgroupDir) {
@@ -253,12 +239,12 @@ namespace andromeda {
 
   void ScreenActivityRecorder::saveFile(std::string path, std::string text) {
     if (m_closing) {
-      writeFile(path, text);
+      writeFileReplacing(path, text);
       return;
     }
     m_worker.post<bool>(
         [path = std::move(path), text = std::move(text)] {
-          writeFile(path, text);
+          writeFileReplacing(path, text);
           return true;
         },
         [](bool) {}

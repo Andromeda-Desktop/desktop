@@ -4,6 +4,7 @@
 #include "core/files/resource_paths.h"
 #include "core/freedesktop_key_file.h"
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/crash_capture.h"
 #include "protocols/heap.h"
 #include "core/ui_phase.h"
@@ -78,9 +79,8 @@ namespace {
   }
 
   void writeState(const char* name, const std::string& value) {
-    std::ofstream out(stateDir() / name, std::ios::trunc);
-    out << value << '\n';
-    if (!out) {
+    // Synchronous: the greeter exits once the session starts.
+    if (!andromeda::writeFileReplacing(stateDir() / name, value + '\n')) {
       kLog.warn("cannot write {}", (stateDir() / name).string());
     }
   }

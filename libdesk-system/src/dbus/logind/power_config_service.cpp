@@ -1,4 +1,5 @@
 #include "dbus/logind/power_config_service.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/bus_names.h"
 
 #include "core/log.h"
@@ -182,15 +183,16 @@ PowerConfigService::PowerConfigService(SystemBus& bus) {
 PowerConfigService::~PowerConfigService() = default;
 
 void PowerConfigService::writeTrial(const std::string& value) {
-  std::error_code ec;
-  std::filesystem::create_directories(FileUtils::stateDir(), ec);
   std::string line = value;
   if (value == "pending") {
     line += " " + bootId() + " " + std::to_string(m_trialSince);
   } else if (value == "ok") {
     line += " " + resumeFingerprint();
   }
-  std::ofstream(trialPath()) << line << '\n';
+  // Synchronous: "pending" must be on disk before the machine hibernates.
+  if (!andromeda::writeFileReplacing(trialPath(), line + '\n')) {
+    kLog.warn("cannot write {}", trialPath());
+  }
   m_state.trial = value;
 }
 

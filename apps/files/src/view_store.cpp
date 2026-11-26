@@ -105,9 +105,7 @@ namespace view_store {
   }
 
   void writeDefault(const std::string& value) {
-    std::error_code ec;
-    fs::create_directories(stateDir(), ec);
-    std::ofstream(stateDir() / "view-default", std::ios::trunc) << value << '\n';
+    writeStateFile(stateDir() / "view-default", value + '\n');
   }
 } // namespace view_store
 

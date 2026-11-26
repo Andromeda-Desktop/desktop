@@ -287,16 +287,7 @@ void ShaderProgram::saveUsedForPreload() {
   if (std::string(std::istreambuf_iterator<char>(current), std::istreambuf_iterator<char>()) == content) {
     return;
   }
-  const std::filesystem::path temp = path.string() + ".tmp";
-  {
-    std::ofstream out(temp, std::ios::trunc);
-    out << content;
-    if (!out) {
-      return;
-    }
-  }
-  std::error_code ec;
-  std::filesystem::rename(temp, path, ec);
+  andromeda::writeFileAsync(path, std::move(content));
 }
 
 void ShaderProgram::destroy() {

@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "i18n/i18n.h"
 #include "protocols/xdg_dirs.h"
+#include "state_file.h"
 #include "ui/controls/flex.h"
 #include "ui/files/this_pc.h"
 
@@ -130,18 +131,7 @@ void NetworkPage::saveServer(const Server& server) {
   for (const Server& s : all) {
     doc.push_back({{"name", s.name}, {"uri", s.uri}, {"reconnect", s.reconnect}});
   }
-  const fs::path path = serversPath();
-  std::error_code ec;
-  fs::create_directories(path.parent_path(), ec);
-  const fs::path tmp = path.string() + ".tmp";
-  {
-    std::ofstream out(tmp, std::ios::trunc);
-    out << doc.dump(2) << '\n';
-    if (!out) {
-      return;
-    }
-  }
-  fs::rename(tmp, path, ec);
+  writeStateFile(serversPath(), doc.dump(2) + '\n');
 }
 
 void NetworkPage::start() {

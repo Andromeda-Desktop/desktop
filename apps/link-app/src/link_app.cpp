@@ -3,6 +3,7 @@
 #include "app/app_window.h"
 #include "i18n/i18n.h"
 #include "wayland/drag_and_drop.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/uri.h"
 #include "wayland/wayland_connection.h"
 #include "core/log.h"
@@ -77,15 +78,7 @@ namespace linkapp {
 
     void saveMaterial(AppWindow::Material material) {
       const auto choice = std::ranges::find(kMaterials, material, &MaterialChoice::material);
-      std::error_code error;
-      std::filesystem::create_directories(settingsPath().parent_path(), error);
-      const std::filesystem::path temp = settingsPath().string() + ".new";
-      {
-        std::ofstream out(temp, std::ios::trunc);
-        out << "[appearance]\nwindow = \"" << choice->key << "\"\n";
-        if (!out) return;
-      }
-      std::filesystem::rename(temp, settingsPath(), error);
+      andromeda::writeFileAsync(settingsPath(), std::format("[appearance]\nwindow = \"{}\"\n", choice->key));
     }
 
     struct PageInfo {

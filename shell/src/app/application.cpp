@@ -1,5 +1,6 @@
 #include "core/sys/sys.h"
 #include "application.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/crash_capture.h"
 #include "protocols/heap.h"
 #include "protocols/xdg_dirs.h"
@@ -186,11 +187,11 @@ void Application::writeShellHandoff() const {
   const nlohmann::json handoff{
       {"version", 1}, {"panel", panel}, {"context", m_panelManager.activePanel()->handoffContext()}
   };
-  std::error_code ec;
-  std::filesystem::create_directories(path.parent_path(), ec);
-  const std::filesystem::path tmp = path.string() + ".tmp";
-  std::ofstream(tmp) << handoff.dump();
-  std::filesystem::rename(tmp, path, ec);
+  // Synchronous: the shell exits right after, and the next shell must find the file.
+  if (!andromeda::writeFileReplacing(path, handoff.dump())) {
+    kLog.warn("cannot save the open panel '{}' for the next shell", panel);
+    return;
+  }
   kLog.info("saved the open panel '{}' for the next shell", panel);
 }
 

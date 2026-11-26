@@ -1,5 +1,6 @@
 #include "music_library.h"
 
+#include "protocols/async_file_writer.h"
 #include "protocols/uri.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -392,12 +393,8 @@ void MusicLibrary::scan(std::function<void()> done) {
     for (const MusicTrack& t : result->tracks) {
       cache["tracks"].push_back(toJson(t));
     }
-    fs::create_directories(m_cacheFile.parent_path(), ec);
-    const fs::path tmp = m_cacheFile.string() + ".tmp";
-    if (std::ofstream out(tmp); out) {
-      out << cache.dump();
-      out.close();
-      fs::rename(tmp, m_cacheFile, ec);
+    if (!andromeda::writeFileReplacing(m_cacheFile, cache.dump())) {
+      kLog.warn("cannot write {}", m_cacheFile.string());
     }
     kLog.debug("scan read {} files", opened);
 
