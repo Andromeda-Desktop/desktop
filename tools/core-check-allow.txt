@@ -1,4 +1,2 @@
 # core-check allowlist: rule path count. Counts only fall; tools/core-check.py --update after a fix.
-final-path-write apps/terminal/src/terminal_app.cpp 1
-final-path-write apps/terminal/src/terminal_window.cpp 1
 main-io libdesk-ui/src/render/core/shared_texture_cache.cpp 1

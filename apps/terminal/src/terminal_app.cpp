@@ -1,6 +1,7 @@
 #include "terminal_app.h"
 #include "theme_cli.h"
 #include "theme_store.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/uri.h"
 #include "i18n/i18n.h"
 
@@ -17,7 +18,6 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <set>
 #include <utility>
@@ -266,13 +266,16 @@ namespace term {
           PrefsWindow::ThemeActions{
               .createWithAgent =
                   [this] {
-                    std::error_code ec;
-                    std::filesystem::create_directories(themesDir(), ec);
                     // The instructions are Claude's project memory in the themes folder, so the user writes the first
-                    // message: what theme to make.
-                    std::ofstream(themesDir() / "CLAUDE.md") << themeAgentPrompt();
-                    m_nextOrigins = {NewAgent{.kind = agent::Kind::Claude, .cwd = themesDir().string()}};
-                    openWindow(m_prefsWindow->activationToken());
+                    // message: what theme to make. The agent starts once they are on disk; the app outlives the loop
+                    // that runs the done.
+                    andromeda::writeFileAsync(
+                        themesDir() / "CLAUDE.md", themeAgentPrompt(), {},
+                        [this, token = m_prefsWindow->activationToken()](bool) {
+                          m_nextOrigins = {NewAgent{.kind = agent::Kind::Claude, .cwd = themesDir().string()}};
+                          openWindow(token);
+                        }
+                    );
                   },
               .openFolder =
                   [this] {

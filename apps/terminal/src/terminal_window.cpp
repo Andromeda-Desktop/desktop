@@ -5,6 +5,7 @@
 
 #include "core/sys/sys.h"
 #include "app/app_loop.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/uri.h"
 #include "app/app_notifier.h"
 #include "app/app_window.h"
@@ -57,7 +58,6 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include <string>
 
 namespace term {
@@ -1568,11 +1568,11 @@ namespace term {
       if (!path) {
         return;
       }
-      std::ofstream out(*path, std::ios::binary | std::ios::trunc);
-      out << text;
-      if (!out) {
-        kLog.warn("cannot save scrollback to {}", path->string());
-      }
+      andromeda::writeFileAsync(*path, text, {}, [file = path->string()](bool ok) {
+        if (!ok) {
+          kLog.warn("cannot save scrollback to {}", file);
+        }
+      });
     });
   }
 
