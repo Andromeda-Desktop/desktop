@@ -47,6 +47,8 @@ public:
     std::function<void(std::uint64_t id, float width, float height)> settle;
     // False: the focused card shows no ring (its shadow still lifts it).
     std::function<bool()> ring;
+    // A split's tree changed (a pane joined, left or swapped, a divider settled): a saved layout is stale.
+    std::function<void()> treeChanged;
   };
 
   SplitView(AppWindow& window, Callbacks callbacks);
@@ -93,8 +95,10 @@ public:
   // The next fill puts `join.joining` on `join.edge` of `join.target`; from: its card starts at this rect.
   void pendJoin(const ui::SplitTrees::Join& join, std::optional<PaneRect> from = std::nullopt);
   // Two panes of one split trade tiles; the caller applies the same swap to its pane order.
-  void swapPanes(std::uint64_t a, std::uint64_t b) { m_trees.swap(a, b); }
+  void swapPanes(std::uint64_t a, std::uint64_t b);
   void adoptTree(andromeda::tiling::DwindleTree tree) { m_trees.adopt(std::move(tree)); }
+  // m_trees.sync, and treeChanged when it changed a tree.
+  andromeda::tiling::DwindleTree* syncTrees(const std::vector<std::uint64_t>& panes);
   [[nodiscard]] const andromeda::tiling::DwindleTree* treeOf(std::uint64_t id) const { return m_trees.treeOf(id); }
   // The nearest divider beside the focused card on the axis of (dx, dy) moves one step that way; false: none there.
   bool nudgeDivider(float dx, float dy);

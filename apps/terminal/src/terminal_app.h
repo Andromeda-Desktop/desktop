@@ -69,6 +69,7 @@ namespace term {
     std::unique_ptr<FileActions> m_fileActions; // browse mode's copy, move, trash, rename, Show in Files
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next
     std::optional<std::uint64_t> m_nextWorkspace;        // the workspace those sessions already belong to
+    std::optional<std::string> m_nextName;               // the user's name for that window, kept across an app restart
     // Live: each change saves the open windows. Kept: the app quits; its closing windows stay saved for the restore.
     enum class LayoutWrites : std::uint8_t { Live, Kept };
     LayoutWrites m_layoutWrites = LayoutWrites::Live;

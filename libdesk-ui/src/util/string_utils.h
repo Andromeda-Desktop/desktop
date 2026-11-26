@@ -267,6 +267,34 @@ namespace StringUtils {
     return std::string(text);
   }
 
+  // s with each byte that does not start a valid UTF-8 sequence replaced by U+FFFD (overlong forms and surrogates are
+  // invalid), so a strict decoder (Rust's from_utf8) accepts it.
+  [[nodiscard]] inline std::string toValidUtf8(std::string_view s) {
+    std::string out;
+    out.reserve(s.size());
+    std::size_t i = 0;
+    while (i < s.size()) {
+      const auto b = static_cast<unsigned char>(s[i]);
+      const std::size_t len = b < 0x80U ? 1 : (b >= 0xC2U && b <= 0xDFU) ? 2 : (b >= 0xE0U && b <= 0xEFU) ? 3 : (b >= 0xF0U && b <= 0xF4U) ? 4 : 0;
+      bool ok = len != 0 && i + len <= s.size();
+      for (std::size_t k = 1; ok && k < len; ++k) {
+        ok = (static_cast<unsigned char>(s[i + k]) & 0xC0U) == 0x80U;
+      }
+      if (ok && len >= 3) {
+        const auto c = static_cast<unsigned char>(s[i + 1]);
+        ok = !(b == 0xE0U && c < 0xA0U) && !(b == 0xEDU && c > 0x9FU) && !(b == 0xF0U && c < 0x90U) && !(b == 0xF4U && c > 0x8FU);
+      }
+      if (ok) {
+        out.append(s.substr(i, len));
+        i += len;
+      } else {
+        out += "\xEF\xBF\xBD";
+        ++i;
+      }
+    }
+    return out;
+  }
+
   // UTF-8 encoding of one Unicode codepoint; empty above U+10FFFF.
   [[nodiscard]] inline std::string utf32ToUtf8(std::uint32_t codepoint) {
     if (codepoint <= 0x7FU) {

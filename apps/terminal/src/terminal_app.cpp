@@ -127,10 +127,9 @@ namespace term {
           }
         },
         [this, &window] { addWorkspace(window); });
-    m_windows[&window]->setNameChanged([this] {
-      workspacesChanged();
-      saveLayouts();
-    });
+    if (auto name = std::exchange(m_nextName, std::nullopt)) m_windows[&window]->renameWindow(std::move(*name));
+    m_windows[&window]->setNameChanged([this] { workspacesChanged(); });
+    m_windows[&window]->setLayoutChanged([this] { saveLayouts(); });
     workspacesChanged(); // the other windows' bars gain this one
     m_windows[&window]->setZoomStore(state().get("/terminal/zoom", 0),
                                      [this](int steps) { state().set("/terminal/zoom", steps); });
@@ -206,6 +205,13 @@ namespace term {
       }
     }
     state().set("/terminal/windows", toJson(windows));
+    nlohmann::json names = nlohmann::json::object();
+    for (const auto& [window, terminal] : m_windows) {
+      if (const auto id = m_windowWorkspaces.workspaceOf(window); id && terminal->userName()) {
+        names[std::to_string(*id)] = *terminal->userName();
+      }
+    }
+    state().set("/terminal/window_names", std::move(names));
   }
 
   void TerminalApp::windowSurfaceLost(AppWindow& window) {
@@ -352,9 +358,14 @@ namespace term {
         groups[it != table.sessions.end() ? it->workspace : 0].emplace_back(Reattach{id});
       }
     }
+    const nlohmann::json names = state().get("/terminal/window_names", nlohmann::json::object());
     for (auto& [workspace, origins] : groups) {
       m_nextOrigins = std::move(origins);
       if (workspace != 0) m_nextWorkspace = workspace;
+      // A renamed window keeps its name across an app restart while its shells live on.
+      if (const nlohmann::json name = names.value(std::to_string(workspace), nlohmann::json()); workspace != 0 && name.is_string()) {
+        m_nextName = name.get<std::string>();
+      }
       AppWindow& window = createWindow();
       if (window.open()) {
         window.activate(activationToken);

@@ -111,8 +111,27 @@ void rejoinOnNewEdge() {
   }
 }
 
+// A damaged state file with a very deep shape loads without the shape; it must not exhaust the stack.
+void deepShapeLoads() {
+  nlohmann::json shape = nlohmann::json::array();
+  for (int i = 0; i < 1000000; ++i) shape.push_back({2U, 0.5, false, 0U});
+  shape.push_back({0U, 0.5, false, 1U});
+  shape.push_back({0U, 0.5, false, 2U});
+  nlohmann::json window = nlohmann::json::object();
+  window["sessions"] = nlohmann::json::array({nlohmann::json::object({{"cwd", "/"}}), nlohmann::json::object({{"cwd", "/"}})});
+  window["splits"] = nlohmann::json::array();
+  window["splits"].push_back(nlohmann::json::array({0U, 1U}));
+  window["shapes"] = nlohmann::json::array();
+  window["shapes"].push_back(std::move(shape));
+  nlohmann::json state = nlohmann::json::array();
+  state.push_back(std::move(window));
+  const auto loaded = windowsFromJson(state);
+  CHECK(loaded.size() == 1 && loaded[0].splits.size() == 1 && !loaded[0].splits[0].shape);
+}
+
 int main() {
   rejoinOnNewEdge();
+  deepShapeLoads();
   for (seed = 1; seed <= 300; ++seed) {
     std::mt19937 rng(seed);
     SessionList list;

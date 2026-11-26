@@ -77,30 +77,51 @@ namespace andromeda::tiling {
   }
 
   bool DwindleTree::setShape(std::span<const ShapeNode> shape) {
-    std::size_t next = 0;
-    const auto build = [&](const auto& self, Node* parent) -> std::unique_ptr<Node> {
-      if (next >= shape.size()) {
-        return nullptr;
+    // Pre-order without recursion: a saved shape is outside data, so its depth has no bound. Count first, so a malformed
+    // shape allocates nothing (a deep partial tree would recurse in ~Node).
+    std::size_t need = 1; // subtrees still to read
+    for (const ShapeNode& at : shape) {
+      if (need == 0) {
+        return false;
       }
-      const ShapeNode& at = shape[next++];
+      need = need - 1 + (at.type == Node::Leaf ? 0 : 2); // a node fills one place; a split opens two
+    }
+    if (need != 0) {
+      return false;
+    }
+    std::unique_ptr<Node> root;
+    std::vector<Node*> open; // splits still waiting for a child
+    for (const ShapeNode& at : shape) {
+      if (root != nullptr && open.empty()) {
+        return false;
+      }
+      const bool leaf = at.type == Node::Leaf;
+      if (leaf ? at.key == 0 : at.type > Node::VSplit || !(at.ratio > 0.0 && at.ratio < 1.0)) {
+        return false;
+      }
       auto node = std::make_unique<Node>();
-      node->parent = parent;
+      Node* made = node.get();
       node->type = at.type;
       node->locked = at.locked;
-      if (at.type == Node::Leaf) {
-        node->key = at.key;
-        return at.key != 0 ? std::move(node) : nullptr;
+      node->key = leaf ? at.key : 0;
+      node->ratio = leaf ? 0.5 : at.ratio;
+      if (root == nullptr) {
+        root = std::move(node);
+      } else {
+        Node* parent = open.back();
+        node->parent = parent;
+        if (parent->left == nullptr) {
+          parent->left = std::move(node);
+        } else {
+          parent->right = std::move(node);
+          open.pop_back();
+        }
       }
-      if (at.type > Node::VSplit || !(at.ratio > 0.0 && at.ratio < 1.0)) {
-        return nullptr;
+      if (!leaf) {
+        open.push_back(made);
       }
-      node->ratio = at.ratio;
-      node->left = self(self, node.get());
-      node->right = node->left != nullptr ? self(self, node.get()) : nullptr;
-      return node->right != nullptr ? std::move(node) : nullptr;
-    };
-    auto root = build(build, nullptr);
-    if (root == nullptr || next != shape.size()) {
+    }
+    if (root == nullptr || !open.empty()) {
       return false;
     }
     m_root = std::move(root);

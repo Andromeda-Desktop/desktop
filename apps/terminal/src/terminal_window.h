@@ -159,6 +159,9 @@ namespace term {
     [[nodiscard]] std::string windowName() const;
     void renameWindow(std::string name); // empty: follows the shown session again
     void setNameChanged(std::function<void()> changed) { m_nameChanged = std::move(changed); }
+    // The saved layout is stale without a session event: a split's tree or the window name changed.
+    void setLayoutChanged(std::function<void()> changed) { m_layoutChanged = std::move(changed); }
+    [[nodiscard]] const std::optional<std::string>& userName() const noexcept { return m_name; }
     // The app's text zoom (steps added to the size setting), shared by all windows; save keeps it for the next start.
     void setZoomStore(int steps, std::function<void(int)> save) {
       m_saveZoom = std::move(save);
@@ -280,9 +283,10 @@ namespace term {
     static inline std::uint32_t s_nextWindowId = 1;
     const std::uint32_t m_windowId = s_nextWindowId++;
     std::string m_filter; // the sidebar search text
-    std::string m_name;   // the user's name for the window; empty: the shown session's row name
+    std::optional<std::string> m_name; // the user's name for the window; nullopt: the shown session's row name
     std::string m_publishedName;
     std::function<void()> m_nameChanged;
+    std::function<void()> m_layoutChanged;
     Input* m_search = nullptr;
     bool m_rail = false; // the sidebar is an icon rail
     Flex* m_agentBar = nullptr; // title band pills of the shown agent session

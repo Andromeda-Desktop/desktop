@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <nlohmann/json_fwd.hpp>
 #include <span>
 #include <string>
@@ -20,8 +21,8 @@ namespace term {
 
   struct SavedSplit {
     std::vector<std::size_t> panes; // in layout order
-    // The split's tree; a leaf key is its pane's session index + 1 (a tile key is never 0). Empty: sides are picked anew.
-    std::vector<andromeda::tiling::DwindleTree::ShapeNode> shape;
+    // The split's tree; a leaf key is its pane's session index + 1 (a tile key is never 0). nullopt: sides are picked anew.
+    std::optional<std::vector<andromeda::tiling::DwindleTree::ShapeNode>> shape;
     bool operator==(const SavedSplit&) const = default;
   };
 
@@ -30,7 +31,7 @@ namespace term {
     std::vector<SavedSession> sessions;
     std::vector<SavedSplit> splits;
     std::size_t shown = 0;
-    std::string name; // the user's name for the window; empty: the shown session's name
+    std::optional<std::string> name; // the user's name for the window; nullopt: the shown session's name
     bool operator==(const SavedWindow&) const = default;
   };
 

@@ -242,7 +242,7 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
   // Over each gap between cards: drag to resize both sides.
   const float grip = Tokens::spaceP32 * s;
   std::vector<TileNode*> splits;
-  if (andromeda::tiling::DwindleTree* tree = m_trees.sync(m_callbacks.splitOf, panes, room()); tree != nullptr) {
+  if (andromeda::tiling::DwindleTree* tree = syncTrees(panes); tree != nullptr) {
     std::vector<TileNode*> stack{tree->root()};
     while (!stack.empty()) {
       TileNode* node = stack.back();
@@ -286,6 +286,7 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
       m_dragDivider.reset();
       m_dividers[index].grip->setVisible(m_dividers[index].area->hovered());
       relayout(true);
+      if (m_callbacks.treeChanged) m_callbacks.treeChanged();
     });
     area->setOnMotion([this, index](const InputArea::PointerData& data) {
       if (m_dragDivider == index) {
@@ -424,7 +425,7 @@ ui::SplitTrees::Room SplitView::room() const {
 }
 
 std::vector<SplitView::PaneRect> SplitView::paneRects(const std::vector<std::uint64_t>& panes) {
-  andromeda::tiling::DwindleTree* tree = m_trees.sync(m_callbacks.splitOf, panes, room());
+  andromeda::tiling::DwindleTree* tree = syncTrees(panes);
   if (tree == nullptr) {
     return std::vector<PaneRect>(panes.size());
   }
@@ -478,10 +479,28 @@ bool SplitView::nudgeDivider(float dx, float dy) {
       split->ratio = ui::dividerRatio(*split, horizontal, static_cast<float>(to),
                                       Tokens::componentWindowCardGap * m_window.uiScale(), minW, minH);
       relayout(true);
+      if (m_callbacks.treeChanged) m_callbacks.treeChanged();
       return true;
     }
   }
   return false;
+}
+
+void SplitView::swapPanes(std::uint64_t a, std::uint64_t b) {
+  m_trees.swap(a, b);
+  if (m_callbacks.treeChanged) m_callbacks.treeChanged();
+}
+
+andromeda::tiling::DwindleTree* SplitView::syncTrees(const std::vector<std::uint64_t>& panes) {
+  const auto shapes = [this] {
+    std::vector<std::vector<andromeda::tiling::DwindleTree::ShapeNode>> out;
+    for (const andromeda::tiling::DwindleTree& tree : m_trees.trees()) out.push_back(tree.shape());
+    return out;
+  };
+  const auto before = shapes();
+  andromeda::tiling::DwindleTree* tree = m_trees.sync(m_callbacks.splitOf, panes, room());
+  if (m_callbacks.treeChanged && shapes() != before) m_callbacks.treeChanged();
+  return tree;
 }
 
 void SplitView::applyCellRects(const std::vector<PaneRect>& rects) {

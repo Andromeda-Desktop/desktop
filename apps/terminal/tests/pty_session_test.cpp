@@ -342,6 +342,11 @@ void watcherFollowsWorkspaceTable() {
   }));
   ::close(editor);
 
+  // A folder name that is not UTF-8 (Latin-1 "é") keeps the connection: the holder answers the put.
+  std::optional<std::uint64_t> latin;
+  CHECK(watcher.put({.name = "caf\xE9", .root = "/srv/caf\xE9"}, [&](std::uint32_t, std::optional<std::uint64_t> id) { latin = id.value_or(0); }));
+  CHECK(pump([&] { return latin.has_value(); }) && latin.value_or(0) != 0);
+
   std::optional<std::uint64_t> made;
   const auto req = watcher.put({.name = "api", .root = "/srv/api"}, [&](std::uint32_t, std::optional<std::uint64_t> id) { made = id.value_or(0); });
   CHECK(req.has_value() && pump([&] { return made.has_value(); }));

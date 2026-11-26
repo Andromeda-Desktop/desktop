@@ -765,6 +765,7 @@ namespace term {
     for (andromeda::tiling::DwindleTree& tree : restoreTrees(saved, ids)) {
       m_split.adoptTree(std::move(tree));
     }
+    if (m_layoutChanged) m_layoutChanged();
   }
 
   void TerminalWindow::workspacesChanged() {
@@ -1481,15 +1482,18 @@ namespace term {
 
   // The rail's icon rows have no room for a name field: rename in a sheet.
   std::string TerminalWindow::windowName() const {
-    if (!m_name.empty()) return m_name;
+    if (m_name) return *m_name;
     const auto id = m_sessions.shown();
     const SessionInfo* session = id ? m_sessions.find(*id) : nullptr;
     return session != nullptr ? rowData(*session).name : std::string(i18n::tr("terminal.window.untitled"));
   }
 
   void TerminalWindow::renameWindow(std::string name) {
-    m_name = std::move(name);
+    std::optional<std::string> named = name.empty() ? std::nullopt : std::optional(std::move(name));
+    if (named == m_name) return;
+    m_name = std::move(named);
     syncName();
+    if (m_layoutChanged) m_layoutChanged();
   }
 
   void TerminalWindow::syncName() {
@@ -1500,7 +1504,7 @@ namespace term {
   }
 
   void TerminalWindow::renameWindowInSheet() {
-    renameInSheet(i18n::tr("terminal.rename.window-title"), i18n::tr("terminal.rename.window-placeholder"), m_name,
+    renameInSheet(i18n::tr("terminal.rename.window-title"), i18n::tr("terminal.rename.window-placeholder"), m_name.value_or(""),
                   [this](std::string name) { renameWindow(std::move(name)); });
   }
 
@@ -2545,6 +2549,7 @@ namespace term {
               }
             },
         .ring = [this] { return m_settings.settings().focusRing; },
+        .treeChanged = [this] { if (m_layoutChanged) m_layoutChanged(); },
     };
   }
 

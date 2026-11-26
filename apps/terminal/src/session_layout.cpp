@@ -16,6 +16,7 @@ namespace term {
       }
       std::vector<andromeda::tiling::TileKey> want;
       for (const std::size_t i : panes) want.push_back(i + 1);
+      if (panes.size() > kMaxPanes) return false;
       std::ranges::sort(keys);
       std::ranges::sort(want);
       Tree tree;
@@ -46,15 +47,15 @@ namespace term {
       if (panes.size() < 2) {
         continue;
       }
-      std::vector<Tree::ShapeNode> shape;
+      std::optional<std::vector<Tree::ShapeNode>> shape;
       if (const Tree* tree = treeOf(split.front()); tree != nullptr) {
         shape = tree->shape();
-        for (Tree::ShapeNode& node : shape) {
+        for (Tree::ShapeNode& node : *shape) {
           if (node.type == Tree::Node::Leaf) node.key = indexOf(node.key) + 1;
         }
-      }
-      if (!validShape(shape, panes)) {
-        shape.clear();
+        if (!validShape(*shape, panes)) {
+          shape.reset();
+        }
       }
       saved.splits.push_back({std::move(panes), std::move(shape)});
     }
@@ -89,10 +90,10 @@ namespace term {
   std::vector<Tree> restoreTrees(const SavedWindow& saved, std::span<const std::uint64_t> ids) {
     std::vector<Tree> trees;
     for (const SavedSplit& split : saved.splits) {
-      if (split.shape.empty() || std::ranges::any_of(split.panes, [&ids](std::size_t i) { return i >= ids.size(); })) {
+      if (!split.shape || std::ranges::any_of(split.panes, [&ids](std::size_t i) { return i >= ids.size(); })) {
         continue;
       }
-      std::vector<Tree::ShapeNode> shape = split.shape;
+      std::vector<Tree::ShapeNode> shape = *split.shape;
       for (Tree::ShapeNode& node : shape) {
         if (node.type == Tree::Node::Leaf) node.key = ids[node.key - 1];
       }
@@ -114,13 +115,14 @@ namespace term {
       nlohmann::json shapes = nlohmann::json::array();
       for (const SavedSplit& split : window.splits) {
         splits.push_back(split.panes);
-        nlohmann::json shape = nlohmann::json::array();
-        for (const Tree::ShapeNode& node : split.shape) {
+        nlohmann::json shape = nullptr;
+        for (const Tree::ShapeNode& node : split.shape.value_or(std::vector<Tree::ShapeNode>{})) {
           shape.push_back({static_cast<int>(node.type), node.ratio, node.locked, node.key});
         }
         shapes.push_back(std::move(shape));
       }
-      out.push_back({{"sessions", std::move(sessions)}, {"splits", std::move(splits)}, {"shapes", std::move(shapes)}, {"shown", window.shown}, {"name", window.name}});
+      out.push_back({{"sessions", std::move(sessions)}, {"splits", std::move(splits)}, {"shapes", std::move(shapes)}, {"shown", window.shown}});
+      if (window.name) out.back()["name"] = *window.name;
     }
     return out;
   }
@@ -159,26 +161,29 @@ namespace term {
           if (panes.size() < 2 || panes.size() != split.size()) {
             continue;
           }
-          std::vector<Tree::ShapeNode> shape;
+          std::optional<std::vector<Tree::ShapeNode>> shape;
           if (shapes.is_array() && n < shapes.size() && shapes[n].is_array()) {
+            shape.emplace();
             for (const nlohmann::json& node : shapes[n]) {
               if (!node.is_array() || node.size() != 4 || !node[0].is_number_unsigned() || !node[1].is_number() ||
                   !node[2].is_boolean() || !node[3].is_number_unsigned() || node[0].get<unsigned>() > Tree::Node::VSplit) {
-                shape.clear();
+                shape.reset();
                 break;
               }
-              shape.push_back({.type = static_cast<Tree::Node::Type>(node[0].get<unsigned>()), .ratio = node[1].get<double>(),
+              shape->push_back({.type = static_cast<Tree::Node::Type>(node[0].get<unsigned>()), .ratio = node[1].get<double>(),
                                .locked = node[2].get<bool>(), .key = node[3].get<andromeda::tiling::TileKey>()});
             }
           }
-          if (!validShape(shape, panes)) {
-            shape.clear();
+          if (shape && !validShape(*shape, panes)) {
+            shape.reset();
           }
           window.splits.push_back({std::move(panes), std::move(shape)});
         }
       }
       const nlohmann::json shown = w.value("shown", nlohmann::json());
-      window.name = w.value("name", std::string());
+      if (const nlohmann::json name = w.value("name", nlohmann::json()); name.is_string() && !name.get<std::string>().empty()) {
+        window.name = name.get<std::string>();
+      }
       window.shown = shown.is_number_unsigned() && shown.get<std::size_t>() < count ? shown.get<std::size_t>() : 0;
       out.push_back(std::move(window));
     }

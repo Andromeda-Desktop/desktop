@@ -1,5 +1,6 @@
 #include "holder_client.h"
 #include "core/sys/sys.h"
+#include "util/string_utils.h"
 
 #include <cerrno>
 #include <cstdlib>
@@ -141,7 +142,9 @@ std::vector<std::uint8_t> encodeDetach(std::uint64_t id) { return Writer(kDetach
 
 std::vector<std::uint8_t> encodePutWorkspace(std::uint32_t req, std::uint64_t id, const std::string& name,
                                              const std::string& root, const std::string& symbol) {
-  return Writer(kPutWorkspace).u32(req).u64(id).str(name).str(root).str(symbol).finish();
+  // The holder drops a client that sends a string that is not UTF-8; a name or root can come from a path.
+  return Writer(kPutWorkspace).u32(req).u64(id).str(StringUtils::toValidUtf8(name)).str(StringUtils::toValidUtf8(root))
+      .str(StringUtils::toValidUtf8(symbol)).finish();
 }
 
 std::vector<std::uint8_t> encodeCloseWorkspace(std::uint64_t id) { return Writer(kCloseWorkspace).u64(id).finish(); }
