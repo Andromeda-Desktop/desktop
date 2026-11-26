@@ -8,7 +8,7 @@ cat >> "$ANDROMEDA_CONFIG" <<'EOF'
 enabled = true
 
 [output."HEADLESS-1"]
-workspaces = 3
+workspaces = 4
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 "$ANDROMEDA" settle > /dev/null
@@ -78,4 +78,29 @@ for _ in $(seq 100); do
   sleep 0.05
 done
 slides | tail -1 | jq -e '.phase == "idle" and .position == 3' > /dev/null || { echo "end: $(slides | tail -1)"; exit 1; }
+
+# Back toward 2, then on to 4 while 3 is still on screen: the slide starts from 3, so 2 and 3 keep moving the same way
+# and 4 comes in behind them, with no snap.
+"$ANDROMEDA" clock-freeze > /dev/null
+lines=$(slides | wc -l)
+"$ANDROMEDA" msg workspace-switch:2 > /dev/null
+"$ANDROMEDA" clock-advance 16 > /dev/null
+"$ANDROMEDA" clock-advance 16 > /dev/null
+await_lines $((lines + 2))
+lines=$(slides | wc -l)
+before=$(slides | tail -1)
+"$ANDROMEDA" msg workspace-switch:4 > /dev/null
+"$ANDROMEDA" clock-advance 16 > /dev/null
+await_lines $((lines + 1))
+after=$(slides | tail -1)
+jq -e -n --argjson before "$before" --argjson after "$after" \
+  '$before.position > 2 and $before.position < 3 and ($after.position - $before.position | fabs) < 0.15' > /dev/null \
+  || { echo "rebase on the shown workspace: $before -> $after"; exit 1; }
+"$ANDROMEDA" clock-resume > /dev/null
+"$ANDROMEDA" settle > /dev/null
+for _ in $(seq 100); do
+  [[ $(slides | tail -1 | jq -r .phase) == idle ]] && break
+  sleep 0.05
+done
+slides | tail -1 | jq -e '.phase == "idle" and .position == 4' > /dev/null || { echo "end: $(slides | tail -1)"; exit 1; }
 echo 'a keybind switch during a settle carries on from the slide position on screen'

@@ -3807,10 +3807,12 @@ namespace andromeda {
       return;
     }
     // A slide still on screen hands its position and speed to the new one (rulebook 7.1 r5), as slideBegin does. The
-    // workspace shown beside the active one joins the new slide on the far side, or must be the target itself.
+    // workspace shown beside the active one joins the new slide on the far side, or is the target itself. When it sits
+    // toward a farther target, the new slide starts from it, so both visible workspaces keep moving the same way.
     double carried = 0.0;
     double carriedVelocity = 0.0;
     Workspace* beside = nullptr;
+    Workspace* from = m_active;
     if (const Slide* running = m_slide.data(); running != nullptr && m_active != nullptr) {
       const auto baseIndex = static_cast<double>(running->base->index());
       const auto activeIndex = static_cast<double>(m_active->index());
@@ -3819,10 +3821,16 @@ namespace andromeda {
       Workspace* shown = offset < 0 ? (idx > 0 ? workspaceAt(idx - 1) : nullptr) : workspaceAt(idx + 1);
       const bool towardTarget = (offset < 0) == (workspace->index() < idx);
       if (std::abs(activeIndex - baseIndex) <= 1 && std::abs(offset) <= 1.0 && offset != 0
-          && (!towardTarget || shown == workspace)) {
-        carried = offset;
+          && (!towardTarget || shown != nullptr)) {
         carriedVelocity = m_slideAnim.animating() ? m_slideAnim.velocity() : 0.0;
-        beside = towardTarget ? nullptr : shown;
+        if (!towardTarget || shown == workspace) {
+          carried = offset;
+          beside = towardTarget ? nullptr : shown;
+        } else {
+          carried = offset < 0 ? offset + 1.0 : offset - 1.0;
+          beside = m_active;
+          from = shown;
+        }
       }
     }
     slideFinish();
@@ -3861,21 +3869,24 @@ namespace andromeda {
       reconcileDynamic();
       return;
     }
-    const int sign = workspace->index() > m_active->index() ? 1 : -1;
+    const int sign = workspace->index() > from->index() ? 1 : -1;
     Slide slide;
-    slide.base = m_active;
+    slide.base = from;
     slide.previous = sign < 0 ? workspace : beside;
     slide.next = sign > 0 ? workspace : beside;
     slide.extent = extent;
     slide.progress = carried;
     beginReveal(slide);
     m_slide.track(slide, ThawHold(m_server));
-    slide.base->beginSwitchTransition();
     workspace->beginSwitchTransition();
-    if (beside != nullptr) {
-      beside->beginSwitchTransition();
-      beside->showSwitchViews();
-      beside->arrange(false);
+    for (Workspace* shown : {from, beside}) {
+      if (shown != nullptr) {
+        shown->beginSwitchTransition();
+        if (shown != m_active) {
+          shown->showSwitchViews();
+          shown->arrange(false);
+        }
+      }
     }
     slideApply(carried);
     slideSettle(sign, carriedVelocity);
