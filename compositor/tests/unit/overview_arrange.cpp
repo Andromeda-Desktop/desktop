@@ -117,7 +117,7 @@ ANDROMEDA_TEST(exposeNeverUpscalesAndKeepsReadingOrder) {
 ANDROMEDA_TEST(taskViewKeepsScrollingWorkspacesSpreadOutToo) {
   const Placement p = place(Style::TaskView, sample(Arrangement::Scrolling));
   CHECK(!p.viewport.has_value());
-  CHECK(p.cards[0].rect.y + p.cards[0].rect.h == kH - 28);
+  CHECK(p.cards[0].rect.y + p.cards[0].rect.h == kUsable.y + kUsable.h - 28);
   CHECK(p.main.has_value() && p.main->y + p.main->h <= p.cards[0].rect.y);
 }
 
