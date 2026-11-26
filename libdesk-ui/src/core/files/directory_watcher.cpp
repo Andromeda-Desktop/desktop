@@ -29,23 +29,47 @@ DirectoryWatcher::~DirectoryWatcher() {
   }
 }
 
-DirectoryWatcher::WatchId DirectoryWatcher::watch(const std::filesystem::path& dir, Callback callback) {
+DirectoryWatcher::WatchId DirectoryWatcher::watch(const std::filesystem::path& dir, Callback callback, Follow follow) {
   if (m_fd < 0) {
     return -1;
+  }
+  const int id = m_nextId++;
+  if (follow == Follow::Path) {
+    std::error_code ec;
+    auto path = std::filesystem::absolute(dir, ec);
+    if (ec || dir.empty()) {
+      kLog.warn("cannot watch '{}': {}", dir.string(), ec ? ec.message() : "empty path");
+      return -1;
+    }
+    m_followed.emplace(id, Followed{.path = std::move(path), .callback = std::move(callback)});
+    this->follow(id, false);
+    if (!m_idToWd.contains(id)) {
+      m_followed.erase(id);
+      return -1;
+    }
+    return id;
   }
   const int wd = inotify_add_watch(m_fd, dir.c_str(), kMask);
   if (wd < 0) {
     kLog.warn("cannot watch {}: {}", dir.string(), std::strerror(errno));
     return -1;
   }
-  const int id = m_nextId++;
-  // inotify returns the same wd for the same directory: subscribers share it.
-  m_watches[wd].subscribers.emplace_back(id, std::move(callback));
-  m_idToWd[id] = wd;
+  subscribe(id, wd, std::move(callback));
   return id;
 }
 
+void DirectoryWatcher::subscribe(WatchId id, int wd, Callback callback) {
+  // inotify returns the same wd for the same directory: subscribers share it.
+  m_watches[wd].subscribers.emplace_back(id, std::move(callback));
+  m_idToWd[id] = wd;
+}
+
 void DirectoryWatcher::unwatch(WatchId id) {
+  m_followed.erase(id);
+  detach(id);
+}
+
+void DirectoryWatcher::detach(WatchId id) {
   const auto it = m_idToWd.find(id);
   if (it == m_idToWd.end()) {
     return;
@@ -61,6 +85,102 @@ void DirectoryWatcher::unwatch(WatchId id) {
     m_watches.erase(watch);
     inotify_rm_watch(m_fd, wd);
     std::erase_if(m_pendingMoves, [wd](const PendingMove& m) { return m.wd == wd; });
+  }
+}
+
+void DirectoryWatcher::follow(WatchId id, bool announce) {
+  detach(id);
+  const auto followed = m_followed.find(id);
+  if (followed == m_followed.end()) {
+    return;
+  }
+  const std::filesystem::path target = followed->second.path;
+  for (;;) {
+    std::error_code ec;
+    std::filesystem::path dir = target;
+    while (!std::filesystem::is_directory(dir, ec) && dir.has_relative_path()) {
+      dir = dir.parent_path();
+    }
+    int wd = inotify_add_watch(m_fd, dir.c_str(), kMask);
+    int error = wd < 0 ? errno : 0;
+    // A directory that exists but cannot be watched (permission, watch limit): wait on its parent, whose events
+    // (a chmod, a recreate) try it again.
+    bool blocked = false;
+    while (wd < 0 && error != ENOENT && error != ENOTDIR && dir.has_relative_path()) {
+      kLog.warn("cannot watch {}: {}; waiting on its parent", dir.string(), std::strerror(error));
+      dir = dir.parent_path();
+      wd = inotify_add_watch(m_fd, dir.c_str(), kMask);
+      error = wd < 0 ? errno : 0;
+      blocked = true;
+    }
+    if (wd < 0) {
+      if (error == ENOENT || error == ENOTDIR) {
+        continue; // removed between the check and the watch
+      }
+      kLog.warn("cannot watch {}: {}", dir.string(), std::strerror(error));
+      return;
+    }
+    if (dir == target) {
+      subscribe(id, wd, [this, id, wd](Event event, const std::string& name, const std::string& newName) {
+        const auto it = m_followed.find(id);
+        if (it == m_followed.end()) {
+          return;
+        }
+        const Callback callback = it->second.callback;
+        if (event != Event::Gone) {
+          callback(event, name, newName);
+          return;
+        }
+        // Moves out still waiting for their pair end with the directory: deliver them before it goes.
+        std::vector<std::string> movedOut;
+        for (const PendingMove& move : m_pendingMoves) {
+          if (move.wd == wd) {
+            movedOut.push_back(move.name);
+          }
+        }
+        for (const std::string& moved : movedOut) {
+          callback(Event::Deleted, moved, {});
+        }
+        callback(Event::Gone, {}, {});
+        if (m_followed.contains(id)) {
+          follow(id, true);
+        }
+      });
+      if (announce) {
+        const Callback callback = followed->second.callback;
+        callback(Event::Overflow, {}, {});
+      }
+      return;
+    }
+    const std::string next = target.lexically_relative(dir).begin()->string();
+    subscribe(id, wd, [this, id, next](Event event, const std::string& name, const std::string& newName) {
+      bool arrived = false;
+      switch (event) {
+      case Event::Created:
+      case Event::MovedIn:
+      case Event::Changed: // a chmod may make a blocked directory watchable
+        arrived = name == next;
+        break;
+      case Event::Renamed:
+        arrived = newName == next;
+        break;
+      case Event::Gone:
+      case Event::Overflow:
+        arrived = true;
+        break;
+      case Event::Deleted:
+      case Event::Written:
+        break;
+      }
+      if (arrived) {
+        follow(id, true);
+      }
+    });
+    // The next component may have appeared before the watch: no event will come for it.
+    if (blocked || !std::filesystem::is_directory(dir / next, ec)) {
+      return;
+    }
+    detach(id);
   }
 }
 
@@ -100,7 +220,7 @@ void DirectoryWatcher::processEvents() {
     }
     const auto subscribers = it->second.subscribers;
     for (const auto& [id, callback] : subscribers) {
-      if (m_idToWd.contains(id) && callback) {
+      if (subscribed(id, wd) && callback) {
         callback(event, name, newName);
       }
     }
@@ -202,7 +322,7 @@ void DirectoryWatcher::flushPendingMoves() {
     }
     const auto subscribers = it->second.subscribers;
     for (const auto& [id, callback] : subscribers) {
-      if (m_idToWd.contains(id) && callback) {
+      if (subscribed(id, move.wd) && callback) {
         callback(Event::Deleted, move.name, {});
       }
     }

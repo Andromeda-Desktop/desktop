@@ -6,7 +6,8 @@
 #include <filesystem>
 #include <functional>
 
-// Watches single files through their parent directories on a DirectoryWatcher; a file need not exist yet.
+// Watches single files through their parent directories on a DirectoryWatcher; neither the file nor its directory
+// need exist yet, and a directory deleted and made again is watched again.
 class FileWatcher {
 public:
   using WatchId = DirectoryWatcher::WatchId;
@@ -21,8 +22,8 @@ public:
   FileWatcher(const FileWatcher&) = delete;
   FileWatcher& operator=(const FileWatcher&) = delete;
 
-  // Calls `callback` on the main loop at most once per loop turn, however many events arrive; an Overflow or Gone
-  // of the directory also calls it. -1 when the directory cannot be watched.
+  // Calls `callback` on the main loop at most once per loop turn, however many events arrive; an Overflow, a Gone
+  // of the directory and its return also call it. -1 when no ancestor of the file can be watched.
   WatchId watch(const std::filesystem::path& filePath, Callback callback,
                 WatchTrigger trigger = WatchTrigger::Modified);
   void unwatch(WatchId id) { m_dirs.unwatch(id); }

@@ -20,7 +20,8 @@
 namespace fs = std::filesystem;
 
 // Model test: random file operations against three watches; after each operation every watch whose trigger the
-// operation matches was called, no other was, and no watch was called twice in one loop turn.
+// operation matches was called, no other was, and no watch was called twice in one loop turn. The watched directory
+// and its parent are also deleted and made again: a watch made while the directory is missing still fires.
 namespace {
   int g_failures = 0;
 
@@ -40,6 +41,7 @@ namespace {
     FileWatcher files{dirs};
     fs::path dir;
     fs::path outside;
+    fs::path sync;
     int turn = 0;
     std::map<W, std::vector<int>> calls;
     bool sentinel = false;
@@ -52,7 +54,7 @@ namespace {
     // queued call has run by then.
     bool settle() {
       sentinel = false;
-      write(dir / "zz-sentinel");
+      write(sync / "zz-sentinel");
       const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
       while (!sentinel) {
         if (std::chrono::steady_clock::now() > until) {
@@ -75,10 +77,11 @@ namespace {
 
 int main() {
   const auto root = fs::temp_directory_path() / std::format("file_watcher_test.{}", ::getpid());
-  Harness h{.dir = root / "watched", .outside = root / "outside"};
+  Harness h{.dir = root / "parent" / "watched", .outside = root / "outside", .sync = root / "sync"};
   fs::create_directories(h.dir);
   fs::create_directories(h.outside);
-  h.files.watch(h.dir / "zz-sentinel", [&h] { h.sentinel = true; }, FileWatcher::WatchTrigger::WriteCompleted);
+  fs::create_directories(h.sync);
+  h.files.watch(h.sync / "zz-sentinel", [&h] { h.sentinel = true; }, FileWatcher::WatchTrigger::WriteCompleted);
   h.watch("a", FileWatcher::WatchTrigger::Modified, W::AModified);
   h.watch("a", FileWatcher::WatchTrigger::WriteCompleted, W::AComplete);
   auto bId = h.watch("b", FileWatcher::WatchTrigger::Modified, W::BModified);
@@ -86,12 +89,42 @@ int main() {
 
   std::mt19937 rng(std::random_device{}());
   int held = -1;
-  for (int step = 0; step < 300; ++step) {
+  bool dirGone = false;
+  const std::vector<W> all{W::AModified, W::AComplete, W::BModified};
+  for (int step = 0; step < 400; ++step) {
     h.calls.clear();
     std::vector<W> want;
     std::string op;
-    const int pick = held >= 0 ? -1 : static_cast<int>(rng() % 8);
-    if (held >= 0) {
+    const int pick = held >= 0 || dirGone ? -1 : static_cast<int>(rng() % 11);
+    if (dirGone) {
+      const auto how = rng() % 4;
+      if (how == 0) {
+        op = "make the directory and its parent";
+        fs::create_directories(h.dir);
+      } else if (how == 1) {
+        op = "move a directory holding a in";
+        fs::create_directories(h.dir.parent_path());
+        fs::create_directories(h.outside / "w");
+        write(h.outside / "w" / "a");
+        fs::rename(h.outside / "w", h.dir);
+      } else if (how == 3) {
+        op = "make the directory unreadable, then readable one turn later";
+        fs::create_directories(h.dir.parent_path());
+        fs::create_directory(h.dir);
+        fs::permissions(h.dir, fs::perms::none);
+        expect(h.settle(), std::format("step {} ({}): sentinel never fired", step, op));
+        h.calls.clear();
+        fs::permissions(h.dir, fs::perms::owner_all);
+      } else {
+        op = "make the parent, then the directory one turn later";
+        fs::create_directories(h.dir.parent_path());
+        expect(h.settle(), std::format("step {} ({}): sentinel never fired", step, op));
+        expect(h.calls.empty(), std::format("step {} ({}): a watch fired for the parent alone", step, op));
+        fs::create_directory(h.dir);
+      }
+      dirGone = false;
+      want = all;
+    } else if (held >= 0) {
       op = "close held a";
       ::close(held);
       held = -1;
@@ -125,6 +158,23 @@ int main() {
     } else if (pick == 6) {
       op = "write c";
       write(h.dir / "c");
+    } else if (pick == 8) {
+      op = "delete the directory";
+      fs::remove_all(h.dir);
+      dirGone = true;
+      want = all;
+    } else if (pick == 10) {
+      op = "move the directory away";
+      fs::rename(h.dir, h.outside / std::format("away-{}", step));
+      dirGone = true;
+      want = all;
+    } else if (pick == 9) {
+      op = "delete the parent, unwatch b: b is watched again while it is missing";
+      fs::remove_all(h.dir.parent_path());
+      h.dirs.unwatch(bId);
+      bId = -1;
+      dirGone = true;
+      want = {W::AModified, W::AComplete};
     } else {
       op = "write b, unwatch b before its call runs";
       write(h.dir / "b");
@@ -145,6 +195,7 @@ int main() {
     }
     if (bId < 0) {
       bId = h.watch("b", FileWatcher::WatchTrigger::Modified, W::BModified);
+      expect(bId >= 0, std::format("step {}: watch b failed (directory {})", step, dirGone ? "missing" : "present"));
     }
     if (g_failures > 10) {
       break;

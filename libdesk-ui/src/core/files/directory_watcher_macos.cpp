@@ -33,7 +33,9 @@ DirectoryWatcher::~DirectoryWatcher() {
   }
 }
 
-DirectoryWatcher::WatchId DirectoryWatcher::watch(const std::filesystem::path& dir, Callback callback) {
+// kqueue: Follow::Path acts as Inode (a missing directory returns -1).
+DirectoryWatcher::WatchId DirectoryWatcher::watch(const std::filesystem::path& dir, Callback callback,
+                                                  [[maybe_unused]] Follow follow) {
   if (m_fd < 0) {
     return -1;
   }

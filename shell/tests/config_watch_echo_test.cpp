@@ -2,6 +2,7 @@
 // the same inotify batch as that echo, or after an echo that never arrived, must still reload.
 
 #include "config/config_service.h"
+#include "protocols/async_file_writer.h"
 #include "core/timer_manager.h"
 
 #include <algorithm>
@@ -93,15 +94,29 @@ int main() {
   ConfigService config(&dirs);
   expect(dirs.fd() >= 0, "inotify watch is set up");
 
+  // Setters write on the background writer: the file lands after they return. The wait leaves the echo queued.
+  std::filesystem::path overrides;
+  const auto landed = [&] {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline) {
+      overrides = findOverrides(root / "state");
+      if (!overrides.empty() && !andromeda::pendingFileText(overrides).has_value()) {
+        return true;
+      }
+      ::poll(nullptr, 0, 5);
+    }
+    return false;
+  };
+
   // External edit in the same batch as the echo of a setter write.
   config.setPluginEnabled("me/own", true);
-  const auto overrides = findOverrides(root / "state");
-  expect(!overrides.empty(), "setter wrote overrides.toml");
+  expect(landed(), "setter wrote overrides.toml");
   writeFileAtomic(overrides, "[plugins]\nenabled = [\"ext/same-batch\"]\n");
   expect(waitFor(dirs, [&] { return enabled(config, "ext/same-batch"); }), "same-batch external edit reloads");
 
   // External edit after a setter write whose echo never reaches the watcher.
   config.setPluginEnabled("me/second", true);
+  expect(landed(), "second setter wrote overrides.toml");
   drainWatch(dirs);
   writeFileAtomic(overrides, "[plugins]\nenabled = [\"ext/after-lost-echo\"]\n");
   expect(

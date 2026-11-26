@@ -998,15 +998,16 @@ DirectoryWatcher::WatchId ConfigService::watchDirectory(const std::filesystem::p
     case Event::Renamed:
       onWatchedChange(std::max(match(name), match(newName)));
       break;
+    // Gone: a directory moved away sends no Deleted for its files. Overflow also comes when it is back.
+    case Event::Gone:
     case Event::Overflow:
       onWatchedChange(WatchReload::Config);
       onWatchedChange(WatchReload::Overrides);
       break;
     case Event::Changed:
-    case Event::Gone:
       break;
     }
-  });
+  }, DirectoryWatcher::Follow::Path);
 }
 
 void ConfigService::onWatchedChange(WatchReload reload) {

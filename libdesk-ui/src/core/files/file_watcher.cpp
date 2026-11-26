@@ -51,5 +51,6 @@ FileWatcher::WatchId FileWatcher::watch(const std::filesystem::path& filePath, C
                             live->callback();
                           }
                         });
-                      });
+                      },
+                      DirectoryWatcher::Follow::Path);
 }
