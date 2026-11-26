@@ -1514,8 +1514,15 @@ namespace andromeda {
 
   void Overview::animateRow(OutputState& state, double target, std::optional<double> release, const Tokens::Spring& spring) {
     const double releaseVelocity = release.value_or(0.0);
-    // A move back to either end of the jump in flight keeps that jump, so the rows do not reshuffle mid-move.
-    if (!rowJump(state).has_value() || (target != state.rowJump.from && target != state.rowJump.to)) {
+    // A move back to either end of the jump in flight keeps that jump, so the rows do not reshuffle mid-move. A move
+    // to a third row starts from the end the jump shows; the reflow carries each card from where it is drawn.
+    const std::optional<ov::RowJump> running = rowJump(state);
+    if (!running.has_value() || (target != running->from && target != running->to)) {
+      const double shown = ov::shownRow(running, state.rowScroll.current());
+      if (shown != state.rowScroll.current()) {
+        state.rowScroll.snap(std::round(shown));
+        state.rowJumped = true;
+      }
       state.rowJump = {.from = release.has_value() ? target : state.rowScroll.current(), .to = target};
     }
     const auto& animation = config().animation;
