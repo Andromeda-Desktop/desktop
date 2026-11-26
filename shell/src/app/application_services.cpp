@@ -392,7 +392,7 @@ void Application::scheduleNotificationShellRefresh() {
     return;
   }
   m_notificationShellRefreshScheduled = true;
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     m_notificationShellRefreshScheduled = false;
     m_bar.refresh();
     m_liveActivity.refresh();
@@ -458,7 +458,7 @@ void Application::installNotificationBusNameWatch() {
   m_notificationBusNameWatch = NameOwnerWatch::changes(
       m_bus->connection(), notification_dbus::kFreedesktopNotificationsBusName,
       [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& /*newOwner*/) {
-        DeferredCall::callLater([this] {
+        DeferredCall::callLaterIfAlive(m_alive, [this] {
           if (m_notificationDaemonMode == NotificationDaemonMode::Failed) {
             m_notificationDaemonMode = NotificationDaemonMode::Unset;
           }
@@ -481,8 +481,8 @@ security::SecretServiceConsumers Application::secretServiceConsumers() {
                     || m_calendarService.hasMissingRefreshTokens(),
             };
           },
-      .retryStorageKey = [this] { DeferredCall::callLater([this] { m_storageKeyProvider.retry(); }); },
-      .retryCalendar = [this] { DeferredCall::callLater([this] { m_calendarService.retryCredentialMigration(); }); },
+      .retryStorageKey = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { m_storageKeyProvider.retry(); }); },
+      .retryCalendar = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { m_calendarService.retryCredentialMigration(); }); },
   };
 }
 
@@ -507,7 +507,7 @@ void Application::handleAuthDialog(AuthDialogEvent event) {
     });
   }
   if (actions.syncPanel) {
-    DeferredCall::callLater([this] { syncAuthPanel(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { syncAuthPanel(); });
   }
 }
 
@@ -565,7 +565,7 @@ void Application::syncPolkitAgent() {
   m_polkitAgent->setReadyCallback([this](bool ok, const std::string& error) {
     if (!ok) {
       kLog.warn("polkit agent disabled: {}", error);
-      DeferredCall::callLater([this, error] {
+      DeferredCall::callLaterIfAlive(m_alive, [this, error] {
         if (polkit_session::isNoSessionForPidError(error)) {
           notify::error(
               "Noctalia", i18n::tr("notifications.internal.polkit-agent"),
@@ -1477,7 +1477,7 @@ void Application::onSessionSleep(bool sleeping) {
   }
   requestAllSurfacesRedraw();
   // The time poll deadline is monotonic and stalls across suspend; refresh clocks now.
-  DeferredCall::callLater([this] { m_timeService.forceTick(); });
+  DeferredCall::callLaterIfAlive(m_alive, [this] { m_timeService.forceTick(); });
 }
 
 void Application::initSystemBusServices() {
@@ -2274,7 +2274,7 @@ void Application::applyPresence(const PresenceWatch::Effects& effects) {
   }
   // Deferred: a change can come from the client's own D-Bus callback, which must not destroy the client.
   if (m_presenceWatch.claimed() != (m_presence != nullptr)) {
-    DeferredCall::callLater([this] { syncPresenceClaim(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { syncPresenceClaim(); });
   }
 }
 

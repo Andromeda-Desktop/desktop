@@ -371,7 +371,7 @@ void Application::initLockScreenAndSession() {
         m_lockBeforeSleep.onLockEnded();
         requestAllSurfacesRedraw();
         // The bar skipped ticks while locked; refresh it now rather than at the next minute.
-        DeferredCall::callLater([this] { m_timeService.forceTick(); });
+        DeferredCall::callLaterIfAlive(m_alive, [this] { m_timeService.forceTick(); });
         if (m_logindService != nullptr) {
           m_logindService->setSessionLockedHint(false);
         }
@@ -720,7 +720,7 @@ void Application::initPanelManagerAndPanels() {
     const bool isImage = entry.isImage();
     m_clipboardAutoPasteTimer.stop();
     m_clipboardAutoPasteTimer.start(std::chrono::milliseconds(150), [this, isImage] {
-      DeferredCall::callLater([this, isImage] {
+      DeferredCall::callLaterIfAlive(m_alive, [this, isImage] {
         const ClipboardAutoPasteMode activeMode = m_configService.config().shell.clipboardAutoPaste;
         (void)clipboard_paste::pasteEntry(isImage, activeMode, m_virtualKeyboardService);
       });
@@ -813,7 +813,7 @@ void Application::initPanelManagerAndPanels() {
       }
       m_launcherAutoPasteTimer.stop();
       m_launcherAutoPasteTimer.start(std::chrono::milliseconds(150), [this, isImage] {
-        DeferredCall::callLater([this, isImage] {
+        DeferredCall::callLaterIfAlive(m_alive, [this, isImage] {
           const ClipboardAutoPasteMode activeMode = m_configService.config().shell.launcher.autoPaste;
           (void)clipboard_paste::pasteEntry(isImage, activeMode, m_virtualKeyboardService);
         });
@@ -945,7 +945,7 @@ void Application::offerWindowsSpeakerTuning() {
                                       [this](process::RunResult result) {
                                         const char* key = result ? "notifications.internal.speaker-tuning-done"
                                                                  : settings::speakerImportErrorKey(result.err);
-                                        DeferredCall::callLater([this, key] {
+                                        DeferredCall::callLaterIfAlive(m_alive, [this, key] {
                                           m_notificationManager.addInternal(
                                               i18n::tr("settings.sound.speaker-sound"), i18n::tr(key), ""
                                           );
@@ -966,7 +966,7 @@ void Application::offerWindowsSpeakerTuning() {
                                   if (!status || !status->speakers || !status->windows || !status->basic()) {
                                     return;
                                   }
-                                  DeferredCall::callLater([this, offerId] {
+                                  DeferredCall::callLaterIfAlive(m_alive, [this, offerId] {
                                     (void)m_configService.setStateBool("sound", "windows_tuning_offered", true);
                                     NotificationRequest request;
                                     request.appName = i18n::tr("settings.sound.speaker-sound");
@@ -1071,7 +1071,7 @@ void Application::initNotificationAndOsd() {
   m_configService.addReloadCallback([this] { m_windowSwitcher.onConfigReload(); });
   m_powerOverlay.initialize(m_wayland, &m_renderContext, &m_configService, &m_ipcService, &m_compositorPlatform);
   // The last session ended with "Reopen windows when you log back in": open its apps again, once.
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     const std::vector<std::string> running = m_wayland.runningAppIds();
     for (const std::string& appId : PowerOverlay::takeReopenApps()) {
       if (std::ranges::contains(running, appId)) {
@@ -1102,21 +1102,21 @@ void Application::initNotificationAndOsd() {
       ) {
         (void)behaviorName;
         (void)willLockSession;
-        const std::uint64_t generation = ++m_idleGraceOverlayGeneration;
+        const auto request = m_idleGraceOverlayShow.begin();
         // Snapshot before the overlay fades in. A lock behavior can join an
         // already-active grace period after this callback has run.
         if (m_configService.isLockScreenEnabled()) {
           m_lockScreen.primeDesktopCaptures();
         }
-        DeferredCall::callLater([this, generation, fadeIn, done = std::move(onFadeComplete)] mutable {
-          if (generation != m_idleGraceOverlayGeneration) {
+        DeferredCall::callLaterIfAlive(m_alive, [this, request, fadeIn, done = std::move(onFadeComplete)] mutable {
+          if (!m_idleGraceOverlayShow.current(request)) {
             return;
           }
           m_idleGraceOverlay.show(fadeIn, std::move(done));
         });
       },
       [this](bool userCancelled, bool willLockSession) {
-        ++m_idleGraceOverlayGeneration;
+        m_idleGraceOverlayShow.cancel();
         // Keep the overlay only when handing off to Noctalia's lock screen (avoids a flash).
         // External lockers never take ownership; deferred hide also races with suspend.
         const bool handoffToLockScreen = !userCancelled && willLockSession && m_configService.isLockScreenEnabled();
@@ -1132,7 +1132,7 @@ void Application::initNotificationAndOsd() {
       }
   );
   m_idleManager.setLiveIdleChangeCallback([this] {
-    DeferredCall::callLater([this] { m_settingsWindow.onIdleLiveStatusChanged(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { m_settingsWindow.onIdleLiveStatusChanged(); });
     if (m_idleManager.liveIdleSeconds() == 0) {
       applyPresence(m_presenceWatch.activity());
     }
@@ -1403,7 +1403,7 @@ void Application::initWidgetControllersAndCallbacks() {
     m_liveActivity.setUnderEditor(open);
   });
   const auto restoreSettingsAfterWidgetEditor = [this] {
-    DeferredCall::callLater([this] {
+    DeferredCall::callLaterIfAlive(m_alive, [this] {
       if (!m_desktopWidgetsController.isEditing() && !m_lockscreenWidgetsController.isEditing()) {
         m_settingsWindow.reopenAfterWidgetEditor();
       }

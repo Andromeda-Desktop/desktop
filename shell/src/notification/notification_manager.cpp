@@ -165,7 +165,7 @@ void NotificationManager::cleanupOldHistoryEntries() {
   }
 
   m_history = std::move(kept);
-  ++m_changeSerial;
+  ++m_changeVersion;
   rebuildHistoryIndex();
   schedulePersistHistory();
   notifyUnreadStateChangedIfNeeded(hadUnreadBefore);
@@ -186,7 +186,7 @@ void NotificationManager::upsertHistory(
           .active = active,
           .seen = seen || closeReason == CloseReason::ClosedByCall,
           .closeReason = closeReason,
-          .eventSerial = ++m_changeSerial,
+          .eventSerial = ++m_changeVersion,
       }
   );
 
@@ -214,7 +214,7 @@ void NotificationManager::markHistoryClosed(uint32_t id, CloseReason reason) {
     entry.seen = true;
   }
   entry.closeReason = reason;
-  entry.eventSerial = ++m_changeSerial;
+  entry.eventSerial = ++m_changeVersion;
   schedulePersistHistory();
 }
 
@@ -234,10 +234,10 @@ bool NotificationManager::updateBody(uint32_t id, std::string body) {
     // the control center picks the new text up; `seen` deliberately does not, because a body that
     // rewrites itself is not a new notification the user has yet to read.
     m_history[entry->second].notification.body = n.body;
-    m_history[entry->second].eventSerial = ++m_changeSerial;
+    m_history[entry->second].eventSerial = ++m_changeVersion;
     schedulePersistHistory();
   } else {
-    ++m_changeSerial;
+    ++m_changeVersion;
   }
 
   for (auto& [token, cb] : m_eventCallbacks) {
@@ -247,8 +247,8 @@ bool NotificationManager::updateBody(uint32_t id, std::string body) {
 }
 
 void NotificationManager::attachImageLater(uint32_t id, std::vector<std::uint8_t> encoded) {
-  const std::uint64_t ticket = ++m_nextImageTicket;
-  m_imageTickets[id] = ticket;
+  const std::uint64_t ticket = ++m_nextImageDecodeId;
+  m_imageDecodeIds[id] = ticket;
   SharedWorker::instance().post<std::optional<NotificationImageData>>(
       m_alive,
       [encoded = std::move(encoded)]() -> std::optional<NotificationImageData> {
@@ -264,11 +264,11 @@ void NotificationManager::attachImageLater(uint32_t id, std::vector<std::uint8_t
         return out;
       },
       [this, id, ticket](std::optional<NotificationImageData> image) {
-        const auto it = m_imageTickets.find(id);
-        if (it == m_imageTickets.end() || it->second != ticket) {
+        const auto it = m_imageDecodeIds.find(id);
+        if (it == m_imageDecodeIds.end() || it->second != ticket) {
           return;
         }
-        m_imageTickets.erase(it);
+        m_imageDecodeIds.erase(it);
         if (image.has_value()) {
           attachImage(id, std::move(*image));
         }
@@ -284,10 +284,10 @@ void NotificationManager::attachImage(uint32_t id, NotificationImageData image) 
   }
   if (entry != m_historyIndex.end()) {
     m_history[entry->second].notification.imageData = image;
-    m_history[entry->second].eventSerial = ++m_changeSerial;
+    m_history[entry->second].eventSerial = ++m_changeVersion;
     schedulePersistHistory();
   } else {
-    ++m_changeSerial;
+    ++m_changeVersion;
   }
   if (live != m_idToIndex.end()) {
     Notification& n = m_notifications[live->second];
@@ -471,7 +471,7 @@ uint32_t NotificationManager::addOrReplace(NotificationRequest request) {
       n.actions = std::move(actions);
       n.icon = std::move(icon);
       n.imageData = std::move(imageData);
-      m_imageTickets.erase(n.id);
+      m_imageDecodeIds.erase(n.id);
       n.category = std::move(category);
       n.desktopEntry = std::move(desktopEntry);
       n.group = std::move(group);
@@ -666,7 +666,7 @@ void NotificationManager::dismissAfterInvoke(uint32_t id) {
     emitPendingDBusClose(id, CloseReason::Dismissed);
     m_history[histIt->second].notification.actions.clear();
     m_history[histIt->second].active = false;
-    ++m_changeSerial;
+    ++m_changeVersion;
     schedulePersistHistory();
   }
 }
@@ -842,7 +842,7 @@ const NotificationHistoryEntry* NotificationManager::findHistoryEntry(uint32_t i
   return it != m_historyIndex.end() && it->second < m_history.size() ? &m_history[it->second] : nullptr;
 }
 
-std::uint64_t NotificationManager::changeSerial() const noexcept { return m_changeSerial; }
+std::uint64_t NotificationManager::changeSerial() const noexcept { return m_changeVersion; }
 
 void NotificationManager::removeHistoryEntry(uint32_t id, std::optional<CloseReason> dbusCloseReason) {
   const auto it = m_historyIndex.find(id);
@@ -855,7 +855,7 @@ void NotificationManager::removeHistoryEntry(uint32_t id, std::optional<CloseRea
       dbusCloseReason.value_or(m_history[it->second].closeReason.value_or(CloseReason::Dismissed));
   emitPendingDBusClose(id, reason);
   m_history.erase(m_history.begin() + static_cast<std::ptrdiff_t>(it->second));
-  ++m_changeSerial;
+  ++m_changeVersion;
   rebuildHistoryIndex();
   schedulePersistHistory();
   notifyUnreadStateChangedIfNeeded(hadUnreadBefore);
@@ -873,7 +873,7 @@ void NotificationManager::clearHistory() {
 
   m_history.clear();
   m_historyIndex.clear();
-  ++m_changeSerial;
+  ++m_changeVersion;
   markNotificationHistorySeen();
   schedulePersistHistory();
 }
@@ -1160,7 +1160,7 @@ void NotificationManager::persistHistoryAsync() {
   }
   SharedWorker::instance().post<bool>(
       m_alive,
-      [path, entries = m_history, nextId = m_nextId, serial = m_changeSerial, key = m_historyKey,
+      [path, entries = m_history, nextId = m_nextId, serial = m_changeVersion, key = m_historyKey,
        generation = nextHistoryGeneration()] { return writeHistory(path, entries, nextId, serial, *key, generation); },
       [this](bool written) {
         if (written && m_historyKeyProvider != nullptr) {
@@ -1212,7 +1212,7 @@ void NotificationManager::persistHistoryToDisk() {
     return;
   }
   m_persistTimer.stop();
-  if (writeHistory(path, m_history, m_nextId, m_changeSerial, *m_historyKey, nextHistoryGeneration())
+  if (writeHistory(path, m_history, m_nextId, m_changeVersion, *m_historyKey, nextHistoryGeneration())
       && m_historyKeyProvider != nullptr) {
     m_historyKeyProvider->noteEncryptedDataExists();
   }
@@ -1270,14 +1270,14 @@ void NotificationManager::loadPersistedHistory() {
     }
     const bool hasSessionNotifications = !m_notifications.empty() || !m_history.empty();
     m_nextId = std::max(m_nextId, nextId);
-    m_changeSerial = std::max(m_changeSerial, serial);
+    m_changeVersion = std::max(m_changeVersion, serial);
     if (hasSessionNotifications) {
       // Restored ids must not collide with notifications received while the keyring was locked.
       for (auto& entry : loaded) {
         entry.notification.id = m_nextId++;
       }
       for (auto& entry : m_history) {
-        entry.eventSerial = ++m_changeSerial;
+        entry.eventSerial = ++m_changeVersion;
       }
     }
     for (auto& entry : m_history) {

@@ -944,7 +944,7 @@ void LockScreen::cancelOutputPowerOff() {
   if (remote()) {
     m_remote->cancelOutputPowerOff();
   }
-  ++m_outputPowerOffGeneration;
+  m_outputPowerOffEpoch.advance();
   m_outputPowerOffQueued = false;
   m_outputPowerOffTimer.stop();
   if (m_pendingOutputPowerOff) {
@@ -969,10 +969,9 @@ void LockScreen::flushPendingOutputPowerOff() {
     return;
   }
   m_outputPowerOffQueued = true;
-  const auto generation = m_outputPowerOffGeneration;
-  const std::weak_ptr<void> guard = m_aliveGuard;
-  DeferredCall::callLater([this, guard, generation] {
-    if (guard.expired() || generation != m_outputPowerOffGeneration) {
+  const auto epoch = m_outputPowerOffEpoch.ticket();
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this, epoch] {
+    if (!m_outputPowerOffEpoch.current(epoch)) {
       return;
     }
     m_outputPowerOffQueued = false;
@@ -1047,7 +1046,7 @@ void LockScreen::tryFinishAnimatedUnlock() {
   }
 
   m_unlockFinishQueued = true;
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_aliveGuard, [this] {
     if (unlocking()) {
       finishUnlock();
     }
@@ -1055,7 +1054,7 @@ void LockScreen::tryFinishAnimatedUnlock() {
 }
 
 void LockScreen::cancelPendingAfterLocked() {
-  ++m_afterLockedGeneration;
+  m_afterLockedEpoch.advance();
   m_pendingAfterLocked = {};
   m_suspendTimeoutTimer.stop();
 }
@@ -1065,10 +1064,9 @@ void LockScreen::dispatchPendingAfterLocked(bool timedOut) {
     auto pending = std::move(m_pendingAfterLocked);
     m_pendingAfterLocked = {};
     m_suspendTimeoutTimer.stop();
-    const auto generation = m_afterLockedGeneration;
-    const std::weak_ptr<void> guard = m_aliveGuard;
-    DeferredCall::callLater([this, guard, generation, timedOut, pending = std::move(pending)] mutable {
-      if (guard.expired() || generation != m_afterLockedGeneration || unlocking() || (!isActive() && !deferred())) {
+    const auto epoch = m_afterLockedEpoch.ticket();
+    DeferredCall::callLaterIfAlive(m_aliveGuard, [this, epoch, timedOut, pending = std::move(pending)] mutable {
+      if (!m_afterLockedEpoch.current(epoch) || unlocking() || (!isActive() && !deferred())) {
         return;
       }
       if (!timedOut && isActive() && !isReadyForSleep()) {
@@ -1238,8 +1236,8 @@ void LockScreen::primeDesktopCaptures() {
   if (!shouldCaptureDesktop()) {
     return;
   }
-  const std::uint64_t generation = m_desktopCaptureGeneration;
-  if (captureDesktopSnapshots() && generation == m_desktopCaptureGeneration) {
+  const auto epoch = m_desktopCaptureEpoch.ticket();
+  if (captureDesktopSnapshots() && m_desktopCaptureEpoch.current(epoch)) {
     m_desktopCapturesPrimed = true;
   }
 }
@@ -1253,7 +1251,7 @@ void LockScreen::clearPrimedDesktopCaptures() {
 }
 
 void LockScreen::invalidateDesktopCaptures() {
-  ++m_desktopCaptureGeneration;
+  m_desktopCaptureEpoch.advance();
   m_desktopCapturesPrimed = false;
   m_desktopCaptures.clear();
 }
@@ -1263,7 +1261,7 @@ bool LockScreen::captureDesktopSnapshots() {
     return false;
   }
 
-  const std::uint64_t generation = m_desktopCaptureGeneration;
+  const auto epoch = m_desktopCaptureEpoch.ticket();
 
   std::vector<WaylandOutput> targets;
   for (const auto& output : m_wayland->outputs()) {
@@ -1293,7 +1291,7 @@ bool LockScreen::captureDesktopSnapshots() {
 
   bool firstCapture = true;
   for (const auto& target : targets) {
-    if (generation != m_desktopCaptureGeneration) {
+    if (!m_desktopCaptureEpoch.current(epoch)) {
       return false;
     }
 
@@ -1316,7 +1314,7 @@ bool LockScreen::captureDesktopSnapshots() {
         capture, captureWayland, captureIt->output, image, error, false, m_wayland, deadline
     );
     if (captureStatus != screencopy::CaptureOutputStatus::Success) {
-      if (generation != m_desktopCaptureGeneration) {
+      if (!m_desktopCaptureEpoch.current(epoch)) {
         return false;
       }
       kLog.warn("lockscreen desktop capture failed for {}: {}", target.connectorName, error);
@@ -1326,7 +1324,7 @@ bool LockScreen::captureDesktopSnapshots() {
       continue;
     }
 
-    if (generation != m_desktopCaptureGeneration) {
+    if (!m_desktopCaptureEpoch.current(epoch)) {
       return false;
     }
 
@@ -1353,12 +1351,12 @@ bool LockScreen::captureDesktopSnapshots() {
       kLog.warn("lockscreen desktop capture orientation failed for {}", target.connectorName);
       continue;
     }
-    if (generation != m_desktopCaptureGeneration) {
+    if (!m_desktopCaptureEpoch.current(epoch)) {
       return false;
     }
     m_desktopCaptures[currentIt->output] = std::move(image);
   }
-  return generation == m_desktopCaptureGeneration;
+  return m_desktopCaptureEpoch.current(epoch);
 }
 
 void LockScreen::chooseTransition() {
@@ -1717,7 +1715,7 @@ void LockScreen::acceptBiometric() {
 }
 
 void LockScreen::invalidatePendingAuthentication() {
-  ++m_authGeneration;
+  m_authRequest.cancel();
   m_authenticating = false;
 }
 
@@ -1762,7 +1760,7 @@ void LockScreen::tryAuthenticate() {
   // Shared: the pool takes copyable work; the last holder wipes it.
   const auto password = std::make_shared<security::SecureBuffer>(std::move(m_password));
 
-  const std::uint64_t generation = ++m_authGeneration;
+  const auto request = m_authRequest.begin();
   m_authenticating = true;
   m_status = i18n::tr("lockscreen.authenticating");
   m_statusKind = StatusKind::Info;
@@ -1776,21 +1774,17 @@ void LockScreen::tryAuthenticate() {
   const std::string pamStartFailure = i18n::tr("auth.pam.start-failed");
   // The thread never touches `this`; the result hops back to the main loop and is dropped if the lock screen is gone.
   const std::weak_ptr<void> guard = m_aliveGuard;
-  BlockingPool::instance().run([this, guard, generation, password, authenticator, pamService, pamLanguage,
+  BlockingPool::instance().run([this, guard, request, password, authenticator, pamService, pamLanguage,
                pamStartFailure] mutable {
     nameThisThread("dsk-pam");
     const auto result = authenticator.authenticateCurrentUser(password->text(), pamService, pamLanguage, pamStartFailure);
     password->clear();
-    DeferredCall::callLater([this, guard, generation, result] {
-      if (!guard.expired()) {
-        handleAuthResult(generation, result);
-      }
-    });
+    DeferredCall::callLaterIfAlive(guard, [this, request, result] { handleAuthResult(request, result); });
   });
 }
 
-void LockScreen::handleAuthResult(std::uint64_t generation, const PamAuthenticator::Result& result) {
-  if (generation != m_authGeneration || !m_lifecycle.locked()) {
+void LockScreen::handleAuthResult(LatestRequest::Ticket request, const PamAuthenticator::Result& result) {
+  if (!m_authRequest.current(request) || !m_lifecycle.locked()) {
     return;
   }
 

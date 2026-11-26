@@ -1225,7 +1225,7 @@ bool Application::runShellCommandBlocking(const std::string& command) {
 }
 
 bool Application::setOutputPower(bool on) {
-  const auto generation = ++m_outputPowerRequestGeneration;
+  const auto request = m_outputPowerRequest.begin();
   m_lockScreen.cancelOutputPowerOff();
   m_compositorPlatform.setOutputPowerOffPending(!on);
   if (on) {
@@ -1233,8 +1233,8 @@ bool Application::setOutputPower(bool on) {
     return m_compositorPlatform.setOutputPower(true);
   }
   const auto result = std::make_shared<std::optional<bool>>();
-  m_lockScreen.prepareForOutputPowerOff([this, generation, result](bool ready) {
-    if (generation != m_outputPowerRequestGeneration) {
+  m_lockScreen.prepareForOutputPowerOff([this, request, result](bool ready) {
+    if (!m_outputPowerRequest.current(request)) {
       return;
     }
     const bool success = ready && m_compositorPlatform.setOutputPower(false);

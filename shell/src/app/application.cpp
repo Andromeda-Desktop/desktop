@@ -321,7 +321,7 @@ Application::~Application() {
   m_bar.setCenterIslandSpaceCallback({});
   m_notificationManager.removeUnreadCountCallback(m_islandUnreadToken);
   m_compositorPlatform.setOutputPowerChangeCallback({});
-  ++m_outputPowerRequestGeneration;
+  m_outputPowerRequest.cancel();
   m_lockScreen.cancelOutputPowerOff();
   ColorPickerDialog::setPresenter(nullptr);
   GlyphPickerDialog::setPresenter(nullptr);

@@ -2,6 +2,7 @@
 
 #include "auth/pam_authenticator.h"
 #include "capture/screencopy_capture.h"
+#include "core/latest_request.h"
 #include "core/timer_manager.h"
 #include "shell/lockscreen/lockscreen_transition.h"
 #include "shell/auth/auth_column.h"
@@ -201,7 +202,7 @@ private:
   void cycleKeyboardLayout();
   void handlePasswordEdited(const std::string& value);
   void tryAuthenticate();
-  void handleAuthResult(std::uint64_t generation, const PamAuthenticator::Result& result);
+  void handleAuthResult(LatestRequest::Ticket request, const PamAuthenticator::Result& result);
   void acceptBiometric();
   void invalidatePendingAuthentication();
   void startFingerprint();
@@ -244,19 +245,19 @@ private:
   enum class StatusKind : std::uint8_t { Info, PasswordError, BiometricError };
   StatusKind m_statusKind = StatusKind::Info;
   bool m_authenticating = false;
-  std::uint64_t m_authGeneration = 0;
+  LatestRequest m_authRequest;
   LockLifecycle m_lifecycle;
   bool m_desktopCapturesPrimed = false;
-  std::uint64_t m_desktopCaptureGeneration = 0;
+  RequestEpoch m_desktopCaptureEpoch;
   bool m_transitionSuppressed = false;
   bool m_unlockFinishQueued = false;
   std::optional<LockscreenTransition> m_activeTransition;
   LockscreenTransitionParams m_transitionParams;
   float m_transitionDurationMs = 1500.0F;
   std::function<void()> m_pendingAfterLocked;
-  std::uint64_t m_afterLockedGeneration = 0;
+  RequestEpoch m_afterLockedEpoch;
   std::function<void(bool)> m_pendingOutputPowerOff;
-  std::uint64_t m_outputPowerOffGeneration = 0;
+  RequestEpoch m_outputPowerOffEpoch;
   bool m_outputPowerOffQueued = false;
   std::function<void()> m_onSessionLocked;
   std::function<void()> m_onSessionUnlocked;

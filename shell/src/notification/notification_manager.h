@@ -281,8 +281,8 @@ private:
   // Debounces history saves; each change used to rewrite every entry on the main thread.
   Timer m_persistTimer;
   // The newest pending attachImageLater per notification id.
-  std::unordered_map<uint32_t, std::uint64_t> m_imageTickets;
-  std::uint64_t m_nextImageTicket = 0;
+  std::unordered_map<uint32_t, std::uint64_t> m_imageDecodeIds;
+  std::uint64_t m_nextImageDecodeId = 0;
   void attachImage(uint32_t id, NotificationImageData image);
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   Timer m_historyRetentionTimer;
@@ -314,7 +314,7 @@ private:
   ReplyCallback m_replyCallback;
   int m_nextCallbackToken{0};
   uint32_t m_nextId{1};
-  std::uint64_t m_changeSerial{0};
+  std::uint64_t m_changeVersion{0};
   void focusChanged();
   struct EndedFocus {
     const focus::Focus* focus = nullptr;

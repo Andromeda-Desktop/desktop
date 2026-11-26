@@ -19,6 +19,7 @@
 #include "compositors/workspace_alert_service.h"
 #include "config/config_service.h"
 #include "core/files/file_watcher.h"
+#include "core/latest_request.h"
 #include "core/timer_manager.h"
 #include "hooks/battery_hook_state.h"
 #include "hooks/hook_manager.h"
@@ -371,7 +372,7 @@ private:
   std::unique_ptr<LogindService> m_logindService;
   std::unique_ptr<PowerConfigService> m_powerConfigService;
   LockBeforeSleep m_lockBeforeSleep{lockBeforeSleepHooks()};
-  std::uint64_t m_outputPowerRequestGeneration = 0;
+  LatestRequest m_outputPowerRequest;
   std::unique_ptr<AccountsService> m_accountsService;
   std::unique_ptr<SystemMonitorService> m_systemMonitor;
   // Created on the first Activity request; samples only under a lease.
@@ -444,7 +445,7 @@ private:
   IdleManager m_idleManager;
   PluginIdleWatches m_pluginIdleWatches;
   IdleGraceOverlay m_idleGraceOverlay;
-  std::uint64_t m_idleGraceOverlayGeneration = 0;
+  LatestRequest m_idleGraceOverlayShow;
   HookManager m_hookManager;
   DependencyService m_dependencyService;
   GammaService m_gammaService;
@@ -622,4 +623,6 @@ private:
   GraphicsRecovery m_graphicsRecovery{[this] { recoverGraphicsAfterReset(); }};
 
   std::unique_ptr<MainLoop> m_mainLoop;
+  // Last member: destroyed first, so deferred calls queued with it drop before any service goes.
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

@@ -110,7 +110,7 @@ void Application::recoverGraphicsAfterReset() {
 }
 
 void Application::requestAllSurfacesRedraw() {
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     m_bar.requestRedraw();
     m_dock.requestRedraw();
     m_desktopWidgetsController.requestRedraw();

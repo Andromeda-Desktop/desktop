@@ -1,8 +1,4 @@
 # core-check allowlist: rule path count. Counts only fall; tools/core-check.py --update after a fix.
-defer-this shell/src/app/application_events.cpp 1
-defer-this shell/src/app/application_services.cpp 8
-defer-this shell/src/app/application_ui.cpp 9
-defer-this shell/src/shell/lockscreen/lock_screen.cpp 4
 final-path-write apps/files/src/cloud.cpp 1
 final-path-write apps/files/src/system_portals.cpp 1
 final-path-write apps/terminal/src/terminal_app.cpp 1
@@ -35,8 +31,3 @@ main-io shell/src/shell/settings/settings_window_software_update.cpp 1
 main-io shell/src/system/activity_actions.cpp 2
 main-io shell/src/system/brightness_service.cpp 1
 main-io shell/src/system/screen_time_service.cpp 1
-request-gen shell/src/app/application.cpp 1
-request-gen shell/src/app/application_ipc.cpp 1
-request-gen shell/src/app/application_ui.cpp 2
-request-gen shell/src/notification/notification_manager.cpp 12
-request-gen shell/src/shell/lockscreen/lock_screen.cpp 5
