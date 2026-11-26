@@ -283,7 +283,9 @@ namespace andromeda {
 
     for (uint32_t layer = 0; layer < kLayerCount; ++layer) {
       m_layerTrees[layer] = wlr_scene_tree_create(m_server->shellLayerTree(layer));
-      m_layerPopupTrees[layer] = wlr_scene_tree_create(m_server->shellLayerTree(layer));
+      // A desktop or wallpaper menu must draw above windows: popups of the lower layers stack in the top layer.
+      m_layerPopupTrees[layer] =
+          wlr_scene_tree_create(m_server->shellLayerTree(std::max<uint32_t>(layer, ZWLR_LAYER_SHELL_V1_LAYER_TOP)));
     }
     m_viewRoot = wlr_scene_tree_create(m_server->xdgTree());
     m_fullscreenRoot = wlr_scene_tree_create(m_server->fullscreenTree());
