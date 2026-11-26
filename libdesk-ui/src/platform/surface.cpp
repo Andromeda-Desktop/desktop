@@ -1300,6 +1300,9 @@ void Surface::queueRenderIfNeeded() {
   if (m_redrawRequested || invalidated) {
     queueRender();
   } else if (animating && ticks()) {
+    if (auto* stats = frameStats(false); stats != nullptr) {
+      stats->idleTick();
+    }
     continueAnimationFrameLoop();
   }
 }

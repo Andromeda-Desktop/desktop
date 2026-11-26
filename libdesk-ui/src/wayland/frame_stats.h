@@ -13,6 +13,7 @@ struct wp_presentation_feedback;
 // DESK_FRAME_STATS=1: one line per animation run of a surface, from wp_presentation feedback:
 // "anim <name>#<run> frames N p99_cpu_ms X missed M discarded D". A run starts at the first frame rendered while springs are
 // active and ends when the first frame after them is presented. CPU = tick + prepare + render time of each frame.
+// missed = vblanks skipped between presented frames, not counting a gap after a tick that had nothing to draw.
 class FrameStats final : public FrameStatsSink {
 public:
   [[nodiscard]] static bool enabled();
@@ -26,6 +27,7 @@ public:
   void beginFrame(bool animating) override;
   // The compositor discards feedback for a commit with no new buffer, which is not a miss.
   void dropFrame() override;
+  void idleTick() override;
   void endFrame() override;
 
   void onPresented(wp_presentation_feedback* feedback, std::uint64_t presentedNs, std::uint32_t refreshNs);
@@ -38,6 +40,9 @@ private:
   wl_surface* m_surface;
   std::string m_name;
   std::vector<wp_presentation_feedback*> m_pending;
+  // Pending frames that follow a tick with nothing to draw: the gap before them is idle, not missed.
+  std::vector<wp_presentation_feedback*> m_afterIdle;
+  bool m_idleTick = false;
   std::vector<float> m_cpu;
   float m_cpuMs = 0.0F;
   bool m_active = false;

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <utility>
 
 namespace {
   constexpr Logger kLog("frame-stats");
@@ -62,6 +63,7 @@ void FrameStats::beginFrame(bool animating) {
     m_discarded = 0;
     m_presented = 0;
     m_lastPresentedNs = 0;
+    m_idleTick = false;
     ++m_run;
   }
   m_ending = m_ending || !animating;
@@ -69,17 +71,28 @@ void FrameStats::beginFrame(bool animating) {
   struct wp_presentation_feedback* feedback = wp_presentation_feedback(m_presentation, m_surface);
   wp_presentation_feedback_add_listener(feedback, &kListener, this);
   m_pending.push_back(feedback);
+  if (std::exchange(m_idleTick, false)) {
+    m_afterIdle.push_back(feedback);
+  }
 }
 
 void FrameStats::dropFrame() {
   if (!m_frameInRun || m_pending.empty()) {
     return;
   }
+  std::erase(m_afterIdle, m_pending.back());
   wp_presentation_feedback_destroy(m_pending.back());
   m_pending.pop_back();
+  m_idleTick = true;
   m_frameInRun = false;
   m_cpuMs = 0.0F;
   finishIfDone();
+}
+
+void FrameStats::idleTick() {
+  if (m_active) {
+    m_idleTick = true;
+  }
 }
 
 void FrameStats::endFrame() {
@@ -92,8 +105,9 @@ void FrameStats::endFrame() {
 
 void FrameStats::onPresented(struct wp_presentation_feedback* feedback, std::uint64_t presentedNs, std::uint32_t refreshNs) {
   std::erase(m_pending, feedback);
+  const bool afterIdle = std::erase(m_afterIdle, feedback) > 0;
   wp_presentation_feedback_destroy(feedback);
-  if (m_lastPresentedNs != 0 && refreshNs != 0 && presentedNs > m_lastPresentedNs) {
+  if (!afterIdle && m_lastPresentedNs != 0 && refreshNs != 0 && presentedNs > m_lastPresentedNs) {
     const double intervals = static_cast<double>(presentedNs - m_lastPresentedNs) / refreshNs;
     m_missed += static_cast<std::uint32_t>(std::max(0.0, std::round(intervals) - 1.0));
   }
@@ -104,6 +118,7 @@ void FrameStats::onPresented(struct wp_presentation_feedback* feedback, std::uin
 
 void FrameStats::onDiscarded(struct wp_presentation_feedback* feedback) {
   std::erase(m_pending, feedback);
+  std::erase(m_afterIdle, feedback);
   wp_presentation_feedback_destroy(feedback);
   ++m_missed;
   ++m_discarded;
