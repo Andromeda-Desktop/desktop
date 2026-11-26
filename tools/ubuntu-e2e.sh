@@ -35,7 +35,7 @@ if [[ ${#names[@]} -gt 0 ]]; then scripts=$(printf 'tests/e2e/%s.sh ' "${names[@
 status=0
 # The compositor's renderer needs a DRM render node: pass the host GPU and its render group.
 gpu=()
-[[ -e /dev/dri ]] && gpu=(--device /dev/dri --group-add "$(stat -c %g /dev/dri/renderD128)")
+[[ -e /dev/dri/renderD128 ]] && gpu=(--device /dev/dri --group-add "$(stat -c %g /dev/dri/renderD128)")
 # quickshare and link_mirror unshare a user and net namespace; the default seccomp profile refuses it.
 docker run --rm --security-opt seccomp=unconfined --user "$(id -u):$(id -g)" "${gpu[@]}" -e HOME=/tmp --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT/src:/src" -w /src \
   -e NOCTALIA -e SCRIPTS="$scripts" "$IMAGE" bash -c '
