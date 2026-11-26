@@ -646,7 +646,7 @@ void LockscreenWidgetsHost::startHelper() {
     if (i >= fds.size()) {
       continue;
     }
-    instance->stream->adopt(fds[i], [this, placeholder](bool connected) {
+    instance->stream->adopt(fds[i], instance->state.id, [this, placeholder](bool connected) {
       if (placeholder != nullptr) {
         placeholder->setVisible(!connected);
       }

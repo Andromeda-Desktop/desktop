@@ -46,7 +46,8 @@ public:
   void setPath(const std::string& path);
   // Streams from a connected socket the caller made (PixelStreamClient::adopt). The view blanks
   // when that stream drops, and `onChange(connected)` runs after each frame and on the drop.
-  void adopt(int fd, std::function<void(bool connected)> onChange);
+  // `label` names the stream in the log line for its first shown frame after each adopt.
+  void adopt(int fd, std::string label, std::function<void(bool connected)> onChange);
   // Stops or resumes the companion's frames (adopted streams only).
   void setPaused(bool paused) { m_client.setPaused(paused); }
   void setRadius(float radius);
@@ -64,6 +65,7 @@ private:
   void emit(PointerKind kind, float x = 0.0F, float y = 0.0F, float dx = 0.0F, float dy = 0.0F);
   void updateAcceptedButtons();
   void doLayout(Renderer& renderer) override;
+  void logFirstFrame(const char* kind, int width, int height);
   void doInvalidateGpuResources(Renderer& renderer) override;
   void doRebindRenderer(Renderer& renderer) override { m_renderer = &renderer; }
 
@@ -83,6 +85,8 @@ private:
   Image* m_image = nullptr;
   TextureHandle m_texture;
   bool m_clearPending = false;
+  std::string m_label;
+  bool m_shownSinceAdopt = false;
   // Size of the frame on screen, which pointer positions map onto.
   int m_displayWidth = 0;
   int m_displayHeight = 0;

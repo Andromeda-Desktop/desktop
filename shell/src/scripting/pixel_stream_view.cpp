@@ -1,5 +1,6 @@
 #include "scripting/pixel_stream_view.h"
 
+#include "core/log.h"
 #include "ipc/pixel_stream_service.h"
 #include "render/core/renderer.h"
 #include "render/core/texture_manager.h"
@@ -164,12 +165,24 @@ void PixelStreamView::setPath(const std::string& path) {
   markLayoutDirty();
 }
 
-void PixelStreamView::adopt(int fd, std::function<void(bool connected)> onChange) {
+namespace {
+  constexpr Logger kLog("pixel-stream");
+} // namespace
+
+void PixelStreamView::adopt(int fd, std::string label, std::function<void(bool connected)> onChange) {
   cancelDrag();
+  m_label = std::move(label);
+  m_shownSinceAdopt = false;
   m_onAdoptedChange = std::move(onChange);
   m_client.adopt(fd);
   m_clearPending = true;
   markLayoutDirty();
+}
+
+void PixelStreamView::logFirstFrame(const char* kind, int width, int height) {
+  if (!m_label.empty() && !std::exchange(m_shownSinceAdopt, true)) {
+    kLog.info("first frame {} {}x{} {}", m_label, width, height, kind);
+  }
 }
 
 void PixelStreamView::setRadius(float radius) { m_image->setRadius(radius); }
@@ -263,6 +276,7 @@ void PixelStreamView::doLayout(Renderer& renderer) {
       m_image->markPaintDirty();
       m_displayWidth = frame->width;
       m_displayHeight = frame->height;
+      logFirstFrame("dmabuf", frame->width, frame->height);
     } else {
       // Another GPU or driver: ask for memfd frames, which every shell can upload.
       m_client.refuseDmabuf();
@@ -280,6 +294,7 @@ void PixelStreamView::doLayout(Renderer& renderer) {
     if (uploaded) {
       m_image->setExternalTexture(renderer, m_texture);
       m_image->markPaintDirty();
+      logFirstFrame("memfd", frame->width, frame->height);
       if (frame->width != m_displayWidth || frame->height != m_displayHeight) {
         // Positions in the old frame no longer mean the same place.
         cancelDrag();

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Plugin lock widgets draw in `noctalia lock-helper`, not in the shell (L5b). While locked the helper starts and its
-# frame shows (slot.png: a red box at 200,200), and a shader slot reaches the shell as a dmabuf (a green box at
+# frame shows (the box slot), and a shader slot reaches the shell as a dmabuf (a green box at
 # 400,200). A shader lock wallpaper (lockscreen.wallpaper = a .frag file) fills the background (green at
 # 40,600). Killing the helper leaves the session locked, the shell starts a new helper, and the password field
 # still takes input (a wrong password reaches PAM). P0: with the lock process (`noctalia lock`) running, the shell
 # delegates the lock; the lock process runs the helper (the shell starts none), and a face match unlocks and ends the
 # helper. P2: the shell dies while locked; the lock process (`noctalia
 # lock`) locks again and runs its own helper with the same frames, and a killed helper restarts there too. Writes
-# p0.png, slot.png, restarted.png, lock-slot.png, lock-restarted.png, noctalia*.log, lock*.log, mock.log and calls.txt to $OUT
+# noctalia*.log, lock*.log, mock.log and calls.txt to $OUT
 # (default ./artifacts/lock-helper-crash).
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/lock-helper-crash}
@@ -60,9 +60,9 @@ with_noctalia '
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   locked() { msg status | grep -q "\"locked\": true"; }
   helpers() { grep -c "started lock helper pid" "$OUT/noctalia.log" | grep -qx "$1"; }
-  green() { grim -g "400,200 1x1" -t ppm - | tail -c 3 | od -An -tu1 | awk "{ exit !(\$1 < 60 && \$2 > 200) }"; }
-  backdrop() { grim -g "40,600 1x1" -t ppm - | tail -c 3 | od -An -tu1 | awk "{ exit !(\$2 > \$1 + 30 && \$2 > \$3 + 30) }"; }
-  red() { grim -g "200,200 1x1" -t ppm - | tail -c 3 | od -An -tu1 | awk "{ exit !(\$1 > 200 && \$2 < 60) }"; }
+  # A capture is black while locked: shown LOG ID N waits for the Nth "first frame ID" line (one per helper start) the
+  # lock owner logs when a helper slot frame reaches the lock surface.
+  shown() { [[ $(grep -c "first frame $2 " "$1") -ge $3 ]]; }
 
   unlocked() { msg status | grep -q "\"locked\": false"; }
   gaze() { busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" call com.gundulabs.Gaze /com/gundulabs/Gaze dsk.test.Gaze "$@" \
@@ -87,10 +87,9 @@ with_noctalia '
   [[ $(msg session lock) == ok ]] || fail "P0: lock refused"
   wait_for "P0: did not lock" locked
   wait_for "P0: the lock process did not start a helper" grep -q "started lock helper pid" "$OUT/lock-p0.log"
-  wait_for "P0: the helper frame did not show" red
-  wait_for "P0: the shader frame did not show" green
-  wait_for "P0: the shader wallpaper did not show" backdrop
-  grim "$OUT/p0.png"
+  wait_for "P0: the helper frame did not show" shown "$OUT/lock-p0.log" box 1
+  wait_for "P0: the shader frame did not show" shown "$OUT/lock-p0.log" sh 1
+  wait_for "P0: the shader wallpaper did not show" shown "$OUT/lock-p0.log" @wallpaper:HEADLESS-1 1
   ! grep -q "started lock helper" "$OUT/noctalia-p0.log" || fail "P0: the delegating shell started a helper"
   pid=$(grep -o "started lock helper pid [0-9]*" "$OUT/lock-p0.log" | tail -1 | grep -o "[0-9]*$")
   wait_for "P0: face verify did not start" verifying
@@ -106,19 +105,17 @@ with_noctalia '
   [[ $(msg session lock) == ok ]] || fail "lock refused"
   wait_for "did not lock" locked
   wait_for "the lock helper did not start" helpers 1
-  wait_for "the helper frame did not show" red
-  wait_for "the shader frame did not show" green
-  wait_for "the shader wallpaper did not show" backdrop
+  wait_for "the helper frame did not show" shown "$OUT/noctalia.log" box 1
+  wait_for "the shader frame did not show" shown "$OUT/noctalia.log" sh 1
+  wait_for "the shader wallpaper did not show" shown "$OUT/noctalia.log" @wallpaper:HEADLESS-1 1
   grep -q "shader slot sends dmabufs" "$OUT/noctalia.log" || fail "the shader slot did not send dmabufs"
   ! grep -q "dmabuf import failed" "$OUT/noctalia.log" || fail "the shell did not import the dmabuf"
-  grim "$OUT/slot.png"
 
   pid=$(grep -o "started lock helper pid [0-9]*" "$OUT/noctalia.log" | tail -1 | grep -o "[0-9]*$")
   kill -9 "$pid"
   wait_for "the shell did not restart the helper" helpers 2
   locked || fail "killing the helper unlocked the session"
-  wait_for "the restarted helper frame did not show" red
-  grim "$OUT/restarted.png"
+  wait_for "the restarted helper frame did not show" shown "$OUT/noctalia.log" box 2
 
   wtype wrong-password
   wtype -k Return
@@ -132,15 +129,13 @@ with_noctalia '
   "$NOCTALIA" lock > "$OUT/lock.log" 2>&1 &
   wait_for "P2: the lock process did not lock again" relocked
   wait_for "P2: the lock process did not start a helper" lock_helpers 1
-  wait_for "P2: the helper frame did not show" red
-  wait_for "P2: the shader frame did not show" green
-  wait_for "P2: the shader wallpaper did not show" backdrop
-  grim "$OUT/lock-slot.png"
+  wait_for "P2: the helper frame did not show" shown "$OUT/lock.log" box 1
+  wait_for "P2: the shader frame did not show" shown "$OUT/lock.log" sh 1
+  wait_for "P2: the shader wallpaper did not show" shown "$OUT/lock.log" @wallpaper:HEADLESS-1 1
   pid=$(grep -o "started lock helper pid [0-9]*" "$OUT/lock.log" | tail -1 | grep -o "[0-9]*$")
   kill -9 "$pid"
   wait_for "P2: the lock process did not restart the helper" lock_helpers 2
-  wait_for "P2: the restarted helper frame did not show" red
-  grim "$OUT/lock-restarted.png"
+  wait_for "P2: the restarted helper frame did not show" shown "$OUT/lock.log" box 2
   echo "P2 pass: the lock process runs the helper"
   echo "PASS"
 '
