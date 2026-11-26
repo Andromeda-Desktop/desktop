@@ -267,6 +267,7 @@ void SettingsWindow::clearSettingOverrides(std::vector<std::vector<std::string>>
     const bool success = m_config->clearOverrides(paths, &changed);
     m_pendingResetPageScope.clear();
     if (!success) {
+      m_pendingResetSettingPaths.clear();
       markSettingsWriteError(i18n::tr("settings.errors.reset-page"));
       return;
     }
