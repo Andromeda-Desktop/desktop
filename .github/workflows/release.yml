@@ -1,0 +1,200 @@
+# The release pipeline: libdesk with its apps and the core, from one commit of main, in stages. Nothing is uploaded and
+# no tag is pushed until every build passed and one dry merge per repository index shows no new unmet dependency.
+#   plan -> build (apps: Arch, Ubuntu, Debian, macOS; core: Arch, Ubuntu, Debian) -> gate -> tags -> indexes -> symbols
+# Start: `just release` (dispatch on main), or push any tag release-* (it relays the dispatch to main, whose caches
+# later releases can read). publish off is a dry run: builds and gate only; the packages stay as workflow artifacts.
+# The per-unit workflows keep their own tags for a single-unit release; tags this run pushes start none of them.
+name: release
+
+on:
+  push:
+    tags: ["release-*"]
+  workflow_dispatch:
+    inputs:
+      publish: { description: "Push the tags and publish after the gate", type: boolean, default: true }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-pipeline
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml -R "$GITHUB_REPOSITORY" --ref main -f publish=true
+
+  plan:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      libdesk: ${{ steps.plan.outputs.libdesk }}
+      core: ${{ steps.plan.outputs.core }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: plan
+        run: |
+          libdesk=$(tools/unit-version.sh libdesk next) core=$(tools/unit-version.sh core next)
+          for tag in "libdesk-v$libdesk" "v$core"; do
+            ! git rev-parse -q --verify "refs/tags/$tag" > /dev/null || { echo "::error::$tag exists already"; exit 1; }
+          done
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "libdesk=$libdesk" >> "$GITHUB_OUTPUT"
+          echo "core=$core" >> "$GITHUB_OUTPUT"
+          echo "release $(git rev-parse --short HEAD): libdesk-v$libdesk, v$core" >> "$GITHUB_STEP_SUMMARY"
+
+  apps:
+    needs: plan
+    uses: ./.github/workflows/release-apps.yml
+    secrets: inherit
+    with: { tag: "libdesk-v${{ needs.plan.outputs.libdesk }}", ref: "${{ needs.plan.outputs.sha }}", publish: false }
+
+  core-arch:
+    needs: plan
+    uses: ./.github/workflows/release-arch.yml
+    secrets: inherit
+    with: { tag: "v${{ needs.plan.outputs.core }}", ref: "${{ needs.plan.outputs.sha }}" }
+
+  core-ubuntu:
+    needs: plan
+    uses: ./.github/workflows/release-ubuntu.yml
+    secrets: inherit
+    with: { tag: "v${{ needs.plan.outputs.core }}", ref: "${{ needs.plan.outputs.sha }}" }
+
+  core-debian:
+    needs: plan
+    uses: ./.github/workflows/release-debian.yml
+    secrets: inherit
+    with: { tag: "v${{ needs.plan.outputs.core }}", ref: "${{ needs.plan.outputs.sha }}" }
+
+  # One dry merge per index of every new package (apps and core together): the indexes after publish are these.
+  gate-arch:
+    needs: [plan, apps, core-arch, core-ubuntu, core-debian]
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm --needed git github-cli python zstd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: "${{ needs.plan.outputs.sha }}" }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { pattern: "{arch,core}", path: artifacts }
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
+          PUBLISH: "false"
+        run: mkdir new && cp artifacts/*/*.pkg.tar.zst new/ && tools/repo-publish.sh arch repo new
+
+  gate-apt:
+    needs: [plan, apps, core-arch, core-ubuntu, core-debian]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { base: "26.04", release: repo }
+          - { base: testing, release: debian }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: "${{ needs.plan.outputs.sha }}" }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { pattern: "{deb,apt}-${{ matrix.base }}", path: artifacts }
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
+          PUBLISH: "false"
+        run: |
+          sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
+          mkdir new && cp artifacts/*/*.deb new/ && tools/repo-publish.sh apt "${{ matrix.release }}" new
+
+  # Tags and the tag releases, all at the planned commit; the workflow token's tag pushes start no other run.
+  tags:
+    needs: [plan, gate-arch, gate-apt]
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LIBDESK: ${{ needs.plan.outputs.libdesk }}
+      CORE: ${{ needs.plan.outputs.core }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: "${{ needs.plan.outputs.sha }}", fetch-depth: 0 }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { path: artifacts }
+      - name: Tags
+        run: |
+          # One tag per push: GitHub drops the push event of more than 3 tags at once.
+          for tag in "libdesk-v$LIBDESK" files-v$LIBDESK terminal-v$LIBDESK player-v$LIBDESK viewer-v$LIBDESK \
+            link-app-v$LIBDESK "v$CORE"; do
+            git tag "$tag" HEAD && git push origin "refs/tags/$tag"
+          done
+      - name: Tag releases
+        run: |
+          for unit in libdesk files terminal player viewer link-app; do
+            tools/release-publish.sh "$unit-v$LIBDESK" "$unit" "$LIBDESK" artifacts/arch/andromeda-"$unit"-git-*.pkg.tar.zst
+          done
+          zip=Andromeda-Terminal-$LIBDESK-macos-arm64.zip
+          cp artifacts/terminal-macos/Andromeda-Terminal.zip "$zip"
+          tools/release-publish.sh "terminal-v$LIBDESK" terminal "$LIBDESK" "$zip"
+          tools/release-publish.sh "v$CORE" - "$CORE" artifacts/core/* artifacts/apt-26.04/* install.sh andromeda-release.asc
+          # The Latest release (repo) serves fixed links: releases/latest/download/<name>.
+          cp "$zip" Andromeda-Terminal-macos-arm64.zip
+          gh release upload repo -R "$GITHUB_REPOSITORY" --clobber install.sh andromeda-release.asc Andromeda-Terminal-macos-arm64.zip
+          gh release view debian -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 || gh release create debian -R "$GITHUB_REPOSITORY" \
+            --latest=false --title "Debian apt repository" --notes "Rolling apt repository for Debian testing, sid and Kali. See README.md."
+
+  index-arch:
+    needs: [plan, tags]
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm --needed git github-cli python zstd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: "${{ needs.plan.outputs.sha }}" }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { pattern: "{arch,core}", path: artifacts }
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
+        run: |
+          git config --global --add safe.directory '*'
+          mkdir new && cp artifacts/*/*.pkg.tar.zst new/ && tools/repo-publish.sh arch repo new
+
+  index-apt:
+    needs: [plan, tags]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { base: "26.04", release: repo }
+          - { base: testing, release: debian }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: "${{ needs.plan.outputs.sha }}" }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { pattern: "{deb,apt}-${{ matrix.base }}", path: artifacts }
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
+        run: |
+          sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
+          mkdir new && cp artifacts/*/*.deb new/ && tools/repo-publish.sh apt "${{ matrix.release }}" new
+
+  symbols:
+    needs: [plan, index-arch]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release-symbols.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="v${{ needs.plan.outputs.core }}"

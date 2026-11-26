@@ -11,6 +11,12 @@ on:
       tag: { description: "Existing tag to build and publish", required: true }
       ref: { description: "Commit or branch to build instead of the tag, for a packaging fix", required: false }
       prebuilt: { description: "Sign the debs already on the release instead of building them", type: boolean, default: false }
+  # release.yml: build only (pipeline), the artifacts are its to publish after its gate.
+  workflow_call:
+    inputs:
+      tag: { type: string, required: true }
+      ref: { type: string, required: false }
+      pipeline: { type: boolean, default: true }
 
 permissions:
   contents: write
@@ -93,6 +99,7 @@ jobs:
 
   publish:
     needs: [ubuntu]
+    if: ${{ !inputs.pipeline }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -102,6 +109,8 @@ jobs:
             install.sh
             andromeda-release.asc
             tools/repo-publish.sh
+            tools/repo-check.py
+            tools/release-publish.sh
           sparse-checkout-cone-mode: false
           path: src
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -111,8 +120,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
         run: |
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber apt/* src/install.sh src/andromeda-release.asc
+          src/tools/release-publish.sh "$TAG" - "${TAG#v}" apt/* src/install.sh src/andromeda-release.asc
           sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
           src/tools/repo-publish.sh apt repo apt
           gh release upload repo --repo "$GITHUB_REPOSITORY" --clobber src/install.sh src/andromeda-release.asc

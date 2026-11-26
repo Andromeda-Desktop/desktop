@@ -95,6 +95,10 @@ e2e-one name:
 e2e-ci *names:
     gh workflow run e2e.yml --ref main -f names="{{names}}"
 
+# The whole release on GitHub (workflow release.yml, pushed main): libdesk, its apps and the core, published only after every build and the index gate pass. `just release false` is a dry run.
+release publish="true":
+    gh workflow run release.yml --ref main -f publish={{publish}}
+
 # Unit suites and headless E2E in an Ubuntu container, on the working tree: `just e2e-ubuntu` or `just e2e-ubuntu 26.04 dock_basic`.
 e2e-ubuntu version="26.04" *names:
     tools/ubuntu-e2e.sh {{version}} {{names}}

@@ -10,6 +10,12 @@ on:
     inputs:
       tag: { description: "Existing tag to build and publish", required: true }
       ref: { description: "Commit or branch to build instead of the tag, for a packaging fix", required: false }
+  # release.yml: build only (pipeline), the artifacts are its to publish after its gate.
+  workflow_call:
+    inputs:
+      tag: { type: string, required: true }
+      ref: { type: string, required: false }
+      pipeline: { type: boolean, default: true }
 
 permissions:
   contents: write
@@ -57,6 +63,7 @@ jobs:
 
   publish:
     needs: [debian]
+    if: ${{ !inputs.pipeline }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

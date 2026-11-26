@@ -13,6 +13,12 @@ on:
       ref: { description: "Commit or branch to build instead of the tag, for a packaging fix", required: false }
       prebuilt: { description: "Sign the packages already on the release instead of building them", type: boolean, default: false }
       only: { description: "Build and publish only these parts (\"compositor shell\"); the repository keeps the others", required: false }
+  # release.yml: build only (pipeline), the artifacts are its to publish after its gate.
+  workflow_call:
+    inputs:
+      tag: { type: string, required: true }
+      ref: { type: string, required: false }
+      pipeline: { type: boolean, default: true }
 
 permissions:
   contents: write
@@ -25,7 +31,7 @@ jobs:
   # A tag's run may restore main's caches but saves only for that tag, which no later release can read. The tag
   # starts the build on main instead (GITHUB_TOKEN may dispatch), so its ccache serves the next releases.
   relay:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && !inputs.pipeline
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -35,7 +41,7 @@ jobs:
         run: gh workflow run release-arch.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
 
   packages:
-    if: github.event_name != 'push'
+    if: github.event_name != 'push' || inputs.pipeline
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
@@ -88,6 +94,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
+          PUBLISH: ${{ inputs.pipeline && 'false' || 'true' }}
         run: |
           # The apps release on their own tags: a core build would put its version on their packages.
           mkdir core
@@ -107,6 +114,7 @@ jobs:
 
   publish:
     needs: [packages]
+    if: ${{ !inputs.pipeline }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -115,6 +123,7 @@ jobs:
           sparse-checkout: |
             install.sh
             andromeda-release.asc
+            tools/release-publish.sh
           sparse-checkout-cone-mode: false
           path: src
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -123,5 +132,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber core/* src/install.sh src/andromeda-release.asc
+          src/tools/release-publish.sh "$TAG" - "${TAG#v}" core/* src/install.sh src/andromeda-release.asc

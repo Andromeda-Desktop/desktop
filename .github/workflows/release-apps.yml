@@ -15,6 +15,12 @@ on:
       tag: { description: "App tag (files-v0.1.0); it must exist unless ref is set", required: true }
       ref: { description: "Commit or branch to build instead of the tag", required: false }
       publish: { description: "Publish to the releases and repositories", type: boolean, default: true }
+  # release.yml builds with publish off and publishes the artifacts itself after its gate.
+  workflow_call:
+    inputs:
+      tag: { type: string, required: true }
+      ref: { type: string, required: false }
+      publish: { type: boolean, default: false }
 
 permissions:
   contents: write
@@ -116,12 +122,9 @@ jobs:
         run: |
           for unit in $UNITS; do
             tag=$unit-v$ANDROMEDA_VERSION
-            gh release create "$tag" -R "$GITHUB_REPOSITORY" --verify-tag --latest=false --generate-notes \
-              --notes "$(tools/release-notes.sh "$unit" "$ANDROMEDA_VERSION")" \
-              || gh release view "$tag" -R "$GITHUB_REPOSITORY" > /dev/null
             rm -rf out && mkdir out
             for package in pkg/andromeda-"$unit"-git-*.pkg.tar.zst; do name=$(basename "$package"); cp "$package" "out/${name//:/.}"; done
-            gh release upload "$tag" -R "$GITHUB_REPOSITORY" --clobber out/*
+            tools/release-publish.sh "$tag" "$unit" "$ANDROMEDA_VERSION" out/*
           done
       - name: Repository
         env:
