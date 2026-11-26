@@ -10,6 +10,7 @@ _aa_support = files(
   'src/greeter/greetd_user.cpp',
   'src/greeter/privileged_state_paths.cpp',
   'src/greeter/greeter_config_io.cpp',
+  'src/greeter/lockscreen_sync.cpp',
   'src/greeter/greeter_preferences.cpp',
   'src/tools/secure_appearance_sync.cpp',
 )

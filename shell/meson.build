@@ -1122,13 +1122,14 @@ noctalia_shell_module = shared_module('andromeda-shell',
 
 # Small on purpose: greeter mode runs from it before any login (.agent/DESIGN.md "Shell greeter mode").
 noctalia_exe = executable('andromeda-shell',
-  sources: files('src/main.cpp', 'src/greeter/greeter_host.cpp', 'src/greeter/greetd_client.cpp', 'protocols/ipc_channel.cpp')
+  sources: files('src/main.cpp', 'src/greeter/greeter_host.cpp', 'src/greeter/greetd_client.cpp', 'protocols/ipc_channel.cpp',
+    'tools/greeter-apply-appearance/src/greeter/lockscreen_sync.cpp')
     + _protocol_headers
     # The sanitizer runtime reads the suppressions from the executable, not from the RTLD_LOCAL module.
     + (sanitize ? files('src/core/lsan_suppressions.cpp') : []),
   dependencies: [desk_ui_dep, gio_dep, tomlplusplus_dep, nlohmann_dep, libsodium_dep, xkbcommon_dep]
     + (dl_dep.found() ? [dl_dep] : []),
-  include_directories: _noctalia_inc,
+  include_directories: _noctalia_inc + [include_directories('tools/greeter-apply-appearance/src')],
   cpp_args: _noctalia_cpp_args,
   link_with: noctalia_auth_ui_lib,
   install: true,

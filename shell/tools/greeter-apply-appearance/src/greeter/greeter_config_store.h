@@ -1,5 +1,6 @@
 #pragma once
 
+#include "greeter/lockscreen_sync.h"
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -85,29 +86,6 @@ namespace greeter::config {
 
   // The session's lock screen look ([lockscreen] in sync.toml), drawn by the shell's greeter mode. Ids are checked
   // only for form (isSafeLockscreenId); the greeter falls back to its defaults for an id it does not know.
-  struct GreeterLockscreen {
-    std::string theme;
-    std::string layout;
-    std::string clockStyle;
-    std::string clockSize; // "" | s | m | l | xl | fill
-    bool clockFormat24h = true;
-    bool clockSeconds = false;
-    // Font axes; 0 (round -1) = the style's own value.
-    int clockWeight = 0;  // 0 | 100..1000
-    int clockWidth = 0;   // 0 | 50..200
-    int clockRound = -1;  // -1..100
-    int clockSlant = 0;   // 0..15 degrees
-    std::string clockMaterial = "solid"; // solid | glass | tint
-    std::string clockColor = "white";    // white | accent | wallpaper | gradient
-    bool clockMotion = true;
-    // The lock clock's gradient ink, "#rrggbb"; empty = not synced.
-    std::string clockInkFrom;
-    std::string clockInkTo;
-    double blurIntensity = 0.5; // 0..1
-    double tintIntensity = 0.3; // 0..1
-  };
-  [[nodiscard]] bool isSafeLockscreenId(std::string_view id);
-  [[nodiscard]] bool isValidLockscreen(const GreeterLockscreen& lockscreen);
 
   // Sync + UI mutable file (sync.toml). Never managed by Nix. Loses to greeter.toml.
   struct GreeterSyncFile {

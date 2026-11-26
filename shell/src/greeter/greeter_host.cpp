@@ -9,6 +9,7 @@
 #include "protocols/heap.h"
 #include "core/ui_phase.h"
 #include "greeter/greetd_client.h"
+#include "greeter/lockscreen_sync.h"
 #include "protocols/xdg_dirs.h"
 #include "render/gl_shared_context.h"
 #include "render/render_context.h"
@@ -129,30 +130,26 @@ namespace {
       kLog.info("no greeter appearance at {}: {}", path.string(), e.description());
       return config;
     }
-    if (const toml::table* lock = table["lockscreen"].as_table()) {
-      config.theme = (*lock)["theme"].value_or(config.theme);
-      config.layout = (*lock)["layout"].value_or(config.layout);
-      config.clockStyle = (*lock)["clock_style"].value_or(config.clockStyle);
-      config.clockSize = (*lock)["clock_size"].value_or(config.clockSize);
-      config.clockFormat24h = (*lock)["clock_format_24h"].value_or(config.clockFormat24h);
-      config.clockSeconds = (*lock)["clock_seconds"].value_or(config.clockSeconds);
-      config.clockAxes.weight = (*lock)["clock_weight"].value_or(config.clockAxes.weight);
-      config.clockAxes.width = (*lock)["clock_width"].value_or(config.clockAxes.width);
-      config.clockAxes.round = (*lock)["clock_round"].value_or(config.clockAxes.round);
-      config.clockAxes.slant = (*lock)["clock_slant"].value_or(config.clockAxes.slant);
-      config.clockColor = (*lock)["clock_color"].value_or(config.clockColor);
-      config.clockMaterial = (*lock)["clock_material"].value_or(config.clockMaterial);
-      config.clockMotion = (*lock)["clock_motion"].value_or(config.clockMotion);
-      const auto ink = [](std::optional<std::string> hex) -> std::uint32_t {
-        if (!hex.has_value() || hex->size() != 7 || (*hex)[0] != '#') {
+    if (const auto lock = greeter::config::parseLockscreen(table, path)) {
+      config.theme = lock->theme;
+      config.layout = lock->layout;
+      config.clockStyle = lock->clockStyle.empty() ? config.clockStyle : lock->clockStyle;
+      config.clockSize = lock->clockSize;
+      config.clockFormat24h = lock->clockFormat24h;
+      config.clockSeconds = lock->clockSeconds;
+      config.clockAxes = {.weight = lock->clockWeight, .width = lock->clockWidth, .round = lock->clockRound, .slant = lock->clockSlant};
+      config.clockColor = lock->clockColor;
+      config.clockMaterial = lock->clockMaterial;
+      config.clockMotion = lock->clockMotion;
+      const auto ink = [](std::string_view hex) -> std::uint32_t {
+        std::uint32_t rgb = 0;
+        if (hex.size() != 7 || std::from_chars(hex.data() + 1, hex.data() + 7, rgb, 16).ec != std::errc{}) {
           return 0;
         }
-        std::uint32_t rgb = 0;
-        const auto [end, ec] = std::from_chars(hex->data() + 1, hex->data() + 7, rgb, 16);
-        return ec == std::errc{} && end == hex->data() + 7 ? (rgb << 8U) | 0xFFU : 0;
+        return (rgb << 8U) | 0xFFU;
       };
-      config.clockInkFrom = ink((*lock)["clock_ink_from"].value<std::string>());
-      config.clockInkTo = ink((*lock)["clock_ink_to"].value<std::string>());
+      config.clockInkFrom = ink(lock->clockInkFrom);
+      config.clockInkTo = ink(lock->clockInkTo);
     }
     if (const auto p = table["appearance"]["wallpaper"]["path"].value<std::string>()) {
       config.wallpaper = *p;
