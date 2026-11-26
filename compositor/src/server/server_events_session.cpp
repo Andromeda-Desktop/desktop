@@ -286,6 +286,14 @@ namespace andromeda {
       const char* escape = std::getenv("ANDROMEDA_LOCK_ESCAPE_MS");
       wl_event_source_timer_update(m_restartLockEscape, escape != nullptr ? std::atoi(escape) : 10000);
     }
+    // Running window captures show black while locked and resume on unlock (output captures: redactedCaptureFrame).
+    if (locked(from) != locked(next)) {
+      for (const auto& view : m_registry.all()) {
+        if (view != nullptr) {
+          view->refreshCaptureHidden();
+        }
+      }
+    }
     // Lock ends held global shortcuts; unlock shows an approval that waited.
     if (m_globalShortcutService != nullptr && locked(from) != locked(next)) {
       if (sessionLocked()) {

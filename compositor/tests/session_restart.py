@@ -125,7 +125,8 @@ def main(binary, mode):
         fd = fcntl.fcntl(listener.fileno(), fcntl.F_DUPFD_CLOEXEC, 10)
         command = ["/bin/sh", "-c",
                    f'ulimit -c 0; export SYSTEMD_EXEC_PID=$$ LISTEN_PID=$$ WATCHDOG_PID=$$; exec "$@" 3<&{fd} {fd}<&-',
-                   "session-restart", str(binary), "-c", str(config)]
+                   "session-restart", str(binary), "-c", str(config),
+                   "--trust-binary", str(Path(os.environ["ANDROMEDA_LOCK_CLIENT"]).resolve().parent) + "/"]
 
         def start(log):
             return subprocess.Popen(command, env=environment, stdout=log, stderr=log, start_new_session=True,

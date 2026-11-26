@@ -2,8 +2,8 @@
 # harness: outputs=2
 # A lock request keeps the current desktop visible until every active output has a mapped lock surface. Once the
 # surfaces are ready, the compositor switches both outputs to secure content and confirms the lock only after those
-# frames are presented. A client that never commits still completes through the opaque compositor blank after the
-# bounded surface deadline.
+# frames are presented. Captures show black while locked, so the log tells the ready path from the fallback. A client
+# that never commits still completes through the opaque compositor blank after the bounded surface deadline.
 set -euo pipefail
 
 readonly LAYER_CLIENT="${ANDROMEDA_LAYER_CLIENT:-./build-debug/tests/layer-client}"
@@ -68,8 +68,12 @@ wait_for_line "$first_log" locked
 for output in HEADLESS-1 HEADLESS-2; do
   image="$ANDROMEDA_RUNTIME_DIR/ready-$output.png"
   grim -o "$output" "$image"
-  assert_pixel "$image" 16 32 48 "ready lock surface was not presented on $output"
+  assert_pixel "$image" 0 0 0 "a capture saw the lock surface on $output"
 done
+if grep -q 'lock surfaces were not ready' "$ANDROMEDA_LOG"; then
+  echo "the ready lock client fell back to the secure blank"
+  exit 1
+fi
 
 echo unlock >&"$first_fd"
 wait_for_line "$first_log" unlocked
@@ -90,6 +94,7 @@ if grep -q '^locked$' "$timeout_log"; then
   exit 1
 fi
 wait_for_line "$timeout_log" locked 200
+grep -q 'lock surfaces were not ready' "$ANDROMEDA_LOG"
 
 for output in HEADLESS-1 HEADLESS-2; do
   image="$ANDROMEDA_RUNTIME_DIR/timeout-$output.png"

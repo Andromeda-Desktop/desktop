@@ -2563,8 +2563,15 @@ namespace andromeda {
   }
 
   wlr_buffer* Output::redactedCaptureFrame(wlr_buffer* frame, const std::optional<wlr_fbox>& zoom) {
+    if (!m_server->outputCaptureListening(m_output)) {
+      return nullptr;
+    }
+    // Locked: no capture sees the desktop or the lock surface; running captures get black frames until unlock.
+    if (m_server->sessionLocked()) {
+      return lockedBlackBuffer(frame->width, frame->height);
+    }
     const DskSurfaceManager* dsk = m_server->dskSurfaces();
-    if (dsk == nullptr || !dsk->anySecure() || !m_server->outputCaptureListening(m_output)) {
+    if (dsk == nullptr || !dsk->anySecure()) {
       return nullptr;
     }
     if (m_mirrorSource == nullptr) {

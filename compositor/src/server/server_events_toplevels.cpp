@@ -821,7 +821,9 @@ namespace andromeda {
     self = wl_container_of(listener, self, m_toplevelCaptureRequest);
     auto* request = static_cast<wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request*>(data);
 
-    if (request->toplevel_handle == nullptr || request->toplevel_handle->data == nullptr) {
+    // An inert source: the client's capture session gets `stopped` at once.
+    if (request->toplevel_handle == nullptr || request->toplevel_handle->data == nullptr || self->sessionLocked()) {
+      wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(request, nullptr);
       return;
     }
     auto* view = static_cast<View*>(request->toplevel_handle->data);

@@ -391,12 +391,12 @@ namespace andromeda {
         wlr_surface_for_each_surface(root, visit, &walk);
       }
     }
-    const bool hidden = walk.secure;
-    if (hidden != m_captureBlocked) {
-      m_captureBlocked = hidden;
+    if (walk.secure != m_captureBlocked) {
+      m_captureBlocked = walk.secure;
       m_server->scheduleIpcWindowsEvent(false);
       m_server->scheduleSuspensionSync();
     }
+    const bool hidden = walk.secure || m_server->sessionLocked();
     wlr_scene_node* child = nullptr;
     wl_list_for_each(child, &m_captureScene->tree.children, link) {
       if (m_captureBlank == nullptr || child != &m_captureBlank->node) {
