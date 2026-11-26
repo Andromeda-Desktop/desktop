@@ -110,7 +110,8 @@
   },
   "sidebar": {
     "sessions": "Sessions",
-    "new-window": "New Window"
+    "new-window": "New Window",
+    "more-windows": "More windows ({count})"
   },
   "session": {
     "new": "New session",

@@ -760,14 +760,20 @@ namespace term {
       p.disabled = p.normal;
       return p;
     };
-    // This window's item and "+" always show; the other windows fill the room left, in window order.
+    // This window's item and "+" always show; the other windows fill the room left, in window order. When they
+    // do not all fit, the last slot is a "more" button whose menu lists the rest.
     const auto room = static_cast<std::size_t>(std::max(0.0F, (m_footWidth - item - item - gap) / (item + gap)));
+    const std::size_t total = m_shownBar.size() - 1;
+    const bool overflow = total > room;
+    const std::size_t fit = overflow ? std::max<std::size_t>(room, 1) - 1 : total;
+    std::vector<ContextMenuControlEntry> hidden;
+    std::vector<std::uint64_t> hiddenIds;
     std::size_t others = 0;
     for (const workspace_bar::Item& w : m_shownBar) {
       const std::string glyph = w.symbol.empty() ? std::string("folder") : w.symbol;
       if (w.here) {
         // The lens holds the symbol and, when the other items leave room for it, the name.
-        const std::size_t shownOthers = std::min(room, m_shownBar.size() - 1);
+        const std::size_t shownOthers = fit + (overflow ? 1 : 0);
         const float lens = std::max(item, m_footWidth - static_cast<float>(shownOthers + 1) * (item + gap));
         const float nameWidth = lens - item - Tokens::spaceP8 * s;
         Flex* row = nullptr;
@@ -786,7 +792,11 @@ namespace term {
         }
         continue;
       }
-      if (others++ >= room) continue;
+      if (others++ >= fit) {
+        hidden.push_back({.id = static_cast<std::int32_t>(hiddenIds.size()), .label = w.name, .glyph = glyph});
+        hiddenIds.push_back(w.window);
+        continue;
+      }
       Button* other = nullptr;
       m_footBar->addChild(ui::button({.out = &other, .glyph = glyph, .glyphSize = symbol,
                                       .customPalette = palette(ColorRole::Label2, ColorRole::Fill2),
@@ -800,6 +810,21 @@ namespace term {
                                  .radius = dot / 2.0F, .width = dot, .height = dot, .participatesInLayout = false}));
         badge->setPosition(item - dot - dot, dot);
       }
+    }
+    if (!hidden.empty()) {
+      Button* more = nullptr;
+      m_footBar->addChild(ui::button({.out = &more, .glyph = std::string("dots"), .glyphSize = symbol,
+                                      .customPalette = palette(ColorRole::Label2, ColorRole::Fill2),
+                                      .tooltip = std::string(i18n::tr("terminal.sidebar.more-windows", "count", hidden.size())),
+                                      .radius = item / 2.0F, .width = item, .height = item}));
+      more->setOnClick([this, more, hidden = std::move(hidden), ids = std::move(hiddenIds)] {
+        float x = 0.0F;
+        float y = 0.0F;
+        Node::absolutePosition(more, x, y);
+        m_window.openContextMenu(hidden, x, y, [this, alive = std::weak_ptr<bool>(m_alive), ids](std::int32_t i) {
+          if (!alive.expired() && i >= 0 && static_cast<std::size_t>(i) < ids.size()) m_pickWorkspace(ids[static_cast<std::size_t>(i)]);
+        });
+      });
     }
     m_footBar->addChild(ui::box({.flexGrow = 1.0F}));
     m_footBar->addChild(ui::button({.glyph = std::string("plus"), .glyphSize = symbol, .customPalette = palette(ColorRole::Label2, ColorRole::Fill2),
