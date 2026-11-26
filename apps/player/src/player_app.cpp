@@ -1,6 +1,7 @@
 #include "player_app.h"
 
 #include "protocols/uri.h"
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
@@ -921,19 +922,31 @@ std::unique_ptr<Node> PlayerApp::buildNowPlaying(Renderer& renderer, float s) {
     }
   }
   std::error_code localError;
-  // A local file outside the library: its cover is looked up once per file (headers only). A URL never is: an
-  // http read has no timeout and this runs on the loop thread.
+  // A local file outside the library: its cover is looked up once per file (headers only) on a worker, since it reads
+  // tags and writes the cover cache. A URL never is: an http read has no timeout.
   if (art.empty() && st.path.starts_with('/') && std::filesystem::is_regular_file(st.path, localError)) {
     if (m_looseArtPath != st.path) {
       m_looseArtPath = st.path;
       m_looseArt.clear();
-      MusicTrack track;
-      if (MusicLibrary::readTags(st.path, track)) {
-        MusicAlbum single{.title = track.album, .artist = track.artist, .tracks = {0}};
-        const std::vector<MusicTrack> one{track};
-        MusicLibrary::findArt(single, one, std::filesystem::path(g_get_user_cache_dir()) / "andromeda/player/art");
-        m_looseArt = single.art;
-      }
+      BlockingPool::instance().run<std::filesystem::path>(
+          m_alive,
+          [path = st.path, cache = std::filesystem::path(g_get_user_cache_dir()) / "andromeda/player/art"] {
+            MusicTrack track;
+            if (!MusicLibrary::readTags(path, track)) {
+              return std::filesystem::path{};
+            }
+            MusicAlbum single{.title = track.album, .artist = track.artist, .tracks = {0}};
+            const std::vector<MusicTrack> one{track};
+            MusicLibrary::findArt(single, one, cache);
+            return single.art;
+          },
+          [this, path = st.path](std::filesystem::path found) {
+            if (m_looseArtPath == path && !found.empty()) {
+              m_looseArt = std::move(found);
+              m_window->requestRebuild();
+            }
+          }
+      );
     }
     art = m_looseArt;
   }
