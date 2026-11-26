@@ -47,7 +47,17 @@ pub fn exe_of(line: &str) -> Option<String> {
         return None;
     }
     let field = |k: &str| entry.get(k).and_then(serde_json::Value::as_str).filter(|s| !s.is_empty());
-    field("COREDUMP_EXE").or_else(|| field("COREDUMP_COMM")).map(str::to_owned)
+    field("COREDUMP_EXE").or_else(|| field("COREDUMP_COMM")).filter(|exe| !in_build_tree(exe)).map(str::to_owned)
+}
+
+/// A binary run from a build directory (meson `build*`, cargo `target`): a developer's test, not an installed app.
+fn in_build_tree(exe: &str) -> bool {
+    std::path::Path::new(exe).parent().is_some_and(|dir| {
+        dir.components().any(|c| {
+            let c = c.as_os_str().to_string_lossy();
+            c == "build" || c.starts_with("build-") || c == "target"
+        })
+    })
 }
 
 /// Crashes of the last `WINDOW`, oldest first.
@@ -392,6 +402,15 @@ mod tests {
         let line = format!(r#"{{"MESSAGE_ID":"{COREDUMP_ID}","COREDUMP_EXE":"/usr/bin/foot","COREDUMP_COMM":"foot"}}"#);
         assert_eq!(exe_of(&line).as_deref(), Some("/usr/bin/foot"));
         assert_eq!(exe_of(r#"{"MESSAGE_ID":"x","COREDUMP_EXE":"/usr/bin/foot"}"#), None);
+    }
+
+    #[test]
+    fn a_binary_in_a_build_tree_is_not_an_app_crash() {
+        let line = |exe| format!(r#"{{"MESSAGE_ID":"{COREDUMP_ID}","COREDUMP_EXE":"{exe}"}}"#);
+        assert_eq!(exe_of(&line("/data/desktop/shell/build-f7/state_store_test")), None);
+        assert_eq!(exe_of(&line("/data/desktop/apps/files/build/andromeda-files")), None);
+        assert_eq!(exe_of(&line("/home/u/src/x/target/debug/x")), None);
+        assert_eq!(exe_of(&line("/usr/bin/build-helper")).as_deref(), Some("/usr/bin/build-helper"));
     }
 
     #[test]
