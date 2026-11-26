@@ -124,6 +124,8 @@ namespace andromeda::ov {
   [[nodiscard]] Placement placeAt(Style style, Input input, double row);
   // The chosen workspace that `row` shows: `row` itself, or one end of a jump that skips rows.
   [[nodiscard]] double shownRow(const std::optional<RowJump>& jump, double row);
+  // The whole row a jump left: `from` itself, or the row behind a fractional `from` (a fling released between rows).
+  [[nodiscard]] double jumpStart(const RowJump& jump);
 
   // Where a window of workspace `workspace` sits on the desktop while the workspaces are scrolled to `row`: its own
   // rect, one output away per workspace along the workspace axis. Open progress 0 starts here.

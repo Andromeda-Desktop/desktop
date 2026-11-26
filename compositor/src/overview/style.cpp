@@ -183,6 +183,9 @@ namespace andromeda::ov {
       return jump.has_value() && std::abs(jump->to - jumpNear(*jump)) > 1.0 + 1e-6;
     }
 
+    // `row` is past `from`, away from `to`: a jump retargeted back to its start row draws the plain rows there.
+    bool behindJump(const RowJump& jump, double row) { return (jump.to - jump.from) * (row - jump.from) < 0.0; }
+
     double jumpProgress(const RowJump& jump, double row) {
       return std::clamp((row - jump.from) / (jump.to - jump.from), 0.0, 1.0);
     }
@@ -190,7 +193,7 @@ namespace andromeda::ov {
     // Row i's distance from the shown row, in rows. A jump closes the gap of the rows it skips, so they never cross
     // the screen: they wait three rows out, where nothing is drawn.
     double rowOffset(const Input& in, double row, double i) {
-      if (!skipsRows(in.jump)) {
+      if (!skipsRows(in.jump) || behindJump(*in.jump, row)) {
         return i - row;
       }
       const RowJump& jump = *in.jump;
@@ -342,7 +345,7 @@ namespace andromeda::ov {
       return place(style, input);
     }
     row = std::clamp(row, 0.0, static_cast<double>(n - 1));
-    if (!skipsRows(input.jump)) {
+    if (!skipsRows(input.jump) || behindJump(*input.jump, row)) {
       input.jump.reset();
     }
     input.current = static_cast<size_t>(std::lround(shownRow(input.jump, row)));
@@ -366,8 +369,12 @@ namespace andromeda::ov {
     return blend(a, place(style, input), t);
   }
 
+  double jumpStart(const RowJump& jump) {
+    return jump.to > jump.from ? std::floor(jump.from + 1e-6) : std::ceil(jump.from - 1e-6);
+  }
+
   double shownRow(const std::optional<RowJump>& jump, double row) {
-    if (!skipsRows(jump)) {
+    if (!skipsRows(jump) || behindJump(*jump, row)) {
       return row;
     }
     return jumpProgress(*jump, row) < 0.5 ? jump->from : jump->to;

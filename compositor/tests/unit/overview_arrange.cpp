@@ -224,4 +224,24 @@ ANDROMEDA_TEST(placeAtJumpSkipsTheRowsBetween) {
   }
 }
 
+// A fling released between rows (from 0.4) and sent back to the row it left draws the plain rows once the row passes
+// `from`, so it lands on row 0 with no jump at the end.
+ANDROMEDA_TEST(placeAtBehindAFlingIsPlain) {
+  Input in = sample(Arrangement::Scrolling, 5);
+  in.jump = RowJump{.from = 0.4, .to = 4};
+  Input plain = in;
+  plain.jump.reset();
+  CHECK_EQ(jumpStart(*in.jump), 0.0);
+  for (double row = 0.0; row < 0.4; row += 0.125) {
+    CHECK_EQ(shownRow(in.jump, row), row);
+    for (const Style style : {Style::Strip, Style::Spaces, Style::TaskView}) {
+      const Placement want = placeAt(style, plain, row);
+      for (const WindowPlace& w : placeAt(style, in, row).windows) {
+        const WindowPlace* p = findWindow(want, w.id);
+        CHECK(p != nullptr && std::abs(w.rect.x - p->rect.x) < 1e-6 && std::abs(w.rect.y - p->rect.y) < 1e-6);
+      }
+    }
+  }
+}
+
 int main() { return RUN_TESTS(); }
