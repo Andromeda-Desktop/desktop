@@ -35,9 +35,9 @@ void LauncherWidget::create() {
     );
   }
   if (m_pillWidth > 0) {
-    // A text field look (concept-wm.html .pill): view fill and a hairline.
-    m_lens->setFill(colorSpecFromRole(ColorRole::View));
-    m_lens->setBorder(colorSpecFromRole(ColorRole::Stroke), 1.0F);
+    // A field on the bar glass (concept-wm.html .pill): the glass card fill and edge, so it stays light in dark mode.
+    m_lens->setFill(colorSpecFromRole(ColorRole::GlassCard));
+    m_lens->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 1.0F);
     m_lens->setVisible(true);
     area->addChild(ui::label({
         .out = &m_label,
@@ -106,7 +106,7 @@ void LauncherWidget::doUpdate(Renderer& /*renderer*/) {
     // The pill keeps its capsule; an open launcher deepens it.
     if (open != m_pillOpen) {
       m_pillOpen = open;
-      m_lens->setFill(colorSpecFromRole(open ? ColorRole::Fill2 : ColorRole::View));
+      m_lens->setFill(colorSpecFromRole(open ? ColorRole::Fill2 : ColorRole::GlassCard));
       requestRedraw();
     }
     return;
