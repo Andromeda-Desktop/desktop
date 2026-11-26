@@ -763,13 +763,14 @@ namespace term {
       return;
     }
     const auto& list = m_sessions.sessions();
-    for (const std::uint64_t id : ids) {
-      const auto it = std::ranges::find(list, id, &SessionInfo::id);
-      if (it == list.end() || it->kind != SessionKind::Shell) {
+    // The last in list order first: the stack reopens the first one first, so each comes back before the next.
+    for (auto it = list.rbegin(); it != list.rend(); ++it) {
+      const std::uint64_t id = it->id;
+      if (!std::ranges::contains(ids, id) || it->kind != SessionKind::Shell) {
         continue;
       }
       ClosedSession closed{.window = m_windowId, .session = {cwdOf(id), it->name}};
-      const auto next = std::find_if(it + 1, list.end(), [&](const SessionInfo& s) { return !std::ranges::contains(ids, s.id); });
+      const auto next = std::find_if(it.base(), list.end(), [&](const SessionInfo& s) { return !std::ranges::contains(ids, s.id); });
       closed.before = next != list.end() ? next->id : 0;
       // The pane beside it in the tree, and the side it took of that pane.
       using Tree = andromeda::tiling::DwindleTree;
@@ -787,6 +788,10 @@ namespace term {
           closed.splitWith = other->key;
           closed.edge = across ? (first ? andromeda::tiling::EdgeLeft : andromeda::tiling::EdgeRight)
                                : (first ? andromeda::tiling::EdgeTop : andromeda::tiling::EdgeBottom);
+          closed.shape = tree->shape();
+          for (auto& node : closed.shape) {
+            if (node.type == Tree::Node::Leaf && node.key == id) node.key = 0;
+          }
         }
       }
       m_closed(std::move(closed));
@@ -805,7 +810,11 @@ namespace term {
     }
     const auto* split = closed.splitWith != 0 ? m_sessions.splitOf(closed.splitWith) : nullptr;
     if (closed.splitWith != 0 && m_sessions.find(closed.splitWith) != nullptr && (split == nullptr || split->size() < kMaxPanes)) {
-      m_split.pendJoin({.target = closed.splitWith, .joining = id, .edge = closed.edge});
+      auto shape = closed.shape;
+      for (auto& node : shape) {
+        if (node.type == andromeda::tiling::DwindleTree::Node::Leaf && node.key == 0) node.key = id;
+      }
+      m_split.pendJoin({.target = closed.splitWith, .joining = id, .edge = closed.edge, .shape = std::move(shape)});
       apply(session_event::Join{.target = closed.splitWith, .joining = id,
                                 .before = closed.edge == andromeda::tiling::EdgeLeft || closed.edge == andromeda::tiling::EdgeTop});
       focusGrid();
@@ -1339,10 +1348,11 @@ namespace term {
     return id != shown && m_sessions.splitOf(id) == nullptr && (shownSplit == nullptr || shownSplit->size() < kMaxPanes);
   }
 
-  void TerminalWindow::joinShown(std::uint64_t id) {
+  void TerminalWindow::joinShown(std::uint64_t id, std::uint32_t edge) {
     const std::uint64_t shown = m_sessions.shown().value_or(0);
-    m_split.pendJoin({.target = shown, .joining = id});
-    apply(session_event::Join{.target = shown, .joining = id});
+    m_split.pendJoin({.target = shown, .joining = id, .edge = edge});
+    apply(session_event::Join{.target = shown, .joining = id,
+                              .before = edge == andromeda::tiling::EdgeLeft || edge == andromeda::tiling::EdgeTop});
     focusGrid();
   }
 
@@ -2115,10 +2125,15 @@ namespace term {
                        .glyph = data.spinning ? std::string("loader") : data.symbol, .danger = data.symbolDanger});
       return items.back().id;
     };
-    if (target == PaletteTarget::SplitWith) {
+    if (target != PaletteTarget::Any) {
+      const std::uint32_t edge = target == PaletteTarget::SplitWithLeft    ? andromeda::tiling::EdgeLeft
+                                 : target == PaletteTarget::SplitWithRight ? andromeda::tiling::EdgeRight
+                                 : target == PaletteTarget::SplitWithUp    ? andromeda::tiling::EdgeTop
+                                 : target == PaletteTarget::SplitWithDown  ? andromeda::tiling::EdgeBottom
+                                                                           : 0U;
       for (const std::uint64_t id : sidebarOrder()) {
         if (canJoinShown(id)) {
-          runs[sessionItem(*this, id, {})] = [this, id] { joinShown(id); };
+          runs[sessionItem(*this, id, {})] = [this, id, edge] { joinShown(id, edge); };
         }
       }
       return items;
@@ -2177,6 +2192,11 @@ namespace term {
     const bool canSplit = std::ranges::any_of(sidebarOrder(), [this](std::uint64_t id) { return canJoinShown(id); });
     addAction("menu:split", i18n::tr("terminal.palette.split-with"), {}, canSplit ? "" : i18n::tr("terminal.palette.no-join"),
               [this] { openPalette(PaletteTarget::SplitWith); });
+    for (const auto& [key, target] : {std::pair{"left", PaletteTarget::SplitWithLeft}, std::pair{"right", PaletteTarget::SplitWithRight},
+                                      std::pair{"up", PaletteTarget::SplitWithUp}, std::pair{"down", PaletteTarget::SplitWithDown}}) {
+      addAction(std::string("menu:split-") + key, i18n::tr(std::string("terminal.palette.split-with-") + key), {},
+                canSplit ? "" : i18n::tr("terminal.palette.no-join"), [this, target] { openPalette(target); });
+    }
     addAction("menu:leave", i18n::tr("terminal.session.leave-split"), {}, m_sessions.splitOf(shown) != nullptr ? "" : i18n::tr("terminal.palette.not-in-split"),
               [this, shown] { apply(session_event::Leave{shown}); });
     addAction("menu:rename", i18n::tr("terminal.palette.rename"), {}, "", [this, shown] { renameSession(shown); });

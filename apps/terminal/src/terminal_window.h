@@ -102,13 +102,15 @@ namespace term {
                                             std::function<void(std::optional<std::filesystem::path>)> picked)>;
 
   // A shell session closed for good, as "Reopen closed" brings it back: its window, folder and name, the list session it
-  // stood before (0: the end) and the pane it was split with, on its side (TileEdge; 0: none).
+  // stood before (0: the end) and the pane it was split with, on its side (TileEdge; 0: none). shape: its split's
+  // tree, the closed pane's key 0; it comes back in that place while the split still has the same other panes.
   struct ClosedSession {
     std::uint32_t window = 0;
     SavedSession session;
     std::uint64_t before = 0;
     std::uint64_t splitWith = 0;
     std::uint32_t edge = 0;
+    std::vector<andromeda::tiling::DwindleTree::ShapeNode> shape;
   };
   using ClosedItem = std::variant<ClosedSession, SavedWindow>; // a closed window keeps its whole layout
 
@@ -142,7 +144,7 @@ namespace term {
     // Takes the session's view out of this window; the caller closes its row after the new owner adopts it.
     std::shared_ptr<MovedSession> takeSession(std::uint64_t id);
     [[nodiscard]] bool canJoinShown(std::uint64_t id) const;
-    void joinShown(std::uint64_t id);
+    void joinShown(std::uint64_t id, std::uint32_t edge = 0);
     void ctrlClickRow(std::uint64_t id);
     // An agent session of any window changed: repaints its view and row when it is in this window.
     void agentChanged(std::uint64_t key);
@@ -222,7 +224,7 @@ namespace term {
     bool sessionKey(const KeyboardEvent& event);
     bool runAction(Action action);
     // Command palette (Ctrl+Shift+P) docked to the focused pane. SplitWith lists only sessions that can join it.
-    enum class PaletteTarget : std::uint8_t { Any, SplitWith };
+    enum class PaletteTarget : std::uint8_t { Any, SplitWith, SplitWithLeft, SplitWithRight, SplitWithUp, SplitWithDown };
     struct PaletteClosed {};
     struct PaletteOpen {
       std::shared_ptr<CommandPalette> ui; // shared: the close motion keeps it until its root leaves the scene

@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 class AnimationManager;
@@ -69,7 +70,7 @@ public:
   void reset();
 
   [[nodiscard]] bool split() const { return !m_cards.empty(); }
-  [[nodiscard]] bool dragging() const { return m_dragDivider.has_value(); }
+  [[nodiscard]] bool dragging() const { return std::holds_alternative<DividerDrag>(m_drag); }
   // Ends a pane drag in progress with Cancel; its release then does nothing.
   void cancelPaneDrag();
   // The card that has focus; 0 while one item shows.
@@ -169,8 +170,15 @@ private:
   std::vector<Card> m_cards;          // empty while one item shows
   ui::SplitTrees m_trees;
   std::vector<Divider> m_dividers;
-  std::optional<std::size_t> m_dragDivider; // the divider under a held button
-  std::optional<std::uint64_t> m_dragPane;  // the pane whose caption handle drags
+  struct DividerDrag {
+    std::size_t index; // the divider under a held button
+  };
+  struct PaneDrag {
+    std::uint64_t id; // the pane whose caption handle drags
+  };
+  std::variant<std::monostate, DividerDrag, PaneDrag> m_drag;
+  [[nodiscard]] bool isPaneDrag(std::uint64_t id) const;
+  [[nodiscard]] bool isDividerDrag(std::size_t index) const;
   Box* m_dropPreview = nullptr;
   std::optional<ClosedCard> m_closedCard;
   std::optional<std::pair<std::uint64_t, PaneRect>> m_dropFrom;

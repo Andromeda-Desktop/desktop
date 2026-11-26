@@ -24,6 +24,8 @@ namespace ui {
       std::uint64_t target = 0;
       std::uint64_t joining = 0;
       std::uint32_t edge = 0; // a TileEdge; 0: beside or below, by room
+      // The whole tree after the join (a pane that comes back to its old place); used when its keys are the split's.
+      std::vector<andromeda::tiling::DwindleTree::ShapeNode> shape;
     };
     // The next sync puts `joining` on `edge` of `target`. `joining` must be in no split: a tile it still holds is stale.
     void pendJoin(const Join& join) { m_pending = join; }

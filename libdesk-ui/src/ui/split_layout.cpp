@@ -88,6 +88,18 @@ namespace ui {
       const bool beside = static_cast<float>(at.width - room.gap) / 2.0F >= room.minWidth;
       own->splitOn(next, split[i], beside ? andromeda::tiling::EdgeRight : andromeda::tiling::EdgeBottom);
     }
+    if (join && !join->shape.empty() && own->find(join->joining) != nullptr) {
+      std::vector<std::uint64_t> want;
+      for (const auto& node : join->shape) {
+        if (node.type == Tree::Node::Leaf) want.push_back(node.key);
+      }
+      auto have = own->keys();
+      std::ranges::sort(want);
+      std::ranges::sort(have);
+      if (std::ranges::equal(want, have)) {
+        own->setShape(join->shape);
+      }
+    }
     return own;
   }
 

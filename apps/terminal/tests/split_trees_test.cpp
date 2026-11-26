@@ -111,6 +111,42 @@ void rejoinOnNewEdge() {
   }
 }
 
+// A pane closed beside a subtree comes back with its old shape: [1 | [2 / 3]], close 1, reopen as 4 left of 2.
+void reopenBesideSubtree() {
+  SessionList list;
+  SplitTrees trees;
+  const SplitTrees::Room room{.area = {.width = 1200, .height = 800}, .gap = 8, .minWidth = 200.0F};
+  const auto splitOf = [&list](std::uint64_t id) { return list.splitOf(id); };
+  for (std::uint64_t id = 1; id <= 4; ++id) list.apply(Open{id, SessionKind::Shell, "s", "~"});
+  list.apply(Show{1});
+  trees.pendJoin({.target = 1, .joining = 2, .edge = andromeda::tiling::EdgeRight});
+  list.apply(Join{1, 2, false});
+  trees.sync(splitOf, list.visible(), room);
+  trees.pendJoin({.target = 2, .joining = 3, .edge = andromeda::tiling::EdgeBottom});
+  list.apply(Join{2, 3, false});
+  DwindleTree* own = trees.sync(splitOf, list.visible(), room);
+  CHECK(own != nullptr);
+  if (own == nullptr) return;
+  const auto before = own->arrange(room.area, room.gap, true);
+  auto shape = own->shape();
+  for (auto& node : shape) {
+    if (node.type == DwindleTree::Node::Leaf && node.key == 1) node.key = 4;
+  }
+  list.apply(Close{1});
+  list.apply(Show{2});
+  trees.sync(splitOf, list.visible(), room);
+  trees.pendJoin({.target = 2, .joining = 4, .edge = andromeda::tiling::EdgeLeft, .shape = shape});
+  list.apply(Join{2, 4, true});
+  own = trees.sync(splitOf, list.visible(), room);
+  CHECK(own != nullptr);
+  if (own == nullptr) return;
+  const auto after = own->arrange(room.area, room.gap, true);
+  const auto at = [](const std::vector<Tile>& tiles, std::uint64_t key) { return std::ranges::find(tiles, key, &Tile::key)->box; };
+  const auto was = at(before, 1);
+  const auto now = at(after, 4);
+  CHECK(now.x == was.x && now.y == was.y && now.width == was.width && now.height == was.height);
+}
+
 // A damaged state file with a very deep shape loads without the shape; it must not exhaust the stack.
 void deepShapeLoads() {
   nlohmann::json shape = nlohmann::json::array();
@@ -131,6 +167,7 @@ void deepShapeLoads() {
 
 int main() {
   rejoinOnNewEdge();
+  reopenBesideSubtree();
   deepShapeLoads();
   for (seed = 1; seed <= 300; ++seed) {
     std::mt19937 rng(seed);

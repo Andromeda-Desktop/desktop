@@ -44,7 +44,8 @@ void SplitView::reset() {
   m_built.clear();
   m_cards.clear();
   m_dividers.clear();
-  m_dragDivider.reset();
+  cancelPaneDrag();
+  m_drag = std::monostate{};
   m_dropPreview = nullptr;
   m_ringPane = 0;
 }
@@ -65,7 +66,9 @@ void SplitView::fill(Renderer& renderer, Node* slot, float width, float height, 
   m_height = height;
   m_cards.clear();
   m_dividers.clear();
-  m_dragDivider.reset();
+  // The new areas never see the held button's release: a drag in progress ends here.
+  cancelPaneDrag();
+  m_drag = std::monostate{};
   m_dropPreview = nullptr;
   m_ringPane = 0;
   m_built.clear();
@@ -181,8 +184,8 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
       const bool handle = m_callbacks.drag && card != m_cards.end() && (on(card->lead) || on(card->name));
       *press = {.down = data.pressed, .handle = handle, .serial = data.serial,
                 .x = data.localX, .y = data.localY};
-      if (!data.pressed && m_dragPane == id) {
-        m_dragPane.reset();
+      if (!data.pressed && isPaneDrag(id)) {
+        m_drag = std::monostate{};
         m_callbacks.drag(id, Callbacks::DragPhase::Drop, data.sceneX, data.sceneY);
       }
     });
@@ -193,9 +196,12 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
           m_window.beginMove(press->serial);
           return;
         }
-        m_dragPane = id;
+        if (!std::holds_alternative<std::monostate>(m_drag)) {
+          return;
+        }
+        m_drag = PaneDrag{id};
       }
-      if (m_dragPane == id) {
+      if (isPaneDrag(id)) {
         m_callbacks.drag(id, Callbacks::DragPhase::Move, data.sceneX, data.sceneY);
       }
     });
@@ -290,7 +296,7 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
       m_window.invalidate();
     });
     area->setOnLeave([this, index] {
-      m_dividers[index].grip->setVisible(m_dragDivider == index);
+      m_dividers[index].grip->setVisible(isDividerDrag(index));
       m_window.invalidate();
     });
     area->setOnPress([this, index](const InputArea::PointerData& data) {
@@ -298,16 +304,21 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
         return;
       }
       if (data.pressed) {
-        m_dragDivider = index;
+        if (std::holds_alternative<std::monostate>(m_drag)) {
+          m_drag = DividerDrag{index};
+        }
         return;
       }
-      m_dragDivider.reset();
+      if (!isDividerDrag(index)) {
+        return;
+      }
+      m_drag = std::monostate{};
       m_dividers[index].grip->setVisible(m_dividers[index].area->hovered());
       relayout(true);
       if (m_callbacks.treeChanged) m_callbacks.treeChanged();
     });
     area->setOnMotion([this, index](const InputArea::PointerData& data) {
-      if (m_dragDivider == index) {
+      if (isDividerDrag(index)) {
         dragDivider(index, data.sceneX, data.sceneY);
       }
     });
@@ -670,9 +681,25 @@ void SplitView::repaintFocus() {
 }
 
 void SplitView::cancelPaneDrag() {
-  if (const auto id = std::exchange(m_dragPane, std::nullopt); id && m_callbacks.drag) {
-    m_callbacks.drag(*id, Callbacks::DragPhase::Cancel, 0.0F, 0.0F);
+  const auto* pane = std::get_if<PaneDrag>(&m_drag);
+  if (pane == nullptr) {
+    return;
   }
+  const std::uint64_t id = pane->id;
+  m_drag = std::monostate{};
+  if (m_callbacks.drag) {
+    m_callbacks.drag(id, Callbacks::DragPhase::Cancel, 0.0F, 0.0F);
+  }
+}
+
+bool SplitView::isPaneDrag(std::uint64_t id) const {
+  const auto* pane = std::get_if<PaneDrag>(&m_drag);
+  return pane != nullptr && pane->id == id;
+}
+
+bool SplitView::isDividerDrag(std::size_t index) const {
+  const auto* divider = std::get_if<DividerDrag>(&m_drag);
+  return divider != nullptr && divider->index == index;
 }
 
 bool SplitView::setCaption(std::uint64_t id, const std::string& name, const std::string& state, ColorSpec stateInk) {
