@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The shell switches the power-profiles-daemon profile when the machine moves between AC and battery
-# ([battery] profile_on_ac / profile_on_battery), through andromeda-system, with mock UPower and power-profiles
-# services on the test's private system bus. Writes profiles.txt (each ActiveProfile write) to $OUT (default ./artifacts/power-profile).
+# ([battery] profile_on_ac / profile_on_battery) with an automatic hold through andromeda-system (balanced releases it),
+# with mock UPower and power-profiles services on the test's private system bus. Writes profiles.txt (each Set, Hold and
+# Release the mock gets) to $OUT (default ./artifacts/power-profile).
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/power-profile}
 source "$(dirname "$0")/lib.sh"
@@ -26,15 +27,19 @@ with_noctalia '
       dsk.test.Power SetOnBattery b "$1" > /dev/null
   }
   last_profile_is() { [[ $(tail -1 "$OUT/profiles.txt") == "$1" ]]; }
+  active_is() {
+    [[ $(busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" get-property org.freedesktop.UPower.PowerProfiles \
+      /org/freedesktop/UPower/PowerProfiles org.freedesktop.UPower.PowerProfiles ActiveProfile) == "s \"$1\"" ]]
+  }
   expect() {
-    poll_for 5 last_profile_is "$1" && return 0
-    echo "FAIL: expected $1, writes: $(tr "\n" "," < "$OUT/profiles.txt")"
+    poll_for 5 last_profile_is "$1" && poll_for 5 active_is "$2" && return 0
+    echo "FAIL: expected $1 and active $2, writes: $(tr "\n" "," < "$OUT/profiles.txt")"
     exit 1
   }
   flip true
-  expect "ActiveProfile=power-saver"
+  expect "Hold=power-saver" power-saver
   flip false
-  expect "ActiveProfile=balanced"
+  expect "Release=power-saver" balanced
   kill "$mock" "$shell" "$system"
 '
 echo "PASS: $(tr '\n' ',' < "$OUT/profiles.txt"); artifacts: $OUT"
