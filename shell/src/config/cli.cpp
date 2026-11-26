@@ -1,5 +1,6 @@
 #include "config/cli.h"
 
+#include "config/atomic_file.h"
 #include "cli/help.h"
 #include "cli/parse.h"
 #include "cli/schema_config.h"
@@ -18,7 +19,6 @@
 #include <cstring>
 #include <expected>
 #include <filesystem>
-#include <fstream>
 #include <map>
 #include <optional>
 #include <print>
@@ -156,12 +156,8 @@ namespace noctalia::config {
         return std::unexpected("failed to create " + path.parent_path().string() + ": " + ec.message());
       }
 
-      std::ofstream out(path, std::ios::binary | std::ios::trunc);
-      if (!out.is_open()) {
-        return std::unexpected("failed to open " + path.string());
-      }
-      out.write(content.data(), static_cast<std::streamsize>(content.size()));
-      if (!out.good()) {
+      // A short-lived CLI process: a durable whole-file replace that follows a dotfiles symlink.
+      if (!writeTextFileAtomic(path, content, std::nullopt, AtomicWrite::Durable)) {
         return std::unexpected("failed to write " + path.string());
       }
       return {};

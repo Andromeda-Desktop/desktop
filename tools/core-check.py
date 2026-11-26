@@ -187,6 +187,12 @@ RULES = {
                 r"\b(writeTextFileAtomic|writeEncryptedFile|rewriteGeneratedToml)\s*\(",
                 ("compositor/src/config/generated_file.", "compositor/src/util/private_state_file.",
                  "shell/src/config/atomic_file.", "shell/src/security/encrypted_file_store.")),
+    "final-path-write": ("a write to the final path leaves a truncated file after a full disk or a crash: replace the file "
+                         "whole (writeFileReplacing / writeFileAsync in protocol/async_file_writer.h, writeTextFileAtomic, "
+                         "Files writeStateFile, libdesk-app StateStore); sysfs, markers and debug dumps are allowlisted",
+                         CPP_DIRS + ("shell/tools/",), CPP,
+                         r"\bstd::ofstream\b(?:\s+\w+)?\s*\((?![^,)]*(?i:tmp|temp|part|\.new))",
+                         ("shell/src/config/atomic_file.", "apps/files/src/state_file.", "libdesk-app/src/app/state_store.")),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",
                     ("apps/",), ("meson.build",), r"subproject\('libdesk-ui'|\b_?desk_ui_dep\b", ()),
     "defer-this": ("a deferred call that captures this can run after its owner is freed (a tab or window closed in the "
