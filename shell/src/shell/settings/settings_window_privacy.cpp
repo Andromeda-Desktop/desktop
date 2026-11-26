@@ -240,12 +240,12 @@ void SettingsWindow::ensureEnrollment() {
   m_enroll->probe();
 }
 
-void SettingsWindow::ensureLightSensor() {
-  if (m_lightSensor != nullptr || m_systemBus == nullptr) {
+void SettingsWindow::ensureSensors() {
+  if (m_sensors != nullptr || m_systemBus == nullptr) {
     return;
   }
-  // A found sensor adds the automatic brightness and adaptive white point rows.
-  m_lightSensor = std::make_unique<LightSensorPresence>(*m_systemBus, [this] {
+  // A found sensor adds its rows: automatic brightness, adaptive white point, presence.
+  m_sensors = std::make_unique<SensorAvailability>(*m_systemBus, [this] {
     if (isOpen()) {
       requestContentRebuild(/*refreshRegistry=*/true, /*refreshFilterRow=*/true);
     }

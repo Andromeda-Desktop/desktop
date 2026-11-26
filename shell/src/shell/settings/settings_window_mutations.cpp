@@ -49,15 +49,20 @@ namespace {
 
 } // namespace
 
-// Custom scheduling with unusable times schedules nothing. The write itself is valid, so surface it
-// as a banner rather than rejecting it — the user is likely mid-edit between the toggle and the times.
-void SettingsWindow::warnOnUnusableCustomSchedule(const std::vector<std::string>& path) {
-  if (m_config == nullptr || !isCustomSchedulePath(path)) {
+// A schedule with unusable times, or with no location source, schedules nothing. The write itself is valid, so
+// surface it as a banner rather than rejecting it: the user is likely mid-edit between the toggle and the times.
+void SettingsWindow::warnOnUnusableSchedule(const std::vector<std::string>& path) {
+  if (m_config == nullptr) {
     return;
   }
-  const LocationConfig& location = m_config->config().location;
-  if (location.customSchedule && !day_night_schedule::hasUsableCustomTimes(location)) {
+  const Config& cfg = m_config->config();
+  const LocationConfig& location = cfg.location;
+  if (isCustomSchedulePath(path) && location.customSchedule && !day_night_schedule::hasUsableCustomTimes(location)) {
     showTransientStatus(i18n::tr("settings.errors.custom-schedule-times"), true);
+  } else if (path == std::vector<std::string>{"brightness", "scheduled"} && cfg.brightness.scheduled
+             && !location.customSchedule && !location.autoLocate && location.address.empty()
+             && !(location.latitude && location.longitude)) {
+    showTransientStatus(i18n::tr("settings.errors.brightness-schedule-location"), true);
   }
 }
 
@@ -171,7 +176,7 @@ void SettingsWindow::setSettingOverride(std::vector<std::string> path, ConfigOve
     if (m_config->setOverride(path, std::move(value), &changed)) {
       const bool registryPatched = changed && !needsSceneRebuild && tryPatchSettingsRegistryValue(path, patchValue);
       finishSettingsWrite(changed, needsSceneRebuild, previousResetPaths != currentPageResetPaths(), registryPatched);
-      warnOnUnusableCustomSchedule(path);
+      warnOnUnusableSchedule(path);
       return;
     }
     markSettingsWriteError(settingsMutationError(*m_config, i18n::tr("settings.errors.write")));

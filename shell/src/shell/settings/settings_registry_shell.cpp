@@ -228,7 +228,7 @@ namespace settings {
     }
 
     // Andromeda-specific integrations
-    if (env.andromedaOverviewTypeToLaunchSupported) {
+    if (env.andromedaCompositor) {
       appendRow(entries, shellRows, "andromeda_audio_provider_enabled");
     }
     if (env.andromedaOverviewCloseOnLaunchSupported) {

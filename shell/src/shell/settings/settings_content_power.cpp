@@ -666,7 +666,12 @@ namespace settings {
         const std::string label = limit.configuredEnd.has_value()
             ? i18n::tr("settings.power.limit-to", "percent", std::to_string(*limit.configuredEnd))
             : i18n::tr("settings.power.limit");
-        r->addChild(title(label, scale));
+        if (limit.operationError == ChargeLimitOperationError::None) {
+          r->addChild(title(label, scale));
+        } else {
+          const bool denied = limit.operationError == ChargeLimitOperationError::PermissionDenied;
+          r->addChild(twoLines(label, i18n::tr(denied ? "settings.power.limit-denied" : "settings.power.limit-failed"), scale));
+        }
         r->addChild(ui::toggle({
             .checked = limit.requestedEnabled.value_or(limit.enabled),
             .enabled = !limit.requestPending,

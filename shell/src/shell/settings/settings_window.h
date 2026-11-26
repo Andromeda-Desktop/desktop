@@ -224,7 +224,7 @@ public:
   void onIdleLiveStatusChanged();
   void markSettingsWriteSuccess(bool requestRebuild = true);
   void markSettingsWriteError(std::string message);
-  void warnOnUnusableCustomSchedule(const std::vector<std::string>& path);
+  void warnOnUnusableSchedule(const std::vector<std::string>& path);
   void showTransientStatus(std::string message, bool isError = false);
 
 private:
@@ -614,7 +614,7 @@ private:
   bool m_localeNamesRequested = false;
   bool m_userDeleteBusy = false;
   std::unique_ptr<BiometricEnrollment> m_enroll;
-  std::unique_ptr<LightSensorPresence> m_lightSensor;
+  std::unique_ptr<SensorAvailability> m_sensors;
   std::pair<bool, bool> m_biometricPresence{false, false}; // face, fingerprint at the last registry build
   std::string m_privacyStatus;
   settings::PasswordDraft m_passwordDraft;
@@ -634,7 +634,7 @@ private:
   // Leaving the page or closing the window: a running enroll releases the camera or reader, typed passwords go.
   void leavePrivacy();
   void ensureEnrollment();
-  void ensureLightSensor();
+  void ensureSensors();
   void changePassword();
   std::string m_userDeleteError;
   // Settings › Users › Login Screen: result of the last switch, shown under the select.

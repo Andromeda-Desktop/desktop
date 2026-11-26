@@ -40,19 +40,21 @@ private:
   std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);
 };
 
-// Whether System1 has an ambient light sensor (Sensors.HasLight), read once; false until the reply.
-class LightSensorPresence {
+// Which System1 sensors exist (Sensors.HasLight, HasPresence), read once; false until the reply or without System1.
+class SensorAvailability {
 public:
-  LightSensorPresence(SystemBus& bus, std::function<void()> onChanged);
-  ~LightSensorPresence();
+  SensorAvailability(SystemBus& bus, std::function<void()> onChanged);
+  ~SensorAvailability();
 
-  LightSensorPresence(const LightSensorPresence&) = delete;
-  LightSensorPresence& operator=(const LightSensorPresence&) = delete;
+  SensorAvailability(const SensorAvailability&) = delete;
+  SensorAvailability& operator=(const SensorAvailability&) = delete;
 
-  [[nodiscard]] bool present() const noexcept { return m_present; }
+  [[nodiscard]] bool light() const noexcept { return m_light; }
+  [[nodiscard]] bool presence() const noexcept { return m_presence; }
 
 private:
   std::unique_ptr<sdbus::IProxy> m_proxy;
-  bool m_present = false;
+  bool m_light = false;
+  bool m_presence = false;
   std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);
 };

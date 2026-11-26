@@ -165,7 +165,7 @@ namespace {
     cfg.dock.monitorOverrides.push_back(dockOverride);
     RegistryEnvironment env;
     env.availableOutputs = {SelectOption{.value = "DP-1", .label = "DP-1"}};
-    env.andromedaOverviewTypeToLaunchSupported = true;
+    env.andromedaCompositor = true;
     env.andromedaOverviewCloseOnLaunchSupported = true;
     env.screencopySupported = true;
     env.backgroundEffectBlurSupported = true;
@@ -173,6 +173,8 @@ namespace {
     env.systemdUserManaged = true;
     env.gammaControlAvailable = true;
     env.lightSensorAvailable = true;
+    env.presenceSensorAvailable = true;
+    env.powerProfiles = {"power-saver", "balanced", "performance"};
     env.greeterSyncAvailable = true;
     env.batteryAvailable = true;
     env.systemBatteryAvailable = true;

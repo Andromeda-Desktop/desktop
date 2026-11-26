@@ -335,7 +335,7 @@ namespace settings {
   struct RegistryEnvironment {
     // The compositor's own settings, once its settings manager has sent them; null leaves their pages out.
     const SettingsControl* compositorSettings = nullptr;
-    bool andromedaOverviewTypeToLaunchSupported = false;
+    bool andromedaCompositor = false;           // the session runs on the andromeda compositor
     bool andromedaOverviewCloseOnLaunchSupported = false;
     bool screencopySupported = false;           // lockscreen blurred desktop + screenshot features
     bool backgroundEffectBlurSupported = false; // hide compositor blur toggles without ext-background-effect-v1
@@ -345,6 +345,8 @@ namespace settings {
     bool faceAvailable = false;                 // a face unlock camera (gazed) is present
     bool fingerprintAvailable = false;          // an fprintd reader is present
     bool lightSensorAvailable = false;          // System1 Sensors.HasLight
+    bool presenceSensorAvailable = false;       // System1 Sensors.HasPresence
+    std::vector<std::string> powerProfiles;     // power-profiles-daemon profiles; empty without the daemon
     std::string schedExtScheduler; // the running sched_ext scheduler; app priority (CPU weights) has no effect under it
     std::optional<std::size_t> backgroundActivityCount; // flagged background services at the last check; none = not checked
     std::function<void()> openActivity;

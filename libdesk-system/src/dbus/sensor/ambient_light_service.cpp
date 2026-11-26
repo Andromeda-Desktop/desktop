@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <sdbus-c++/IProxy.h>
 #include <sdbus-c++/Types.h>
@@ -74,18 +75,27 @@ void AmbientLightService::setPaused(bool paused) {
   }
 }
 
-LightSensorPresence::LightSensorPresence(SystemBus& bus, std::function<void()> onChanged) {
+SensorAvailability::SensorAvailability(SystemBus& bus, std::function<void()> onChanged) {
   m_proxy = sdbus::createProxy(bus.connection(), kBusName, kPath);
   const std::weak_ptr<int> alive = m_lifetimeToken;
-  m_proxy->getPropertyAsync("HasLight")
+  m_proxy->getAllPropertiesAsync()
       .onInterface(kInterface)
-      .uponReplyInvoke([this, alive, onChanged = std::move(onChanged)](std::optional<sdbus::Error> err, sdbus::Variant value) {
-        if (alive.expired() || err.has_value() || !value.containsValueOfType<bool>() || !value.get<bool>()) {
+      .uponReplyInvoke([this, alive, onChanged = std::move(onChanged)](
+                           std::optional<sdbus::Error> err, std::map<sdbus::PropertyName, sdbus::Variant> props) {
+        if (alive.expired() || err.has_value()) {
           return;
         }
-        m_present = true;
-        onChanged();
+        // A System1 older than the property has the sensor calls but cannot say: keep the rows.
+        const auto flag = [&props](const char* name) {
+          const auto it = props.find(sdbus::PropertyName{name});
+          return it == props.end() || !it->second.containsValueOfType<bool>() || it->second.get<bool>();
+        };
+        m_light = flag("HasLight");
+        m_presence = flag("HasPresence");
+        if (m_light || m_presence) {
+          onChanged();
+        }
       });
 }
 
-LightSensorPresence::~LightSensorPresence() { m_lifetimeToken.reset(); }
+SensorAvailability::~SensorAvailability() { m_lifetimeToken.reset(); }

@@ -1312,12 +1312,6 @@ namespace noctalia::config::schema {
       return s;
     }
 
-    const Schema<ControlCenterConfig::MediaTabConfig>& mediaTabSchema() {
-      static const Schema<ControlCenterConfig::MediaTabConfig> s = {
-          field(&ControlCenterConfig::MediaTabConfig::showVisualizer, "show_visualizer"),
-      };
-      return s;
-    }
   } // namespace
 
   const Schema<ControlCenterConfig>& controlCenterSchema() {
@@ -1345,7 +1339,7 @@ namespace noctalia::config::schema {
         retiredField<ControlCenterConfig>("show_avatar_border"),
         field(&ControlCenterConfig::quickTiles, "quick_tiles"),
         subTable(&ControlCenterConfig::calendarTab, "calendar", calendarTabSchema()),
-        subTable(&ControlCenterConfig::mediaTab, "media", mediaTabSchema()),
+        retiredField<ControlCenterConfig>("media"),
         retiredField<ControlCenterConfig>("shortcuts"),
     };
     return s;
@@ -1954,6 +1948,7 @@ namespace noctalia::config::schema {
                 .choices = {{"off", "settings.options.idle.on-leave.off"},
                             {"dim", "settings.options.idle.on-leave.dim"},
                             {"lock", "settings.options.idle.on-leave.lock"}},
+                .hideWithout = RowSpec::Needs::PresenceSensor,
             }
         ),
         field(
@@ -1966,6 +1961,7 @@ namespace noctalia::config::schema {
                 .tags = "presence sensor away leave lock seconds",
                 .suffix = "s",
                 .range = {5.0, 300.0, 5.0},
+                .hideWithout = RowSpec::Needs::PresenceSensor,
             }
         ),
         field(
@@ -1975,6 +1971,7 @@ namespace noctalia::config::schema {
                 .group = "idle",
                 .label = "idle.wake-on-approach",
                 .tags = "presence sensor approach return wake screen",
+                .hideWithout = RowSpec::Needs::PresenceSensor,
             }
         ),
         // behavior_order is emitted here (vector order); the actual reorder runs
@@ -3289,7 +3286,7 @@ namespace noctalia::config::schema {
             [](const toml::table&, ShellConfig&, std::string_view, Diagnostics&) {},
             [](toml::table&, const ShellConfig&) {}
         ),
-        field(&ShellConfig::andromedaOverviewTypeToLaunchEnabled, "andromeda_overview_type_to_launch_enabled"),
+        retiredField<ShellConfig>("andromeda_overview_type_to_launch_enabled"),
         field(
             &ShellConfig::andromedaAudioProviderEnabled, "andromeda_audio_provider_enabled",
             RowSpec{

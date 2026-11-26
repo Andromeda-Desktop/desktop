@@ -457,7 +457,6 @@ location = "https://example.invalid/bad"
     c.bluetooth.connectWhenEnabled = true;
     c.controlCenter.calendarTab.showEventsCard = false;
     c.controlCenter.calendarTab.showWeekNumbers = true;
-    c.controlCenter.mediaTab.showVisualizer = false;
     c.calendar.enabled = true;
     c.calendar.dedupeEvents = true;
     c.calendar.dedupeIgnorePatterns = {R"(\s*\(.*\)$)", " - tentative"};
@@ -743,6 +742,9 @@ show_avatar_border = false
 show_session_button = false
 show_shortcut_labels = false
 quick_tiles = ["wifi"]
+
+[media]
+show_visualizer = false
 
 [[shortcuts]]
 type = "wifi"

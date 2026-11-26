@@ -88,6 +88,8 @@ namespace settings {
         return env.fingerprintAvailable;
       case Needs::LightSensor:
         return env.lightSensorAvailable;
+      case Needs::PresenceSensor:
+        return env.presenceSensorAvailable;
       }
       return true;
     }

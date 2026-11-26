@@ -1,3 +1,4 @@
+#include "dbus/power/power_profiles_service.h"
 #include "calendar/calendar_service.h"
 #include "core/input/cursor_shape.h"
 #include "compositors/compositor_detect.h"
@@ -696,15 +697,19 @@ settings::RegistryEnvironment SettingsWindow::buildRegistryEnvironment() const {
   env.systemBus = m_systemBus;
   env.screencopySupported = m_wayland != nullptr && m_wayland->hasScreencopy();
   env.backgroundEffectBlurSupported = m_wayland != nullptr && m_wayland->hasBackgroundEffectBlur();
-  env.andromedaOverviewTypeToLaunchSupported = (m_wayland != nullptr && compositors::isAndromeda());
+  env.andromedaCompositor = (m_wayland != nullptr && compositors::isAndromeda());
   env.andromedaOverviewCloseOnLaunchSupported =
-      env.andromedaOverviewTypeToLaunchSupported && m_platform != nullptr && m_platform->tracksOverviewState();
+      env.andromedaCompositor && m_platform != nullptr && m_platform->tracksOverviewState();
   env.ddcutilAvailable = (m_dependencies != nullptr && m_dependencies->hasDdcutil());
   env.systemdUserManaged = process::runningUnderSystemdUserManager();
   env.gammaControlAvailable = (m_wayland != nullptr && m_wayland->hasGammaControl());
   env.faceAvailable = m_enroll != nullptr && m_enroll->facePresent();
   env.fingerprintAvailable = m_enroll != nullptr && m_enroll->fingerPresent();
-  env.lightSensorAvailable = m_lightSensor != nullptr && m_lightSensor->present();
+  env.lightSensorAvailable = m_sensors != nullptr && m_sensors->light();
+  env.presenceSensorAvailable = m_sensors != nullptr && m_sensors->presence();
+  if (const PowerProfilesService* profiles = m_powerProfilesProvider ? m_powerProfilesProvider() : nullptr) {
+    env.powerProfiles = profiles->profiles();
+  }
   if (std::ifstream state("/sys/kernel/sched_ext/state"); state) {
     std::string value;
     std::getline(state, value);
@@ -1724,7 +1729,7 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
 void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
   ensureCompositorSettings();
   ensureEnrollment();
-  ensureLightSensor();
+  ensureSensors();
   SettingsProfileWatch phaseProfileWatch;
 
   const auto env = buildRegistryEnvironment();

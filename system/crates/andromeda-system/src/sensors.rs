@@ -72,6 +72,12 @@ impl Sensors {
         light_device(&self.root).is_ok()
     }
 
+    /// True when `ClaimPresence` has a sensor to run.
+    #[zbus(property)]
+    fn has_presence(&self) -> bool {
+        presence_sensor(&self.root).is_ok()
+    }
+
     /// 0 unknown (no claim, or no sensor), 1 absent, 2 present.
     #[zbus(property)]
     fn presence(&self) -> u32 {

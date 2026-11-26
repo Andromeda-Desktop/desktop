@@ -502,13 +502,6 @@ enabled = false
 # format = "{:%H:%M}"
 # background_opacity = 0.8
 
-# ── Control Center ────────────────────────────────────────────────────────────
-
-# Media tab of the control center.
-
-[control_center.media]
-show_visualizer = true              # PipeWire audio visualizer beside the playback controls
-
 # ── Hooks ─────────────────────────────────────────────────────────────────────
 
 [hooks]

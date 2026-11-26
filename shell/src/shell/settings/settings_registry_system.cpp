@@ -56,8 +56,14 @@ namespace settings {
       if (env.systemBatteryAvailable) {
         auto batteryRows = generateSchemaEntries(noctalia::config::schema::batterySchema(), cfg.battery, {"battery"});
         appendRow(entries, batteryRows, "warning_threshold");
-        appendRow(entries, batteryRows, "profile_on_ac");
-        appendRow(entries, batteryRows, "profile_on_battery");
+        if (!env.powerProfiles.empty()) {
+          for (const std::string_view key : {"profile_on_ac", "profile_on_battery"}) {
+            appendRow(entries, batteryRows, key);
+            std::erase_if(std::get<SelectSetting>(entries.back().control).options, [&env](const SelectOption& o) {
+              return !o.value.empty() && !std::ranges::contains(env.powerProfiles, o.value);
+            });
+          }
+        }
       }
       for (const auto& device : env.batteryDeviceOptions) {
         int value = 0;
@@ -417,7 +423,7 @@ namespace settings {
     ));
 
     // Idle
-    auto idleRows = generateSchemaEntries(noctalia::config::schema::idleSchema(), cfg.idle, {"idle"});
+    auto idleRows = generateSchemaEntries(noctalia::config::schema::idleSchema(), cfg.idle, {"idle"}, &ctx.env);
     appendRow(entries, idleRows, "pre_action_fade_seconds");
     appendRow(entries, idleRows, "on_leave");
     appendRow(entries, idleRows, "leave_delay_seconds");

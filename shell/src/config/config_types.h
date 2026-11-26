@@ -1335,7 +1335,6 @@ struct ShellConfig {
   /// Empty keeps per-source resolution (widget click bar, else first enabled bar).
   std::string panelAnchorBar;
   bool setupWizardEnabled = true;
-  bool andromedaOverviewTypeToLaunchEnabled = false;
   bool andromedaAudioProviderEnabled = false;
   bool andromedaOverviewCloseOnLaunchEnabled = false;
   bool polkitAgent = true;
@@ -1797,14 +1796,8 @@ struct ControlCenterConfig {
     bool operator==(const CalendarTabConfig&) const = default;
   };
 
-  struct MediaTabConfig {
-    bool showVisualizer = true;
-    bool operator==(const MediaTabConfig&) const = default;
-  };
-
   std::vector<std::string> quickTiles; // quick-sheet tile ids in order (edit mode); empty = every available tile, default order
   CalendarTabConfig calendarTab;
-  MediaTabConfig mediaTab;
   bool operator==(const ControlCenterConfig&) const = default;
 };
 
