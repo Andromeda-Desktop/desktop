@@ -80,12 +80,29 @@ namespace {
       done(-1, std::move(message));
       return;
     }
-    auto* cb = new std::function<void(int, std::string)>(std::move(done));
+    // gocryptfs waits on FUSE and the kernel: a helper that never ends is killed, so the vault sheet never stays busy.
+    constexpr guint kHelperTimeoutS = 60;
+    struct Call {
+      std::function<void(int, std::string)> done;
+      GSubprocess* proc = nullptr; // owned by the communicate call until it completes
+      guint timeout = 0;
+    };
+    auto* call = new Call{.done = std::move(done), .proc = proc};
+    call->timeout = g_timeout_add_seconds(kHelperTimeoutS,
+                                          +[](gpointer data) -> gboolean {
+                                            auto* c = static_cast<Call*>(data);
+                                            c->timeout = 0;
+                                            g_subprocess_force_exit(c->proc);
+                                            return G_SOURCE_REMOVE;
+                                          },
+                                          call);
     g_subprocess_communicate_utf8_async(
         proc, input.c_str(), nullptr,
         [](GObject* source, GAsyncResult* result, gpointer data) {
-          std::unique_ptr<std::function<void(int, std::string)>> fn(
-              static_cast<std::function<void(int, std::string)>*>(data));
+          std::unique_ptr<Call> call(static_cast<Call*>(data));
+          if (call->timeout != 0) {
+            g_source_remove(call->timeout);
+          }
           auto* p = G_SUBPROCESS(source);
           gchar* err = nullptr;
           g_subprocess_communicate_utf8_finish(p, result, nullptr, &err, nullptr);
@@ -93,9 +110,9 @@ namespace {
           std::string text = err != nullptr ? err : "";
           g_free(err);
           g_object_unref(p);
-          (*fn)(status, std::move(text));
+          call->done(status, std::move(text));
         },
-        cb);
+        call);
   }
 
   std::string firstLine(const std::string& text) {

@@ -75,8 +75,16 @@ struct NetworkPage::MountJob {
   MountDone done;
   GMountOperation* op = nullptr;
   GFile* file = nullptr;
+  // A server that never answers would keep the sheet busy forever: the mount is cancelled after kMountTimeoutS.
+  GCancellable* cancellable = g_cancellable_new();
+  guint timeout = 0;
+  bool timedOut = false;
 
   ~MountJob() {
+    if (timeout != 0) {
+      g_source_remove(timeout);
+    }
+    g_object_unref(cancellable);
     if (op != nullptr) {
       g_object_unref(op);
     }
@@ -348,7 +356,17 @@ void NetworkPage::startMount(const ServerUrl& url, const std::string& user, cons
                      g_mount_operation_reply(op, G_MOUNT_OPERATION_ABORTED);
                    }),
                    job);
-  g_file_mount_enclosing_volume(job->file, G_MOUNT_MOUNT_NONE, job->op, nullptr,
+  constexpr guint kMountTimeoutS = 60;
+  job->timeout = g_timeout_add_seconds(kMountTimeoutS,
+                                       +[](gpointer data) -> gboolean {
+                                         auto* j = static_cast<MountJob*>(data);
+                                         j->timeout = 0;
+                                         j->timedOut = true;
+                                         g_cancellable_cancel(j->cancellable);
+                                         return G_SOURCE_REMOVE;
+                                       },
+                                       job);
+  g_file_mount_enclosing_volume(job->file, G_MOUNT_MOUNT_NONE, job->op, job->cancellable,
                                 reinterpret_cast<GAsyncReadyCallback>(&NetworkPage::onMounted), job);
 }
 
@@ -387,7 +405,7 @@ void NetworkPage::onMounted(void* source, void* result, void* data) {
   } else if (job->needsPassword) {
     needsPassword = true;
     message = i18n::tr(job->sentPassword ? "files.network.bad-login" : "files.network.needs-password");
-  } else if (offlineError(error)) {
+  } else if (job->timedOut || offlineError(error)) {
     if (page) {
       page->m_offline.insert(serverKey(job->uri));
     }
