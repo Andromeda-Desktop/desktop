@@ -492,9 +492,11 @@ impl<'a> Run<'a> {
             Err(Errno::XDEV) => {
                 let mark = self.undo.len();
                 self.copy_to(source, &target, false, true)?;
-                remove_all(source).map_err(io_at(source))?;
-                // Undo of a cross-device move is a move back, not removal of what the copy created.
+                // Undo of a cross-device move is a move back, not removal of what the copy created. When the
+                // source is only partly removed, the target is the one whole copy: nothing to undo for this item.
+                let removed = remove_all(source).map_err(io_at(source));
                 self.undo.truncate(mark);
+                removed?;
                 self.undo.push(UndoStep::Moved { from: source.to_path_buf(), to: target });
                 Ok(())
             }
@@ -872,6 +874,26 @@ mod tests {
         assert_eq!(read(&dst.join("d/z")), "z");
         let skipped = [read(&dst.join("d/x")), read(&dst.join("d/y"))];
         assert_eq!(skipped, ["x1".to_owned(), "y1".to_owned()]);
+    }
+
+    #[test]
+    fn cross_device_move_that_cannot_remove_the_source_keeps_the_copy_on_undo() {
+        let root = tempfile::tempdir().expect("tmp");
+        let other = tempfile::tempdir_in("/dev/shm").expect("shm");
+        let src = root.path().join("m");
+        write(&src.join("a.txt"), "a");
+        write(&src.join("locked/b.txt"), "b");
+        let locked = src.join("locked");
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).expect("chmod");
+        let ctl = Answers::new(&[]);
+        let (steps, result) = move_to(std::slice::from_ref(&src), other.path(), &ctl);
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).expect("chmod");
+        assert!(result.is_err(), "the source could not be removed");
+        assert_eq!(read(&locked.join("b.txt")), "b");
+        let (_, undone, _) = undo(&steps, &ctl);
+        assert!(undone.is_ok());
+        assert_eq!(read(&other.path().join("m/a.txt")), "a", "undo keeps the only whole copy");
+        assert_eq!(read(&other.path().join("m/locked/b.txt")), "b");
     }
 
     #[test]
