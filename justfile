@@ -8,7 +8,7 @@ build module="" force="":
     (cd compositor && ../tools/build.sh just build)
     (cd shell && ../tools/build.sh just build)
     (cd portal && ../tools/build.sh just build)
-    git submodule update --init link
+    [ -e link/.git ] || git submodule update --init link
     (cd link && cargo build)
     (cd system && cargo build)
 
