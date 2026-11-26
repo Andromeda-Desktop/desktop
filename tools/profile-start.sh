@@ -9,10 +9,11 @@ OUT=${OUT:-/tmp/profile-start}
 source "$ROOT/tests/e2e/lib.sh"
 mkdir -p "$OUT"
 boot_headless 1
-run env NOCTALIA="$NOCTALIA" OUT="$OUT" dbus-run-session --config-file="$RUNTIME/bus.conf" -- bash -c '
+run env NOCTALIA="$NOCTALIA" OUT="$OUT" ROOT="$ROOT" dbus-run-session --config-file="$RUNTIME/bus.conf" -- bash -c '
   set -euo pipefail
   export DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS
-  first_frame() { for _ in $(seq 400); do grep -q "first frame at" "$1" && return 0; sleep 0.05; done; return 1; }
+  source "$ROOT/tests/e2e/wait.sh"
+  first_frame() { poll_for 20 grep -q "first frame at" "$1"; }
   # Warm-up start: fills the Mesa, font and icon caches.
   "$NOCTALIA" > "$OUT/warmup.log" 2>&1 & pid=$!
   first_frame "$OUT/warmup.log"; kill $pid; wait $pid || true

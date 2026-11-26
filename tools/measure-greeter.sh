@@ -14,7 +14,7 @@ rm -rf "$OUT"
 boot_headless 1
 
 dbus-daemon --config-file="$RUNTIME/bus.conf" --nofork --print-address=3 3> "$RUNTIME/system-bus" &
-for _ in $(seq 100); do [[ -s $RUNTIME/system-bus ]] && break; sleep 0.05; done
+poll_for 5 test -s "$RUNTIME/system-bus" || { echo "the system bus did not start" >&2; exit 1; }
 SYSBUS=$(head -1 "$RUNTIME/system-bus")
 mkdir -p "$RUNTIME/share/wayland-sessions"
 cp "$ROOT/compositor/data/andromeda.desktop" "$RUNTIME/share/wayland-sessions/"
@@ -28,7 +28,7 @@ for i in $(seq 0 $((RUNS - 1))); do
   sock=$RUNTIME/greetd-$i.sock
   MOCK_SCENARIOS=noface python3 -I "$ROOT/tests/e2e/mock_greetd.py" "$sock" "$OUT/requests-$i.jsonl" > "$OUT/mock-$i.log" 2>&1 &
   mock=$!
-  for _ in $(seq 100); do grep -q ready "$OUT/mock-$i.log" && break; sleep 0.05; done
+  poll_for 5 grep -q ready "$OUT/mock-$i.log" || { echo "mock greetd $i did not start" >&2; exit 1; }
   mkdir -p "$RUNTIME/greeter-state-$i"
   start=$(now_ms)
   # shellcheck disable=SC2086 # GREETER is a command line

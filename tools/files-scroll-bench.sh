@@ -22,7 +22,7 @@ with_noctalia '
   for r in $(seq "$RUNS"); do
     DESK_FRAME_STATS=1 LC_ALL=C.UTF-8 "$FILES" "$DIR" > "$OUT/files-$r.log" 2>&1 &
     pid=$!
-    for _ in $(seq 200); do grep -q "first frame" "$OUT/files-$r.log" 2> /dev/null && break; sleep 0.05; done
+    poll_for 10 grep -q "first frame" "$OUT/files-$r.log" || { echo "files run $r drew no first frame" >&2; exit 1; }
     "$ANDROMEDA" settle > /dev/null
     "$POINTER" 1920 1080 keyboard-only tap 119 pause 100 mod control tap 3 mod none > /dev/null
     sleep 1
