@@ -1523,7 +1523,7 @@ namespace andromeda {
         state.rowScroll.snap(std::round(shown));
         state.rowJumped = true;
       }
-      state.rowJump = {.from = release.has_value() ? target : state.rowScroll.current(), .to = target};
+      state.rowJump = {.from = state.rowScroll.current(), .to = target};
     }
     const auto& animation = config().animation;
     const auto& overview = animation.overview;
