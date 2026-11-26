@@ -122,7 +122,7 @@ bool LayerSurface::initialize(wl_output* output) {
     prepareBlurEffect();
   }
   traceLayerCommit(*this, m_config, "initialize");
-  wl_surface_commit(m_surface);
+  commitNative();
 
   setRunning(true);
   return true;
@@ -134,9 +134,14 @@ void LayerSurface::handleConfigure(
   auto* self = static_cast<LayerSurface*>(data);
   zwlr_layer_surface_v1_ack_configure(layerSurface, serial);
 
-  self->onConfigure(
-      (width == 0) ? self->m_config.defaultWidth : width, (height == 0) ? self->m_config.defaultHeight : height
-  );
+  const std::uint32_t w = (width == 0) ? self->m_config.defaultWidth : width;
+  const std::uint32_t h = (height == 0) ? self->m_config.defaultHeight : height;
+  // wlroots re-sends the size to every layer surface on each arrange; redrawing for it commits a second frame
+  // before the compositor shows the first, which it then discards.
+  if (self->configured() && w == self->width() && h == self->height()) {
+    return;
+  }
+  self->onConfigure(w, h);
 }
 
 void LayerSurface::handleClosed(void* data, zwlr_layer_surface_v1* /*layerSurface*/) {
@@ -197,7 +202,7 @@ void LayerSurface::requestSize(std::uint32_t width, std::uint32_t height) {
   }
   zwlr_layer_surface_v1_set_size(m_layerSurface, resolvedWidth, resolvedHeight);
   traceLayerCommit(*this, m_config, "request-size");
-  wl_surface_commit(m_surface);
+  commitNative();
 }
 
 void LayerSurface::setAnchorAndSize(std::uint32_t anchor, std::uint32_t width, std::uint32_t height) {
@@ -219,7 +224,7 @@ void LayerSurface::setAnchorAndSize(std::uint32_t anchor, std::uint32_t width, s
   zwlr_layer_surface_v1_set_anchor(m_layerSurface, anchor);
   zwlr_layer_surface_v1_set_size(m_layerSurface, width, height);
   traceLayerCommit(*this, m_config, "set-anchor-size");
-  wl_surface_commit(m_surface);
+  commitNative();
 }
 
 void LayerSurface::setLayer(LayerShellLayer layer) {
@@ -232,7 +237,7 @@ void LayerSurface::setLayer(LayerShellLayer layer) {
   }
   zwlr_layer_surface_v1_set_layer(m_layerSurface, static_cast<std::uint32_t>(layer));
   traceLayerCommit(*this, m_config, "set-layer");
-  wl_surface_commit(m_surface);
+  commitNative();
 }
 
 void LayerSurface::setMargins(std::int32_t top, std::int32_t right, std::int32_t bottom, std::int32_t left) {
@@ -251,7 +256,7 @@ void LayerSurface::setMargins(std::int32_t top, std::int32_t right, std::int32_t
   }
   zwlr_layer_surface_v1_set_margin(m_layerSurface, top, right, bottom, left);
   traceLayerCommit(*this, m_config, "set-margins");
-  wl_surface_commit(m_surface);
+  commitNative();
 }
 
 void LayerSurface::setExclusiveZone(std::int32_t exclusiveZone) {
@@ -264,7 +269,7 @@ void LayerSurface::setExclusiveZone(std::int32_t exclusiveZone) {
   }
   zwlr_layer_surface_v1_set_exclusive_zone(m_layerSurface, exclusiveZone);
   traceLayerCommit(*this, m_config, "set-exclusive-zone");
-  wl_surface_commit(m_surface);
+  commitNative();
 }
 
 void LayerSurface::setClosedCallback(std::function<void()> callback) { m_closedCallback = std::move(callback); }
@@ -293,7 +298,7 @@ void LayerSurface::sendKeyboardInteractivity(LayerShellKeyboard before) {
   }
   zwlr_layer_surface_v1_set_keyboard_interactivity(m_layerSurface, static_cast<std::uint32_t>(mode));
   traceLayerCommit(*this, m_config, "set-keyboard");
-  wl_surface_commit(m_surface);
+  commitNative();
 }
 
 void LayerSurface::setClickThrough(bool clickThrough) {
@@ -304,7 +309,7 @@ void LayerSurface::setClickThrough(bool clickThrough) {
   applyInputRegion();
   if (m_surface != nullptr) {
     traceLayerCommit(*this, m_config, "set-click-through");
-    wl_surface_commit(m_surface);
+    commitNative();
   }
 }
 
