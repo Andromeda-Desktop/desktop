@@ -29,7 +29,7 @@ namespace andromeda {
     static void layerShellRevoke(Server& server, std::string_view arg, IpcReply reply);
     static nlohmann::json globalShortcuts(Server& server, std::string_view arg);
     static void globalShortcutsRevoke(Server& server, std::string_view arg, IpcReply reply);
-    static nlohmann::json globalShortcutsAssign(Server& server, std::string_view arg);
+    static void globalShortcutsAssign(Server& server, std::string_view arg, IpcReply reply);
     [[nodiscard]] static std::optional<EffectAudio> parseAudioSpectrum(const nlohmann::json& request);
     static nlohmann::json effects(Server& server, std::string_view arg);
     static nlohmann::json windows(Server& server, std::string_view arg);

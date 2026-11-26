@@ -35,9 +35,10 @@ namespace andromeda {
   }
 
   void rewriteGeneratedTomlAsync(
-      const std::filesystem::path& file, std::string_view header, const std::function<void(toml::table&)>& edit
+      const std::filesystem::path& file, std::string_view header, const std::function<void(toml::table&)>& edit,
+      WriteDone done
   ) {
-    writeFileAsync(file, editGeneratedToml(readGeneratedFile(file), header, edit));
+    writeFileAsync(file, editGeneratedToml(readGeneratedFile(file), header, edit), {}, std::move(done));
   }
 
   toml::table& generatedTable(toml::table& root, std::initializer_list<std::string_view> path) {

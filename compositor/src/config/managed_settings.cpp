@@ -744,18 +744,27 @@ namespace andromeda {
     return editGeneratedToml(existing, kHeader, [&](toml::table& root) { applySetting(root, key, value); });
   }
 
-  void saveManagedSetting(const std::filesystem::path& file, std::string_view key, const ManagedSettingValue& value) {
-    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) { applySetting(root, key, value); });
+  void saveManagedSetting(
+      const std::filesystem::path& file, std::string_view key, const ManagedSettingValue& value, WriteDone done
+  ) {
+    rewriteGeneratedTomlAsync(
+        file, kHeader, [&](toml::table& root) { applySetting(root, key, value); }, std::move(done)
+    );
   }
 
   void saveManagedSettings(
-      const std::filesystem::path& file, const std::vector<std::pair<std::string, ManagedSettingValue>>& values
+      const std::filesystem::path& file, const std::vector<std::pair<std::string, ManagedSettingValue>>& values,
+      WriteDone done
   ) {
-    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) {
-      for (const auto& [key, value] : values) {
-        applySetting(root, key, value);
-      }
-    });
+    rewriteGeneratedTomlAsync(
+        file, kHeader,
+        [&](toml::table& root) {
+          for (const auto& [key, value] : values) {
+            applySetting(root, key, value);
+          }
+        },
+        std::move(done)
+    );
   }
 
   std::filesystem::path managedSettingsFile(const std::filesystem::path& configRoot) {
@@ -775,26 +784,37 @@ namespace andromeda {
     return std::filesystem::path(xdg::configHome()) / "andromeda/settings.toml";
   }
 
-  void saveManagedKeybind(const std::filesystem::path& file, std::string_view chord, std::string_view action) {
-    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) {
-      toml::table& keybinds = generatedTable(root, {"keybinds"});
-      if (action.empty()) {
-        keybinds.erase(chord);
-      } else {
-        keybinds.insert_or_assign(chord, std::string(action));
-      }
-      if (keybinds.empty()) {
-        root.erase("keybinds");
-      }
-    });
+  void saveManagedKeybind(
+      const std::filesystem::path& file, std::string_view chord, std::string_view action, WriteDone done
+  ) {
+    rewriteGeneratedTomlAsync(
+        file, kHeader,
+        [&](toml::table& root) {
+          toml::table& keybinds = generatedTable(root, {"keybinds"});
+          if (action.empty()) {
+            keybinds.erase(chord);
+          } else {
+            keybinds.insert_or_assign(chord, std::string(action));
+          }
+          if (keybinds.empty()) {
+            root.erase("keybinds");
+          }
+        },
+        std::move(done)
+    );
   }
 
   void saveManagedGlobalShortcut(
-      const std::filesystem::path& file, std::string_view app, std::string_view id, std::string_view chord
+      const std::filesystem::path& file, std::string_view app, std::string_view id, std::string_view chord,
+      WriteDone done
   ) {
-    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) {
-      generatedTable(root, {"global_shortcuts", app}).insert_or_assign(id, std::string(chord));
-    });
+    rewriteGeneratedTomlAsync(
+        file, kHeader,
+        [&](toml::table& root) {
+          generatedTable(root, {"global_shortcuts", app}).insert_or_assign(id, std::string(chord));
+        },
+        std::move(done)
+    );
   }
 
   namespace {
@@ -834,7 +854,9 @@ namespace andromeda {
     }
   } // namespace
 
-  void saveManagedAppQos(const std::filesystem::path& file, std::string_view appId, std::string_view qos) {
+  void saveManagedAppQos(
+      const std::filesystem::path& file, std::string_view appId, std::string_view qos, WriteDone done
+  ) {
     rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) {
       if (root["window_rule"].as_array() == nullptr) {
         root.insert_or_assign("window_rule", toml::array{});
@@ -853,7 +875,7 @@ namespace andromeda {
       if (rules.empty()) {
         root.erase("window_rule");
       }
-    });
+    }, std::move(done));
   }
 
   std::vector<std::pair<std::string, std::string>> documentAppQos(std::string_view document) {

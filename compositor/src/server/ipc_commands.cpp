@@ -176,31 +176,43 @@ namespace andromeda {
 
   // "<app> <id> <chord|off>": the id may hold spaces, the app and the chord cannot. A refused chord is an ok reply with
   // assigned false and the reason, so a settings client can show it.
-  nlohmann::json IpcCommands::globalShortcutsAssign(Server& server, std::string_view arg) {
+  void IpcCommands::globalShortcutsAssign(Server& server, std::string_view arg, IpcReply reply) {
     const auto first = arg.find(' ');
     const auto last = arg.rfind(' ');
     if (first == std::string_view::npos || first == last || first == 0 || last + 1 == arg.size()) {
-      return nlohmann::json{{"err", "usage: global-shortcuts-assign <app-id> <shortcut-id> <chord|off>"}};
+      reply(nlohmann::json{{"err", "usage: global-shortcuts-assign <app-id> <shortcut-id> <chord|off>"}});
+      return;
     }
-    const std::string_view chord = arg.substr(last + 1);
+    const std::string chord(arg.substr(last + 1));
     auto* service = server.globalShortcuts();
     if (service == nullptr) {
-      return nlohmann::json{{"err", "global shortcuts are not available"}};
+      reply(nlohmann::json{{"err", "global shortcuts are not available"}});
+      return;
     }
-    using enum GlobalShortcutService::Assigned::Result;
-    const auto assigned =
-        service->assign(arg.substr(0, first), arg.substr(first + 1, last - first - 1), chord == "off" ? "" : chord);
-    switch (assigned.result) {
-    case Ok:
-      return nlohmann::json{{"ok", {{"assigned", true}}}};
-    case BadChord:
-      return nlohmann::json{{"err", std::format("not a key chord: {}", chord)}};
-    case Reserved:
-      return nlohmann::json{{"ok", {{"assigned", false}, {"reason", "reserved"}}}};
-    case InUse:
-      return nlohmann::json{{"ok", {{"assigned", false}, {"reason", "in_use"}, {"holder", assigned.holder}}}};
-    }
-    std::unreachable();
+    service->assign(
+        arg.substr(0, first), arg.substr(first + 1, last - first - 1), chord == "off" ? "" : chord,
+        [reply = std::move(reply), chord](const GlobalShortcutService::Assigned& assigned) {
+          using enum GlobalShortcutService::Assigned::Result;
+          switch (assigned.result) {
+          case Ok:
+            reply(nlohmann::json{{"ok", {{"assigned", true}}}});
+            return;
+          case BadChord:
+            reply(nlohmann::json{{"err", std::format("not a key chord: {}", chord)}});
+            return;
+          case Reserved:
+            reply(nlohmann::json{{"ok", {{"assigned", false}, {"reason", "reserved"}}}});
+            return;
+          case InUse:
+            reply(nlohmann::json{{"ok", {{"assigned", false}, {"reason", "in_use"}, {"holder", assigned.holder}}}});
+            return;
+          case WriteFailed:
+            reply(nlohmann::json{{"err", "unable to assign the global shortcut (the settings file could not be written)"}});
+            return;
+          }
+          std::unreachable();
+        }
+    );
   }
 
   void IpcCommands::globalShortcutsRevoke(Server& server, std::string_view arg, IpcReply reply) {
@@ -2012,7 +2024,8 @@ namespace andromeda {
        kSaveReplyTimeoutSec},
       {"global-shortcuts-assign", "<app-id> <shortcut-id> <chord|off>",
        "set one global shortcut's keys in settings.toml; refuses a desktop keybind or another app's keys",
-       IpcCommandGroup::Control, true, &IpcCommands::globalShortcutsAssign, &printGlobalShortcutAssign},
+       IpcCommandGroup::Control, true, IpcDeferredHandler{&IpcCommands::globalShortcutsAssign},
+       &printGlobalShortcutAssign, kSaveReplyTimeoutSec},
       {"msg", "<action> [args...]", "send an action to the compositor", IpcCommandGroup::Control, true,
        &IpcCommands::msg, nullptr, kConfiguredReplyTimeoutSec},
       {"output-create", "<name> [mode]", "create a virtual output (optional mode, as 1920x1080@60)",

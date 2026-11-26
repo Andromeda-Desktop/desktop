@@ -73,6 +73,23 @@ fi
 "$ANDROMEDA" global-shortcuts-assign "$APP talk off" > /dev/null
 await_events "$SHELL_LOG" "shortcut talk - 2" 2 "the shortcut turned off by assign"
 
+# A save that cannot write answers an error, and the live binding follows the file again (checked by inspect below).
+# Root ignores the directory's write bit, so the step needs a normal user.
+settings_dir=$ANDROMEDA_RUNTIME_DIR # the instance config root, settings.toml beside config.toml
+if [[ ! -f $settings_dir/settings.toml ]]; then
+  echo "assign wrote no $settings_dir/settings.toml"
+  exit 1
+fi
+if [[ $(id -u) != 0 ]]; then
+  chmod a-w "$settings_dir"
+  failed=$("$ANDROMEDA" global-shortcuts-assign "$APP talk Ctrl+F12" 2>&1) && status=0 || status=$?
+  chmod u+w "$settings_dir"
+  if [[ $status == 0 || $failed != *"could not be written"* ]]; then
+    echo "an unwritable settings file did not fail the assign (exit $status): $failed"
+    exit 1
+  fi
+fi
+
 "$ANDROMEDA" global-shortcuts --json > "$ANDROMEDA_RUNTIME_DIR/inspect.json"
 if ! jq -e --arg app "$APP" '[.sessions[] | select(.app == $app and .phase == "bound") | .shortcuts[]
     | select(.id == "talk" and .conflict == "disabled" and .trigger == null)] | length == 1' \

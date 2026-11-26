@@ -1,3 +1,4 @@
+#include "protocols/async_file_writer.h"
 #include "protocols/glass_material.h"
 #include "protocols/ipc_channel.h"
 #include "server/client_trust.h"
@@ -885,6 +886,11 @@ namespace andromeda {
     if (m_display == nullptr) {
       throw std::runtime_error("failed to create wl_display");
     }
+    m_fileWriteDone = std::make_unique<MainLoopWorker>(wl_display_get_event_loop(m_display), "andro-filedone");
+    if (!m_fileWriteDone->ready()) {
+      throw std::runtime_error("failed to attach the file write completion source");
+    }
+    setFileWriteDonePoster([worker = m_fileWriteDone.get()](std::function<void()> fn) { worker->postToLoop(std::move(fn)); });
     m_layerShellPermissions = std::make_unique<LayerShellPermissions>(
         wl_display_get_event_loop(m_display), LayerShellPermissions::defaultPath()
     );
@@ -1361,6 +1367,8 @@ namespace andromeda {
     // Their sources belong to the display's event loop, which is destroyed below.
     m_screenActivity.reset();
     m_keymapWorker.reset();
+    setFileWriteDonePoster({});
+    m_fileWriteDone.reset();
     m_layerShellPermissions.reset();
     m_keymapQuery.reset();
     scanout_keeper::finishRelease();

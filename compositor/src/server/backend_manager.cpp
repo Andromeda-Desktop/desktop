@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "core/scanout_keeper.h"
+#include "protocols/async_file_writer.h"
 #include "server/dmabuf_modifiers.h"
 #include "server/drm_policy.h"
 #include "util/driver_threads.h"
@@ -336,6 +337,15 @@ namespace andromeda {
     [[nodiscard]] wlr_session* session() const { return m_session; }
 
     [[nodiscard]] wlr_renderer* createRenderer() {
+      fx_renderer_set_file_writer([](const char* path, const void* data, size_t size) {
+        // GPU program binaries stay private to the user, as the cache directory always was.
+        andromeda::writeFileAsync(
+            path, std::string(static_cast<const char*>(data), size),
+            [](const std::filesystem::path& file, const std::string& text) {
+              return andromeda::writeFileReplacing(file, text, 0600, 0700);
+            }
+        );
+      });
 #if ANDROMEDA_HAS_NATIVE_DRM_POLICY
       if (m_policyActive) {
         const bool forceSoftware = environmentFlagEnabled("WLR_RENDERER_FORCE_SOFTWARE");

@@ -47,6 +47,16 @@ namespace andromeda {
     m_wake.notify_one();
   }
 
+  void MainLoopWorker::postToLoop(std::function<void()> fn) {
+    if (m_source == nullptr) {
+      return;
+    }
+    const std::scoped_lock lock(m_mutex);
+    m_results.push_back(std::move(fn));
+    const std::uint64_t one = 1;
+    [[maybe_unused]] const ssize_t written = ::write(m_eventFd, &one, sizeof(one));
+  }
+
   void MainLoopWorker::run(const std::stop_token& stop) {
     pthread_setname_np(pthread_self(), m_name);
     andromeda::crash::installThreadStack();

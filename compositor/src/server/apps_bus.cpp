@@ -336,11 +336,23 @@ namespace andromeda {
       return sd_bus_error_set(error, SD_BUS_ERROR_INVALID_ARGS, "an app id and normal, never_throttle or freeze_when_hidden");
     }
     const std::filesystem::path file = managedSettingsFile(configRootPath());
-    saveManagedAppQos(file, appId, qos);
+    // The reply waits for the write: a failed save answers IO_ERROR and the config follows the file again.
+    sd_bus_message_ref(message);
+    saveManagedAppQos(file, appId, qos, [message, file, reload = self->m_reloadConfig](bool ok) {
+      if (ok) {
+        sd_bus_reply_method_return(message, "");
+      } else {
+        if (reload) {
+          reload();
+        }
+        sd_bus_reply_method_errorf(message, SD_BUS_ERROR_IO_ERROR, "cannot write %s", file.c_str());
+      }
+      sd_bus_message_unref(message);
+    });
     if (self->m_reloadConfig) {
       self->m_reloadConfig();
     }
-    return sd_bus_reply_method_return(message, "");
+    return 1;
   }
 
   int AppsBus::onAppRules(sd_bus_message* message, void* /*data*/, sd_bus_error* /*error*/) {

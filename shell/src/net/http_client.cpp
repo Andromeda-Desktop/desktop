@@ -4,20 +4,25 @@
 #include "core/deferred_call.h"
 #include "core/lazy_library.h"
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <fcntl.h>
 #include <filesystem>
-#include <fstream>
 #include <string>
+#include <sys/statvfs.h>
+#include <unistd.h>
 #include <utility>
 
 // clang-format off
 #define LIBCURL_FUNCTIONS(X) \
-  X(curl_easy_cleanup) X(curl_easy_getinfo) X(curl_easy_init) X(curl_easy_setopt) X(curl_easy_strerror) \
+  X(curl_easy_cleanup) X(curl_easy_getinfo) X(curl_easy_init) X(curl_easy_pause) X(curl_easy_setopt) \
+  X(curl_easy_strerror) \
   X(curl_global_cleanup) X(curl_global_init) X(curl_multi_add_handle) X(curl_multi_cleanup) X(curl_multi_fdset) \
   X(curl_multi_info_read) X(curl_multi_init) X(curl_multi_perform) X(curl_multi_remove_handle) \
   X(curl_multi_strerror) X(curl_multi_timeout) X(curl_slist_append) X(curl_slist_free_all)
@@ -83,19 +88,12 @@ namespace {
     DeferredCall::callLater([cb = std::move(cb)] mutable { cb(HttpStreamResult{}); });
   }
 
-  // Download bodies stay in memory until the worker writes them.
-  constexpr std::size_t kMaxDownloadBytes = 64 * 1024 * 1024;
-
-  // Returning less than the chunk size aborts the transfer with CURLE_WRITE_ERROR.
-  std::size_t captureDownload(char* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
-    const std::size_t bytes = size * nmemb;
-    auto* body = static_cast<std::string*>(userdata);
-    if (body->size() + bytes > kMaxDownloadBytes) {
-      return 0;
-    }
-    body->append(ptr, bytes);
-    return bytes;
-  }
+  // A download hands its body to the file writer in pieces of this size.
+  constexpr std::size_t kDownloadChunkBytes = 256 * 1024;
+  // Download bytes held in memory while the disk lags: above the first the transfer pauses, below the second it
+  // resumes.
+  constexpr std::size_t kDownloadPauseBytes = 4 * 1024 * 1024;
+  constexpr std::size_t kDownloadResumeBytes = 1024 * 1024;
 
   std::size_t captureResponse(char* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
     const std::size_t bytes = size * nmemb;
@@ -167,6 +165,99 @@ void HttpClient::applyTlsClientCert(CURL* easy, const std::shared_ptr<const Http
   libcurl().curl_easy_setopt(easy, CURLOPT_SSLKEY, cert->clientKeyPath.c_str());
 }
 
+// Writer-thread state of one download's `.part` file; only file-writer operations touch it.
+struct HttpClient::DownloadPart {
+  std::filesystem::path path;
+  int fd = -1;
+  bool failed = false;
+
+  explicit DownloadPart(std::filesystem::path partPath) : path(std::move(partPath)) {}
+  DownloadPart(const DownloadPart&) = delete;
+  DownloadPart& operator=(const DownloadPart&) = delete;
+  ~DownloadPart() { closeFd(); }
+
+  void closeFd() {
+    if (fd >= 0) {
+      ::close(fd);
+      fd = -1;
+    }
+  }
+
+  bool open() {
+    if (fd >= 0 || failed) {
+      return !failed;
+    }
+    std::error_code ignored;
+    std::filesystem::create_directories(path.parent_path(), ignored);
+    fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    failed = fd < 0;
+    return !failed;
+  }
+
+  // No size limit: a download fails instead when it would leave less than min(1 GiB, 5%) of its filesystem free.
+  [[nodiscard]] bool leavesDiskRoom(std::size_t bytes) const {
+    struct statvfs fs{};
+    if (::fstatvfs(fd, &fs) != 0) {
+      return true;
+    }
+    const auto unit = static_cast<std::uint64_t>(fs.f_frsize);
+    const std::uint64_t floor = std::min<std::uint64_t>(1ULL << 30U, fs.f_blocks * unit / 20);
+    return static_cast<std::uint64_t>(fs.f_bavail) * unit >= floor + bytes;
+  }
+
+  bool append(const std::string& bytes) {
+    if (!open()) {
+      return false;
+    }
+    if (!leavesDiskRoom(bytes.size())) {
+      kLog.warn("download stopped: the disk is almost full at {}", path.string());
+      failed = true;
+      return false;
+    }
+    std::size_t done = 0;
+    while (done < bytes.size()) {
+      const ssize_t n = ::write(fd, bytes.data() + done, bytes.size() - done);
+      if (n < 0 && errno == EINTR) {
+        continue;
+      }
+      if (n <= 0) {
+        kLog.warn("download failed to write {}", path.string());
+        failed = true;
+        return false;
+      }
+      done += static_cast<std::size_t>(n);
+    }
+    return true;
+  }
+
+  void discard() {
+    closeFd();
+    std::error_code ignored;
+    std::filesystem::remove(path, ignored);
+  }
+
+  // Moves the finished file to `dest`; an empty body still makes an empty file.
+  bool finish(const std::filesystem::path& dest) {
+    if (!open()) {
+      discard();
+      return false;
+    }
+    closeFd();
+    std::error_code ec;
+    std::filesystem::rename(path, dest, ec);
+    if (ec) {
+      std::filesystem::copy_file(path, dest, std::filesystem::copy_options::overwrite_existing, ec);
+      std::error_code ignored;
+      std::filesystem::remove(path, ignored);
+      if (ec) {
+        kLog.warn("download failed to move {} to {}: {}", path.string(), dest.string(), ec.message());
+        return false;
+      }
+    }
+    return true;
+  }
+};
+
 HttpClient::HttpClient(std::filesystem::path caBundlePath) : m_caBundlePath(std::move(caBundlePath)) {}
 
 HttpClient::~HttpClient() {
@@ -176,6 +267,10 @@ HttpClient::~HttpClient() {
   for (auto& [easy, transfer] : m_transfers) {
     libcurl().curl_multi_remove_handle(m_multi, easy);
     libcurl().curl_easy_cleanup(easy);
+    andromeda::runFileOpAsync([part = transfer.part] {
+      part->discard();
+      return true;
+    });
   }
   for (auto& [easy, post] : m_postTransfers) {
     libcurl().curl_multi_remove_handle(m_multi, easy);
@@ -248,20 +343,25 @@ void HttpClient::download(std::string_view url, const std::filesystem::path& des
   applyCommonOptions(easy);
   libcurl().curl_easy_setopt(easy, CURLOPT_URL, urlStr.c_str());
   libcurl().curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, captureDownload);
-  libcurl().curl_easy_setopt(easy, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(kMaxDownloadBytes));
   libcurl().curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
   libcurl().curl_easy_setopt(easy, CURLOPT_FAILONERROR, 1L);
-  libcurl().curl_easy_setopt(easy, CURLOPT_TIMEOUT, 30L);
+  // A stalled server fails the download, not a large file: under 1 KiB/s for 30 s aborts. Paused time is excluded.
+  libcurl().curl_easy_setopt(easy, CURLOPT_LOW_SPEED_LIMIT, 1024L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_LOW_SPEED_TIME, 30L);
   libcurl().curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 10L);
 
   Transfer transfer{};
+  transfer.client = this;
+  transfer.easy = easy;
+  transfer.id = m_nextTransferId++;
   transfer.destPath = destPath;
+  transfer.part = std::make_shared<DownloadPart>(destPath.parent_path() / (destPath.filename().string() + ".part"));
   transfer.callbacks.push_back(std::move(cb));
   transfer.destKey = destKey;
   transfer.url = urlStr;
   m_transfers[easy] = std::move(transfer);
   libcurl().curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, m_transfers[easy].errorBuffer.data());
-  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEDATA, &m_transfers[easy].body);
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEDATA, &m_transfers[easy]);
   const CURLMcode addResult = libcurl().curl_multi_add_handle(m_multi, easy);
   if (addResult != CURLM_OK) {
     Transfer failedTransfer = std::move(m_transfers[easy]);
@@ -689,49 +789,80 @@ void HttpClient::finishTransfer(CURL* easy, CURLcode result) {
         "download failed url={} curl={} http={} error={}", urlForLog(transfer.url), static_cast<int>(result),
         responseCode, detail
     );
+    andromeda::runFileOpAsync([part = std::move(transfer.part)] {
+      part->discard();
+      return true;
+    });
     for (auto& callback : transfer.callbacks) {
       callback(false);
     }
     return;
   }
 
-  // The disk write runs on BlockingPool: under disk load it blocks for 100s of ms.
+  // The rename runs after every queued piece; under disk load each write blocks for 100s of ms.
+  flushDownloadChunk(transfer);
   m_writing[transfer.destKey] = std::move(transfer.callbacks);
-  BlockingPool::instance().run<bool>(
-      m_alive,
-      [destPath = std::move(transfer.destPath), body = std::move(transfer.body)] {
-        const auto tempPath = destPath.parent_path() / (destPath.filename().string() + ".part");
-        {
-          std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
-          out.write(body.data(), static_cast<std::streamsize>(body.size()));
-          if (!out) {
-            out.close();
-            std::error_code ignored;
-            std::filesystem::remove(tempPath, ignored);
-            kLog.warn("download failed to write {}", tempPath.string());
-            return false;
-          }
+  andromeda::runFileOpAsync(
+      [part = std::move(transfer.part), destPath = std::move(transfer.destPath)] { return part->finish(destPath); },
+      [this, alive = std::weak_ptr<int>(m_alive), destKey = std::move(transfer.destKey)](bool written) {
+        if (alive.expired()) {
+          return;
         }
-        std::error_code ec;
-        std::filesystem::rename(tempPath, destPath, ec);
-        if (ec) {
-          std::filesystem::copy_file(tempPath, destPath, std::filesystem::copy_options::overwrite_existing, ec);
-          std::error_code ignored;
-          std::filesystem::remove(tempPath, ignored);
-          if (ec) {
-            kLog.warn("download failed to move {} to {}: {}", tempPath.string(), destPath.string(), ec.message());
-            return false;
-          }
-        }
-        return true;
-      },
-      [this, destKey = std::move(transfer.destKey)](bool written) {
         auto node = m_writing.extract(destKey);
         for (auto& callback : node.mapped()) {
           callback(written);
         }
       }
   );
+}
+
+std::size_t HttpClient::captureDownload(char* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
+  const std::size_t bytes = size * nmemb;
+  auto* transfer = static_cast<Transfer*>(userdata);
+  if (transfer->writeFailed) {
+    return CURL_WRITEFUNC_ERROR;
+  }
+  if (transfer->queuedBytes >= kDownloadPauseBytes) {
+    transfer->paused = true;
+    return CURL_WRITEFUNC_PAUSE;
+  }
+  transfer->chunk.append(ptr, bytes);
+  if (transfer->chunk.size() >= kDownloadChunkBytes) {
+    transfer->client->flushDownloadChunk(*transfer);
+  }
+  return bytes;
+}
+
+void HttpClient::flushDownloadChunk(Transfer& transfer) {
+  if (transfer.chunk.empty()) {
+    return;
+  }
+  const std::size_t bytes = transfer.chunk.size();
+  transfer.queuedBytes += bytes;
+  andromeda::runFileOpAsync(
+      [part = transfer.part, chunk = std::exchange(transfer.chunk, {})] { return part->append(chunk); },
+      [this, alive = std::weak_ptr<int>(m_alive), id = transfer.id, bytes](bool ok) {
+        if (!alive.expired()) {
+          onDownloadChunkWritten(id, bytes, ok);
+        }
+      }
+  );
+}
+
+void HttpClient::onDownloadChunkWritten(std::uint64_t id, std::size_t bytes, bool ok) {
+  const auto it = std::ranges::find_if(m_transfers, [id](const auto& entry) { return entry.second.id == id; });
+  if (it == m_transfers.end()) {
+    return;
+  }
+  Transfer& transfer = it->second;
+  transfer.queuedBytes -= bytes;
+  transfer.writeFailed = transfer.writeFailed || !ok;
+  if (transfer.paused && (transfer.writeFailed || transfer.queuedBytes < kDownloadResumeBytes)) {
+    transfer.paused = false;
+    // An unpause can deliver held data to captureDownload before it returns; a failed write then aborts the transfer.
+    libcurl().curl_easy_pause(transfer.easy, CURLPAUSE_CONT);
+    performMulti("download resume");
+  }
 }
 
 void HttpClient::finishPostTransfer(CURL* easy, CURLcode result) {

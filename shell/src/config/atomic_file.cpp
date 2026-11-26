@@ -145,10 +145,12 @@ bool writeTextFileAtomic(
 }
 
 void writeTextFileAtomicAsync(
-    std::filesystem::path path, std::string content, std::optional<std::filesystem::perms> mode
+    std::filesystem::path path, std::string content, std::optional<std::filesystem::perms> mode,
+    andromeda::WriteDone done
 ) {
   andromeda::writeFileAsync(
       std::move(path), std::move(content),
-      [mode](const std::filesystem::path& target, const std::string& text) { return writeTextFileAtomic(target, text, mode); }
+      [mode](const std::filesystem::path& target, const std::string& text) { return writeTextFileAtomic(target, text, mode); },
+      std::move(done)
   );
 }

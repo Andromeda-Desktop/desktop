@@ -1,5 +1,7 @@
 #pragma once
 
+#include "protocols/async_file_writer.h"
+
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -21,7 +23,8 @@ enum class AtomicWrite : bool { Fast, Durable };
 );
 
 // writeTextFileAtomic on the shared background writer (protocols/async_file_writer.h): the caller never waits on the
-// disk and pendingFileText(path) shows the content until it lands. A failed write is logged, not reported.
+// disk and pendingFileText(path) shows the content until it lands. `done` gets the result on the main loop.
 void writeTextFileAtomicAsync(
-    std::filesystem::path path, std::string content, std::optional<std::filesystem::perms> mode = std::nullopt
+    std::filesystem::path path, std::string content, std::optional<std::filesystem::perms> mode = std::nullopt,
+    andromeda::WriteDone done = {}
 );

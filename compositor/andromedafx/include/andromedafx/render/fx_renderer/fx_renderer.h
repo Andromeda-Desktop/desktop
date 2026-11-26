@@ -2,6 +2,7 @@
 #define ANDROMEDAFX_RENDER_FX_RENDERER_H
 
 #include <GLES2/gl2.h>
+#include <stddef.h>
 #include <GLES2/gl2ext.h>
 #include <wlr/backend.h>
 #include <wlr/render/interface.h>
@@ -47,6 +48,10 @@ struct fx_render_job_watch {
   void (*end)(void);
 };
 void fx_renderer_set_job_watch(const struct fx_render_job_watch* watch);
+// Replaces `path` with `size` bytes without blocking the caller (the host's file writer); it copies `data`. Set before
+// the first renderer exists. With none set, linked programs stay out of the disk cache.
+typedef void (*fx_file_writer)(const char* path, const void* data, size_t size);
+void fx_renderer_set_file_writer(fx_file_writer writer);
 
 struct fx_renderer* fx_get_renderer(struct wlr_renderer* wlr_renderer);
 

@@ -1362,6 +1362,8 @@ namespace andromeda {
     XkbNames m_systemKeymap;
     // localed D-Bus reads; created at the first input config reload.
     std::unique_ptr<MainLoopWorker> m_keymapWorker;
+    // Delivers async file write results (protocol/async_file_writer) to the loop.
+    std::unique_ptr<MainLoopWorker> m_fileWriteDone;
     std::unique_ptr<SystemKeymapQuery> m_keymapQuery;
     Keyboard* m_keyboardLayoutSource = nullptr;
     Keyboard* m_keyboardInputSource = nullptr;

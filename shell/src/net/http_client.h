@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <curl/curl.h>
 #include <filesystem>
 #include <functional>
@@ -113,9 +114,21 @@ public:
   void dispatch(const std::vector<pollfd>& fds, std::size_t startIdx);
 
 private:
+  struct DownloadPart;
+
+  // A download streams its body to `<dest>.part` through the file writer and renames it when the transfer ends.
   struct Transfer {
+    HttpClient* client = nullptr;
+    CURL* easy = nullptr;
+    std::uint64_t id = 0;
     std::filesystem::path destPath;
-    std::string body;
+    std::shared_ptr<DownloadPart> part;
+    // Body bytes not yet handed to the writer.
+    std::string chunk;
+    // Bytes handed to the writer and not yet written; above the limit the transfer pauses.
+    std::size_t queuedBytes = 0;
+    bool paused = false;
+    bool writeFailed = false;
     std::vector<CompletionCallback> callbacks;
     std::string destKey;
     std::string url;
@@ -164,6 +177,9 @@ private:
 
   void downloadSequential(const std::shared_ptr<SequentialDownload>& state);
   void finishTransfer(CURL* easy, CURLcode result);
+  static std::size_t captureDownload(char* ptr, std::size_t size, std::size_t nmemb, void* userdata);
+  void flushDownloadChunk(Transfer& transfer);
+  void onDownloadChunkWritten(std::uint64_t id, std::size_t bytes, bool ok);
   void finishPostTransfer(CURL* easy, CURLcode result);
   void finishRequestTransfer(CURL* easy, CURLcode result);
   void finishStreamTransfer(CURL* easy, CURLcode result);
@@ -194,4 +210,5 @@ private:
   // Downloads whose body BlockingPool writes now, by destination; a new download of one joins it.
   std::unordered_map<std::string, std::vector<CompletionCallback>> m_writing;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
+  std::uint64_t m_nextTransferId = 1;
 };

@@ -3,6 +3,7 @@
 #include "config/managed_settings.h"
 
 #include <cstdint>
+#include <list>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -94,6 +95,14 @@ namespace andromeda {
     };
     std::vector<PendingSet> m_pendingSets;
     wl_event_source* m_saveIdle = nullptr;
+    // Who hears `failed` when a save in flight cannot write: a destroyed resource's owner turns null.
+    struct SaveWaiter {
+      wl_resource* owner;
+      std::string key;
+    };
+    std::list<std::vector<SaveWaiter>> m_saving;
+    // Done for a save that `waiters` wait on: on failure the config follows the file again and each owner gets `failed`.
+    WriteDone saveDone(std::vector<SaveWaiter> waiters, std::filesystem::path file);
     // The settings file text behind the last settingsChanged broadcast.
     std::string m_sentDocument;
   };

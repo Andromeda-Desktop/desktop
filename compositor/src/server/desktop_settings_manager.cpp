@@ -146,6 +146,13 @@ namespace andromeda {
           pending.owner = nullptr;
         }
       }
+      for (std::vector<SaveWaiter>& waiters : self->m_saving) {
+        for (SaveWaiter& waiter : waiters) {
+          if (waiter.owner == resource) {
+            waiter.owner = nullptr;
+          }
+        }
+      }
       if (self->m_captureResource == resource) {
         self->m_captureResource = nullptr;
       }
@@ -203,7 +210,12 @@ namespace andromeda {
       values.emplace_back(set.key, set.value);
     }
     const std::filesystem::path file = managedSettingsFile(configRootPath());
-    saveManagedSettings(file, values);
+    std::vector<SaveWaiter> waiters;
+    waiters.reserve(pending.size());
+    for (PendingSet& set : pending) {
+      waiters.push_back({set.owner, std::move(set.key)});
+    }
+    saveManagedSettings(file, values, saveDone(std::move(waiters), file));
     // Apply now from the pending text rather than when the watcher notices the write; its later reload finds nothing
     // changed.
     m_server.handleConfigReload(reloadConfig());
@@ -303,8 +315,26 @@ namespace andromeda {
         saveManagedKeybind(file, savedChord, {});
       }
     }
-    saveManagedKeybind(file, chord, action);
+    saveManagedKeybind(file, chord, action, saveDone({{resource, chordText}}, file));
     m_server.handleConfigReload(reloadConfig());
+  }
+
+  WriteDone DesktopSettingsManager::saveDone(std::vector<SaveWaiter> waiters, std::filesystem::path file) {
+    const auto waiting = m_saving.insert(m_saving.end(), std::move(waiters));
+    return [this, waiting, file = std::move(file)](bool ok) {
+      const std::vector<SaveWaiter> done = std::move(*waiting);
+      m_saving.erase(waiting);
+      if (ok) {
+        return;
+      }
+      m_server.handleConfigReload(reloadConfig());
+      const std::string reason = std::format("cannot write {}", file.string());
+      for (const SaveWaiter& waiter : done) {
+        if (waiter.owner != nullptr) {
+          dsk_settings_manager_v1_send_failed(waiter.owner, waiter.key.c_str(), reason.c_str());
+        }
+      }
+    };
   }
 
   void DesktopSettingsManager::sendKeybinds(wl_resource* resource) const {

@@ -1,5 +1,6 @@
 #include "core/deferred_call.h"
 #include "core/sys/sys.h"
+#include "protocols/async_file_writer.h"
 
 #include <array>
 #include <cerrno>
@@ -9,6 +10,10 @@
 #include <unistd.h>
 
 namespace {
+
+  // Every process that runs DeferredCall gets file-write completions on its main loop.
+  [[maybe_unused]] const bool kFileWriteDonePoster =
+      (andromeda::setFileWriteDonePoster([](std::function<void()> fn) { DeferredCall::callLater(std::move(fn)); }), true);
 
   // Never destroyed: worker threads may post while static destructors run at exit.
   std::mutex& deferredMutex() {

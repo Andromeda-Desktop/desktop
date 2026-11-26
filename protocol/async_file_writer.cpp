@@ -2,15 +2,23 @@
 #include "crash_capture.h"
 #include "log.h"
 
+#include <cerrno>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
-#include <fstream>
+#include <fcntl.h>
+#include <format>
+#include <random>
+#include <sys/file.h>
+#include <sys/stat.h>
 #include <mutex>
 #include <pthread.h>
+#include <set>
 #include <stop_token>
 #include <thread>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 
 namespace andromeda {
 
@@ -18,32 +26,76 @@ namespace andromeda {
 
     constexpr Logger kLog("file-writer");
 
+    // A whole-file write (path set) or an ordered operation (op set, path empty).
     struct Job {
       std::filesystem::path path;
       std::string text;
       WriteFn write;
+      std::function<bool()> op;
+      std::vector<WriteDone> dones;
     };
 
-    bool writeReplacing(const std::filesystem::path& path, const std::string& text) {
+    constexpr std::string_view kTempTag = ".andro-";
+    constexpr std::string_view kTempSuffix = ".tmp";
+    // An unlocked temporary this old has no writer: the writer locks it right after it creates it.
+    constexpr auto kDeadTemporaryAge = std::chrono::seconds(10);
+
+    // Removes `<name>.andro-*.tmp` files no writer holds (a crash between write and rename). The flock test also
+    // holds for writers in another PID namespace or on another host sharing the home directory.
+    void sweepDeadTemporaries(const std::filesystem::path& dir) {
       std::error_code error;
-      std::filesystem::create_directories(path.parent_path(), error);
-      // Processes that share a cache write the same path: each uses its own temporary file.
-      const std::filesystem::path temporary = path.string() + "." + std::to_string(::getpid()) + ".tmp";
-      {
-        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-        out << text;
-        if (!out) {
-          out.close();
-          std::filesystem::remove(temporary, error);
+      for (const auto& entry : std::filesystem::directory_iterator(dir, error)) {
+        const std::string name = entry.path().filename().string();
+        if (!name.ends_with(kTempSuffix) || name.find(kTempTag) == std::string::npos) {
+          continue;
+        }
+        std::error_code ignored;
+        const auto written = std::filesystem::last_write_time(entry.path(), ignored);
+        if (ignored || std::filesystem::file_time_type::clock::now() - written < kDeadTemporaryAge) {
+          continue;
+        }
+        const int fd = ::open(entry.path().c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+        if (fd < 0) {
+          continue;
+        }
+        if (::flock(fd, LOCK_EX | LOCK_NB) == 0) {
+          std::filesystem::remove(entry.path(), ignored);
+        }
+        ::close(fd);
+      }
+    }
+
+    // Unique per process across PID namespaces: two sandboxes may both run as pid 2.
+    const std::string& temporaryTag() {
+      static const auto* tag = new std::string([] {
+        std::random_device random;
+        return std::format("{}{}-{:08x}{:08x}", kTempTag, ::getpid(), random(), random());
+      }());
+      return *tag;
+    }
+
+    bool makeDirectories(const std::filesystem::path& dir, unsigned mode) {
+      std::error_code error;
+      if (dir.empty() || std::filesystem::is_directory(dir, error)) {
+        return true;
+      }
+      if (!makeDirectories(dir.parent_path(), mode)) {
+        return false;
+      }
+      return ::mkdir(dir.c_str(), mode) == 0 || errno == EEXIST;
+    }
+
+    bool writeAll(int fd, const std::string& text) {
+      std::size_t done = 0;
+      while (done < text.size()) {
+        const ssize_t n = ::write(fd, text.data() + done, text.size() - done);
+        if (n < 0 && errno == EINTR) {
+          continue;
+        }
+        if (n <= 0) {
           return false;
         }
-      }
-      // rename is atomic: a crash mid-write keeps the previous file.
-      std::filesystem::rename(temporary, path, error);
-      if (error) {
-        std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
-        return false;
+        done += static_cast<std::size_t>(n);
       }
       return true;
     }
@@ -52,10 +104,16 @@ namespace andromeda {
     public:
       void post(Job job) {
         std::scoped_lock lock(m_mutex);
-        for (auto& pending : m_queue) {
-          if (pending.path == job.path) {
-            pending = std::move(job);
-            return;
+        if (!job.path.empty()) {
+          for (auto& pending : m_queue) {
+            if (pending.path == job.path) {
+              job.dones.insert(
+                  job.dones.begin(), std::make_move_iterator(pending.dones.begin()),
+                  std::make_move_iterator(pending.dones.end())
+              );
+              pending = std::move(job);
+              return;
+            }
           }
         }
         m_queue.push_back(std::move(job));
@@ -68,14 +126,24 @@ namespace andromeda {
       std::optional<std::string> pending(const std::filesystem::path& path) {
         std::scoped_lock lock(m_mutex);
         for (const auto& queued : m_queue) {
-          if (queued.path == path) {
+          if (!path.empty() && queued.path == path) {
             return queued.text;
           }
         }
-        if (m_running && m_running->path == path) {
+        if (!path.empty() && m_running && m_running->path == path) {
           return m_running->text;
         }
         return std::nullopt;
+      }
+
+      void setPoster(MainLoopPoster poster) {
+        std::scoped_lock lock(m_mutex);
+        m_poster = std::move(poster);
+      }
+
+      [[nodiscard]] bool hasPoster() {
+        std::scoped_lock lock(m_mutex);
+        return static_cast<bool>(m_poster);
       }
 
       // Destroyed at exit: the stop request lets the queue drain, then the thread ends.
@@ -99,13 +167,25 @@ namespace andromeda {
           m_running = std::move(m_queue.front());
           m_queue.pop_front();
           lock.unlock();
-          const bool ok = m_running->write ? m_running->write(m_running->path, m_running->text)
-                                           : writeReplacing(m_running->path, m_running->text);
-          if (!ok) {
-            kLog.warn("cannot write {}", m_running->path.string());
+          bool ok = false;
+          if (m_running->op) {
+            ok = m_running->op();
+          } else {
+            ok = m_running->write ? m_running->write(m_running->path, m_running->text)
+                                  : writeFileReplacing(m_running->path, m_running->text);
+            if (!ok) {
+              kLog.warn("cannot write {}", m_running->path.string());
+            }
           }
           lock.lock();
+          std::vector<WriteDone> dones = std::move(m_running->dones);
           m_running.reset();
+          // The poster is cleared at teardown: its loop no longer runs a done.
+          for (auto& done : dones) {
+            if (m_poster) {
+              m_poster([done = std::move(done), ok] { done(ok); });
+            }
+          }
         }
       }
 
@@ -114,6 +194,7 @@ namespace andromeda {
       std::deque<Job> m_queue;
       // The write in progress, until it lands; only the writer thread sets it, under m_mutex.
       std::optional<Job> m_running;
+      MainLoopPoster m_poster;
       std::jthread m_thread; // last: joined before the queue goes away
     };
 
@@ -124,8 +205,55 @@ namespace andromeda {
 
   } // namespace
 
-  void writeFileAsync(std::filesystem::path path, std::string text, WriteFn write) {
-    writer().post({std::move(path), std::move(text), std::move(write)});
+  bool writeFileReplacing(const std::filesystem::path& path, const std::string& text, unsigned fileMode, unsigned dirMode) {
+    // Each directory is swept once per process; leaked, so a write that drains at exit never sees it destroyed.
+    static auto* swept = new std::set<std::filesystem::path>;
+    static auto* sweptMutex = new std::mutex;
+    const std::filesystem::path dir = path.parent_path();
+    if (!makeDirectories(dir, dirMode)) {
+      return false;
+    }
+    if (const std::scoped_lock lock(*sweptMutex); swept->insert(dir).second) {
+      sweepDeadTemporaries(dir);
+    }
+    const std::filesystem::path temporary = path.string() + temporaryTag() + std::string(kTempSuffix);
+    const int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, fileMode);
+    if (fd < 0) {
+      return false;
+    }
+    // Held until close: the sweep in another process leaves a locked temporary alone.
+    ::flock(fd, LOCK_EX);
+    // rename is atomic: a crash mid-write keeps the previous file.
+    const bool ok = writeAll(fd, text) && ::rename(temporary.c_str(), path.c_str()) == 0;
+    if (!ok) {
+      ::unlink(temporary.c_str());
+    }
+    ::close(fd);
+    return ok;
+  }
+
+  void setFileWriteDonePoster(MainLoopPoster poster) { writer().setPoster(std::move(poster)); }
+
+  namespace {
+    std::vector<WriteDone> doneList(WriteDone done) {
+      std::vector<WriteDone> dones;
+      if (done) {
+        if (!writer().hasPoster()) {
+          kLog.error("a file write has a completion but this process set no main-loop poster; dropping it");
+          return dones;
+        }
+        dones.push_back(std::move(done));
+      }
+      return dones;
+    }
+  } // namespace
+
+  void writeFileAsync(std::filesystem::path path, std::string text, WriteFn write, WriteDone done) {
+    writer().post({std::move(path), std::move(text), std::move(write), {}, doneList(std::move(done))});
+  }
+
+  void runFileOpAsync(std::function<bool()> op, WriteDone done) {
+    writer().post({{}, {}, {}, std::move(op), doneList(std::move(done))});
   }
 
   std::optional<std::string> pendingFileText(const std::filesystem::path& path) { return writer().pending(path); }

@@ -41,6 +41,9 @@ namespace andromeda {
       });
     }
 
+    // Runs `fn` on the loop; callable from any thread. Dropped when the worker is not ready.
+    void postToLoop(std::function<void()> fn);
+
   private:
     using Job = std::function<std::function<void()>()>;
     void postJob(Job job);

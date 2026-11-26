@@ -5,14 +5,11 @@
 
 #include <EGL/egl.h>
 #include <GLES2/gl2ext.h>
-#include <errno.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <andromedafx/types/fx/clipped_region.h>
 #include <wlr/util/log.h>
 
@@ -137,45 +134,29 @@ static GLuint program_cache_load(const char* path) {
   return prog;
 }
 
+static fx_file_writer file_writer;
+
+void fx_renderer_set_file_writer(fx_file_writer writer) { file_writer = writer; }
+
+// The file is the binary format (GLenum) followed by the binary.
 static void program_cache_save(GLuint prog, const char* path) {
   GLint size = 0;
   glGetProgramiv(prog, GL_PROGRAM_BINARY_LENGTH_OES, &size);
-  if (size <= 0) {
+  if (size <= 0 || !file_writer) {
     return;
   }
-  void* blob = malloc(size);
+  unsigned char* file = malloc(sizeof(GLenum) + (size_t)size);
+  if (!file) {
+    return;
+  }
   GLenum format = 0;
   GLsizei written = 0;
-  if (!blob) {
-    return;
+  program_cache.get(prog, size, &written, &format, file + sizeof(GLenum));
+  if (written > 0) {
+    memcpy(file, &format, sizeof(format));
+    file_writer(path, file, sizeof(GLenum) + (size_t)written);
   }
-  program_cache.get(prog, size, &written, &format, blob);
-  char dir[PATH_MAX];
-  snprintf(dir, sizeof(dir), "%s", program_cache.dir);
-  for (char* p = dir + 1; *p; p++) {
-    if (*p == '/') {
-      *p = '\0';
-      mkdir(dir, 0700);
-      *p = '/';
-    }
-  }
-  mkdir(dir, 0700);
-  char tmp[PATH_MAX + 32];
-  snprintf(tmp, sizeof(tmp), "%s.XXXXXX", path);
-  int fd = written > 0 ? mkstemp(tmp) : -1;
-  FILE* f = fd >= 0 ? fdopen(fd, "wb") : NULL;
-  if (fd >= 0 && !f) {
-    close(fd);
-    unlink(tmp);
-  }
-  if (f) {
-    bool ok = fwrite(&format, sizeof(format), 1, f) == 1 && fwrite(blob, written, 1, f) == 1;
-    ok = fclose(f) == 0 && ok;
-    if (!ok || rename(tmp, path) != 0) {
-      unlink(tmp);
-    }
-  }
-  free(blob);
+  free(file);
   while (glGetError() != GL_NO_ERROR) {
   }
 }

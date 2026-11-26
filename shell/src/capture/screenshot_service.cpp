@@ -24,6 +24,7 @@
 #include "notification/notification.h"
 #include "notification/notification_manager.h"
 #include "pipewire/sound_player.h"
+#include "protocols/async_file_writer.h"
 #include "render/core/image_encoder.h"
 #include "render/core/image_file_loader.h"
 #include "render/render_context.h"
@@ -49,7 +50,6 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <format>
-#include <fstream>
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <stb/stb_image_resize2.h>
@@ -2130,7 +2130,8 @@ void ScreenshotService::finishDelivery(
 ) {
   struct Encoded {
     std::vector<std::uint8_t> png;
-    bool saved = false;
+    // The encoded file for the save; empty when there is none.
+    std::string fileBytes;
     std::string failureMessage;
   };
   const bool saveFile = options.saveToFile && destPath.has_value();
@@ -2138,8 +2139,8 @@ void ScreenshotService::finishDelivery(
   // Clipboard and pipe consumers always receive PNG; only the saved file uses the configured format.
   const bool needsPng = options.copyToClipboard || pipe || (saveFile && options.format == ScreenshotFormat::Png);
 
-  // Encoding a full-resolution frame and writing it take 100s of ms: both run off the main thread.
-  // The file appears only when the job ends: makeScreenshotPath skips reserved paths meanwhile.
+  // Encoding a full-resolution frame and writing it take 100s of ms: the encode runs on BlockingPool, the write on
+  // the file writer. The file appears only when the write ends: makeScreenshotPath skips reserved paths meanwhile.
   if (saveFile) {
     m_savingPaths.insert(destPath->string());
   }
@@ -2180,18 +2181,12 @@ void ScreenshotService::finishDelivery(
           result.failureMessage = encodeError.empty() ? "Failed to encode screenshot" : encodeError;
           return result;
         }
-        std::ofstream out(*destPath, std::ios::binary | std::ios::trunc);
-        out.write(reinterpret_cast<const char*>(fileBytes.data()), static_cast<std::streamsize>(fileBytes.size()));
-        if (!out) {
-          kLog.warn("screenshot write failed: {}", destPath->string());
-          result.failureMessage = "Failed to save screenshot";
-        } else {
-          result.saved = true;
-        }
+        result.fileBytes.assign(fileBytes.begin(), fileBytes.end());
         return result;
       },
-      [this, options, destPath, saveFile, needsPng, pipe, done = std::move(done)](Encoded result) {
-        if (saveFile) {
+      [this, options, destPath, saveFile, needsPng, pipe, done = std::move(done)](Encoded result) mutable {
+        const bool writeFile = saveFile && !result.fileBytes.empty();
+        if (saveFile && !writeFile) {
           m_savingPaths.erase(destPath->string());
         }
         if (needsPng && result.png.empty()) {
@@ -2201,11 +2196,8 @@ void ScreenshotService::finishDelivery(
           }
           return;
         }
-        bool delivered = result.saved;
+        bool delivered = false;
         std::string failureMessage = std::move(result.failureMessage);
-        if (result.saved) {
-          notifySaved(*destPath);
-        }
         if (options.copyToClipboard) {
           if (m_clipboard == nullptr || !m_clipboard->isAvailable()) {
             kLog.warn("screenshot clipboard copy skipped: clipboard unavailable");
@@ -2225,12 +2217,37 @@ void ScreenshotService::finishDelivery(
           pipePngToCommandAsync(options.pipeCommand, std::move(result.png), destPath);
           delivered = true;
         }
-        if (!delivered) {
-          notifyError(failureMessage.empty() ? "No screenshot output enabled" : failureMessage);
+        auto finish = [this, done = std::move(done)](bool anyDelivered, const std::string& failure) {
+          if (!anyDelivered) {
+            notifyError(failure.empty() ? "No screenshot output enabled" : failure);
+          }
+          if (done) {
+            done(anyDelivered);
+          }
+        };
+        if (!writeFile) {
+          finish(delivered, failureMessage);
+          return;
         }
-        if (done) {
-          done(delivered);
-        }
+        andromeda::writeFileAsync(
+            *destPath, std::move(result.fileBytes), {},
+            [this, alive = std::weak_ptr<int>(m_alive), destPath = *destPath, delivered,
+             failureMessage = std::move(failureMessage), finish = std::move(finish)](bool saved) mutable {
+              if (alive.expired()) {
+                return;
+              }
+              m_savingPaths.erase(destPath.string());
+              if (saved) {
+                notifySaved(destPath);
+              } else {
+                kLog.warn("screenshot write failed: {}", destPath.string());
+                if (failureMessage.empty()) {
+                  failureMessage = "Failed to save screenshot";
+                }
+              }
+              finish(delivered || saved, failureMessage);
+            }
+        );
       }
   );
 }

@@ -244,30 +244,42 @@ namespace andromeda {
     sync(monotonicMsec());
   }
 
-  GlobalShortcutService::Assigned
-  GlobalShortcutService::assign(std::string_view app, std::string_view id, std::string_view chordText) {
+  void GlobalShortcutService::assign(
+      std::string_view app, std::string_view id, std::string_view chordText, std::function<void(Assigned)> done
+  ) {
     using enum Assigned::Result;
     std::string text;
     if (!chordText.empty()) {
       Keybind bind;
       if (!parseChord(chordText, bind) || !bind.submap.empty() || bind.modifierOnly
           || bind.wheel != WheelDirection::None || bind.mouseButton != 0) {
-        return {.result = BadChord, .holder = {}};
+        done({.result = BadChord, .holder = {}});
+        return;
       }
       const ShortcutChord chord{
           .modifiers = bind.modifiers | (bind.useMod ? m_server.modKey() : 0U), .keysym = bind.keysym
       };
       if (reserved(chord)) {
-        return {.result = Reserved, .holder = {}};
+        done({.result = Reserved, .holder = {}});
+        return;
       }
       if (auto owner = m_registry.holder(chord, app, id)) {
-        return {.result = InUse, .holder = std::move(*owner)};
+        done({.result = InUse, .holder = std::move(*owner)});
+        return;
       }
       text = formatChord(bind);
     }
-    saveManagedGlobalShortcut(managedSettingsFile(configRootPath()), app, id, text);
+    // The config follows the file again when the write fails.
+    saveManagedGlobalShortcut(
+        managedSettingsFile(configRootPath()), app, id, text,
+        [this, done = std::move(done)](bool ok) {
+          if (!ok) {
+            m_server.handleConfigReload(reloadConfig());
+          }
+          done({.result = ok ? Ok : WriteFailed, .holder = {}});
+        }
+    );
     m_server.handleConfigReload(reloadConfig());
-    return {.result = Ok, .holder = {}};
   }
 
   void GlobalShortcutService::persist(const std::string& app) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "protocols/async_file_writer.h"
 #include "protocols/toml.h"
 
 #include <filesystem>
@@ -21,9 +22,10 @@ namespace andromeda {
   [[nodiscard]] std::string readGeneratedFile(const std::filesystem::path& file);
 
   // editGeneratedToml on readGeneratedFile(file), written by async_file_writer: the main thread never waits on
-  // a write. A failed write is logged by the writer.
+  // a write. `done` gets the write's result on the event loop.
   void rewriteGeneratedTomlAsync(
-      const std::filesystem::path& file, std::string_view header, const std::function<void(toml::table&)>& edit
+      const std::filesystem::path& file, std::string_view header, const std::function<void(toml::table&)>& edit,
+      WriteDone done = {}
   );
 
   // The table at `path` below `root`, created along the way. A non-table value in the way is replaced.
