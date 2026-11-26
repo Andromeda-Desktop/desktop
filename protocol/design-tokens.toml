@@ -893,6 +893,11 @@ pick_ring = 3.0      # picker: inset accent ring of a picked tile
 pick_badge = 24.0    # picker: pick-order badge (= size.control_s), r = half, 8 in from the tile corner
 pick_badge_ring = 1.5  # picker: outline of an unpicked badge
 pick_max_top = 64.0  # picker: least room the sheet leaves above it under the status bar
+hero = 0.5           # Home: galaxy hero height, share of the screen; the sheet starts under it
+hero_scene = 0.28    # Home: the galaxy moves this share of the sheet's scroll
+hero_identity = 0.6  # Home: the name block moves this share of the sheet's scroll
+sheet_radius = 32.0  # Home: top corners of the sheet over the galaxy
+level_gap = 12.0     # Home: gap between the media tile and the two level pills
 
 [component.page]  # window content, 8
 padding = 24.0
