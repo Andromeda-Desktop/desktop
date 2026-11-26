@@ -1342,10 +1342,7 @@ namespace control_center {
       if (!it->active || !n.group.has_value() || !n.group->starts_with(prefix)) {
         continue;
       }
-      bool canReply = false;
-      for (std::size_t i = 0; i < n.actions.size(); i += 2) {
-        canReply = canReply || n.actions[i] == "inline-reply";
-      }
+      const bool canReply = hasAction(n, "inline-reply");
       PhoneNotification shown{n.id, n.summary.empty() ? n.appName : n.summary, n.body, canReply, {}, {}};
       if (n.imageData.has_value()) {
         shown.image = std::make_shared<const NotificationImageData>(*n.imageData);

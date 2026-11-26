@@ -432,14 +432,11 @@ std::unique_ptr<Flex> NotificationCenterPanel::makeCard(const Notification& n) {
   std::string actionKey;
   if (m_notifications != nullptr && m_notifications->canInvokeActions(n.id)
       && (m_config == nullptr || m_config->config().notification.showActions)) {
-    for (std::size_t a = 0; a + 1 < n.actions.size(); a += 2) {
-      if (n.actions[a] != "default" && !n.actions[a + 1].empty()) {
-        actionKey = n.actions[a];
-        auto button = pill(n.actions[a + 1], scale, {});
-        actionPtr = button.get();
-        text->addChild(ui::row({.paddingV = Tokens::spaceP4 * scale}, std::move(button)));
-        break;
-      }
+    for (auto& [key, label] : namedActions(n, 1)) {
+      actionKey = std::move(key);
+      auto button = pill(label, scale, {});
+      actionPtr = button.get();
+      text->addChild(ui::row({.paddingV = Tokens::spaceP4 * scale}, std::move(button)));
     }
   }
   card->addChild(std::move(text));

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 enum class Urgency : uint8_t {
@@ -90,3 +92,26 @@ struct Notification {
   /// Wall-clock expiry when timeout-based; mirrors expiryTime where applicable.
   std::optional<WallTimePoint> expiryWallClock;
 };
+
+// Action pairs [key, label, ...]; a trailing key without a label is no action.
+[[nodiscard]] inline bool hasAction(const Notification& notification, std::string_view key) {
+  for (std::size_t i = 0; i + 1 < notification.actions.size(); i += 2) {
+    if (notification.actions[i] == key) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The first `max` actions with a label, without "default" (the click on the notification itself).
+[[nodiscard]] inline std::vector<std::pair<std::string, std::string>>
+namedActions(const Notification& notification, std::size_t max) {
+  std::vector<std::pair<std::string, std::string>> out;
+  const auto& actions = notification.actions;
+  for (std::size_t i = 0; i + 1 < actions.size() && out.size() < max; i += 2) {
+    if (actions[i] != "default" && !actions[i + 1].empty()) {
+      out.emplace_back(actions[i], actions[i + 1]);
+    }
+  }
+  return out;
+}

@@ -448,12 +448,7 @@ void Application::initIpc() {
     const std::string key = trimmed.empty() ? "default" : trimmed;
     const auto& notifications = m_notificationManager.all();
     for (const auto& notification : std::views::reverse(notifications)) {
-      const auto& actions = notification.actions; // pairs: [key, label, ...]
-      bool offers = false;
-      for (std::size_t i = 0; i + 1 < actions.size(); i += 2) {
-        offers = offers || actions[i] == key;
-      }
-      if (offers) {
+      if (hasAction(notification, key)) {
         if (!m_notificationManager.invokeAction(notification.id, key, true)) {
           return "error: invokeAction failed\n";
         }
@@ -472,21 +467,13 @@ void Application::initIpc() {
   // The buttons, reply field, and close button of the newest notification that offers them: a toast, else an expired
   // one whose actions the center still offers.
   const auto latestWithAction = [this](const std::string& key) -> const Notification* {
-    const auto offers = [&key](const Notification& notification) {
-      for (std::size_t i = 0; i + 1 < notification.actions.size(); i += 2) {
-        if (notification.actions[i] == key) {
-          return true;
-        }
-      }
-      return false;
-    };
     for (const auto& notification : std::views::reverse(m_notificationManager.all())) {
-      if (offers(notification)) {
+      if (hasAction(notification, key)) {
         return &notification;
       }
     }
     for (const auto& entry : std::views::reverse(m_notificationManager.history())) {
-      if (offers(entry.notification) && m_notificationManager.canInvokeActions(entry.notification.id)) {
+      if (hasAction(entry.notification, key) && m_notificationManager.canInvokeActions(entry.notification.id)) {
         return &entry.notification;
       }
     }

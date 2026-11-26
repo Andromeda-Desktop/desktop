@@ -35,15 +35,6 @@ namespace {
 
   constexpr std::string_view kInlineReplyAction = "inline-reply";
 
-  bool notificationHasAction(const Notification& notification, std::string_view actionKey) {
-    for (std::size_t i = 0; i + 1 < notification.actions.size(); i += 2) {
-      if (notification.actions[i] == actionKey) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   constexpr std::string_view originStr(NotificationOrigin o) noexcept {
     switch (o) {
     case NotificationOrigin::External:
@@ -687,7 +678,7 @@ bool NotificationManager::invokeAction(
     // Inline replies are delivered via invokeInlineReply() and the NotificationReplied signal.
     return false;
   }
-  if (!notificationHasAction(*notification, actionKey)) {
+  if (!hasAction(*notification, actionKey)) {
     return false;
   }
   if (actionKey == "default" && notification->settingsPage.has_value() && m_settingsPageCallback) {
@@ -725,7 +716,7 @@ bool NotificationManager::invokeInlineReply(
   }
 
   const Notification* notification = findInvokable(id);
-  if (notification == nullptr || !notificationHasAction(*notification, kInlineReplyAction)) {
+  if (notification == nullptr || !hasAction(*notification, kInlineReplyAction)) {
     return false;
   }
 

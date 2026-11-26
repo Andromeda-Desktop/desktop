@@ -181,25 +181,6 @@ namespace {
     return {buffer.data(), n};
   }
 
-  std::vector<std::pair<std::string, std::string>> bannerActions(const std::vector<std::string>& actions) {
-    std::vector<std::pair<std::string, std::string>> out;
-    for (std::size_t i = 0; i + 1 < actions.size() && out.size() < 3; i += 2) {
-      if (actions[i] != "default" && !actions[i + 1].empty()) {
-        out.emplace_back(actions[i], actions[i + 1]);
-      }
-    }
-    return out;
-  }
-
-  bool hasDefaultAction(const std::vector<std::string>& actions) {
-    for (std::size_t i = 0; i < actions.size(); i += 2) {
-      if (actions[i] == "default") {
-        return true;
-      }
-    }
-    return false;
-  }
-
   std::string dateText() {
     const std::time_t now = std::time(nullptr);
     std::tm local{};
@@ -369,13 +350,13 @@ bool LiveActivityIsland::showBanner(const Notification& n, NotificationEvent eve
         .id = n.id,
         .title = n.summary.empty() || n.hideContent ? notificationDisplayAppName(n) : n.summary,
         .body = n.hideContent ? std::string{} : n.body,
-        .defaultAction = hasDefaultAction(n.actions),
+        .defaultAction = hasAction(n, "default"),
         .appName = shown == nullptr || shown->showAppName ? notificationDisplayAppName(n) : std::string{},
         .time = i18n::tr("control-center.detail.notifications.now"),
         .icon = n.icon.value_or(std::string{}),
         .desktopEntry = n.desktopEntry.value_or(std::string{}),
         .imageData = n.hideContent ? std::nullopt : n.imageData,
-        .actions = shown == nullptr || shown->showActions ? bannerActions(n.actions) : decltype(bannerActions(n.actions)){},
+        .actions = shown == nullptr || shown->showActions ? namedActions(n, 3) : decltype(namedActions(n, 3)){},
         .sticky = n.urgency == Urgency::Critical || n.timeout == 0,
         .critical = n.urgency == Urgency::Critical,
         .respectsDnd = n.dndPolicy == NotificationDndPolicy::Respect,
