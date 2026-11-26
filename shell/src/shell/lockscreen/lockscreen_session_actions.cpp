@@ -23,7 +23,8 @@ namespace {
       if (!row.enabled || !session_action::isKnown(row.action) || row.action == "lock") {
         continue;
       }
-      if (row.action == "command" && (!row.command.has_value() || StringUtils::trim(*row.command).empty())) {
+      // A custom command runs anything as the user: a bystander at the lock screen gets no such button.
+      if (row.action == "command") {
         continue;
       }
       if (row.action == "lock_and_suspend"

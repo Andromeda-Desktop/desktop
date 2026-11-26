@@ -70,5 +70,10 @@ int main() {
       == std::vector<std::string>({"logout", "lock_and_suspend", "reboot", "shutdown"})
   );
 
+  auto custom = action("command");
+  custom.command = "foot";
+  const std::vector withCustom = {custom, action("shutdown")};
+  TEST_CHECK(names(lockscreen::resolveSessionActions(withCustom, defaults)) == std::vector<std::string>({"shutdown"}));
+
   return 0;
 }
