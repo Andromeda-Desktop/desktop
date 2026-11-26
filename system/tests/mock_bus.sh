@@ -94,19 +94,21 @@ until_has 10 'aa{sv} 0' "${B[@]}" call org.andromeda.System1 /org/andromeda/Syst
 "${B[@]}" call org.andromeda.System1 "$BAT" org.andromeda.System1.Battery SetChargeLimit buu true 4294967295 4294967295
 until_has 10 '(bbuuu) true true 75 80 3' get "$BAT" Battery ChargeLimit
 grep -qx 'EnableChargeThreshold=True' "$OUT/mock.log" || fail "charge limit did not reach the backend"
-# battery.optimized_charging's hold: the limit goes on while the holder stays, then back to the user's choice.
+# The user's charge-limit choice is kept: battery.optimized_charging's hold does not turn it back on, and the choice
+# is stored for the next start.
 until_has 10 'b true' get /org/andromeda/System1/Power Power ChargeLimitSupported
 "${B[@]}" call org.andromeda.System1 "$BAT" org.andromeda.System1.Battery SetChargeLimit buu false 4294967295 4294967295
 until_has 10 '(bbuuu) true false 75 80 3' get "$BAT" Battery ChargeLimit
+grep -qx '"battery.charge_limit" = false' "$OUT/knobs.toml" || fail "user charge-limit choice not stored"
 python3 -c 'import sys, time, dbus
 knobs = dbus.bus.BusConnection(sys.argv[1]).get_object("org.andromeda.System1", "/org/andromeda/System1/Knobs")
 print(knobs.Hold("battery.charge_limit", dbus.Boolean(True, variant_level=1), "battery.optimized_charging",
                  dbus_interface="org.andromeda.System1.Knobs"), flush=True)
 time.sleep(60)' "$DBUS_SYSTEM_BUS_ADDRESS" >"$OUT/hold-limit.out" 2>&1 & HOLDER=$!
 PIDS+=("$HOLDER")
-until_has 10 '(bbuuu) true true 75 80 3' get "$BAT" Battery ChargeLimit
+until_has 10 '"battery.charge_limit" b false 1' "${B[@]}" "${LIST[@]}"
+[[ $(get "$BAT" Battery ChargeLimit) == '(bbuuu) true false 75 80 3' ]] || fail "automatic hold beat the user's choice"
 kill "$HOLDER"
-until_has 10 '(bbuuu) true false 75 80 3' get "$BAT" Battery ChargeLimit
 
 kill "$MOCK"
 until_has 10 '"battery" false "org.freedesktop.UPower stopped"' get /org/andromeda/System1 Manager Areas

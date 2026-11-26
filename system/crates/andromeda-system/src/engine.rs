@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use crate::explain::Entry;
 use crate::expr::{Value, Values};
-use crate::holds::{Hold, Knob, KnobValue, Source};
+use crate::holds::{Baseline, Hold, Knob, KnobValue, Source};
 use crate::rules::{End, Episode, Event, Priority, Rule, RuleValues};
 
 struct Slot {
@@ -165,7 +165,7 @@ impl Engine {
             }
             !client
         });
-        k.baseline = Some(value);
+        k.baseline = Baseline::User(value);
         let after = k.effective().0;
         if after != before {
             changes.apply.retain(|(n, _)| *n != name);
@@ -177,8 +177,10 @@ impl Engine {
     /// The knob's baseline before the user's first choice: the backend's own state, so that the last hold's release
     /// goes back to it. A baseline the user set stays.
     pub fn init_baseline(&mut self, knob: &str, value: KnobValue) {
-        if let Some(k) = self.knobs.get_mut(knob) {
-            k.baseline.get_or_insert(value);
+        if let Some(k) = self.knobs.get_mut(knob)
+            && k.baseline == Baseline::Unknown
+        {
+            k.baseline = Baseline::Backend(value);
         }
     }
 

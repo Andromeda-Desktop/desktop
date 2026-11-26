@@ -60,7 +60,7 @@ fn main() -> Result<()> {
 async fn serve(shutdown: andromeda_rt::Shutdown) -> Result<()> {
     // systemd sets STATE_DIRECTORY from StateDirectory=; tests point it at a temp dir.
     let state = std::env::var_os("STATE_DIRECTORY").map_or_else(|| "/var/lib/andromeda-system".into(), PathBuf::from);
-    let policy = policy::new(state.join("explain.jsonl"));
+    let policy = policy::new(state.join("explain.jsonl"), state.join("knobs.toml"));
     plugs::init(state.join("plugs.jsonl"), policy::now_ms() / 1000);
     let (sleep_tx, sleep_rx) = tokio::sync::mpsc::unbounded_channel();
     let conn = zbus::connection::Builder::system()

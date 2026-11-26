@@ -345,9 +345,14 @@ async fn follow_device(conn: Connection, upower_path: OwnedObjectPath, policy: S
         && battery.data.kind == "battery"
         && !battery.upower_path.as_str().ends_with("/DisplayDevice");
     let supported = battery.data.charge_limit.0;
+    let kept = battery.policy.lock().await.engine.knob(CHARGE_LIMIT).and_then(|k| k.kept_choice().cloned());
     conn.object_server().at(path.as_str(), battery).await?;
     if system {
         power::update(&conn, |d| d.charge_limit_supported = supported).await?;
+    }
+    // The backend may have kept a value an earlier automatic hold set: the user's stored choice wins.
+    if supported && let Some(KnobValue::Bool(on)) = kept {
+        set_charge_limit(&conn, on).await.logged("restore charge limit");
     }
     let iface: InterfaceRef<Battery> = conn.object_server().interface(path.as_str()).await?;
     while let Some(change) = remote.next().await {

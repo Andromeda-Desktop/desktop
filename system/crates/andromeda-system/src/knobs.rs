@@ -7,7 +7,7 @@ use zbus::message::Header;
 use zbus::object_server::SignalEmitter;
 use zbus::{Connection, OwnedVariant, Variant, interface};
 
-use crate::holds::{KnobValue, Merge};
+use crate::holds::{Baseline, KnobValue, Merge};
 use crate::policy::{self, CHARGE_LIMIT, PROFILE, Shared, WIFI_POWER_SAVE};
 use crate::{battery, polkit};
 
@@ -99,7 +99,7 @@ impl Knobs {
         let value = to_toml(value).ok_or_else(|| Error::InvalidArgs("value is s, b, a number or as".into()))?;
         let owner = sender(&header)?;
         let mut policy = self.policy.lock().await;
-        if knob == CHARGE_LIMIT && policy.engine.knob(knob).is_some_and(|k| k.baseline.is_none()) {
+        if knob == CHARGE_LIMIT && policy.engine.knob(knob).is_some_and(|k| k.baseline == Baseline::Unknown) {
             let on = battery::charge_limit_enabled(conn).await.map_err(|e| failed(&e))?;
             policy.engine.init_baseline(knob, KnobValue::Bool(on));
         }
@@ -159,6 +159,7 @@ pub async fn set_user(conn: &Connection, policy: &Shared, knob: &str, choice: Kn
         KnobValue::Str(p) if knob == PROFILE => Some(p.as_str()),
         _ => None,
     };
+    policy.store_choices();
     policy.commit(conn, changes, profile).await.map_err(|e| failed(&e))?;
     if let (CHARGE_LIMIT, KnobValue::Bool(on)) = (knob, &choice) {
         // The knob may not move, but each battery must follow the user's choice.
