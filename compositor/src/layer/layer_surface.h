@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "config/config.h"
@@ -152,6 +153,8 @@ namespace andromeda {
     float m_blurOpacity = 1.0F;
     // Raises the tint over a same-tone backdrop; rises only while mapped.
     GlassDensity m_density;
+    // The last backdrop range (darkest, brightest) sampled while the surface's dsk motion ran; applied at settle.
+    std::optional<std::pair<float, float>> m_heldDensitySample;
     // Surface opacity (layer fade x dsk opacity): the whole glass (tint, rim, lens) fades with its surface.
     float m_glassAlpha = 1.0F;
     float m_blurFade = 1.0F;

@@ -443,6 +443,10 @@ namespace andromeda {
         applySurfaceMotion();
         applyFadeAlpha();
       }
+      if (m_heldDensitySample && state != nullptr && !state->motion.settling()) {
+        const auto [darkest, brightest] = *std::exchange(m_heldDensitySample, std::nullopt);
+        densityChanged(m_density.sample(m_glass, darkest, brightest));
+      }
     }
     const bool densityTicked = m_density.tick(nowMsec);
     if (densityTicked) {
@@ -966,7 +970,16 @@ namespace andromeda {
       for (const auto& shape : m_shapeShadows) {
         shape->setBackdropLuminance(m_backdropLuminance);
       }
-      densityChanged(m_density.sample(m_glass, darkest, brightest));
+      // An opening sheet samples a moving region: each sample would retint the client's labels in every frame of the
+      // motion. After the first measurement, the density follows the settled sheet only.
+      const DskSurfaceManager* dsk = m_server->dskSurfaces();
+      const DskSurfaceManager::State* state = dsk != nullptr ? dsk->state(m_layerSurface->surface) : nullptr;
+      if (m_density.measured() && state != nullptr && state->motion.settling()) {
+        m_heldDensitySample = {darkest, brightest};
+      } else {
+        m_heldDensitySample.reset();
+        densityChanged(m_density.sample(m_glass, darkest, brightest));
+      }
       sendLuminance();
     }
     constexpr int kBackdropRecheckMs = 16;
