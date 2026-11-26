@@ -49,7 +49,6 @@
 #include "core/input/input_codes.h"
 
 #include <algorithm>
-#include <charconv>
 #include <csignal>
 #include <format>
 #include <ranges>
@@ -2453,20 +2452,24 @@ namespace term {
                   return true;
                 },
             .motion = [this, over](float x, float y) -> std::uint32_t {
+              // A row from any window of this app previews and lands as an in-window drag: pane edge, list place, bar.
               if (m_sessionOffer) {
-                const auto bar = barWindowAt(x, y);
-                markBar(bar);
-                return bar || s_dragOut->window != m_windowId ? DropMove : DropNone;
+                rowDrag(s_dragOut->id, StatusRow::DragPhase::Move, x, y);
+                return DropMove;
               }
               return over(x, y) != nullptr ? DropCopy : DropNone;
             },
-            .leave = [this] { markBar(std::nullopt); },
+            .leave =
+                [this] {
+                  if (m_sessionOffer && s_dragOut) {
+                    rowDrag(s_dragOut->id, StatusRow::DragPhase::Cancel, -1.0F, -1.0F);
+                  }
+                },
             .drop =
                 [this, over](float x, float y, std::uint32_t /*action*/, const std::string& mime, std::string data) {
-                  markBar(std::nullopt);
                   if (mime == kSessionMime) {
-                    if (m_sessionOffer) {
-                      dropSession(x, y, data);
+                    if (m_sessionOffer && s_dragOut) {
+                      rowDrag(s_dragOut->id, StatusRow::DragPhase::Drop, x, y);
                     }
                   } else if (TerminalView* view = over(x, y); view != nullptr) {
                     view->pasteDrop(mime, data);
@@ -2699,7 +2702,9 @@ namespace term {
     const bool inside = root == nullptr || (sceneX >= margin && sceneY >= margin && sceneX < root->width() - margin &&
                                             sceneY < root->height() - margin);
     const auto row = std::ranges::find(m_rows, id, &std::pair<std::uint64_t, StatusRow*>::first);
-    if (inside || row == m_rows.end() || m_window.surface() == nullptr || (m_windows ? m_windows().size() : 0) < 2) {
+    // A lone session of the only window has nowhere to go: no other window, and a tear-off would change nothing.
+    const bool somewhere = m_rows.size() > 1 || (m_windows ? m_windows().size() : 0) > 1;
+    if (s_dragOut || inside || row == m_rows.end() || m_window.surface() == nullptr || !somewhere) {
       return false;
     }
     const std::string data = std::format("{}:{}", ::getpid(), id);
@@ -2731,11 +2736,16 @@ namespace term {
                                      .actions = DropMove,
                                      .icon = m_dragIcon.get(),
                                      .finished =
-                                         [this, alive = std::weak_ptr<bool>(m_alive)](std::uint32_t, bool) {
+                                         [this, id, alive = std::weak_ptr<bool>(m_alive)](std::uint32_t, bool dropped) {
                                            s_dragOut.reset();
-                                           if (!alive.expired()) {
-                                             m_dragIcon.reset();
-                                             m_dragImage.reset();
+                                           if (alive.expired()) {
+                                             return;
+                                           }
+                                           m_dragIcon.reset();
+                                           m_dragImage.reset();
+                                           // Dropped on no terminal window: the row tears off into a new window.
+                                           if (!dropped && m_rows.size() > 1 && m_sessions.find(id) != nullptr) {
+                                             moveToNewWindow(id);
                                            }
                                          }})) {
       m_dragIcon.reset();
@@ -2748,22 +2758,13 @@ namespace term {
     return true;
   }
 
-  void TerminalWindow::dropSession(float x, float y, const std::string& data) {
-    std::uint64_t pid = 0;
-    std::uint64_t id = 0;
-    const auto colon = data.find(':');
-    if (colon == std::string::npos || std::from_chars(data.data(), data.data() + colon, pid).ec != std::errc{} ||
-        std::from_chars(data.data() + colon + 1, data.data() + data.size(), id).ec != std::errc{} ||
-        pid != static_cast<std::uint64_t>(::getpid())) {
-      return;
-    }
-    const std::uint32_t to = barWindowAt(x, y).value_or(m_windowId);
-    for (TerminalWindow* from : m_windows ? m_windows() : std::vector<TerminalWindow*>{}) {
-      if (from->m_sessions.find(id) != nullptr && from->windowId() != to) {
-        from->moveToWindow(id, to);
-        return;
+  TerminalWindow* TerminalWindow::holderOf(std::uint64_t id) const {
+    for (TerminalWindow* window : m_windows ? m_windows() : std::vector<TerminalWindow*>{}) {
+      if (window->m_sessions.find(id) != nullptr) {
+        return window;
       }
     }
+    return nullptr;
   }
 
   std::unique_ptr<StatusRow> TerminalWindow::dragChip(std::uint64_t id) const {
@@ -2800,14 +2801,15 @@ namespace term {
     const auto target = barWindow ? std::nullopt : dropTarget(id, sceneX, sceneY);
     // A raised chip of the row under the pointer, its symbol where the pointer holds it.
     const float s = m_window.uiScale();
-    if (phase == StatusRow::DragPhase::Move && !m_dragGhost) {
+    // A drag between windows has its own image: no ghost when it comes back here.
+    if (phase == StatusRow::DragPhase::Move && !m_dragGhost && !s_dragOut) {
       if (auto ghost = dragChip(id); ghost != nullptr) {
         m_window.setDragGhost(std::move(ghost));
         m_dragGhost = true;
       }
     }
     markBar(phase == StatusRow::DragPhase::Move ? barWindow : std::nullopt);
-    if (phase == StatusRow::DragPhase::Move) {
+    if (phase == StatusRow::DragPhase::Move && m_dragGhost) {
       // Over a bar item the chip rises above it, so the marked item stays in sight.
       const float lift = barWindow ? (Tokens::sizeRowTwoCompact + Tokens::sizeControlM / 2.0F + Tokens::spaceP4) * s
                                    : Tokens::sizeRowTwoCompact * s / 2.0F;
@@ -2821,8 +2823,11 @@ namespace term {
       if (phase == StatusRow::DragPhase::Drop) {
         // Later: the move frees the row whose release runs this.
         DeferredCall::callLater([this, id, to = *barWindow, alive = std::weak_ptr<bool>(m_alive)] {
-          if (!alive.expired()) {
-            moveToWindow(id, to);
+          if (alive.expired()) {
+            return;
+          }
+          if (TerminalWindow* from = holderOf(id); from != nullptr && from->windowId() != to) {
+            from->moveToWindow(id, to);
           }
         });
       }
@@ -2833,6 +2838,17 @@ namespace term {
     const bool leaves = !target && leavesGroup(id, sceneX, sceneY);
     const auto lands = target || (m_sessions.splitOf(id) != nullptr && !leaves) ? std::nullopt : dropBefore(id, sceneX, sceneY);
     showDropLine(phase == StatusRow::DragPhase::Move ? lands : std::nullopt);
+    if (phase == StatusRow::DragPhase::Drop && m_sessions.find(id) == nullptr) {
+      // A row of another window moves here first, then lands where it was aimed (computed before the move).
+      TerminalWindow* from = holderOf(id);
+      if (from == nullptr) {
+        return;
+      }
+      from->moveToWindow(id, m_windowId);
+      if (m_sessions.find(id) == nullptr) {
+        return;
+      }
+    }
     if (target && phase == StatusRow::DragPhase::Drop) {
       m_split.pendJoin({.target = target->target, .joining = id, .edge = target->edge}, target->rect);
       apply(session_event::Join{.target = target->target, .joining = id, .before = target->before});
