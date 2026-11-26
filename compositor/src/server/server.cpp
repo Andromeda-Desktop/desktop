@@ -508,7 +508,6 @@ namespace andromeda {
       m_inputCapture->authorizeSession(capture->id, false);
     }
     if (const auto* input = std::get_if<ConsentInput>(&consent)) {
-      m_deniedInputNames.insert(input->name);
       kLog.info("input permission denied id={} app='{}'", input->id, input->name);
       if (m_eisInput != nullptr) {
         m_eisInput->authorizeClient(input->id, false);
@@ -630,15 +629,11 @@ namespace andromeda {
   }
 
   void Server::requestInputEmulation(uint64_t id, std::string_view name) {
+    // Each connection asks: the name comes from the X11 client's command line, which any X11 client can choose.
     const std::string application(name);
-    if (m_allowedInputNames.contains(application) && !sessionLocked()) {
-      m_eisInput->authorizeClient(id, true);
-      return;
-    }
     if (application.empty()
         || application.size() > 256
         || sessionLocked()
-        || m_deniedInputNames.contains(application)
         || m_quitConfirm == nullptr
         || m_quitConfirm->visible()) {
       m_eisInput->authorizeClient(id, false);
@@ -661,7 +656,6 @@ namespace andromeda {
     }
     const ConsentInput input = *pending;
     m_consent = {};
-    m_allowedInputNames.insert(input.name);
     kLog.info("input permission granted id={} app='{}'", input.id, input.name);
     m_quitConfirm->hide();
     m_eisInput->authorizeClient(input.id, true);

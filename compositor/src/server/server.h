@@ -1179,8 +1179,6 @@ namespace andromeda {
       uint64_t id;
     };
     std::variant<std::monostate, ConsentInput, ConsentCapture> m_consent;
-    std::unordered_set<std::string> m_allowedInputNames;
-    std::unordered_set<std::string> m_deniedInputNames;
     // Layer-shell answers for sandboxed apps in this session, keyed "sandbox_engine/app_id".
     std::unordered_set<std::string> m_allowedLayerShellApps;
     std::unordered_set<std::string> m_deniedLayerShellApps;

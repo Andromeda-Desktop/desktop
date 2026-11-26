@@ -573,6 +573,11 @@ namespace andromeda {
       }
       if (type == EIS_EVENT_DEVICE_STOP_EMULATING) {
         device->release();
+        // Xwayland stops emulating only when its X11 client is gone, then hands the connection to the next X11 client
+        // with the same command name, which any client can choose. Ending it here makes every X11 client ask again.
+        if (client->grant == nullptr && std::ranges::none_of(client->devices, [](const auto& entry) { return entry->emulating; })) {
+          std::erase_if(clients, [client](const auto& entry) { return entry.get() == client; });
+        }
         return;
       }
       if (type == EIS_EVENT_DEVICE_START_EMULATING) {

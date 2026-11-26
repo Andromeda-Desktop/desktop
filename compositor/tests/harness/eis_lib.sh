@@ -44,11 +44,11 @@ eis_permission() {
 }
 
 eis_approve() {
-  local id=$1 name=$2
+  local id=$1 name=$2 count=${3:-1}
   eis_send "$id" 'tap 30'
-  eis_permission requested "$name"
+  eis_permission requested "$name" "$count"
   "$ANDROMEDA_POINTER_CLIENT" 1280 720 keyboard-only tap 28 > /dev/null
-  eis_permission granted "$name"
+  eis_permission granted "$name" "$count"
 }
 
 eis_window() {

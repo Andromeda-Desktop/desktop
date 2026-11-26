@@ -2,7 +2,7 @@
 # harness: xwayland=native
 # harness: outputs=2
 # Steam-style XTEST input reaches native windows through EIS, including scaled logical outputs, relative motion,
-# pointer clicks, ordinary keyboard input, and compositor shortcuts. A second connection reuses session consent.
+# pointer clicks, ordinary keyboard input, and compositor shortcuts. A second X11 client asks for consent again.
 set -euo pipefail
 source "$ANDROMEDA_REPO/tests/harness/eis_lib.sh"
 
@@ -89,16 +89,17 @@ fi
 eis_send first 'tap 32'
 await_events "$SECOND_LOG" 'keyboard-key code=32 state=pressed' 1 "normal typing after the compositor shortcut"
 
-# Reconnect with the same X11 application name. The retained consent must authorize the new EI connection without a
-# second prompt, and the next key must reach the same native window.
+# Reconnect with the same X11 application name. Consent is per X11 client: Xwayland would hand the approved EI
+# connection to any later client with that name, so it ends with its client and the new one asks again.
 eis_stop first
 eis_start second "$APP"
+eis_approve second "$APP" 2
 eis_send second 'tap 33'
 await_events "$SECOND_LOG" 'keyboard-key code=33 state=pressed' 1 "typing after a consented reconnect"
-if [[ $(events "$ANDROMEDA_LOG" ".*input permission requested .*app='$APP'") -ne 1 ]]; then
-  echo "the consented application prompted again: $(cat "$ANDROMEDA_LOG")"
+if [[ $(events "$ANDROMEDA_LOG" ".*input permission requested .*app='$APP'") -ne 2 ]]; then
+  echo "each X11 client must ask exactly once: $(cat "$ANDROMEDA_LOG")"
   exit 1
 fi
 eis_stop second
 
-echo "XTEST controls native windows across scaled outputs, runs shortcuts, and reuses session consent"
+echo "XTEST controls native windows across scaled outputs, runs shortcuts, and asks each X11 client for consent"

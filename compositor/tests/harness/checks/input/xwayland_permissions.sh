@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # harness: xwayland=true
-# A physical keyboard authorizes EIS input. An already approved emulator cannot approve another application's prompt.
+# A physical keyboard authorizes each EIS connection; a name is never remembered. An already approved emulator cannot approve another application's prompt.
 # X11 client teardown releases held input, and lock surfaces accept physical keys while emulated keys are discarded.
 set -euo pipefail
 source "$ANDROMEDA_REPO/tests/harness/eis_lib.sh"
@@ -58,7 +58,9 @@ eis_stop approved
 await_events "$WINDOW_LOG" 'keyboard-key code=30 state=released' "$((key_releases + 1))" "key release on X11 client exit"
 await_events "$WINDOW_LOG" 'pointer-button code=272 state=released' 1 "button release on X11 client exit"
 
+# Consent is per connection: Xwayland names a connection from its X11 client's command line, which any client can pick.
 eis_start resumed "$APPROVED"
+eis_approve resumed "$APPROVED" 2
 eis_send resumed 'tap 33'
 await_events "$WINDOW_LOG" 'keyboard-key code=33 state=pressed' 1 "the approved application after reconnect"
 
@@ -89,8 +91,8 @@ if [[ $(events "$WINDOW_LOG" 'keyboard-key code=35 state=pressed') -ne 0 ]]; the
   echo "XTEST input typed while locked was replayed after unlock: $(cat "$WINDOW_LOG")"
   exit 1
 fi
-if [[ $(events "$ANDROMEDA_LOG" ".*input permission requested .*app='$APPROVED'") -ne 1 ]]; then
-  echo "approved application lost session consent: $(cat "$ANDROMEDA_LOG")"
+if [[ $(events "$ANDROMEDA_LOG" ".*input permission requested .*app='$APPROVED'") -ne 2 ]]; then
+  echo "the lock or unlock asked the approved connection again: $(cat "$ANDROMEDA_LOG")"
   exit 1
 fi
 eis_stop resumed
