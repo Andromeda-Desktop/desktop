@@ -2092,11 +2092,22 @@ bool ClipboardService::persistEntries(std::deque<ClipboardEntry>& entries) {
     std::string path;
     ClipboardBytes data;
   };
+  struct ManifestRow {
+    std::string id;
+    std::vector<std::string> mimeTypes;
+    std::string dataMimeType;
+    std::string textPreview;
+    std::size_t byteSize;
+    std::int64_t capturedAtMs;
+    bool pinned;
+    std::uint64_t hash;
+  };
   std::vector<PayloadWrite> payloads;
   std::unordered_set<std::string> activeStorageIds;
-  std::string manifestContent;
+  // Plain rows on the main thread; JSON building and dumping run on the worker (tens of ms at 10000 entries).
+  std::vector<ManifestRow> manifestRows;
   try {
-    nlohmann::json manifestEntries = nlohmann::json::array();
+    manifestRows.reserve(entries.size());
     activeStorageIds.reserve(entries.size());
     for (auto& entry : entries) {
       if (entry.storageId.empty()) {
@@ -2114,18 +2125,17 @@ bool ClipboardService::persistEntries(std::deque<ClipboardEntry>& entries) {
 
       const auto capturedAtMs =
           std::chrono::duration_cast<std::chrono::milliseconds>(entry.capturedAt.time_since_epoch()).count();
-      manifestEntries.push_back({
-          {"id", entry.storageId},
-          {"mime_types", entry.mimeTypes},
-          {"data_mime_type", entry.dataMimeType},
-          {"text_preview", entry.textPreview},
-          {"byte_size", entry.byteSize},
-          {"captured_at_ms", capturedAtMs},
-          {"pinned", entry.pinned},
-          {"hash", entry.contentHash},
+      manifestRows.push_back({
+          .id = entry.storageId,
+          .mimeTypes = entry.mimeTypes,
+          .dataMimeType = entry.dataMimeType,
+          .textPreview = entry.textPreview,
+          .byteSize = entry.byteSize,
+          .capturedAtMs = capturedAtMs,
+          .pinned = entry.pinned,
+          .hash = entry.contentHash,
       });
     }
-    manifestContent = nlohmann::json{{"entries", manifestEntries}}.dump(2);
   } catch (const std::exception& e) {
     kLog.warn("failed to persist clipboard history: {}", e.what());
     return false;
@@ -2141,7 +2151,7 @@ bool ClipboardService::persistEntries(std::deque<ClipboardEntry>& entries) {
   const auto pending = m_pendingWrites;
   const std::uint64_t generation = writeGeneration();
   auto write = [pending, generation, key = m_dataKey, payloads = std::move(payloads), activeStorageIds = std::move(activeStorageIds),
-                manifestContent = std::move(manifestContent), stateDir = stateDirectory(),
+                manifestRows = std::move(manifestRows), stateDir = stateDirectory(),
                 entriesDir = fs::path(entriesDirectory()), manifest = fs::path(manifestPath())]() -> PersistResult {
     PersistResult result;
     result.generation = generation;
@@ -2157,6 +2167,20 @@ bool ClipboardService::persistEntries(std::deque<ClipboardEntry>& entries) {
       if (skip()) {
         throw std::runtime_error("cancelled, or an earlier clipboard write failed");
       }
+      nlohmann::json manifestEntries = nlohmann::json::array();
+      for (const ManifestRow& row : manifestRows) {
+        manifestEntries.push_back({
+            {"id", row.id},
+            {"mime_types", row.mimeTypes},
+            {"data_mime_type", row.dataMimeType},
+            {"text_preview", row.textPreview},
+            {"byte_size", row.byteSize},
+            {"captured_at_ms", row.capturedAtMs},
+            {"pinned", row.pinned},
+            {"hash", row.hash},
+        });
+      }
+      const std::string manifestContent = nlohmann::json{{"entries", manifestEntries}}.dump(2);
       ensurePrivateDirectory(stateDir);
       ensurePrivateDirectory(entriesDir);
       for (const auto& payload : payloads) {
