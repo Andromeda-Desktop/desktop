@@ -13,7 +13,7 @@ export ANDROID_SERIAL=${ANDROID_SERIAL:-emulator-5554}
 rm -rf "$OUT"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 record() { printf '%s\n' "$1" >> "$OUT/results.jsonl"; }
-command -v scrcpy > /dev/null || fail "scrcpy is not installed"
+command -v scrcpy > /dev/null || { echo "SKIP: scrcpy is not installed"; exit 77; }
 [[ $(adb get-state 2> /dev/null) == device ]] || { echo "SKIP: no emulator at $ANDROID_SERIAL"; exit 77; }
 boot_headless 1
 virtual() { adb shell dumpsys display | grep -c 'mDisplayId=.*scrcpy\|"scrcpy"' || true; }

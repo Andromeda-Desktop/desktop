@@ -10,7 +10,7 @@ NOCTALIA=${NOCTALIA:-$(cd "$(dirname "$0")/../.." && pwd)/shell/build-f7/androme
 source "$(dirname "$0")/lib.sh"
 CLIENT=${CLIENT:-$ROOT/compositor/build-debug/tests/background-client}
 REAL=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
-[[ -S $REAL/bus && -S $REAL/pipewire-0 ]] || { echo "needs the systemd user bus and PipeWire in $REAL" >&2; exit 1; }
+[[ -S $REAL/bus && -S $REAL/pipewire-0 ]] || { echo "SKIP: needs the systemd user bus and PipeWire in $REAL"; exit 77; }
 UNIT=app-qos-audio-$$.scope
 
 # The compositor reaches the real user manager and the shell the real PipeWire through these links.

@@ -13,6 +13,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=${OUT:-$(pwd)/artifacts/link-notifications-sync}
 BIN=${LINK_BIN:-$ROOT/link/target/debug}
+[[ -x $BIN/andromeda-linkd ]] || { echo "SKIP: no Link build in $BIN"; exit 77; }
 E2E=$ROOT/tests/e2e
 
 if [[ ${1:-} != inner ]]; then

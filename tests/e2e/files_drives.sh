@@ -16,6 +16,7 @@ mkdir -p "$OUT" "$HOME_DIR"
 fail() { echo "FAIL: $*"; exit 1; }
 
 # The drive: a 64 MB LUKS2 image with an ExFAT file system inside, locked again before Files starts.
+command -v cryptsetup > /dev/null || { echo "SKIP: cryptsetup is missing"; exit 77; }
 IMG=$RUNTIME/drive.img
 truncate -s 64M "$IMG"
 printf '%s' "$PASS" | cryptsetup luksFormat --batch-mode --type luks2 --pbkdf pbkdf2 --pbkdf-force-iterations 1000 \

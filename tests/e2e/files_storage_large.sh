@@ -16,7 +16,7 @@ SIZE_GB=${SIZE_GB:-200}
 SMALL=${SMALL:-300000}
 mkdir -p "$OUT"
 fail() { echo "FAIL: $*"; exit 1; }
-for tool in mkfs.ext4 udisksctl; do command -v "$tool" > /dev/null || fail "$tool is missing"; done
+for tool in mkfs.ext4 udisksctl; do command -v "$tool" > /dev/null || { echo "SKIP: $tool is missing"; exit 77; }; done
 
 IMG=$OUT/home.img
 rm -f "$IMG"

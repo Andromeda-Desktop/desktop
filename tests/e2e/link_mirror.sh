@@ -14,6 +14,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 OUT=${OUT:-$(pwd)/artifacts/link-mirror}
 BIN=${LINK_BIN:-$ROOT/link/target/debug}
+[[ -x $BIN/andromeda-linkd ]] || { echo "SKIP: no Link build in $BIN"; exit 77; }
 if [[ -z ${LINK_IN_NS:-} ]]; then
   rm -rf "$OUT"
   mkdir -p "$OUT"

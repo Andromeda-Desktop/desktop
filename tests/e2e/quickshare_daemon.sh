@@ -12,6 +12,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 source "$ROOT/tests/e2e/wait.sh"
 OUT=${OUT:-$(pwd)/artifacts/quickshare-daemon}
 BIN=${LINK_BIN:-$ROOT/link/target/debug}
+[[ -x $BIN/andromeda-linkd ]] || { echo "SKIP: no Link build in $BIN"; exit 77; }
 if [[ -z ${QS_IN_NS:-} ]]; then
   rm -rf "$OUT"
   mkdir -p "$OUT"

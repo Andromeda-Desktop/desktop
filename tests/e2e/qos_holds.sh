@@ -7,7 +7,7 @@ OUT=${OUT:-$(pwd)/artifacts/qos-holds}
 source "$(dirname "$0")/lib.sh"
 CLIENT=${CLIENT:-$ROOT/compositor/build-debug/tests/background-client}
 USER_BUS=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bus
-[[ -S $USER_BUS ]] || { echo "no systemd user bus at $USER_BUS" >&2; exit 1; }
+[[ -S $USER_BUS ]] || { echo "SKIP: no systemd user bus at $USER_BUS"; exit 77; }
 UNIT=app-qos-holds-$$.scope
 # The session's own compositor owns org.andromeda.Compositor1; the headless one takes its own name.
 export ANDROMEDA_COMPOSITOR_BUS_NAME=org.andromeda.Compositor1.QosHolds$$

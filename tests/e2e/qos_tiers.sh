@@ -10,7 +10,7 @@ source "$(dirname "$0")/lib.sh"
 CLIENT=${CLIENT:-$ROOT/compositor/build-debug/tests/background-client}
 LAYER=${LAYER:-$ROOT/compositor/build-debug/tests/layer-client}
 USER_BUS=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bus
-[[ -S $USER_BUS ]] || { echo "no systemd user bus at $USER_BUS" >&2; exit 1; }
+[[ -S $USER_BUS ]] || { echo "SKIP: no systemd user bus at $USER_BUS"; exit 77; }
 UNIT=app-qos-e2e-$$.scope
 OWN_UNIT=app-qos-e2e-own-$$.scope
 
