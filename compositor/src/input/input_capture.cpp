@@ -9,6 +9,8 @@
 #include "wlr.h"
 
 #include <algorithm>
+#include <andromeda-input-capture-v1-server-protocol.h>
+#include <andromeda-remote-input-v1-server-protocol.h>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -17,8 +19,7 @@
 #include <memory>
 #include <string>
 #include <tuple>
-#include <andromeda-input-capture-v1-server-protocol.h>
-#include <andromeda-remote-input-v1-server-protocol.h>
+#include <type_traits>
 #include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -75,10 +76,9 @@ namespace andromeda {
       std::string applicationInstance;
       std::string restoreToken;
       std::string grantId;
-      bool startAttempted = false;
-      bool pending = false;
-      bool approved = false;
-      bool closed = false;
+      // Pending: a permission store job runs for start or for the answer; Asking: the consent dialog is open.
+      enum class Phase : uint8_t { Idle, Pending, Asking, Started, Refused, Closed };
+      Phase phase = Phase::Idle;
       bool enabled = false;
       bool overflow = false;
       bool fdIssued = false;
@@ -101,7 +101,7 @@ namespace andromeda {
 
       ~Session() {
         deactivate(false);
-        if (pending && owner.cancelled) {
+        if (phase == Phase::Asking && owner.cancelled) {
           owner.cancelled(id);
         }
         if (eventSource != nullptr) {
@@ -117,7 +117,22 @@ namespace andromeda {
         andromeda_input_capture_session_v1_send_result(resource, request, success ? kSuccess : kFailure);
       }
 
-      [[nodiscard]] bool usable() const { return approved && !closed && !owner.blocked(); }
+      // The one writer of `phase`. Idle -> Pending; Pending or Asking -> any later phase; any -> Closed. Anything else
+      // is refused and logged.
+      bool transition(Phase next) {
+        const bool allowed = next == Phase::Closed              ? phase != Phase::Closed
+            : phase == Phase::Idle                              ? next == Phase::Pending
+            : phase == Phase::Pending || phase == Phase::Asking ? next != Phase::Idle && next != phase
+                                                                : false;
+        if (!allowed) {
+          kLog.error("input capture session {}: refused phase change {} -> {}", id, int(phase), int(next));
+          return false;
+        }
+        phase = next;
+        return true;
+      }
+
+      [[nodiscard]] bool usable() const { return phase == Phase::Started && !owner.blocked(); }
 
       void clearPointer() {
         if (pointer != nullptr) {
@@ -147,18 +162,17 @@ namespace andromeda {
       }
 
       void close() {
-        if (closed) {
+        if (phase == Phase::Closed) {
           return;
         }
         disable(true);
-        closed = true;
-        if (pending) {
-          pending = false;
-          if (owner.cancelled) {
-            owner.cancelled(id);
-          }
+        if (phase == Phase::Asking && owner.cancelled) {
+          owner.cancelled(id);
+        }
+        if (phase == Phase::Asking || phase == Phase::Pending) {
           andromeda_input_capture_session_v1_send_started(resource, startRequest, kFailure, 0);
         }
+        transition(Phase::Closed);
         destroyClient();
         andromeda_input_capture_session_v1_send_closed(resource);
       }
@@ -346,11 +360,11 @@ namespace andromeda {
         const auto type = eis_event_get_type(event);
         eis_client* candidate = eis_event_get_client(event);
         if (type == EIS_EVENT_CLIENT_CONNECT) {
-          if (closed || client != nullptr || candidate == nullptr || eis_client_is_sender(candidate)) {
+          if (phase == Phase::Closed || client != nullptr || candidate == nullptr || eis_client_is_sender(candidate)) {
             if (candidate != nullptr) {
               eis_client_disconnect(candidate);
             }
-            if (!closed && client == nullptr) {
+            if (phase != Phase::Closed && client == nullptr) {
               close();
             }
             return;
@@ -374,7 +388,7 @@ namespace andromeda {
           eis_seat_add(seat);
           return;
         }
-        if (candidate == nullptr || candidate != client || closed) {
+        if (candidate == nullptr || candidate != client || phase == Phase::Closed) {
           return;
         }
         if (type == EIS_EVENT_CLIENT_DISCONNECT) {
@@ -454,8 +468,7 @@ namespace andromeda {
       }
 
       void start(uint32_t request, const char* label, uint32_t requested) {
-        if (startAttempted
-            || closed
+        if (phase != Phase::Idle
             || owner.blocked()
             || !owner.authorize
             || label == nullptr
@@ -464,23 +477,34 @@ namespace andromeda {
           andromeda_input_capture_session_v1_send_started(resource, request, kFailure, 0);
           return;
         }
-        startAttempted = true;
         startRequest = request;
         capabilities = requested & 3U;
         application = label;
-        if (const auto grant = owner.restoreGrant(*this, InputPermissionKind::Capture)) {
-          approve(*grant);
-          return;
-        }
-        pending = true;
+        transition(Phase::Pending);
+        owner.restoreGrant(*this, InputPermissionKind::Capture, [](Session& state, auto grant) {
+          if (grant) {
+            state.approve(*grant);
+          } else {
+            state.ask();
+          }
+        });
+      }
+
+      void ask() {
+        transition(Phase::Asking);
         owner.authorize(
-            id, *label != '\0' ? label : "unidentified application", persistMode, capabilities,
+            id, !application.empty() ? application.c_str() : "unidentified application", persistMode, capabilities,
             InputPermissionKind::Capture
         );
       }
 
+      void refuse(uint32_t status) {
+        transition(Phase::Refused);
+        andromeda_input_capture_session_v1_send_started(resource, startRequest, status, 0);
+      }
+
       void approve(const InputCaptureGrant& grant) {
-        approved = true;
+        transition(Phase::Started);
         grantId = grant.id;
         if (grant.persistMode != 0 && wl_resource_get_version(resource) >= 2) {
           andromeda_input_capture_session_v1_send_grant(resource, startRequest, grant.persistMode, grant.token.c_str());
@@ -508,7 +532,7 @@ namespace andromeda {
 
     // One RemoteDesktop session: the same consent and store as capture, then EIS sender connections.
     struct RemoteSession {
-      enum class Phase : uint8_t { Idle, Asking, Granted, Closed };
+      enum class Phase : uint8_t { Idle, Pending, Asking, Granted, Closed };
 
       Impl& owner;
       wl_resource* resource = nullptr;
@@ -524,6 +548,21 @@ namespace andromeda {
       Phase phase = Phase::Idle;
 
       explicit RemoteSession(Impl& owner) : owner(owner) {}
+
+      // The one writer of `phase`. Idle -> Pending; Pending or Asking -> any later phase; any -> Closed. Anything else
+      // is refused and logged.
+      bool transition(Phase next) {
+        const bool allowed = next == Phase::Closed              ? phase != Phase::Closed
+            : phase == Phase::Idle                              ? next == Phase::Pending
+            : phase == Phase::Pending || phase == Phase::Asking ? next != Phase::Idle && next != phase
+                                                                : false;
+        if (!allowed) {
+          kLog.error("remote input session {}: refused phase change {} -> {}", id, int(phase), int(next));
+          return false;
+        }
+        phase = next;
+        return true;
+      }
 
       ~RemoteSession() {
         if (phase == Phase::Asking && owner.cancelled) {
@@ -552,28 +591,39 @@ namespace andromeda {
         // Keyboard, pointer and clipboard (bit 2, the bridge's own data-control use).
         capabilities = requested & 7U;
         application = label;
-        if (const auto grant = owner.restoreGrant(*this, InputPermissionKind::Emulate)) {
-          approve(*grant);
-          return;
-        }
-        phase = Phase::Asking;
+        transition(Phase::Pending);
+        owner.restoreGrant(*this, InputPermissionKind::Emulate, [](RemoteSession& state, auto grant) {
+          if (grant) {
+            state.approve(*grant);
+          } else {
+            state.ask();
+          }
+        });
+      }
+
+      void ask() {
+        transition(Phase::Asking);
         owner.authorize(
-            id, *label != '\0' ? label : "unidentified application", persistMode, capabilities,
+            id, !application.empty() ? application.c_str() : "unidentified application", persistMode, capabilities,
             InputPermissionKind::Emulate
         );
       }
 
       void approve(const InputCaptureGrant& grant) {
-        phase = Phase::Granted;
+        transition(Phase::Granted);
         grantId = grant.id;
         if (grant.persistMode != 0) {
           andromeda_remote_input_session_v1_send_grant(resource, startRequest, grant.persistMode, grant.token.c_str());
         }
         andromeda_remote_input_session_v1_send_started(resource, startRequest, kSuccess, capabilities);
+        // A lock that began while the store answered was announced only to sessions granted then.
+        if (owner.pausedSent) {
+          andromeda_remote_input_session_v1_send_paused(resource, 1);
+        }
       }
 
       void answer(uint32_t status) {
-        phase = Phase::Closed;
+        transition(Phase::Closed);
         andromeda_remote_input_session_v1_send_started(resource, startRequest, status, 0);
       }
 
@@ -594,58 +644,94 @@ namespace andromeda {
         if (phase == Phase::Closed) {
           return;
         }
-        if (phase == Phase::Asking) {
-          if (owner.cancelled) {
-            owner.cancelled(id);
-          }
+        if (phase == Phase::Asking && owner.cancelled) {
+          owner.cancelled(id);
+        }
+        if (phase == Phase::Asking || phase == Phase::Pending) {
           andromeda_remote_input_session_v1_send_started(resource, startRequest, kFailure, 0);
         }
-        phase = Phase::Closed;
+        transition(Phase::Closed);
         closeClients();
         andromeda_remote_input_session_v1_send_closed(resource);
       }
     };
 
-    // Restores a remembered grant for a capture or remote session; sets its permission peer either way.
-    template <class State>
-    std::optional<InputCaptureGrant> restoreGrant(State& state, InputPermissionKind kind) {
+    // The session a store job started for, while it still waits on that job (Pending); null otherwise.
+    template <class State> State* pendingSession(uint64_t id) {
+      const auto& list = [this]() -> auto& {
+        if constexpr (std::is_same_v<State, Session>) {
+          return sessions;
+        } else {
+          return remoteSessions;
+        }
+      }();
+      const auto found = std::ranges::find_if(list, [id](const auto& state) { return state->id == id; });
+      return found != list.end() && (*found)->phase == State::Phase::Pending ? found->get() : nullptr;
+    }
+
+    // Restores a remembered grant for a capture or remote session; sets its permission peer either way. `done` runs
+    // only while the session still waits on it.
+    template <class State, class Done> void restoreGrant(State& state, InputPermissionKind kind, Done done) {
       wl_client* client = wl_resource_get_client(state.resource);
       state.permissionPeer = permissionPeer(client, "");
       if (state.restoreToken.empty()) {
-        return std::nullopt;
+        done(state, std::optional<InputCaptureGrant>{});
+        return;
       }
       const uint64_t scoped = permissionPeer(client, state.applicationInstance, false);
       const bool newScope = state.persistMode == 1 && scoped == 0;
       const uint64_t restorePeer = state.persistMode == 1 ? permissionPeer(client, state.applicationInstance)
           : state.persistMode == 0 && scoped != 0         ? scoped
                                                           : state.permissionPeer;
-      auto grant = permissionStore.restore(
-          state.restoreToken, state.application, state.capabilities, state.persistMode, restorePeer, kind
+      const std::string token = std::exchange(state.restoreToken, {});
+      const uint64_t clientPeer = state.permissionPeer;
+      // Set while the restore runs, so expire_scope closes the waiting session too.
+      state.permissionPeer = restorePeer;
+      permissionStore.restore(
+          token, state.application, state.capabilities, state.persistMode, restorePeer, kind,
+          [this, id = state.id, client, scope = state.applicationInstance, newScope, restorePeer, clientPeer,
+           done = std::move(done)](std::optional<InputCaptureGrant> grant) {
+            if (!grant && newScope) {
+              forgetPermissionScope(client, scope, restorePeer, id);
+            }
+            // A session that closed before the store answered gets no token; the store undoes the grant.
+            State* waiting = pendingSession<State>(id);
+            if (waiting == nullptr) {
+              return false;
+            }
+            if (!grant) {
+              waiting->permissionPeer = clientPeer;
+            }
+            done(*waiting, std::move(grant));
+            return true;
+          }
       );
-      state.restoreToken.clear();
-      if (grant) {
-        state.permissionPeer = restorePeer;
-      } else if (newScope) {
-        forgetPermissionScope(client, state.applicationInstance);
-      }
-      return grant;
     }
 
-    // Stores a remembered approval; nullopt when the store refuses it.
-    template <class State>
-    std::optional<InputCaptureGrant> issueGrant(State& state, InputPermissionKind kind) {
+    // Stores a remembered approval; `done` gets nullopt when the store refuses it, and runs only while the session
+    // still waits on it.
+    template <class State, class Done> void issueGrant(State& state, InputPermissionKind kind, Done done) {
       wl_client* client = wl_resource_get_client(state.resource);
       const uint64_t previous = permissionPeer(client, state.applicationInstance, false);
       const bool newScope = state.persistMode == 1 && previous == 0;
       if (state.persistMode == 1) {
         state.permissionPeer = permissionPeer(client, state.applicationInstance);
       }
-      auto grant =
-          permissionStore.issue(state.application, state.capabilities, state.persistMode, state.permissionPeer, kind);
-      if (!grant && newScope) {
-        forgetPermissionScope(client, state.applicationInstance);
-      }
-      return grant;
+      permissionStore.issue(
+          state.application, state.capabilities, state.persistMode, state.permissionPeer, kind,
+          [this, id = state.id, client, scope = state.applicationInstance, newScope, peer = state.permissionPeer,
+           done = std::move(done)](std::optional<InputCaptureGrant> grant) {
+            if (!grant && newScope) {
+              forgetPermissionScope(client, scope, peer, id);
+            }
+            State* waiting = pendingSession<State>(id);
+            if (waiting == nullptr) {
+              return false;
+            }
+            done(*waiting, std::move(grant));
+            return true;
+          }
+      );
     }
 
     Server& server;
@@ -665,7 +751,9 @@ namespace andromeda {
     // The block state granted remote sessions last heard through paused.
     bool pausedSent = false;
     std::vector<wl_resource*> managers;
-    InputCapturePermissions permissionStore{InputCapturePermissions::defaultPath()};
+    InputCapturePermissions permissionStore{
+        wl_display_get_event_loop(server.display()), InputCapturePermissions::defaultPath()
+    };
     struct Peer {
       struct DestroyListener {
         wl_listener listener{};
@@ -713,10 +801,36 @@ namespace andromeda {
       return id;
     }
 
-    void forgetPermissionScope(wl_client* client, const std::string& scope) {
+    // Only while `scope` still maps to `peer` (the client may be gone, and its address reused, by the time a store
+    // job answers) and nothing else uses the peer: a session other than `requester`, or an ephemeral grant.
+    void forgetPermissionScope(wl_client* client, const std::string& scope, uint64_t peer, uint64_t requester) {
       const auto found = permissionPeers.find(client);
-      if (found != permissionPeers.end()) {
-        found->second->scopes.erase(scope);
+      const auto uses = [peer, requester](const auto& state) {
+        return state->id != requester && state->permissionPeer == peer;
+      };
+      if (found == permissionPeers.end()
+          || std::ranges::any_of(sessions, uses)
+          || std::ranges::any_of(remoteSessions, uses)
+          || permissionStore.hasPeer(peer)) {
+        return;
+      }
+      const auto entry = found->second->scopes.find(scope);
+      if (entry != found->second->scopes.end() && entry->second == peer) {
+        found->second->scopes.erase(entry);
+      }
+    }
+
+    // Closes the sessions running on grant `id` ("all": on any remembered grant).
+    void closeGranted(std::string_view id) {
+      for (const auto& state : sessions) {
+        if (!state->grantId.empty() && (id == "all" || state->grantId == id)) {
+          state->close();
+        }
+      }
+      for (const auto& state : remoteSessions) {
+        if (!state->grantId.empty() && (id == "all" || state->grantId == id)) {
+          state->close();
+        }
       }
     }
 
@@ -965,7 +1079,7 @@ namespace andromeda {
           [](wl_client*, wl_resource* resource, uint32_t request) {
             auto& state = session(resource);
             state.disable(false);
-            state.result(request, !state.closed && state.approved);
+            state.result(request, state.phase == Session::Phase::Started);
           },
       .release =
           [](wl_client*, wl_resource* resource, uint32_t request, uint32_t activation, uint32_t hasPosition,
@@ -987,12 +1101,12 @@ namespace andromeda {
               }
               state.deactivate(false);
             }
-            state.result(request, !state.closed && state.approved);
+            state.result(request, state.phase == Session::Phase::Started);
           },
       .set_persistence =
           [](wl_client*, wl_resource* resource, uint32_t mode, const char* token, const char* instance) {
             auto& state = session(resource);
-            if (state.startAttempted
+            if (state.phase != Session::Phase::Idle
                 || mode > 2
                 || token == nullptr
                 || instance == nullptr
@@ -1032,60 +1146,56 @@ namespace andromeda {
         state.answer(kCancelled);
       } else if (!remember) {
         state.approve({});
-      } else if (const auto grant = state.persistMode != 0 ? m_impl->issueGrant(state, InputPermissionKind::Emulate)
-                                                            : std::nullopt) {
-        state.approve(*grant);
-      } else {
-        kLog.error("unable to save the remote input permission; control was not started");
+      } else if (state.persistMode == 0) {
         state.answer(kFailure);
+      } else {
+        state.transition(Impl::RemoteSession::Phase::Pending);
+        m_impl->issueGrant(state, InputPermissionKind::Emulate, [](Impl::RemoteSession& waiting, auto grant) {
+          if (grant) {
+            waiting.approve(*grant);
+            return;
+          }
+          kLog.error("unable to save the remote input permission; control was not started");
+          waiting.answer(kFailure);
+        });
       }
       return;
     }
     const auto found = std::ranges::find_if(m_impl->sessions, [id](const auto& state) { return state->id == id; });
-    if (found == m_impl->sessions.end() || !(*found)->pending) {
+    if (found == m_impl->sessions.end() || (*found)->phase != Impl::Session::Phase::Asking) {
       return;
     }
     auto& state = **found;
-    state.pending = false;
-    if (allowed && !m_impl->blocked()) {
-      if (!remember) {
-        state.approve({});
-        return;
-      }
-      if (state.persistMode != 0) {
-        if (const auto grant = m_impl->issueGrant(state, InputPermissionKind::Capture)) {
-          state.approve(*grant);
+    if (!allowed || m_impl->blocked()) {
+      state.refuse(kCancelled);
+    } else if (!remember) {
+      state.approve({});
+    } else if (state.persistMode == 0) {
+      state.refuse(kFailure);
+    } else {
+      state.transition(Impl::Session::Phase::Pending);
+      m_impl->issueGrant(state, InputPermissionKind::Capture, [](Impl::Session& waiting, auto grant) {
+        if (grant) {
+          waiting.approve(*grant);
           return;
         }
         kLog.error("unable to save input capture permission; capture was not started");
-      }
-      andromeda_input_capture_session_v1_send_started(state.resource, state.startRequest, kFailure, 0);
-      return;
+        waiting.refuse(kFailure);
+      });
     }
-    state.approved = false;
-    andromeda_input_capture_session_v1_send_started(
-        state.resource, state.startRequest, state.approved ? kSuccess : kCancelled,
-        state.approved ? state.capabilities : 0
-    );
   }
 
   std::vector<InputCapturePermission> InputCapture::permissions() { return m_impl->permissionStore.list(); }
 
   InputCapturePermissions& InputCapture::permissionStore() { return m_impl->permissionStore; }
 
-  bool InputCapture::revokePermission(std::string_view id) {
-    const bool forgotten = m_impl->permissionStore.revoke(id);
-    for (const auto& state : m_impl->sessions) {
-      if (!state->grantId.empty() && (id == "all" || state->grantId == id)) {
-        state->close();
-      }
-    }
-    for (const auto& state : m_impl->remoteSessions) {
-      if (!state->grantId.empty() && (id == "all" || state->grantId == id)) {
-        state->close();
-      }
-    }
-    return forgotten;
+  void InputCapture::revokePermission(std::string_view id, std::function<void(bool)> done) {
+    m_impl->closeGranted(id);
+    // A restore queued before the revoke may still start a session on the grant; its result lands first.
+    m_impl->permissionStore.revoke(id, [impl = m_impl.get(), id = std::string(id), done = std::move(done)](bool ok) {
+      impl->closeGranted(id);
+      done(ok);
+    });
   }
 
   void InputCapture::addKeyboard(wlr_keyboard* keyboard) {
@@ -1172,7 +1282,7 @@ namespace andromeda {
       // so EI clients replace their desktop bounds when the outputs change.
       state->clearPointer();
       state->createPointer();
-      if (state->approved && !state->closed) {
+      if (state->phase == Impl::Session::Phase::Started) {
         andromeda_input_capture_session_v1_send_zones_changed(state->resource, invalidated);
       }
     }
@@ -1193,12 +1303,11 @@ namespace andromeda {
   void InputCapture::suspend() {
     for (const auto& state : m_impl->sessions) {
       state->disable(true);
-      if (state->pending) {
-        state->pending = false;
-        if (m_impl->cancelled) {
-          m_impl->cancelled(state->id);
-        }
-        andromeda_input_capture_session_v1_send_started(state->resource, state->startRequest, kCancelled, 0);
+      if (state->phase == Impl::Session::Phase::Asking && m_impl->cancelled) {
+        m_impl->cancelled(state->id);
+      }
+      if (state->phase == Impl::Session::Phase::Asking) {
+        state->refuse(kCancelled);
       }
     }
   }

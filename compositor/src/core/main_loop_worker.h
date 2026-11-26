@@ -14,17 +14,21 @@ struct wl_event_source;
 
 namespace andromeda {
 
-  // One thread for slow reads (/proc scans) that must stay off the compositor main thread. `done` runs on the event
-  // loop. Jobs run in order; jobs and results still pending when the worker is destroyed are dropped.
+  // One thread for slow work (/proc scans, state file saves) that must stay off the compositor main thread. `done`
+  // runs on the event loop. Jobs run in order; stop() and the destructor still run every queued job, and the
+  // destructor drops the results not yet delivered.
   class MainLoopWorker {
   public:
     // `name` is the thread name (15 bytes at most), static storage.
     explicit MainLoopWorker(wl_event_loop* loop, const char* name = "andro-worker");
     ~MainLoopWorker();
 
-    // Finishes the running job and ends the thread; queued jobs and results are dropped. For an owner that writes
-    // its final state in place and must not race a job on the same file.
+    // Runs the queued jobs and ends the thread; a job posted after it never runs. For an owner that
+    // writes its final state in place and must not race a job on the same file.
     void stop();
+
+    // False when the worker could not attach to the event loop: a post is dropped and its `done` never runs.
+    [[nodiscard]] bool ready() const { return m_source != nullptr; }
 
     MainLoopWorker(const MainLoopWorker&) = delete;
     MainLoopWorker& operator=(const MainLoopWorker&) = delete;

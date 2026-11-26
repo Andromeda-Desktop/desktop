@@ -1,22 +1,39 @@
 #include "input/global_shortcut_store.h"
 
 #include "check.h"
+#include "loop_pump.h"
 
 #include <array>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <optional>
+#include <random>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
 
-using andromeda::GlobalShortcutStore;
 using andromeda::ShortcutChord;
 using andromeda::ShortcutGrants;
 namespace mod = andromeda::shortcut_mod;
 
 namespace {
+
+  // The store with each update awaited on the test loop.
+  struct GlobalShortcutStore {
+    using Status = andromeda::GlobalShortcutStore::Status;
+    andromeda::GlobalShortcutStore store;
+    explicit GlobalShortcutStore(std::filesystem::path path) : store(test::eventLoop(), std::move(path)) {}
+    std::optional<ShortcutGrants> load() { return store.load(); }
+    std::optional<ShortcutGrants> update(std::string_view app, std::map<std::string, ShortcutChord> shortcuts) {
+      return test::await<std::optional<ShortcutGrants>>([&](auto done) {
+        store.update(app, std::move(shortcuts), std::move(done));
+      });
+    }
+    [[nodiscard]] Status status() const { return store.status(); }
+  };
 
   class Fixture {
   public:
@@ -161,6 +178,105 @@ ANDROMEDA_TEST(twoInstancesKeepEachOthersGrants) {
   CHECK(nested.update("", {}).has_value());
   const auto cleared = restarted.load();
   CHECK(cleared.has_value() && cleared->empty());
+}
+
+// Approvals and revokes queue up, results arrive late, and some saves fail (the lock file turns unsafe). After every
+// save settles, the file holds exactly what the acknowledged saves wrote, and memory matches it except for an app
+// whose last approval failed to save.
+ANDROMEDA_TEST(queuedSavesKeepMemoryAndFileInStep) {
+  for (uint32_t seed = 1; seed <= 30; ++seed) {
+    const Fixture fixture;
+    const auto lockFile = fixture.path.parent_path() / ".global-shortcuts.lock";
+    andromeda::ShortcutRegistry registry;
+    andromeda::ShortcutGrantSync sync(registry, test::eventLoop(), fixture.path);
+    CHECK(sync.load());
+    ShortcutGrants file;
+    std::set<std::string> unsaved;
+    // The last approval requested per app.
+    ShortcutGrants approved;
+    int pending = 0;
+    std::mt19937 random(seed);
+    for (int step = 0; step < 60; ++step) {
+      const std::string app = "org.example.App" + std::to_string(random() % 4);
+      switch (random() % 10) {
+      case 0:
+      case 1:
+      case 2:
+      case 3: {
+        ShortcutGrants grants = registry.grants();
+        grants[app] = {{"run", {.modifiers = mod::kCtrl, .keysym = static_cast<uint32_t>(XKB_KEY_a + random() % 26)}}};
+        const auto value = grants[app];
+        approved[app] = value;
+        registry.setGrants(std::move(grants));
+        ++pending;
+        sync.persist(app, [&, app, value](bool saved) {
+          --pending;
+          if (saved) {
+            file[app] = value;
+            unsaved.erase(app);
+          } else {
+            unsaved.insert(app);
+          }
+        });
+        break;
+      }
+      case 4:
+      case 5:
+      case 6: {
+        ++pending;
+        sync.revoke(app, [&, app](bool saved) {
+          --pending;
+          if (saved) {
+            file.erase(app);
+          }
+          // Saved or not, memory now follows the file for this app.
+          unsaved.erase(app);
+        });
+        CHECK(!registry.grants().contains(app));
+        break;
+      }
+      case 7: {
+        ++pending;
+        sync.revoke("", [&](bool saved) {
+          --pending;
+          if (saved) {
+            file.clear();
+          }
+          unsaved.clear();
+        });
+        CHECK(registry.grants().empty());
+        break;
+      }
+      default:
+        // Group-readable: the saver refuses the lock until it is private again.
+        std::filesystem::create_directories(lockFile.parent_path());
+        std::ofstream{lockFile, std::ios::app};
+        chmod(lockFile.c_str(), random() % 2 == 0 ? 0644 : 0600);
+      }
+      for (uint32_t pumps = random() % 3; pumps > 0; --pumps) {
+        wl_event_loop_dispatch(test::eventLoop(), 0);
+      }
+    }
+    test::pumpUntil([&] { return pending == 0; });
+
+    CHECK(GlobalShortcutStore(fixture.path).load() == file);
+    std::set<std::string> apps;
+    for (const ShortcutGrants* grants : std::array<const ShortcutGrants*, 2>{&registry.grants(), &file}) {
+      for (const auto& [app, shortcuts] : *grants) {
+        apps.insert(app);
+      }
+    }
+    for (const std::string& app : apps) {
+      if (!unsaved.contains(app)) {
+        CHECK(registry.grants().contains(app) == file.contains(app));
+        CHECK(!file.contains(app) || !registry.grants().contains(app) || registry.grants().at(app) == file.at(app));
+      }
+    }
+    // A failed approval survives the other apps' later saves.
+    for (const std::string& app : unsaved) {
+      CHECK(registry.grants().contains(app) && registry.grants().at(app) == approved[app]);
+    }
+  }
 }
 
 int main() { return RUN_TESTS(); }

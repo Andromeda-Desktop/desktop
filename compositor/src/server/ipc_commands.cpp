@@ -68,25 +68,36 @@ namespace andromeda {
     return nlohmann::json{{"ok", server.layerShellPermissions().apps()}};
   }
 
-  nlohmann::json IpcCommands::layerShellRevoke(Server& server, std::string_view arg) {
+  void IpcCommands::layerShellRevoke(Server& server, std::string_view arg, IpcReply reply) {
     if (arg.empty() || arg.find_first_of(" \t\r\n") != std::string_view::npos) {
-      return nlohmann::json{{"err", "usage: layer-shell-revoke <sandbox_engine/app_id|all>"}};
+      reply(nlohmann::json{{"err", "usage: layer-shell-revoke <sandbox_engine/app_id|all>"}});
+      return;
     }
-    if (!server.revokeLayerShellAccess(arg)) {
-      return nlohmann::json{{"err", "unable to revoke layer-shell access (unknown app or state write failed)"}};
-    }
-    return nlohmann::json{{"ok", true}};
+    server.revokeLayerShellAccess(arg, [reply = std::move(reply)](bool revoked) {
+      reply(
+          revoked ? nlohmann::json{{"ok", true}}
+                  : nlohmann::json{{"err", "unable to revoke layer-shell access (unknown app or state write failed)"}}
+      );
+    });
   }
 
-  nlohmann::json IpcCommands::inputCaptureRevoke(Server& server, std::string_view arg) {
-    if (arg.empty() || arg.find_first_of(" \t\r\n") != std::string_view::npos) {
-      return nlohmann::json{{"err", "usage: input-capture-revoke <id|all>"}};
-    }
+  void IpcCommands::inputCaptureRevoke(Server& server, std::string_view arg, IpcReply reply) {
     auto* capture = server.inputCapture();
-    if (capture == nullptr || !capture->revokePermission(arg)) {
-      return nlohmann::json{{"err", "unable to revoke input capture permission (invalid id or state write failed)"}};
+    if (arg.empty() || arg.find_first_of(" \t\r\n") != std::string_view::npos) {
+      reply(nlohmann::json{{"err", "usage: input-capture-revoke <id|all>"}});
+      return;
     }
-    return nlohmann::json{{"ok", true}};
+    if (capture == nullptr) {
+      reply(nlohmann::json{{"err", "unable to revoke input capture permission (no input capture)"}});
+      return;
+    }
+    capture->revokePermission(arg, [reply = std::move(reply)](bool revoked) {
+      reply(
+          revoked
+              ? nlohmann::json{{"ok", true}}
+              : nlohmann::json{{"err", "unable to revoke input capture permission (invalid id or state write failed)"}}
+      );
+    });
   }
 
   nlohmann::json IpcCommands::trustedBinaries(Server& server, std::string_view) {
@@ -96,27 +107,35 @@ namespace andromeda {
     };
   }
 
-  nlohmann::json IpcCommands::trustedBinaryAdd(Server& server, std::string_view arg) {
+  void IpcCommands::trustedBinaryAdd(Server& server, std::string_view arg, IpcReply reply) {
     if (arg.empty() || arg.find_first_of("\r\n") != std::string_view::npos) {
-      return nlohmann::json{{"err", "usage: trusted-binary-add <path>"}};
+      reply(nlohmann::json{{"err", "usage: trusted-binary-add <path>"}});
+      return;
     }
     auto* capture = server.inputCapture();
     if (capture == nullptr) {
-      return nlohmann::json{{"err", "no input capture"}};
+      reply(nlohmann::json{{"err", "no input capture"}});
+      return;
     }
-    auto added = capture->permissionStore().addBinary(arg);
-    if (!added) {
-      return nlohmann::json{{"err", added.error()}};
-    }
-    return nlohmann::json{{"ok", *added}};
+    capture->permissionStore().addBinary(
+        arg, [reply = std::move(reply)](std::expected<std::string, std::string> added) {
+          reply(added ? nlohmann::json{{"ok", *added}} : nlohmann::json{{"err", added.error()}});
+        }
+    );
   }
 
-  nlohmann::json IpcCommands::trustedBinaryRemove(Server& server, std::string_view arg) {
+  void IpcCommands::trustedBinaryRemove(Server& server, std::string_view arg, IpcReply reply) {
     auto* capture = server.inputCapture();
-    if (capture == nullptr || !capture->permissionStore().removeBinary(arg)) {
-      return nlohmann::json{{"err", "unable to remove (not in the list or state write failed)"}};
+    if (capture == nullptr) {
+      reply(nlohmann::json{{"err", "unable to remove (not in the list or state write failed)"}});
+      return;
     }
-    return nlohmann::json{{"ok", true}};
+    capture->permissionStore().removeBinary(arg, [reply = std::move(reply)](bool removed) {
+      reply(
+          removed ? nlohmann::json{{"ok", true}}
+                  : nlohmann::json{{"err", "unable to remove (not in the list or state write failed)"}}
+      );
+    });
   }
 
   nlohmann::json IpcCommands::globalShortcuts(Server& server, std::string_view) {
@@ -184,15 +203,22 @@ namespace andromeda {
     std::unreachable();
   }
 
-  nlohmann::json IpcCommands::globalShortcutsRevoke(Server& server, std::string_view arg) {
+  void IpcCommands::globalShortcutsRevoke(Server& server, std::string_view arg, IpcReply reply) {
     if (arg.empty() || arg.find_first_of(" \t\r\n") != std::string_view::npos) {
-      return nlohmann::json{{"err", "usage: global-shortcuts-revoke <app-id|all>"}};
+      reply(nlohmann::json{{"err", "usage: global-shortcuts-revoke <app-id|all>"}});
+      return;
     }
     auto* service = server.globalShortcuts();
-    if (service == nullptr || !service->revoke(arg == "all" ? std::string_view{} : arg)) {
-      return nlohmann::json{{"err", "unable to revoke global shortcuts (the grant file could not be written)"}};
+    if (service == nullptr) {
+      reply(nlohmann::json{{"err", "unable to revoke global shortcuts (the grant file could not be written)"}});
+      return;
     }
-    return nlohmann::json{{"ok", true}};
+    service->revoke(arg == "all" ? std::string_view{} : arg, [reply = std::move(reply)](bool revoked) {
+      reply(
+          revoked ? nlohmann::json{{"ok", true}}
+                  : nlohmann::json{{"err", "unable to revoke global shortcuts (the grant file could not be written)"}}
+      );
+    });
   }
 
   std::optional<EffectAudio> IpcCommands::parseAudioSpectrum(const nlohmann::json& request) {
@@ -1964,21 +1990,26 @@ namespace andromeda {
       {"input-capture-permissions", "", "list remembered input capture grants", IpcCommandGroup::Inspect, false,
        &IpcCommands::inputCapturePermissions, nullptr},
       {"input-capture-revoke", "<id|all>", "forget capture permission and stop sessions using it",
-       IpcCommandGroup::Control, true, &IpcCommands::inputCaptureRevoke, nullptr},
+       IpcCommandGroup::Control, true, IpcDeferredHandler{&IpcCommands::inputCaptureRevoke}, nullptr,
+       kSaveReplyTimeoutSec},
       {"trusted-binaries", "", "list apps the user gave screen and input access", IpcCommandGroup::Inspect, false,
        &IpcCommands::trustedBinaries, nullptr},
       {"trusted-binary-add", "<path>", "give an app screen and input access from its next start",
-       IpcCommandGroup::Control, true, &IpcCommands::trustedBinaryAdd, nullptr},
+       IpcCommandGroup::Control, true, IpcDeferredHandler{&IpcCommands::trustedBinaryAdd}, nullptr,
+       kSaveReplyTimeoutSec},
       {"trusted-binary-remove", "<path>", "take an app's screen and input access away from its next start",
-       IpcCommandGroup::Control, true, &IpcCommands::trustedBinaryRemove, nullptr},
+       IpcCommandGroup::Control, true, IpcDeferredHandler{&IpcCommands::trustedBinaryRemove}, nullptr,
+       kSaveReplyTimeoutSec},
       {"layer-shell-permissions", "", "list sandboxed apps remembered for layer-shell", IpcCommandGroup::Inspect, false,
        &IpcCommands::layerShellPermissions, nullptr},
       {"layer-shell-revoke", "<sandbox_engine/app_id|all>", "forget layer-shell approval and close the app's layers",
-       IpcCommandGroup::Control, true, &IpcCommands::layerShellRevoke, nullptr},
+       IpcCommandGroup::Control, true, IpcDeferredHandler{&IpcCommands::layerShellRevoke}, nullptr,
+       kSaveReplyTimeoutSec},
       {"global-shortcuts", "", "list global shortcut grants and app sessions", IpcCommandGroup::Inspect, false,
        &IpcCommands::globalShortcuts, &printGlobalShortcuts},
       {"global-shortcuts-revoke", "<app-id|all>", "forget an app's global shortcut approvals and unbind it",
-       IpcCommandGroup::Control, true, &IpcCommands::globalShortcutsRevoke, nullptr},
+       IpcCommandGroup::Control, true, IpcDeferredHandler{&IpcCommands::globalShortcutsRevoke}, nullptr,
+       kSaveReplyTimeoutSec},
       {"global-shortcuts-assign", "<app-id> <shortcut-id> <chord|off>",
        "set one global shortcut's keys in settings.toml; refuses a desktop keybind or another app's keys",
        IpcCommandGroup::Control, true, &IpcCommands::globalShortcutsAssign, &printGlobalShortcutAssign},

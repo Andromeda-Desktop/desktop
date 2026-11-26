@@ -1,28 +1,78 @@
 #include "input/input_capture_permissions.h"
-#include "server/client_trust.h"
 
 #include "check.h"
+#include "loop_pump.h"
+#include "server/client_trust.h"
 
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <expected>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
+#include <memory>
 #include <optional>
 #include <random>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
-using andromeda::InputCapturePermissions;
+using andromeda::InputCaptureGrant;
 using andromeda::InputPermissionKind;
 
 namespace {
+  // A grant callback whose grant always reaches its client.
+  template <class Done> auto delivered(Done done) {
+    return [done = std::move(done)](std::optional<InputCaptureGrant> grant) {
+      done(std::move(grant));
+      return true;
+    };
+  }
+
+  // The store with each change awaited on the test loop.
+  struct InputCapturePermissions {
+    andromeda::InputCapturePermissions store;
+    explicit InputCapturePermissions(std::filesystem::path path) : store(test::eventLoop(), std::move(path)) {}
+    std::optional<InputCaptureGrant> issue(
+        std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer,
+        InputPermissionKind kind = InputPermissionKind::Capture
+    ) {
+      return test::await<std::optional<InputCaptureGrant>>([&](auto done) {
+        store.issue(application, capabilities, persistMode, peer, kind, delivered(std::move(done)));
+      });
+    }
+    std::optional<InputCaptureGrant> restore(
+        std::string_view token, std::string_view application, uint32_t capabilities, uint32_t persistMode,
+        uint64_t peer, InputPermissionKind kind = InputPermissionKind::Capture
+    ) {
+      return test::await<std::optional<InputCaptureGrant>>([&](auto done) {
+        store.restore(token, application, capabilities, persistMode, peer, kind, delivered(std::move(done)));
+      });
+    }
+    bool revoke(std::string_view id) {
+      return test::await<bool>([&](auto done) { store.revoke(id, std::move(done)); });
+    }
+    std::expected<std::string, std::string> addBinary(std::string_view path) {
+      return test::await<std::expected<std::string, std::string>>([&](auto done) {
+        store.addBinary(path, std::move(done));
+      });
+    }
+    bool removeBinary(std::string_view path) {
+      return test::await<bool>([&](auto done) { store.removeBinary(path, std::move(done)); });
+    }
+    void expirePeer(uint64_t peer) { store.expirePeer(peer); }
+    auto list() { return store.list(); }
+    auto binaries() { return store.binaries(); }
+  };
+
   constexpr std::string_view kId = "11111111111111111111111111111111";
   constexpr std::string_view kToken = "2222222222222222222222222222222222222222222222222222222222222222";
 
@@ -491,6 +541,192 @@ ANDROMEDA_TEST(aTrustedBinaryListIsCappedAndABadEntryRefusesTheStore) {
   InputCapturePermissions permissions(fixture.path);
   CHECK(permissions.binaries() == std::vector<std::string>{"/bin/a"});
   CHECK(permissions.restore(kToken, "org.test.Capture", 3, 2, 11).has_value());
+}
+
+// Results arrive late (the loop is pumped at random) and a restart drops the results still queued. An acknowledged
+// revoke stays gone from the file and its token never restores; every other acknowledged grant stays on file.
+ANDROMEDA_TEST(queuedChangesSettleToTheFileAndAcknowledgedRevokesStayGone) {
+  for (uint32_t seed = 1; seed <= 30; ++seed) {
+    const Fixture fixture;
+    struct Known {
+      std::string token;
+      std::string application;
+      bool revoked = false;
+    };
+    // Grants by id. An id whose change was queued when the store restarted is uncertain: its result was dropped.
+    std::map<std::string, Known> known;
+    std::set<std::string> uncertain;
+    enum class Op : uint8_t { Issue, Restore, Revoke, RevokeAll };
+    struct Pending {
+      Op op;
+      std::string id;
+    };
+    std::map<int, Pending> pending;
+    int nextOp = 0;
+    auto store = std::make_unique<andromeda::InputCapturePermissions>(test::eventLoop(), fixture.path);
+    std::mt19937 random(seed);
+
+    // Grants with no change queued: a queued restore rotates the token this step would send.
+    const auto live = [&] {
+      std::vector<std::string> ids;
+      if (std::ranges::any_of(pending, [](const auto& entry) { return entry.second.op == Op::RevokeAll; })) {
+        return ids;
+      }
+      for (const auto& [id, grant] : known) {
+        const bool queued = std::ranges::any_of(pending, [&](const auto& entry) { return entry.second.id == id; });
+        if (!grant.revoked && !uncertain.contains(id) && !queued) {
+          ids.push_back(id);
+        }
+      }
+      return ids;
+    };
+    for (int step = 0; step < 80; ++step) {
+      const int op = nextOp++;
+      const std::vector<std::string> ids = live();
+      std::string application;
+      switch (random() % 6) {
+      case 0:
+      case 1:
+        pending[op] = {Op::Issue, {}};
+        application = "org.test.App" + std::to_string(random() % 4);
+        store->issue(
+            application, 3, 2, 11, InputPermissionKind::Capture,
+            [&, op, application](std::optional<InputCaptureGrant> grant) {
+              pending.erase(op);
+              CHECK(grant.has_value());
+              if (grant) {
+                known[grant->id] = {grant->token, application, false};
+              }
+              return true;
+            }
+        );
+        break;
+      case 2: {
+        if (ids.empty()) {
+          break;
+        }
+        const std::string id = ids[random() % ids.size()];
+        pending[op] = {Op::Restore, id};
+        // list() takes the store lock on this thread while the saver may be writing.
+        CHECK(std::ranges::contains(store->list(), id, &andromeda::InputCapturePermission::id));
+        store->restore(
+            known[id].token, known[id].application, 3, 2, 11, InputPermissionKind::Capture,
+            [&, op, id](std::optional<InputCaptureGrant> grant) {
+              pending.erase(op);
+              CHECK(grant.has_value() && grant->id == id);
+              if (grant) {
+                known[id].token = grant->token;
+              }
+              return true;
+            }
+        );
+        break;
+      }
+      case 3:
+      case 4: {
+        if (ids.empty()) {
+          break;
+        }
+        const std::string id = ids[random() % ids.size()];
+        pending[op] = {Op::Revoke, id};
+        store->revoke(id, [&, op, id](bool revoked) {
+          pending.erase(op);
+          CHECK(revoked);
+          known[id].revoked = revoked;
+        });
+        break;
+      }
+      default:
+        if (random() % 3 == 0) {
+          pending[op] = {Op::RevokeAll, {}};
+          store->revoke("all", [&, op](bool revoked) {
+            pending.erase(op);
+            CHECK(revoked);
+            // Results arrive in request order: every grant known now was issued before this revoke.
+            for (auto& [id, grant] : known) {
+              grant.revoked = true;
+            }
+          });
+        } else {
+          for (const auto& [seq, change] : pending) {
+            if (change.op == Op::RevokeAll) {
+              for (const auto& [id, grant] : known) {
+                uncertain.insert(id);
+              }
+            } else if (!change.id.empty()) {
+              uncertain.insert(change.id);
+            }
+          }
+          pending.clear();
+          // The old store finishes its queued saves before the next one loads, as across a compositor restart.
+          store.reset();
+          store = std::make_unique<andromeda::InputCapturePermissions>(test::eventLoop(), fixture.path);
+        }
+      }
+      for (uint32_t pumps = random() % 3; pumps > 0; --pumps) {
+        wl_event_loop_dispatch(test::eventLoop(), 0);
+      }
+    }
+    test::pumpUntil([&] { return pending.empty(); });
+
+    const auto ids = [&] {
+      std::set<std::string> listed;
+      for (const auto& permission : store->list()) {
+        listed.insert(permission.id);
+      }
+      return listed;
+    };
+    std::set<std::string> memory;
+    {
+      // While another holder has the lock, list() answers from memory instead of the file.
+      const andromeda::private_state::Lock held(fixture.path, ".input-capture-permissions.lock");
+      CHECK(static_cast<bool>(held));
+      memory = ids();
+    }
+    const std::set<std::string> stored = ids();
+    CHECK(memory == stored);
+    for (const auto& [id, grant] : known) {
+      if (grant.revoked) {
+        CHECK(!stored.contains(id));
+        CHECK(!test::await<std::optional<InputCaptureGrant>>([&](auto done) {
+          store->restore(grant.token, grant.application, 3, 2, 11, InputPermissionKind::Capture, delivered(std::move(done)));
+        }));
+      } else if (!uncertain.contains(id)) {
+        CHECK(stored.contains(id));
+      }
+    }
+  }
+}
+
+// A grant whose client is gone when the store answers is undone: an issued one leaves the file, and a durable restore
+// gives the old token back, so the app can still use it.
+ANDROMEDA_TEST(aGrantThatReachesNoClientIsUndone) {
+  const Fixture fixture;
+  InputCapturePermissions permissions(fixture.path);
+  const auto kept = permissions.issue("org.test.Capture", 3, 2, 11);
+  CHECK(kept.has_value());
+  if (!kept) {
+    return;
+  }
+  bool answered = false;
+  permissions.store.restore(
+      kept->token, "org.test.Capture", 3, 2, 11, InputPermissionKind::Capture,
+      [&](std::optional<InputCaptureGrant> grant) {
+        answered = true;
+        CHECK(grant.has_value());
+        return false;
+      }
+  );
+  test::pumpUntil([&] { return answered; });
+  std::optional<InputCaptureGrant> dropped;
+  permissions.store.issue("org.test.Other", 3, 2, 11, InputPermissionKind::Capture, [&](auto grant) {
+    dropped = grant;
+    return false;
+  });
+  test::pumpUntil([&] { return dropped.has_value(); });
+  // Queued after the put-back and the revoke, so it sees their result.
+  CHECK(permissions.restore(kept->token, "org.test.Capture", 3, 2, 11).has_value());
+  CHECK(!InputCapturePermissions(fixture.path).restore(dropped->token, "org.test.Other", 3, 2, 11));
 }
 
 int main() { return RUN_TESTS(); }

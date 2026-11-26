@@ -78,8 +78,9 @@ namespace andromeda {
     void notifyConfiguredWork();
 
   private:
-    // Configured: the reply waits until no output has configured work left (its request started some).
-    enum class FrameWait : uint8_t { None, Drawn, Settled, Configured };
+    // Configured: the reply waits until no output has configured work left (its request started some). Job: the
+    // reply waits on a deferred handler (a state save).
+    enum class FrameWait : uint8_t { None, Drawn, Settled, Configured, Job };
 
     static constexpr size_t kMaxRequestSize = 65536;
 
@@ -101,6 +102,8 @@ namespace andromeda {
       FrameWait frameWait = FrameWait::None;
       std::vector<std::string> waitOutputs;
       std::string waitReply;
+      // Identifies the Job wait a deferred reply belongs to; a reply for an older one is dropped.
+      uint64_t jobSeq = 0;
     };
 
     static int onListenReadable(int fd, uint32_t mask, void* data);
@@ -119,6 +122,7 @@ namespace andromeda {
     std::optional<std::string> handleRequest(Connection& connection, std::string_view line);
     std::optional<std::string>
     dispatchRequest(Connection& connection, const nlohmann::json& request, size_t requestSize);
+    static int waitTimeoutMs(FrameWait wait);
     void beginFrameWait(Connection& connection, FrameWait wait, std::string reply);
     void finishFrameWait(Connection& connection, std::string response);
     void answerRequest(Connection& connection, const std::string& line);
@@ -142,6 +146,9 @@ namespace andromeda {
     // Subscribers (shell, portal) stay connected; one-shot CLI requests close after their reply.
     ipc::ClientSlots m_slots{64};
     std::vector<std::unique_ptr<Connection>> m_connections;
+    uint64_t m_nextJob = 0;
+    // Deferred replies hold a weak reference: one that arrives after the Ipc is gone is dropped.
+    std::shared_ptr<int> m_alive = std::make_shared<int>(0);
     // Last payload broadcast per family, indexed by the bit position of the event. A family that recomputes to the
     // same JSON is dropped rather than woken through to every subscriber; a fresh subscriber gets its own initial
     // line from the subscribe handler, so skipping a no-op broadcast can never leave anyone behind.

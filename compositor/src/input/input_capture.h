@@ -35,7 +35,8 @@ namespace andromeda {
     void authorizeSession(uint64_t id, bool allowed, bool remember = false);
     [[nodiscard]] std::vector<InputCapturePermission> permissions();
     [[nodiscard]] InputCapturePermissions& permissionStore();
-    [[nodiscard]] bool revokePermission(std::string_view id);
+    // Closes the sessions on the grant at once; `done` gets the store's answer after the save.
+    void revokePermission(std::string_view id, std::function<void(bool)> done);
     [[nodiscard]] bool active() const;
     [[nodiscard]] uint32_t capabilities() const;
     void addKeyboard(wlr_keyboard* keyboard);

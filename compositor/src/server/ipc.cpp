@@ -429,11 +429,12 @@ namespace andromeda {
   int Ipc::onConnectionTimeout(void* data) {
     auto* connection = static_cast<Connection*>(data);
     if (connection->frameWait != FrameWait::None) {
-      const bool configured = connection->frameWait == FrameWait::Configured;
-      const std::string what = connection->frameWait == FrameWait::Settled ? "not settled"
-          : configured                                                     ? "output configuration not applied"
-                                                                           : "no frame drawn";
-      const int timeoutMs = configured ? kConfiguredWaitTimeoutMs : kFrameWaitTimeoutMs;
+      const FrameWait wait = connection->frameWait;
+      const std::string what = wait == FrameWait::Settled ? "not settled"
+          : wait == FrameWait::Configured                 ? "output configuration not applied"
+          : wait == FrameWait::Job                        ? "state save not finished"
+                                                          : "no frame drawn";
+      const int timeoutMs = waitTimeoutMs(wait);
       connection->owner->finishFrameWait(
           *connection, nlohmann::json{{"err", what + " within " + std::to_string(timeoutMs / 1000) + "s"}}.dump()
       );
@@ -443,6 +444,12 @@ namespace andromeda {
     return 0;
   }
 
+  int Ipc::waitTimeoutMs(FrameWait wait) {
+    return wait == FrameWait::Configured ? kConfiguredWaitTimeoutMs
+        : wait == FrameWait::Job         ? kSaveWaitTimeoutMs
+                                         : kFrameWaitTimeoutMs;
+  }
+
   void Ipc::beginFrameWait(Connection& connection, FrameWait wait, std::string reply) {
     connection.frameWait = wait;
     connection.waitReply = std::move(reply);
@@ -450,11 +457,9 @@ namespace andromeda {
     // Nothing more is read from a waiting connection, and a client that half-closes must not end the wait.
     wl_event_source_fd_update(connection.fdSource, 0);
     if (connection.deadline != nullptr) {
-      wl_event_source_timer_update(
-          connection.deadline, wait == FrameWait::Configured ? kConfiguredWaitTimeoutMs : kFrameWaitTimeoutMs
-      );
+      wl_event_source_timer_update(connection.deadline, waitTimeoutMs(wait));
     }
-    if (wait == FrameWait::Configured) {
+    if (wait == FrameWait::Configured || wait == FrameWait::Job) {
       return;
     }
     for (const auto& output : m_server->outputs()) {
@@ -800,7 +805,27 @@ namespace andromeda {
       }
       arg = req["arg"].get<std::string>();
     }
-    return spec->handle(*m_server, arg).dump();
+    if (const auto* deferred = std::get_if<IpcDeferredHandler>(&spec->handle)) {
+      // The wait starts first: a handler may answer before it returns.
+      beginFrameWait(connection, FrameWait::Job, {});
+      const uint64_t seq = connection.jobSeq = ++m_nextJob;
+      (*deferred)(
+          *m_server, arg,
+          [this, alive = std::weak_ptr<int>(m_alive), target = &connection, seq](const nlohmann::json& reply) {
+            if (alive.expired()) {
+              return;
+            }
+            const auto entry = std::ranges::find_if(m_connections, [&](const auto& candidate) {
+              return candidate.get() == target && candidate->frameWait == FrameWait::Job && candidate->jobSeq == seq;
+            });
+            if (entry != m_connections.end()) {
+              finishFrameWait(**entry, reply.dump());
+            }
+          }
+      );
+      return std::nullopt;
+    }
+    return std::get<IpcHandler>(spec->handle)(*m_server, arg).dump();
   }
 
   void Ipc::broadcastEvent(uint16_t event, const nlohmann::json& payload) {

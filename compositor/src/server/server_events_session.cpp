@@ -93,7 +93,7 @@ namespace andromeda {
           wlr_layer_surface_v1_destroy(denied->layerSurface());
           return;
         }
-        if (!self->m_allowedLayerShellApps.contains(app) && !self->m_layerShellPermissions.contains(app)) {
+        if (!self->m_allowedLayerShellApps.contains(app) && !self->m_layerShellPermissions->contains(app)) {
           surface->awaitAccess();
         }
         surface->setSandboxApp(std::move(app));

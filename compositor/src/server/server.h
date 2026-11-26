@@ -366,8 +366,10 @@ namespace andromeda {
     void confirmInputCapture(bool remember = false);
     void confirmLayerShellAccess(bool remember = false);
     // Forgets a remembered or session answer (`all` for every app) and closes the app's layer surfaces.
-    bool revokeLayerShellAccess(std::string_view app);
-    [[nodiscard]] const LayerShellPermissions& layerShellPermissions() const { return m_layerShellPermissions; }
+    // `done` runs on the event loop once the store answered: false when the app was neither remembered nor allowed
+    // this session, or the state write failed.
+    void revokeLayerShellAccess(std::string_view app, std::function<void(bool revoked)> done);
+    [[nodiscard]] const LayerShellPermissions& layerShellPermissions() const { return *m_layerShellPermissions; }
     // A sandboxed app's last surface awaiting layer-shell access is gone.
     void layerShellRequestGone(const std::string& app);
     void dismissConfirmation();
@@ -1184,7 +1186,8 @@ namespace andromeda {
     std::unordered_set<std::string> m_allowedLayerShellApps;
     std::unordered_set<std::string> m_deniedLayerShellApps;
     std::optional<std::string> m_pendingLayerShellApp;
-    LayerShellPermissions m_layerShellPermissions{LayerShellPermissions::defaultPath()};
+    // Made with the display (its saver posts to the event loop); never null after that.
+    std::unique_ptr<LayerShellPermissions> m_layerShellPermissions;
     void promptLayerShellAccess();
     void resolveLayerShellAccess(bool allow);
     wl_event_source* m_backgroundFrameTimer = nullptr;

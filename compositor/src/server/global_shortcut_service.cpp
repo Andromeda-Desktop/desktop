@@ -50,13 +50,12 @@ namespace andromeda {
   } // namespace
 
   GlobalShortcutService::GlobalShortcutService(Server& server)
-      : m_server(server), m_registry([this](const ShortcutChord& chord) { return reserved(chord); }) {
-    if (auto grants = m_store.load()) {
-      m_registry.setGrants(std::move(*grants));
-    } else {
+      : m_server(server), m_registry([this](const ShortcutChord& chord) { return reserved(chord); }),
+        m_grants(m_registry, wl_display_get_event_loop(server.display()), GlobalShortcutStore::defaultPath()) {
+    if (!m_grants.load()) {
       kLog.warn(
           "{} is unsafe or malformed; approvals this session are not saved and the file is left as is",
-          m_store.path().string()
+          m_grants.path().string()
       );
     }
     applyConfig();
@@ -234,16 +233,15 @@ namespace andromeda {
     sync(monotonicMsec());
   }
 
-  bool GlobalShortcutService::revoke(std::string_view app) {
-    const auto merged = m_store.update(app, {});
-    if (!merged) {
-      kLog.warn("could not save the revoke of '{}' to {}", app, m_store.path().string());
-      return false;
-    }
-    m_registry.revoke(app);
-    m_registry.setGrants(*merged);
+  void GlobalShortcutService::revoke(std::string_view app, std::function<void(bool)> done) {
+    m_grants.revoke(app, [this, app = std::string(app), done = std::move(done)](bool saved) {
+      if (!saved) {
+        kLog.warn("could not save the revoke of '{}' to {}", app, m_grants.path().string());
+      }
+      sync(monotonicMsec());
+      done(saved);
+    });
     sync(monotonicMsec());
-    return true;
   }
 
   GlobalShortcutService::Assigned
@@ -273,15 +271,12 @@ namespace andromeda {
   }
 
   void GlobalShortcutService::persist(const std::string& app) {
-    const auto& grants = m_registry.grants();
-    const auto found = grants.find(app);
-    const auto merged =
-        m_store.update(app, found == grants.end() ? std::map<std::string, ShortcutChord>{} : found->second);
-    if (!merged) {
-      kLog.warn("could not save the approval of '{}' to {}", app, m_store.path().string());
-      return;
-    }
-    m_registry.setGrants(*merged);
+    m_grants.persist(app, [this, app](bool saved) {
+      if (!saved) {
+        kLog.warn("could not save the approval of '{}' to {}", app, m_grants.path().string());
+      }
+      sync(monotonicMsec());
+    });
   }
 
   void GlobalShortcutService::sync(uint32_t timeMsec) {

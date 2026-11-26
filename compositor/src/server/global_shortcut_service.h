@@ -4,6 +4,7 @@
 #include "input/global_shortcuts.h"
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -39,8 +40,9 @@ namespace andromeda {
     void removeKeyboard(ShortcutKeyTracker::Keyboard keyboard);
     // [global_shortcuts], keybinds or the Mod key changed.
     void applyConfig();
-    // Forgets the app's grants (all apps when empty) and unbinds its sessions. False when the store write fails.
-    bool revoke(std::string_view app);
+    // Forgets the app's grants (all apps when empty) and unbinds its sessions at once; `done` gets false when the
+    // store write fails.
+    void revoke(std::string_view app, std::function<void(bool)> done);
     struct Assigned {
       enum class Result : uint8_t { Ok, BadChord, Reserved, InUse } result;
       std::string holder;  // the app that holds the chord, for InUse
@@ -91,7 +93,7 @@ namespace andromeda {
     Server& m_server;
     ShortcutRegistry m_registry;
     ShortcutKeyTracker m_keys;
-    GlobalShortcutStore m_store{GlobalShortcutStore::defaultPath()};
+    ShortcutGrantSync m_grants;
     std::map<ShortcutSessionId, Session> m_sessions;
     std::optional<Showing> m_showing;
     wl_event_source* m_refreshIdle = nullptr;

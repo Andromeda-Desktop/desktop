@@ -572,39 +572,47 @@ namespace andromeda {
       dismissConfirmation();
       return;
     }
-    if (remember && m_pendingLayerShellApp && !m_layerShellPermissions.remember(*m_pendingLayerShellApp)) {
-      kLog.warn("layer-shell access for app='{}' is not remembered: state write failed", *m_pendingLayerShellApp);
+    // Access is granted now; only the remembering waits for the save.
+    if (remember && m_pendingLayerShellApp) {
+      m_layerShellPermissions->remember(*m_pendingLayerShellApp, [app = *m_pendingLayerShellApp](bool saved) {
+        if (!saved) {
+          kLog.warn("layer-shell access for app='{}' is not remembered: state write failed", app);
+        }
+      });
     }
     resolveLayerShellAccess(true);
     m_quitConfirm->hide();
   }
 
-  bool Server::revokeLayerShellAccess(std::string_view app) {
+  void Server::revokeLayerShellAccess(std::string_view app, std::function<void(bool revoked)> done) {
     const bool all = app == "all";
-    const bool remembered = m_layerShellPermissions.revoke(app);
-    // A revoke also forgets a session deny, so the app asks again.
+    // The app loses access at once; only the reply waits for the save. A revoke also forgets a session deny, so the
+    // app asks again.
     const std::string key(app);
     const bool session = all || m_allowedLayerShellApps.erase(key) + m_deniedLayerShellApps.erase(key) > 0;
     if (all) {
       m_allowedLayerShellApps.clear();
       m_deniedLayerShellApps.clear();
     }
-    if (!remembered && !session) {
-      return false;
-    }
     std::vector<wlr_layer_surface_v1*> closing;
     for (const auto& layer : m_layerSurfaces) {
-      if (!layer->sandboxApp().empty() && !layer->awaitingAccess() && (all || layer->sandboxApp() == app)
-          && !m_layerShellPermissions.contains(layer->sandboxApp())
-          && !m_allowedLayerShellApps.contains(layer->sandboxApp())) {
+      if (!layer->sandboxApp().empty() && !layer->awaitingAccess() && (all || layer->sandboxApp() == app)) {
         closing.push_back(layer->layerSurface());
       }
     }
     for (wlr_layer_surface_v1* surface : closing) {
       wlr_layer_surface_v1_destroy(surface);
     }
-    kLog.info("layer-shell access revoked app='{}'", app);
-    return true;
+    // A failed save may leave the app remembered on file, whatever this session allowed.
+    m_layerShellPermissions->revoke(
+        app, [app = std::string(app), session, done = std::move(done)](std::optional<bool> removed) {
+          const bool revoked = removed.has_value() && (*removed || session);
+          if (revoked) {
+            kLog.info("layer-shell access revoked app='{}'", app);
+          }
+          done(revoked);
+        }
+    );
   }
 
   void Server::layerShellRequestGone(const std::string& app) {
@@ -876,6 +884,9 @@ namespace andromeda {
     if (m_display == nullptr) {
       throw std::runtime_error("failed to create wl_display");
     }
+    m_layerShellPermissions = std::make_unique<LayerShellPermissions>(
+        wl_display_get_event_loop(m_display), LayerShellPermissions::defaultPath()
+    );
     m_protocolLogger = wl_display_add_protocol_logger(m_display, onProtocolMessage, this);
     if (m_protocolLogger == nullptr) {
       throw std::runtime_error("failed to register Wayland protocol logger");
@@ -1349,6 +1360,7 @@ namespace andromeda {
     // Their sources belong to the display's event loop, which is destroyed below.
     m_screenActivity.reset();
     m_keymapWorker.reset();
+    m_layerShellPermissions.reset();
     m_keymapQuery.reset();
     scanout_keeper::finishRelease();
     if (m_cursor != nullptr) {

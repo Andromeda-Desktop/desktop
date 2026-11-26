@@ -63,7 +63,7 @@ unit_tests = [
   ['shortcuts-inhibit', ['unit/shortcuts_inhibit.cpp'], []],
   ['shortcut-keysym', ['unit/shortcut_keysym.cpp'], []],
   ['global-shortcuts', ['unit/global_shortcuts.cpp'], []],
-  ['global-shortcut-store', ['unit/global_shortcut_store.cpp'], []],
+  ['global-shortcut-store', ['unit/global_shortcut_store.cpp'], [andromeda_core_dep]],
   ['xcursor-matcher', ['unit/xcursor_matcher.cpp'], []],
   ['output-direction', ['unit/output_direction.cpp'], []],
   ['output-identity', ['unit/output_identity.cpp'], []],

@@ -2,10 +2,12 @@
 
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <fcntl.h>
 #include <sys/file.h>
 #include <sys/random.h>
 #include <sys/stat.h>
+#include <thread>
 #include <unistd.h>
 
 namespace andromeda::private_state {
@@ -50,9 +52,40 @@ namespace andromeda::private_state {
       }
       return true;
     }
+
+    // Writes a temporary file, fsyncs it, renames it over `file`, then fsyncs the directory.
+    bool writeAtomic(const std::filesystem::path& file, std::string_view bytes) {
+      const int directory = openPrivateDirectory(file);
+      if (directory < 0) {
+        return false;
+      }
+      const auto suffix = randomHex(16);
+      if (!suffix) {
+        close(directory);
+        return false;
+      }
+      const std::string temporary = "." + file.filename().string() + "." + *suffix;
+      const int fd = openat(directory, temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+      if (fd < 0) {
+        close(directory);
+        return false;
+      }
+      const bool written = writeAll(fd, bytes) && fsync(fd) == 0;
+      const bool closed = close(fd) == 0;
+      const bool replaced =
+          written && closed && renameat(directory, temporary.c_str(), directory, file.filename().c_str()) == 0;
+      if (!replaced) {
+        unlinkat(directory, temporary.c_str(), 0);
+      } else {
+        // The rename already committed the new state; a caller must not keep the old state after it.
+        fsync(directory);
+      }
+      close(directory);
+      return replaced;
+    }
   } // namespace
 
-  Lock::Lock(const std::filesystem::path& file, std::string_view lockName) {
+  Lock::Lock(const std::filesystem::path& file, std::string_view lockName, std::chrono::milliseconds wait) {
     const int directory = openPrivateDirectory(file);
     if (directory < 0) {
       return;
@@ -60,9 +93,21 @@ namespace andromeda::private_state {
     m_fd = openat(directory, std::string(lockName).c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
     close(directory);
     struct stat info{};
-    if (m_fd >= 0 && (fstat(m_fd, &info) != 0 || !privateRegular(info) || flock(m_fd, LOCK_EX | LOCK_NB) != 0)) {
-      close(m_fd);
+    if (m_fd < 0 || fstat(m_fd, &info) != 0 || !privateRegular(info)) {
+      if (m_fd >= 0) {
+        close(m_fd);
+      }
       m_fd = -1;
+      return;
+    }
+    const auto deadline = std::chrono::steady_clock::now() + wait;
+    while (flock(m_fd, LOCK_EX | LOCK_NB) != 0) {
+      if (errno != EWOULDBLOCK || std::chrono::steady_clock::now() >= deadline) {
+        close(m_fd);
+        m_fd = -1;
+        return;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
   }
 
@@ -106,34 +151,38 @@ namespace andromeda::private_state {
     return bytes;
   }
 
-  bool writeAtomic(const std::filesystem::path& file, std::string_view bytes) {
-    const int directory = openPrivateDirectory(file);
-    if (directory < 0) {
-      return false;
+  Saver::Saver(
+      wl_event_loop* loop, std::filesystem::path file, std::string lockName, size_t maxBytes, const char* thread
+  )
+      : m_file(std::move(file)), m_lockName(std::move(lockName)), m_maxBytes(maxBytes), m_worker(loop, thread) {}
+
+  void Saver::post(
+      std::function<std::optional<std::string>(const ReadResult&)> merge, std::function<void(bool saved)> done
+  ) {
+    if (!m_worker.ready()) {
+      done(false);
+      return;
     }
-    const auto suffix = randomHex(16);
-    if (!suffix) {
-      close(directory);
-      return false;
+    m_worker.post<bool>(
+        [file = m_file, lockName = m_lockName, maxBytes = m_maxBytes, merge = std::move(merge)] {
+          // A main-thread reader or another compositor instance holds the lock only briefly.
+          const Lock lock(file, lockName, std::chrono::seconds(1));
+          if (!lock) {
+            return false;
+          }
+          const std::optional<std::string> bytes = merge(read(file, maxBytes));
+          return !bytes || (bytes->size() <= maxBytes && writeAtomic(file, *bytes));
+        },
+        std::move(done)
+    );
+  }
+
+  void Saver::then(std::function<void()> done) {
+    if (!m_worker.ready()) {
+      done();
+      return;
     }
-    const std::string temporary = "." + file.filename().string() + "." + *suffix;
-    const int fd = openat(directory, temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
-    if (fd < 0) {
-      close(directory);
-      return false;
-    }
-    const bool written = writeAll(fd, bytes) && fsync(fd) == 0;
-    const bool closed = close(fd) == 0;
-    const bool replaced =
-        written && closed && renameat(directory, temporary.c_str(), directory, file.filename().c_str()) == 0;
-    if (!replaced) {
-      unlinkat(directory, temporary.c_str(), 0);
-    } else {
-      // The rename already committed the new state; a caller must not keep the old state after it.
-      fsync(directory);
-    }
-    close(directory);
-    return replaced;
+    m_worker.post<bool>([] { return true; }, [done = std::move(done)](bool) { done(); });
   }
 
   std::optional<std::string> randomHex(size_t bytes) {

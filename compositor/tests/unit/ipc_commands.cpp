@@ -241,7 +241,11 @@ ANDROMEDA_TEST(rejectsOutputCreateExtraArguments) {
 
 ANDROMEDA_TEST(effectsCommandReportsStatesSuppressionAndDeclarationOrder) {
   const auto* spec = andromeda::findIpcCommand("effects");
-  CHECK(spec != nullptr && spec->printHuman != nullptr && spec->handle == &andromeda::IpcCommands::effects);
+  CHECK(
+      spec != nullptr
+      && spec->printHuman != nullptr
+      && spec->handle == decltype(spec->handle){&andromeda::IpcCommands::effects}
+  );
   if (spec == nullptr || spec->printHuman == nullptr) {
     return;
   }

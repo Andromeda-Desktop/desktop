@@ -3,27 +3,32 @@
 #include "config/value_parse.h"
 #include "scene/effect_audio.h"
 
+#include <functional>
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 
 namespace andromeda {
+
+  // Sends a deferred handler's reply; a reply after the connection closed or timed out is dropped.
+  using IpcReply = std::function<void(nlohmann::json)>;
 
   class Server;
 
   struct IpcCommands {
     static nlohmann::json keyboardLayouts(Server& server, std::string_view arg);
     static nlohmann::json inputCapturePermissions(Server& server, std::string_view arg);
-    static nlohmann::json inputCaptureRevoke(Server& server, std::string_view arg);
+    static void inputCaptureRevoke(Server& server, std::string_view arg, IpcReply reply);
     static nlohmann::json trustedBinaries(Server& server, std::string_view arg);
-    static nlohmann::json trustedBinaryAdd(Server& server, std::string_view arg);
-    static nlohmann::json trustedBinaryRemove(Server& server, std::string_view arg);
+    static void trustedBinaryAdd(Server& server, std::string_view arg, IpcReply reply);
+    static void trustedBinaryRemove(Server& server, std::string_view arg, IpcReply reply);
     static nlohmann::json layerShellPermissions(Server& server, std::string_view arg);
-    static nlohmann::json layerShellRevoke(Server& server, std::string_view arg);
+    static void layerShellRevoke(Server& server, std::string_view arg, IpcReply reply);
     static nlohmann::json globalShortcuts(Server& server, std::string_view arg);
-    static nlohmann::json globalShortcutsRevoke(Server& server, std::string_view arg);
+    static void globalShortcutsRevoke(Server& server, std::string_view arg, IpcReply reply);
     static nlohmann::json globalShortcutsAssign(Server& server, std::string_view arg);
     [[nodiscard]] static std::optional<EffectAudio> parseAudioSpectrum(const nlohmann::json& request);
     static nlohmann::json effects(Server& server, std::string_view arg);
@@ -86,6 +91,13 @@ namespace andromeda {
   inline constexpr int kConfiguredReplyTimeoutSec = 10;
   // The compositor answers a configured wait with an error before the CLI gives up.
   inline constexpr int kConfiguredWaitTimeoutMs = (kConfiguredReplyTimeoutSec - 2) * 1000;
+  // The CLI wait for a command that saves a state file: an fsync under heavy disk load can take seconds.
+  inline constexpr int kSaveReplyTimeoutSec = 10;
+  inline constexpr int kSaveWaitTimeoutMs = (kSaveReplyTimeoutSec - 2) * 1000;
+
+  using IpcHandler = nlohmann::json (*)(Server& server, std::string_view arg);
+  // For a command that waits on a job (a state save): it answers through `reply`, now or later.
+  using IpcDeferredHandler = void (*)(Server& server, std::string_view arg, IpcReply reply);
 
   struct IpcCommandSpec {
     std::string_view name;
@@ -93,7 +105,7 @@ namespace andromeda {
     std::string_view description;
     IpcCommandGroup group;
     bool takesArg;
-    nlohmann::json (*handle)(Server& server, std::string_view arg);
+    std::variant<IpcHandler, IpcDeferredHandler> handle;
     void (*printHuman)(const nlohmann::json& ok);
     // How long the CLI waits for the reply.
     int replyTimeoutSec = 2;
