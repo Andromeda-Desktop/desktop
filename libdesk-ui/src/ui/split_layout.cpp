@@ -10,6 +10,14 @@ namespace ui {
     using Tree = andromeda::tiling::DwindleTree;
     using Members = std::vector<std::uint64_t>;
     const auto join = std::exchange(m_pending, std::nullopt);
+    // A tree is not pruned while no split shows, so a joining item can still hold a tile from a split it left.
+    if (join) {
+      for (Tree& tree : m_trees) {
+        if (auto* stale = tree.find(join->joining); stale != nullptr) {
+          tree.detach(stale);
+        }
+      }
+    }
     // Each tree follows the split that holds most of its sessions and drops the rest; a split has at most one tree.
     std::vector<std::pair<const Members*, Tree*>> followed;
     for (Tree& tree : m_trees) {

@@ -58,7 +58,33 @@ void checkInvariants(const SessionList& list, const SplitTrees& trees, const Dwi
 
 } // namespace
 
+// The app syncs only while a split shows: a split left and joined again on another edge must take the new edge.
+void rejoinOnNewEdge() {
+  SessionList list;
+  SplitTrees trees;
+  const SplitTrees::Room room{.area = {.width = 1200, .height = 800}, .gap = 8, .minWidth = 200.0F};
+  const auto splitOf = [&list](std::uint64_t id) { return list.splitOf(id); };
+  list.apply(Open{1, SessionKind::Shell, "s", "~"});
+  list.apply(Open{2, SessionKind::Shell, "s", "~"});
+  list.apply(Show{1});
+  trees.pendJoin({.target = 1, .joining = 2, .edge = andromeda::tiling::EdgeRight});
+  list.apply(Join{1, 2, false});
+  CHECK(trees.sync(splitOf, list.visible(), room) != nullptr);
+  list.apply(Leave{2});
+  list.apply(Show{1});
+  trees.pendJoin({.target = 1, .joining = 2, .edge = andromeda::tiling::EdgeBottom});
+  list.apply(Join{1, 2, false});
+  DwindleTree* own = trees.sync(splitOf, list.visible(), room);
+  CHECK(own != nullptr);
+  if (own != nullptr) {
+    const auto tiles = own->arrange(room.area, room.gap, true);
+    const auto at = [&tiles](std::uint64_t key) { return std::ranges::find(tiles, key, &Tile::key)->box; };
+    CHECK(at(2).y > at(1).y && at(2).x == at(1).x);
+  }
+}
+
 int main() {
+  rejoinOnNewEdge();
   for (seed = 1; seed <= 300; ++seed) {
     std::mt19937 rng(seed);
     SessionList list;
@@ -70,7 +96,7 @@ int main() {
       const bool dropped = join != nullptr && std::uniform_int_distribution<int>(0, 1)(rng) == 0;
       // A drop joins the session the window shows.
       // A menu split (edge 0) lets the tree pick the side.
-      if (join != nullptr && list.shown()) {
+      if (join != nullptr && list.shown() && list.splitOf(join->joining) == nullptr) {
         trees.pendJoin({.target = join->target, .joining = join->joining, .edge = dropped ? edge : 0U});
       }
       const SplitTrees::Room room{.area = {.width = 1200, .height = 800}, .gap = 8, .minWidth = 200.0F};
