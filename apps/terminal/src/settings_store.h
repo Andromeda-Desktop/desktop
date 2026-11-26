@@ -5,6 +5,7 @@
 #include "ui/signal.h"
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <variant>
 
@@ -49,6 +50,8 @@ namespace term {
     FileState m_state;
     std::string m_bytes; // the file as last read or written: an event with the same bytes changes nothing
     GFileMonitor* m_monitor = nullptr;
+    int m_pendingWrites = 0; // writes not yet on disk; file events wait for the last one
+    std::shared_ptr<char> m_alive = std::make_shared<char>();
     Signal<> m_changed;
     ThemeStore m_themes;
     Signal<>::ScopedConnection m_themesChanged = m_themes.changed().connect([this] { m_changed.emit(); });

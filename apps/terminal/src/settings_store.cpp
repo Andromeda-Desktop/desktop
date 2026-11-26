@@ -1,6 +1,7 @@
 #include "settings_store.h"
 
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 
 #include <gio/gio.h>
@@ -67,6 +68,10 @@ namespace term {
   }
 
   void SettingsStore::load() {
+    // An event from one of our own writes: the newest settings are already applied.
+    if (m_pendingWrites > 0) {
+      return;
+    }
     std::ifstream in(m_path, std::ios::binary);
     if (!in) {
       if (!std::holds_alternative<Missing>(m_state) || !m_bytes.empty()) {
@@ -93,21 +98,19 @@ namespace term {
 
   void SettingsStore::update(const Settings& settings) {
     std::string bytes = writeSettings(settings, m_bytes);
-    const std::filesystem::path temp = m_path.string() + ".new";
-    {
-      std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-      out << bytes;
-      if (!out.flush()) {
-        kLog.warn("cannot write {}", temp.string());
+    ++m_pendingWrites;
+    andromeda::writeFileAsync(m_path, bytes, {}, [this, alive = std::weak_ptr<void>(m_alive)](bool ok) {
+      if (alive.expired()) {
         return;
       }
-    }
-    std::error_code ec;
-    std::filesystem::rename(temp, m_path, ec);
-    if (ec) {
-      kLog.warn("cannot replace {}: {}", m_path.string(), ec.message());
-      return;
-    }
+      if (!ok) {
+        kLog.warn("cannot replace {}", m_path.string());
+      }
+      // The file is final only after the last pending write: reconcile with what reached the disk.
+      if (--m_pendingWrites == 0) {
+        load();
+      }
+    });
     m_bytes = std::move(bytes);
     set(settings, Loaded{});
   }
