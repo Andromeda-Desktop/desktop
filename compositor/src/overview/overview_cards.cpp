@@ -419,6 +419,11 @@ namespace andromeda {
 
   void Overview::dropCard(View* view) {
     for (const auto& state : m_outputs) {
+      if (state->chrome != nullptr) {
+        state->chrome->forgetClose(view);
+      }
+    }
+    for (const auto& state : m_outputs) {
       const auto it =
           std::ranges::find_if(state->cards, [view](const std::unique_ptr<Card>& card) { return card->view == view; });
       if (it == state->cards.end()) {

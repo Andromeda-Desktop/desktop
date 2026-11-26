@@ -107,6 +107,12 @@ namespace andromeda::ov {
     void raise();
     // The window whose close button holds the layout point, as drawn by the last update; null when none does.
     [[nodiscard]] const void* closeAt(double lx, double ly) const;
+    // Drops the close button of a window whose card is gone, so a later window at its address cannot inherit it.
+    void forgetClose(const void* key) {
+      if (m_closeKey == key) {
+        m_closeKey = nullptr;
+      }
+    }
     // The workspace whose arrangement chip holds the layout point, as drawn by the last update.
     [[nodiscard]] std::optional<size_t> chipAt(double lx, double ly) const;
     // The open menu's row under the point, or -1; menuContains covers its whole panel.
