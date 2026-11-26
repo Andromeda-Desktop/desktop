@@ -2582,7 +2582,7 @@ void NetworkManagerService::readStateAsync(const std::function<void(NetworkState
   const std::weak_ptr<int> lifetimeToken = m_lifetimeToken;
   auto next = std::make_shared<NetworkState>();
   next->scanning = m_scanning;
-  next->vpnConnected = m_anyVpnConnected;
+  next->vpn = m_anyVpnConnected ? VpnState::Up : VpnState::Off;
   next->cellularActive = m_anyCellularActive;
 
   bool vpnFromList = false;
@@ -2601,10 +2601,10 @@ void NetworkManagerService::readStateAsync(const std::function<void(NetworkState
     if (lifetimeToken.expired()) {
       return;
     }
-    // vpnActive is informational only — an active VPN must not masquerade as
+    // The VPN state is informational only — an active VPN must not masquerade as
     // physical connectivity (connected/kind describe the physical link).
-    if (!next->vpnActive && vpnFromList) {
-      next->vpnActive = true;
+    if (next->vpn == VpnState::Off && vpnFromList) {
+      next->vpn = VpnState::Activating;
     }
     onComplete(std::move(*next));
   };
@@ -2844,7 +2844,9 @@ void NetworkManagerService::readStateAsync(const std::function<void(NetworkState
                 }
               }
 
-              next->vpnActive = (type == "vpn" || type == "wireguard");
+              if ((type == "vpn" || type == "wireguard") && next->vpn == VpnState::Off) {
+                next->vpn = VpnState::Activating;
+              }
               next->connected = state == kNmActiveConnectionStateActivated;
               next->resolving = state == kNmActiveConnectionStateActivating;
             }

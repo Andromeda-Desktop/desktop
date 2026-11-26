@@ -68,7 +68,7 @@ namespace ipc_events {
         {"signal", state.signalStrength},
         {"interface", state.interfaceName},
         {"ipv4", state.ipv4},
-        {"vpn", state.vpnConnected},
+        {"vpn", state.vpn == VpnState::Up},
     };
   }
 

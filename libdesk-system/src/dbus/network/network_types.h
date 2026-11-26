@@ -44,14 +44,16 @@ enum class NetworkConnectivity {
   Cellular = 4,
 };
 
+// Activating: NetworkManager has a VPN connection that is not up yet (no routes, or waiting for a secret).
+enum class VpnState : std::uint8_t { Off, Activating, Up };
+
 struct NetworkState {
   NetworkConnectivity kind = NetworkConnectivity::Unknown;
   bool connected = false;
   bool resolving = false; // active connection is activating, not yet connected
   bool wirelessEnabled = false;
   bool scanning = false;
-  bool vpnActive = false;          // a VPN connection is active or activating
-  bool vpnConnected = false;       // a VPN tunnel is fully activated (routes applied)
+  VpnState vpn = VpnState::Off;
   bool cellularActive = false;     // a cellular (gsm) connection is active or activating, primary or not
   std::string ssid;                // Wi-Fi only
   std::string ipv4;                // dotted-quad of first address; empty if none
