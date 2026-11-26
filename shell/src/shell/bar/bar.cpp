@@ -1159,10 +1159,15 @@ void Bar::fillLauncherSource(PanelOpenRequest& request) const {
     if (instance->output != request.output || instance->surface == nullptr) {
       continue;
     }
-    for (const auto& [root, widget] : instance->widgetByRoot) {
+    // Bar order (start, centre, end lane): the first launcher widget is the launcher button, ahead of a search
+    // pill or task view, which are launcher widgets too.
+    for (const auto* lane : {&instance->startWidgets, &instance->centerWidgets, &instance->endWidgets})
+    for (const auto& owned : *lane) {
+      const Widget* widget = owned.get();
       if (dynamic_cast<const LauncherWidget*>(widget) == nullptr) {
         continue;
       }
+      const Node* root = widget->outerNode();
       const Node* node = widget->barHoverBox();
       if (node == nullptr || node->width() <= 0.0F || node->height() <= 0.0F) {
         node = root;
