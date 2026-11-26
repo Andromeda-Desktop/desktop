@@ -1,6 +1,7 @@
 #include "system/default_apps.h"
 
-#include "core/log.h"
+#include "config/atomic_file.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 #include "system/desktop_entry.h"
 
@@ -10,12 +11,12 @@
 #include <cctype>
 #include <fstream>
 #include <optional>
+#include <sstream>
 
 namespace default_apps {
 
   namespace {
 
-    constexpr Logger kLog("default-apps");
 
     constexpr std::array<CategorySpec, 9> kCategories{{
         {Category::WebBrowser, "x-scheme-handler/http", "WebBrowser"},
@@ -116,12 +117,23 @@ namespace default_apps {
     return {};
   }
 
+  // The file as the next read must see it: a queued write wins over the disk.
+  std::istringstream readList(const std::filesystem::path& path) {
+    if (std::optional<std::string> pending = andromeda::pendingFileText(path)) {
+      return std::istringstream(std::move(*pending));
+    }
+    std::ifstream in(path);
+    std::ostringstream text;
+    text << in.rdbuf();
+    return std::istringstream(std::move(text).str());
+  }
+
   std::vector<std::string> defaultIds(const std::filesystem::path& path, Category category) {
     const auto it = std::ranges::find(kCategories, category, &CategorySpec::category);
     if (it == kCategories.end()) {
       return {};
     }
-    std::ifstream in(path);
+    std::istringstream in = readList(path);
     std::string line;
     bool inSection = false;
     while (std::getline(in, line)) {
@@ -178,7 +190,7 @@ namespace default_apps {
     }
     std::vector<std::string> lines;
     {
-      std::ifstream in(path);
+      std::istringstream in = readList(path);
       std::string line;
       while (std::getline(in, line)) {
         lines.push_back(line);
@@ -222,14 +234,11 @@ namespace default_apps {
       lines.push_back(newLine);
     }
 
-    std::ofstream out(path, std::ios::trunc);
-    if (!out) {
-      kLog.warn("cannot write {}", path.string());
-      return false;
-    }
+    std::string text;
     for (const std::string& line : lines) {
-      out << line << '\n';
+      text += line + '\n';
     }
+    writeTextFileAtomicAsync(path, std::move(text));
     return true;
   }
 

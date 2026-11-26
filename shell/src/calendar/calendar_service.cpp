@@ -14,6 +14,7 @@
 #include "core/deferred_call.h"
 #include "core/idle_worker_slots.h"
 #include "core/log.h"
+#include "core/shared_worker.h"
 #include "i18n/i18n.h"
 #include "net/http_client.h"
 #include "net/url_open.h"
@@ -323,7 +324,7 @@ void CalendarService::syncCachePersistence() {
       setCachePersistenceState(CachePersistenceState::BackendError, m_cacheMigrationPending);
       return;
     }
-    m_cacheKey = std::move(*key);
+    m_cacheKey = std::make_shared<const security::SecureKey>(std::move(*key));
     if (!loadCache() && m_cachePersistenceState == CachePersistenceState::Opening) {
       setCachePersistenceState(CachePersistenceState::BackendError, m_cacheMigrationPending);
     }
@@ -1512,7 +1513,7 @@ std::filesystem::path CalendarService::legacyCacheFilePath() {
 }
 
 bool CalendarService::loadCache() {
-  if (!m_cacheKey.has_value()) {
+  if (!m_cacheKey) {
     return false;
   }
 
@@ -1623,7 +1624,7 @@ bool CalendarService::parseCache(std::span<const std::uint8_t> contents) {
 }
 
 void CalendarService::saveCache() {
-  if (!m_cacheWritable || !m_cacheKey.has_value() || m_cachePersistenceState != CachePersistenceState::Ready) {
+  if (!m_cacheWritable || !m_cacheKey || m_cachePersistenceState != CachePersistenceState::Ready) {
     return;
   }
 
@@ -1650,14 +1651,25 @@ void CalendarService::saveCache() {
     }
   }
 
-  const std::string contents = nlohmann::json{{"events", std::move(events)}}.dump();
-  if (!calendar::cache::writeEncrypted(cacheFilePath(), contents, *m_cacheKey)) {
-    kLog.warn("failed to write encrypted calendar cache");
-    m_cacheWritable = false;
-    setCachePersistenceState(CachePersistenceState::BackendError, m_cacheMigrationPending);
-  } else {
-    m_storageKeyProvider.noteEncryptedDataExists();
-  }
+  // The write encrypts and fsyncs: it runs on SharedWorker, whose one thread keeps saves in order.
+  SharedWorker::instance().post<bool>(
+      m_alive,
+      [path = cacheFilePath(), contents = nlohmann::json{{"events", std::move(events)}}.dump(), key = m_cacheKey] {
+        return calendar::cache::writeEncrypted(path, contents, *key);
+      },
+      [this, key = m_cacheKey](bool written) {
+        if (written) {
+          m_storageKeyProvider.noteEncryptedDataExists();
+          return;
+        }
+        kLog.warn("failed to write encrypted calendar cache");
+        // A lock or key change while the write ran owns the state now.
+        if (m_cacheKey == key) {
+          m_cacheWritable = false;
+          setCachePersistenceState(CachePersistenceState::BackendError, m_cacheMigrationPending);
+        }
+      }
+  );
 }
 
 void CalendarService::setCachePersistenceState(CachePersistenceState state, bool migrationPending) {

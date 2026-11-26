@@ -1,5 +1,7 @@
 #include "system/background_warning_state.h"
 
+#include "config/atomic_file.h"
+
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -50,19 +52,8 @@ void BackgroundWarningState::setIgnored(const std::string& rowKey, bool ignored)
 }
 
 void BackgroundWarningState::save() const {
-  std::error_code ec;
-  fs::create_directories(fs::path(m_path).parent_path(), ec);
   const nlohmann::json json{{"notified", m_notified}, {"ignored", m_ignored}};
-  // Write then rename, so a crash never leaves a half-written file that would re-notify everything.
-  const std::string tmp = m_path + ".tmp";
-  {
-    std::ofstream out(tmp, std::ios::trunc);
-    out << json.dump(2);
-    if (!out) {
-      return;
-    }
-  }
-  fs::rename(tmp, m_path, ec);
+  writeTextFileAtomicAsync(m_path, json.dump(2));
 }
 
 std::int64_t fileMtime(const std::string& path) {

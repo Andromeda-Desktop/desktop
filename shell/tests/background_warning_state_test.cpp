@@ -1,4 +1,5 @@
 #include "system/background_warning_state.h"
+#include "async_file_wait.h"
 #include "tests/test_check.h"
 
 #include <cstdlib>
@@ -21,6 +22,7 @@ int main() {
     state.setIgnored("docker.service", true);
   }
   // A new boot (a new instance) remembers both.
+  TEST_CHECK(waitFileWritten(path));
   {
     BackgroundWarningState state(path);
     TEST_CHECK(state.alreadyNotified(unitFile, 100));
@@ -28,6 +30,7 @@ int main() {
     TEST_CHECK(state.ignored("docker.service"));
     state.setIgnored("docker.service", false);
   }
+  TEST_CHECK(waitFileWritten(path));
   TEST_CHECK(!BackgroundWarningState(path).ignored("docker.service"));
 
   // A corrupt file starts empty instead of failing.

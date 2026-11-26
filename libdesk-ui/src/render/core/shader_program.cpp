@@ -1,5 +1,6 @@
 #include "render/core/shader_program.h"
 
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 #include "render/core/startup_metrics.h"
 
@@ -107,23 +108,7 @@ namespace {
       return;
     }
     std::memcpy(data.data(), &format, sizeof(format));
-    std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    // Another process can write the same key: each writes its own temp file, and rename is atomic.
-    const std::filesystem::path tmp = path.string() + "." + std::to_string(::getpid()) + ".tmp";
-    {
-      std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-      out.write(data.data(), static_cast<std::streamsize>(sizeof(format) + static_cast<std::size_t>(written)));
-      if (!out) {
-        out.close();
-        std::filesystem::remove(tmp, ec);
-        return;
-      }
-    }
-    std::filesystem::rename(tmp, path, ec);
-    if (ec) {
-      std::filesystem::remove(tmp, ec);
-    }
+    andromeda::writeFileAsync(path, std::string(data.data(), sizeof(format) + static_cast<std::size_t>(written)));
   }
 
   GLuint compileShader(GLenum type, const char* source) {

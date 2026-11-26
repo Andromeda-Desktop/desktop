@@ -1,6 +1,7 @@
 #include "launcher/klipy_provider.h"
 
 #include "clipboard/clipboard_service.h"
+#include "config/atomic_file.h"
 #include "config/config_service.h"
 #include "i18n/i18n.h"
 #include "net/http_client.h"
@@ -103,9 +104,7 @@ std::string KlipyProvider::customerId() const {
   }
   if (id.empty()) {
     id = StringUtils::generateUuid();
-    std::error_code ec;
-    std::filesystem::create_directories(m_cacheDir, ec);
-    std::ofstream(path) << id;
+    writeTextFileAtomicAsync(path, id);
   }
   m_customerId = id;
   return id;
@@ -264,10 +263,11 @@ void KlipyProvider::loadFluentIndex() const {
       m_fluent.clear();
       return;
     }
-    std::ofstream out(index);
+    std::string text;
     for (const FluentSticker& sticker : m_fluent) {
-      out << sticker.name << '\t' << sticker.path << '\n';
+      text += sticker.name + '\t' + sticker.path + '\n';
     }
+    writeTextFileAtomicAsync(index, std::move(text));
     if (m_onResultsChanged) {
       m_onResultsChanged();
     }

@@ -1,5 +1,6 @@
 #include "system/activity_actions.h"
 
+#include "core/blocking_pool.h"
 #include "dbus/system_interactive_call.h"
 
 #include <algorithm>
@@ -291,18 +292,31 @@ void ActivityActions::describeUnit(
   }
 }
 
+void ActivityActions::setAutostartHiddenAsync(
+    const SystemdUnit& unit, const std::vector<AutostartEntry>& autostart, const std::string& autostartUserDir,
+    bool hidden, Reply reply
+) {
+  const AutostartEntry* entry = autostartFor(unit, autostart);
+  if (entry == nullptr) {
+    reply(ActivityActionResult{.error = "No autostart file for " + unit.name});
+    return;
+  }
+  BlockingPool::instance().run<ActivityActionResult>(
+      m_alive,
+      [userDir = autostartUserDir, entry = *entry, hidden] {
+        ActivityActionResult result;
+        result.ok = setAutostartHidden(userDir, entry, hidden, result.error);
+        return result;
+      },
+      std::move(reply)
+  );
+}
+
 void ActivityActions::disableAtLogin(
     const SystemdUnit& unit, const std::vector<AutostartEntry>& autostart, const std::string& autostartUserDir, Reply reply
 ) {
   if (isAutostartUnit(unit)) {
-    const AutostartEntry* entry = autostartFor(unit, autostart);
-    ActivityActionResult result;
-    if (entry == nullptr) {
-      result.error = "No autostart file for " + unit.name;
-    } else {
-      result.ok = setAutostartHidden(autostartUserDir, *entry, true, result.error);
-    }
-    reply(std::move(result));
+    setAutostartHiddenAsync(unit, autostart, autostartUserDir, true, std::move(reply));
     return;
   }
   if (unit.systemManager) {
@@ -339,14 +353,7 @@ void ActivityActions::enableAtLogin(
     const SystemdUnit& unit, const std::vector<AutostartEntry>& autostart, const std::string& autostartUserDir, Reply reply
 ) {
   if (isAutostartUnit(unit)) {
-    const AutostartEntry* entry = autostartFor(unit, autostart);
-    ActivityActionResult result;
-    if (entry == nullptr) {
-      result.error = "No autostart file for " + unit.name;
-    } else {
-      result.ok = setAutostartHidden(autostartUserDir, *entry, false, result.error);
-    }
-    reply(std::move(result));
+    setAutostartHiddenAsync(unit, autostart, autostartUserDir, false, std::move(reply));
     return;
   }
   if (unit.systemManager) {

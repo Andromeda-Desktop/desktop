@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -199,8 +200,11 @@ private:
   void deliverCaptureResult(
       capture::ScreenshotImage image, const OutputOptions& options, std::optional<std::filesystem::path> destPath
   );
-  bool
-  finishDelivery(ScreencopyImage image, const OutputOptions& options, std::optional<std::filesystem::path> destPath);
+  // Encodes and saves on BlockingPool, then copies, pipes and notifies here; `done` gets whether any output worked.
+  void finishDelivery(
+      ScreencopyImage image, const OutputOptions& options, std::optional<std::filesystem::path> destPath,
+      std::function<void(bool delivered)> done = {}
+  );
   void applyEditorBackdrop(OutputOptions& options) const;
   void persistScreenshotBackdrop(const capture::ScreenshotBackdropSettings& backdrop);
   [[nodiscard]] capture::ScreenshotBackdropSettings loadScreenshotBackdrop() const;
@@ -246,6 +250,7 @@ private:
   std::optional<PendingDelivery> m_pendingDelivery;
   FreezeTarget m_freezeTarget = FreezeTarget::Region;
   SoundPlayer* m_soundPlayer = nullptr;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };
 
 struct ScreenshotIpcRequest {

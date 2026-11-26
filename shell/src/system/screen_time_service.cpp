@@ -853,9 +853,6 @@ namespace {
 } // namespace
 
 void ScreenTimeService::save(bool async) {
-  std::error_code ec;
-  std::filesystem::create_directories(std::filesystem::path(m_storagePath).parent_path(), ec);
-
   nlohmann::json root = nlohmann::json::object();
   auto writeDay = [](const std::string& dayKey, const DayRecord& day) {
     nlohmann::json dayJson;

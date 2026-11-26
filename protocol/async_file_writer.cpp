@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <stop_token>
 #include <thread>
+#include <unistd.h>
 #include <utility>
 
 namespace andromeda {
@@ -26,17 +27,25 @@ namespace andromeda {
     bool writeReplacing(const std::filesystem::path& path, const std::string& text) {
       std::error_code error;
       std::filesystem::create_directories(path.parent_path(), error);
-      const std::filesystem::path temporary = path.string() + ".tmp";
+      // Processes that share a cache write the same path: each uses its own temporary file.
+      const std::filesystem::path temporary = path.string() + "." + std::to_string(::getpid()) + ".tmp";
       {
-        std::ofstream out(temporary, std::ios::trunc);
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
         out << text;
         if (!out) {
+          out.close();
+          std::filesystem::remove(temporary, error);
           return false;
         }
       }
       // rename is atomic: a crash mid-write keeps the previous file.
       std::filesystem::rename(temporary, path, error);
-      return !error;
+      if (error) {
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        return false;
+      }
+      return true;
     }
 
     class Writer {

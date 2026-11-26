@@ -61,9 +61,15 @@ public:
 private:
   void checkOnDemand(const SystemdUnit& unit, ActivityActionResult result, Reply reply);
   sdbus::IProxy& proxyFor(const SystemdUnit& unit, const std::string& path);
+  // setAutostartHidden on BlockingPool; `reply` runs on the main loop.
+  void setAutostartHiddenAsync(
+      const SystemdUnit& unit, const std::vector<AutostartEntry>& autostart, const std::string& autostartUserDir,
+      bool hidden, Reply reply
+  );
 
   sdbus::IConnection& m_userBus;
   SystemBus* m_interactiveBus;
   sdbus::IConnection* m_systemBus;
   std::map<std::string, std::unique_ptr<sdbus::IProxy>> m_proxies; // by "u:" or "s:" + object path
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

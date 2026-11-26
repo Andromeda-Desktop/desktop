@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <poll.h>
 #include <set>
@@ -194,7 +195,9 @@ private:
   calendar::GoogleClient m_google;
   calendar::CalendarCredentialStore m_credentials;
   security::StorageKeyProvider& m_storageKeyProvider;
-  std::optional<security::SecureKey> m_cacheKey;
+  // Shared with the cache write on SharedWorker.
+  std::shared_ptr<const security::SecureKey> m_cacheKey;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 
   struct GoogleSession {
     std::string accessToken;

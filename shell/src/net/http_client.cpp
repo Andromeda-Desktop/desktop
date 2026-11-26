@@ -1,5 +1,6 @@
 #include "net/http_client.h"
 
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/lazy_library.h"
 #include "core/log.h"
@@ -10,6 +11,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <utility>
 
@@ -160,10 +162,6 @@ HttpClient::~HttpClient() {
   for (auto& [easy, transfer] : m_transfers) {
     libcurl().curl_multi_remove_handle(m_multi, easy);
     libcurl().curl_easy_cleanup(easy);
-    if (transfer.file != nullptr) {
-      std::fclose(transfer.file);
-    }
-    std::filesystem::remove(transfer.tempPath);
   }
   for (auto& [easy, post] : m_postTransfers) {
     libcurl().curl_multi_remove_handle(m_multi, easy);
@@ -220,20 +218,13 @@ void HttpClient::download(std::string_view url, const std::filesystem::path& des
     }
     m_activeByDest.erase(activeIt);
   }
-
-  const auto tempPath = destPath.parent_path() / (destPath.filename().string() + ".part");
-
-  FILE* f = std::fopen(tempPath.c_str(), "wb");
-  if (f == nullptr) {
-    kLog.warn("download failed to open temp file {} for url={}", tempPath.string(), urlForLog(url));
-    deferFailure(std::move(cb));
+  if (auto writing = m_writing.find(destKey); writing != m_writing.end()) {
+    writing->second.push_back(std::move(cb));
     return;
   }
 
   CURL* easy = newEasy();
   if (easy == nullptr) {
-    std::fclose(f);
-    std::filesystem::remove(tempPath);
     kLog.warn("download failed to create curl handle url={}", urlForLog(url));
     deferFailure(std::move(cb));
     return;
@@ -242,7 +233,7 @@ void HttpClient::download(std::string_view url, const std::filesystem::path& des
   const std::string urlStr(url);
   applyCommonOptions(easy);
   libcurl().curl_easy_setopt(easy, CURLOPT_URL, urlStr.c_str());
-  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEDATA, f);
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, captureResponse);
   libcurl().curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
   libcurl().curl_easy_setopt(easy, CURLOPT_FAILONERROR, 1L);
   libcurl().curl_easy_setopt(easy, CURLOPT_TIMEOUT, 30L);
@@ -250,22 +241,17 @@ void HttpClient::download(std::string_view url, const std::filesystem::path& des
 
   Transfer transfer{};
   transfer.destPath = destPath;
-  transfer.tempPath = tempPath;
-  transfer.file = f;
   transfer.callbacks.push_back(std::move(cb));
   transfer.destKey = destKey;
   transfer.url = urlStr;
   m_transfers[easy] = std::move(transfer);
   libcurl().curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, m_transfers[easy].errorBuffer.data());
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEDATA, &m_transfers[easy].body);
   const CURLMcode addResult = libcurl().curl_multi_add_handle(m_multi, easy);
   if (addResult != CURLM_OK) {
     Transfer failedTransfer = std::move(m_transfers[easy]);
     m_transfers.erase(easy);
     libcurl().curl_easy_cleanup(easy);
-    if (failedTransfer.file != nullptr) {
-      std::fclose(failedTransfer.file);
-    }
-    std::filesystem::remove(failedTransfer.tempPath);
     kLog.warn(
         "download failed to add curl handle url={} error={}", urlForLog(urlStr),
         libcurl().curl_multi_strerror(addResult)
@@ -681,40 +667,56 @@ void HttpClient::finishTransfer(CURL* easy, CURLcode result) {
   m_transfers.erase(it);
   m_activeByDest.erase(transfer.destKey);
 
-  if (transfer.file != nullptr) {
-    std::fclose(transfer.file);
-    transfer.file = nullptr;
-  }
-
-  bool success = result == CURLE_OK;
-  if (success) {
-    std::error_code ec;
-    std::filesystem::rename(transfer.tempPath, transfer.destPath, ec);
-    if (ec) {
-      std::filesystem::copy_file(
-          transfer.tempPath, transfer.destPath, std::filesystem::copy_options::overwrite_existing, ec
-      );
-      std::filesystem::remove(transfer.tempPath);
-      success = !ec;
-      if (!success) {
-        kLog.warn(
-            "download failed to move {} to {}: {}", transfer.tempPath.string(), transfer.destPath.string(), ec.message()
-        );
-      }
-    }
-  } else {
+  if (result != CURLE_OK) {
     const char* detail =
         transfer.errorBuffer[0] != '\0' ? transfer.errorBuffer.data() : libcurl().curl_easy_strerror(result);
     kLog.warn(
         "download failed url={} curl={} http={} error={}", urlForLog(transfer.url), static_cast<int>(result),
         responseCode, detail
     );
-    std::filesystem::remove(transfer.tempPath);
+    for (auto& callback : transfer.callbacks) {
+      callback(false);
+    }
+    return;
   }
 
-  for (auto& callback : transfer.callbacks) {
-    callback(success);
-  }
+  // The disk write runs on BlockingPool: under disk load it blocks for 100s of ms.
+  m_writing[transfer.destKey] = std::move(transfer.callbacks);
+  BlockingPool::instance().run<bool>(
+      m_alive,
+      [destPath = std::move(transfer.destPath), body = std::move(transfer.body)] {
+        const auto tempPath = destPath.parent_path() / (destPath.filename().string() + ".part");
+        {
+          std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
+          out.write(body.data(), static_cast<std::streamsize>(body.size()));
+          if (!out) {
+            out.close();
+            std::error_code ignored;
+            std::filesystem::remove(tempPath, ignored);
+            kLog.warn("download failed to write {}", tempPath.string());
+            return false;
+          }
+        }
+        std::error_code ec;
+        std::filesystem::rename(tempPath, destPath, ec);
+        if (ec) {
+          std::filesystem::copy_file(tempPath, destPath, std::filesystem::copy_options::overwrite_existing, ec);
+          std::error_code ignored;
+          std::filesystem::remove(tempPath, ignored);
+          if (ec) {
+            kLog.warn("download failed to move {} to {}: {}", tempPath.string(), destPath.string(), ec.message());
+            return false;
+          }
+        }
+        return true;
+      },
+      [this, destKey = std::move(transfer.destKey)](bool written) {
+        auto node = m_writing.extract(destKey);
+        for (auto& callback : node.mapped()) {
+          callback(written);
+        }
+      }
+  );
 }
 
 void HttpClient::finishPostTransfer(CURL* easy, CURLcode result) {

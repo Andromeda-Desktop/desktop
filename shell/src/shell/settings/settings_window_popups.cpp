@@ -4,6 +4,7 @@
 #include "config/atomic_file.h"
 #include "config/config_service.h"
 #include "config/config_types.h"
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/shared_worker.h"
 #include "i18n/i18n.h"
@@ -2728,17 +2729,15 @@ void SettingsWindow::saveSupportReport() {
       path += ".toml";
     }
 
-    const std::string content = m_config->buildSupportReport();
-    if (!writeTextFileAtomic(path, content)) {
-      m_statusMessage = i18n::tr("settings.errors.support-report");
-      m_statusIsError = true;
-      requestSceneRebuild();
-      return;
-    }
-
-    m_statusMessage = i18n::tr("settings.window.support-report-saved");
-    m_statusIsError = false;
-    requestSceneRebuild();
+    std::string content = m_config->buildSupportReport();
+    BlockingPool::instance().run<bool>(
+        m_aliveGuard, [path, content = std::move(content)] { return writeTextFileAtomic(path, content); },
+        [this](bool written) {
+          m_statusMessage = i18n::tr(written ? "settings.window.support-report-saved" : "settings.errors.support-report");
+          m_statusIsError = !written;
+          requestSceneRebuild();
+        }
+    );
   });
 
   if (!opened) {
@@ -2772,18 +2771,16 @@ void SettingsWindow::saveConfigExport(settings::ConfigExportMode mode) {
       path += ".toml";
     }
 
-    const std::string content = mode == settings::ConfigExportMode::FullEffective ? m_config->buildEffectiveConfig()
-                                                                                  : m_config->buildMergedUserConfig();
-    if (!writeTextFileAtomic(path, content)) {
-      m_statusMessage = i18n::tr("settings.errors.export-config");
-      m_statusIsError = true;
-      requestSceneRebuild();
-      return;
-    }
-
-    m_statusMessage = i18n::tr("settings.window.export-config-saved");
-    m_statusIsError = false;
-    requestSceneRebuild();
+    std::string content = mode == settings::ConfigExportMode::FullEffective ? m_config->buildEffectiveConfig()
+                                                                            : m_config->buildMergedUserConfig();
+    BlockingPool::instance().run<bool>(
+        m_aliveGuard, [path, content = std::move(content)] { return writeTextFileAtomic(path, content); },
+        [this](bool written) {
+          m_statusMessage = i18n::tr(written ? "settings.window.export-config-saved" : "settings.errors.export-config");
+          m_statusIsError = !written;
+          requestSceneRebuild();
+        }
+    );
   });
 
   if (!opened) {

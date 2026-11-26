@@ -115,8 +115,7 @@ public:
 private:
   struct Transfer {
     std::filesystem::path destPath;
-    std::filesystem::path tempPath;
-    FILE* file = nullptr;
+    std::string body;
     std::vector<CompletionCallback> callbacks;
     std::string destKey;
     std::string url;
@@ -192,4 +191,7 @@ private:
   std::unordered_map<StreamId, CURL*> m_streamsById;
   StreamId m_nextStreamId = 1;
   std::unordered_map<std::string, CURL*> m_activeByDest;
+  // Downloads whose body BlockingPool writes now, by destination; a new download of one joins it.
+  std::unordered_map<std::string, std::vector<CompletionCallback>> m_writing;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

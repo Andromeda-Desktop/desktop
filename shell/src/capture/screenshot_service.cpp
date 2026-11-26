@@ -10,6 +10,7 @@
 #include "config/config_service.h"
 #include "config/config_types.h"
 #include "config/schema/ranges.h"
+#include "core/blocking_pool.h"
 #include "core/deferred_call.h"
 #include "core/input/key_chord.h"
 #include "core/input/key_modifiers.h"
@@ -1560,12 +1561,13 @@ void ScreenshotService::ensureAnnotationOverlay() {
     applyEditorBackdrop(options);
     const std::optional<std::filesystem::path> destPath =
         options.saveToFile ? std::optional(makeScreenshotPath(options, "annotated")) : std::nullopt;
-    const bool delivered = finishDelivery(std::move(image), options, destPath);
-    if (delivered
-        && ((action == capture::AnnotationExport::Copy && options.closeOnCopy)
-            || (action == capture::AnnotationExport::Save && options.closeOnSave))) {
-      DeferredCall::callLater([this] { m_annotationOverlay->cancel(); });
-    }
+    const bool closeOnDelivery = (action == capture::AnnotationExport::Copy && options.closeOnCopy)
+                                 || (action == capture::AnnotationExport::Save && options.closeOnSave);
+    finishDelivery(std::move(image), options, destPath, [this, closeOnDelivery](bool delivered) {
+      if (delivered && closeOnDelivery && m_annotationOverlay != nullptr) {
+        m_annotationOverlay->cancel();
+      }
+    });
   });
 }
 
@@ -2118,87 +2120,108 @@ capture::ScreenshotBackdropSettings ScreenshotService::loadScreenshotBackdrop() 
   return backdrop;
 }
 
-bool ScreenshotService::finishDelivery(
-    ScreencopyImage image, const OutputOptions& options, std::optional<std::filesystem::path> destPath
+void ScreenshotService::finishDelivery(
+    ScreencopyImage image, const OutputOptions& options, std::optional<std::filesystem::path> destPath,
+    std::function<void(bool delivered)> done
 ) {
-  if (options.backdrop.has_value()) {
-    image = capture::applyScreenshotBackdrop(image, *options.backdrop);
-  }
-
+  struct Encoded {
+    std::vector<std::uint8_t> png;
+    bool saved = false;
+    std::string failureMessage;
+  };
   const bool saveFile = options.saveToFile && destPath.has_value();
   const bool pipe = options.pipeToCommand && !options.pipeCommand.empty();
   // Clipboard and pipe consumers always receive PNG; only the saved file uses the configured format.
   const bool needsPng = options.copyToClipboard || pipe || (saveFile && options.format == ScreenshotFormat::Png);
 
-  std::string encodeError;
-  std::vector<std::uint8_t> png;
-  if (needsPng) {
-    png = encodePng(image.rgba.data(), image.width, image.height, &encodeError);
-    if (png.empty()) {
-      kLog.warn("screenshot encode failed: {}", encodeError);
-      notifyError(encodeError.empty() ? "Failed to encode screenshot" : encodeError);
-      return false;
-    }
-  }
-
-  bool delivered = false;
-  std::string failureMessage;
-
-  if (destPath.has_value()) {
-    std::error_code ec;
-    std::filesystem::create_directories(destPath->parent_path(), ec);
-    if (ec) {
-      kLog.warn("screenshot directory create failed: {}", destPath->parent_path().string());
-    }
-  }
-
-  if (saveFile) {
-    std::vector<std::uint8_t> encoded;
-    if (options.format != ScreenshotFormat::Png) {
-      encoded = encodeScreenshotFile(image, options.format, options.quality, &encodeError);
-    }
-    const std::vector<std::uint8_t>& fileBytes = options.format == ScreenshotFormat::Png ? png : encoded;
-    if (fileBytes.empty()) {
-      kLog.warn("screenshot encode failed: {}", encodeError);
-      failureMessage = encodeError.empty() ? "Failed to encode screenshot" : encodeError;
-    } else {
-      std::ofstream out(*destPath, std::ios::binary | std::ios::trunc);
-      out.write(reinterpret_cast<const char*>(fileBytes.data()), static_cast<std::streamsize>(fileBytes.size()));
-      if (!out) {
-        kLog.warn("screenshot write failed: {}", destPath->string());
-        failureMessage = "Failed to save screenshot";
-      } else {
-        notifySaved(*destPath);
-        delivered = true;
+  // Encoding a full-resolution frame and writing it take 100s of ms: both run off the main thread.
+  BlockingPool::instance().run<Encoded>(
+      m_alive,
+      [image = std::move(image), backdrop = options.backdrop, format = options.format, quality = options.quality,
+       saveFile, needsPng, destPath]() mutable {
+        Encoded result;
+        if (backdrop.has_value()) {
+          image = capture::applyScreenshotBackdrop(image, *backdrop);
+        }
+        std::string encodeError;
+        if (needsPng) {
+          result.png = encodePng(image.rgba.data(), image.width, image.height, &encodeError);
+          if (result.png.empty()) {
+            kLog.warn("screenshot encode failed: {}", encodeError);
+            result.failureMessage = encodeError.empty() ? "Failed to encode screenshot" : encodeError;
+            return result;
+          }
+        }
+        if (destPath.has_value()) {
+          std::error_code ec;
+          std::filesystem::create_directories(destPath->parent_path(), ec);
+          if (ec) {
+            kLog.warn("screenshot directory create failed: {}", destPath->parent_path().string());
+          }
+        }
+        if (!saveFile) {
+          return result;
+        }
+        std::vector<std::uint8_t> encoded;
+        if (format != ScreenshotFormat::Png) {
+          encoded = encodeScreenshotFile(image, format, quality, &encodeError);
+        }
+        const std::vector<std::uint8_t>& fileBytes = format == ScreenshotFormat::Png ? result.png : encoded;
+        if (fileBytes.empty()) {
+          kLog.warn("screenshot encode failed: {}", encodeError);
+          result.failureMessage = encodeError.empty() ? "Failed to encode screenshot" : encodeError;
+          return result;
+        }
+        std::ofstream out(*destPath, std::ios::binary | std::ios::trunc);
+        out.write(reinterpret_cast<const char*>(fileBytes.data()), static_cast<std::streamsize>(fileBytes.size()));
+        if (!out) {
+          kLog.warn("screenshot write failed: {}", destPath->string());
+          result.failureMessage = "Failed to save screenshot";
+        } else {
+          result.saved = true;
+        }
+        return result;
+      },
+      [this, options, destPath, needsPng, pipe, done = std::move(done)](Encoded result) {
+        if (needsPng && result.png.empty()) {
+          notifyError(result.failureMessage);
+          if (done) {
+            done(false);
+          }
+          return;
+        }
+        bool delivered = result.saved;
+        std::string failureMessage = std::move(result.failureMessage);
+        if (result.saved) {
+          notifySaved(*destPath);
+        }
+        if (options.copyToClipboard) {
+          if (m_clipboard == nullptr || !m_clipboard->isAvailable()) {
+            kLog.warn("screenshot clipboard copy skipped: clipboard unavailable");
+            if (failureMessage.empty()) {
+              failureMessage = "Clipboard is not available";
+            }
+          } else if (m_clipboard->copyImagePng(result.png)) {
+            delivered = true;
+          } else {
+            kLog.warn("screenshot clipboard copy failed");
+            if (failureMessage.empty()) {
+              failureMessage = "Failed to copy screenshot to clipboard";
+            }
+          }
+        }
+        if (pipe) {
+          pipePngToCommandAsync(options.pipeCommand, std::move(result.png), destPath);
+          delivered = true;
+        }
+        if (!delivered) {
+          notifyError(failureMessage.empty() ? "No screenshot output enabled" : failureMessage);
+        }
+        if (done) {
+          done(delivered);
+        }
       }
-    }
-  }
-
-  if (options.copyToClipboard) {
-    if (m_clipboard == nullptr || !m_clipboard->isAvailable()) {
-      kLog.warn("screenshot clipboard copy skipped: clipboard unavailable");
-      if (failureMessage.empty()) {
-        failureMessage = "Clipboard is not available";
-      }
-    } else if (m_clipboard->copyImagePng(png)) {
-      delivered = true;
-    } else {
-      kLog.warn("screenshot clipboard copy failed");
-      if (failureMessage.empty()) {
-        failureMessage = "Failed to copy screenshot to clipboard";
-      }
-    }
-  }
-
-  if (pipe) {
-    pipePngToCommandAsync(options.pipeCommand, std::move(png), destPath);
-    delivered = true;
-  }
-
-  if (!delivered) {
-    notifyError(failureMessage.empty() ? "No screenshot output enabled" : failureMessage);
-  }
-  return delivered;
+  );
 }
 
 void ScreenshotService::onCaptureComplete(

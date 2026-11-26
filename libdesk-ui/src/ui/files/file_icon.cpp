@@ -1,3 +1,4 @@
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 #include "ui/files/file_icon.h"
 #include "core/blocking_pool.h"
@@ -146,21 +147,11 @@ namespace {
   }
 
   void writeIconRaster(const fs::path& file, IconRasterHeader header, const LoadedImageFile& image) {
-    std::error_code ec;
-    fs::create_directories(file.parent_path(), ec);
     header.width = image.width;
     header.height = image.height;
-    const fs::path tmp = fs::path(file).concat(std::format(".{}", ::getpid()));
-    {
-      std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-      out.write(reinterpret_cast<const char*>(&header), sizeof header);
-      out.write(reinterpret_cast<const char*>(image.rgba.data()), static_cast<std::streamsize>(image.rgba.size()));
-      if (!out) {
-        fs::remove(tmp, ec);
-        return;
-      }
-    }
-    fs::rename(tmp, file, ec);
+    std::string bytes(reinterpret_cast<const char*>(&header), sizeof header);
+    bytes.append(reinterpret_cast<const char*>(image.rgba.data()), image.rgba.size());
+    andromeda::writeFileAsync(file, std::move(bytes));
   }
 
   TextureHandle uploadIcon(TextureManager& tm, const LoadedImageFile& image) {
