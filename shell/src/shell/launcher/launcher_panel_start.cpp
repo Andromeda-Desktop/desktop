@@ -119,14 +119,14 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
       {.align = FlexAlign::Center,
        .gap = Tokens::spaceP12 * scale,
        .paddingH = Tokens::spaceP16 * scale,
-       .fill = colorSpecFromRole(ColorRole::View),
+       .fill = colorSpecFromRole(ColorRole::GlassCard),
        .radius = field * 0.5F,
        .minHeight = field,
        .fillWidth = true},
       ui::glyph({.glyph = "search", .glyphSize = Tokens::sizeSymbolL * scale, .color = colorSpecFromRole(ColorRole::Label2)}),
       std::move(input)
   );
-  search->setBorder(colorSpecFromRole(ColorRole::Separator), 1.0F);
+  search->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 1.0F);
   content->addChild(std::move(search));
 
   // Section head: title-3 leading, a small fill_2 button trailing (24 high), 24 above and 8 below.

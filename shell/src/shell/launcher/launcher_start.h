@@ -30,8 +30,8 @@ public:
   explicit LauncherStartCardTile(float scale) : m_scale(scale) {
     addChild(ui::box({
         .out = &m_card,
-        .fill = colorSpecFromRole(ColorRole::View),
-        .border = colorSpecFromRole(ColorRole::Stroke),
+        .fill = colorSpecFromRole(ColorRole::GlassCard),
+        .border = colorSpecFromRole(ColorRole::GlassCardEdge),
         .borderWidth = 1.0F,
         .radius = Style::scaledRadius(Tokens::radiusR12, scale),
     }));
@@ -54,7 +54,7 @@ public:
     accessible.name = card.label;
     accessible.actionName = "activate";
     m_paths = card.icons;
-    m_card->setFill(colorSpecFromRole(hovered ? ColorRole::Fill1 : ColorRole::View));
+    m_card->setFill(colorSpecFromRole(hovered ? ColorRole::Fill2 : ColorRole::GlassCard));
     m_label->setText(card.label);
     m_label->setMaxWidth(width);
     place(width);
