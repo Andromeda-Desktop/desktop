@@ -395,6 +395,8 @@ private:
   SoftwareUpdateService* softwareUpdateService();
   // display.brightness_step: the brightness each display had before a rule dimmed it one step.
   std::map<std::string, float> m_dimmedFrom;
+  // The step holds even when no display was above 0.1 (m_dimmedFrom empty).
+  bool m_brightnessStepHeld = false;
   // Automatic brightness: the sensor client, the learned curve, the level it last left on each built-in panel
   // (before the low-power step) and the lux of that level. A level that differs later is the user's choice.
   std::unique_ptr<AmbientLightService> m_ambientLight;
@@ -432,6 +434,8 @@ private:
     float to = 0.0F;
   };
   std::map<std::string, IdleDim> m_idleDimmed;
+  // The idle dim holds even when no display was above the floor (m_idleDimmed empty).
+  bool m_idleDimHeld = false;
   // deep: nobody is at the screen (presence), so it dims to the floor instead of half.
   void applyIdleDim(bool dim, bool deep = false);
   IdleInhibitor m_idleInhibitor;

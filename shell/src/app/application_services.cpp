@@ -1979,9 +1979,10 @@ void Application::applyBrightnessStep() {
   }
   constexpr float kStep = 0.1F;
   const bool dim = m_systemHealthService->knob("display.brightness_step").value_or(0.0) < 0.0;
-  if (dim == !m_dimmedFrom.empty()) {
+  if (dim == m_brightnessStepHeld) {
     return;
   }
+  m_brightnessStepHeld = dim;
   const std::vector<BrightnessDisplay> displays = m_brightnessService->displays();
   m_brightnessOsd.suppressFor(std::chrono::seconds(2));
   for (const auto& d : displays) {
@@ -2152,7 +2153,7 @@ void Application::syncAmbientLight() {
 // Only built-in panels follow the sensor: it sits in the lid, away from an external monitor's room light.
 // While the idle dim holds, the levels stay; the low-power step stays 0.1 below the ambient level.
 void Application::applyAmbientLight(double lux) {
-  if (m_brightnessService == nullptr || !m_idleDimmed.empty()) {
+  if (m_brightnessService == nullptr || m_idleDimHeld) {
     return;
   }
   constexpr float kStep = 0.1F;
@@ -2201,7 +2202,7 @@ void Application::applyBrightnessSchedule() {
   }
   const auto at = day_night_schedule::evaluate(location, lat, lon);
   auto delay = brightness_schedule::nextDelay(at, config.brightness.scheduledDay, config.brightness.scheduledNight);
-  if (m_idleDimmed.empty()) {
+  if (!m_idleDimHeld) {
     const std::vector<BrightnessDisplay> displays = m_brightnessService->displays();
     for (const auto& d : displays) {
       const bool builtIn = d.id.starts_with("eDP") || d.id.starts_with("LVDS") || d.id.starts_with("DSI");
@@ -2278,9 +2279,10 @@ void Application::syncPresenceClaim() {
 // The idle "dim" behavior fades each display to half its brightness (deep: to the floor, 0.05) and fades it back on
 // input, unless the user moved the brightness meanwhile (a move ends the fade).
 void Application::applyIdleDim(bool dim, bool deep) {
-  if (m_brightnessService == nullptr || dim == !m_idleDimmed.empty()) {
+  if (m_brightnessService == nullptr || dim == m_idleDimHeld) {
     return;
   }
+  m_idleDimHeld = dim;
   constexpr float kFloor = 0.05F;
   constexpr auto kDimFade = std::chrono::milliseconds(1500);
   constexpr auto kUndimFade = std::chrono::milliseconds(400);
