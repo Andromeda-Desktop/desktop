@@ -100,7 +100,7 @@ test('session_list', executable('session_list_test', 'tests/session_list_test.cp
   dependencies: _core_dep, cpp_args: _warnings))
 
 test('workspace_model', executable('workspace_model_test', 'tests/workspace_model_test.cpp',
-  dependencies: _core_dep, cpp_args: _warnings))
+  dependencies: [_core_dep, _desk_app_dep], cpp_args: _warnings))
 
 test('terminal_find', executable('terminal_find_test', 'tests/terminal_find_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
