@@ -137,13 +137,7 @@ void SearchPickerPopup::populateContent(Node* contentParent, std::uint32_t /*wid
             .padding = Style::spaceXs * m_scale,
             .radius = Style::scaledRadiusMd(m_scale),
             .onClick = [this] {
-              const std::weak_ptr<void> aliveGuard = m_aliveGuard;
-              DeferredCall::callLater([this, aliveGuard] {
-                if (aliveGuard.expired()) {
-                  return;
-                }
-                close();
-              });
+              deferWhileAlive([this] { close(); });
             },
         })
     );
@@ -170,23 +164,11 @@ void SearchPickerPopup::populateContent(Node* contentParent, std::uint32_t /*wid
                     if (m_onSelect) {
                       m_onSelect(option.value);
                     }
-                    const std::weak_ptr<void> aliveGuard = m_aliveGuard;
-                    DeferredCall::callLater([this, aliveGuard] {
-                      if (aliveGuard.expired()) {
-                        return;
-                      }
-                      close();
-                    });
+                    deferWhileAlive([this] { close(); });
                   },
               .onCancel =
                   [this] {
-                    const std::weak_ptr<void> aliveGuard = m_aliveGuard;
-                    DeferredCall::callLater([this, aliveGuard] {
-                      if (aliveGuard.expired()) {
-                        return;
-                      }
-                      close();
-                    });
+                    deferWhileAlive([this] { close(); });
                   },
               .configure =
                   [](SearchPicker& picker) {
