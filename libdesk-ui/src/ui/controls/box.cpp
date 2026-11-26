@@ -90,6 +90,12 @@ void Box::setShadow(float blur, float offsetY) {
   syncStyle();
 }
 
+void Box::setGlow(float radius) {
+  m_style.outerShadow = OuterShadow::Glow;
+  m_style.softness = radius;
+  syncStyle();
+}
+
 void Box::setNoAa(bool noAa) {
   m_style.noAa = noAa;
   syncStyle();

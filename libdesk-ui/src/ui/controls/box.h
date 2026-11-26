@@ -37,6 +37,8 @@ public:
   void setNoAa(bool noAa);
   // Draws as the drop shadow of a shape `offsetY` above this box (see setDropShadow).
   void setShadow(float blur, float offsetY);
+  // The fill fades from full at `radius` inside the edge to 0 at `radius` outside it.
+  void setGlow(float radius);
 
   // Presets
   void setFlatStyle();

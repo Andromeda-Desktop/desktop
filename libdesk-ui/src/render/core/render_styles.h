@@ -83,6 +83,9 @@ constexpr bool operator==(const ImageScrim& lhs, const ImageScrim& rhs) noexcept
   return lhs.enabled == rhs.enabled && lhs.direction == rhs.direction && lhs.stops == rhs.stops;
 }
 
+// How the rect draws its soft edge; see setDropShadow.
+enum class OuterShadow : std::uint8_t { None, Drop, Glow };
+
 struct RoundedRectStyle {
   Color fill{};
   Color border{};
@@ -100,7 +103,7 @@ struct RoundedRectStyle {
   // stretched so a whole number of dashes fits the perimeter. Uses the top-left radius for every corner.
   float borderDash = 0.0F;
   float borderGap = 0.0F;
-  bool outerShadow = false;
+  OuterShadow outerShadow = OuterShadow::None;
   float shadowCutoutOffsetX = 0.0F;
   float shadowCutoutOffsetY = 0.0F;
   bool shadowExclusion = false;
@@ -113,10 +116,12 @@ struct RoundedRectStyle {
   Radii shadowExclusionRadius;
 };
 
+// Drop: only the soft edge around the shape is drawn (the area under it stays clear). Glow: the shape fills too,
+// so the fill fades out over 2 x softness centred on its edge.
 // Makes `style` the drop shadow of a shape drawn `offsetY` above it: the edge fades over `blur`, and the area under
 // the shape stays clear. Without outerShadow, softness only antialiases a hard edge.
 constexpr void setDropShadow(RoundedRectStyle& style, float blur, float offsetY) noexcept {
-  style.outerShadow = true;
+  style.outerShadow = OuterShadow::Drop;
   // The shader fades over 2 x softness centred on the edge.
   style.softness = blur * 0.5F;
   style.shadowCutoutOffsetY = offsetY;

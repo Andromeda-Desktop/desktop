@@ -42,7 +42,7 @@ namespace ui::surface_shadow {
         .radius = shape.radius,
         .softness = static_cast<float>(blurRadius()),
         .borderWidth = 0.0F,
-        .outerShadow = true,
+        .outerShadow = OuterShadow::Drop,
         .shadowCutoutOffsetX = static_cast<float>(offset.x),
         .shadowCutoutOffsetY = static_cast<float>(offset.y),
     };

@@ -43,7 +43,7 @@ namespace settings {
           .radius = Radii{radius, radius, radius, radius},
           // The shader fades over 2 x softness centred on the edge, so softness = blur / 2.
           .softness = layer.blur * 0.5F * scale,
-          .outerShadow = true,
+          .outerShadow = OuterShadow::Drop,
           .shadowCutoutOffsetY = offsetY,
       });
       node.setPosition(x, y + offsetY);

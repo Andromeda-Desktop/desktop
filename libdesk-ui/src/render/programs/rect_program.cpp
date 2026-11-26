@@ -338,7 +338,7 @@ void main() {
     vec2 uv = clamp(local_point / u_rect_size, vec2(0.0), vec2(1.0));
 
     bool any_concave = u_corner_shapes.x > 0.5 || u_corner_shapes.y > 0.5 || u_corner_shapes.z > 0.5 || u_corner_shapes.w > 0.5;
-    bool shadow = u_outer_shadow == 1;
+    bool shadow = u_outer_shadow != 0;
     bool exclusion = shadow && u_shadow_exclusion == 1 && u_shadow_exclusion_size.x > 0.0 && u_shadow_exclusion_size.y > 0.0;
     bool border = !shadow && u_border_width > 0.0 && u_border_color.a > 0.0;
     int shape_count = exclusion ? 3 : (shadow || (border && !any_concave)) ? 2 : 1;
@@ -387,7 +387,7 @@ void main() {
     if (shadow) {
         float cutout_aa = 0.85;
         float shadow_outer_coverage = 1.0 - smoothstep(-aa, aa, outer_distance);
-        float cutout_mask = 1.0 - smoothstep(-cutout_aa, cutout_aa, second_distance);
+        float cutout_mask = u_outer_shadow == 1 ? 1.0 - smoothstep(-cutout_aa, cutout_aa, second_distance) : 0.0;
         float shadow_coverage = shadow_outer_coverage * (1.0 - cutout_mask);
         if (exclusion) {
             float exclusion_mask = 1.0 - smoothstep(-cutout_aa, cutout_aa, exclusion_distance);
@@ -550,7 +550,7 @@ bool RectProgram::batchable(const RoundedRectStyle& style) noexcept {
         && c.bl == CornerShape::Convex;
   };
   return style.fillMode == FillMode::Solid && convex(style.corners) && !style.noAa && !style.invertFill
-      && style.borderDash <= 0.0F && !style.outerShadow && !style.shadowExclusion;
+      && style.borderDash <= 0.0F && style.outerShadow == OuterShadow::None && !style.shadowExclusion;
 }
 
 void RectProgram::appendBatched(
@@ -843,7 +843,7 @@ void RectProgram::draw(
   glUniform1i(m_invertFillLocation, style.invertFill ? 1 : 0);
   glUniform1f(m_borderWidthLocation, style.borderWidth);
   glUniform2f(m_borderDashLocation, style.borderDash, style.borderGap);
-  glUniform1i(m_outerShadowLocation, style.outerShadow ? 1 : 0);
+  glUniform1i(m_outerShadowLocation, static_cast<int>(style.outerShadow));
   glUniform2f(m_shadowCutoutOffsetLocation, style.shadowCutoutOffsetX, style.shadowCutoutOffsetY);
   glUniform1i(m_shadowExclusionLocation, style.shadowExclusion ? 1 : 0);
   glUniform2f(m_shadowExclusionOffsetLocation, style.shadowExclusionOffsetX, style.shadowExclusionOffsetY);

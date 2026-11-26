@@ -155,7 +155,7 @@ namespace {
       return false;
     }
     const RoundedRectStyle& style = static_cast<const RectNode*>(node)->style();
-    if (style.fillMode != FillMode::Solid || style.fill.a < 1.0F || style.invertFill || style.outerShadow
+    if (style.fillMode != FillMode::Solid || style.fill.a < 1.0F || style.invertFill || style.outerShadow != OuterShadow::None
         || style.shadowExclusion || style.logicalInset != RectInsets{} || style.corners != CornerShapes{}) {
       return false;
     }
