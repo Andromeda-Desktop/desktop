@@ -1,23 +1,4 @@
 # core-check allowlist: rule path count. Counts only fall; tools/core-check.py --update after a fix.
-defer-this andromeda-preview/src/preview_window.cpp 9
-defer-this apps/files/src/batch_rename_sheet.cpp 1
-defer-this apps/files/src/compress_sheet.cpp 1
-defer-this apps/files/src/connect_sheet.cpp 1
-defer-this apps/files/src/extract_sheet.cpp 1
-defer-this apps/files/src/files_window.cpp 4
-defer-this apps/files/src/get_info_sheet.cpp 1
-defer-this apps/files/src/select_pattern_sheet.cpp 2
-defer-this apps/files/src/smart_folder_sheet.cpp 1
-defer-this apps/files/src/tag_manager_sheet.cpp 2
-defer-this apps/files/src/vault_sheet.cpp 1
-defer-this apps/player/src/player_app.cpp 4
-defer-this libdesk-app/src/app/app_window.cpp 2
-defer-this libdesk-app/src/app/desk_app.cpp 1
-defer-this libdesk-system/src/dbus/portal/global_shortcuts_portal.cpp 1
-defer-this libdesk-system/src/dbus/portal/inhibit_portal.cpp 2
-defer-this libdesk-ui/src/core/graphics_recovery.h 1
-defer-this libdesk-ui/src/ui/tooltip/tooltip_manager.cpp 4
-defer-this portal/src/share_picker/main.cpp 1
 defer-this shell/src/app/application_events.cpp 1
 defer-this shell/src/app/application_services.cpp 8
 defer-this shell/src/app/application_ui.cpp 9

@@ -90,7 +90,7 @@ std::unique_ptr<Node> BatchRenameSheet::build(float scale) {
                                  DeferredCall::callLater([close = m_close] { close(); });
                                }}));
   footer->addChild(ui::button({.out = &m_ok, .text = std::string(i18n::tr("files.batch.rename")), .variant = ButtonVariant::Primary,
-                               .onClick = [this] { DeferredCall::callLater([this] { submit(); }); }}));
+                               .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { submit(); }); }}));
   sheet->addChild(std::move(footer));
   updatePreview();
   return sheet;

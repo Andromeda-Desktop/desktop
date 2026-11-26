@@ -115,4 +115,5 @@ private:
   Label* m_time = nullptr;
   Label* m_remaining = nullptr;
   Slider* m_seek = nullptr;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

@@ -169,6 +169,7 @@ namespace preview {
     Timer m_spinnerTimer;
     bool m_failed = false;
     std::string m_shownNote;
+    std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   };
 
 } // namespace preview

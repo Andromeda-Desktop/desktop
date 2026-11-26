@@ -546,7 +546,7 @@ void DeskApp::addStandardCommands() {
       .shortcut = chord(XKB_KEY_q, KeyMod::Ctrl),
       .run =
           [this] {
-            DeferredCall::callLater([this] {
+            DeferredCall::callLaterIfAlive(m_self, [this] {
               // A window that refuses asks its user first (for example to save); Quit again after that.
               if (std::ranges::all_of(m_windows, [](const auto& w) { return w->closeAllowed(); })) {
                 quit(0);

@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -26,7 +27,7 @@ public:
       return;
     }
     m_state = State::Pending;
-    DeferredCall::callLater([this] { run(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { run(); });
   }
 
   // Called by the rebuild when it threw; schedules the next attempt. Returns the delay, or nothing when it gave up.
@@ -56,4 +57,5 @@ private:
   State m_state = State::Idle;
   int m_failedAttempts = 0;
   Timer m_timer;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

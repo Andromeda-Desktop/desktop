@@ -129,7 +129,7 @@ namespace {
         sources.push_back({.monitor = source.monitor, .identifier = source.id});
       }
       m_thumbnails = std::make_unique<xdpu::Thumbnails>(
-          std::move(sources), [this] { DeferredCall::callLater([this] { onThumbnails(); }); });
+          std::move(sources), [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { onThumbnails(); }); });
     }
 
     [[nodiscard]] std::string title() const {
@@ -540,6 +540,7 @@ namespace {
     std::vector<Image*> m_images;            // per source; rebuilt with the tree
     std::vector<TextureHandle> m_textures;   // per source; the last live frame, owned here
     std::vector<std::size_t> m_shown;
+    std::shared_ptr<int> m_alive = std::make_shared<int>(0);
     std::unique_ptr<xdpu::Thumbnails> m_thumbnails; // last: its worker joins before the members it posts to go
   };
 

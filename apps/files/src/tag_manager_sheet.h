@@ -65,4 +65,5 @@ private:
   std::map<std::string, Label*> m_counts;
   // Old names of renamed and deleted tags: files keep them until their job lands, so a walk must not add them back.
   std::vector<std::string> m_retired;
+  std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };

@@ -290,7 +290,7 @@ std::unique_ptr<Node> GetInfoSheet::build(float scale) {
   }
   if (m_admin.has_value()) {
     body->addChild(ui::button({.text = i18n::tr("files.getinfo.change-admin"), .variant = ButtonVariant::Default,
-                               .onClick = [this] { DeferredCall::callLater([this] { changeAsAdmin(); }); }}));
+                               .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { changeAsAdmin(); }); }}));
   }
   sheet->addChild(std::move(body));
 

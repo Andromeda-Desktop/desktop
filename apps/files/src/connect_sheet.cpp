@@ -104,7 +104,7 @@ std::unique_ptr<Node> ConnectSheet::build(float scale) {
                                }}));
   footer->addChild(ui::button({.out = &m_ok, .text = i18n::tr(m_busy ? "files.connect.connecting" : (m_question.empty() ? "files.connect.connect" : "files.connect.accept")),
                                .variant = ButtonVariant::Primary,
-                               .onClick = [this] { DeferredCall::callLater([this] { submit(); }); }}));
+                               .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { submit(); }); }}));
   sheet->addChild(std::move(footer));
   update();
   return sheet;

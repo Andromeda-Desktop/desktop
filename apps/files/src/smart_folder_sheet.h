@@ -38,4 +38,5 @@ private:
   std::function<void()> m_rebuild;
   Label* m_sentence = nullptr;
   Button* m_ok = nullptr;
+  std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };

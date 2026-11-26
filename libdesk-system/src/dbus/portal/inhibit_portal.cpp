@@ -171,7 +171,7 @@ void InhibitPortal::createMonitor(const std::string& sessionHandle) {
   m_handles.insert_or_assign(sessionHandle, std::move(entry));
 
   // xdg-desktop-portal registers the session only once CreateMonitor has replied.
-  DeferredCall::callLater([this, sessionHandle]() {
+  DeferredCall::callLaterIfAlive(m_aliveToken, [this, sessionHandle]() {
     if (m_handles.contains(sessionHandle)) {
       emitState(sessionHandle);
     }
@@ -186,7 +186,7 @@ void InhibitPortal::close(const std::string& handle) {
   it->second.inhibitors.clear();
   const bool notify = !it->second.monitor && (it->second.flags & (kFlagLogout | kFlagSuspend | kFlagIdle)) != 0;
   // The object is running this Close call; destroy it once the call has returned.
-  DeferredCall::callLater([this, handle, notify]() {
+  DeferredCall::callLaterIfAlive(m_aliveToken, [this, handle, notify]() {
     m_handles.erase(handle);
     if (notify && m_changeCallback) {
       m_changeCallback();

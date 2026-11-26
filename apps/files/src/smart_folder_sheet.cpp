@@ -153,7 +153,7 @@ std::unique_ptr<Node> SmartFolderSheet::build(float scale) {
                                .onClick = [this] { DeferredCall::callLater([close = m_close] { close(); }); }}));
   footer->addChild(ui::button({.out = &m_ok, .text = i18n::tr(m_original.empty() ? "files.smart.save-sidebar" : "files.smart.save"),
                                .variant = ButtonVariant::Primary,
-                               .onClick = [this] { DeferredCall::callLater([this] { submit(); }); }}));
+                               .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { submit(); }); }}));
   sheet->addChild(std::move(footer));
   update();
   return sheet;

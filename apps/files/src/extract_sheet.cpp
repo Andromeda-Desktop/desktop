@@ -128,7 +128,7 @@ std::unique_ptr<Node> ExtractSheet::build(float scale) {
   footer->addChild(ui::button({.out = &m_ok, .text = i18n::tr("files.extract.extract"),
                                .enabled = m_state == State::Normal || !m_request.password.empty(),
                                .variant = ButtonVariant::Primary,
-                               .onClick = [this] { DeferredCall::callLater([this] { submit(); }); }}));
+                               .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { submit(); }); }}));
   sheet->addChild(std::move(footer));
   return sheet;
 }

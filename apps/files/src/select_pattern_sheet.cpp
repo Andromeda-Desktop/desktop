@@ -160,12 +160,12 @@ std::unique_ptr<Node> SelectPatternSheet::build(float scale) {
 
   auto footer = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .padding = Tokens::componentDialogPadding * s});
   footer->addChild(ui::button({.out = &m_deselect, .text = i18n::tr("files.pattern.deselect"), .variant = ButtonVariant::Default,
-                               .onClick = [this] { DeferredCall::callLater([this] { apply(false); }); }}));
+                               .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { apply(false); }); }}));
   footer->addChild(ui::spacer());
   footer->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .variant = ButtonVariant::Default,
                                .onClick = [this] { DeferredCall::callLater([close = m_close] { close(); }); }}));
   footer->addChild(ui::button({.out = &m_select, .text = i18n::tr("files.pattern.select"), .variant = ButtonVariant::Primary,
-                               .onClick = [this] { DeferredCall::callLater([this] { apply(true); }); }}));
+                               .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { apply(true); }); }}));
   sheet->addChild(std::move(footer));
   update();
   return sheet;

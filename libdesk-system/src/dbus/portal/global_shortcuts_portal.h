@@ -56,4 +56,5 @@ private:
   std::unique_ptr<sdbus::IObject> m_object;
   NameOwnerWatch m_frontendWatch;
   std::map<std::string, Session> m_sessions;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

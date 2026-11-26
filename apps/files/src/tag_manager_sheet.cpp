@@ -325,7 +325,7 @@ std::unique_ptr<Node> TagManagerSheet::buildEditor(float s) {
                                   }}));
     actions->addChild(ui::button({.text = i18n::tr("files.tags.delete"), .variant = ButtonVariant::Destructive,
                                   .onClick = [this, name = tag.name] {
-                                    DeferredCall::callLater([this, name] { remove(name); });
+                                    DeferredCall::callLaterIfAlive(m_alive, [this, name] { remove(name); });
                                   }}));
   } else {
     actions->addChild(ui::button({.glyph = std::string("chevron-up"), .enabled = m_selected > 0,
@@ -379,7 +379,7 @@ std::unique_ptr<Node> TagManagerSheet::build(float scale) {
 
   auto footer = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .padding = Tokens::componentDialogPadding * s});
   footer->addChild(ui::button({.text = i18n::tr("files.tags.new"), .glyph = std::string("plus"), .variant = ButtonVariant::Default,
-                               .onClick = [this] { DeferredCall::callLater([this] { addTag(); }); }}));
+                               .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { addTag(); }); }}));
   footer->addChild(ui::spacer());
   footer->addChild(ui::button({.text = i18n::tr("files.tags.done"), .variant = ButtonVariant::Primary,
                                .onClick = [this] { done(); }}));

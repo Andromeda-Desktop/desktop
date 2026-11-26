@@ -341,11 +341,9 @@ void AppWindow::syncMenuBar() {
     if (id == 0 || id > ids.size()) {
       return;
     }
-    DeferredCall::callLater([this, command = ids[id - 1], alive] {
-      if (!alive.expired()) {
-        m_commands.run(command);
-        syncMenuBar();
-      }
+    DeferredCall::callLaterIfAlive(alive, [this, command = ids[id - 1]] {
+      m_commands.run(command);
+      syncMenuBar();
     });
   });
 }
@@ -393,12 +391,10 @@ void AppWindow::openMoreMenu() {
   for (const AppCommand* c : commands) {
     ids.push_back(c->id);
   }
-  m_menu->setOnActivate([this, ids](const ContextMenuControlEntry& entry) {
+  m_menu->setOnActivate([this, ids, alive = std::weak_ptr<bool>(m_alive)](const ContextMenuControlEntry& entry) {
     if (entry.id > 0 && static_cast<std::size_t>(entry.id) <= ids.size()) {
-      DeferredCall::callLater([this, id = ids[static_cast<std::size_t>(entry.id) - 1], alive = std::weak_ptr<bool>(m_alive)] {
-        if (!alive.expired()) {
-          m_commands.run(id);
-        }
+      DeferredCall::callLaterIfAlive(alive, [this, id = ids[static_cast<std::size_t>(entry.id) - 1]] {
+        m_commands.run(id);
       });
     }
   });

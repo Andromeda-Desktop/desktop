@@ -50,4 +50,5 @@ private:
   Label* m_note = nullptr;
   Label* m_questionNote = nullptr;
   Button* m_ok = nullptr;
+  std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };

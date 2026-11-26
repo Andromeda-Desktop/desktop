@@ -266,7 +266,7 @@ void GlobalShortcutsPortal::handle(
   }
   if (session.state.phase() == GlobalShortcutsPhase::Closed) {
     // A Close call runs inside the session object; destroy it once the call has returned.
-    DeferredCall::callLater([this, path]() { m_sessions.erase(path); });
+    DeferredCall::callLaterIfAlive(m_alive, [this, path]() { m_sessions.erase(path); });
   }
 }
 

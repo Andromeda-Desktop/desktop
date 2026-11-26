@@ -3329,7 +3329,7 @@ void FilesWindow::mountDrive(const std::string& id) {
     auto self = std::make_shared<std::weak_ptr<VaultSheet>>();
     const auto close = [this] {
       m_window.dismissSheet();
-      DeferredCall::callLater([this] { m_vaultSheet.reset(); });
+      DeferredCall::callLaterIfAlive(m_alive, [this] { m_vaultSheet.reset(); });
     };
     auto sheet = std::make_shared<VaultSheet>(
         VaultSheet::Mode::Unlock, drive->name,
@@ -3376,7 +3376,7 @@ void FilesWindow::mountDrive(const std::string& id) {
             *reply = nullptr;
           }
           m_window.dismissSheet();
-          DeferredCall::callLater([this] { m_vaultSheet.reset(); });
+          DeferredCall::callLaterIfAlive(m_alive, [this] { m_vaultSheet.reset(); });
         };
         m_vaultSheet = std::make_shared<VaultSheet>(
             VaultSheet::Mode::Unlock, name,
@@ -3386,7 +3386,7 @@ void FilesWindow::mountDrive(const std::string& id) {
                 *reply = nullptr;
               }
               m_window.dismissSheet();
-              DeferredCall::callLater([this] { m_vaultSheet.reset(); });
+              DeferredCall::callLaterIfAlive(m_alive, [this] { m_vaultSheet.reset(); });
             },
             close, [this] { m_window.requestRebuild(); }, &m_window.input());
         m_window.presentSheet([sheet = m_vaultSheet](float scale) { return sheet->build(scale); }, close);
@@ -3542,7 +3542,7 @@ void FilesWindow::askFormat() {
         // The sheet stays until the erase ends, so its completion closes this sheet and no other.
         footer->addChild(ui::button({.text = std::string(i18n::tr("common.actions.cancel")), .enabled = !m_formatBusy,
                                      .variant = ButtonVariant::Default,
-                                     .onClick = [this] { DeferredCall::callLater([this] { m_window.dismissSheet(); }); }}));
+                                     .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { m_window.dismissSheet(); }); }}));
         footer->addChild(ui::button({.text = i18n::tr(m_formatBusy ? "files.erase.erasing" : "files.erase.erase"), .enabled = !m_formatBusy,
                                      .variant = ButtonVariant::Destructive, .onClick = [this] { eraseDrive(); }}));
         sheet->addChild(std::move(footer));

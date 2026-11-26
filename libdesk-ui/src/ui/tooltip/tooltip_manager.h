@@ -99,4 +99,5 @@ private:
   AnimationManager::Id m_fadeAnimId = 0;
 
   Signal<>::ScopedConnection m_paletteConn;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

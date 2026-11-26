@@ -51,4 +51,5 @@ private:
   Label* m_note = nullptr;
   Button* m_select = nullptr;
   Button* m_deselect = nullptr;
+  std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };

@@ -47,4 +47,5 @@ private:
   Label* m_summary = nullptr;
   Button* m_ok = nullptr;
   float m_scale = 1.0F;
+  std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };

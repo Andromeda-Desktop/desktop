@@ -133,7 +133,7 @@ void PlayerApp::startup() {
                   .run = [this] { m_mpv.previous(); }});
   commands().add({.id = "view.pip", .label = i18n::tr("player.commands.view-pip"), .group = "View",
                   .shortcut = KeyChord{.sym = XKB_KEY_p, .modifiers = 0}, .enabled = {},
-                  .run = [this] { DeferredCall::callLater([this] { togglePip(); }); }});
+                  .run = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { togglePip(); }); }});
   commands().add({.id = "player.subtitles", .label = i18n::tr("player.commands.player-subtitles"), .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_c, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.cycleSubtitles(); }});
@@ -269,7 +269,7 @@ std::unique_ptr<Node> PlayerApp::buildPipContent(float width, float height) {
     if (last != 0 && data.time - last < kDoubleClickMs) {
       last = 0;
       m_mpv.togglePause();
-      DeferredCall::callLater([this] { togglePip(); });
+      DeferredCall::callLaterIfAlive(m_alive, [this] { togglePip(); });
       return;
     }
     last = data.time;
@@ -283,7 +283,7 @@ std::unique_ptr<Node> PlayerApp::buildPipContent(float width, float height) {
                               .variant = ButtonVariant::Secondary, .onClick = [this] { m_mpv.togglePause(); }}));
     row->addChild(ui::button({.glyph = std::string("picture-in-picture-off"), .glyphSize = 16.0F * s,
                               .variant = ButtonVariant::Secondary,
-                              .onClick = [this] { DeferredCall::callLater([this] { togglePip(); }); }}));
+                              .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { togglePip(); }); }}));
     row->setSize(width, 40.0F * s);
     area->addChild(std::move(row));
   }
@@ -1065,7 +1065,7 @@ std::unique_ptr<Node> PlayerApp::buildContent(Renderer& renderer, float width, f
       .glyph = std::string(m_pip != nullptr ? "picture-in-picture-off" : "picture-in-picture"),
       .glyphSize = 18.0F * s,
       .variant = ButtonVariant::Ghost,
-      .onClick = [this] { DeferredCall::callLater([this] { togglePip(); }); },
+      .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { togglePip(); }); },
   }));
   bar->addChild(ui::button({
       .glyph = std::string(m_window->fullscreen() ? "minimize" : "maximize"),

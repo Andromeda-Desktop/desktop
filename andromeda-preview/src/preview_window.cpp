@@ -446,7 +446,7 @@ namespace preview {
       break;
     case FileKind::Folder:
       // Names and sizes only (no file contents), off the main thread; the result comes back on the main loop.
-      BlockingPool::instance().run([this, generation, path, live = m_live] {
+      BlockingPool::instance().run([this, generation, path, live = m_live, alive = std::weak_ptr<const void>(m_alive)] {
         namespace fs = std::filesystem;
         constexpr std::size_t kMaxWalk = 200000;
         std::size_t items = 0;
@@ -486,7 +486,7 @@ namespace preview {
         for (auto& [time, name] : newest) {
           peek.push_back(std::move(name));
         }
-        DeferredCall::callLater([this, live, generation, items, bytes, cut = walked >= kMaxWalk, peek = std::move(peek)] {
+        DeferredCall::callLaterIfAlive(alive, [this, live, generation, items, bytes, cut = walked >= kMaxWalk, peek = std::move(peek)] {
           if (live->load() != generation) {
             return;
           }
@@ -568,7 +568,8 @@ namespace preview {
       return;
     }
     const auto generation = m_generation;
-    BlockingPool::instance().run([this, generation, source = m_path, dir, key, pdf, program = std::string(soffice)] {
+    BlockingPool::instance().run([this, alive = std::weak_ptr<const void>(m_alive), generation, source = m_path, dir, key, pdf,
+                                  program = std::string(soffice)] {
       std::error_code err;
       const fs::path work = dir / (key + ".d");
       fs::create_directories(work, err);
@@ -588,7 +589,7 @@ namespace preview {
       fs::remove_all(work, err);
       const auto ms =
           std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-      DeferredCall::callLater([this, generation, ok, ms, pdf, source] {
+      DeferredCall::callLaterIfAlive(alive, [this, generation, ok, ms, pdf, source] {
         kLog.info("office {} converted {} in {} ms", source, ok ? "ok" : "failed", ms);
         if (generation != m_generation) {
           return;
@@ -701,7 +702,7 @@ namespace preview {
                       return;
                     }
                     // Runs inside the helper's callback: restart after it returns.
-                    DeferredCall::callLater([this, generation = m_generation] {
+                    DeferredCall::callLaterIfAlive(m_alive, [this, generation = m_generation] {
                       if (generation == m_generation) {
                         dropHelper();
                         loadMedia(HelperKind::MediaSoftware);
@@ -814,7 +815,7 @@ namespace preview {
             return;
           }
           // Runs inside the peaks helper's own callback: drop it after it returns.
-          DeferredCall::callLater([this, generation] {
+          DeferredCall::callLaterIfAlive(m_alive, [this, generation] {
             if (generation == m_generation && m_peaksHelper) {
               m_loop.removeSource(m_peaksHelper.get());
               m_peaksHelper.reset();
@@ -1041,7 +1042,7 @@ namespace preview {
 
   void PreviewWindow::helperFailed() {
     // Runs inside the helper client's own callback: drop the client after it returns.
-    DeferredCall::callLater([this, generation = m_generation] {
+    DeferredCall::callLaterIfAlive(m_alive, [this, generation = m_generation] {
       if (generation == m_generation) {
         dropHelper();
       }
@@ -1139,7 +1140,7 @@ namespace preview {
     m_surface = std::make_unique<ToplevelSurface>(m_loop.wayland());
     m_surface->setRenderContext(&m_loop.renderContext());
     m_surface->setAnimationManager(&m_animations);
-    m_surface->setClosedCallback([this] { DeferredCall::callLater([this] { close(); }); });
+    m_surface->setClosedCallback([this] { DeferredCall::callLaterIfAlive(m_alive, [this] { close(); }); });
     m_surface->setConfigureCallback([this](std::uint32_t, std::uint32_t) {
       if (m_surface) {
         m_surface->requestLayout();
@@ -1328,7 +1329,7 @@ namespace preview {
                                  .variant = ButtonVariant::Ghost, .tooltip = i18n::tr("preview.nav.close"),
                                  .radius = Tokens::sizeControlM / 2.0F, .width = Tokens::sizeControlM,
                                  .height = Tokens::sizeControlM,
-                                 .onClick = [this] { DeferredCall::callLater([this] { close(); }); }}));
+                                 .onClick = [this] { DeferredCall::callLaterIfAlive(m_alive, [this] { close(); }); }}));
     if (hole) {
       header->setFill(sheet);
     }
@@ -1660,7 +1661,7 @@ namespace preview {
     }
     g_free(uri);
     g_object_unref(file);
-    DeferredCall::callLater([this] { close(); });
+    DeferredCall::callLaterIfAlive(m_alive, [this] { close(); });
   }
 
   void PreviewWindow::onKeyboard(const KeyboardEvent& event) {
@@ -1670,7 +1671,7 @@ namespace preview {
     switch (event.sym) {
     case XKB_KEY_Escape:
     case XKB_KEY_space:
-      DeferredCall::callLater([this] { close(); });
+      DeferredCall::callLaterIfAlive(m_alive, [this] { close(); });
       break;
     case XKB_KEY_k:
       if (m_video || m_audio) {

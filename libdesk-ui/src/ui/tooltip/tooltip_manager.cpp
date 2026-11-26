@@ -352,7 +352,7 @@ void TooltipManager::scheduleRetargetPopup() {
     return;
   }
   m_retargetQueued = true;
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     m_retargetQueued = false;
     if (m_pendingArea == nullptr) {
       return;
@@ -387,7 +387,7 @@ void TooltipManager::scheduleReshow() {
   // re-enter the Wayland event loop while a pointer event is still on the stack.
   // Defer to the next main-loop tick. m_pendingArea is cleared when the hover target
   // is lost or destroyed, so a non-null value here is a live area.
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     m_reshowQueued = false;
     if (m_pendingArea == nullptr) {
       return;
@@ -541,7 +541,7 @@ void TooltipManager::scheduleDestroyPopup() {
     return;
   }
   m_destroyScheduled = true;
-  DeferredCall::callLater([this] {
+  DeferredCall::callLaterIfAlive(m_alive, [this] {
     m_destroyScheduled = false;
     destroyPopup();
     if (!m_showAfterDestroy || m_pendingArea == nullptr) {
@@ -549,7 +549,7 @@ void TooltipManager::scheduleDestroyPopup() {
       return;
     }
     m_showAfterDestroy = false;
-    DeferredCall::callLater([this] {
+    DeferredCall::callLaterIfAlive(m_alive, [this] {
       if (m_pendingArea != nullptr) {
         showPopup();
       }

@@ -50,4 +50,5 @@ private:
   Request m_request;
   std::filesystem::path m_destination;
   Button* m_ok = nullptr;
+  std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
