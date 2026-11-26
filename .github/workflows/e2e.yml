@@ -22,6 +22,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Image
         run: UBUNTU_IMAGE_ONLY=1 tools/ubuntu-build.sh 26.04
+      # No render node here: the compositor's software buffers come from /dev/udmabuf (tools/ubuntu-e2e.sh passes it).
+      - name: udmabuf
+        run: sudo modprobe udmabuf && sudo chmod 666 /dev/udmabuf
       - name: E2E
         env:
           NAMES: ${{ inputs.names }}
