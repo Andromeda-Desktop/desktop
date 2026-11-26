@@ -232,11 +232,18 @@ void PixelStreamView::emit(PointerKind kind, float x, float y, float dx, float d
 }
 
 void PixelStreamView::onStreamChanged() {
-  if (!m_client.connected()) {
+  const bool connected = m_client.connected();
+  if (!connected) {
     cancelDrag();
     m_clearPending = m_clearPending || m_onAdoptedChange != nullptr;
   }
-  markLayoutDirty();
+  // A frame changes only this node's texture, so it lays out this node alone; a connect or drop relays the scene.
+  if (connected && std::exchange(m_wasConnected, true)) {
+    markLocalLayoutDirty();
+  } else {
+    m_wasConnected = connected;
+    markLayoutDirty();
+  }
   if (m_onAdoptedChange) {
     m_onAdoptedChange(m_client.connected());
   }

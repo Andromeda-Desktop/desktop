@@ -461,7 +461,11 @@ void AuthColumn::layout(Renderer& renderer, const AuthPlacement& place, float sw
     m_networkGlyph->setVisible(!st.networkGlyph.empty());
     m_layoutText->setVisible(!st.layoutLabel.empty());
     for (Glyph* glyph : {m_batteryGlyph, m_networkGlyph}) {
-      glyph->setGlyph(glyph == m_batteryGlyph ? st.batteryGlyph : st.networkGlyph);
+      const std::string& name = glyph == m_batteryGlyph ? st.batteryGlyph : st.networkGlyph;
+      if (name.empty()) {
+        continue;
+      }
+      glyph->setGlyph(name);
       glyph->setGlyphSize(16.0F * s);
       glyph->setColor(kLabel1);
       glyph->measure(renderer);

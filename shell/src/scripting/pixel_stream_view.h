@@ -85,6 +85,7 @@ private:
   Image* m_image = nullptr;
   TextureHandle m_texture;
   bool m_clearPending = false;
+  bool m_wasConnected = false;
   std::string m_label;
   bool m_shownSinceAdopt = false;
   // Size of the frame on screen, which pointer positions map onto.
