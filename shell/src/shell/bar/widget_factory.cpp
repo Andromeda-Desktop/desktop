@@ -254,8 +254,6 @@ std::unique_ptr<Widget> WidgetFactory::create(
                     .upower = f.m_upower,
                 }
             );
-            // The unlabelled battery symbol is the outlined reference icon, as in the islands.
-            options.islandStyle = options.displayMode == BatteryDisplayMode::Graphic && !options.showLabel;
             return createWidget<BatteryWidget>(context.contentScale, f.m_upower, f.m_powerProfiles, options);
           }},
       {"bluetooth", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
