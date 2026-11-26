@@ -13,6 +13,7 @@
 #include <sys/types.h>
 
 #include "agent_kind.h"
+#include "core/timer_manager.h"
 #include "agent_session.h"
 
 namespace term::agent {
@@ -37,6 +38,7 @@ namespace term::agent {
 
     // Call after a user action on a session model: sends its outbox.
     void flush(std::uint64_t key);
+    void armHangCheck();
 
     [[nodiscard]] Kind kind() const { return m_kind; }
 
@@ -70,6 +72,9 @@ namespace term::agent {
     bool m_initialized = false;
     std::int64_t m_initializeId = 0;
     std::int64_t m_nextId = 1'000'000; // above the ids the session models use
+    // Hang check: a session waiting on the agent (Starting, Cancelling) with no message from it for kHangTimeout
+    // ends the agent, so the exit path fails the session instead of leaving it waiting forever.
+    Timer m_hangCheck;
   };
 
 } // namespace term::agent

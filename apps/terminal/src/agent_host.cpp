@@ -1,4 +1,6 @@
 #include "agent_host.h"
+
+#include "core/log.h"
 #include "i18n/i18n.h"
 #include "core/sys/sys.h"
 
@@ -7,6 +9,7 @@
 #include <csignal>
 #include <cstdlib>
 #include <algorithm>
+#include <chrono>
 #include <fcntl.h>
 #include <poll.h>
 #include <span>
@@ -208,6 +211,33 @@ namespace term::agent {
     for (const auto& message : slot.model->takeOutbox()) {
       write(message);
     }
+    armHangCheck();
+  }
+
+  void Host::armHangCheck() {
+    constexpr auto kHangTimeout = std::chrono::seconds(30);
+    const bool waiting = m_pid > 0 && std::ranges::any_of(m_slots, [](const auto& entry) {
+      const Phase phase = entry.second.model->phase();
+      return phase == Phase::Starting || phase == Phase::Cancelling;
+    });
+    if (!waiting) {
+      m_hangCheck.stop();
+      return;
+    }
+    if (m_hangCheck.active()) {
+      return;
+    }
+    // One-shot, only while a session waits on the agent.
+    m_hangCheck.start(kHangTimeout, [this, kHangTimeout] {
+      // A leader that already exited may be reaped, and its pid reused: the exit path runs instead.
+      pollfd exited{m_shared ? m_shared->exitFd : -1, POLLIN, 0};
+      if (m_pid <= 0 || exited.fd < 0 || ::poll(&exited, 1, 0) != 0) {
+        return;
+      }
+      constexpr Logger kLog("agent");
+      kLog.warn("agent {} sent nothing for {} s while a session waited; stopping it", m_pid, kHangTimeout.count());
+      ::kill(-m_pid, SIGKILL);
+    });
   }
 
   bool Host::ensureStarted() {
@@ -369,6 +399,7 @@ namespace term::agent {
   }
 
   void Host::onMessage(const Json& message) {
+    m_hangCheck.stop(); // the agent is alive: the wait starts again from this message
     const auto method = message.value("method", std::string{});
     const auto params = message.value("params", Json::object());
     const auto id = message.find("id");
@@ -437,6 +468,7 @@ namespace term::agent {
 
   void Host::onExit(int status, std::string stderrTail) {
     m_pid = -1;
+    m_hangCheck.stop();
     m_initialized = false;
     if (m_shared) {
       {
