@@ -118,7 +118,9 @@ namespace {
   }
 } // namespace
 
-int main() {
+// `release`: destroys the inhibitor after the first idle timeout while the surface stays visible.
+int main(int argc, char** argv) {
+  const bool release = argc > 1 && std::strcmp(argv[1], "release") == 0;
   State state;
   state.display = wl_display_connect(nullptr);
   if (state.display == nullptr) {
@@ -150,6 +152,17 @@ int main() {
   ext_idle_notification_v1_add_listener(state.notification, &kIdleListener, &state);
   wl_surface_commit(state.surface);
 
+  if (release) {
+    while (!state.mapped && wl_display_dispatch(state.display) >= 0) {
+    }
+    wl_display_roundtrip(state.display);
+    usleep(350'000);
+    wl_display_roundtrip(state.display);
+    zwp_idle_inhibitor_v1_destroy(state.inhibitor);
+    wl_display_flush(state.display);
+    std::println("released");
+    std::fflush(stdout);
+  }
   while (wl_display_dispatch(state.display) >= 0) {
   }
   return EXIT_SUCCESS;

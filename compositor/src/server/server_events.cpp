@@ -739,6 +739,7 @@ namespace andromeda {
     auto* inhibitor = static_cast<wlr_idle_inhibitor_v1*>(data);
     auto* watch = new IdleInhibitorWatch();
     watch->server = self;
+    watch->inhibitor = inhibitor;
     watch->destroy.notify = onIdleInhibitorDestroy;
     wl_signal_add(&inhibitor->events.destroy, &watch->destroy);
     self->updateIdleInhibit();
@@ -748,9 +749,10 @@ namespace andromeda {
     IdleInhibitorWatch* watch;
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
+    const wlr_idle_inhibitor_v1* dying = watch->inhibitor;
     wl_list_remove(&watch->destroy.link);
     delete watch;
-    server->updateIdleInhibit();
+    server->updateIdleInhibit(dying);
   }
 
   void Server::onNewImageCopySession(wl_listener* listener, void* data) {
@@ -892,10 +894,13 @@ namespace andromeda {
     return static_cast<WorkspaceGroup*>(handle->data);
   }
 
-  void Server::updateIdleInhibit() {
+  void Server::updateIdleInhibit(const wlr_idle_inhibitor_v1* dying) {
     bool inhibited = false;
     wlr_idle_inhibitor_v1* inhibitor;
     wl_list_for_each(inhibitor, &m_idleInhibitManager->inhibitors, link) {
+      if (inhibitor == dying) {
+        continue;
+      }
       wlr_surface* root = wlr_surface_get_root_surface(inhibitor->surface);
       if (root == nullptr) {
         continue;

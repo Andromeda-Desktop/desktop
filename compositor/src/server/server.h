@@ -446,7 +446,8 @@ namespace andromeda {
     void handleConfigReload(const ConfigReloadResult& result);
     // Re-evaluate application idle inhibitors after a surface's presentation
     // visibility changes.
-    void updateIdleInhibit();
+    // `dying` is an inhibitor inside its destroy signal: wlroots unlinks it only after the signal.
+    void updateIdleInhibit(const wlr_idle_inhibitor_v1* dying = nullptr);
     // A layer surface mapped: the shell drew its first frame, so libinput may start.
     void layerSurfaceMapped();
     // Re-derive every toplevel's suspended state once the current dispatch settles, so a transition that hides and
@@ -880,6 +881,7 @@ namespace andromeda {
 
     struct IdleInhibitorWatch {
       Server* server = nullptr;
+      wlr_idle_inhibitor_v1* inhibitor = nullptr;
       wl_listener destroy{};
     };
     struct ShortcutsInhibitorWatch {
