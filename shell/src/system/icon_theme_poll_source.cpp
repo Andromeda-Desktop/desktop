@@ -27,20 +27,17 @@ namespace {
     WATCH_THEME_ROOT = 1U << 1U,
     WATCH_ICON_DIR = 1U << 2U,
     WATCH_SETTINGS_DIR = 1U << 3U,
-    WATCH_SETTINGS_ANCESTOR = 1U << 4U,
   };
 
   struct DesiredWatch {
     std::uint8_t roles = 0;
     std::unordered_set<std::string> settingsFiles;
-    std::unordered_set<std::string> missingChildren;
   };
 
   struct ActiveWatch {
     DirectoryWatcher::WatchId id = -1;
     std::uint8_t roles = 0;
     std::unordered_set<std::string> settingsFiles;
-    std::unordered_set<std::string> missingChildren;
   };
 
   bool hasRole(std::uint8_t roles, WatchRole role) { return (roles & static_cast<std::uint8_t>(role)) != 0; }
@@ -96,41 +93,26 @@ struct IconThemePollSource::Impl {
     }
     for (const auto& path : paths.settingsFiles) {
       const fs::path settingsPath(path);
-      std::error_code ec;
-      if (fs::is_directory(settingsPath.parent_path(), ec)) {
-        auto& watch = desired[settingsPath.parent_path().string()];
-        watch.roles |= WATCH_SETTINGS_DIR;
-        watch.settingsFiles.emplace(settingsPath.filename().string());
-        continue;
-      }
-      // A missing settings dir (dconf creates ~/.config/dconf on its first write) is watched through its nearest
-      // existing ancestor, so the creation resets the watches without a periodic re-check.
-      fs::path child = settingsPath.parent_path();
-      fs::path ancestor = child.parent_path();
-      while (ancestor != child && !fs::is_directory(ancestor, ec)) {
-        child = ancestor;
-        ancestor = ancestor.parent_path();
-      }
-      auto& watch = desired[ancestor.string()];
-      watch.roles |= WATCH_SETTINGS_ANCESTOR;
-      watch.missingChildren.emplace(child.filename().string());
+      auto& watch = desired[settingsPath.parent_path().string()];
+      watch.roles |= WATCH_SETTINGS_DIR;
+      watch.settingsFiles.emplace(settingsPath.filename().string());
     }
 
+    // A missing directory (dconf creates ~/.config/dconf on its first write) is followed until it exists; then
+    // Overflow resets the watches.
     for (auto& [path, watch] : desired) {
-      std::error_code ec;
-      if (!fs::is_directory(path, ec)) {
-        continue;
-      }
-      const auto id = dirs.watch(path, [this, path](DirectoryWatcher::Event event, const std::string& name,
-                                                    const std::string& newName) {
-        handleEvent(path, event, name, newName);
-      });
+      const auto id = dirs.watch(
+          path,
+          [this, path](DirectoryWatcher::Event event, const std::string& name, const std::string& newName) {
+            handleEvent(path, event, name, newName);
+          },
+          DirectoryWatcher::Follow::Path
+      );
       watchesComplete = watchesComplete && id >= 0;
       if (id >= 0) {
         watches[path] = ActiveWatch{.id = id,
                                     .roles = watch.roles,
-                                    .settingsFiles = std::move(watch.settingsFiles),
-                                    .missingChildren = std::move(watch.missingChildren)};
+                                    .settingsFiles = std::move(watch.settingsFiles)};
       }
     }
   }
@@ -187,11 +169,6 @@ struct IconThemePollSource::Impl {
     if (hasRole(watch.roles, WATCH_SETTINGS_DIR)
         && completedFileChange
         && watch.settingsFiles.contains(std::string(name))) {
-      metadata = true;
-    }
-    if (hasRole(watch.roles, WATCH_SETTINGS_ANCESTOR)
-        && directoryChange
-        && watch.missingChildren.contains(std::string(name))) {
       metadata = true;
     }
     if (hasRole(watch.roles, WATCH_BASE_DIR) && directoryChange) {
