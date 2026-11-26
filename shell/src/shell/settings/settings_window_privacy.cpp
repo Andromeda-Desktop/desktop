@@ -23,9 +23,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <fstream>
 #include <optional>
 #include <sstream>
+#include <string_view>
+#include <vector>
 
 namespace gs = settings::global_shortcuts;
 
@@ -52,21 +55,50 @@ namespace {
   constexpr auto kFaceAdminHelper = "/usr/lib/andromeda/andromeda-face-admin";
   constexpr auto kFingerAdminHelper = "/usr/lib/andromeda/andromeda-finger-admin";
 
-  // nullopt: pam_gaze is not in /etc/pam.d/sudo; true: its line is active (not "#andromeda-off").
-  std::optional<bool> faceAdminState() {
-    std::ifstream file("/etc/pam.d/sudo");
+  // The admin-prompt stacks the andromeda-{face,finger}-admin helpers edit; polkit-1 falls back to the vendor copy,
+  // which is the stack in effect until the finger helper copies it to /etc.
+  enum class PamLine : std::uint8_t { Missing, Off, On };
+  PamLine pamLineState(const char* path, std::string_view module) {
+    std::ifstream file(path);
+    PamLine state = PamLine::Missing;
     for (std::string line; std::getline(file, line);) {
-      if (line.find("pam_gaze.so") == std::string::npos || line.find("sufficient") == std::string::npos) {
+      if (line.find(module) == std::string::npos || line.find("sufficient") == std::string::npos) {
         continue;
       }
-      return !line.starts_with("#");
+      if (line.starts_with("auth")) {
+        return PamLine::On;
+      }
+      if (line.starts_with("#andromeda-off ")) {
+        state = PamLine::Off;
+      }
     }
-    return std::nullopt;
+    return state;
   }
 
-  // An active pam_fprintd line in sudo, or in the stack every login includes (Debian's pam-auth-update).
+  std::vector<PamLine> adminStacks(std::string_view module) {
+    std::vector<PamLine> states;
+    const bool etcPolkit = ::access("/etc/pam.d/polkit-1", F_OK) == 0;
+    for (const char* path : {"/etc/pam.d/sudo", etcPolkit ? "/etc/pam.d/polkit-1" : "/usr/lib/pam.d/polkit-1"}) {
+      if (::access(path, F_OK) == 0) {
+        states.push_back(pamLineState(path, module));
+      }
+    }
+    return states;
+  }
+
+  // nullopt: no stack has a pam_gaze line (gaze is not installed); true: every stack with one has it active.
+  std::optional<bool> faceAdminState() {
+    const auto states = adminStacks("pam_gaze.so");
+    if (std::ranges::all_of(states, [](PamLine s) { return s == PamLine::Missing; })) {
+      return std::nullopt;
+    }
+    return std::ranges::none_of(states, [](PamLine s) { return s == PamLine::Off; });
+  }
+
+  // On when the shared stack every login includes has pam_fprintd (Debian's pam-auth-update), or when every admin
+  // stack has an active line: the helper's "on" adds it to each.
   bool fingerAdminState() {
-    for (const char* path : {"/etc/pam.d/sudo", "/etc/pam.d/common-auth", "/etc/pam.d/system-auth"}) {
+    for (const char* path : {"/etc/pam.d/common-auth", "/etc/pam.d/system-auth"}) {
       std::ifstream file(path);
       for (std::string line; std::getline(file, line);) {
         if (line.starts_with("auth") && line.find("pam_fprintd.so") != std::string::npos) {
@@ -74,7 +106,8 @@ namespace {
         }
       }
     }
-    return false;
+    const auto states = adminStacks("pam_fprintd.so");
+    return !states.empty() && std::ranges::all_of(states, [](PamLine s) { return s == PamLine::On; });
   }
 
   std::string currentUser() {
