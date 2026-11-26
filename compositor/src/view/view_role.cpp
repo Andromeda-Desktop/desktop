@@ -1,6 +1,7 @@
 #include "config/config.h"
 #include "core/log.h"
 #include "output/output.h"
+#include "protocols/ipc_channel.h"
 #include "overview/overview.h"
 #include "scene/surface_shape.h"
 #include "server/dsk_surface.h"
@@ -18,7 +19,10 @@
 #include <csignal>
 #include <cstdint>
 #include <cstring>
+#include <fcntl.h>
 #include <limits>
+#include <optional>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 // Every branch between the xdg-shell and the X11 role of a View lives here.
@@ -256,12 +260,16 @@ namespace andromeda {
       }
       return {};
     }
-    const pid_t clientPid = pid();
-    // Nonpositive PIDs signal process groups rather than an individual client.
-    if (clientPid <= 1 || clientPid == getpid()) {
+    // The pidfd from the client's socket names the process that connected; a pid read later may name another one.
+    wlr_surface* surface = rootSurface();
+    const int fd = surface != nullptr && surface->resource != nullptr
+        ? fcntl(wl_client_get_fd(wl_resource_get_client(surface->resource)), F_DUPFD_CLOEXEC, 0)
+        : -1;
+    const std::optional<ipc::Peer> peer = fd >= 0 ? ipc::checkPeer(ipc::Fd(fd)) : std::nullopt;
+    if (!peer || peer->pid <= 1 || peer->pid == getpid()) {
       return std::unexpected("window has no killable client process");
     }
-    if (kill(clientPid, SIGKILL) != 0) {
+    if (syscall(SYS_pidfd_send_signal, peer->pidfd.get(), SIGKILL, nullptr, 0) != 0) {
       return std::unexpected(std::string("failed to kill window process: ") + std::strerror(errno));
     }
     return {};
