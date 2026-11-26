@@ -33,7 +33,8 @@ boot_headless() {
     DBUS_SYSTEM_BUS_ADDRESS="$BUS_ADDRESS" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
     ${SLEEP_ON_TEST_BUS:+ANDROMEDA_TEST_SLEEP_HOLD=1} "${nested[@]}" > "$OUT/andromeda.log" 2>&1 &
   # The IPC socket comes after the Wayland socket (server.cpp creates Ipc later); `msg` needs it.
-  wait_compositor $! "$RUNTIME/andromeda-wayland-0.sock" 5 || { echo "andromeda did not start" >&2; exit 1; }
+  wait_compositor $! "$RUNTIME/andromeda-wayland-0.sock" 5 ||
+    { echo "andromeda did not start" >&2; tail -n 20 "$OUT/andromeda.log" >&2; exit 1; }
 }
 
 # rm_runtime: deletes $RUNTIME in a cleanup trap. Helpers the private bus started (thumbnailers, previews) can
