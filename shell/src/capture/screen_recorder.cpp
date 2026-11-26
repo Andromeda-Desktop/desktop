@@ -269,23 +269,32 @@ void ScreenRecorder::startCast() {
           m_crop.stream.y = y;
         }
         try {
-          sdbus::UnixFd fd;
-          m_portal->callMethod("OpenPipeWireRemote")
+          m_portal->callMethodAsync("OpenPipeWireRemote")
               .onInterface(kScreenCast)
               .withArguments(sdbus::ObjectPath{m_sessionHandle}, Results{})
-              .storeResultsTo(fd);
-          // pipewiresrc dups the fd when it opens (NULL->READY, inside startPipeline) and never closes ours.
-          startPipeline([&fd, node = std::get<0>(list.front())](const Make& make) {
-            GstElement* src = make("pipewiresrc");
-            if (src != nullptr) {
-              const std::string path = std::to_string(node);
-              g_object_set(
-                  src, "fd", fd.get(), "path", path.c_str(), "do-timestamp", TRUE, "keepalive-time", 1000,
-                  nullptr
-              );
-            }
-            return std::vector<GstElement*>{src};
-          });
+              .uponReplyInvoke([this, seq = m_tokenSeq, node = std::get<0>(list.front())](
+                                   std::optional<sdbus::Error> error, sdbus::UnixFd fd
+                               ) {
+                if (m_state != State::Starting || seq != m_tokenSeq) {
+                  return;
+                }
+                if (error.has_value()) {
+                  finish(error->what());
+                  return;
+                }
+                // pipewiresrc dups the fd when it opens (NULL->READY, inside startPipeline) and never closes ours.
+                startPipeline([&fd, node](const Make& make) {
+                  GstElement* src = make("pipewiresrc");
+                  if (src != nullptr) {
+                    const std::string path = std::to_string(node);
+                    g_object_set(
+                        src, "fd", fd.get(), "path", path.c_str(), "do-timestamp", TRUE, "keepalive-time", 1000,
+                        nullptr
+                    );
+                  }
+                  return std::vector<GstElement*>{src};
+                });
+              });
         } catch (const sdbus::Error& e) {
           finish(e.what());
         }
