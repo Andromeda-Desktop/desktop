@@ -8,10 +8,11 @@
 #include "net/uri.h"
 #include "notification/notification_manager.h"
 #include "shell/settings/settings_pages.h"
-#include "util/file_utils.h"
 #include "util/string_utils.h"
 
-#include <filesystem>
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <cstdint>
 #include <sdbus-c++/Error.h>
 #include <sdbus-c++/Types.h>
@@ -345,16 +346,32 @@ namespace notification_dbus {
       if (normalizedPath.empty() || normalizedPath.front() != '/') {
         return {};
       }
-      if (access(normalizedPath.c_str(), R_OK) != 0) {
+      // One open, then fstat and read on that fd: the sender may swap the path for a FIFO or a device after a check.
+      const int fd = ::open(normalizedPath.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+      if (fd < 0) {
         return {};
       }
       // A notification image is a thumbnail: a larger file is not read into memory in the Notify call.
-      constexpr std::uintmax_t kMaxImagePathBytes = 16ULL * 1024ULL * 1024ULL;
-      std::error_code sizeError;
-      if (const auto size = std::filesystem::file_size(normalizedPath, sizeError); sizeError || size > kMaxImagePathBytes) {
-        return {};
+      constexpr std::size_t kMaxImagePathBytes = 16ULL * 1024ULL * 1024ULL;
+      std::vector<std::uint8_t> bytes;
+      struct stat st{};
+      if (::fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && static_cast<std::uintmax_t>(st.st_size) <= kMaxImagePathBytes) {
+        bytes.resize(static_cast<std::size_t>(st.st_size));
+        std::size_t done = 0;
+        while (done < bytes.size()) {
+          const ssize_t n = ::read(fd, bytes.data() + done, bytes.size() - done);
+          if (n < 0 && errno == EINTR) {
+            continue;
+          }
+          if (n <= 0) {
+            break;
+          }
+          done += static_cast<std::size_t>(n);
+        }
+        bytes.resize(done);
       }
-      return FileUtils::readBinaryFile(normalizedPath);
+      ::close(fd);
+      return bytes;
     }
 
     std::vector<std::uint8_t> notifyImagePathBytes(const std::map<std::string, sdbus::Variant>& hints) {
