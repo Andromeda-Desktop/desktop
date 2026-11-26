@@ -31,9 +31,11 @@
 #include <string>
 #include <string_view>
 #include <spawn.h>
+// Some glibc releases (seen on Ubuntu 26.04 and Debian testing) declare these without extern "C".
+extern "C" {
 #include <sys/pidfd.h>
+}
 #include <sys/socket.h>
-#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <system_error>
 #include <unistd.h>
@@ -447,7 +449,7 @@ namespace {
     (void)setNonBlocking(outPipe[0]);
     (void)setNonBlocking(errPipe[0]);
     // A failed pidfd_open (old kernel) keeps the bounded poll interval for exit checks.
-    int pidFd = static_cast<int>(::syscall(SYS_pidfd_open, pid, 0U));
+    int pidFd = ::pidfd_open(pid, 0);
 
     std::string out;
     std::string err;
@@ -1121,11 +1123,9 @@ namespace process {
     if (options.stdinData.has_value()) {
       child->inData = std::move(*options.stdinData);
     }
-    // Raw syscall, not glibc's pidfd_open() wrapper: sys/pidfd.h declares it with no extern "C",
-    // so a C++ TU linking against it looks for a mangled symbol libc does not export.
     // A failed pidfd_open (old kernel, pid already reaped) just falls back to the bounded poll
     // interval pollTimeoutMs() advertises whenever a child has no pidfd.
-    child->pidfd = static_cast<int>(::syscall(SYS_pidfd_open, pid, 0U));
+    child->pidfd = ::pidfd_open(pid, 0);
     child->outFd = outPipe[0];
     child->errFd = errPipe[0];
     child->maxOutputBytes = options.maxOutputBytes;
