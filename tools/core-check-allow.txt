@@ -1,2 +1,1 @@
 # core-check allowlist: rule path count. Counts only fall; tools/core-check.py --update after a fix.
-main-io libdesk-ui/src/render/core/shared_texture_cache.cpp 1
