@@ -244,7 +244,7 @@ void ActivityWindow::open(const std::string& rowKey) {
     return;
   }
   m_pointerInside = false;
-  m_actionError.clear();
+  clearActionError();
   m_rowStatesAt = {};
   m_openedAt = std::chrono::steady_clock::now();
   m_skeletonTimer.start(kSkeletonFor, [this] { requestRebuild(); });
@@ -316,7 +316,7 @@ void ActivityWindow::destroyWindow() {
   m_pointerInside = false;
   m_buttonDown = false;
   m_rebuildRequested = false;
-  m_actionError.clear();
+  clearActionError();
   m_listScroll = {};
   m_inspectorScroll = {};
   m_rowStates.clear();
@@ -689,11 +689,11 @@ void ActivityWindow::setSelectedLimit(bool cpuField, std::size_t index) {
     m_limitedKeys.erase(row->key);
   }
   const auto& known = m_monitor->userUnits().units();
+  const auto ticket = beginAction();
   for (const auto& name : row->units) {
     if (const auto it = std::ranges::find(known, name, &SystemdUnit::name); it != known.end()) {
-      m_actions->setLimits(*it, cpu, memory, [this](const ActivityActionResult& result) {
-        m_actionError = actionError(result);
-        requestRebuild();
+      m_actions->setLimits(*it, cpu, memory, [this, ticket](const ActivityActionResult& result) {
+        reportActionError(ticket, actionError(result));
       });
     }
   }
@@ -705,11 +705,11 @@ void ActivityWindow::setSelectedFrozen(bool frozen) {
     return;
   }
   const auto& known = m_monitor->userUnits().units();
+  const auto ticket = beginAction();
   for (const auto& name : row->units) {
     if (const auto it = std::ranges::find(known, name, &SystemdUnit::name); it != known.end()) {
-      m_actions->setFrozen(*it, frozen, [this](const ActivityActionResult& result) {
-        m_actionError = actionError(result);
-        requestRebuild();
+      m_actions->setFrozen(*it, frozen, [this, ticket](const ActivityActionResult& result) {
+        reportActionError(ticket, actionError(result));
       });
     }
   }
@@ -733,9 +733,10 @@ void ActivityWindow::setSelectedEfficiency(bool on) {
   if (row == nullptr) {
     return;
   }
+  const auto ticket = beginAction();
   for (const auto& unit : row->units) {
-    m_monitor->setEfficiency(unit, on, [this](const std::string& error) {
-      m_actionError = error.empty() ? std::string() : i18n::tr("activity.efficiency-failed", "error", error);
+    m_monitor->setEfficiency(unit, on, [this, ticket](const std::string& error) {
+      reportActionError(ticket, error.empty() ? std::string() : i18n::tr("activity.efficiency-failed", "error", error));
       requestRebuild();
     });
   }
@@ -878,7 +879,7 @@ void ActivityWindow::select(const std::string& key) {
   }
   m_selectedKey = key;
   m_inspectorHidden = false;
-  m_actionError.clear();
+  clearActionError();
   requestRebuild();
 }
 
@@ -919,16 +920,33 @@ void ActivityWindow::forceQuitSelected() {
     return;
   }
   const auto& known = m_monitor->userUnits().units();
+  const auto ticket = beginAction();
   for (const auto& name : row->units) {
     if (const auto it = std::ranges::find(known, name, &SystemdUnit::name); it != known.end()) {
-      m_actions->forceQuit(*it, [this](const ActivityActionResult& result) {
-        if (!result.ok) {
-          m_actionError = actionError(result);
-          requestRebuild();
-        }
+      m_actions->forceQuit(*it, [this, ticket](const ActivityActionResult& result) {
+        reportActionError(ticket, actionError(result));
       });
     }
   }
+  requestRebuild();
+}
+
+void ActivityWindow::clearActionError() {
+  m_actionRequest.cancel();
+  m_actionError.clear();
+}
+
+LatestRequest::Ticket ActivityWindow::beginAction() {
+  clearActionError();
+  return m_actionRequest.begin();
+}
+
+// Only a failure reports: an OK reply from one unit must not clear an error another unit of the same action set.
+void ActivityWindow::reportActionError(LatestRequest::Ticket ticket, std::string error) {
+  if (!m_actionRequest.current(ticket) || error.empty()) {
+    return;
+  }
+  m_actionError = std::move(error);
   requestRebuild();
 }
 
@@ -939,17 +957,14 @@ void ActivityWindow::stopSelected() {
     return;
   }
   const auto& known = m_monitor->userUnits().units();
+  const auto ticket = beginAction();
   for (const auto& name : row->units) {
     const auto it = std::ranges::find(known, name, &SystemdUnit::name);
     if (it == known.end()) {
       continue;
     }
-    m_actions->stop(*it, [this](const ActivityActionResult& result) {
-      if (result.ok) {
-        return;
-      }
-      m_actionError = actionError(result);
-      requestRebuild();
+    m_actions->stop(*it, [this, ticket](const ActivityActionResult& result) {
+      reportActionError(ticket, actionError(result));
     });
   }
   requestRebuild();
@@ -1181,8 +1196,9 @@ void ActivityWindow::runContainerAction(const ContainerInfo& container, int acti
   if (m_containers == nullptr) {
     return;
   }
-  m_containers->act(container, static_cast<ContainerService::Action>(action), [this](const std::string& error) {
-    m_actionError = error == "permission" ? i18n::tr("activity.engine-permission") : error;
+  const auto ticket = beginAction();
+  m_containers->act(container, static_cast<ContainerService::Action>(action), [this, ticket](const std::string& error) {
+    reportActionError(ticket, error == "permission" ? i18n::tr("activity.engine-permission") : error);
     m_containerTicks = 0; // list again now, and re-read the engine units
     refreshContainers();
     requestRebuild();

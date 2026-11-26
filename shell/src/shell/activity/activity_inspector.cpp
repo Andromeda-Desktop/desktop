@@ -368,8 +368,8 @@ void ActivityWindow::addOverview(Flex& details, const ActivityRow& row, float sc
     ));
     if (state->atLogin) {
       buttons->addChild(actionButton(i18n::tr("notifications.internal.activity-dont-start"), scale, [this, key = row.key] {
-        m_background->disableAtLogin(key, [this](const ActivityActionResult& result) {
-          m_actionError = result.ok ? "" : result.accessDenied ? i18n::tr("activity.error-admin") : result.error;
+        m_background->disableAtLogin(key, [this, ticket = beginAction()](const ActivityActionResult& result) {
+          reportActionError(ticket, result.ok ? "" : result.accessDenied ? i18n::tr("activity.error-admin") : result.error);
           refreshRowStates(true);
           requestRebuild();
         });
@@ -572,8 +572,8 @@ void ActivityWindow::addContainerCards(Flex& list, float scale) {
     );
     if (active && m_actions != nullptr) {
       engineRow->addChild(actionButton(i18n::tr("activity.action-stop-engine"), scale, [this, units] {
-        const auto done = [this](const ActivityActionResult& result) {
-          m_actionError = result.ok ? "" : result.accessDenied ? i18n::tr("activity.error-admin") : result.error;
+        const auto done = [this, ticket = beginAction()](const ActivityActionResult& result) {
+          reportActionError(ticket, result.ok ? "" : result.accessDenied ? i18n::tr("activity.error-admin") : result.error);
           m_containerTicks = 0;
           refreshContainers();
           requestRebuild();
@@ -603,12 +603,13 @@ void ActivityWindow::addContainerCards(Flex& list, float scale) {
     }
     if (atLogin && m_actions != nullptr) {
       engineRow->addChild(actionButton(i18n::tr("notifications.internal.activity-dont-start"), scale, [this, units] {
+        const auto ticket = beginAction();
         for (const auto& unit : units) {
           if (unit.unitFileState != "enabled") {
             continue;
           }
-          m_actions->disableAtLogin(unit, {}, {}, [this](const ActivityActionResult& result) {
-            m_actionError = result.ok ? "" : result.accessDenied ? i18n::tr("activity.error-admin") : result.error;
+          m_actions->disableAtLogin(unit, {}, {}, [this, ticket](const ActivityActionResult& result) {
+            reportActionError(ticket, result.ok ? "" : result.accessDenied ? i18n::tr("activity.error-admin") : result.error);
             m_containerTicks = 0;
             refreshContainers();
             requestRebuild();
@@ -659,7 +660,7 @@ void ActivityWindow::addContainerCards(Flex& list, float scale) {
                 m_selectedKey = key;
                 m_inspectorScroll = {};
                 m_inspectorHidden = false;
-                m_actionError.clear();
+                clearActionError();
                 requestRebuild();
               },
           .configure =

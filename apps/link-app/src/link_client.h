@@ -233,7 +233,7 @@ namespace linkapp {
     static constexpr std::size_t kThumbBytes = std::size_t{48} << 20;
     // Fetches path's PNG with ask() once and caches it; null until it comes.
     template <typename Ask> const std::vector<std::uint8_t>* cachedImage(const std::string& path, Ask ask);
-    std::map<std::string, Thumb> m_thumbs; // path -> PNG, at most kThumbBytes; the least recently drawn go first
+    std::map<std::string, Thumb> m_thumbs; // key (photo:<device>:<path>, mms:<device>:<part>) -> PNG, at most kThumbBytes; the least recently drawn go first
     std::list<std::string> m_thumbUse;     // paths, most recently drawn first
     std::size_t m_thumbBytes = 0;
     std::function<void()> m_thumbnailReady;

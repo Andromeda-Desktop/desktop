@@ -697,7 +697,8 @@ namespace linkapp {
   }
 
   const std::vector<std::uint8_t>* LinkClient::thumbnail(const std::string& path) {
-    return cachedImage(path, [&] {
+    // The key holds the phone: after a phone switch, a late reply for the same path must not fill the new phone's tile.
+    return cachedImage(std::format("photo:{}:{}", m_photos.device(), path), [&] {
       return m_proxy->callMethodAsync("Thumbnail").onInterface(kInterface).withArguments(m_photos.device(), path, std::uint16_t{256});
     });
   }

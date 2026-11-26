@@ -3,6 +3,7 @@
 #include "dbus/systemd/systemd_units_service.h"
 #include "system/container_service.h"
 
+#include "core/latest_request.h"
 #include "core/timer_manager.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_dispatcher.h"
@@ -309,6 +310,13 @@ private:
   Input* m_keptSearchInput = nullptr; // the input inside m_keptSearch
   float m_searchScale = 0.0F;
   std::string m_actionError;
+  // An action's reply reports only while its request is current: a selection change, a close or a newer action
+  // supersedes it, so a late reply cannot show its error on another row or a reopened window.
+  LatestRequest m_actionRequest;
+  void clearActionError();
+  // Starts an action: supersedes earlier replies and clears their error, so a retry that works shows none.
+  [[nodiscard]] LatestRequest::Ticket beginAction();
+  void reportActionError(LatestRequest::Ticket ticket, std::string error);
   std::set<std::string> m_limitedKeys; // rows limited from this window; only these get the status mark
   bool m_pointerInside = false;
   bool m_rebuildRequested = false;

@@ -1314,6 +1314,7 @@ if build_tests
     'island_morph',
     'island_lane_layout',
     'island_banner_swipe',
+    'latest_request_model',
     'osd_reveal',
     'input_area',
     'input_bidi',
