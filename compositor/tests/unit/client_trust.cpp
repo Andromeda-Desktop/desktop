@@ -10,13 +10,13 @@ using namespace andromeda;
 
 namespace {
 
-  constexpr std::array<std::string_view, 19> kPrivilegedNames{
+  constexpr std::array<std::string_view, 20> kPrivilegedNames{
       "dsk_shell_v1", "dsk_settings_manager_v1", "ext_session_lock_manager_v1", "zwlr_foreign_toplevel_manager_v1",
       "ext_foreign_toplevel_list_v1", "zwlr_screencopy_manager_v1", "ext_image_copy_capture_manager_v1",
       "ext_output_image_capture_source_manager_v1", "ext_foreign_toplevel_image_capture_source_manager_v1",
       "zwlr_data_control_manager_v1", "ext_data_control_manager_v1", "zwp_virtual_keyboard_manager_v1",
       "zwlr_virtual_pointer_manager_v1", "andromeda_input_capture_manager_v1", "andromeda_remote_input_manager_v1", "dsk_output_manager_v1",
-      "zwlr_output_manager_v1", "zwlr_gamma_control_manager_v1", "zwlr_output_power_manager_v1",
+      "zwlr_output_manager_v1", "zwlr_gamma_control_manager_v1", "zwlr_output_power_manager_v1", "zwlr_export_dmabuf_manager_v1",
   };
   constexpr std::array<std::string_view, 5> kOrdinaryNames{"wl_compositor", "xdg_wm_base", "wl_seat",
                                                            "zwlr_layer_shell_v1", "wp_security_context_manager_v1"};

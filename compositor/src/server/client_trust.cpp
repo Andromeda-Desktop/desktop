@@ -31,7 +31,7 @@ namespace andromeda {
       uint16_t kind;
     };
 
-    constexpr std::array<Privileged, 19> kPrivileged{{
+    constexpr std::array<Privileged, 20> kPrivileged{{
         {"dsk_shell_v1", kShell},
         {"dsk_settings_manager_v1", kShell},
         {"ext_session_lock_manager_v1", kLock},
@@ -41,6 +41,7 @@ namespace andromeda {
         {"ext_output_image_capture_source_manager_v1", kCapture},
         {"ext_foreign_toplevel_image_capture_source_manager_v1", kCapture},
         {"zwlr_screencopy_manager_v1", kScreencopy},
+        {"zwlr_export_dmabuf_manager_v1", kScreencopy},
         {"zwlr_data_control_manager_v1", kClipboard},
         {"ext_data_control_manager_v1", kClipboard},
         {"zwp_virtual_keyboard_manager_v1", kInjectInput},
