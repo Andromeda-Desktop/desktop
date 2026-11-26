@@ -241,7 +241,6 @@
     <property name="HasLight" type="b" access="read" />
     <property name="HasPresence" type="b" access="read" />
     <property name="Presence" type="u" access="read" />
-    <property name="ProximityMm" type="u" access="read" />
   </interface>
   <interface name="org.andromeda.System1.Storage">
     <property name="FailingDrives" type="a(ss)" access="read" />

@@ -1,6 +1,6 @@
 //! `/org/andromeda/System1/Sensors`: the ambient light sensor (kernel iio ALS, e.g. `hid_sensor_als`), read on
-//! request: the caller sets the pace, so nothing polls while no one asks. Human presence (HID usage 0x04B1, with
-//! range 0x04B2, fed by Wi-Fi sensing through the patched iwlmld `wifi_presence`): sensing runs and is read each
+//! request: the caller sets the pace, so nothing polls while no one asks. Human presence (HID usage 0x04B1,
+//! fed by Wi-Fi sensing through the patched iwlmld `wifi_presence`): sensing runs and is read each
 //! second only while a client holds a claim.
 
 use std::collections::BTreeSet;
@@ -19,7 +19,6 @@ use andromeda_rt::logged::Logged;
 
 pub const PATH: &str = "/org/andromeda/System1/Sensors";
 const PRESENCE_USAGE: &str = "2004b1";
-const RANGE_USAGE: &str = "2004b2";
 
 /// Whether any client claims presence; `run` turns sensing on and off from it.
 static CLAIMED: LazyLock<watch::Sender<bool>> = LazyLock::new(|| watch::Sender::new(false));
@@ -39,12 +38,11 @@ pub struct Sensors {
     /// Unique bus names that claim presence.
     claims: BTreeSet<String>,
     presence: Presence,
-    proximity_mm: u32,
 }
 
 impl Default for Sensors {
     fn default() -> Self {
-        Self { root: PathBuf::from("/"), claims: BTreeSet::new(), presence: Presence::Unknown, proximity_mm: 0 }
+        Self { root: PathBuf::from("/"), claims: BTreeSet::new(), presence: Presence::Unknown }
     }
 }
 
@@ -84,11 +82,6 @@ impl Sensors {
         self.presence as u32
     }
 
-    /// Distance to the person in millimetres; 0 when unknown.
-    #[zbus(property)]
-    fn proximity_mm(&self) -> u32 {
-        self.proximity_mm
-    }
 
     /// Runs presence sensing until `ReleasePresence` or until the caller leaves the bus.
     #[allow(clippy::needless_pass_by_value)] // zbus hands the header by value
@@ -160,16 +153,12 @@ pub async fn run(conn: Connection) {
     }
 }
 
-async fn publish(conn: &Connection, (presence, proximity_mm): (Presence, u32)) -> zbus::Result<()> {
+async fn publish(conn: &Connection, presence: Presence) -> zbus::Result<()> {
     let iface = conn.object_server().interface::<_, Sensors>(PATH).await?;
     let mut sensors = iface.get_mut().await;
     if sensors.presence != presence {
         sensors.presence = presence;
         sensors.presence_changed(iface.signal_emitter()).await?;
-    }
-    if sensors.proximity_mm != proximity_mm {
-        sensors.proximity_mm = proximity_mm;
-        sensors.proximity_mm_changed(iface.signal_emitter()).await?;
     }
     Ok(())
 }
@@ -213,15 +202,11 @@ fn set_sensing(root: &Path, on: bool) -> Result<()> {
     Ok(())
 }
 
-fn read_presence(root: &Path) -> Result<(Presence, u32)> {
+/// One read per call: each field read is a request to the ISH, which wakes it and the CPU.
+fn read_presence(root: &Path) -> Result<Presence> {
     let sensor = presence_sensor(root)?;
     let present = field(&sensor, PRESENCE_USAGE).ok_or_else(|| anyhow!("no presence field"))?;
-    let presence = if field_value(&present)? > 0.0 { Presence::Present } else { Presence::Absent };
-    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "clamped to 0..=u32::MAX mm")]
-    let mm = field(&sensor, RANGE_USAGE)
-        .and_then(|f| field_value(&f).ok())
-        .map_or(0, |v| v.clamp(0.0, f64::from(u32::MAX)) as u32);
-    Ok((presence, mm))
+    Ok(if field_value(&present)? > 0.0 { Presence::Present } else { Presence::Absent })
 }
 
 fn read_f64(path: &Path) -> Result<f64> {
@@ -315,9 +300,9 @@ mod tests {
         set_sensing(&root, true).unwrap();
         assert_eq!(fs::read_to_string(sensor.join("enable_sensor")).unwrap(), "1");
         assert_eq!(fs::read_to_string(wifi.join("wifi_presence")).unwrap(), "1");
-        assert_eq!(read_presence(&root).unwrap(), (Presence::Present, 1200));
+        assert_eq!(read_presence(&root).unwrap(), Presence::Present);
         fs::write(sensor.join("input-7-2004b1/input-7-2004b1-value"), "0\n").unwrap();
-        assert_eq!(read_presence(&root).unwrap().0, Presence::Absent);
+        assert_eq!(read_presence(&root).unwrap(), Presence::Absent);
         set_sensing(&root, false).unwrap();
         assert_eq!(fs::read_to_string(sensor.join("enable_sensor")).unwrap(), "0");
         assert_eq!(fs::read_to_string(wifi.join("wifi_presence")).unwrap(), "0");
