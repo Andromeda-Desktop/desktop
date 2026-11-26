@@ -1812,6 +1812,7 @@ void Application::initBrightnessAndPipewire() {
         m_systemBus.get(), m_compositorPlatform, m_configService.config().brightness, m_dirWatcher
     );
     m_brightnessService->setChangeCallback([this, shouldRefreshControlCenter] {
+      applyBrightnessStep();
       m_brightnessOsd.onBrightnessChanged(*m_brightnessService);
       m_bar.refresh();
       if (shouldRefreshControlCenter()) {
@@ -1975,13 +1976,18 @@ void Application::applyBrightnessStep() {
   }
   constexpr float kStep = 0.1F;
   const bool dim = m_systemHealthService->knob("display.brightness_step").value_or(0.0) < 0.0;
-  if (dim == m_brightnessStepHeld) {
+  if (!dim && !m_brightnessStep.has_value()) {
     return;
   }
-  m_brightnessStepHeld = dim;
+  if (dim && !m_brightnessStep.has_value()) {
+    m_brightnessStep.emplace();
+  }
   const std::vector<BrightnessDisplay> displays = m_brightnessService->displays();
-  m_brightnessOsd.suppressFor(std::chrono::seconds(2));
   for (const auto& d : displays) {
+    // A display that appears while the step holds is dimmed once too.
+    if (dim && !m_brightnessStep->insert(d.id).second) {
+      continue;
+    }
     const auto idle = m_idleDimmed.find(d.id);
     const float current = idle != m_idleDimmed.end() ? idle->second.from : d.brightness;
     float target = current;
@@ -2001,16 +2007,16 @@ void Application::applyBrightnessStep() {
     if (idle != m_idleDimmed.end()) {
       idle->second.from = target;
     } else {
+      m_brightnessOsd.suppressFor(std::chrono::seconds(2));
       m_brightnessService->setBrightness(d.id, target);
     }
   }
   if (!dim) {
     m_dimmedFrom.clear();
+    m_brightnessStep.reset();
   }
 }
 
-// notifications.dnd (the Presenting mode): Do Not Disturb while the hold lasts. It turns off again only if the rule
-// turned it on and the user left it on.
 void Application::applyFocusTriggers() {
   // The compositor sees every capture (PipeWire, screencopy) and a mirrored output; PipeWire is the fallback
   // without it.
@@ -2047,7 +2053,7 @@ void Application::applyFocusTriggers() {
       && !m_notificationManager.startFocus(step.match.focusId, std::nullopt, step.match.startedBy)) {
     m_focusTriggerState.applied.reset();
   } else if (step.action == focus::TriggerAction::End) {
-    m_notificationManager.endFocus();
+    endAutomaticFocus();
   }
   if (const auto minutes = focus::minutesToScheduleChange(m_focusTriggers, in); minutes.has_value()) {
     m_focusTriggerTimer.start(std::chrono::seconds(*minutes * 60 - local.tm_sec), [this] { applyFocusTriggers(); });
@@ -2081,19 +2087,32 @@ void Application::applyFocusFilters() {
   m_dock.refresh();
 }
 
+// notifications.dnd (the Presenting mode): Do Not Disturb while the hold lasts. It turns off at the end only if the
+// rule's own Focus is on.
 void Application::applyRuleDoNotDisturb() {
   const bool hold = m_systemHealthService != nullptr
       && m_systemHealthService->knob("notifications.dnd").value_or(0.0) > 0.0;
-  // Only a hold that starts turns DND on: the knob callback runs for every knob, and a user who turned DND off
-  // during the hold keeps it off until the next one.
-  if (hold == m_ruleDndHeld) {
+  if (!hold) {
+    const bool wasHeld = m_ruleDnd != RuleDnd::Off;
+    m_ruleDnd = RuleDnd::Off;
+    const auto& active = m_notificationManager.focus().active();
+    if (wasHeld && active.has_value() && active->startedBy == "rule") {
+      m_notificationManager.endFocus();
+    }
     return;
   }
-  m_ruleDndHeld = hold;
-  const auto& active = m_notificationManager.focus().active();
-  if (hold && !m_notificationManager.doNotDisturb()) {
-    m_notificationManager.setDoNotDisturb(true, "rule");
-  } else if (!hold && active.has_value() && active->startedBy == "rule") {
+  if (m_ruleDnd != RuleDnd::Off) {
+    return;
+  }
+  m_ruleDnd = RuleDnd::Held;
+  m_notificationManager.setDoNotDisturb(true, "rule");
+}
+
+// Ends a trigger or lock-screen Focus; a held rule takes over in the same change, so DND never drops in between.
+void Application::endAutomaticFocus() {
+  if (m_ruleDnd == RuleDnd::Held) {
+    (void)m_notificationManager.startFocus("dnd", std::nullopt, "rule");
+  } else {
     m_notificationManager.endFocus();
   }
 }
@@ -2104,7 +2123,7 @@ void Application::syncLockScreenDoNotDisturb() {
     // A Do Not Disturb that is already on stays the user's own, so unlock leaves it on.
     m_notificationManager.setDoNotDisturb(true, "lockscreen");
   } else if (active.has_value() && active->startedBy == "lockscreen") {
-    m_notificationManager.endFocus();
+    endAutomaticFocus();
   }
 }
 

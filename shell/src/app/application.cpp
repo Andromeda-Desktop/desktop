@@ -252,6 +252,9 @@ Application::Application()
   // The active Focus survives a shell restart (docs/focus.md §3); one whose end time passed meanwhile is dropped. A
   // rule's Focus (Presenting) is not saved: its rule starts it again.
   m_notificationManager.setFocusChangedCallback([this] {
+    if (m_ruleDnd == RuleDnd::Held && !m_notificationManager.doNotDisturb()) {
+      m_ruleDnd = RuleDnd::UserCleared;
+    }
     auto active = m_notificationManager.focus().active();
     // A rule, trigger or lock-screen Focus comes back from its own source, not from saved state.
     if (active.has_value()

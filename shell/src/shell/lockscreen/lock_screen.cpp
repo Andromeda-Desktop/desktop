@@ -800,7 +800,7 @@ void LockScreen::onSessionSleep(bool sleeping) {
 }
 
 void LockScreen::onSystemResumed() {
-  if (m_lockedAtMillis > 0) {
+  if (m_lockedAtMillis > 0 && m_lifecycle.reason() == LockLifecycle::Relock::Plain) {
     kLog.info("system resumed; revoking passwordless grace period");
   }
   markOutputsWoke();

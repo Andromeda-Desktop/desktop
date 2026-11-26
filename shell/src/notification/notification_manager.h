@@ -316,6 +316,13 @@ private:
   uint32_t m_nextId{1};
   std::uint64_t m_changeSerial{0};
   void focusChanged();
+  struct EndedFocus {
+    const focus::Focus* focus = nullptr;
+    std::vector<std::pair<std::string, int>> held;
+  };
+  // Collects what the active Focus held and clears it; the caller ends or replaces the Focus.
+  EndedFocus takeActiveFocus();
+  void reportEndedFocus(const EndedFocus& ended);
 
   focus::FocusService m_focus;
   Timer m_focusEndTimer;

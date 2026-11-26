@@ -169,8 +169,23 @@ PowerProfilesService::PowerProfilesService(SystemBus& bus) : m_bus(bus) {
   m_ownerWatch = NameOwnerWatch::changes(
       m_bus.connection(), std::string(kPowerProfilesBusName),
       [this](const std::string& /*name*/, const std::string& /*oldOwner*/, const std::string& newOwner) {
-        if (!newOwner.empty()) {
-          refresh();
+        if (newOwner.empty()) {
+          if (m_hold.has_value()) {
+            m_hold->id.reset();
+          }
+          return;
+        }
+        refresh();
+        if (m_hold.has_value() && !m_hold->id.has_value()) {
+          sendHold();
+        }
+      });
+  m_knobsProxy = sdbus::createProxy(m_bus.connection(), kPowerProfilesBusName, kKnobsPath);
+  m_knobsProxy->uponSignal("Released")
+      .onInterface(kKnobsInterface)
+      .call([this](const std::string& id, const std::string& /*owner*/) {
+        if (m_hold.has_value() && m_hold->id == id) {
+          m_hold.reset();
         }
       });
 
@@ -225,25 +240,38 @@ void PowerProfilesService::refresh() {
 }
 
 void PowerProfilesService::holdProfile(std::string profile, std::string reason) {
+  if (m_hold.has_value() && m_hold->id.has_value()) {
+    try {
+      const std::shared_ptr<sdbus::IProxy> knobs =
+          sdbus::createProxy(m_bus.connection(), kPowerProfilesBusName, kKnobsPath);
+      knobs->callMethodAsync("Release")
+          .onInterface(kKnobsInterface)
+          .withArguments(*m_hold->id)
+          .uponReplyInvoke([knobs, log = logReply(kLog, "Release", ReplyFailure::Debug)](std::optional<sdbus::Error> e) {
+            log(std::move(e));
+          });
+    } catch (const sdbus::Error& e) {
+      kLog.warn("power profile release dispatch failed: {}", e.what());
+    }
+  }
+  m_hold.reset();
+  if (profile.empty()) {
+    m_holdRequest.cancel();
+    return;
+  }
+  m_hold = ProfileHold{.profile = std::move(profile), .reason = std::move(reason), .id = std::nullopt};
+  sendHold();
+}
+
+void PowerProfilesService::sendHold() {
   const auto ticket = m_holdRequest.begin();
   const std::weak_ptr<int> lifetimeToken = m_lifetimeToken;
   try {
     const std::shared_ptr<sdbus::IProxy> knobs =
         sdbus::createProxy(m_bus.connection(), kPowerProfilesBusName, kKnobsPath);
-    if (!m_profileHoldId.empty()) {
-      knobs->callMethodAsync("Release")
-          .onInterface(kKnobsInterface)
-          .withArguments(std::exchange(m_profileHoldId, {}))
-          .uponReplyInvoke([knobs, log = logReply(kLog, "Release", ReplyFailure::Debug)](std::optional<sdbus::Error> e) {
-            log(std::move(e));
-          });
-    }
-    if (profile.empty()) {
-      return;
-    }
     knobs->callMethodAsync("Hold")
         .onInterface(kKnobsInterface)
-        .withArguments(std::string("power.profile"), sdbus::Variant(profile), reason)
+        .withArguments(std::string("power.profile"), sdbus::Variant(m_hold->profile), m_hold->reason)
         .uponReplyInvoke([this, lifetimeToken, ticket, knobs](std::optional<sdbus::Error> err, std::string id) {
           if (lifetimeToken.expired() || err.has_value()) {
             if (err.has_value()) {
@@ -259,7 +287,7 @@ void PowerProfilesService::holdProfile(std::string profile, std::string reason) 
             );
             return;
           }
-          m_profileHoldId = std::move(id);
+          m_hold->id = std::move(id);
         });
   } catch (const sdbus::Error& e) {
     kLog.warn("power profile hold dispatch failed: {}", e.what());

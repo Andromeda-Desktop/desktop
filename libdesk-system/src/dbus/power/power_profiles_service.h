@@ -69,6 +69,7 @@ private:
   [[nodiscard]] PowerProfilesChangeOrigin consumeActiveProfileChangeOrigin(std::string_view profile);
   void reportFailure(const std::string& profile);
   void emitChangedIfNeeded(PowerProfilesState next, bool stateSnapshot);
+  void sendHold();
 
   SystemBus& m_bus;
   std::unique_ptr<sdbus::IProxy> m_proxy;
@@ -77,11 +78,18 @@ private:
   std::optional<std::string> m_pendingLocalActiveProfile;
   std::string m_failedProfile;
   ChangeCallback m_changeCallback;
-  // The System1 hold id of holdProfile; empty when none is held. A Hold reply that is no longer current is released.
-  std::string m_profileHoldId;
+  struct ProfileHold {
+    std::string profile;
+    std::string reason;
+    // Unset while System1 has not answered the Hold, or after System1 left the bus (the hold died with it).
+    std::optional<std::string> id;
+  };
+  // The holdProfile request, kept until it is released or a user choice ends it, so a restarted System1 gets it again.
+  std::optional<ProfileHold> m_hold;
   LatestRequest m_holdRequest;
   bool m_hasStateSnapshot = false;
   bool m_refreshInFlight = false;
   bool m_refreshQueued = false;
+  std::unique_ptr<sdbus::IProxy> m_knobsProxy;
   NameOwnerWatch m_ownerWatch;
 };

@@ -9,11 +9,15 @@
 #include <cmath>
 #include <string>
 #include <unordered_set>
+#include <array>
 #include <vector>
 
 namespace {
   // Percent at or below which the system battery alert is the critical, persistent one.
   constexpr int kCriticalLevel = 2;
+  // The system battery's fixed deep levels; the first one matches UPower's PercentageCritical default (5), where
+  // System1's battery.critical rule fires.
+  constexpr std::array<int, 2> kDeepLevels{5, kCriticalLevel};
 
   bool isAutoSelector(std::string_view selector) {
     const std::string normalized = StringUtils::toLower(StringUtils::trim(selector));
@@ -104,7 +108,7 @@ namespace {
     }
     points.push_back(threshold);
     if (isSystem) {
-      for (const int deep : {5, 2}) {
+      for (const int deep : kDeepLevels) {
         if (deep < threshold) {
           points.push_back(deep);
         }
@@ -198,8 +202,8 @@ void BatteryWarningMonitor::evaluate(
     // Level-triggered: fire once per level as the battery drains into it. Empty state on the first
     // evaluate (startup) fires whatever level the battery already sits in — this is a deliberate
     // safety notification at boot, not a baseline state transition.
-    // While System1 owns the critical tier, the tier is not recorded as fired, so it fires if System1 leaves.
-    if (isSystem && currentLevel <= kCriticalLevel && m_systemCriticalOwned) {
+    // While System1 owns the critical alert, the deep tiers are not recorded as fired, so they fire if System1 leaves.
+    if (isSystem && currentLevel <= kDeepLevels.front() && m_systemCriticalOwned) {
       continue;
     }
     if (currentLevel < state.firedLevel) {

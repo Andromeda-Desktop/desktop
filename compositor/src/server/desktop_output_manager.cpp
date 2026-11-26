@@ -275,8 +275,13 @@ namespace andromeda {
     if (key == "workspaces" && std::holds_alternative<int64_t>(*parsed)) {
       saveOutputProperty(file, name, "min_workspaces", std::monostate{}, logFailure);
     }
-    saveOutputProperty(file, name, key, *parsed, logFailure);
-    m_server.handleConfigReload(reloadConfig());
+    // The reload reads displays.toml from disk, so it waits for the write; a queued earlier write shares this result.
+    saveOutputProperty(file, name, key, *parsed, [this, logFailure](bool ok) {
+      logFailure(ok);
+      if (ok) {
+        m_server.handleConfigReload(reloadConfig());
+      }
+    });
   }
 
   void DesktopOutputManager::propertiesChanged() {

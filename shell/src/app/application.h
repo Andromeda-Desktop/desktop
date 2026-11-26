@@ -112,6 +112,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <vector>
 
 namespace sdbus {
@@ -395,8 +396,8 @@ private:
   SoftwareUpdateService* softwareUpdateService();
   // display.brightness_step: the brightness each display had before a rule dimmed it one step.
   std::map<std::string, float> m_dimmedFrom;
-  // The step holds even when no display was above 0.1 (m_dimmedFrom empty).
-  bool m_brightnessStepHeld = false;
+  // The displays the held step has handled (dimmed or skipped); nullopt while the step does not hold.
+  std::optional<std::set<std::string>> m_brightnessStep;
   // Automatic brightness: the sensor client, the learned curve, the level it last left on each built-in panel
   // (before the low-power step) and the lux of that level. A level that differs later is the user's choice.
   std::unique_ptr<AmbientLightService> m_ambientLight;
@@ -596,8 +597,11 @@ private:
   focus::TriggerState m_focusTriggerState;
   Timer m_focusTriggerTimer;
   FocusFilterConfig m_appliedFocusFilter;
-  // The notifications.dnd rule hold last applied; DND follows only its edges.
-  bool m_ruleDndHeld = false;
+  // The notifications.dnd rule hold. Held keeps DND on while the hold lasts, also when a trigger or lock-screen Focus
+  // that covered it ends; UserCleared: the user ended DND during the hold, so it stays off until the next hold.
+  enum class RuleDnd : std::uint8_t { Off, Held, UserCleared };
+  RuleDnd m_ruleDnd = RuleDnd::Off;
+  void endAutomaticFocus();
   Timer m_speakerOfferTimer;
   Timer m_panelPrewarmTimer;
   Timer m_handoffTimer;

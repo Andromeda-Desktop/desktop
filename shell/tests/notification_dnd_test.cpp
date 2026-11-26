@@ -119,5 +119,16 @@ int main() {
   ok &= check(endedFocus == "Work", "ending the Focus reports it");
   ok &= check(summary == std::vector<std::pair<std::string, int>>{{"dnd-test", 2}}, "the summary counts held by app");
 
+  // A rule hold takes over from an ending trigger Focus by replacing it: readers never see DND off in between, and
+  // the replaced Focus still reports what it held.
+  ok &= check(manager.startFocus("work", std::nullopt, "trigger:work"), "trigger Focus starts");
+  addNotification("held by trigger");
+  endedFocus.clear();
+  bool sawDndOff = false;
+  manager.setFocusChangedCallback([&] { sawDndOff |= !manager.doNotDisturb(); });
+  ok &= check(manager.startFocus("dnd", std::nullopt, "rule"), "rule Focus replaces the trigger Focus");
+  ok &= check(!sawDndOff, "a Focus replacement never shows DND off");
+  ok &= check(endedFocus == "Work", "the replaced Focus reports what it held");
+
   return ok ? 0 : 1;
 }

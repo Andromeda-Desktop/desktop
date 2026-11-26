@@ -1029,14 +1029,19 @@ bool NotificationManager::startFocus(
   if (m_focus.find(id) == nullptr) {
     return false;
   }
+  // A replacement is one change: readers never see the gap between the old Focus and the new one.
+  std::optional<EndedFocus> ended;
   if (m_focus.active().has_value() && m_focus.active()->focusId != id) {
-    endFocus();
+    ended = takeActiveFocus();
   }
   if (startedBy == "user") {
     m_lastFocusId = std::string(id);
   }
   (void)m_focus.start(id, untilEpochSec, std::move(startedBy));
   focusChanged();
+  if (ended.has_value()) {
+    reportEndedFocus(*ended);
+  }
   return true;
 }
 
@@ -1054,18 +1059,26 @@ bool NotificationManager::toggleFocus() {
   return startFocus(m_lastFocusId, std::nullopt, "user");
 }
 
+NotificationManager::EndedFocus NotificationManager::takeActiveFocus() {
+  EndedFocus ended{.focus = m_focus.find(m_focus.active()->focusId), .held = heldByApp()};
+  m_held.clear();
+  return ended;
+}
+
+void NotificationManager::reportEndedFocus(const EndedFocus& ended) {
+  if (ended.focus != nullptr && !ended.held.empty() && m_focusEndedCallback) {
+    m_focusEndedCallback(*ended.focus, ended.held);
+  }
+}
+
 void NotificationManager::endFocus() {
   if (!m_focus.active().has_value()) {
     return;
   }
-  const focus::Focus* ended = m_focus.find(m_focus.active()->focusId);
-  const auto held = heldByApp();
-  m_held.clear();
+  const EndedFocus ended = takeActiveFocus();
   m_focus.end();
   focusChanged();
-  if (ended != nullptr && !held.empty() && m_focusEndedCallback) {
-    m_focusEndedCallback(*ended, held);
-  }
+  reportEndedFocus(ended);
 }
 
 void NotificationManager::onSystemResumed() {
