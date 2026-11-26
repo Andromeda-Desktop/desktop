@@ -1,5 +1,6 @@
 #include "ipc/ipc_client.h"
 
+#include "cli/schema_msg.h"
 #include "protocols/ipc_channel.h"
 #include "protocols/xdg_dirs.h"
 
@@ -18,7 +19,19 @@
 namespace {
 
   constexpr char kCallerCwdSeparator = '\x1e';
-  constexpr auto kTimeout = std::chrono::seconds(2);
+  std::chrono::seconds replyTimeout(const std::string& command) {
+    std::string_view verb = command;
+    if (verb.starts_with("--json ")) {
+      verb.remove_prefix(7);
+    }
+    verb = verb.substr(0, verb.find(' '));
+    for (const auto& entry : noctalia::cli::kMsgSubcommands) {
+      if (entry.name == verb) {
+        return entry.replyTimeout;
+      }
+    }
+    return noctalia::cli::Command{}.replyTimeout;
+  }
   constexpr std::size_t kMaxReplyBytes = 64 * 1024 * 1024;
 
   std::string resolveSocketPath() {
@@ -52,7 +65,8 @@ int IpcClient::send(const std::string& command, bool stream) {
   }
   line += command;
 
-  const auto deadline = std::chrono::steady_clock::now() + kTimeout;
+  const std::chrono::seconds timeout = replyTimeout(command);
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
   std::string response;
   if (!stream) {
     auto reply = ipc::request(path, line, ipc::EndOfRequest::HalfClose, kMaxReplyBytes, deadline);
@@ -63,7 +77,7 @@ int IpcClient::send(const std::string& command, bool stream) {
         std::println(stderr, "error: noctalia is not running");
         return 1;
       case ipc::Status::TimedOut:
-        std::println(stderr, "error: no reply within {} s", kTimeout.count());
+        std::println(stderr, "error: no reply within {} s", timeout.count());
         return 1;
       case ipc::Status::TooLong:
         std::println(stderr, "error: the reply is over {} bytes", kMaxReplyBytes);

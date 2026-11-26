@@ -117,6 +117,29 @@ public:
   // handler's string. Only valid during execute().
   void setReplyData(nlohmann::json data) const;
 
+  // A socket reply sent after the handler returned, when its result comes from async work. Destroyed unsent, it
+  // sends an error, so the caller never waits on a dropped reply.
+  class PendingReply {
+  public:
+    PendingReply(int fd, bool json) : m_fd(fd), m_json(json) {}
+    ~PendingReply();
+    PendingReply(const PendingReply&) = delete;
+    PendingReply& operator=(const PendingReply&) = delete;
+    PendingReply(PendingReply&&) = delete;
+    PendingReply& operator=(PendingReply&&) = delete;
+
+    // `text` as a handler returns it (ends with '\n'; "error:" marks a failure).
+    void send(std::string text);
+
+  private:
+    int m_fd;
+    bool m_json;
+  };
+
+  // Takes the reply of the socket command whose handler runs now; the handler's returned text is then dropped.
+  // nullptr for an in-process command or a nested execute(): that handler returns its text as usual.
+  [[nodiscard]] std::shared_ptr<PendingReply> takeReply() const;
+
   // Sends one event line {"topic", "data"} to every `msg subscribe` connection that asked for `topic` (a name from
   // cli::msg::kSubscribeTopics). A subscriber that cannot take the line at once is dropped.
   void publish(std::string_view topic, const nlohmann::json& data);
@@ -160,6 +183,14 @@ private:
   mutable std::optional<std::string> m_callerCwd;
   mutable std::optional<IpcInvocationContext> m_invocationContext;
   mutable std::unique_ptr<nlohmann::json> m_replyData;
+  struct SocketReply {
+    int fd = -1;
+    bool json = false;
+    bool taken = false;
+  };
+  // The connection whose command runs now, for takeReply().
+  mutable std::optional<SocketReply> m_socketReply;
+  mutable int m_executeDepth = 0;
   std::vector<Subscriber> m_subscribers;
   // Registration order is retained; --help output is sorted for display.
   std::vector<std::pair<std::string_view, HandlerEntry>> m_handlers;

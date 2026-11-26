@@ -569,8 +569,10 @@ namespace noctalia::cli {
         {},
         false
     };
+    // The reply waits for staging (wallpaper copies), which a loaded disk slows.
     inline constexpr Command greeterSync{
-        "greeter-sync", "Sync wallpaper, colors, and monitor layout to the greeter", {}, {}, {}, {}, {}, false
+        "greeter-sync", "Sync wallpaper, colors, and monitor layout to the greeter", {}, {}, {}, {}, {}, false,
+        std::chrono::seconds(60)
     };
     inline constexpr Command keyboardBacklightDown{
         "keyboard-backlight-down", "Decrease all keyboard backlights by one level", {}, {}, {}, {}, {}, false

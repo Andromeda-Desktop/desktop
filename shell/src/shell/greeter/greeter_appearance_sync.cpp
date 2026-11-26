@@ -1423,7 +1423,7 @@ namespace greeter {
     }
     ipc.bind(
         noctalia::cli::msg::greeterSync,
-        [&config, resolvedThemeMode = std::move(resolvedThemeMode), platform,
+        [&ipc, &config, resolvedThemeMode = std::move(resolvedThemeMode), platform,
          logindOnSystemBus = std::move(logindOnSystemBus)](const std::string& args) -> std::string {
           if (!StringUtils::trim(args).empty()) {
             return "error: usage: greeter-sync\n";
@@ -1432,7 +1432,29 @@ namespace greeter {
             return "error: noctalia greeter is not installed\n";
           }
           const bool logind = logindOnSystemBus != nullptr && logindOnSystemBus();
-          if (!syncAppearanceToGreeterAsync(config, resolvedThemeMode(), {}, {}, platform, logind)) {
+          // A socket caller gets the staging result; an in-process caller (a keybind) only starts the sync.
+          SyncLaunched onLaunched;
+          auto reply = ipc.takeReply();
+          if (reply != nullptr) {
+            onLaunched = [reply](GreeterSyncLaunch launch) {
+              switch (launch) {
+              case GreeterSyncLaunch::Failed:
+                reply->send("error: failed to start greeter appearance sync\n");
+                return;
+              case GreeterSyncLaunch::StagedOnly:
+                reply->send("ok: staged (run legacy privilege install manually)\n");
+                return;
+              case GreeterSyncLaunch::LaunchedConstrained:
+              case GreeterSyncLaunch::LaunchedLegacy:
+                reply->send("ok\n");
+                return;
+              }
+            };
+          }
+          if (!syncAppearanceToGreeterAsync(config, resolvedThemeMode(), std::move(onLaunched), {}, platform, logind)) {
+            if (reply != nullptr) {
+              reply->send("error: greeter appearance sync is already in progress\n");
+            }
             return "error: greeter appearance sync is already in progress\n";
           }
           return "ok: started\n";

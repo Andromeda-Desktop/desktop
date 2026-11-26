@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <span>
 #include <string_view>
 
@@ -35,6 +36,8 @@ namespace noctalia::cli {
     std::span<const Positional> positionals;
     std::span<const Command> subcommands;
     bool hidden = false;
+    // How long `msg` waits for the reply: a command whose handler replies after async work sets more.
+    std::chrono::seconds replyTimeout{2};
   };
 
   [[nodiscard]] constexpr std::string_view canonicalName(const Flag& flag) {

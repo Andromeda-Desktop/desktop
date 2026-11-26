@@ -38,6 +38,19 @@ namespace {
     (void)ipc::writeAll(fd, text, std::chrono::steady_clock::now() + kWriteTimeout);
   }
 
+  [[nodiscard]] std::string formatReply(std::string text, bool json, std::unique_ptr<nlohmann::json> data) {
+    if (!json) {
+      return text;
+    }
+    nlohmann::json reply = {{"ok", !text.starts_with("error:")}};
+    if (text.ends_with('\n')) {
+      text.pop_back();
+    }
+    reply["text"] = std::move(text);
+    reply["data"] = data != nullptr ? std::move(*data) : nlohmann::json(nullptr);
+    return reply.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
+  }
+
   // The askpass handshake keeps the write side open: its first line is the whole request.
   bool askpassLine(std::string_view data) { return data.starts_with("askpass") && data.contains('\n'); }
 
@@ -199,19 +212,36 @@ std::string IpcService::execute(const std::string& line) const {
   }
   // A handler may re-enter execute(); each level keeps its own reply data.
   std::unique_ptr<nlohmann::json> outer = std::move(m_replyData);
+  ++m_executeDepth;
   std::string text = executeParsed(command, args);
+  --m_executeDepth;
   std::unique_ptr<nlohmann::json> data = std::exchange(m_replyData, std::move(outer));
-  if (!json) {
-    return text;
-  }
-  nlohmann::json reply = {{"ok", !text.starts_with("error:")}};
-  if (text.ends_with('\n')) {
-    text.pop_back();
-  }
-  reply["text"] = std::move(text);
-  reply["data"] = data != nullptr ? std::move(*data) : nlohmann::json(nullptr);
-  return reply.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
+  return formatReply(std::move(text), json, std::move(data));
 }
+
+std::shared_ptr<IpcService::PendingReply> IpcService::takeReply() const {
+  if (!m_socketReply.has_value() || m_socketReply->taken || m_executeDepth != 1) {
+    return nullptr;
+  }
+  const int fd = ::fcntl(m_socketReply->fd, F_DUPFD_CLOEXEC, 0);
+  if (fd < 0) {
+    kLog.warn("IPC: cannot keep a reply: {}", std::strerror(errno));
+    return nullptr;
+  }
+  m_socketReply->taken = true;
+  return std::make_shared<PendingReply>(fd, m_socketReply->json);
+}
+
+void IpcService::PendingReply::send(std::string text) {
+  if (m_fd < 0) {
+    return;
+  }
+  sendAll(m_fd, formatReply(std::move(text), m_json, nullptr));
+  ::close(m_fd);
+  m_fd = -1;
+}
+
+IpcService::PendingReply::~PendingReply() { send("error: the shell dropped this request before it finished\n"); }
 
 void IpcService::setReplyData(nlohmann::json data) const {
   m_replyData = std::make_unique<nlohmann::json>(std::move(data));
@@ -353,7 +383,14 @@ bool IpcService::handleConnection(ipc::Peer& peer) {
   // A socket command has no in-process origin, even when the dispatch re-enters from a handler
   // that pumped the event loop.
   const InvocationScope socketScope(*this, std::nullopt);
-  sendAll(connFd, execute(command));
+  // A nested command (a handler pumped the loop) gets its own reply state; the outer one returns after it.
+  std::optional<SocketReply> outer = std::exchange(m_socketReply, SocketReply{.fd = connFd, .json = json});
+  std::string reply = execute(command);
+  const bool taken = m_socketReply->taken;
+  m_socketReply = std::move(outer);
+  if (!taken) {
+    sendAll(connFd, reply);
+  }
   return false;
 }
 
