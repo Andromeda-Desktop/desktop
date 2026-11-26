@@ -1,5 +1,6 @@
 #include "window_workspaces.h"
 
+#include <algorithm>
 #include <filesystem>
 
 namespace term {
@@ -11,9 +12,19 @@ namespace term {
   void WindowWorkspaces::sessionStarted(Window window, std::uint64_t held, const std::string& dir) {
     const auto it = m_windows.find(window);
     if (it == m_windows.end()) return;
+    // A session that moved here leaves the waiting list of the window it left, so that window's answer keeps it here.
+    for (auto& [other, state] : m_windows) {
+      if (auto* joining = std::get_if<Joining>(&state)) std::erase(joining->held, held);
+      if (auto* unjoined = std::get_if<Unjoined>(&state)) std::erase(unjoined->held, held);
+    }
     if (auto* joined = std::get_if<Joined>(&it->second)) {
       m_port.setSession(held, joined->id);
-    } else if (auto* joining = std::get_if<Joining>(&it->second)) {
+      return;
+    }
+    // Until its new workspace exists, a session that came from another window belongs to none: closing the window it
+    // left must not end it.
+    m_port.setSession(held, 0);
+    if (auto* joining = std::get_if<Joining>(&it->second)) {
       joining->held.push_back(held);
     } else {
       auto waiting = std::get<Unjoined>(it->second).held;

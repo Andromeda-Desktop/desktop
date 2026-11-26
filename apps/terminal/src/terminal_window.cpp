@@ -639,11 +639,11 @@ namespace term {
     }
   }
 
-  void TerminalWindow::moveToNewWindow(std::uint64_t id) {
+  std::shared_ptr<MovedSession> TerminalWindow::takeSession(std::uint64_t id) {
     const SessionInfo* info = m_sessions.find(id);
     const auto it = std::ranges::find(m_views, id, &Session::id);
     if (info == nullptr || it == m_views.end()) {
-      return;
+      return nullptr;
     }
     auto moved = std::make_shared<MovedSession>(MovedSession{.id = id, .view = std::move(it->view), .info = *info,
                                                              .secret = m_secretSessions.contains(id),
@@ -651,8 +651,35 @@ namespace term {
     m_views.erase(it);
     // Its nodes stay in this scene until the next build; the new window's build gives it new ones.
     moved->view->sceneDestroyed();
+    return moved;
+  }
+
+  void TerminalWindow::moveToNewWindow(std::uint64_t id) {
+    auto moved = takeSession(id);
+    if (moved == nullptr) {
+      return;
+    }
     apply(session_event::Close{id});
     m_newWindow(m_window.activationToken(), {Adopt{std::move(moved)}});
+  }
+
+  void TerminalWindow::moveToWindow(std::uint64_t id, std::uint32_t windowId) {
+    const auto windows = m_windows ? m_windows() : std::vector<TerminalWindow*>{};
+    const auto target = std::ranges::find(windows, windowId, &TerminalWindow::windowId);
+    if (target == windows.end() || *target == this) {
+      return;
+    }
+    auto moved = takeSession(id);
+    if (moved == nullptr) {
+      return;
+    }
+    // The target adopts the live shell before this window lets it go: a last session's Close ends this window and
+    // its workspace, which must no longer hold the shell.
+    TerminalWindow& to = **target;
+    to.openSession(Adopt{std::move(moved)});
+    to.apply(session_event::Show{id});
+    to.m_window.activate(m_window.activationToken());
+    apply(session_event::Close{id});
   }
 
   std::uint64_t TerminalWindow::openSession(const WindowOrigin& origin) {
@@ -1281,7 +1308,8 @@ namespace term {
   void TerminalWindow::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {
     const Keybindings& keys = m_settings.settings().keys;
     enum : std::int32_t {
-      kSplit = 1, kLeave, kRename, kDuplicate, kMoveToWindow, kShowScrollback, kSaveScrollback, kSecureEntry, kCloseOthers, kClose
+      kSplit = 1, kLeave, kRename, kDuplicate, kMoveToWindow, kShowScrollback, kSaveScrollback, kSecureEntry, kCloseOthers, kClose,
+      kMoveTo = 100 // + index into the other windows
     };
     const bool others = m_sessions.sessions().size() > 1;
     const bool member = m_sessions.splitOf(id) != nullptr;
@@ -1292,7 +1320,17 @@ namespace term {
     }
     entries.push_back({.id = kRename, .label = i18n::tr("terminal.session.rename")});
     entries.push_back({.id = kDuplicate, .label = i18n::tr("terminal.session.duplicate")});
-    entries.push_back({.id = kMoveToWindow, .label = i18n::tr("terminal.session.move-to-window"), .enabled = others});
+    std::vector<std::uint32_t> targets;
+    ContextMenuControlEntry move{.label = i18n::tr("terminal.session.move-menu"), .hasSubmenu = true};
+    move.children.push_back({.id = kMoveToWindow, .label = i18n::tr("terminal.session.move-to-window"), .enabled = others});
+    for (const TerminalWindow* window : m_windows ? m_windows() : std::vector<TerminalWindow*>{}) {
+      if (window == this) continue;
+      if (targets.empty()) move.children.push_back({.separator = true});
+      move.children.push_back({.id = kMoveTo + static_cast<std::int32_t>(targets.size()), .label = window->windowName()});
+      targets.push_back(window->windowId());
+    }
+    move.enabled = others || !targets.empty();
+    entries.push_back(std::move(move));
     entries.push_back({.separator = true});
     const bool terminal = terminalOf(id) != nullptr;
     entries.push_back({.id = kShowScrollback, .label = i18n::tr("terminal.session.show-scrollback"), .shortcut = keys.label(Action::ShowScrollback), .enabled = terminal});
@@ -1303,7 +1341,11 @@ namespace term {
     entries.push_back({.separator = true});
     entries.push_back({.id = kCloseOthers, .label = i18n::tr("terminal.session.close-others"), .enabled = others});
     entries.push_back({.id = kClose, .label = i18n::tr("terminal.common.close"), .shortcut = keys.label(Action::CloseSession), .danger = true});
-    m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id](std::int32_t item) {
+    m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id, targets = std::move(targets)](std::int32_t item) {
+                               if (item >= kMoveTo && static_cast<std::size_t>(item - kMoveTo) < targets.size()) {
+                                 moveToWindow(id, targets[static_cast<std::size_t>(item - kMoveTo)]);
+                                 return;
+                               }
                                switch (item) {
                                case kSplit: joinShown(id); break;
                                case kLeave: apply(session_event::Leave{id}); break;
@@ -2023,6 +2065,11 @@ namespace term {
     addAction("menu:duplicate", i18n::tr("terminal.palette.duplicate"), {}, "", [this, shown] { duplicateSession(shown); });
     addAction("menu:move", i18n::tr("terminal.session.move-to-window"), {}, others ? "" : i18n::tr("terminal.palette.only-one"),
               [this, shown] { moveToNewWindow(shown); });
+    for (const TerminalWindow* window : m_windows ? m_windows() : std::vector<TerminalWindow*>{}) {
+      if (window == this) continue;
+      addAction(std::format("menu:move-to:{}", window->windowId()), i18n::tr("terminal.session.move-to", "name", window->windowName()), {}, "",
+                [this, shown, target = window->windowId()] { moveToWindow(shown, target); });
+    }
     addAction("menu:save", i18n::tr("terminal.session.save-scrollback"), {}, terminalOf(shown) != nullptr ? "" : i18n::tr("terminal.palette.not-terminal"),
               [this, shown] { saveScrollback(shown); });
     addAction("menu:close-others", i18n::tr("terminal.session.close-others"), {}, others ? "" : i18n::tr("terminal.palette.only-one"), [this, shown] {

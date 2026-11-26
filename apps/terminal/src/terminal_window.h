@@ -126,6 +126,10 @@ namespace term {
     [[nodiscard]] TerminalView::Host terminalHost(std::uint64_t id);
     void adoptSession(std::uint64_t id, MovedSession moved);
     void moveToNewWindow(std::uint64_t id);
+    // The live session goes to the open window `windowId` and shows there; a source left empty closes.
+    void moveToWindow(std::uint64_t id, std::uint32_t windowId);
+    // Takes the session's view out of this window; the caller closes its row after the new owner adopts it.
+    std::shared_ptr<MovedSession> takeSession(std::uint64_t id);
     [[nodiscard]] bool canJoinShown(std::uint64_t id) const;
     void joinShown(std::uint64_t id);
     void ctrlClickRow(std::uint64_t id);

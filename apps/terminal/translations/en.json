@@ -121,6 +121,8 @@
     "rename": "Rename",
     "duplicate": "Duplicate",
     "move-to-window": "Move to new window",
+    "move-menu": "Move to window",
+    "move-to": "Move to {name}",
     "show-scrollback": "Show scrollback",
     "save-scrollback": "Save scrollback…",
     "secure-entry": "Secure keyboard entry",

@@ -40,6 +40,7 @@ struct Sim {
   Holder holder;
   std::unique_ptr<WindowWorkspaces> model;
   std::map<int, std::set<std::uint64_t>> windows; // window -> its held sessions
+  std::set<std::uint64_t> moved;                   // sessions that changed window
   int nextWindow = 1;
   std::mt19937 rng;
 
@@ -58,7 +59,7 @@ struct Sim {
           return req;
         },
         .setSession = [this](std::uint64_t held, std::uint64_t ws) {
-          if (holder.workspaces.contains(ws) && holder.sessions.contains(held)) holder.sessions[held] = ws;
+          if ((ws == 0 || holder.workspaces.contains(ws)) && holder.sessions.contains(held)) holder.sessions[held] = ws;
         },
         .close = [this](std::uint64_t ws) { holder.close(ws); }});
   }
@@ -81,6 +82,17 @@ struct Sim {
     model->closed(key(w));
     for (const std::uint64_t held : windows[w]) holder.sessions.erase(held); // End::Close
     windows.erase(w);
+  }
+
+  // "Move to window": the target adopts the live shell first; a source left empty then closes, as LastClosed does.
+  void moveSession(int from, int to) {
+    if (from == to || windows[from].empty()) return;
+    const std::uint64_t held = *windows[from].begin();
+    windows[from].erase(held);
+    windows[to].insert(held);
+    moved.insert(held);
+    model->sessionStarted(key(to), held, "/home/u");
+    if (windows[from].empty()) closeWindow(from);
   }
 
   void answerOne() {
@@ -123,13 +135,14 @@ struct Sim {
     std::vector<int> open;
     for (const auto& [w, s] : windows) open.push_back(w);
     const int pick = open.empty() ? 0 : open[std::uniform_int_distribution<std::size_t>(0, open.size() - 1)(rng)];
-    switch (std::uniform_int_distribution<int>(0, 10)(rng)) {
+    switch (std::uniform_int_distribution<int>(0, 11)(rng)) {
     case 0: case 1: openWindow(); break; // launch or "+"
     case 2: if (pick != 0) startSession(pick); break;
     case 3: if (pick != 0) closeWindow(pick); break;
     case 4: crashAndRestart(); break;
     case 5: holder.reachable = !holder.reachable; break;
     case 6: dropConnection(); break;
+    case 7: if (pick != 0) moveSession(pick, open[std::uniform_int_distribution<std::size_t>(0, open.size() - 1)(rng)]); break;
     default: answerOne(); break;
     }
   }
@@ -155,6 +168,10 @@ struct Sim {
       for (const std::uint64_t h : held) CHECK(!holder.sessions.contains(h) || holder.sessions.at(h) == *ws);
     }
     CHECK(owned == holder.workspaces); // no workspace without a window
+    // A moved shell lives on in its new window: closing the window it left does not end it.
+    for (const auto& [w, held] : windows) {
+      for (const std::uint64_t h : held) CHECK(!moved.contains(h) || holder.sessions.contains(h));
+    }
     for (const auto& [held, ws] : holder.sessions) {
       CHECK(std::ranges::any_of(windows, [&](const auto& w) { return w.second.contains(held); })); // no shell unseen
     }
