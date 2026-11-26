@@ -30,7 +30,7 @@ public:
   };
   // Request to send on the lock object; None frees only the client proxy. Teardown to Idle follows it.
   enum class Wire : std::uint8_t { None, Destroy, UnlockAndDestroy };
-  // Ordered by strength: Sleep offers no grace, Phone also asks for the password only.
+  // Why a lock runs, ordered by strength: Sleep offers no grace, Phone also asks for the password only.
   enum class Relock : std::uint8_t { None, Plain, Sleep, Phone };
 
   struct Step {
@@ -40,6 +40,23 @@ public:
 
   [[nodiscard]] Phase phase() const noexcept { return m_phase; }
   [[nodiscard]] Relock queuedRelock() const noexcept { return m_relock; }
+  // The reason of the lock that runs or waits for an output; None while Idle.
+  [[nodiscard]] Relock reason() const noexcept { return m_reason; }
+
+  // Start or Defer with a reason; a lock that already runs or waits keeps the stronger one.
+  Step on(Event event, Relock reason) noexcept {
+    const Step step = on(event);
+    if (step.accepted) {
+      require(reason);
+    }
+    return step;
+  }
+  // A running lock takes a stronger reason (a phone lock on top of a plain one); Idle ignores it.
+  void require(Relock reason) noexcept {
+    if (m_phase != Phase::Idle && reason > m_reason) {
+      m_reason = reason;
+    }
+  }
   // The lock object exists and the compositor may hold the session locked.
   [[nodiscard]] bool active() const noexcept {
     return m_phase == Phase::Pending || m_phase == Phase::Cancelling || m_phase == Phase::Locked
@@ -152,9 +169,11 @@ private:
   }
   Step idle(Wire wire) noexcept {
     m_phase = Phase::Idle;
+    m_reason = Relock::None;
     return {.accepted = true, .wire = wire};
   }
 
   Phase m_phase = Phase::Idle;
   Relock m_relock = Relock::None;
+  Relock m_reason = Relock::None;
 };

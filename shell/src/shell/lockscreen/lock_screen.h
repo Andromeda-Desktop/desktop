@@ -71,7 +71,7 @@ public:
   // Wall-clock ms of each rejected password since the last unlock; clears it.
   [[nodiscard]] std::vector<std::int64_t> takeRejectedWhileLocked() { return std::exchange(m_rejectedAt, {}); }
   // relock: the compositor already holds the secure blank, so the lock runs even with the lock screen turned off.
-  bool lock(bool relock = false);
+  bool lock(bool relock = false) { return startLock(LockLifecycle::Relock::Plain, relock); }
   // Lock from the paired phone (Link): password only, no grace, until the next unlock.
   bool lockFromPhone();
   // Lock for a suspend: no grace, also when the lock is queued behind an unlock.
@@ -207,7 +207,10 @@ private:
   void startFingerprint();
   void stopFingerprint();
   void handleBiometricStatus(const std::string& message, bool isError);
+  bool startLock(LockLifecycle::Relock reason, bool relock = false);
+  [[nodiscard]] bool passwordOnly() const noexcept { return m_lifecycle.reason() == LockLifecycle::Relock::Phone; }
   [[nodiscard]] bool faceEnabled() const;
+  [[nodiscard]] bool fingerprintEnabled() const;
   void startFace();
   [[nodiscard]] bool faceOnRequest() const;
   // A tap on the face glyph or Enter with an empty field (lockscreen.face_on_request).
@@ -272,16 +275,14 @@ private:
   LockNoticeProvider m_notices;
   Timer m_suspendTimeoutTimer;
   Timer m_outputPowerOffTimer;
-  // CLOCK_BOOTTIME millis when the lock flow started; grace expires gracePeriodSeconds after it.
+  // CLOCK_BOOTTIME millis when the lock flow started, 0 once grace is revoked; grace expires gracePeriodSeconds after it.
   std::int64_t m_lockedAtMillis = 0;
-  bool m_graceAllowed = false;
   // CLOCK_BOOTTIME millis of the last resume or output power-on; guards wake keys.
   std::int64_t m_wokeAtMillis = 0;
   double m_pointerEnterX = 0.0;
   double m_pointerEnterY = 0.0;
   Timer m_unlockTransitionTimer;
   std::vector<std::int64_t> m_rejectedAt;
-  bool m_passwordOnly = false;
   bool m_lastRejected = false;
   AuthColumn::Status m_statusIsland;
   std::uint32_t m_clockGradientFrom = 0;

@@ -218,7 +218,7 @@ void LockScreen::setPhoneServices(LinkPhoneState* link) {
   }
 }
 
-bool LockScreen::lock(bool relock) {
+bool LockScreen::startLock(LockLifecycle::Relock reason, bool relock) {
   if (remote()) {
     m_remote->lock(relock ? "relock" : "user");
     return true;
@@ -237,14 +237,14 @@ bool LockScreen::lock(bool relock) {
   if (m_compositorPlatform != nullptr && m_compositorPlatform->shouldSuppressLockTransition()) {
     suppressEntryTransition();
   }
-  if (m_lifecycle.queueRelock(LockLifecycle::Relock::Plain)) {
+  if (m_lifecycle.queueRelock(reason)) {
     return true;
   }
   if (isActive() || starting()) {
+    m_lifecycle.require(reason);
     return true;
   }
   m_lockedAtMillis = bootTimeMillis();
-  m_graceAllowed = !m_passwordOnly;
   kLog.debug("lock requested, grace starts at {}", m_lockedAtMillis);
   if (!m_wayland->hasSessionLockManager()) {
     invalidateDesktopCaptures();
@@ -253,7 +253,7 @@ bool LockScreen::lock(bool relock) {
     return false;
   }
   if (!hasUsableOutput(*m_wayland)) {
-    (void)m_lifecycle.on(LockLifecycle::Event::Defer);
+    (void)m_lifecycle.on(LockLifecycle::Event::Defer, reason);
     kLog.warn("no outputs available for lock screen; lock deferred until an output is connected");
     // No output can ever show a lock surface, so run any pending post-lock action (e.g. suspend)
     // immediately instead of holding it until a monitor reconnects.
@@ -262,7 +262,7 @@ bool LockScreen::lock(bool relock) {
     return true;
   }
 
-  (void)m_lifecycle.on(LockLifecycle::Event::Start);
+  (void)m_lifecycle.on(LockLifecycle::Event::Start, reason);
 
   if (m_desktopCapturesPrimed) {
     m_desktopCapturesPrimed = false;
@@ -274,7 +274,7 @@ bool LockScreen::lock(bool relock) {
   }
 
   if (!hasUsableOutput(*m_wayland)) {
-    (void)m_lifecycle.on(LockLifecycle::Event::Defer);
+    (void)m_lifecycle.on(LockLifecycle::Event::Defer, reason);
     kLog.warn("outputs disappeared while preparing lock screen; lock deferred until an output is connected");
     dispatchPendingAfterLocked();
     flushPendingOutputPowerOff();
@@ -350,7 +350,6 @@ void LockScreen::unlock() {
   }
   m_pendingDecline.clear();
   stopFace();
-  m_passwordOnly = false;
 
   if (m_lifecycle.phase() == LockLifecycle::Phase::Pending) {
     (void)m_lifecycle.on(LockLifecycle::Event::Unlock);
@@ -467,8 +466,9 @@ void LockScreen::onOutputChange() {
   }
   if (deferred()) {
     if (m_wayland != nullptr && !m_wayland->outputs().empty()) {
+      const auto reason = m_lifecycle.reason();
       (void)m_lifecycle.on(LockLifecycle::Event::Fail);
-      (void)lock();
+      (void)startLock(reason);
     }
     return;
   }
@@ -549,6 +549,14 @@ void LockScreen::onConfigChanged() {
       stopFace();
     }
     startFace();
+    if (fingerprintEnabled()) {
+      if (!m_authenticating) {
+        startFingerprint();
+      }
+    } else {
+      stopFingerprint();
+    }
+    updatePromptOnSurfaces();
   }
   requestUpdate();
   requestLayout();
@@ -757,7 +765,7 @@ bool LockScreen::isLockHeldOrQueued() const noexcept {
 }
 
 bool LockScreen::isInGracePeriod() const noexcept {
-  if (!m_graceAllowed || !m_lifecycle.locked() || m_lockedAtMillis <= 0) {
+  if (m_lifecycle.reason() != LockLifecycle::Relock::Plain || !m_lifecycle.locked() || m_lockedAtMillis <= 0) {
     return false;
   }
   if (m_configService == nullptr || m_configService->config().lockscreen.gracePeriodSeconds <= 0) {
@@ -780,7 +788,6 @@ void LockScreen::tryGraceUnlock() {
 
 void LockScreen::resetGracePeriod() {
   m_lockedAtMillis = 0;
-  m_graceAllowed = false;
 }
 
 void LockScreen::onSessionSleep(bool sleeping) {
@@ -793,7 +800,7 @@ void LockScreen::onSessionSleep(bool sleeping) {
 }
 
 void LockScreen::onSystemResumed() {
-  if (m_graceAllowed) {
+  if (m_lockedAtMillis > 0) {
     kLog.info("system resumed; revoking passwordless grace period");
   }
   markOutputsWoke();
@@ -832,15 +839,9 @@ bool LockScreen::lockFromPhone() {
   if (m_lifecycle.queueRelock(LockLifecycle::Relock::Phone)) {
     return true;
   }
-  m_passwordOnly = true;
   stopFingerprint();
   stopFace();
-  const bool ok = lock();
-  // lock() arms the grace window; a phone lock never offers it.
-  resetGracePeriod();
-  if (!ok) {
-    m_passwordOnly = false;
-  }
+  const bool ok = startLock(LockLifecycle::Relock::Phone);
   if (ok && m_lifecycle.locked()) {
     m_status = i18n::tr("lockscreen.password-required");
     m_statusKind = StatusKind::Info;
@@ -857,10 +858,7 @@ bool LockScreen::lockForSleep() {
   if (m_lifecycle.queueRelock(LockLifecycle::Relock::Sleep)) {
     return true;
   }
-  const bool ok = lock();
-  // lock() arms the grace window; a sleep-bound lock never offers it.
-  resetGracePeriod();
-  return ok;
+  return startLock(LockLifecycle::Relock::Sleep);
 }
 
 bool LockScreen::isSessionLocked() const noexcept { return remote() ? m_remote->locked() : m_lifecycle.locked(); }
@@ -1131,7 +1129,7 @@ void LockScreen::handleLocked(void* data, ext_session_lock_v1* /*lock*/) {
   // Idle status is empty; the surface renders the password hint itself.
   self->m_status.clear();
   self->m_statusKind = StatusKind::Info;
-  if (self->m_passwordOnly) {
+  if (self->passwordOnly()) {
     self->m_status = i18n::tr("lockscreen.password-required");
   }
   for (auto& instance : self->m_instances) {
@@ -1645,12 +1643,11 @@ void LockScreen::clearInstances() { m_instances.clear(); }
 
 void LockScreen::updatePromptOnSurfaces() {
   const LockSurface::AuthExtras extras{
-      .passwordOnly = m_passwordOnly,
+      .passwordOnly = passwordOnly(),
       .rejected = m_lastRejected,
       .face = m_face != nullptr && faceEnabled() && m_face->available(),
       .faceOnRequest = faceOnRequest(),
-      .fingerprint = m_fingerprint != nullptr && !m_passwordOnly && m_fingerprint->available()
-          && (m_configService == nullptr || m_configService->config().lockscreen.fingerprint),
+      .fingerprint = m_fingerprint != nullptr && fingerprintEnabled() && m_fingerprint->available(),
   };
   for (auto& instance : m_instances) {
     instance.surface->setPromptState(m_user, m_password.text(), m_status, m_statusKind != StatusKind::Info, m_authenticating);
@@ -1710,7 +1707,7 @@ void LockScreen::onKeyboardLayoutChanged() {
 void LockScreen::acceptBiometric() {
   // The same gate as a password result: a match queued before a password check, or one for a lock that is not
   // (or no longer) up, unlocks nothing.
-  if (m_passwordOnly || m_authenticating || !m_lifecycle.locked() || unlocking()) {
+  if (passwordOnly() || m_authenticating || !m_lifecycle.locked() || unlocking()) {
     return;
   }
   m_status = i18n::tr("lockscreen.unlocked");
@@ -1829,13 +1826,9 @@ void LockScreen::handleAuthResult(std::uint64_t generation, const PamAuthenticat
 }
 
 void LockScreen::startFingerprint() {
-  if (m_fingerprint == nullptr || m_passwordOnly) {
-    return;
+  if (m_fingerprint != nullptr && fingerprintEnabled()) {
+    m_fingerprint->start();
   }
-  if (m_configService != nullptr && !m_configService->config().lockscreen.fingerprint) {
-    return;
-  }
-  m_fingerprint->start();
 }
 
 void LockScreen::stopFingerprint() {
@@ -1844,8 +1837,12 @@ void LockScreen::stopFingerprint() {
   }
 }
 
+bool LockScreen::fingerprintEnabled() const {
+  return !passwordOnly() && (m_configService == nullptr || m_configService->config().lockscreen.fingerprint);
+}
+
 bool LockScreen::faceEnabled() const {
-  return !m_passwordOnly && (m_configService == nullptr || m_configService->config().lockscreen.face);
+  return !passwordOnly() && (m_configService == nullptr || m_configService->config().lockscreen.face);
 }
 
 bool LockScreen::faceOnRequest() const {

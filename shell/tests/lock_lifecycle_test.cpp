@@ -61,7 +61,13 @@ namespace {
           compositor.finishedSent = true;
         }
         const auto queued = machine.queuedRelock();
-        result = machine.on(event);
+        const auto reasonBefore = machine.reason();
+        result = event == Event::Start || event == Event::Defer ? machine.on(event, static_cast<Relock>(1 + (rng() % 3)))
+                                                                : machine.on(event);
+        // A running lock never weakens: a phone lock stays password-only until it ends.
+        if (machine.phase() != Phase::Idle) {
+          TEST_CHECK(machine.reason() >= reasonBefore && machine.reason() != Relock::None);
+        }
         if (result.accepted && event == Event::Requested) {
           compositor = Compositor{.alive = true};
         }
@@ -76,6 +82,7 @@ namespace {
         TEST_CHECK(machine.active() == compositor.alive);
         TEST_CHECK(!machine.locked() || compositor.lockedSent);
         TEST_CHECK(machine.phase() != Phase::Idle || machine.queuedRelock() == Relock::None);
+        TEST_CHECK(machine.phase() != Phase::Idle || machine.reason() == Relock::None);
         // A teardown without a queued relock reports no lock ahead, so a lock request queues one.
         if (machine.phase() == Phase::Unlocking || machine.phase() == Phase::Cancelling) {
           TEST_CHECK(machine.lockAhead() == (machine.queuedRelock() != Relock::None));
@@ -133,6 +140,18 @@ namespace {
     TEST_CHECK(machine.queuedRelock() == Relock::Phone);
   }
 
+  // The compositor refuses a phone lock: the next plain lock offers grace and biometrics again.
+  void testFinishedPhoneLockLeavesNoReason() {
+    LockLifecycle machine;
+    (void)machine.on(Event::Start, Relock::Phone);
+    (void)machine.on(Event::Requested);
+    TEST_CHECK(machine.reason() == Relock::Phone);
+    (void)machine.on(Event::Finished);
+    TEST_CHECK(machine.reason() == Relock::None);
+    (void)machine.on(Event::Start, Relock::Plain);
+    TEST_CHECK(machine.reason() == Relock::Plain);
+  }
+
   void testAbandonWhileLockedNeverUnlocks() {
     LockLifecycle machine;
     (void)machine.on(Event::Start);
@@ -148,6 +167,7 @@ int main() {
   testUnlockWhilePendingWaitsForTheAnswer();
   testRelockQueuedDuringUnlockSurvivesFinished();
   testStrongerRelockReplacesQueuedPlain();
+  testFinishedPhoneLockLeavesNoReason();
   testAbandonWhileLockedNeverUnlocks();
   return 0;
 }
