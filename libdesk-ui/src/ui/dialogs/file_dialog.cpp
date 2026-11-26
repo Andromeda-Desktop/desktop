@@ -1,15 +1,14 @@
 #include "ui/dialogs/file_dialog.h"
 
 #include "i18n/i18n.h"
+#include "ui/dialogs/dialog_request.h"
 
 #include <utility>
 
 namespace {
 
-  FileDialogOptions s_options;
-  FileDialog::CompletionCallback s_callback;
+  DialogRequest<FileDialogOptions, std::filesystem::path> s_request;
   FileDialogPresenter* s_presenter = nullptr;
-  bool s_hasPendingCallback = false;
   std::filesystem::path s_lastBrowsedDirectory;
 
   std::string defaultTitle(FileDialogMode mode) {
@@ -29,65 +28,26 @@ namespace {
 void FileDialog::setPresenter(FileDialogPresenter* presenter) noexcept { s_presenter = presenter; }
 
 bool FileDialog::open(FileDialogOptions options, CompletionCallback callback) {
-  if (s_hasPendingCallback && s_callback) {
-    auto previous = std::move(s_callback);
-    s_hasPendingCallback = false;
-    previous(std::nullopt);
-  }
-
   if (options.title.empty()) {
     options.title = defaultTitle(options.mode);
   }
   if (options.startDirectory.empty()) {
     options.startDirectory = s_lastBrowsedDirectory;
   }
-
-  s_options = std::move(options);
-  s_callback = std::move(callback);
-  s_hasPendingCallback = static_cast<bool>(s_callback);
-
-  if (s_presenter == nullptr || !s_presenter->openFileDialog()) {
-    auto pending = std::move(s_callback);
-    s_callback = {};
-    s_hasPendingCallback = false;
-    s_options = {};
-    if (pending) {
-      pending(std::nullopt);
-    }
-    return false;
-  }
-
-  return true;
+  return s_request.open(std::move(options), std::move(callback), [] {
+    return s_presenter != nullptr && s_presenter->openFileDialog();
+  });
 }
 
 void FileDialog::complete(std::optional<std::filesystem::path> result) { settle(std::move(result))(); }
 
 std::function<void()> FileDialog::settle(std::optional<std::filesystem::path> result) {
-  auto callback = std::move(s_callback);
-  s_callback = {};
-  s_hasPendingCallback = false;
-  s_options = {};
-  return [callback = std::move(callback), result = std::move(result)]() mutable {
-    if (callback) {
-      callback(std::move(result));
-    }
-  };
+  return s_request.settle(std::move(result));
 }
 
-void FileDialog::cancelIfPending() {
-  if (!s_hasPendingCallback) {
-    return;
-  }
-  auto callback = std::move(s_callback);
-  s_callback = {};
-  s_hasPendingCallback = false;
-  s_options = {};
-  if (callback) {
-    callback(std::nullopt);
-  }
-}
+void FileDialog::cancelIfPending() { s_request.cancel(); }
 
 void FileDialog::setLastBrowsedDirectory(std::filesystem::path directory) noexcept {
   s_lastBrowsedDirectory = std::move(directory);
 }
-const FileDialogOptions& FileDialog::currentOptions() { return s_options; }
+const FileDialogOptions& FileDialog::currentOptions() { return s_request.options(); }

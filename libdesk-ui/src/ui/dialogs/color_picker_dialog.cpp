@@ -1,79 +1,38 @@
 #include "ui/dialogs/color_picker_dialog.h"
 
-#include "core/deferred_call.h"
 #include "i18n/i18n.h"
+#include "ui/dialogs/dialog_request.h"
 
 #include <utility>
 
 namespace {
 
-  ColorPickerDialogOptions s_options;
-  ColorPickerDialog::CompletionCallback s_callback;
+  DialogRequest<ColorPickerDialogOptions, Color> s_request{DialogRequest<ColorPickerDialogOptions, Color>::Delivery::Deferred};
   ColorPickerDialogPresenter* s_presenter = nullptr;
   std::optional<Color> s_lastResult;
-  bool s_hasPendingCallback = false;
 
 } // namespace
 
 void ColorPickerDialog::setPresenter(ColorPickerDialogPresenter* presenter) noexcept { s_presenter = presenter; }
 
 bool ColorPickerDialog::open(ColorPickerDialogOptions options, CompletionCallback callback) {
-  if (s_hasPendingCallback && s_callback) {
-    auto previous = std::move(s_callback);
-    s_hasPendingCallback = false;
-    previous(std::nullopt);
-  }
-
   if (options.title.empty()) {
     options.title = i18n::tr("ui.dialogs.color-picker.title");
   }
-
-  s_options = std::move(options);
-  s_callback = std::move(callback);
-  s_hasPendingCallback = static_cast<bool>(s_callback);
-
-  if (s_presenter == nullptr || !s_presenter->openColorPicker()) {
-    auto pending = std::move(s_callback);
-    s_callback = {};
-    s_hasPendingCallback = false;
-    s_options = {};
-    if (pending) {
-      pending(std::nullopt);
-    }
-    return false;
-  }
-
-  return true;
+  return s_request.open(std::move(options), std::move(callback), [] {
+    return s_presenter != nullptr && s_presenter->openColorPicker();
+  });
 }
 
 void ColorPickerDialog::complete(const Color& result) { settle(result)(); }
 
 std::function<void()> ColorPickerDialog::settle(const Color& result) {
   s_lastResult = result;
-  auto callback = std::move(s_callback);
-  s_callback = {};
-  s_hasPendingCallback = false;
-  s_options = {};
-  return [callback = std::move(callback), result] {
-    if (callback) {
-      DeferredCall::callLater([callback, result] { callback(result); });
-    }
-  };
+  return s_request.settle(result);
 }
 
-void ColorPickerDialog::cancelIfPending() {
-  if (!s_hasPendingCallback) {
-    return;
-  }
-  auto callback = std::move(s_callback);
-  s_callback = {};
-  s_hasPendingCallback = false;
-  s_options = {};
-  if (callback) {
-    DeferredCall::callLater([callback = std::move(callback)] { callback(std::nullopt); });
-  }
-}
+void ColorPickerDialog::cancelIfPending() { s_request.cancel(); }
 
-const ColorPickerDialogOptions& ColorPickerDialog::currentOptions() { return s_options; }
+const ColorPickerDialogOptions& ColorPickerDialog::currentOptions() { return s_request.options(); }
 
 std::optional<Color> ColorPickerDialog::lastResult() noexcept { return s_lastResult; }

@@ -1270,6 +1270,7 @@ if build_tests
     'config_widget',
     'context_menu_popup',
     'control_center_tiles',
+    'dialog_request',
     'cpu_freq',
     'cpu_stat',
     'cpu_temp_sensor',
