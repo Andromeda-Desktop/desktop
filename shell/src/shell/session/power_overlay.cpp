@@ -273,7 +273,7 @@ void PowerOverlay::show(wl_output* output) {
     }
   });
   m_surface->setPrepareFrameCallback([this](bool needsUpdate, bool needsLayout) { prepareFrame(needsUpdate, needsLayout); });
-  m_surface->setClosedCallback([this] { DeferredCall::callLater([this] { onSurfaceLost(); }); });
+  m_surface->setClosedCallback([this] { onSurfaceLost(); });
   if (!m_surface->initialize(output)) {
     kLog.warn("failed to initialize the power overlay");
     m_surface.reset();

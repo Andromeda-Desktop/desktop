@@ -256,6 +256,7 @@ namespace viewer {
     std::filesystem::path m_path;
     std::string m_error;
     std::uint64_t m_generation = 0;
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // a tab closed in the same loop pass frees this before its deferred calls run
     std::uint64_t m_searchGeneration = 0;
 
     std::unique_ptr<preview::HelperClient> m_helper;

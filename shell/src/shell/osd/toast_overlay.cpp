@@ -134,13 +134,7 @@ void ToastOverlay::createSurface() {
   m_surface->setConfigureCallback([this](std::uint32_t, std::uint32_t) { m_surface->requestLayout(); });
   m_surface->setPrepareFrameCallback([this](bool, bool) { prepareFrame(); });
   // The compositor closes the toast with its output; the next show() must create a new one.
-  m_surface->setClosedCallback([this, surface = m_surface.get()] {
-    DeferredCall::callLater([this, surface] {
-      if (m_surface.get() == surface) {
-        destroySurface();
-      }
-    });
-  });
+  m_surface->setClosedCallback([this] { destroySurface(); });
   m_surface->setAnimationManager(&m_animations);
   if (!m_surface->initialize(output)) {
     m_surface.reset();

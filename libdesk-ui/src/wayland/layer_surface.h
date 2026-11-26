@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -98,5 +99,8 @@ private:
   bool m_keyboardLent = false;
   zwlr_layer_surface_v1* m_layerSurface = nullptr;
   std::function<void()> m_closedCallback;
+  // The closed callback runs deferred, out of the Wayland event, and only while this surface lives: an owner that
+  // replaced the surface in between never gets the old surface's close.
+  std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
   bool m_clickThrough = false;
 };

@@ -1140,14 +1140,8 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
       syncGlassPieces(false);
     });
     surface.setAnimationManager(&m_animations);
-    // The compositor closes the panel with its output; the surface must not be destroyed inside its own event.
-    m_layerSurface->setClosedCallback([this, closed = m_layerSurface] {
-      DeferredCall::callLater([this, closed] {
-        if (m_layerSurface == closed) {
-          destroyPanelNow();
-        }
-      });
-    });
+    // The compositor closes the panel with its output.
+    m_layerSurface->setClosedCallback([this] { destroyPanelNow(); });
   };
 
   const auto resetPanelOpenState = [this] {

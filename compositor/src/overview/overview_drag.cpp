@@ -716,7 +716,7 @@ namespace andromeda {
       }
     }
     m_edgeWorkspace = panned;
-    if (output == m_edgeOutput && step == m_edgeStep && pan == m_edgePan) {
+    if (output == m_edgeOutput.get() && step == m_edgeStep && pan == m_edgePan) {
       return;
     }
     m_edgeOutput = output;
@@ -758,8 +758,8 @@ namespace andromeda {
     if (m_edgeHint != nullptr) {
       m_edgeHint->hideImmediate();
     }
-    const bool wasArmed = m_edgeOutput != nullptr;
-    Output* previous = m_edgeOutput;
+    const bool wasArmed = static_cast<bool>(m_edgeOutput);
+    Output* previous = m_edgeOutput.get();
     m_edgeOutput = nullptr;
     m_edgeWorkspace = nullptr;
     m_edgeStep = 0;
@@ -773,7 +773,7 @@ namespace andromeda {
 
   int Overview::onEdgeTimer(void* data) {
     auto* self = static_cast<Overview*>(data);
-    OutputState* state = self->m_edgeOutput != nullptr ? self->stateFor(self->m_edgeOutput) : nullptr;
+    OutputState* state = self->m_edgeOutput ? self->stateFor(self->m_edgeOutput.get()) : nullptr;
     if ((self->dragCard() == nullptr && !self->m_thumbDragging) || state == nullptr || !self->interactive()) {
       self->stopEdgeScroll();
       return 0;

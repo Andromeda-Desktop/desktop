@@ -57,7 +57,7 @@ void GalleryVideo::start(const std::filesystem::path& video, bool sound, bool so
     }
     if (reply.msg.op != preview::op::InfoReply || (reply.msg.e & kFlagVideo) == 0) {
       kLog.warn("{}: no video stream", name);
-      DeferredCall::callLater([this, generation] {
+      DeferredCall::callLaterIfAlive(m_alive, [this, generation] {
         if (generation == m_generation) {
           stop();
           if (m_callbacks.ended) {
@@ -75,7 +75,7 @@ void GalleryVideo::start(const std::filesystem::path& video, bool sound, bool so
             .failed = [this, generation, video, sound, software, name](bool unsupported) {
               kLog.warn("{}: video failed{}", name, unsupported && !software ? ", trying software frames" : "");
               // Runs inside the helper's callback: restart or stop after it returns.
-              DeferredCall::callLater([this, generation, video, sound, software, unsupported] {
+              DeferredCall::callLaterIfAlive(m_alive, [this, generation, video, sound, software, unsupported] {
                 if (generation != m_generation) {
                   return;
                 }

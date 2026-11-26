@@ -306,11 +306,9 @@ AppWindow& DeskApp::addWindow(AppWindow::Config config) {
 }
 
 void DeskApp::closeWindow(AppWindow& window) {
-  DeferredCall::callLater([this, w = &window] {
-    for (const auto& owned : m_windows) {
-      if (owned.get() == w && w->closeAllowed()) {
-        w->close();
-      }
+  DeferredCall::callLaterIfAlive(window.aliveToken(), [this, w = &window] {
+    if (w->closeAllowed()) {
+      w->close();
     }
     reapClosed();
   });

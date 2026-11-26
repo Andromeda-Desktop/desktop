@@ -310,7 +310,7 @@ namespace viewer {
         return;
       }
       if (reply.msg.op != preview::op::InfoReply || reply.msg.b == 0) {
-        DeferredCall::callLater([this, generation] {
+        DeferredCall::callLaterIfAlive(m_alive, [this, generation] {
           if (generation == m_generation) {
             dropHelper();
           }
@@ -959,7 +959,7 @@ namespace viewer {
     if (page.texture.valid() && page.texture.generation != renderer.textureManager().generation()) {
       // The GL context was lost with the texture; render the page again.
       page = {};
-      DeferredCall::callLater([this, generation = m_generation] {
+      DeferredCall::callLaterIfAlive(m_alive, [this, generation = m_generation] {
         if (generation == m_generation) {
           requestVisiblePages();
         }
@@ -980,7 +980,7 @@ namespace viewer {
           }
           endJob();
           // Sent last, so it runs after this reply is stored.
-          DeferredCall::callLater([this, generation] {
+          DeferredCall::callLaterIfAlive(m_alive, [this, generation] {
             if (generation == m_generation) {
               pump();
             }
@@ -1492,7 +1492,7 @@ namespace viewer {
     }
     }
     if (m_mode == Mode::Pdf) {
-      DeferredCall::callLater([this, generation = m_generation] {
+      DeferredCall::callLaterIfAlive(m_alive, [this, generation = m_generation] {
         if (generation == m_generation) {
           requestVisiblePages();
         }

@@ -584,7 +584,7 @@ namespace andromeda {
     std::unique_ptr<HintRect> m_edgeHint;
     wl_event_source* m_edgeTimer = nullptr;
     // The edge a drag is held at: the output it is on, and +-1 along (step rows) or across (pan) the workspace axis.
-    Output* m_edgeOutput = nullptr;
+    Ref<Output> m_edgeOutput; // the output an armed edge timer acts on; cleared when the output goes
     int m_edgeStep = 0;
     int m_edgePan = 0;
     Ref<Workspace> m_edgeWorkspace; // the scrolling workspace an armed pan moves

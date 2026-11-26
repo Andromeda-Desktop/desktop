@@ -1,5 +1,6 @@
 #include "wayland/toplevel_surface.h"
 
+#include "core/deferred_call.h"
 #include "core/log.h"
 #include "dsk-app-menu-v1-client-protocol.h"
 #include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
@@ -331,11 +332,15 @@ void ToplevelSurface::handleToplevelConfigure(
 void ToplevelSurface::handleToplevelClose(void* data, xdg_toplevel* /*toplevel*/) {
   auto* self = static_cast<ToplevelSurface*>(data);
   // A close request, not a close: an owner may refuse it (a confirm sheet) and keep drawing and taking input.
-  if (self->m_closedCallback) {
-    self->m_closedCallback();
-  } else {
+  if (!self->m_closedCallback) {
     self->setRunning(false);
+    return;
   }
+  DeferredCall::callLaterIfAlive(self->m_alive, [self] {
+    if (self->m_closedCallback) {
+      self->m_closedCallback();
+    }
+  });
 }
 
 void ToplevelSurface::handleToplevelConfigureBounds(

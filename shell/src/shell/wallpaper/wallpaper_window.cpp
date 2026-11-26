@@ -86,13 +86,7 @@ void WallpaperWindow::open(wl_output* output) {
   m_surface = std::make_unique<ToplevelSurface>(*m_wayland);
   m_surface->setRenderContext(m_renderContext);
   m_surface->setAnimationManager(&m_animations);
-  m_surface->setClosedCallback([this, surface = m_surface.get()] {
-    DeferredCall::callLater([this, surface] {
-      if (m_surface.get() == surface) {
-        destroyWindow();
-      }
-    });
-  });
+  m_surface->setClosedCallback([this] { destroyWindow(); });
   m_surface->setConfigureCallback([this](std::uint32_t, std::uint32_t) {
     if (m_surface != nullptr) {
       m_surface->requestLayout();

@@ -200,6 +200,8 @@ public:
   // Saves the current geometry under the old key, then remembers size and state under this one.
   void setStateKey(std::string stateKey);
   [[nodiscard]] bool hasSheet() const noexcept { return static_cast<bool>(m_sheetBuilder); }
+  // Expires when this window is destroyed; deferred work for this window passes it to callLaterIfAlive.
+  [[nodiscard]] std::weak_ptr<const void> aliveToken() const noexcept { return m_alive; }
   void setClosedCallback(std::function<void()> callback) { m_onClosed = std::move(callback); }
   // Runs before a close from the header, Ctrl+W or the compositor; false keeps the window open, and the app later
   // closes it with finishClose (for example after it asks to save).

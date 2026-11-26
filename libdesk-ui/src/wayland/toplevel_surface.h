@@ -78,6 +78,9 @@ private:
   dsk_app_menu_v1* m_menuBar = nullptr; // made on the first non-empty setMenuBar
   std::function<void(std::uint32_t)> m_menuActivated;
   std::function<void()> m_closedCallback;
+  // The closed callback runs deferred, out of the Wayland event, and only while this surface lives: an owner that
+  // replaced the surface in between never gets the old surface's close.
+  std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
   std::function<void(const ToplevelState&)> m_stateCallback;
   ToplevelState m_state;
   ToplevelState m_pendingState;

@@ -189,6 +189,11 @@ RULES = {
                  "shell/src/config/atomic_file.", "shell/src/security/encrypted_file_store.")),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",
                     ("apps/",), ("meson.build",), r"subproject\('libdesk-ui'|\b_?desk_ui_dep\b", ()),
+    "defer-this": ("a deferred call that captures this can run after its owner is freed (a tab or window closed in the "
+                   "same loop pass): DeferredCall::callLaterIfAlive (libdesk-ui core/deferred_call.h) with the owner's alive "
+                   "token; a surface's closed callback is already deferred and dropped with the surface",
+                   CPP_DIRS, CPP, r"DeferredCall::callLater\(\s*\[(?![^\]]*(?:[Aa]live|Guard))[^\]]*\bthis\b",
+                   ("libdesk-ui/src/core/deferred_call.",)),
 }
 
 

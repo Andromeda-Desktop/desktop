@@ -1725,7 +1725,7 @@ void WindowSwitcher::ensureSurface() {
         *instPtr, static_cast<float>(instPtr->surface->width()), static_cast<float>(instPtr->surface->height())
     );
   });
-  inst->surface->setClosedCallback([this] { DeferredCall::callLater([this] { hide(); }); });
+  inst->surface->setClosedCallback([this] { hide(); });
 
   if (!inst->surface->initialize(m_output)) {
     kLog.warn("failed to initialize window switcher overlay");

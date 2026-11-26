@@ -57,6 +57,7 @@ private:
   std::array<float, 4> m_rect{};
   std::uint32_t m_durationMs = 0;
   std::uint64_t m_generation = 0;
+  std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // the window can close in the same loop pass, before its deferred calls run
   ShownTimers& m_shown;
   ShownTimer m_tick;
 };
