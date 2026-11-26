@@ -891,7 +891,7 @@ void LiveActivityIsland::hoverEnter(Instance& inst) {
   }
   const MprisService* mpris = m_mpris ? m_mpris() : nullptr;
   const auto player = mpris != nullptr ? mpris->activePlayer() : std::nullopt;
-  const bool playing = player.has_value() && player->playbackStatus == "Playing";
+  const bool playing = player.has_value() && player->playbackStatus == PlaybackStatus::Playing;
   const bool compactCall = compactActivity(inst);
   // The date pill has no hover face; an expanded activity is already the card.
   if (m_activity.has_value() ? !compactCall : !playing) {
@@ -1991,7 +1991,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   }
   const MprisService* mpris = m_mpris ? m_mpris() : nullptr;
   const auto player = mpris != nullptr ? mpris->activePlayer() : std::nullopt;
-  const bool playing = player.has_value() && player->playbackStatus == "Playing";
+  const bool playing = player.has_value() && player->playbackStatus == PlaybackStatus::Playing;
   m_date = clockText();
   const bool compactCall = compactActivity(inst);
   inst.mediaGroup->setVisible(playing && !compactCall);
@@ -2863,7 +2863,7 @@ bool LiveActivityIsland::pressActivityButton(bool secondary) {
 void LiveActivityIsland::syncBars() {
   const MprisService* mpris = m_mpris ? m_mpris() : nullptr;
   const auto player = mpris != nullptr ? mpris->activePlayer() : std::nullopt;
-  m_barsPlaying = player.has_value() && player->playbackStatus == "Playing"
+  m_barsPlaying = player.has_value() && player->playbackStatus == PlaybackStatus::Playing
       && std::ranges::any_of(m_instances, [](const auto& inst) { return !restHidden(*inst); });
   PipeWireSpectrum* spectrum = m_spectrum ? m_spectrum() : nullptr;
   if (!m_barsPlaying) {

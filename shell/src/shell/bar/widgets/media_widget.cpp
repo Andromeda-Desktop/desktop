@@ -118,7 +118,7 @@ void MediaWidget::doLayout(Renderer& renderer, float containerWidth, float conta
   const bool showProgressFill = progressFillEligible(active);
 
   m_label->setColor(
-      m_lastPlaybackStatus == "Playing" ? widgetForegroundOr(colorSpecFromRole(ColorRole::Label1))
+      m_lastPlaybackStatus == PlaybackStatus::Playing ? widgetForegroundOr(colorSpecFromRole(ColorRole::Label1))
                                         : colorSpecFromRole(ColorRole::Label2)
   );
   m_emptyGlyph->setGlyph(active.has_value() ? "disc" : "music-off");
@@ -221,7 +221,7 @@ void MediaWidget::doUpdate(Renderer& renderer) {
 bool MediaWidget::needsFrameTick() const {
   // hasImage() already implies the art slot is shown: syncState() clears the art when hide_album_art is set. Do not
   // test visible() here, syncState() runs before doLayout() reveals the art slot for a newly loaded image.
-  return m_rotateAlbumArt && m_lastPlaybackStatus == "Playing" && m_art != nullptr && m_art->hasImage();
+  return m_rotateAlbumArt && m_lastPlaybackStatus == PlaybackStatus::Playing && m_art != nullptr && m_art->hasImage();
 }
 
 void MediaWidget::onFrameTick(float deltaMs) {
@@ -288,7 +288,7 @@ void MediaWidget::syncProgress(const std::optional<MprisPlayerInfo>& active) {
     m_progressBar->setProgress(progress);
     requestRedraw();
   }
-  if (active->playbackStatus != "Playing") {
+  if (active->playbackStatus != PlaybackStatus::Playing) {
     m_progressTimer.stop();
     return;
   }
@@ -304,16 +304,16 @@ void MediaWidget::syncState(Renderer& renderer, const std::optional<MprisPlayerI
     return;
   }
 
-  const bool playing = active.has_value() && active->playbackStatus == "Playing";
+  const bool playing = active.has_value() && active->playbackStatus == PlaybackStatus::Playing;
   const bool showWidget = active.has_value() ? (!m_hideWhenIdle || playing) : !m_hideWhenNoMedia;
   syncWidgetVisibility(showWidget);
   if (!showWidget) {
     applyTitleScrollMode(false);
-    m_lastPlaybackStatus.clear();
+    m_lastPlaybackStatus = PlaybackStatus::Unknown;
     return;
   }
 
-  std::string playbackStatus;
+  PlaybackStatus playbackStatus = PlaybackStatus::Unknown;
   std::string displayText = i18n::tr("bar.widgets.media.nothing-playing");
   std::string artUrl;
 
@@ -334,7 +334,7 @@ void MediaWidget::syncState(Renderer& renderer, const std::optional<MprisPlayerI
   if (playbackChanged && !textChanged && !artChanged && !artAwaitingDecode) {
     m_lastPlaybackStatus = playbackStatus;
     m_label->setColor(
-        m_lastPlaybackStatus == "Playing" ? widgetForegroundOr(colorSpecFromRole(ColorRole::Label1))
+        m_lastPlaybackStatus == PlaybackStatus::Playing ? widgetForegroundOr(colorSpecFromRole(ColorRole::Label1))
                                           : colorSpecFromRole(ColorRole::Label2)
     );
     if (needsFrameTick()) {
@@ -352,7 +352,7 @@ void MediaWidget::syncState(Renderer& renderer, const std::optional<MprisPlayerI
     m_label->setText(m_lastText);
   }
   m_label->setColor(
-      m_lastPlaybackStatus == "Playing" ? widgetForegroundOr(colorSpecFromRole(ColorRole::Label1))
+      m_lastPlaybackStatus == PlaybackStatus::Playing ? widgetForegroundOr(colorSpecFromRole(ColorRole::Label1))
                                         : colorSpecFromRole(ColorRole::Label2)
   );
 
@@ -410,7 +410,7 @@ std::string MediaWidget::buildDisplayText(const MprisPlayerInfo& player, bool hi
   if (!player.busName.empty()) {
     return player.busName;
   }
-  if (player.playbackStatus == "Playing") {
+  if (player.playbackStatus == PlaybackStatus::Playing) {
     return i18n::tr("bar.widgets.media.playing");
   }
   return i18n::tr("bar.widgets.media.nothing-playing");

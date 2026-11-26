@@ -27,11 +27,17 @@ namespace sdbus {
   class Variant;
 } // namespace sdbus
 
+// MPRIS PlaybackStatus; Unknown until the player reports one of the three spec values.
+enum class PlaybackStatus : std::uint8_t { Unknown, Playing, Paused, Stopped };
+[[nodiscard]] PlaybackStatus parsePlaybackStatus(std::string_view name) noexcept;
+// The MPRIS name ("Playing", "Paused", "Stopped"); empty for Unknown.
+[[nodiscard]] std::string_view playbackStatusName(PlaybackStatus status) noexcept;
+
 struct MprisPlayerInfo {
   std::string busName;
   std::string identity;
   std::string desktopEntry;
-  std::string playbackStatus;
+  PlaybackStatus playbackStatus = PlaybackStatus::Unknown;
   std::string trackId;
   std::string title;
   std::vector<std::string> artists;

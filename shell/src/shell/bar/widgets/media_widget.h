@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/timer_manager.h"
+#include "dbus/mpris/mpris_service.h"
 #include "shell/bar/widget.h"
 
 #include <cstdint>
@@ -90,7 +91,7 @@ private:
 
   std::string m_lastText;
   std::string m_lastArtUrl;
-  std::string m_lastPlaybackStatus;
+  PlaybackStatus m_lastPlaybackStatus = PlaybackStatus::Unknown;
   std::unordered_set<std::string> m_pendingArtDownloads;
   std::shared_ptr<void> m_aliveGuard = std::make_shared<int>(0);
   Timer m_progressTimer;

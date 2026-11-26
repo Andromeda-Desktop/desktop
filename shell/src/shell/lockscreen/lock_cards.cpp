@@ -574,7 +574,7 @@ LockCards::Data collectLockCards(
           .title = active->title,
           .subtitle = artists.empty() ? app : app.empty() ? artists : artists + " · " + app,
           .artUrl = mpris::effectiveArtUrl(*active),
-          .playing = active->playbackStatus == "Playing",
+          .playing = active->playbackStatus == PlaybackStatus::Playing,
       };
     }
   }

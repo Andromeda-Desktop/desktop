@@ -87,7 +87,7 @@ void MediaOsd::onMprisChanged(const MprisService& service) {
       cancelTrackOsd(player.busName);
       continue;
     }
-    if (player.playbackStatus != "Playing") {
+    if (player.playbackStatus != PlaybackStatus::Playing) {
       // Queueing a track while paused is not a transition; it announces itself on play.
       continue;
     }

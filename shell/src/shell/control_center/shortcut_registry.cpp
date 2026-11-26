@@ -512,7 +512,7 @@ namespace {
         return false;
       }
       const auto active = m_svc->activePlayer();
-      return active.has_value() && active->playbackStatus == "Playing";
+      return active.has_value() && active->playbackStatus == PlaybackStatus::Playing;
     }
     void onClick() override {
       if (m_svc != nullptr) {

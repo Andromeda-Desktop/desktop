@@ -331,7 +331,7 @@ void PluginWidget::handleAudioSpectrumChanged() {
   }
   const bool audioActive = !m_audioSpectrum->idle();
   const auto active = m_mpris != nullptr ? m_mpris->activePlayer() : std::nullopt;
-  const bool mprisPlaying = active.has_value() && active->playbackStatus == "Playing";
+  const bool mprisPlaying = active.has_value() && active->playbackStatus == PlaybackStatus::Playing;
   const std::string state = std::string(audioActive ? "1" : "0") + "," + (mprisPlaying ? "1" : "0");
   // Coalesce: at ~60Hz only the latest frame matters, so a slow script can't
   // accumulate stale spectrum events.

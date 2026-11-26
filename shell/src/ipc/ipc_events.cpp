@@ -87,7 +87,7 @@ namespace ipc_events {
     }
     return {
         {"player", player->identity},
-        {"status", player->playbackStatus},
+        {"status", std::string(playbackStatusName(player->playbackStatus))},
         {"title", player->title},
         {"artists", player->artists},
         {"album", player->album},

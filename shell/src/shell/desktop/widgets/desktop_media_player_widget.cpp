@@ -600,7 +600,7 @@ void DesktopMediaPlayerWidget::sync(Renderer& renderer) {
   std::string title;
   std::string artist;
   std::string artUrl;
-  std::string playbackStatus;
+  PlaybackStatus playbackStatus = PlaybackStatus::Unknown;
   bool canGoPrevious = false;
   bool canGoNext = false;
 
@@ -659,7 +659,7 @@ void DesktopMediaPlayerWidget::sync(Renderer& renderer) {
   m_artist->setText(m_lastArtist);
   m_artist->setVisible(!m_lastArtist.empty());
 
-  m_playPause->setGlyph(m_lastPlaybackStatus == "Playing" ? "media-pause" : "media-play");
+  m_playPause->setGlyph(m_lastPlaybackStatus == PlaybackStatus::Playing ? "media-pause" : "media-play");
   if (m_prev != nullptr) {
     m_prev->setVisible(canGoPrevious);
   }

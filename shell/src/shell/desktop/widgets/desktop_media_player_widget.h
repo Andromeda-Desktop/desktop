@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dbus/mpris/mpris_service.h"
 #include "shell/desktop/desktop_widget.h"
 #include "ui/palette.h"
 
@@ -92,7 +93,7 @@ private:
   std::string m_lastArtist;
   std::string m_lastArtUrl;
   std::string m_artPath;
-  std::string m_lastPlaybackStatus;
+  PlaybackStatus m_lastPlaybackStatus = PlaybackStatus::Unknown;
   bool m_lastCanGoPrevious = false;
   bool m_lastCanGoNext = false;
   std::uint64_t m_spectrumListenerId = 0;

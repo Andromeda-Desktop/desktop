@@ -2048,7 +2048,7 @@ namespace control_center {
     }
     std::string key;
     for (const MprisPlayerInfo& player : m_mpris->listPlayers()) {
-      key += std::format("{}|{}|{}|{}|{}|{}|{};", player.busName, player.playbackStatus, player.title,
+      key += std::format("{}|{}|{}|{}|{}|{}|{};", player.busName, playbackStatusName(player.playbackStatus), player.title,
                          mpris::effectiveArtUrl(player), player.positionUs / 1'000'000, player.shuffle, player.loopStatus);
     }
     if (const auto active = m_mpris->activePlayer(); active.has_value()) {
@@ -2128,7 +2128,7 @@ namespace control_center {
     controls->addChild(mediaButton("arrows-shuffle", small, s, player->canControl,
                                    [this, bus, on = player->shuffle] { m_mpris->setShuffle(bus, !on); }));
     controls->addChild(mediaButton("player-skip-back", small, s, player->canGoPrevious, [this, bus] { m_mpris->previous(bus); }));
-    controls->addChild(mediaButton(player->playbackStatus == "Playing" ? "player-pause" : "player-play", Tokens::spaceP48, s,
+    controls->addChild(mediaButton(player->playbackStatus == PlaybackStatus::Playing ? "player-pause" : "player-play", Tokens::spaceP48, s,
                                    player->canPlay || player->canPause, [this, bus] { m_mpris->playPause(bus); }, true));
     controls->addChild(mediaButton("player-skip-forward", small, s, player->canGoNext, [this, bus] { m_mpris->next(bus); }));
     controls->addChild(mediaButton(player->loopStatus == "Track" ? "repeat-once" : "repeat", small, s, player->canControl,
@@ -2145,7 +2145,7 @@ namespace control_center {
         DetailRow row;
         row.title = other.identity;
         row.secondary = other.title;
-        row.trailing = other.playbackStatus == "Playing" ? tr("control-center.detail.media.playing") : tr("control-center.detail.media.paused");
+        row.trailing = other.playbackStatus == PlaybackStatus::Playing ? tr("control-center.detail.media.playing") : tr("control-center.detail.media.paused");
         row.avatarIcons = {other.desktopEntry, other.identity};
         row.selected = other.busName == bus;
         row.onClick = [this, name = other.busName] {

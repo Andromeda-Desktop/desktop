@@ -1440,7 +1440,7 @@ void QuickPage::syncMedia(Renderer& renderer) {
     }
   }
   m_mediaArtist->setText(artist);
-  m_playButton->setGlyph(player->playbackStatus == "Playing" ? "player-pause" : "player-play");
+  m_playButton->setGlyph(player->playbackStatus == PlaybackStatus::Playing ? "player-pause" : "player-play");
 
   const std::string url = mpris::effectiveArtUrl(*player);
   if (url == m_mediaArtUrl && (url.empty() || m_mediaArt->hasImage())) {
