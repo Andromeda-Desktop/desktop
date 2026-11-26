@@ -59,6 +59,7 @@ void FrameStats::beginFrame(bool animating) {
     m_ending = false;
     m_cpu.clear();
     m_missed = 0;
+    m_discarded = 0;
     m_presented = 0;
     m_lastPresentedNs = 0;
     ++m_run;
@@ -105,6 +106,7 @@ void FrameStats::onDiscarded(struct wp_presentation_feedback* feedback) {
   std::erase(m_pending, feedback);
   wp_presentation_feedback_destroy(feedback);
   ++m_missed;
+  ++m_discarded;
   m_lastPresentedNs = 0; // the gap to the next presented frame is this miss, already counted
   finishIfDone();
 }
@@ -120,7 +122,10 @@ void FrameStats::finishIfDone() {
     std::ranges::nth_element(cpu, cpu.begin() + static_cast<std::ptrdiff_t>(rank));
     p99 = cpu[rank];
   }
-  kLog.info("anim {}#{} frames {} p99_cpu_ms {:.2f} missed {}", m_name, m_run, m_presented, p99, m_missed);
+  kLog.info(
+      "anim {}#{} frames {} p99_cpu_ms {:.2f} missed {} discarded {}", m_name, m_run, m_presented, p99, m_missed,
+      m_discarded
+  );
   m_active = false;
   m_ending = false;
 }

@@ -11,7 +11,7 @@ struct wp_presentation;
 struct wp_presentation_feedback;
 
 // DESK_FRAME_STATS=1: one line per animation run of a surface, from wp_presentation feedback:
-// "anim <name>#<run> frames N p99_cpu_ms X missed M". A run starts at the first frame rendered while springs are
+// "anim <name>#<run> frames N p99_cpu_ms X missed M discarded D". A run starts at the first frame rendered while springs are
 // active and ends when the first frame after them is presented. CPU = tick + prepare + render time of each frame.
 class FrameStats final : public FrameStatsSink {
 public:
@@ -45,6 +45,7 @@ private:
   bool m_frameInRun = false;
   std::uint64_t m_lastPresentedNs = 0;
   std::uint32_t m_missed = 0;
+  std::uint32_t m_discarded = 0; // replaced by a newer commit before display; part of m_missed
   std::uint32_t m_presented = 0;
   std::uint32_t m_run = 0;
 };
