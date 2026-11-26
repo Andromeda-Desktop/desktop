@@ -1,6 +1,7 @@
 #include "shell/lockscreen/lock_screen.h"
 #include "core/blocking_pool.h"
 #include "shell/lockscreen/lock_client.h"
+#include "util/secure_wipe.h"
 #include "util/thread_name.h"
 
 #include "auth/face_authenticator.h"
@@ -378,6 +379,7 @@ void LockScreen::unlock() {
 void LockScreen::finishUnlock() { endLock(LockLifecycle::Event::UnlockDone); }
 
 void LockScreen::endLock(LockLifecycle::Event event) {
+  dropPendingKeys();
   const bool wasLockedInteractive = m_lifecycle.locked();
   if (event == LockLifecycle::Event::Finished) {
     resetGracePeriod();
@@ -655,9 +657,18 @@ void LockScreen::onKeyboardEvent(const KeyboardEvent& event) {
       }
     }
   }
-  if (targetSurface == nullptr || !targetSurface->transitionInputReady()) {
+  if (targetSurface == nullptr) {
     return;
   }
+  // Keys typed while the lock animates in wait for it, so a password typed right after locking keeps every key.
+  if (!targetSurface->transitionInputReady()) {
+    if (m_pendingKeys.size() < kMaxPendingKeys) {
+      m_pendingKeys.reserve(kMaxPendingKeys);
+      m_pendingKeys.push_back(event);
+    }
+    return;
+  }
+  replayPendingKeys();
 
   // The password field always owns plain printable keys; Space is a Validate
   // chord but must type a space, not submit (passwords may contain spaces).
@@ -1031,7 +1042,34 @@ bool LockScreen::tryFlushPendingAfterLocked() {
 void LockScreen::handleTransitionStateChanged() {
   if (unlocking()) {
     tryFinishAnimatedUnlock();
+    return;
   }
+  if (!m_pendingKeys.empty()) {
+    DeferredCall::callLaterIfAlive(m_aliveGuard, [this] { replayPendingKeys(); });
+  }
+}
+
+void LockScreen::replayPendingKeys() {
+  if (m_pendingKeys.empty()) {
+    return;
+  }
+  const bool ready = std::ranges::any_of(m_instances, [](const Instance& instance) {
+    return instance.surface != nullptr && !instance.surface->isBlackout() && instance.surface->transitionInputReady();
+  });
+  if (!ready) {
+    return;
+  }
+  std::vector<KeyboardEvent> keys;
+  keys.swap(m_pendingKeys);
+  for (const KeyboardEvent& key : keys) {
+    onKeyboardEvent(key);
+  }
+  util::secureWipe(keys.data(), keys.size() * sizeof(KeyboardEvent));
+}
+
+void LockScreen::dropPendingKeys() {
+  util::secureWipe(m_pendingKeys.data(), m_pendingKeys.size() * sizeof(KeyboardEvent));
+  m_pendingKeys.clear();
 }
 
 void LockScreen::tryFinishAnimatedUnlock() {

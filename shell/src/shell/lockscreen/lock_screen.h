@@ -186,6 +186,8 @@ private:
   void chooseTransition();
   void handleTransitionStateChanged();
   void tryFinishAnimatedUnlock();
+  void replayPendingKeys();
+  void dropPendingKeys();
   void finishUnlock();
   void notifyLockAborted();
   void abortLockStart();
@@ -239,6 +241,9 @@ private:
   std::unique_ptr<FaceAuthenticator> m_face;
   std::string m_user;
   security::SecureBuffer m_password;
+  // Presses typed while the lock animates in, replayed once a surface takes input; wiped after use (password keys).
+  static constexpr std::size_t kMaxPendingKeys = 128;
+  std::vector<KeyboardEvent> m_pendingKeys;
   std::string m_status;
   wl_surface* m_pointerSurface = nullptr;
   // Who wrote m_status, and whether it is an error: a biometric hint must not replace a password failure.

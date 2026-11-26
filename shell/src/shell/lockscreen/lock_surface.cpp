@@ -1005,6 +1005,7 @@ void LockSurface::suppressEntryTransition() {
   m_transitionProgress = 1.0F;
   auto captureTexture = std::exchange(m_transitionCaptureTexture, {});
   syncTransitionCover();
+  notifyTransitionStateChanged();
   if (captureTexture.id != 0 && renderContext() != nullptr) {
     renderContext()->backend().makeCurrentNoSurface();
     renderContext()->textureManager().unload(captureTexture);
@@ -1374,6 +1375,7 @@ void LockSurface::prepareFrame(bool needsUpdate, bool needsLayout) {
     m_transitionPhase = TransitionPhase::Disabled;
     m_transitionProgress = 1.0F;
     syncTransitionCover();
+    notifyTransitionStateChanged();
   }
 
   if (m_widgetsHost != nullptr) {
@@ -2660,6 +2662,7 @@ void LockSurface::onGpuResourcesInvalidated() {
   } else if (entryWasActive) {
     m_transitionPhase = TransitionPhase::Stable;
     m_transitionProgress = 1.0F;
+    notifyTransitionStateChanged();
   }
 
   m_wallpaperDirty = true;
@@ -2684,6 +2687,7 @@ void LockSurface::forceRepaintAfterResume() {
   } else if (m_transitionPhase != TransitionPhase::Disabled && m_transitionPhase != TransitionPhase::ExitComplete) {
     m_transitionPhase = TransitionPhase::Stable;
     m_transitionProgress = 1.0F;
+    notifyTransitionStateChanged();
   }
   syncTransitionCover();
   requestUpdate();
