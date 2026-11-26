@@ -684,18 +684,19 @@ void Application::initPanelManagerAndPanels() {
   m_clipboardService.setPersistenceChangeCallback([this] { m_settingsWindow.onExternalOptionsChanged(); });
   m_settingsWindow.setResetEncryptedStorage([this] {
     m_clipboardService.clearEncryptedPersistenceForRecovery([this](bool clipboardCleared) {
-      const bool calendarCleared = m_calendarService.clearEncryptedCacheForRecovery();
-      const bool notificationsCleared = m_notificationManager.clearEncryptedHistoryForRecovery();
-      if (!clipboardCleared || !calendarCleared || !notificationsCleared) {
-        m_settingsWindow.showTransientStatus(i18n::tr("settings.storage-recovery.error-delete"), true);
-        m_settingsWindow.onExternalOptionsChanged();
-        return;
-      }
-      m_storageKeyProvider.resetAfterEncryptedDataCleared([this](bool success) {
-        m_settingsWindow.showTransientStatus(
-            i18n::tr(success ? "settings.storage-recovery.success" : "settings.storage-recovery.error-key"), !success
-        );
-        m_settingsWindow.onExternalOptionsChanged();
+      m_calendarService.clearEncryptedCacheForRecovery([this, clipboardCleared](bool calendarCleared) {
+        const bool notificationsCleared = m_notificationManager.clearEncryptedHistoryForRecovery();
+        if (!clipboardCleared || !calendarCleared || !notificationsCleared) {
+          m_settingsWindow.showTransientStatus(i18n::tr("settings.storage-recovery.error-delete"), true);
+          m_settingsWindow.onExternalOptionsChanged();
+          return;
+        }
+        m_storageKeyProvider.resetAfterEncryptedDataCleared([this](bool success) {
+          m_settingsWindow.showTransientStatus(
+              i18n::tr(success ? "settings.storage-recovery.success" : "settings.storage-recovery.error-key"), !success
+          );
+          m_settingsWindow.onExternalOptionsChanged();
+        });
       });
     });
   });

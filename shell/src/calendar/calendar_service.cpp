@@ -326,10 +326,7 @@ void CalendarService::syncCachePersistence() {
       return;
     }
     m_cacheKey = std::make_shared<const security::SecureKey>(std::move(*key));
-    if (!loadCache() && m_cachePersistenceState == CachePersistenceState::Opening) {
-      setCachePersistenceState(CachePersistenceState::BackendError, m_cacheMigrationPending);
-    }
-
+    loadCache();
     return;
   }
 
@@ -357,27 +354,34 @@ void CalendarService::syncCachePersistence() {
   setCachePersistenceState(state, m_cacheMigrationPending);
 }
 
-void CalendarService::invalidateCacheWrites() {
-  // Waits for a running save, so no write with the old key lands after this.
-  std::scoped_lock lock(m_cacheWriteGate->mutex);
-  ++m_cacheWriteGate->generation;
-}
+void CalendarService::invalidateCacheWrites() { ++m_cacheWriteGate->generation; }
 
 void CalendarService::retryCachePersistence() { m_storageKeyProvider.retry(); }
 
-bool CalendarService::clearEncryptedCacheForRecovery() {
+void CalendarService::clearEncryptedCacheForRecovery(std::function<void(bool cleared)> done) {
   m_cacheKey.reset();
   invalidateCacheWrites();
   m_cacheWritable = false;
-  std::error_code ec;
-  std::filesystem::remove(cacheFilePath(), ec);
-  if (ec) {
-    kLog.warn("failed to remove encrypted calendar cache during recovery");
-    setCachePersistenceState(CachePersistenceState::BackendError, m_cacheMigrationPending);
-    return false;
-  }
-  setCachePersistenceState(CachePersistenceState::Opening, m_cacheMigrationPending);
-  return true;
+  SharedWorker::instance().post<bool>(
+      m_alive,
+      [path = cacheFilePath()] {
+        std::error_code ec;
+        std::filesystem::remove(path, ec);
+        return !ec;
+      },
+      [this, generation = m_cacheWriteGate->generation.load(), done = std::move(done)](bool cleared) {
+        if (!cleared) {
+          kLog.warn("failed to remove encrypted calendar cache during recovery");
+        }
+        // A key change while the delete ran owns the state now.
+        if (m_cacheWriteGate->generation == generation) {
+          setCachePersistenceState(
+              cleared ? CachePersistenceState::Opening : CachePersistenceState::BackendError, m_cacheMigrationPending
+          );
+        }
+        done(cleared);
+      }
+  );
 }
 
 bool CalendarService::hasEncryptedCache() const {
@@ -1520,83 +1524,105 @@ std::filesystem::path CalendarService::legacyCacheFilePath() {
   return path;
 }
 
-bool CalendarService::loadCache() {
-  if (!m_cacheKey) {
-    return false;
-  }
+void CalendarService::loadCache() {
+  SharedWorker::instance().post<std::optional<CacheLoad>>(
+      m_alive,
+      [path = cacheFilePath(), legacyPath = legacyCacheFilePath(), key = m_cacheKey, gate = m_cacheWriteGate,
+       generation = m_cacheWriteGate->generation.load()]() -> std::optional<CacheLoad> {
+        if (gate->generation != generation) {
+          return std::nullopt;
+        }
+        return readCacheFiles(path, legacyPath, *key);
+      },
+      [this, key = m_cacheKey, generation = m_cacheWriteGate->generation.load()](std::optional<CacheLoad> load) {
+        // A key reset or recovery after this load owns the state now.
+        if (!load.has_value() || m_cacheKey != key || m_cacheWriteGate->generation != generation) {
+          return;
+        }
+        if (load->events.has_value()) {
+          m_eventsByAccount = std::move(*load->events);
+          if (!m_eventsByAccount.empty()) {
+            rebuildSnapshot();
+          }
+        }
+        if (load->encryptedWritten) {
+          m_storageKeyProvider.noteEncryptedDataExists();
+        }
+        m_cacheWritable = load->state == CachePersistenceState::Ready;
+        setCachePersistenceState(load->state, load->migrationPending.value_or(m_cacheMigrationPending));
+      }
+  );
+}
 
-  if (!calendar::cache::secureExisting(cacheFilePath())) {
+CalendarService::CacheLoad CalendarService::readCacheFiles(
+    const std::filesystem::path& path, const std::filesystem::path& legacyPath, const security::SecureKey& key
+) {
+  using State = CachePersistenceState;
+  if (!calendar::cache::secureExisting(path)) {
     kLog.warn("failed to secure encrypted calendar cache");
-    return false;
+    return {.state = State::BackendError};
   }
-  const auto encrypted = calendar::cache::readEncrypted(cacheFilePath(), *m_cacheKey, kMaxCacheBytes);
+  const auto encrypted = calendar::cache::readEncrypted(path, key, kMaxCacheBytes);
   if (encrypted.status == security::EncryptedReadStatus::Success) {
-    if (!parseCache(encrypted.plaintext)) {
-      setCachePersistenceState(CachePersistenceState::RecoveryRequired, m_cacheMigrationPending);
-      return false;
+    auto events = decodeCache(encrypted.plaintext);
+    if (!events.has_value()) {
+      return {.state = State::RecoveryRequired};
     }
-    const std::filesystem::path legacyPath = legacyCacheFilePath();
     std::error_code ec;
     const bool legacyExists = std::filesystem::exists(legacyPath, ec);
     if (ec) {
-      return false;
+      return {.events = std::move(events), .state = State::BackendError};
     }
     if (legacyExists && (!std::filesystem::remove(legacyPath, ec) || ec)) {
-      setCachePersistenceState(CachePersistenceState::Opening, true);
       kLog.warn("failed to remove plaintext calendar cache after authenticated encrypted reload");
-      return false;
+      return {.events = std::move(events), .state = State::BackendError, .migrationPending = true};
     }
-    m_cacheWritable = true;
-    setCachePersistenceState(CachePersistenceState::Ready, false);
-    return true;
+    return {.events = std::move(events), .state = State::Ready, .migrationPending = false};
   }
   if (encrypted.status != security::EncryptedReadStatus::NotFound) {
     kLog.warn("failed to authenticate or read encrypted calendar cache");
-    if (encrypted.status != security::EncryptedReadStatus::IoError) {
-      setCachePersistenceState(CachePersistenceState::RecoveryRequired, m_cacheMigrationPending);
-    }
-    return false;
+    return {
+        .state = encrypted.status == security::EncryptedReadStatus::IoError ? State::BackendError
+                                                                            : State::RecoveryRequired
+    };
   }
 
-  const std::filesystem::path legacyPath = legacyCacheFilePath();
   if (!calendar::cache::secureExisting(legacyPath)) {
     kLog.warn("failed to secure plaintext calendar cache before migration");
-    return false;
+    return {.state = State::BackendError};
   }
   const auto legacy = calendar::cache::readLegacy(legacyPath, kMaxCacheBytes);
   if (legacy.status == calendar::cache::LegacyReadStatus::NotFound) {
-    m_cacheWritable = true;
-    setCachePersistenceState(CachePersistenceState::Ready, false);
-    return true;
+    return {.state = State::Ready, .migrationPending = false};
   }
-  setCachePersistenceState(CachePersistenceState::Opening, true);
-  if (legacy.status != calendar::cache::LegacyReadStatus::Success || !parseCache(legacy.contents)) {
+  auto events = legacy.status == calendar::cache::LegacyReadStatus::Success ? decodeCache(legacy.contents)
+                                                                             : std::nullopt;
+  if (!events.has_value()) {
     kLog.warn("failed to read plaintext calendar cache for encryption");
-    return false;
+    return {.state = State::BackendError, .migrationPending = true};
   }
 
   const std::string_view contents(reinterpret_cast<const char*>(legacy.contents.data()), legacy.contents.size());
-  if (!calendar::cache::writeEncrypted(cacheFilePath(), contents, *m_cacheKey)) {
+  if (!calendar::cache::writeEncrypted(path, contents, key)) {
     kLog.warn("failed to encrypt plaintext calendar cache");
-    return false;
+    return {.events = std::move(events), .state = State::BackendError, .migrationPending = true};
   }
-  m_storageKeyProvider.noteEncryptedDataExists();
 
   std::error_code ec;
   if (!std::filesystem::remove(legacyPath, ec) || ec) {
     kLog.warn("failed to remove plaintext calendar cache after encryption");
-    return false;
+    return {
+        .events = std::move(events), .state = State::BackendError, .migrationPending = true, .encryptedWritten = true
+    };
   }
-  m_cacheWritable = true;
-  setCachePersistenceState(CachePersistenceState::Ready, false);
-  return true;
+  return {.events = std::move(events), .state = State::Ready, .migrationPending = false, .encryptedWritten = true};
 }
 
-bool CalendarService::parseCache(std::span<const std::uint8_t> contents) {
+std::optional<CalendarService::EventsByAccount> CalendarService::decodeCache(std::span<const std::uint8_t> contents) {
   try {
     const std::string_view json(reinterpret_cast<const char*>(contents.data()), contents.size());
     const auto j = nlohmann::json::parse(json);
-    std::map<std::string, std::vector<CalendarEvent>> parsed;
+    EventsByAccount parsed;
     for (const auto& item : j.at("events")) {
       CalendarEvent event;
       event.id = item.value("id", std::string{});
@@ -1620,14 +1646,10 @@ bool CalendarService::parseCache(std::span<const std::uint8_t> contents) {
       const std::string account = item.value("account", std::string{});
       parsed[account].push_back(std::move(event));
     }
-    m_eventsByAccount = std::move(parsed);
-    if (!m_eventsByAccount.empty()) {
-      rebuildSnapshot();
-    }
-    return true;
+    return parsed;
   } catch (const std::exception& e) {
     kLog.warn("failed to load calendar cache: {}", e.what());
-    return false;
+    return std::nullopt;
   }
 }
 
@@ -1659,12 +1681,11 @@ void CalendarService::saveCache() {
     }
   }
 
-  // The write encrypts the whole cache: it runs on SharedWorker, whose one thread keeps saves in order.
+  // The write encrypts the whole cache: it runs on SharedWorker, whose one thread keeps cache jobs in order.
   SharedWorker::instance().post<std::optional<bool>>(
       m_alive,
       [path = cacheFilePath(), contents = nlohmann::json{{"events", std::move(events)}}.dump(), key = m_cacheKey,
-       gate = m_cacheWriteGate, generation = m_cacheWriteGate->generation]() -> std::optional<bool> {
-        std::scoped_lock lock(gate->mutex);
+       gate = m_cacheWriteGate, generation = m_cacheWriteGate->generation.load()]() -> std::optional<bool> {
         if (gate->generation != generation) {
           return std::nullopt;
         }

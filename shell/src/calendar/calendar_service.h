@@ -10,13 +10,13 @@
 #include "core/files/directory_watcher.h"
 #include "security/storage_key_provider.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <poll.h>
 #include <set>
@@ -94,7 +94,8 @@ public:
   void retryCredentialMigration();
   void syncCachePersistence();
   void retryCachePersistence();
-  [[nodiscard]] bool clearEncryptedCacheForRecovery();
+  // Deletes the encrypted cache on SharedWorker, after any queued save; `done` gets the result on the main loop.
+  void clearEncryptedCacheForRecovery(std::function<void(bool cleared)> done);
   // Schedule an immediate sync (used after saving CalDAV credentials).
   void requestRefresh();
   [[nodiscard]] ConnectState connectState() const noexcept { return m_connect.state; }
@@ -177,8 +178,20 @@ private:
   void clearGoogleSession(const std::string& accountId);
   [[nodiscard]] static CredentialOperationResult operationResult(security::SecretStoreStatus status);
 
-  [[nodiscard]] bool loadCache();
-  [[nodiscard]] bool parseCache(std::span<const std::uint8_t> contents);
+  using EventsByAccount = std::map<std::string, std::vector<CalendarEvent>>;
+  // What one cache load found on disk; migrationPending nullopt keeps the current flag.
+  struct CacheLoad {
+    std::optional<EventsByAccount> events;
+    CachePersistenceState state = CachePersistenceState::BackendError;
+    std::optional<bool> migrationPending;
+    bool encryptedWritten = false;
+  };
+  // Reads (and migrates) the cache on SharedWorker, after every queued save; the result applies on the main loop.
+  void loadCache();
+  [[nodiscard]] static CacheLoad readCacheFiles(
+      const std::filesystem::path& path, const std::filesystem::path& legacyPath, const security::SecureKey& key
+  );
+  [[nodiscard]] static std::optional<EventsByAccount> decodeCache(std::span<const std::uint8_t> contents);
   void saveCache();
   void invalidateCacheWrites();
   [[nodiscard]] static std::filesystem::path cacheFilePath();
@@ -199,10 +212,10 @@ private:
   security::StorageKeyProvider& m_storageKeyProvider;
   // Shared with the cache write on SharedWorker.
   std::shared_ptr<const security::SecureKey> m_cacheKey;
-  // A queued cache save writes only if no key reset or recovery came after it (invalidateCacheWrites).
+  // A queued cache job runs only if no key reset or recovery came after it (invalidateCacheWrites). Every cache file
+  // operation runs on the one SharedWorker queue, so a later job always sees the file an earlier one left.
   struct CacheWriteGate {
-    std::mutex mutex;
-    std::uint64_t generation = 0;
+    std::atomic<std::uint64_t> generation = 0;
   };
   std::shared_ptr<CacheWriteGate> m_cacheWriteGate = std::make_shared<CacheWriteGate>();
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
@@ -214,7 +227,7 @@ private:
   std::map<std::string, GoogleSession> m_googleSessions;
 
   CalendarSnapshot m_snapshot;
-  std::map<std::string, std::vector<CalendarEvent>> m_eventsByAccount;
+  EventsByAccount m_eventsByAccount;
   std::chrono::steady_clock::time_point m_nextRefreshAt;
   // Superseded: the config changed during the refresh; its replies drain without writing.
   enum class RefreshState : std::uint8_t { Idle, Running, Superseded };
