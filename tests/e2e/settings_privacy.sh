@@ -12,14 +12,13 @@ boot_headless 1
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_gaze.py"
 BEFORE_NOCTALIA='
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
-  grep -q ready "$OUT/mock.log" || { echo "FAIL: mock gaze did not start"; exit 1; }
+  WAIT_S=5 wait_for "mock gaze did not start" grep -q ready "$OUT/mock.log"
   start_andromeda_system
 ' with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   wait_calls() {  # wait_calls PATTERN COUNT (5 s)
-    for _ in $(seq 50); do [ "$(grep -c "$1" "$OUT/calls.txt" || true)" -ge "$2" ] && return 0; sleep 0.1; done
-    fail "mock never saw $1 x$2"
+    calls_reached() { [ "$(grep -c "$1" "$OUT/calls.txt" || true)" -ge "$2" ]; }
+    WAIT_S=5 wait_for "mock never saw $1 x$2" calls_reached "$1" "$2"
   }
   click() { "$POINTER" 1280 720 move "$1" "$2" click 272 > /dev/null; sleep 1.5; }
   "$NOCTALIA" msg settings-open privacy > /dev/null

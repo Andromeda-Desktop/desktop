@@ -106,19 +106,18 @@ with_noctalia '
     read -r x y <<< "$(awk "{print \$(NF-1), \$NF}" <<< "$line")"; echo "$((WX + x)) $((WY + y))"; }
   shot() { sleep 0.4; settle; grim "$OUT/$1.png"; }
   "$ANDROMEDA" msg config-reload > /dev/null
-  for _ in $(seq 100); do "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null && break; sleep 0.05; done
+  scale_is_2() { "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
+  poll_for 5 scale_is_2 || true
   "$NOCTALIA" msg config-set dock.enabled false > /dev/null || true
   "$NOCTALIA" msg theme-mode-set dark > /dev/null
   HOME="$H" XDG_DATA_HOME="$H/.local/share" XDG_CONFIG_HOME="$H/.config" XDG_STATE_HOME="$H/.local/state" \
     "$FILEOPS" > "$OUT/fileops.log" 2>&1 &
   HOME="$H" XDG_STATE_HOME="$H/.local/state" "$INDEX" serve > "$OUT/index.log" 2>&1 &
   INDEX_PID=$!
-  for _ in $(seq 200); do grep -q watching "$OUT/index.log" && break; sleep 0.05; done
-  grep -q watching "$OUT/index.log" || fail "the index daemon did not start"
+  wait_for "the index daemon did not start" grep -q watching "$OUT/index.log"
   HOME="$H" XDG_CONFIG_HOME="$H/.config" XDG_STATE_HOME="$H/.local/state" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug \
     DESK_FILES_GEOMETRY=1 "$FILES" "$P" > "$OUT/files.log" 2>&1 &
-  for _ in $(seq 100); do grep -q "first frame" "$OUT/files.log" 2> /dev/null && break; sleep 0.05; done
-  grep -q "first frame" "$OUT/files.log" || fail "Files drew no first frame"
+  WAIT_S=5 wait_for "Files drew no first frame" grep -q "first frame" "$OUT/files.log"
   files_window() { "$ANDROMEDA" windows --json | jq -ec "[.. | objects | select(.app_id? == \"dev.andromeda.Files\")][0]"; }
   wait_for "Files has no window in the listing" eval "files_window > /dev/null"
   w=$(files_window)

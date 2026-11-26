@@ -35,20 +35,15 @@ BUS_PID=$(sed -n 2p <<< "$bus_info")
 trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 env XDG_RUNTIME_DIR="$RUNTIME" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" "$INDEX" serve \
   > "$OUT/index.log" 2>&1 &
-for _ in $(seq 200); do grep -q watching "$OUT/index.log" && break; sleep 0.05; done
-grep -q watching "$OUT/index.log" || fail "the index daemon did not start"
+wait_for "the index daemon did not start" grep -q watching "$OUT/index.log"
 
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
   XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug DESK_MOTION_TRACE=1 DESK_FILES_GEOMETRY=1 \
   "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 WX=$(jq .x <<< "$w")
 WY=$(jq .y <<< "$w")
 run "$ANDROMEDA" settle > /dev/null

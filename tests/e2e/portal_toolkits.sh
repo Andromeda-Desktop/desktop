@@ -51,7 +51,7 @@ check() {
   command -v "$1" > /dev/null || { echo "SKIP $name: $1 is not installed"; return 0; }
   run "${env_all[@]}" "$@" > "$OUT/$name.log" 2>&1 &
   local pid=$!
-  for _ in $(seq 400); do mapped && break; sleep 0.05; done # 20 s: a cold KDE start is slow
+  poll_for 20 mapped || true # 20 s: a cold KDE start is slow
   if ! mapped; then
     echo "windows: $(run "$ANDROMEDA" windows --json | jq -c '[.. | objects | .app_id? // empty]')"
     tail -n 5 "$OUT/$name.log"

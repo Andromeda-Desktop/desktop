@@ -25,8 +25,8 @@ record "{\"step\":\"lists-apps\",\"count\":$(wc -l < "$OUT/apps.jsonl")}"
 BEFORE=$(virtual)
 run env SDL_VIDEODRIVER=wayland "$LINK_BIN/andromeda-link-apps" any --launch com.android.settings >> "$OUT/scrcpy.log" 2>&1 \
   || fail "--launch failed"
-for _ in $(seq 150); do (( $(virtual) > BEFORE )) && break; sleep 0.1; done
-(( $(virtual) > BEFORE )) || fail "no scrcpy virtual display appeared"
+display_appeared() { (( $(virtual) > BEFORE )); }
+WAIT_S=15 wait_for "no scrcpy virtual display appeared" display_appeared
 DISPLAY_ID=$(adb shell dumpsys activity activities | grep -B30 'com.android.settings' | grep -o 'displayId=[1-9][0-9]*' | head -1)
 [[ -n $DISPLAY_ID ]] || fail "Settings is not on a separate display"
 sleep 2 # real time: the window maps and paints its first frame
@@ -36,8 +36,8 @@ COLOURS=$(magick "$OUT/window.png" -format '%k' info:)
 record "{\"step\":\"launches-on-own-display\",\"display\":\"${DISPLAY_ID#displayId=}\",\"colours\":$COLOURS}"
 
 pkill -f -- '--start-app=com.android.settings' || true
-for _ in $(seq 100); do (( $(virtual) <= BEFORE )) && break; sleep 0.1; done
-(( $(virtual) <= BEFORE )) || fail "closing the window left its display behind"
+display_gone() { (( $(virtual) <= BEFORE )); }
+wait_for "closing the window left its display behind" display_gone
 record '{"step":"closing-removes-display"}'
 cat "$OUT/results.jsonl"
 echo "PASS; artifacts: $OUT"

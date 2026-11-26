@@ -23,7 +23,7 @@ with_noctalia '
   # The forged signal must arrive during a running verify: face starts on lock, not on request.
   printf "\n[lockscreen]\nface_on_request = false\n" >> "$HOME/.config/andromeda/shell/config.toml"
   "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
-  for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
   wtype -s 3600000 &
   sleep 0.3
   shell=$(bus call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetNameOwner s \

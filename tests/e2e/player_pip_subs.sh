@@ -37,12 +37,8 @@ position_us() { mpris Position | grep -oE '[0-9]+' | tail -n 1; }
 advances() { # playback moves on: the position grows within 1 s
   local before after
   before=$(position_us)
-  for _ in $(seq 20); do
-    sleep 0.05
-    after=$(position_us)
-    [[ -n $before && -n $after ]] && (( after > before )) && return 0
-  done
-  return 1
+  position_grew() { after=$(position_us); [[ -n $before && -n $after ]] && (( after > before )); }
+  poll_for 1 position_grew
 }
 action() {
   DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d "$APP" -o /dev/andromeda/Player \

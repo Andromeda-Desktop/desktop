@@ -4,6 +4,7 @@
 # host Wayland session. Artifacts go to $OUT (default ./artifacts/mirror).
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+source "$(dirname "$0")/wait.sh"
 
 ANDROMEDA=${ANDROMEDA:-$ROOT/compositor/build-debug/andromeda}
 PROBE=${PROBE:-$ROOT/compositor/build-debug/tests/pixel-probe}
@@ -30,10 +31,8 @@ geometry() {
   andromeda windows --json | jq -r --argjson before "$before" --arg title "$1" \
     '.[] | select((.id as $id | $before | index($id) | not) and (.title | endswith($title))) | "\(.x),\(.y) \(.w)x\(.h)"'
 }
-for _ in $(seq 50); do
-  [[ -n $(geometry WL-1) && -n $(geometry WL-2) ]] && break
-  sleep 0.1
-done
+outputs_have_geometry() { [[ -n $(geometry WL-1) && -n $(geometry WL-2) ]]; }
+poll_for 5 outputs_have_geometry || true
 sleep 1.5 # real time: let foot map and draw inside the nested compositor
 grim -g "$(geometry WL-1)" "$OUT/source.png"
 grim -g "$(geometry WL-2)" "$OUT/mirror.png"

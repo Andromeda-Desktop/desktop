@@ -16,17 +16,18 @@ with_noctalia '
   kill %1; wait %1 2> /dev/null || true
   python3 '"$MOCK"' "$OUT/profiles.txt" > "$OUT/mock.log" 2>&1 &
   mock=$!
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
+  poll_for 5 grep -q ready "$OUT/mock.log" || true
   start_andromeda_system
   "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
   shell=$!
-  for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
   flip() {
     busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" call org.freedesktop.UPower /org/freedesktop/UPower \
       dsk.test.Power SetOnBattery b "$1" > /dev/null
   }
+  last_profile_is() { [[ $(tail -1 "$OUT/profiles.txt") == "$1" ]]; }
   expect() {
-    for _ in $(seq 50); do [[ $(tail -1 "$OUT/profiles.txt") == "$1" ]] && return 0; sleep 0.1; done
+    poll_for 5 last_profile_is "$1" && return 0
     echo "FAIL: expected $1, writes: $(tr "\n" "," < "$OUT/profiles.txt")"
     exit 1
   }

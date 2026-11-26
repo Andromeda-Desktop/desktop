@@ -23,8 +23,8 @@ if [[ ${SCALE:-1} == 2 ]]; then
   printf '\n[output.HEADLESS-1]\nmode = "2560x1440@60"\nscale = 2\n' >> "$RUNTIME/andromeda.toml"
   # The compositor read its config at boot: reload, and wait until the output runs at scale 2.
   run "$ANDROMEDA" msg config-reload > /dev/null
-  for _ in $(seq 100); do run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null && break; sleep 0.05; done
-  run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null || { echo "FAIL: the output did not switch to scale 2"; exit 1; }
+  scale_is_2() { run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
+  WAIT_S=5 wait_for "the output did not switch to scale 2" scale_is_2
 fi
 
 fail() { echo "FAIL: $*"; exit 1; }
@@ -46,12 +46,8 @@ systemd-run --user --scope --quiet -p CPUQuota=3% "${env_app[@]}" XDG_RUNTIME_DI
 run "${env_app[@]}" ANDROMEDA_LOG_LEVEL=debug DESK_FILES_GEOMETRY=1 "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 run "$ANDROMEDA" settle > /dev/null
 
 action() { # name [gvariant parameter list]

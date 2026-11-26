@@ -35,12 +35,11 @@ LOG=$OUT/files.log
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_DATA_HOME="$HOME_DIR/.local/share" \
   XDG_STATE_HOME="$HOME_DIR/.local/state" XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug \
   DESK_FILES_GEOMETRY=1 "$FILES" "$A" > "$LOG" 2>&1 &
-for _ in $(seq 100); do
+win_mapped() {
   w=$(run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty")
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]
+}
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 WX=$(jq .x <<< "$w"); WY=$(jq .y <<< "$w")
 mark() { wc -l < "$LOG"; }
 keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }

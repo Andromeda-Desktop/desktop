@@ -33,12 +33,8 @@ run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_D
   "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 run "$ANDROMEDA" settle > /dev/null
 
 # Waits until a line matching $2 appears in the log after line $1.

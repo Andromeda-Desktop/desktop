@@ -22,8 +22,7 @@ boot_headless() {
   printf '[general]\nautostart = [%s]\n' "${AUTOSTART:-}" > "$RUNTIME/andromeda.toml"
   # One private bus for the whole session: apps the compositor spawns reach the shell on it, as in a real session.
   dbus-daemon --config-file="$ROOT/tests/e2e/private-bus.conf" --nofork --print-address=3 3> "$RUNTIME/bus.address" &
-  for _ in $(seq 100); do [[ -s $RUNTIME/bus.address ]] && break; sleep 0.05; done
-  [[ -s $RUNTIME/bus.address ]] || { echo "dbus-daemon did not start" >&2; exit 1; }
+  poll_for 5 test -s "$RUNTIME/bus.address" || { echo "dbus-daemon did not start" >&2; exit 1; }
   BUS_ADDRESS=$(head -n 1 "$RUNTIME/bus.address")
   # NESTED_PARENT (a parent Wayland socket path): one output as a window on that session, with its GPU and vsync.
   local nested=() session_bus=$BUS_ADDRESS
@@ -43,8 +42,7 @@ rm_runtime() {
   # A script that sets its own trap still stops the compositor and the clients it started.
   kill $(jobs -p) 2> /dev/null || true
   wait 2> /dev/null
-  for _ in $(seq 10); do rm -rf "$RUNTIME" 2> /dev/null && return 0; sleep 0.2; done
-  rm -rf "$RUNTIME"
+  poll_for 2 rm -rf "$RUNTIME" 2> /dev/null || rm -rf "$RUNTIME"
 }
 
 # run CMD...: run inside the session. A private HOME keeps Noctalia's theme templates and gsettings writes out of the
@@ -80,7 +78,7 @@ export ANDROMEDA_SYSTEM=${ANDROMEDA_SYSTEM:-$ROOT/system/target/debug/andromeda-
 start_andromeda_system() {
   ANDROMEDA_SYSTEM_TEST=1 "$ANDROMEDA_SYSTEM" > "$OUT/system.log" 2>&1 &
   system=$!
-  for _ in $(seq 100); do busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" status org.andromeda.System1 > /dev/null 2>&1 && return 0; sleep 0.1; done
+  poll_for 10 busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" status org.andromeda.System1 > /dev/null 2>&1 && return 0
   echo "FAIL: andromeda-system did not own org.andromeda.System1: $(cat "$OUT/system.log")"
   exit 1
 }
@@ -100,12 +98,10 @@ with_noctalia() {
       trap '"'"'kill $(jobs -p) 2>/dev/null || true; wait'"'"' EXIT
       eval "${BEFORE_NOCTALIA:-}"
       "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
-      for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+      poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
       # The bar reserves its edge when it maps and moves windows aside: a window position read before then is stale.
-      for _ in $(seq 100); do
-        "$ANDROMEDA" layers --json 2> /dev/null | jq -e "[.. | objects | select((.namespace? // \"\") | startswith(\"noctalia-bar\")) | select(.mapped == true)] | length > 0" > /dev/null && break
-        sleep 0.05
-      done
+      bar_mapped() { "$ANDROMEDA" layers --json 2> /dev/null | jq -e "[.. | objects | select((.namespace? // \"\") | startswith(\"noctalia-bar\")) | select(.mapped == true)] | length > 0" > /dev/null; }
+      poll_for 5 bar_mapped || true
       eval "$1"
     ' _ "$1"
 }

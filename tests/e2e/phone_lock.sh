@@ -21,7 +21,7 @@ with_noctalia '
   kill %1; wait %1 2> /dev/null || true
   printf "\n[lockscreen]\ngrace_period_seconds = 60\n" >> "$CONFIG"
   "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
-  for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
   # A keyboard must exist before the lock surface maps, or the surface never receives keyboard focus.
   wtype -s 3600000 &
   sleep 0.3

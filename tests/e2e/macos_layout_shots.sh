@@ -49,10 +49,8 @@ cp "$ROOT/shell/assets/andromeda-wallpaper.png" "$RUNTIME/home/Desktop/Wallpaper
 
 with_noctalia '
   APP_ID=macos-a FILL_COLOR=0xFFF2F2F6 "'"$UNMAP"'" macos-a 640 400 > "$OUT/client.log" 2>&1 &
-  for _ in $(seq 100); do
-    [[ $("$ANDROMEDA" windows --json | jq -r ".[] | select(.title == \"macos-a\") | .title") == macos-a ]] && break
-    sleep 0.05
-  done
+  macos_a_mapped() { [[ $("$ANDROMEDA" windows --json | jq -r ".[] | select(.title == \"macos-a\") | .title") == macos-a ]]; }
+  poll_for 5 macos_a_mapped || true
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   grim "$OUT/light.png"
   "$NOCTALIA" msg theme-mode-set dark > /dev/null
@@ -60,10 +58,8 @@ with_noctalia '
   stable_grim "$OUT/dark.png"
   # The brand mark opens the session menu (Sleep, Restart, Shut Down, Lock).
   "'"$POINTER"'" 1280 720 move 30 16 click 272 > /dev/null
-  for _ in $(seq 60); do
-    [[ $("$ANDROMEDA" layers --json | jq "[.[] | select((.namespace == \"noctalia-panel\" or .namespace == \"noctalia-attached-panel\") and .mapped)] | length") -gt 0 ]] && break
-    sleep 0.05
-  done
+  panel_mapped() { [[ $("$ANDROMEDA" layers --json | jq "[.[] | select((.namespace == \"noctalia-panel\" or .namespace == \"noctalia-attached-panel\") and .mapped)] | length") -gt 0 ]]; }
+  poll_for 3 panel_mapped || true
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   grim "$OUT/brand-menu.png"
   "$ANDROMEDA" layers --json > "$OUT/brand-layers.json"
@@ -84,19 +80,13 @@ with_noctalia '
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   grim "$OUT/power-overlay-right.png"
   "'"$POINTER"'" 1280 720 tap 119 pause 100 tap 1 > /dev/null # Escape
-  for _ in $(seq 40); do
-    [[ $("$ANDROMEDA" layers --json | jq "[.[] | select(.namespace == \"noctalia-power-overlay\")] | length") -eq 0 ]] && break
-    sleep 0.05
-  done
-  [[ $("$ANDROMEDA" layers --json | jq "[.[] | select(.namespace == \"noctalia-power-overlay\")] | length") -eq 0 ]] \
-    || { echo "FAIL: Escape did not close the power overlay"; exit 1; }
+  power_overlay_gone() { [[ $("$ANDROMEDA" layers --json | jq "[.[] | select(.namespace == \"noctalia-power-overlay\")] | length") -eq 0 ]]; }
+  WAIT_S=2 wait_for "Escape did not close the power overlay" power_overlay_gone
   # An exported menubar (board section 7, light): a GTK 4 window named Files; Right moves from the app name to File.
   "$NOCTALIA" msg theme-mode-set light > /dev/null
   GDK_BACKEND=wayland python3 -I "'"$ROOT"'/tests/e2e/menu_app.py" Files > "$OUT/menu-app.log" 2>&1 &
-  for _ in $(seq 200); do
-    [[ $("$ANDROMEDA" windows --json | jq -r ".[] | select(.title == \"Files\") | .title") == Files ]] && break
-    sleep 0.05
-  done
+  files_titled() { [[ $("$ANDROMEDA" windows --json | jq -r ".[] | select(.title == \"Files\") | .title") == Files ]]; }
+  poll_for 10 files_titled || true
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   "'"$POINTER"'" 1280 720 move 64 16 click 272 > /dev/null
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null

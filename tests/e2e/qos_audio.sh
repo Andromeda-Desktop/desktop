@@ -63,13 +63,11 @@ EFFICIENCY=$(sed -n 's/.*efficiency CPUs for hidden apps: //p' "$OUT/andromeda.l
 # The shell on a private session bus (no real BlueZ or NetworkManager), with the real PipeWire.
 run dbus-run-session --config-file="$ROOT/tests/e2e/private-bus.conf" -- \
   sh -c 'DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS exec "$0"' "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
-for _ in $(seq 100); do run "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
-run "$NOCTALIA" msg settings-close > /dev/null 2>&1 || fail "the shell did not start: $(tail -n 3 "$OUT/noctalia.log")"
+poll_for 10 run "$NOCTALIA" msg settings-close > /dev/null 2>&1 || fail "the shell did not start: $(tail -n 3 "$OUT/noctalia.log")"
 
 systemd-run --user --scope --quiet --unit="$UNIT" \
   env WAYLAND_DISPLAY="$RUNTIME/wayland-0" XDG_RUNTIME_DIR="$RUNTIME" "$CLIENT" qos-audio > "$OUT/client.log" 2>&1 &
-for _ in $(seq 100); do grep -q '^mapped$' "$OUT/client.log" 2>/dev/null && break; sleep 0.05; done
-grep -q '^mapped$' "$OUT/client.log" || fail "client never mapped: $(cat "$OUT/client.log")"
+poll_for 5 grep -q '^mapped$' "$OUT/client.log" 2> /dev/null || fail "client never mapped: $(cat "$OUT/client.log")"
 CGROUP=/sys/fs/cgroup$(systemctl --user show -P ControlGroup "$UNIT")
 PID=$(head -n 1 "$CGROUP/cgroup.procs")
 ALL=$(cpus)

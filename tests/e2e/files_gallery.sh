@@ -177,8 +177,8 @@ wait_log "$m" "starred 1 items" || fail "Favourite did not star the photo"
 shot 3b-starred
 [[ $(orientation) == 1 ]] || fail "the fixture does not start at Orientation 1"
 m=$(mark); keys tap 19                        # R
-for _ in $(seq 40); do [[ $(orientation) == 6 ]] && break; sleep 0.05; done
-[[ $(orientation) == 6 ]] || fail "R did not rotate the JPEG to Orientation 6"
+orientation_is_6() { [[ $(orientation) == 6 ]]; }
+WAIT_S=2 wait_for "R did not rotate the JPEG to Orientation 6" orientation_is_6
 wait_log "$m" "gallery photo aspect 0\.67" || fail "the gallery did not show the turned photo"
 shot 3c-rotated
 
@@ -254,12 +254,8 @@ run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_D
   XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_CACHE_HOME="$HOME_DIR/.cache" LC_ALL=C.UTF-8 \
   "$FILES" --action=gallery > /dev/null 2>&1 || fail "the plain Photos launch did not forward"
 wait_log "$m" "photos: 3 images" 10 || fail "Photos did not show the 3 images in the Pictures subfolders"
-for _ in $(seq 100); do
-  [[ -n $(run "$ANDROMEDA" windows --json | jq -r '.. | objects | select(.app_id? == "dev.andromeda.Photos") | .app_id') ]] && break
-  sleep 0.05
-done
-[[ -n $(run "$ANDROMEDA" windows --json | jq -r '.. | objects | select(.app_id? == "dev.andromeda.Photos") | .app_id') ]] \
-  || fail "the Photos window does not have its own app id"
+photos_app_id() { [[ -n $(run "$ANDROMEDA" windows --json | jq -r '.. | objects | select(.app_id? == "dev.andromeda.Photos") | .app_id') ]]; }
+WAIT_S=5 wait_for "the Photos window does not have its own app id" photos_app_id
 place_after=$(jq -r '.files.last_place // ""' "$state" 2> /dev/null || true)
 [[ $place_after == "$place_before" ]] || fail "Photos changed the place Files reopens: $place_before -> $place_after"
 echo "PASS Photos library in its own window"

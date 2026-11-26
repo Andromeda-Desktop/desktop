@@ -18,7 +18,8 @@ with_noctalia '
   phone() { "$BIN/andromeda-link-phone" --state "$RUNTIME/phone" --name "E2E Phone" "$@" 2>> "$OUT/phone.log"; }
   wait_state() {
     local want=$1
-    for _ in $(seq 100); do [[ $(msg panel-state) == "$want" ]] && return; sleep 0.1; done
+    panel_state_is() { [[ $(msg panel-state) == "$1" ]]; }
+    poll_for 10 panel_state_is "$want" && return
     fail "panel-state is \"$(msg panel-state)\", wanted \"$want\""
   }
   phone_saw() { [[ $(grep -c "$1" "$OUT/hold.jsonl") -ge ${2:-1} ]]; }

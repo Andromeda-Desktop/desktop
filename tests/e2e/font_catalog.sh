@@ -17,7 +17,7 @@ export PATH="$RUNTIME/stub:$PATH"
 with_noctalia '
   rss() { awk "/VmRSS/ {print \$2}" /proc/$(pgrep -f "^$NOCTALIA\$" | head -1)/status; }
   "$NOCTALIA" msg settings-open appearance > /dev/null
-  for _ in $(seq 100); do grep -q "font catalog:" "$OUT/noctalia.log" && break; sleep 0.1; done
+  poll_for 10 grep -q "font catalog:" "$OUT/noctalia.log" || true
   first=$(rss); sleep 3; second=$(rss) # real time: memory must not grow once the page is built
   echo "rss_kb first=$first second=$second" > "$OUT/result.txt"
   (( second - first < 20000 && second < 400000 )) || { echo "FAIL: shell memory grew: $first -> $second"; exit 1; }

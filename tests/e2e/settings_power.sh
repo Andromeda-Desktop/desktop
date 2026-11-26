@@ -13,8 +13,7 @@ MOCK="$(cd "$(dirname "$0")" && pwd)/mock_logind.py"
 export MOCK_LID_BATTERY=hibernate MOCK_CAN_HIBERNATE=${MOCK_CAN_HIBERNATE:-no} MOCK_CAN_SUSPEND_THEN_HIBERNATE=no
 BEFORE_NOCTALIA='
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
-  grep -q ready "$OUT/mock.log" || { echo "FAIL: mock logind did not start"; exit 1; }
+  WAIT_S=5 wait_for "mock logind did not start" grep -q ready "$OUT/mock.log"
   start_andromeda_system
 ' with_noctalia '
   for mode in light dark; do

@@ -35,34 +35,24 @@ run env "${ENVS[@]}" "$FILEOPS" > "$OUT/fileops.log" 2>&1 &
 run env "${ENVS[@]}" ANDROMEDA_LOG_LEVEL=debug DESK_FILES_GEOMETRY=1 "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 WX=$(jq .x <<< "$w")
 WY=$(jq .y <<< "$w")
 run "$ANDROMEDA" settle > /dev/null
 
 LOG=$OUT/files.log
 wait_file() {
-  for _ in $(seq 80); do
-    eval "$1" && return 0
-    sleep 0.05
-  done
-  return 1
+  poll_for 4 eval "$1"
 }
 mark() { wc -l < "$OUT/files.log"; }
 # The listing after a change: geometry line $3 right after $2 (rows shift when the watcher refreshes the folder).
+rows_adjacent() {
+  tail -n +"$(($1 + 1))" "$OUT/files.log" | grep -oE "geometry item [^ ]+" \
+    | awk -v a="geometry $2" -v b="geometry $3" 'prev == a && $0 == b { found = 1 } { prev = $0 } END { exit !found }'
+}
 wait_rows() {
-  for _ in $(seq 80); do
-    tail -n +"$(($1 + 1))" "$OUT/files.log" | grep -oE "geometry item [^ ]+" \
-      | awk -v a="geometry $2" -v b="geometry $3" 'prev == a && $0 == b { found = 1 } { prev = $0 } END { exit !found }' \
-      && return 0
-    sleep 0.05
-  done
-  return 1
+  poll_for 4 rows_adjacent "$@"
 }
 # Screen point of a geometry entry: "item alpha.txt", "place Trash", "view".
 at() {

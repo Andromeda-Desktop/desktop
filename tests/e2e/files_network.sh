@@ -48,12 +48,10 @@ trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true
 env_all=(env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_CONFIG_HOME="$HOME_DIR/.config"
   XDG_RUNTIME_DIR="$RUNTIME" PATH="$RUNTIME/bin:$PATH" GIO_USE_VFS=gvfs)
 "${env_all[@]}" /usr/lib/gvfsd --no-fuse > "$OUT/gvfsd.log" 2>&1 &
-for _ in $(seq 100); do
-  DBUS_SESSION_BUS_ADDRESS=$BUS gdbus introspect --session -d org.gtk.vfs.Daemon -o /org/gtk/vfs/Daemon \
-    > /dev/null 2>&1 && break
-  sleep 0.05
-done
-for _ in $(seq 100); do (exec 3<> /dev/tcp/127.0.0.1/2222) 2> /dev/null && break; sleep 0.05; done
+poll_for 5 env DBUS_SESSION_BUS_ADDRESS="$BUS" gdbus introspect --session -d org.gtk.vfs.Daemon -o /org/gtk/vfs/Daemon \
+  > /dev/null 2>&1 || true
+sftp_up() { (exec 3<> /dev/tcp/127.0.0.1/2222) 2> /dev/null; }
+poll_for 5 sftp_up || true
 
 URI="sftp://$USER_NAME@127.0.0.1:2222$SHARE"
 printf '[{"name":"Test share","uri":"%s","reconnect":true},{"name":"Other","uri":"sftp://%s@127.0.0.1:2223/","reconnect":false}]\n' \

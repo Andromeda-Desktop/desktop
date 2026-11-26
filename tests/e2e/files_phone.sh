@@ -21,7 +21,8 @@ boot_headless 1
 if [[ ${SCALE:-1} == 2 ]]; then
   printf '\n[output.HEADLESS-1]\nmode = "2560x1440@60"\nscale = 2\n' >> "$RUNTIME/andromeda.toml"
   run "$ANDROMEDA" msg config-reload > /dev/null
-  for _ in $(seq 100); do run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null && break; sleep 0.05; done
+  scale_is_2() { run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
+  poll_for 5 scale_is_2 || true
 fi
 echo "from the phone" > "$HOME_DIR/Downloads/boarding-pass.pdf"
 setfattr -n user.xdg.origin.url -v "link://e2e-phone" "$HOME_DIR/Downloads/boarding-pass.pdf"

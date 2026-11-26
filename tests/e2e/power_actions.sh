@@ -15,14 +15,13 @@ with_noctalia '
     : > "$OUT/mock.log"
     python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
     mock=$!
-    for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
-    grep -q ready "$OUT/mock.log" || { echo "FAIL: mock logind did not start: $(cat "$OUT/mock.log")"; exit 1; }
+    poll_for 5 grep -q ready "$OUT/mock.log" || { echo "FAIL: mock logind did not start: $(cat "$OUT/mock.log")"; exit 1; }
     start_andromeda_system
   }
   expect() {
     local action=$1 want=$2
     "$NOCTALIA" msg session "$action" > /dev/null
-    for _ in $(seq 50); do grep -qx "$want" "$OUT/calls.txt" && return 0; sleep 0.1; done
+    poll_for 5 grep -qx "$want" "$OUT/calls.txt" && return 0
     echo "FAIL $action: logind never received \"$want\"; calls: $(tr "\n" "," < "$OUT/calls.txt")"
     exit 1
   }

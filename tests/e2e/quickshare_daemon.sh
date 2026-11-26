@@ -9,6 +9,7 @@
 # linkd.log to $OUT (default ./artifacts/quickshare-daemon).
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+source "$ROOT/tests/e2e/wait.sh"
 OUT=${OUT:-$(pwd)/artifacts/quickshare-daemon}
 BIN=${LINK_BIN:-$ROOT/link/target/debug}
 if [[ -z ${QS_IN_NS:-} ]]; then
@@ -26,7 +27,8 @@ ip link set lo up
 ip link add d0 type veth peer name p0
 unshare --net sleep infinity &
 PHONE_NS=$!
-for _ in $(seq 50); do [[ $(readlink /proc/$PHONE_NS/ns/net) != "$(readlink /proc/self/ns/net)" ]] && break; sleep 0.02; done
+phone_ns_ready() { [[ $(readlink /proc/$PHONE_NS/ns/net) != "$(readlink /proc/self/ns/net)" ]]; }
+poll_for 1 phone_ns_ready || true
 ip link set p0 netns "$PHONE_NS"
 ip addr add 10.79.0.1/24 dev d0
 ip link set d0 up
@@ -36,7 +38,7 @@ in_phone ip addr add 10.79.0.2/24 dev p0
 in_phone ip link set p0 up
 
 dbus-daemon --config-file="$ROOT/tests/e2e/private-bus.conf" --address="unix:path=$RUNTIME/bus" --nofork 2> "$OUT/dbus.log" &
-for _ in $(seq 50); do [[ -S $RUNTIME/bus ]] && break; sleep 0.02; done
+poll_for 1 test -S "$RUNTIME/bus" || true
 # The private bus stands in for the system bus too, so the BLE hint fails harmlessly instead of reaching BlueZ.
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$RUNTIME/bus DBUS_SYSTEM_BUS_ADDRESS=unix:path=$RUNTIME/bus
 export HOME=$RUNTIME/home XDG_CONFIG_HOME=$RUNTIME/home/.config
@@ -55,12 +57,12 @@ qs() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m "$
 start_linkd() {
   XDG_STATE_HOME=$RUNTIME/state "$BIN/andromeda-linkd" >> "$OUT/linkd.log" 2>&1 &
   LINKD=$!
-  for _ in $(seq 100); do prop Visible > /dev/null 2>&1 && return; sleep 0.05; done
-  fail "andromeda-linkd did not come up"
+  linkd_up() { prop Visible > /dev/null 2>&1; }
+  WAIT_S=5 wait_for "andromeda-linkd did not come up" linkd_up
 }
 discover() { in_phone "$BIN/andromeda-quickshare" --name Phone discover --seconds 2; }
 send() { in_phone "$BIN/andromeda-quickshare" --name "Test Phone" send "$@" 2>> "$OUT/send.log"; }
-wait_signal() { for _ in $(seq 100); do grep -q "$1" "$OUT/signals.txt" && return; sleep 0.1; done; fail "no $1 signal"; }
+wait_signal() { poll_for 10 grep -q "$1" "$OUT/signals.txt" && return; fail "no $1 signal"; }
 
 gdbus monitor --session -d org.andromeda.Link1 -o /org/andromeda/Link1 > "$OUT/signals.txt" 2>&1 &
 start_linkd
@@ -91,7 +93,8 @@ record "{\"step\":\"accept-saves\",\"id\":$ID,\"pin\":\"$PIN\"}"
 
 send --addr 10.79.0.1:4718 "$RUNTIME/files/nope.txt" > "$RUNTIME/send2.jsonl" &
 SENDER=$!
-for _ in $(seq 100); do [[ $(grep -c "QuickShare.Offer" "$OUT/signals.txt") -ge 2 ]] && break; sleep 0.1; done
+two_offers() { [[ $(grep -c "QuickShare.Offer" "$OUT/signals.txt") -ge 2 ]]; }
+poll_for 10 two_offers || true
 ID=$(grep "QuickShare.Offer" "$OUT/signals.txt" | tail -1 | sed -E 's/.*Offer \(uint64 ([0-9]+),.*/\1/')
 qs Decline "$ID"
 wait "$SENDER" || true
@@ -118,7 +121,8 @@ for line in sys.stdin:
         call("StopDiscovery")
 ' "$QS_IFACE" <&4 &
 nearby_id() { prop Nearby | { grep -o "('[^']*', '$1')" || true; } | cut -d"'" -f2; }
-for _ in $(seq 100); do [[ -n $(nearby_id "Phone Receiver") && -n $(nearby_id "Picky Phone") ]] && break; sleep 0.1; done
+receivers_nearby() { [[ -n $(nearby_id "Phone Receiver") && -n $(nearby_id "Picky Phone") ]]; }
+poll_for 10 receivers_nearby || true
 PEER=$(nearby_id "Phone Receiver")
 [[ -n $PEER ]] || fail "discovery did not find the receiver: $(prop Nearby)"
 [[ -z $(nearby_id "$NAME") ]] || fail "the desktop lists itself as nearby"
@@ -132,7 +136,8 @@ SEND=$(bus_call Send "sa(hs)" "$(nearby_id "Picky Phone")" 1 3 nope.txt 3< "$RUN
 wait_signal "SendFinished (uint64 $SEND, 'declined'"
 record "{\"step\":\"send-declined\",\"id\":$SEND}"
 echo stop >&4
-for _ in $(seq 50); do [[ $(prop Nearby) == "(<@a(ss) []>,)" ]] && break; sleep 0.1; done
+nearby_cleared() { [[ $(prop Nearby) == "(<@a(ss) []>,)" ]]; }
+poll_for 5 nearby_cleared || true
 [[ $(prop Nearby) == "(<@a(ss) []>,)" ]] || fail "Nearby not cleared on StopDiscovery: $(prop Nearby)"
 
 kill "$LINKD"; wait "$LINKD" || true

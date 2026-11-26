@@ -30,14 +30,16 @@ rm -f "$OUT/result.txt"
 BEFORE_NOCTALIA='python3 "$E2E/mock_systemd1.py" "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
   python3 "$E2E/mock_docker.py" "$RUNTIME/docker.sock" "$OUT/docker-calls.txt" "$HOLDER" --chunked > "$OUT/docker.log" 2>&1 &
   python3 "$E2E/mock_docker.py" "$RUNTIME/podman/podman.sock" "$OUT/podman-calls.txt" "$HOLDER" > "$OUT/podman.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && grep -q ready "$OUT/docker.log" && grep -q ready "$OUT/podman.log" && break; sleep 0.1; done'
+  mocks_ready() { grep -q ready "$OUT/mock.log" && grep -q ready "$OUT/docker.log" && grep -q ready "$OUT/podman.log"; }
+  poll_for 5 mocks_ready || true'
 with_noctalia '
   click() { bash "$E2E/activity_click.sh" "$@"; }
+  dump_matches() { "$NOCTALIA" msg activity-dump > "$OUT/dump.json"; jq -e "$1" "$OUT/dump.json" > /dev/null; }
   wait_dump() { # jq filter on the dump, message
-    for _ in $(seq 60); do "$NOCTALIA" msg activity-dump > "$OUT/dump.json"; jq -e "$1" "$OUT/dump.json" > /dev/null && return 0; sleep 0.1; done
+    poll_for 6 dump_matches "$1" && return 0
     echo "FAIL: $2: $(jq -c "{containers: [.containers[]? | {name, state, memory_bytes}], buttons: [.buttons[]?.text]}" "$OUT/dump.json")"; exit 1
   }
-  calls() { for _ in $(seq 50); do grep -qx "$1" "$2" && return 0; sleep 0.1; done; echo "FAIL: never received: $1"; exit 1; }
+  calls() { WAIT_S=5 wait_for "never received: $1" grep -qx "$1" "$2"; }
   for unit in docker.service podman.socket; do
     dbus-send --session --print-reply --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 \
       org.andromeda.MockSystemd.Start string:$unit string:app.slice > /dev/null

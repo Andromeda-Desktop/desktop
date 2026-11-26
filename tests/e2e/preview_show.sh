@@ -93,7 +93,7 @@ with_noctalia '
   if command -v soffice > /dev/null; then
     call ShowFile "file://$RUNTIME/files/sample.odt" "" false
     # A cold LibreOffice start takes seconds: up to 60 s.
-    for _ in $(seq 1200); do grep -q "office .*sample.odt converted" "$OUT/preview.log" && break; sleep 0.05; done
+    poll_for 60 grep -q "office .*sample.odt converted" "$OUT/preview.log" || true
     grep -q "office .*sample.odt converted ok" "$OUT/preview.log" || { echo "FAIL: the ODT was not converted"; exit 1; }
     wait_for "the converted ODT was not shown" eval "(( \$(shown \"pdf page 1 of\") >= 2 ))"
     grim "$OUT/preview-odt.png"

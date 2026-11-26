@@ -31,7 +31,8 @@ ip link set lo up
 ip link add d0 type veth peer name p0
 unshare --net sleep infinity &
 PHONE_NS=$!
-for _ in $(seq 50); do [[ $(readlink /proc/$PHONE_NS/ns/net) != "$(readlink /proc/self/ns/net)" ]] && break; sleep 0.02; done
+phone_ns_ready() { [[ $(readlink /proc/$PHONE_NS/ns/net) != "$(readlink /proc/self/ns/net)" ]]; }
+poll_for 1 phone_ns_ready || true
 ip link set p0 netns "$PHONE_NS"
 ip addr add 10.81.0.1/24 dev d0
 ip link set d0 up
@@ -41,13 +42,13 @@ in_phone ip addr add 10.81.0.2/24 dev p0
 in_phone ip link set p0 up
 
 dbus-daemon --config-file="$ROOT/tests/e2e/private-bus.conf" --address="unix:path=$RUNTIME/bus" --nofork 2> "$OUT/dbus.log" &
-for _ in $(seq 50); do [[ -S $RUNTIME/bus ]] && break; sleep 0.02; done
+poll_for 1 test -S "$RUNTIME/bus" || true
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$RUNTIME/bus DBUS_SYSTEM_BUS_ADDRESS=unix:path=$RUNTIME/bus
 
 link() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m "org.andromeda.Link1.$1" "${@:2}"; }
 XDG_STATE_HOME=$RUNTIME/desktop RUST_LOG=info "$BIN/andromeda-linkd" >> "$OUT/linkd.log" 2>&1 &
-for _ in $(seq 100); do link CancelPairing > /dev/null 2>&1 && break; sleep 0.05; done
-link CancelPairing > /dev/null || fail "andromeda-linkd did not come up"
+linkd_up() { link CancelPairing > /dev/null 2>&1; }
+WAIT_S=5 wait_for "andromeda-linkd did not come up" linkd_up
 PORT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["port"])' "$RUNTIME/desktop/andromeda-link/devices.json")
 phone() { in_phone "$BIN/andromeda-link-phone" --state "$RUNTIME/phone" --name phone "$@"; }
 viewer() { "$BIN/andromeda-link-mirror" "$ID" --frames "$OUT/frames" "$@"; }

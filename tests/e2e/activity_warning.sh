@@ -23,12 +23,13 @@ MOCK="$(cd "$(dirname "$0")" && pwd)/mock_systemd1.py"
 export E2E="$(cd "$(dirname "$0")" && pwd)" POINTER=$ROOT/compositor/build-debug/tests/pointer-client
 export ANDROMEDA_CGROUP_ROOT=$CG
 BEFORE_NOCTALIA='python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done'
+  poll_for 5 grep -q ready "$OUT/mock.log" || true'
 : > "$OUT/calls.txt"
 with_noctalia '
   findings() { grep -c "background finding:" "$OUT/noctalia.log" || true; }
   "$NOCTALIA" msg activity-check > /dev/null
-  for _ in $(seq 50); do [[ $(findings) -ge 1 ]] && break; sleep 0.1; done
+  has_finding() { [[ $(findings) -ge 1 ]]; }
+  poll_for 5 has_finding || true
   "$NOCTALIA" msg activity-check > /dev/null
   sleep 1 # real time: a second check would post within this second
   "$NOCTALIA" msg settings-open "search:background activity" > /dev/null
@@ -40,14 +41,14 @@ with_noctalia '
   sleep 1.5 # real time: the Activity window maps and paints
   grim "$OUT/activity-limit.png"
   bash "$E2E/activity_click.sh" "10 %" # the Limit picker, a real click
-  for _ in $(seq 50); do grep -q "^SetUnitProperties opencode.service True CPUQuotaPerSecUSec=$(( $(nproc) * 100000 )) " "$OUT/calls.txt" && break; sleep 0.1; done
+  poll_for 5 grep -q "^SetUnitProperties opencode.service True CPUQuotaPerSecUSec=$(( $(nproc) * 100000 )) " "$OUT/calls.txt" || true
   bash "$E2E/activity_click.sh" Pause
-  for _ in $(seq 50); do grep -qx "FreezeUnit opencode.service" "$OUT/calls.txt" && break; sleep 0.1; done
+  poll_for 5 grep -qx "FreezeUnit opencode.service" "$OUT/calls.txt" || true
   echo "findings=$(findings)" > "$OUT/result.txt"
   [[ -s $HOME/.local/state/andromeda/shell/activity.json || -n $(find "$HOME/.local/state" -name activity.json 2>/dev/null) ]] \
     && echo "state=saved" >> "$OUT/result.txt"
   echo "action=$("$NOCTALIA" msg notification-action-latest stop)" >> "$OUT/result.txt"
-  for _ in $(seq 50); do grep -q "^StopUnit opencode.service replace$" "$OUT/calls.txt" && break; sleep 0.1; done
+  poll_for 5 grep -q "^StopUnit opencode.service replace$" "$OUT/calls.txt" || true
 '
 cat "$OUT/result.txt"
 grep "background finding:" "$OUT/noctalia.log" || true

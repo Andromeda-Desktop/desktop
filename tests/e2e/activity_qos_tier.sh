@@ -23,21 +23,16 @@ BUS=$BUS_ADDRESS
 
 onbus() { run env DBUS_SESSION_BUS_ADDRESS="$BUS" DBUS_SYSTEM_BUS_ADDRESS="$BUS" "$@"; }
 onbus env REAL_RUNTIME="$REAL_RUNTIME" python3 "$MOCK" "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-for _ in $(seq 50); do grep -q ready "$OUT/mock.log" 2> /dev/null && break; sleep 0.1; done
-grep -q ready "$OUT/mock.log" || fail "the mock systemd did not start"
+WAIT_S=5 wait_for "the mock systemd did not start" grep -q ready "$OUT/mock.log"
 onbus "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
-for _ in $(seq 100); do onbus "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+poll_for 10 onbus "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
 
 XDG_RUNTIME_DIR=$REAL_RUNTIME systemd-run --user --quiet --scope --unit="$SCOPE" \
   env XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY=wayland-0 foot --config=/dev/null --app-id=tier-test --title=tier-test sleep 600 \
   > /dev/null 2>&1 &
 cgroup=""
-for _ in $(seq 50); do
-  cgroup=$(XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user show -P ControlGroup "$SCOPE" 2> /dev/null || true)
-  [[ -n $cgroup ]] && break
-  sleep 0.1
-done
-[[ -n $cgroup ]] || fail "the foot scope did not start"
+scope_up() { cgroup=$(XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user show -P ControlGroup "$SCOPE" 2> /dev/null || true); [[ -n $cgroup ]]; }
+WAIT_S=5 wait_for "the foot scope did not start" scope_up
 onbus dbus-send --session --print-reply --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 \
   org.andromeda.MockSystemd.StartWithCgroup string:"$SCOPE" string:app.slice string:"$cgroup" > /dev/null
 
@@ -47,7 +42,8 @@ tier() {
   jq -r '[.rows[] | select(.app_id == "tier-test") | .tier][0] // ""' "$OUT/dump.json"
 }
 shown=""
-for _ in $(seq 60); do shown=$(tier); [[ $shown == focused || $shown == visible ]] && break; sleep 0.1; done
+tier_shown() { shown=$(tier); [[ $shown == focused || $shown == visible ]]; }
+poll_for 6 tier_shown || true
 [[ $shown == focused || $shown == visible ]] || fail "tier-test shows tier '$shown' while its window shows"
 echo "PASS shown window: tier $shown"
 
@@ -58,11 +54,12 @@ export E2E="$(cd "$(dirname "$0")" && pwd)" POINTER=$ROOT/compositor/build-debug
 click() { run env ANDROMEDA="$ANDROMEDA" NOCTALIA="$NOCTALIA" bash "$E2E/activity_click.sh" "$1"; }
 click "Efficiency Mode"
 run "$ANDROMEDA" msg workspace-switch:2 > /dev/null
-for _ in $(seq 60); do shown=$(tier); [[ $shown == hidden* ]] && break; sleep 0.05; done
+tier_hidden() { shown=$(tier); [[ $shown == hidden* ]]; }
+poll_for 6 tier_hidden || true
 [[ $shown == hidden-long ]] || fail "tier-test shows tier '$shown' when hidden with Efficiency Mode on"
 echo "PASS Efficiency Mode on: tier hidden-long"
 run "$ANDROMEDA" msg workspace-switch:1 > /dev/null
-for _ in $(seq 60); do shown=$(tier); [[ $shown == focused || $shown == visible ]] && break; sleep 0.1; done
+poll_for 6 tier_shown || true
 click "Efficiency Mode"
 
 run "$ANDROMEDA" msg workspace-switch:2 > /dev/null

@@ -79,15 +79,15 @@ EFFICIENCY=$(sed -n 's/.*efficiency CPUs for hidden apps: //p' "$OUT/andromeda.l
 [[ -n $EFFICIENCY && $EFFICIENCY != none ]] || fail "no efficiency CPUs detected (log: '$EFFICIENCY')"
 : > "$OUT/result.txt"
 
-for _ in $(seq 100); do ADOPTED=$(pgrep -P "$COMPOSITOR" -fx "$CLIENT qos-adopt" || true); [[ -n $ADOPTED ]] && break; sleep 0.05; done
-[[ -n $ADOPTED ]] || fail "autostart client never started"
+adopted_up() { ADOPTED=$(pgrep -P "$COMPOSITOR" -fx "$CLIENT qos-adopt" || true); [[ -n $ADOPTED ]]; }
+WAIT_S=5 wait_for "autostart client never started" adopted_up
 scope_of() { sed -n 's|^0::.*/||p' "/proc/$ADOPTED/cgroup"; }
 ADOPTED_UNIT="app-andromeda-$ADOPTED-$(sed 's/.*) //' "/proc/$ADOPTED/stat" | cut -d" " -f20).scope"
 await "unscoped app: own scope" "$ADOPTED_UNIT" 3000 scope_of
 
 systemd-run --user --scope --quiet --unit="$UNIT" \
   env FORK_CHILD=1 FILL_CONFIGURE=1 WAYLAND_DISPLAY="$RUNTIME/wayland-0" XDG_RUNTIME_DIR="$RUNTIME" "$CLIENT" qos-freeze > "$OUT/client.log" 2>&1 &
-for _ in $(seq 100); do grep -q '^child ' "$OUT/client.log" 2>/dev/null && break; sleep 0.05; done
+poll_for 5 grep -q '^child ' "$OUT/client.log" 2> /dev/null || true
 CHILD=$(sed -n 's/^child //p' "$OUT/client.log")
 [[ -n $CHILD ]] || fail "client never forked: $(cat "$OUT/client.log")"
 CGROUP=/sys/fs/cgroup$(systemctl --user show -P ControlGroup "$UNIT")
@@ -95,11 +95,10 @@ PID=$(grep -vx "$CHILD" "$CGROUP/cgroup.procs" | head -n 1)
 busctl --user call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager \
   StartTransientUnit 'ssa(sv)a(sa(sv))' "$OWN_UNIT" fail 1 PIDs au 1 "$PID" 0 > /dev/null
 OWN_CGROUP=/sys/fs/cgroup$(systemctl --user show -P ControlGroup "$OWN_UNIT")
-for _ in $(seq 100); do grep -qx "$PID" "$OWN_CGROUP/cgroup.procs" 2>/dev/null && break; sleep 0.02; done
-grep -qx "$PID" "$OWN_CGROUP/cgroup.procs" || fail "window process never moved to $OWN_UNIT"
+pid_moved() { grep -qx "$PID" "$OWN_CGROUP/cgroup.procs" 2> /dev/null; }
+WAIT_S=2 wait_for "window process never moved to $OWN_UNIT" pid_moved
 kill -CONT "$PID"
-for _ in $(seq 100); do grep -q '^mapped$' "$OUT/client.log" 2>/dev/null && break; sleep 0.05; done
-grep -q '^mapped$' "$OUT/client.log" || fail "client never mapped: $(cat "$OUT/client.log")"
+poll_for 5 grep -q '^mapped$' "$OUT/client.log" 2> /dev/null || fail "client never mapped: $(cat "$OUT/client.log")"
 ALL=$(cpus)
 echo "unit $UNIT pid $PID cpus $ALL efficiency $EFFICIENCY" | tee -a "$OUT/result.txt"
 await "focused: T0 weight 400" 400 2000 weight

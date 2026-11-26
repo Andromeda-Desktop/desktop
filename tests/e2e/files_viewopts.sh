@@ -53,7 +53,8 @@ BUS=$(sed -n 1p <<< "$bus_info")
 BUS_PID=$(sed -n 2p <<< "$bus_info")
 trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 run "$ANDROMEDA" msg config-reload > /dev/null
-for _ in $(seq 100); do run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null && break; sleep 0.05; done
+scale_is_2() { run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
+poll_for 5 scale_is_2 || true
 
 LOG=$OUT/files.log
 start() { # folder
@@ -62,12 +63,11 @@ start() { # folder
     XDG_STATE_HOME="$HOME_DIR/.local/state" XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug \
     DESK_FILES_GEOMETRY=1 "$FILES" "$1" >> "$LOG" 2>&1
   FILES_PID=$!
-  for _ in $(seq 100); do
+  win_mapped() {
     w=$(run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty")
-    [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-    sleep 0.05
-  done
-  [[ -n ${w:-} ]] || fail "the Files window did not map"
+    [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]
+  }
+  WAIT_S=5 wait_for "the Files window did not map" win_mapped
   WX=$(jq .x <<< "$w"); WY=$(jq .y <<< "$w")
   run "$ANDROMEDA" settle > /dev/null
 }
@@ -109,7 +109,7 @@ wait_log "$m" "selected 1 of " || fail "the right click did not select note.txt"
 run "$ANDROMEDA" settle > /dev/null
 keys tap 103 tap 103 tap 106 pause 300 tap 106 pause 300 tap 28
 wait_log "$m" "service action Mark for E2E on 1 items\$" || fail "the Actions › E2E › Mark for E2E row did not run"
-for _ in $(seq 60); do [[ -s $MARKS ]] && break; sleep 0.05; done
+poll_for 3 test -s "$MARKS" || true
 [[ $(cat "$MARKS" 2> /dev/null) == "$A/note.txt" ]] || fail "the service menu command did not get note.txt"
 kill "$FILES_PID" 2> /dev/null || true; wait "$FILES_PID" 2> /dev/null || true
 

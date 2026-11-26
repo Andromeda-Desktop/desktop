@@ -38,7 +38,8 @@ print(statistics.median(centres) if centres else -1)
   }
 
   python3 "$(dirname "$NOCTALIA")/../../tests/e2e/mpris_test_player.py" "$OUT/player-calls.txt" &
-  for _ in $(seq 50); do gdbus call --session -d org.freedesktop.DBus -o / -m org.freedesktop.DBus.NameHasOwner org.mpris.MediaPlayer2.e2e 2>/dev/null | grep -q true && break; sleep 0.1; done
+  mpris_owned() { gdbus call --session -d org.freedesktop.DBus -o / -m org.freedesktop.DBus.NameHasOwner org.mpris.MediaPlayer2.e2e 2>/dev/null | grep -q true; }
+  poll_for 5 mpris_owned || true
   sleep 3 # real time: the island grows into the media face and the position probe gives up
   before=$(bars_centre before)
   [[ $before != -1 ]] || fail "no waveform bars found in the island"

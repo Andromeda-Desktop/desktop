@@ -23,10 +23,8 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; tail -n 20 "$OUT/noctalia.log" >&2; exit 1; }
   # wait_page NAME: the wizard logged "page NAME" as its newest page line within 5 s.
   wait_page() {
-    for _ in $(seq 50); do
-      [[ $(grep -o "page [a-z]*" "$OUT/noctalia.log" | tail -n 1) == "page $1" ]] && return 0
-      sleep 0.1
-    done
+    page_is() { [[ $(grep -o "page [a-z]*" "$OUT/noctalia.log" | tail -n 1) == "page $1" ]]; }
+    poll_for 5 page_is "$1" && return 0
     fail "expected page $1, log has: $(grep -o "page [a-z]*" "$OUT/noctalia.log" | tail -n 1)"
   }
   click() { "$POINTER" 1280 720 move "$1" "$footer" click 272 > /dev/null; sleep 0.4; }
@@ -38,7 +36,7 @@ with_noctalia '
 
   wait_page welcome
   # The page line comes before the first frame; a click before the panel maps is lost.
-  for _ in $(seq 100); do grep -q "panel \"setup-wizard\" open to first frame" "$OUT/noctalia.log" && break; sleep 0.1; done
+  poll_for 10 grep -q "panel \"setup-wizard\" open to first frame" "$OUT/noctalia.log" || true
   sleep 1
   grim "$OUT/welcome.png"
   # The 640 x 560 sheet sits centred in the panel layer (the rest is its shadow); footer buttons are 24 in, 32 high.
@@ -78,8 +76,7 @@ with_noctalia '
   primary; wait_page done
   ! find "$HOME" -name .setup-complete | grep -q . || fail "marker written before Done"
   primary
-  for _ in $(seq 50); do grep -q "setup complete" "$OUT/noctalia.log" && break; sleep 0.1; done
-  grep -q "setup complete" "$OUT/noctalia.log" || fail "Done did not finish the wizard"
+  WAIT_S=5 wait_for "Done did not finish the wizard" grep -q "setup complete" "$OUT/noctalia.log"
   find "$HOME" -name .setup-complete | grep -q . || fail "no completion marker"
   echo PASS
 '

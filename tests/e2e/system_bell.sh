@@ -11,9 +11,8 @@ export ANDROMEDA_LOG_LEVEL=debug
 
 with_noctalia '
   "'"$CLIENT"'" bell terminal-app > "$OUT/client.log" 2>&1 &
-  for _ in $(seq 50); do grep -q "^rang$" "$OUT/client.log" && break; sleep 0.1; done
-  grep -q "^rang$" "$OUT/client.log" || { echo "FAIL: the client never rang: $(cat "$OUT/client.log")"; exit 1; }
-  for _ in $(seq 50); do grep -q "system bell from .terminal-app." "$OUT/noctalia.log" && break; sleep 0.1; done
+  poll_for 5 grep -q "^rang$" "$OUT/client.log" || { echo "FAIL: the client never rang: $(cat "$OUT/client.log")"; exit 1; }
+  poll_for 5 grep -q "system bell from .terminal-app." "$OUT/noctalia.log" || true
   grep "system bell from" "$OUT/noctalia.log" > "$OUT/bell.txt" || { echo "FAIL: the shell never heard the bell"; exit 1; }
 '
 cat "$OUT/bell.txt"

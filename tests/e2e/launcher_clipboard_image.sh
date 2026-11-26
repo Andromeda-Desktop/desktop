@@ -16,13 +16,10 @@ with_noctalia '
     local before
     before=$(frames)
     "$NOCTALIA" msg panel-open clipboard > /dev/null
-    for _ in $(seq 100); do (( $(frames) > before )) && break; sleep 0.05; done
-    for _ in $(seq 20); do
-      grim "$OUT/$1.png"
-      (( $(red_pixels "$OUT/$1.png") > 2000 )) && return 0
-      sleep 0.1
-    done
-    return 1
+    frames_advanced() { (( $(frames) > before )); }
+    poll_for 5 frames_advanced || true
+    shows_red() { grim "$OUT/$1.png"; (( $(red_pixels "$OUT/$1.png") > 2000 )); }
+    poll_for 2 shows_red "$1"
   }
   python3 -c "from PIL import Image; Image.new(\"RGB\", (240, 160), (255, 0, 0)).save(\"$OUT/red.png\")"
   wl-copy -t image/png < "$OUT/red.png"

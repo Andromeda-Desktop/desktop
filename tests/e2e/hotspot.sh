@@ -12,11 +12,12 @@ boot_headless 1
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_nm.py"
 with_noctalia '
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
+  poll_for 5 grep -q ready "$OUT/mock.log" || true
   start_andromeda_system # DeactivateConnection goes through org.andromeda.System1
   step() {
     "$NOCTALIA" msg hotspot-toggle > /dev/null
-    for _ in $(seq 30); do [[ $("$NOCTALIA" msg hotspot-status) == "$1" ]] && break; sleep 0.1; done
+    status_is() { [[ $("$NOCTALIA" msg hotspot-status) == "$1" ]]; }
+    poll_for 3 status_is "$1" || true
     echo "$("$NOCTALIA" msg hotspot-status)" >> "$OUT/status.txt"
   }
   echo "$("$NOCTALIA" msg hotspot-status)" > "$OUT/status.txt"

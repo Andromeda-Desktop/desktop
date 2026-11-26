@@ -10,15 +10,14 @@ boot_headless 1
 
 SRC=$ROOT/shell
 g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-system/src" -I"$ROOT/libdesk-ui/src" -I"$ROOT/libdesk-ui" -o "$RUNTIME/timedate-set" \
-  "$(dirname "$0")/timedate_set.cpp" "$ROOT/libdesk-system/src/dbus/timedate/timedate_service.cpp" "$ROOT/libdesk-system/src/dbus/system_bus.cpp" \
-  "$ROOT/libdesk-system/src/dbus/name_owner_watch.cpp" "$ROOT/protocol/log.cpp" "$ROOT/tests/e2e/log_platform_none.cpp" -lsdbus-c++ -lsystemd
+  "$(dirname "$0")/timedate_set.cpp" "$ROOT/tests/e2e/log_platform_none.cpp" \
+  -Wl,--start-group "$SRC/build-debug/subprojects/libdesk-system/libdesk_system.a" "$SRC/build-debug/subprojects/libdesk-ui/libdesk_ui.a" -Wl,--end-group -lsdbus-c++ -lsystemd
 
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_timedate1.py"
 with_noctalia '
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
   mock=$!
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
-  grep -q ready "$OUT/mock.log" || { echo "FAIL: mock timedate1 did not start: $(cat "$OUT/mock.log")"; exit 1; }
+  poll_for 5 grep -q ready "$OUT/mock.log" || { echo "FAIL: mock timedate1 did not start: $(cat "$OUT/mock.log")"; exit 1; }
 
   "$NOCTALIA" msg settings-open date-time > /dev/null
   sleep 2 # real time: the settings window maps and paints

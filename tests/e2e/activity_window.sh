@@ -23,44 +23,40 @@ export SCOPE REAL_RUNTIME POINTER=$ROOT/compositor/build-debug/tests/pointer-cli
 export CLICK="$(cd "$(dirname "$0")" && pwd)/activity_click.sh"
 export CHATTER="$(cd "$(dirname "$0")" && pwd)/tcp_chatter.py"
 BEFORE_NOCTALIA='REAL_RUNTIME=$REAL_RUNTIME python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done'
+  poll_for 5 grep -q ready "$OUT/mock.log" || true'
 with_noctalia '
   XDG_RUNTIME_DIR=$REAL_RUNTIME systemd-run --user --quiet --scope --unit="$SCOPE" \
     env XDG_RUNTIME_DIR="$RUNTIME" foot --config=/dev/null --app-id=act-test --title=act-test python3 "$CHATTER" > /dev/null 2>&1 &
   foot_pid=$!
   scope_cgroup=""
-  for _ in $(seq 50); do
-    scope_cgroup=$(XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user show -P ControlGroup "$SCOPE" 2> /dev/null || true)
-    [[ -n $scope_cgroup ]] && break; sleep 0.1
-  done
-  [[ -n $scope_cgroup ]] || { echo "FAIL: foot scope did not start"; exit 1; }
+  scope_up() { scope_cgroup=$(XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user show -P ControlGroup "$SCOPE" 2> /dev/null || true); [[ -n $scope_cgroup ]]; }
+  WAIT_S=5 wait_for "foot scope did not start" scope_up
   dbus-send --session --print-reply --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 \
     org.andromeda.MockSystemd.StartWithCgroup string:"$SCOPE" string:app.slice string:"$scope_cgroup" > /dev/null
 
   # The shell binds a new virtual keyboard after it appears and drops its first keys: hold one bound keyboard first.
   "$POINTER" 1280 720 keyboard-only mod none pause 300000 > /dev/null 2>&1 &
-  for _ in $(seq 50); do grep -q "keyboard: bound" "$OUT/noctalia.log" && break; sleep 0.1; done
-  grep -q "keyboard: bound" "$OUT/noctalia.log" || { echo "FAIL: the shell did not bind the held keyboard"; exit 1; }
+  WAIT_S=5 wait_for "the shell did not bind the held keyboard" grep -q "keyboard: bound" "$OUT/noctalia.log"
   "$NOCTALIA" msg activity-open act-test > /dev/null
-  for _ in $(seq 60); do
+  row_has_memory() {
     "$NOCTALIA" msg activity-dump > "$OUT/dump.json"
-    jq -e '"'"'any(.rows[]; .app_id == "act-test" and .has_window and .memory_bytes > 0)'"'"' "$OUT/dump.json" > /dev/null 2>&1 && break
-    sleep 0.1
-  done
+    jq -e '"'"'any(.rows[]; .app_id == "act-test" and .has_window and .memory_bytes > 0)'"'"' "$OUT/dump.json" > /dev/null 2>&1
+  }
+  poll_for 6 row_has_memory || true
   jq -e '"'"'any(.rows[]; .app_id == "act-test" and .has_window)'"'"' "$OUT/dump.json" > /dev/null \
     || { echo "FAIL: act-test row not in the dump"; exit 1; }
-  for _ in $(seq 50); do
+  activity_window_up() {
     "$ANDROMEDA" windows --json > "$OUT/windows.json"
-    jq -e '"'"'any(.. | objects; .app_id? == "dev.andromeda.Activity")'"'"' "$OUT/windows.json" > /dev/null && break
-    sleep 0.1
-  done
+    jq -e '"'"'any(.. | objects; .app_id? == "dev.andromeda.Activity")'"'"' "$OUT/windows.json" > /dev/null
+  }
+  poll_for 5 activity_window_up || true
   jq -e '"'"'any(.. | objects; .app_id? == "dev.andromeda.Activity")'"'"' "$OUT/windows.json" > /dev/null \
     || { echo "FAIL: no Activity window mapped"; exit 1; }
-  for _ in $(seq 50); do
+  row_has_net() {
     "$NOCTALIA" msg activity-dump > "$OUT/dump.json"
-    jq -e '"'"'any(.rows[]; .app_id == "act-test" and (.net_bps // 0) > 100000)'"'"' "$OUT/dump.json" > /dev/null && break
-    sleep 0.1
-  done
+    jq -e '"'"'any(.rows[]; .app_id == "act-test" and (.net_bps // 0) > 100000)'"'"' "$OUT/dump.json" > /dev/null
+  }
+  poll_for 5 row_has_net || true
   jq -e '"'"'any(.rows[]; .app_id == "act-test" and (.net_bps // 0) > 100000)'"'"' "$OUT/dump.json" > /dev/null \
     || { echo "FAIL: no TCP rate for act-test: $(jq -c '"'"'.rows[] | select(.app_id == "act-test") | .net_bps'"'"' "$OUT/dump.json")"; exit 1; }
   grim "$OUT/window.png"
@@ -78,41 +74,35 @@ with_noctalia '
   # Shift turns Quit… into Force Quit… while held (one client: a closed virtual keyboard releases its keys).
   label_shown() { "$NOCTALIA" msg activity-dump | jq -e --arg t "$1" '"'"'any(.buttons[]?; .text == $t)'"'"' > /dev/null; }
   "$POINTER" 1280 720 key-press 42 pause 2000 key-release 42 > /dev/null &
-  for _ in $(seq 15); do label_shown "Force Quit…" && break; sleep 0.1; done
-  label_shown "Force Quit…" || { echo "FAIL: Shift did not show Force Quit…"; exit 1; }
+  WAIT_S=2 wait_for "Shift did not show Force Quit…" label_shown "Force Quit…"
   ! label_shown "Quit…" || { echo "FAIL: Quit… still shown while Shift is held"; exit 1; }
   wait $!
-  for _ in $(seq 15); do label_shown "Quit…" && break; sleep 0.1; done
-  label_shown "Quit…" || { echo "FAIL: Quit… did not return after Shift"; exit 1; }
+  WAIT_S=2 wait_for "Quit… did not return after Shift" label_shown "Quit…"
 
   # Sample: 5 s of thread snapshots, then the report with Copy; Done returns to the actions.
   ANDROMEDA="$ANDROMEDA" NOCTALIA="$NOCTALIA" bash "$CLICK" "Sample"
   ! label_shown "Copy" || { echo "FAIL: the sample report showed before 5 s"; exit 1; }
-  for _ in $(seq 100); do label_shown "Copy" && break; sleep 0.1; done
-  label_shown "Copy" || { echo "FAIL: no sample report after 10 s"; exit 1; }
+  wait_for "no sample report after 10 s" label_shown "Copy"
   grim "$OUT/sample.png"
   ANDROMEDA="$ANDROMEDA" NOCTALIA="$NOCTALIA" bash "$CLICK" "Done"
-  for _ in $(seq 15); do label_shown "Sample" && break; sleep 0.1; done
-  label_shown "Sample" || { echo "FAIL: Done did not return to the Sample action"; exit 1; }
+  WAIT_S=2 wait_for "Done did not return to the Sample action" label_shown "Sample"
 
   # A stopped client misses the ping a key press sends (foot may still slide in, so a click could miss it): its row is flagged; its first frame after SIGCONT clears it.
   responding() { "$NOCTALIA" msg activity-dump | jq -e --argjson v "$1" '"'"'any(.rows[]; .app_id == "act-test" and .not_responding == $v)'"'"' > /dev/null; }
   hung() { "$ANDROMEDA" windows --json | jq -e '"'"'any(.[]; .title == "act-test" and .not_responding)'"'"' > /dev/null; }
   "$POINTER" 1280 720 mod control tap 17 mod none > /dev/null # Ctrl+W: the Activity window closes, foot shows
   activity_gone() { "$ANDROMEDA" windows --json | jq -e '"'"'all(.[]; .app_id != "dev.andromeda.Activity")'"'"' > /dev/null; }
-  for _ in $(seq 50); do activity_gone && break; sleep 0.1; done
-  activity_gone || { echo "FAIL: Ctrl+W did not close the Activity window"; exit 1; }
+  WAIT_S=5 wait_for "Ctrl+W did not close the Activity window" activity_gone
   wpid=$("$ANDROMEDA" windows --json | jq -r '"'"'.[] | select(.title == "act-test") | .pid'"'"')
   kill -STOP "$wpid" # the window client itself; $foot_pid may be the systemd-run parent
   "$POINTER" 1280 720 tap 42 > /dev/null # Shift: foot has keyboard focus once Activity closes
-  for _ in $(seq 80); do hung && break; sleep 0.1; done
+  poll_for 8 hung || true
   hung || { kill -CONT "$wpid"; grim "$OUT/hang.png"; "$ANDROMEDA" windows --json > "$OUT/hang-windows.json"; "$ANDROMEDA" layers --json > "$OUT/hang-layers.json"; echo "FAIL: the compositor did not mark the stopped act-test window (pid $wpid $(ps -o stat= -p "$wpid"))"; exit 1; }
   "$NOCTALIA" msg activity-open act-test > /dev/null
-  for _ in $(seq 50); do responding true && break; sleep 0.1; done
+  poll_for 5 responding true || true
   responding true || { kill -CONT "$wpid"; echo "FAIL: Activity does not mark the stopped act-test"; exit 1; }
   kill -CONT "$wpid" # foot draws its unfocused state: a commit
-  for _ in $(seq 50); do responding false && break; sleep 0.1; done
-  responding false || { echo "FAIL: the not-responding mark stayed after act-test resumed"; exit 1; }
+  WAIT_S=5 wait_for "the not-responding mark stayed after act-test resumed" responding false
 
   "$POINTER" 1280 720 tap 111 > /dev/null # Delete: Quit… on the selected row asks first
   for _ in $(seq 10); do
@@ -121,8 +111,8 @@ with_noctalia '
   done
   grim "$OUT/confirm.png"
   "$POINTER" 1280 720 tap 28 > /dev/null # Enter confirms the Quit
-  for _ in $(seq 50); do alive || break; sleep 0.1; done
-  ! alive || { echo "FAIL: Quit did not close the foot window"; exit 1; }
+  foot_gone() { ! alive; }
+  WAIT_S=5 wait_for "Quit did not close the foot window" foot_gone
   grep -qF "StopUnit $SCOPE" "$OUT/calls.txt" || { echo "FAIL: no StopUnit for $SCOPE"; exit 1; }
 '
 echo "PASS: Activity window opened with act-test selected; Quit closed the window; artifacts: $OUT"

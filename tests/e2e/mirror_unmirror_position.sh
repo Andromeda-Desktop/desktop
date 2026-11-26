@@ -48,16 +48,12 @@ TOML
 cp "$DISPLAYS" "$OUT/displays-stacked.toml"
 from=$(wc -l < "$OUT/andromeda.log")
 run "$ANDROMEDA" msg config-reload > /dev/null
-for _ in $(seq 50); do
-  tail -n +"$((from + 1))" "$OUT/andromeda.log" | grep -q "output 'HEADLESS-2': mirroring 'HEADLESS-1'" && break
-  sleep 0.1
-done
+mirroring_logged() { tail -n +"$((from + 1))" "$OUT/andromeda.log" | grep -q "output 'HEADLESS-2': mirroring 'HEADLESS-1'"; }
+poll_for 5 mirroring_logged || true
 from=$(wc -l < "$OUT/andromeda.log")
 run "$DESKTOP_CLIENT" clear HEADLESS-2
-for _ in $(seq 50); do
-  tail -n +"$((from + 1))" "$OUT/andromeda.log" | grep -q "output 'HEADLESS-2': stopped mirroring" && break
-  sleep 0.1
-done
+mirroring_stopped() { tail -n +"$((from + 1))" "$OUT/andromeda.log" | grep -q "output 'HEADLESS-2': stopped mirroring"; }
+poll_for 5 mirroring_stopped || true
 run "$ANDROMEDA" settle > /dev/null
 apart && result "PASS a stacked saved position is not reused when the mirror ends" \
   || result "FAIL a stacked saved position put HEADLESS-2 on HEADLESS-1"

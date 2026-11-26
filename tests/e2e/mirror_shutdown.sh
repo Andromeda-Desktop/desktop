@@ -19,7 +19,7 @@ for target_source in "HEADLESS-2 HEADLESS-1" "HEADLESS-1 HEADLESS-2"; do
     boot_headless 2
     pid=$!
     run "$DESKTOP_CLIENT" mirror "$target" "$source"
-    for _ in $(seq 50); do grep -q "output '$target': mirroring" "$OUT/andromeda.log" && break; sleep 0.1; done
+    poll_for 5 grep -q "output '$target': mirroring" "$OUT/andromeda.log" || true
     run "$ANDROMEDA" settle > /dev/null
     if [[ $stop == term ]]; then
       kill -TERM "$pid"

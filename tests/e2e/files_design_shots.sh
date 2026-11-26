@@ -54,21 +54,18 @@ with_noctalia '
   settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
   keys() { "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
   "$ANDROMEDA" msg config-reload > /dev/null
-  for _ in $(seq 100); do "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null && break; sleep 0.05; done
-  "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null || fail "the output did not take scale 2"
+  scale_is_2() { "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
+  WAIT_S=5 wait_for "the output did not take scale 2" scale_is_2
   "$NOCTALIA" msg config-set dock.enabled false > /dev/null || true
   "$NOCTALIA" msg theme-mode-set light > /dev/null
   HOME="$H" XDG_CONFIG_HOME="$H/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug "$FILES" "$D" > "$OUT/files.log" 2>&1 &
-  for _ in $(seq 100); do grep -q "first frame" "$OUT/files.log" 2> /dev/null && break; sleep 0.05; done
-  grep -q "first frame" "$OUT/files.log" || fail "Files drew no first frame"
-  for _ in $(seq 60); do grep -q "scheme light" "$OUT/files.log" && break; sleep 0.05; done
-  grep -q "scheme light" "$OUT/files.log" || fail "Files did not follow the light scheme"
+  WAIT_S=5 wait_for "Files drew no first frame" grep -q "first frame" "$OUT/files.log"
+  WAIT_S=3 wait_for "Files did not follow the light scheme" grep -q "scheme light" "$OUT/files.log"
   sleep 0.5; settle; grim "$OUT/1-icons-light.png"
   keys mod control tap 3 mod none; sleep 0.5; settle; grim "$OUT/2-list-light.png"
   keys mod control tap 4 mod none; sleep 0.5; settle; grim "$OUT/3-columns-light.png"
   "$NOCTALIA" msg theme-mode-set dark > /dev/null
-  for _ in $(seq 60); do grep -q "scheme dark" "$OUT/files.log" && break; sleep 0.05; done
-  grep -q "scheme dark" "$OUT/files.log" || fail "Files did not follow the dark scheme"
+  WAIT_S=3 wait_for "Files did not follow the dark scheme" grep -q "scheme dark" "$OUT/files.log"
   sleep 0.5; settle; grim "$OUT/4-columns-dark.png"
   keys mod control tap 3 mod none; sleep 0.5; settle; grim "$OUT/5-list-dark.png"
   keys mod control tap 2 mod none; sleep 0.5; settle; grim "$OUT/6-icons-dark.png"

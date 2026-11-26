@@ -35,7 +35,7 @@ check() {
 
 printf '\n[output.HEADLESS-2]\nmirror = "HEADLESS-1"\n' >> "$RUNTIME/andromeda.toml"
 run "$ANDROMEDA" msg config-reload > /dev/null
-for _ in $(seq 50); do grep -q "output 'HEADLESS-2': mirroring" "$OUT/andromeda.log" && break; sleep 0.1; done
+poll_for 5 grep -q "output 'HEADLESS-2': mirroring" "$OUT/andromeda.log" || true
 run "$ANDROMEDA" settle > /dev/null
 sleep 0.5 # real time: the first copy lands
 
@@ -48,7 +48,7 @@ from=$(wc -l < "$OUT/andromeda.log") source_before=$(commits HEADLESS-1)
 echo 1000000 > "$RUNTIME/fail-count"
 printf 'mode = "1024x768"\n' >> "$RUNTIME/andromeda.toml"
 run "$ANDROMEDA" msg config-reload > /dev/null
-for _ in $(seq 50); do grep -q "output 'HEADLESS-2': applied mode=1024x768" "$OUT/andromeda.log" && break; sleep 0.1; done
+poll_for 5 grep -q "output 'HEADLESS-2': applied mode=1024x768" "$OUT/andromeda.log" || true
 check "mode through config reload" "$from" "$source_before"
 
 cat "$OUT/mode.txt"

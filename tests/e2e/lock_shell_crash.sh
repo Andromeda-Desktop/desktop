@@ -36,7 +36,7 @@ with_noctalia '
   wait_for "org.andromeda.Lock1 is not served" served
   "$NOCTALIA" > "$OUT/noctalia-1.log" 2>&1 &
   shell=$!
-  for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
   wait_for "S1: the shell does not delegate" delegating "$OUT/noctalia-1.log"
 
   [[ $(msg session lock) == ok ]] || fail "S1: lock refused"
@@ -48,7 +48,7 @@ with_noctalia '
   requests=$(count "session lock requested")
   kill -SEGV "$shell"; wait "$shell" 2> /dev/null || true
   "$NOCTALIA" > "$OUT/noctalia-2.log" 2>&1 &
-  for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
   wait_for "S2: the restarted shell does not delegate" delegating "$OUT/noctalia-2.log"
   wait_for "S2: the restarted shell does not report locked" locked
   sleep 1

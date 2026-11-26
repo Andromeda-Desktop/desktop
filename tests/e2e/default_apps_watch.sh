@@ -11,7 +11,8 @@ export ANDROMEDA_PROFILE=1
 with_noctalia '
   rebuilds() { grep -cE "profile prepareFrame (buildScene|rebuildContent):" "$OUT/noctalia.log" || true; }
   "$NOCTALIA" msg settings-open default-apps > /dev/null
-  for _ in $(seq 100); do (( $(rebuilds) > 0 )) && break; sleep 0.1; done
+  has_rebuilt() { (( $(rebuilds) > 0 )); }
+  poll_for 10 has_rebuilt || true
   # The theme resolves again about a second after the open; wait until a full second passes without a build.
   opened=$(rebuilds)
   for _ in $(seq 10); do sleep 1; (( $(rebuilds) == opened )) && break; opened=$(rebuilds); done
@@ -19,7 +20,8 @@ with_noctalia '
   list=$RUNTIME/home/.config/mimeapps.list
   printf "[Default Applications]\nx-scheme-handler/http=e2e.desktop\n" > "$list.tmp" && mv "$list.tmp" "$list"
   changed=$idle
-  for _ in $(seq 20); do changed=$(rebuilds); (( changed > idle )) && break; sleep 0.1; done
+  rebuilt_after_write() { changed=$(rebuilds); (( changed > idle )); }
+  poll_for 2 rebuilt_after_write || true
   echo "rebuilds opened=$opened idle=$idle after_write=$changed" | tee "$OUT/result.txt"
   (( opened > 0 )) || { echo "FAIL: the page never built"; exit 1; }
   (( idle == opened )) || { echo "FAIL: the idle page rebuilt"; exit 1; }

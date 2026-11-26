@@ -38,13 +38,12 @@ await() {
 }
 : > "$OUT/result.txt"
 
-for _ in $(seq 100); do busctl --user status "${APPS[0]}" > /dev/null 2>&1 && break; sleep 0.05; done
-busctl --user status "${APPS[0]}" > /dev/null 2>&1 || fail "the compositor did not take ${APPS[0]}"
+app_on_bus() { busctl --user status "${APPS[0]}" > /dev/null 2>&1; }
+WAIT_S=5 wait_for "the compositor did not take ${APPS[0]}" app_on_bus
 
 systemd-run --user --scope --quiet --unit="$UNIT" \
   env WAYLAND_DISPLAY="$RUNTIME/wayland-0" XDG_RUNTIME_DIR="$RUNTIME" "$CLIENT" qos-holds > "$OUT/client.log" 2>&1 &
-for _ in $(seq 100); do grep -q '^mapped$' "$OUT/client.log" 2>/dev/null && break; sleep 0.05; done
-grep -q '^mapped$' "$OUT/client.log" || fail "client never mapped: $(cat "$OUT/client.log")"
+poll_for 5 grep -q '^mapped$' "$OUT/client.log" 2> /dev/null || fail "client never mapped: $(cat "$OUT/client.log")"
 CGROUP=/sys/fs/cgroup$(systemctl --user show -P ControlGroup "$UNIT")
 listed() { busctl --user call "${APPS[@]}" List | grep -c "\"$UNIT\"" || true; }
 await "List shows the app" 1 2000 listed
@@ -94,7 +93,8 @@ mkfifo "$RUNTIME/paced.fifo"
 REPAINT_ON_STDIN=1 env WAYLAND_DISPLAY="$RUNTIME/wayland-0" XDG_RUNTIME_DIR="$RUNTIME" \
   "$ROOT/compositor/build-debug/tests/unmap-client" paced 400 300 < "$RUNTIME/paced.fifo" > "$OUT/paced.log" 2>&1 &
 exec 4> "$RUNTIME/paced.fifo"
-for _ in $(seq 100); do run "$ANDROMEDA" windows --json 2> /dev/null | grep -q '"paced"' && break; sleep 0.05; done
+window_paced() { run "$ANDROMEDA" windows --json 2> /dev/null | grep -q '"paced"'; }
+poll_for 5 window_paced || true
 # Back to workspace 1, which always exists: the window maps during the 1 → 2 slide, and a dynamic group appends its
 # trailing empty workspace 3 only when the slide ends.
 run "$ANDROMEDA" msg workspace-switch:1 > /dev/null

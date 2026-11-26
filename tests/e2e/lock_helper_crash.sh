@@ -69,7 +69,7 @@ with_noctalia '
     > /dev/null; }
   verifying() { grep -q "^VerifyStartFor" "$OUT/calls.txt" 2> /dev/null; }
   served() { busctl --user status org.andromeda.Lock1 > /dev/null 2>&1; }
-  shell_up() { for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && return; sleep 0.1; done; }
+  shell_up() { poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true; }
   dead() { [[ ! -e /proc/$1 ]] || grep -q "^State:.*Z" "/proc/$1/status"; }
 
   kill %1; wait %1 2> /dev/null || true

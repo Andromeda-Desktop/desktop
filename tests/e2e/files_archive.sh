@@ -39,12 +39,8 @@ run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_DATA_HOME="$HOME_DI
   "$FILEOPS" > "$OUT/fileops.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 WX=$(jq .x <<< "$w")
 WY=$(jq .y <<< "$w")
 run "$ANDROMEDA" settle > /dev/null

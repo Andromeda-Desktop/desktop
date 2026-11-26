@@ -34,7 +34,8 @@ BUS=$(sed -n 1p <<< "$bus_info")
 BUS_PID=$(sed -n 2p <<< "$bus_info")
 trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 run "$ANDROMEDA" msg config-reload > /dev/null
-for _ in $(seq 100); do run "$ANDROMEDA" outputs --json | jq -e '.[0].scale == 1.5' > /dev/null && break; sleep 0.05; done
+scale_is_1_5() { run "$ANDROMEDA" outputs --json | jq -e '.[0].scale == 1.5' > /dev/null; }
+poll_for 5 scale_is_1_5 || true
 
 LOG=$OUT/files.log
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
@@ -61,7 +62,8 @@ width() {
     before=$now
     run "$ANDROMEDA" msg "window-modify-width-right:$frac" > /dev/null
     # The client commits the new size later: wait for it, or the next step resizes from a stale width.
-    for _ in $(seq 40); do now=$(win | jq .w); [[ $now -ne $before ]] && break; sleep 0.05; done
+    width_changed() { now=$(win | jq .w); [[ $now -ne $before ]]; }
+    poll_for 2 width_changed || true
     run "$ANDROMEDA" settle > /dev/null
     now=$(win | jq .w)
     (( now != before )) && px_per=$(awk -v d=$((now - before)) -v f="$frac" 'BEGIN {printf "%d", d / f}')
@@ -102,8 +104,8 @@ m=$(mark); action gallery "[<'file://$SRC/Screenshots/Screenshot_03_with_a_long_
 wait_log "$m" "view gallery" || fail "the Gallery did not open"
 # The Gallery opens in its own Photos window.
 WIN_APP=dev.andromeda.Photos
-for _ in $(seq 100); do [[ -n $(win) ]] && break; sleep 0.05; done
-[[ -n $(win) ]] || fail "no Photos window"
+window_exists() { [[ -n $(win) ]]; }
+WAIT_S=5 wait_for "no Photos window" window_exists
 for w in 1440 800 480; do width "$w"; shoot gallery "$w"; done
 
 stalls=$(awk 'match($0, /prepareFrame callback took [0-9.]+ms/) { n++; v = substr($0, RSTART + 27, RLENGTH - 29); if (n > 1 && v + 0 > 50) c++ } END { print c + 0 }' "$LOG")

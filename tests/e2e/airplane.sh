@@ -13,7 +13,7 @@ export ANDROMEDA_RFKILL_DEVICE="$OUT/rfkill.bin"
 with_noctalia '
   before=$("$NOCTALIA" msg airplane-status)
   "$NOCTALIA" msg airplane-toggle > /dev/null
-  for _ in $(seq 30); do [[ -s $ANDROMEDA_RFKILL_DEVICE ]] && break; sleep 0.1; done
+  poll_for 3 test -s "$ANDROMEDA_RFKILL_DEVICE" || true
   echo "before=$before" > "$OUT/event.txt"
 '
 read -r _ type op soft _ < <(od -An -tu1 -j3 -N5 "$OUT/rfkill.bin" | awk '{print "x", $2, $3, $4, $5}')

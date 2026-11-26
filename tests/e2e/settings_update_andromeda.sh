@@ -15,12 +15,12 @@ chmod +x "$OUT/bin/flatpak"
 BEFORE_NOCTALIA='
   export PATH="$OUT/bin:$PATH"
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
-  grep -q ready "$OUT/mock.log" || { echo "FAIL: mock update did not start"; exit 1; }
+  WAIT_S=5 wait_for "mock update did not start" grep -q ready "$OUT/mock.log"
   start_andromeda_system
 ' with_noctalia '
   wait_calls() {  # wait_calls PATTERN COUNT: the mock logged PATTERN at least COUNT times (5 s)
-    for _ in $(seq 50); do [ "$(grep -c "$1" "$OUT/calls.txt" || true)" -ge "$2" ] && return 0; sleep 0.1; done
+    calls_reached() { [ "$(grep -c "$1" "$OUT/calls.txt" || true)" -ge "$2" ]; }
+    poll_for 5 calls_reached "$1" "$2" && return 0
     echo "FAIL: mock never saw $1 x$2"; cat "$OUT/calls.txt"; exit 1
   }
   "$NOCTALIA" msg settings-open software-update > /dev/null

@@ -25,8 +25,8 @@ with_noctalia '
     sleep 3 # real time: the recorded length
     saved=$(grep -c "recording saved to" "$OUT/noctalia.log" || true)
     [[ $("$NOCTALIA" msg screen-record-toggle) == ok ]] || fail "recording did not stop"
-    for _ in $(seq 50); do [[ $(grep -c "recording saved to" "$OUT/noctalia.log") -gt $saved ]] && break; sleep 0.1; done
-    [[ $(grep -c "recording saved to" "$OUT/noctalia.log") -gt $saved ]] || fail "not saved: $(grep -i record "$OUT/noctalia.log")"
+    saved_grew() { [[ $(grep -c "recording saved to" "$OUT/noctalia.log") -gt $saved ]]; }
+    poll_for 5 saved_grew || fail "not saved: $(grep -i record "$OUT/noctalia.log")"
     cp "$(sed -n "s/.*recording saved to //p" "$OUT/noctalia.log" | tail -1)" "$OUT/$1.mp4"
   }
 
@@ -40,11 +40,12 @@ wireplumber.profiles = { main = { monitor.alsa = disabled, monitor.alsa-midi = d
   monitor.bluez-midi = disabled, monitor.v4l2 = disabled, monitor.libcamera = disabled } }
 CONF
   XDG_CONFIG_HOME=$RUNTIME/pw-config pipewire > "$OUT/pipewire.log" 2>&1 &
-  for _ in $(seq 50); do [[ -S $RUNTIME/pipewire-0 ]] && break; sleep 0.1; done
+  poll_for 5 test -S "$RUNTIME/pipewire-0" || true
   XDG_CONFIG_HOME=$RUNTIME/pw-config wireplumber > "$OUT/wireplumber.log" 2>&1 &
   sleep 1 # real time: WirePlumber connects and loads its policy
   pw-cli create-node adapter "{ factory.name=support.null-audio-sink node.name=e2e-sink media.class=Audio/Sink object.linger=true audio.position=[FL FR] }" > /dev/null
-  for _ in $(seq 50); do wpctl status 2>/dev/null | grep -q e2e-sink && break; sleep 0.1; done
+  sink_up() { wpctl status 2>/dev/null | grep -q e2e-sink; }
+  poll_for 5 sink_up || true
   sink=$(pw-cli ls Node | awk "/^\tid / {id = \$2} /node.name = \"e2e-sink\"/ {print id}" | tr -d ,)
   wpctl set-default "$sink"
   ffmpeg -v error -f lavfi -i "sine=frequency=440:duration=30" -ac 2 "$RUNTIME/tone.wav"

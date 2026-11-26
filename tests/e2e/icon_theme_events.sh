@@ -16,7 +16,8 @@ with_noctalia '
   reloads() { grep -c "system icons changed" "$OUT/noctalia.log" || true; }
   wait_reload() {
     local want=$1 start=$SECONDS
-    for _ in $(seq 20); do [[ $(reloads) -ge $want ]] && { echo $((SECONDS - start)); return; }; sleep 0.1; done
+    reload_reached() { [[ $(reloads) -ge $1 ]]; }
+    poll_for 2 reload_reached "$want" && { echo $((SECONDS - start)); return; }
     fail "no icon reload within 2 s (have $(reloads), want $want)"
   }
   sleep 1 # real time: the shell has settled into idle

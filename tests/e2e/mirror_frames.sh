@@ -14,10 +14,8 @@ commits() { run "$ANDROMEDA" output-commits --json | jq '."HEADLESS-1"'; }
 
 : > "$OUT/frames.txt"
 printf '\n[output.HEADLESS-2]\nscale = 1.5\nposition = [0, 0]\n' >> "$RUNTIME/andromeda.toml"
-for _ in $(seq 50); do
-  [[ $(run "$ANDROMEDA" outputs --json | jq '.[] | select(.name == "HEADLESS-2") | .position.x') == 0 ]] && break
-  sleep 0.1
-done
+mirror_at_origin() { [[ $(run "$ANDROMEDA" outputs --json | jq '.[] | select(.name == "HEADLESS-2") | .position.x') == 0 ]]; }
+poll_for 5 mirror_at_origin || true
 run env WAYLAND_DEBUG=1 foot --config=/dev/null \
   sh -c 'i=0; while :; do i=$((i+1)); printf "\r%08d" "$i"; sleep 0.05; done' 2> "$OUT/wayland-debug.log" &
 sleep 2 # real time: foot maps and starts counting

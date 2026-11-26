@@ -15,11 +15,13 @@ compositor=$(jobs -p | tail -1)
 with_noctalia '
   pids=""
   for i in 1 2 3; do foot --config=/dev/null --title=w$i sh -c "sleep 60" > /dev/null 2>&1 & pids="$pids $!"; done
-  for _ in $(seq 50); do [[ $("$ANDROMEDA" windows --json | jq length) -eq 3 ]] && break; sleep 0.1; done
+  windows_three() { [[ $("$ANDROMEDA" windows --json | jq length) -eq 3 ]]; }
+  poll_for 5 windows_three || true
   "$ANDROMEDA" msg workspace-switch:2 > /dev/null
   "$ANDROMEDA" msg session-quit:skip-confirmation > /dev/null &
   kill -TERM $pids 2> /dev/null || true
-  for _ in $(seq 100); do kill -0 '"$compositor"' 2> /dev/null || break; sleep 0.1; done
+  compositor_gone() { ! kill -0 '"$compositor"' 2> /dev/null; }
+  poll_for 10 compositor_gone || true
 '
 status=0
 wait "$compositor" || status=$?

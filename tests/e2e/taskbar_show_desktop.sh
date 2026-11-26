@@ -43,18 +43,17 @@ CONFIG
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
   minimized() { "$ANDROMEDA" windows --json | jq -r ".[] | select(.title == \"desk-a\") | .minimized"; }
-  wait_minimized() { for _ in $(seq 60); do [[ $(minimized) == "$1" ]] && return 0; sleep 0.05; done; return 1; }
+  minimized_is() { [[ $(minimized) == "$1" ]]; }
+  wait_minimized() { poll_for 3 minimized_is "$1"; }
   APP_ID=desk-a FILL_COLOR=0xFF3060C0 "'"$UNMAP"'" desk-a 600 400 > "$OUT/client.log" 2>&1 &
-  for _ in $(seq 100); do [[ $(minimized) == false ]] && break; sleep 0.05; done
-  [[ $(minimized) == false ]] || fail "the window did not map"
+  WAIT_S=5 wait_for "the window did not map" minimized_is false
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   # Wait for the bar to reserve its row, then click the 8 px strip at the far end of the flush row.
-  for _ in $(seq 100); do
+  bar_reserved() {
     area=$("$ANDROMEDA" outputs --json | jq -r ".[0].usable_area.height // empty" 2> /dev/null || true)
-    [[ -n $area && $area -lt 720 ]] && break
-    sleep 0.1
-  done
-  [[ -n $area && $area -lt 720 ]] || fail "the bottom bar reserved no row"
+    [[ -n $area && $area -lt 720 ]]
+  }
+  WAIT_S=10 wait_for "the bottom bar reserved no row" bar_reserved
   y=$(( (720 + area) / 2 ))
   grim "$OUT/before.png"
   row="0,$area 1280x$((720 - area))"
@@ -84,7 +83,8 @@ with_noctalia '
   a2=$!
   APP_ID=desk-a FILL_COLOR=0xFF9040B0 "'"$UNMAP"'" desk-a3 600 400 > "$OUT/client-a3.log" 2>&1 &
   a3=$!
-  for _ in $(seq 100); do [[ $("$ANDROMEDA" windows --json | jq length) -ge 3 ]] && break; sleep 0.05; done
+  three_windows() { [[ $("$ANDROMEDA" windows --json | jq length) -ge 3 ]]; }
+  poll_for 5 three_windows || true
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   "'"$POINTER"'" 1280 720 move 651 "$y" > /dev/null
   sleep 0.9
@@ -96,24 +96,27 @@ with_noctalia '
   grim "$OUT/preview-3-close.png"
   "'"$POINTER"'" 1280 720 move 900 200 > /dev/null
   kill "$a2" "$a3"
-  for _ in $(seq 100); do [[ $("$ANDROMEDA" windows --json | jq length) -eq 1 ]] && break; sleep 0.05; done
+  one_window() { [[ $("$ANDROMEDA" windows --json | jq length) -eq 1 ]]; }
+  poll_for 5 one_window || true
   # Snap group (board desktop-menus.html B): Snap Layouts puts desk-a left, snap assist puts desk-b right, and the
   # desk-a preview opens with the group card first. The buttons are now Start, desk-a, desk-b around the row centre.
   "'"$POINTER"'" 1280 720 move 900 200 > /dev/null
   APP_ID=desk-b FILL_COLOR=0xFF30A060 "'"$UNMAP"'" desk-b 600 400 > "$OUT/client-b.log" 2>&1 &
   window() { "$ANDROMEDA" windows --json | jq -c ".[] | select(.title == \"$1\")"; }
-  for _ in $(seq 100); do [[ -n $(window desk-b) ]] && break; sleep 0.05; done
+  desk_b_mapped() { [[ -n $(window desk-b) ]]; }
+  poll_for 5 desk_b_mapped || true
   "$ANDROMEDA" msg workspace-set-layout:floating > /dev/null
   "$ANDROMEDA" msg "window-focus:$(window desk-a | jq -r .id)" > /dev/null
   "$ANDROMEDA" msg window-snap-layouts > /dev/null
   "'"$POINTER"'" 1280 720 tap 28 > /dev/null
-  for _ in $(seq 60); do [[ $(window desk-a | jq -r .snap) == 1.1 ]] && break; sleep 0.05; done
-  [[ $(window desk-a | jq -r .snap) == 1.1 ]] || fail "Snap Layouts did not put desk-a in the left half"
+  desk_a_left() { [[ $(window desk-a | jq -r .snap) == 1.1 ]]; }
+  WAIT_S=3 wait_for "Snap Layouts did not put desk-a in the left half" desk_a_left
   # Snap assist opens once the snap motion ends (compositor/tests/harness/checks/layout/snap_assist.sh runs with
   # animations off).
   "$ANDROMEDA" settle > /dev/null
   "'"$POINTER"'" 1280 720 tap 28 > /dev/null
-  for _ in $(seq 60); do [[ $(window desk-b | jq -r .snap) == 1.2 ]] && break; sleep 0.05; done
+  desk_b_right() { [[ $(window desk-b | jq -r .snap) == 1.2 ]]; }
+  poll_for 3 desk_b_right || true
   group=$(window desk-a | jq -r .snap_group)
   [[ $group =~ ^[0-9]+$ && $(window desk-b | jq -r .snap_group) == "$group" ]] || fail "desk-a and desk-b formed no snap group (got $group)"
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null

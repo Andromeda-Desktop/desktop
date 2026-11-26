@@ -32,21 +32,13 @@ run env "${ENVS[@]}" "$FILEOPS" > "$OUT/fileops.log" 2>&1 &
 run env "${ENVS[@]}" ANDROMEDA_LOG_LEVEL=debug "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 run "$ANDROMEDA" settle > /dev/null
 
 LOG=$OUT/files.log
 wait_file() {
-  for _ in $(seq 80); do
-    eval "$1" && return 0
-    sleep 0.05
-  done
-  return 1
+  poll_for 4 eval "$1"
 }
 mark() { wc -l < "$OUT/files.log"; }
 keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }

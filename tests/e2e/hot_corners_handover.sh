@@ -28,7 +28,8 @@ with_noctalia '
   setting() { run_client settings-state | grep "^$1=" | cut -d= -f2- | sed "s/ customized$//"; }
   run_client() { "$DESKTOP_CLIENT" "$@"; }
   expect() {
-    for _ in $(seq 50); do [[ $(setting "$1") == "$2" ]] && return; sleep 0.1; done
+    setting_is() { [[ $(setting "$1") == "$2" ]]; }
+    poll_for 5 setting_is "$1" "$2" && return
     fail "compositor $1 is \"$(setting "$1")\", want \"$2\""
   }
   expect hot_corners.top_left.action "shell:panel-toggle launcher"
@@ -44,7 +45,7 @@ with_noctalia '
   kill "$(pgrep -f "^$NOCTALIA\$" | head -1)"
   sleep 1
   "$NOCTALIA" >> "$OUT/noctalia.log" 2>&1 &
-  for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
   sleep 1 # real time: a second handover, if the shell wrongly made one, would land by now
   [[ $(setting hot_corners.top_left.action) == spawn:foot ]] \
     || fail "a restarted shell overwrote the compositor corner: $(setting hot_corners.top_left.action)"

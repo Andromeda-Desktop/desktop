@@ -62,8 +62,7 @@ with_noctalia '
   # "released" around the press, no key). One keyboard held for the whole test keeps it bound.
   tail -f /dev/null | "$POINTER" 1280 720 keyboard-only mod none hold > /dev/null &
   keyboard_bound() { [[ $(grep -c "keyboard: bound" "$OUT/noctalia.log") -gt $(grep -c "keyboard: released" "$OUT/noctalia.log") ]]; }
-  for _ in $(seq 100); do keyboard_bound && break; sleep 0.05; done
-  keyboard_bound || { echo "FAIL: the held keyboard did not bind"; exit 1; }
+  WAIT_S=5 wait_for "the held keyboard did not bind" keyboard_bound
   # Desktop copies and moves are FileOps1 jobs: the daemon runs on this test bus.
   "$FILEOPS" > "$OUT/fileops.log" 2>&1 &
   wait_for "the FileOps1 daemon is not on the bus" gdbus introspect --session -d org.andromeda.FileOps1 -o /org/andromeda/FileOps1
@@ -165,12 +164,8 @@ with_noctalia '
   wait_for "the Images stack did not open again" bash -c "[[ \$(grep -c \"stack Images expanded\" \"$OUT/noctalia.log\") -ge 2 ]]"
   settle
   # Key and click go in two steps: in one burst the shell can read Delete before the click selected the file.
-  for _ in $(seq 40); do
-    "$POINTER" 1280 720 move "$STACK_X" $((STACK_Y + 104)) click 272 > /dev/null
-    logged "$OUT/noctalia.log" "desktop press beach.png" && break
-    sleep 0.05
-  done
-  logged "$OUT/noctalia.log" "desktop press beach.png" || fail "the click did not reach beach.png in the open stack"
+  click_beach() { "$POINTER" 1280 720 move "$STACK_X" $((STACK_Y + 104)) click 272 > /dev/null; logged "$OUT/noctalia.log" "desktop press beach.png"; }
+  poll_for 2 click_beach || fail "the click did not reach beach.png in the open stack"
   "$POINTER" 1280 720 keyboard-only tap 111 > /dev/null
   wait_for "Delete did not trash beach.png" bash -c "[[ ! -e \"$DESK/beach.png\" ]]"
   settle

@@ -25,8 +25,7 @@ BUS_PID=$(sed -n 2p <<< "$bus_info")
 trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 
 wait_file() { # file pattern
-  for _ in $(seq 100); do grep -qE "$2" "$1" 2> /dev/null && return 0; sleep 0.05; done
-  return 1
+  poll_for 5 grep -qE "$2" "$1" 2> /dev/null
 }
 DBUS_SESSION_BUS_ADDRESS=$BUS python3 -u "$(dirname "$0")/fake_link_daemon.py" > "$OUT/link.log" 2>&1 &
 wait_file "$OUT/link.log" "^READY" || fail "the fake Link daemon did not start"
@@ -34,12 +33,11 @@ wait_file "$OUT/link.log" "^READY" || fail "the fake Link daemon did not start"
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
   XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug DESK_FILES_GEOMETRY=1 \
   "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
-for _ in $(seq 100); do
+win_mapped() {
   w=$(run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty")
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]
+}
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 WX=$(jq .x <<< "$w")
 WY=$(jq .y <<< "$w")
 wait_file "$OUT/files.log" "geometry item note.txt" || fail "no geometry for note.txt"

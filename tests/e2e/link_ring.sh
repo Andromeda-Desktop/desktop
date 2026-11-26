@@ -22,11 +22,12 @@ wireplumber.profiles = { main = { monitor.alsa = disabled, monitor.alsa-midi = d
   monitor.bluez-midi = disabled, monitor.v4l2 = disabled, monitor.libcamera = disabled } }
 CONF
 run env -u DBUS_SESSION_BUS_ADDRESS XDG_CONFIG_HOME="$RUNTIME/pw-config" pipewire > "$OUT/pipewire.log" 2>&1 &
-for _ in $(seq 50); do [[ -S $RUNTIME/pipewire-0 ]] && break; sleep 0.1; done
+poll_for 5 test -S "$RUNTIME/pipewire-0" || true
 run env -u DBUS_SESSION_BUS_ADDRESS XDG_CONFIG_HOME="$RUNTIME/pw-config" wireplumber > "$OUT/wireplumber.log" 2>&1 &
 sleep 1 # real time: WirePlumber connects and loads its policy
 run pw-cli create-node adapter "{ factory.name=support.null-audio-sink node.name=e2e-sink media.class=Audio/Sink object.linger=true audio.position=[FL FR] }" > /dev/null
-for _ in $(seq 50); do run wpctl status 2> /dev/null | grep -q e2e-sink && break; sleep 0.1; done
+sink_up() { run wpctl status 2> /dev/null | grep -q e2e-sink; }
+poll_for 5 sink_up || true
 sink=$(run pw-cli ls Node | awk "/^\tid / {id = \$2} /node.name = \"e2e-sink\"/ {print id}" | tr -d ,)
 run wpctl set-default "$sink"
 

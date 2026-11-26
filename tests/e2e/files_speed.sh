@@ -41,8 +41,7 @@ trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true
 spawn env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
   XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug "$FILES" "$HOME_DIR" > "$OUT/files-cold.log" 2>&1
 COLD_PID=$!
-for _ in $(seq 200); do grep -q "first frame at" "$OUT/files-cold.log" && break; sleep 0.05; done
-grep -q "first frame at" "$OUT/files-cold.log" || fail "the cold launch drew no first frame"
+wait_for "the cold launch drew no first frame" grep -q "first frame at" "$OUT/files-cold.log"
 # Stop the app before the next launch, or that launch is forwarded to it (single instance).
 kill "$COLD_PID"
 wait "$COLD_PID" 2> /dev/null || true
@@ -74,11 +73,8 @@ wait_log 0 "listed [0-9]+ in" 10 || fail "the folder did not list"
 wait_log 0 "statted [0-9]+ in" 20 || fail "the folder stats did not finish"
 listed=$(grep -oE "listed [0-9]+ in" "$OUT/files.log" | tail -n 1 | grep -oE '[0-9]+')
 [[ $listed -ge $COUNT ]] || fail "listed $listed of $COUNT entries"
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+poll_for 5 win_mapped || true
 WX=$(jq .x <<< "$w"); WY=$(jq .y <<< "$w"); WW=$(jq .w <<< "$w"); WH=$(jq .h <<< "$w")
 run "$ANDROMEDA" settle > /dev/null
 

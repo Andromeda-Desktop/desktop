@@ -18,9 +18,9 @@ python3 -I -c 'import cairo,sys; s=cairo.PDFSurface(sys.argv[1],595,842); cairo.
 run "$ANDROMEDA" log-level debug > /dev/null
 
 focused() { run "$ANDROMEDA" focused-window 2> /dev/null; }
+is_focused() { focused | grep -q "$1"; }
 wait_focus() {
-  for _ in $(seq 100); do focused | grep -q "$1" && return 0; sleep 0.05; done
-  return 1
+  poll_for 5 is_focused "$1"
 }
 spawn() { run env DBUS_SESSION_BUS_ADDRESS="$BUS_ADDRESS" ANDROMEDA_LOG_LEVEL=debug "$ANDROMEDA" msg spawn "$@" > /dev/null; }
 
@@ -37,9 +37,10 @@ wait_focus dev.andromeda.Viewer || { focused; fail "a second Viewer open did not
 # The dock path, as on a desktop with focus_on_activate = false: only trusted tokens raise.
 run "$ANDROMEDA" config set general.focus_on_activate false > /dev/null
 run "$ROOT/compositor/build-debug/tests/layer-client" HEADLESS-1 40 token-on-click > "$OUT/dock.log" 2>&1 &
-for _ in $(seq 100); do run "$ANDROMEDA" layers 2> /dev/null | grep -q . && break; sleep 0.05; done
+layers_up() { run "$ANDROMEDA" layers 2> /dev/null | grep -q .; }
+poll_for 5 layers_up || true
 run "$ROOT/compositor/build-debug/tests/pointer-client" 1280 720 move 640 20 click 272 > /dev/null
-for _ in $(seq 100); do grep -q '^token ' "$OUT/dock.log" && break; sleep 0.05; done
+poll_for 5 grep -q '^token ' "$OUT/dock.log" || true
 TOKEN=$(sed -n 's/^token //p' "$OUT/dock.log" | tail -n 1)
 [[ -n $TOKEN ]] || fail "the dock click gave no token"
 run env DBUS_SESSION_BUS_ADDRESS="$BUS_ADDRESS" XDG_ACTIVATION_TOKEN="$TOKEN" "$FILES" > "$OUT/files-dock.log" 2>&1
@@ -48,8 +49,8 @@ wait_focus dev.andromeda.Files || { focused; fail "a dock launch of the running 
 files_windows() { run "$ANDROMEDA" windows --json | jq '[.. | objects | select(.app_id? == "dev.andromeda.Files")] | length'; }
 mkdir -p "$RUNTIME/home/Work"
 spawn "$FILES" "$RUNTIME/home/Work"
-for _ in $(seq 100); do [[ $(files_windows) -eq 2 ]] && break; sleep 0.05; done
-[[ $(files_windows) -eq 2 ]] || fail "opening a new folder did not open a window"
+two_files_windows() { [[ $(files_windows) -eq 2 ]]; }
+WAIT_S=5 wait_for "opening a new folder did not open a window" two_files_windows
 spawn "$VIEWER" "$PDF"
 wait_focus dev.andromeda.Viewer || fail "Viewer did not take focus back"
 spawn "$FILES" "$RUNTIME/home/Work"

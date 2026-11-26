@@ -24,10 +24,11 @@ first_frame_ms() {
       trap '"'"'kill $(jobs -p) 2>/dev/null || true; wait'"'"' EXIT
       python3 "$HERE/mock_logind.py" "$OUT/$NAME.logind" > "$OUT/$NAME.logind.log" 2>&1 &
       python3 "$HERE/mock_power.py" "$OUT/$NAME.power" > "$OUT/$NAME.power.log" 2>&1 &
-      for _ in $(seq 100); do grep -q ready "$OUT/$NAME.logind.log" "$OUT/$NAME.power.log" 2>/dev/null \
-        && [[ $(grep -l ready "$OUT/$NAME.logind.log" "$OUT/$NAME.power.log" | wc -l) == 2 ]] && break; sleep 0.05; done
+      mocks_ready() { grep -q ready "$OUT/$NAME.logind.log" "$OUT/$NAME.power.log" 2>/dev/null \
+        && [[ $(grep -l ready "$OUT/$NAME.logind.log" "$OUT/$NAME.power.log" | wc -l) == 2 ]]; }
+      poll_for 5 mocks_ready || true
       commits() { "$ANDROMEDA" output-commits --json | jq -r ".\"HEADLESS-1\" // .ok.\"HEADLESS-1\" // 0"; }
-      for _ in $(seq 100); do "$ANDROMEDA" output-commits --json > /dev/null 2>&1 && break; sleep 0.05; done
+      poll_for 5 "$ANDROMEDA" output-commits --json > /dev/null 2>&1 || true
       base=$(commits)
       start=$(date +%s%N)
       "$NOCTALIA" > "$OUT/$NAME.noctalia.log" 2>&1 &

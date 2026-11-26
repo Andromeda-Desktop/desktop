@@ -21,9 +21,8 @@ with_noctalia '
   # shoot NAME: wait until the screen differs from $OUT/base.png (the panel shows), then until two shots 0.2 s apart
   # are equal (its open animation is done); keep that shot as NAME.
   shoot() {
-    for _ in $(seq 50); do
-      grim "$OUT/now.png"; cmp -s "$OUT/base.png" "$OUT/now.png" || break; sleep 0.05
-    done
+    screen_changed() { grim "$OUT/now.png"; ! cmp -s "$OUT/base.png" "$OUT/now.png"; }
+    poll_for 3 screen_changed || true
     for _ in $(seq 25); do
       grim "$OUT/prev.png"; sleep 0.2; grim "$OUT/now.png"
       cmp -s "$OUT/prev.png" "$OUT/now.png" && { mv "$OUT/now.png" "$OUT/$1"; rm -f "$OUT/prev.png"; return 0; }

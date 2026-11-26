@@ -6,16 +6,16 @@
 # (default ./artifacts/activity-actions). Needs no compositor.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+source "$(dirname "$0")/wait.sh"
 OUT=${OUT:-$(pwd)/artifacts/activity-actions}
 rm -rf "$OUT"; mkdir -p "$OUT/scratch"
 : > "$OUT/calls.txt"
 SRC=$ROOT/shell
 BIN=$OUT/activity-actions
 g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-system/src" -I"$ROOT/libdesk-ui/src" -I"$ROOT/libdesk-ui" $(pkg-config --cflags gio-2.0) -o "$BIN" \
-  "$(dirname "$0")/activity_actions.cpp" "$SRC/src/system/activity_actions.cpp" "$SRC/src/system/xdg_autostart.cpp" "$ROOT/libdesk-ui/src/core/freedesktop_key_file.cpp" \
-  "$ROOT/libdesk-system/src/dbus/systemd/systemd_units_service.cpp" "$ROOT/libdesk-system/src/dbus/systemd/systemd_unit_name.cpp" \
-  "$ROOT/libdesk-system/src/dbus/system_interactive_call.cpp" "$ROOT/libdesk-system/src/dbus/session_bus.cpp" \
-  "$ROOT/protocol/log.cpp" "$ROOT/tests/e2e/log_platform_none.cpp" -lsdbus-c++ -lsystemd $(pkg-config --libs gio-2.0)
+  "$(dirname "$0")/activity_actions.cpp" "$SRC/src/system/activity_actions.cpp" "$SRC/src/system/xdg_autostart.cpp" \
+  "$SRC/src/core/shared_worker.cpp" "$SRC/src/config/atomic_file.cpp" "$ROOT/tests/e2e/log_platform_none.cpp" \
+  -Wl,--start-group "$SRC/build-debug/subprojects/libdesk-system/libdesk_system.a" "$SRC/build-debug/subprojects/libdesk-ui/libdesk_ui.a" -Wl,--end-group -lsdbus-c++ -lsystemd $(pkg-config --libs gio-2.0)
 
 MOCK="$ROOT/tests/e2e/mock_systemd1.py"
 dbus-run-session -- bash -c '
@@ -23,8 +23,7 @@ dbus-run-session -- bash -c '
   python3 "$1" "$2/calls.txt" > "$2/mock.log" 2>&1 &
   mock=$!
   trap "kill $mock 2>/dev/null || true" EXIT
-  for _ in $(seq 50); do grep -q ready "$2/mock.log" && break; sleep 0.1; done
-  grep -q ready "$2/mock.log" || { echo "FAIL: mock systemd1 did not start: $(cat "$2/mock.log")"; exit 1; }
+  poll_for 5 grep -q ready "$2/mock.log" || { echo "FAIL: mock systemd1 did not start: $(cat "$2/mock.log")"; exit 1; }
   "$3" "$2/scratch" | tee "$2/activity-actions.txt"
 ' _ "$MOCK" "$OUT" "$BIN"
 grep -q "^PASS" "$OUT/activity-actions.txt" && ! grep -q "^FAIL" "$OUT/activity-actions.txt" \

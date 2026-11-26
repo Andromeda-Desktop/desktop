@@ -22,7 +22,8 @@ boot_headless 1
 if [[ ${SCALE:-1} == 2 ]]; then
   printf '\n[output.HEADLESS-1]\nmode = "2560x1440@60"\nscale = 2\n' >> "$RUNTIME/andromeda.toml"
   run "$ANDROMEDA" msg config-reload > /dev/null
-  for _ in $(seq 100); do run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null && break; sleep 0.05; done
+  scale_is_2() { run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
+  poll_for 5 scale_is_2 || true
 fi
 
 fail() { echo "FAIL: $*"; exit 1; }
@@ -42,12 +43,8 @@ run "${env_app[@]}" XDG_RUNTIME_DIR="$RUNTIME" "$FILEOPS" > "$OUT/fileops.log" 2
 run "${env_app[@]}" ANDROMEDA_LOG_LEVEL=debug DESK_FILES_GEOMETRY=1 "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 WX=$(jq .x <<< "$w")
 WY=$(jq .y <<< "$w")
 run "$ANDROMEDA" settle > /dev/null
@@ -59,14 +56,8 @@ action() { # name [gvariant parameter list]
 WAIT_S=5
 logged() { grep -qE -- "$1" "$OUT/files.log"; }
 shot() { run "$ANDROMEDA" settle > /dev/null; sleep 0.4; run grim "$OUT/$1.png"; }
-select_names() { # count, names gvariant
-  for _ in $(seq 40); do
-    action select "[<$2>]"
-    grep -q "selected $1 of" "$OUT/files.log" && return 0
-    sleep 0.05
-  done
-  fail "could not select $2"
-}
+select_try() { action select "[<$2>]" && grep -q "selected $1 of" "$OUT/files.log"; }
+select_names() { poll_for 2 select_try "$1" "$2" || fail "could not select $2"; } # count, names gvariant
 zip_check() { # every entry encrypted (flag bit 0) and the names listed
   python3 -I - "$1" <<'PY'
 import sys, zipfile
@@ -138,8 +129,7 @@ shot compress-split
 action compress.submit
 wait_long() { # description, test command...: 15 MB in the debug daemon takes seconds
   local what=$1; shift
-  for _ in $(seq 600); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
+  WAIT_S=30 wait_for "$what" "$@"
 }
 done_twice() { [[ $(grep -c "job $1 done /" "$OUT/files.log") -ge 2 ]]; }
 wait_long "the split Compress did not finish" done_twice compress

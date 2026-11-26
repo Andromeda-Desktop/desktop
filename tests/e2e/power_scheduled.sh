@@ -12,7 +12,7 @@ boot_headless 1
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_logind.py"
 BEFORE_NOCTALIA='
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
+  poll_for 5 grep -q ready "$OUT/mock.log" || true
   start_andromeda_system
 ' with_noctalia '
   schedule() {
@@ -33,7 +33,7 @@ BEFORE_NOCTALIA='
   done
 
   schedule poweroff "$(( $(now_usec) + 30000000 ))" ""
-  for _ in $(seq 50); do grep -q "CancelScheduledShutdown poweroff" "$OUT/calls.txt" && exit 0; sleep 0.1; done
+  poll_for 5 grep -q "CancelScheduledShutdown poweroff" "$OUT/calls.txt" && exit 0
   echo "FAIL: a power-off due in 30 s never handed over to the session end: $(tr "\n" "," < "$OUT/calls.txt")"
   exit 1
 '

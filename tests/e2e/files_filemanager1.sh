@@ -38,11 +38,8 @@ call() {
 }
 windows() { run "$ANDROMEDA" windows --json | jq "[.. | objects | select(.app_id? == \"$APP\")] | length"; }
 
-for _ in $(seq 100); do
-  DBUS_SESSION_BUS_ADDRESS="$BUS" gdbus introspect --session --dest org.freedesktop.FileManager1 \
-    --object-path /org/freedesktop/FileManager1 > /dev/null 2>&1 && break
-  sleep 0.05
-done
+poll_for 5 env DBUS_SESSION_BUS_ADDRESS="$BUS" gdbus introspect --session --dest org.freedesktop.FileManager1 \
+  --object-path /org/freedesktop/FileManager1 > /dev/null 2>&1 || true
 DBUS_SESSION_BUS_ADDRESS="$BUS" gdbus introspect --session --dest org.freedesktop.FileManager1 \
   --object-path /org/freedesktop/FileManager1 | grep -q ShowItemProperties || fail "the service does not own FileManager1"
 [[ $(windows) -eq 0 ]] || fail "--service opened a window before a request"

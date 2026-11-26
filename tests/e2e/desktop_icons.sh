@@ -32,8 +32,7 @@ with_noctalia '
   # "released" around the press, no key). One keyboard held for the whole test keeps it bound.
   tail -f /dev/null | "'"$POINTER"'" 1280 720 keyboard-only mod none hold > /dev/null &
   keyboard_bound() { [[ $(grep -c "keyboard: bound" "$OUT/noctalia.log") -gt $(grep -c "keyboard: released" "$OUT/noctalia.log") ]]; }
-  for _ in $(seq 100); do keyboard_bound && break; sleep 0.05; done
-  keyboard_bound || { echo "FAIL: the held keyboard did not bind"; exit 1; }
+  WAIT_S=5 wait_for "the held keyboard did not bind" keyboard_bound
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   grim "$OUT/rest.png"
   # Icons: folders first, top-right column from the usable area; the second cell is "Projects" after "Kathmandu trip".
@@ -61,8 +60,7 @@ with_noctalia '
   "'"$POINTER"'" 1280 720 move-release $(( right - 4 )) $(( top + 200 )) 272 > /dev/null
   # Delete moves the selection to Trash.
   "'"$POINTER"'" 1280 720 move "$x" "$y" click 272 tap '"$K_DELETE"' > /dev/null
-  for _ in $(seq 40); do [[ ! -e "'"$DESK"'/Projects" ]] && break; sleep 0.05; done
-  [[ ! -e "'"$DESK"'/Projects" ]] || fail "Delete left Projects on the desktop"
+  WAIT_S=2 wait_for "Delete left Projects on the desktop" test ! -e "'"$DESK"'/Projects"
   ls "'"$RUNTIME"'/home/.local/share/Trash/files" | grep -q "^Projects$" || fail "Projects is not in Trash"
   grim "$OUT/after-trash.png"
   # F2 renames in place: the name without its extension starts selected, so typing "x" gives x.txt. With Projects gone,
@@ -71,8 +69,7 @@ with_noctalia '
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   grim "$OUT/rename.png"
   "'"$POINTER"'" 1280 720 tap 45 tap 28 > /dev/null
-  for _ in $(seq 40); do [[ -e "'"$DESK"'/x.txt" ]] && break; sleep 0.05; done
-  [[ -e "'"$DESK"'/x.txt" ]] || fail "F2 + x + Enter did not rename notes.txt to x.txt"
+  WAIT_S=2 wait_for "F2 + x + Enter did not rename notes.txt to x.txt" test -e "'"$DESK"'/x.txt"
   echo "PASS: desktop icons select, band-select, move to Trash and rename"
 '
 ls "$OUT"/*.png

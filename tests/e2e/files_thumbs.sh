@@ -56,11 +56,8 @@ echo "# $FILES ($(meson introspect --buildoptions "$(dirname "$FILES")" 2> /dev/
 
 wait_log 0 "first frame at" 10 || fail "the window drew no first frame"
 wait_log 0 "listed [0-9]+ in" 10 || fail "the folder did not list"
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+poll_for 5 win_mapped || true
 WX=$(jq .x <<< "$w"); WY=$(jq .y <<< "$w"); WW=$(jq .w <<< "$w"); WH=$(jq .h <<< "$w")
 run "$ANDROMEDA" settle > /dev/null
 

@@ -12,13 +12,10 @@ source "$(dirname "$0")/lib.sh"
 boot_headless 1
 
 with_noctalia '
-  for _ in $(seq 100); do "$NOCTALIA" msg debug-threads > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 10 "$NOCTALIA" msg debug-threads > /dev/null 2>&1 || true
   "$NOCTALIA" msg debug-threads > "$OUT/threads-early.txt"
-  for _ in $(seq 120); do
-    now=$("$NOCTALIA" msg debug-threads | tail -n +2 | grep -vxcE "${ALLOWED:-^$}" || true)
-    [[ "$now" == "0" ]] && break
-    sleep 0.5
-  done
+  idle_now() { [[ $("$NOCTALIA" msg debug-threads | tail -n +2 | grep -vxcE "${ALLOWED:-^$}" || true) == 0 ]]; }
+  poll_for 60 idle_now || true
   "$NOCTALIA" msg debug-threads > "$OUT/threads.txt"
 '
 cat "$OUT/threads.txt"

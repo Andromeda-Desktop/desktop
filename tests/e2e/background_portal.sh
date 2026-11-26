@@ -21,29 +21,28 @@ FRONTEND_CALL="$ROOT/tests/e2e/portal_frontend_call.py" with_noctalia '
   [[ $denied == *"portal frontend"* ]] || { echo "FAIL: a direct caller got GetAppState: $denied"; exit 1; }
   foot --config=/dev/null --app-id=bg.test sh -c "sleep 300" > /dev/null 2>&1 &
   foot_pid=$!
-  for _ in $(seq 50); do impl GetAppState > "$OUT/state-open.txt" 2>&1 && grep -q "\"bg.test\"" "$OUT/state-open.txt" && break; sleep 0.1; done
+  app_state_open() { impl GetAppState > "$OUT/state-open.txt" 2>&1 && grep -q "\"bg.test\"" "$OUT/state-open.txt"; }
+  poll_for 5 app_state_open || true
   grep -Eq "\"bg.test\": [12]" "$OUT/state-open.txt" || { echo "FAIL: bg.test not running in GetAppState"; exit 1; }
 
   dbus-monitor --session "type=signal,interface=org.freedesktop.impl.portal.Background,member=RunningApplicationsChanged" \
     > "$OUT/signals.txt" 2>&1 &
   sleep 0.5 # real time: the monitor subscribes
   kill "$foot_pid"
-  for _ in $(seq 50); do grep -q RunningApplicationsChanged "$OUT/signals.txt" && break; sleep 0.1; done
-  grep -q RunningApplicationsChanged "$OUT/signals.txt" || { echo "FAIL: no RunningApplicationsChanged on close"; exit 1; }
+  WAIT_S=5 wait_for "no RunningApplicationsChanged on close" grep -q RunningApplicationsChanged "$OUT/signals.txt"
   impl GetAppState > "$OUT/state-closed.txt"
   ! grep -q "\"bg.test\"" "$OUT/state-closed.txt" || { echo "FAIL: bg.test still in GetAppState"; exit 1; }
 
   impl NotifyBackground "(objectpath \"/org/freedesktop/portal/desktop/request/1_1/t\", \"bg.test\", \"BG Test\")" \
     > "$OUT/notify.txt"
   grep -q "^\[0, {\"result\": 1}\]$" "$OUT/notify.txt" || { echo "FAIL: NotifyBackground replied $(cat "$OUT/notify.txt")"; exit 1; }
-  for _ in $(seq 50); do grep -q "portal background: bg.test" "$OUT/noctalia.log" && break; sleep 0.1; done
-  grep -q "portal background: bg.test" "$OUT/noctalia.log" || { echo "FAIL: no Activity notification for bg.test"; exit 1; }
+  WAIT_S=5 wait_for "no Activity notification for bg.test" grep -q "portal background: bg.test" "$OUT/noctalia.log"
   [[ $("$NOCTALIA" msg notification-action-latest show) == ok ]] || { echo "FAIL: the notification has no Show action"; exit 1; }
-  for _ in $(seq 50); do
+  activity_window_up() {
     "$ANDROMEDA" windows --json > "$OUT/windows.json"
-    jq -e "any(.. | objects; .app_id? == \"dev.andromeda.Activity\")" "$OUT/windows.json" > /dev/null && break
-    sleep 0.1
-  done
+    jq -e "any(.. | objects; .app_id? == \"dev.andromeda.Activity\")" "$OUT/windows.json" > /dev/null
+  }
+  poll_for 5 activity_window_up || true
   jq -e "any(.. | objects; .app_id? == \"dev.andromeda.Activity\")" "$OUT/windows.json" > /dev/null \
     || { echo "FAIL: Show did not open Activity"; exit 1; }
 '

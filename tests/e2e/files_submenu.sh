@@ -41,12 +41,11 @@ start() {
     XDG_STATE_HOME="$HOME_DIR/.local/state" XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug \
     DESK_FILES_GEOMETRY=1 "$FILES" "$A" >> "$LOG" 2>&1
   FILES_PID=$!
-  for _ in $(seq 100); do
+  win_mapped() {
     w=$(run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty")
-    [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-    sleep 0.05
-  done
-  [[ -n ${w:-} ]] || fail "the Files window did not map"
+    [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]
+  }
+  WAIT_S=5 wait_for "the Files window did not map" win_mapped
   WX=$(jq .x <<< "$w"); WY=$(jq .y <<< "$w")
   run "$ANDROMEDA" settle > /dev/null
 }
@@ -81,13 +80,11 @@ row=$(open_row) || fail "the submenu did not open"
 echo "window $WX $WY, submenu row at $row"
 run grim "$OUT/1-submenu-open.png"
 run "$POINTER" 1280 720 move $row pause 100 click 272 > /dev/null
-for _ in $(seq 60); do [[ -s $MARKS ]] && break; sleep 0.05; done
-[[ -s $MARKS ]] || fail "a click on Actions › E2E › Mark for E2E did not run it"
+WAIT_S=3 wait_for "a click on Actions › E2E › Mark for E2E did not run it" test -s "$MARKS"
 echo "pass click"
 
 : > "$MARKS"
 row=$(open_row) || fail "the submenu did not open"
 run "$POINTER" 1280 720 move $row pause 100 press 272 pause 250 release 272 > /dev/null
-for _ in $(seq 60); do [[ -s $MARKS ]] && break; sleep 0.05; done
-[[ -s $MARKS ]] || fail "a press, 250 ms and a release (touchpad tap timing) on the submenu row did not run it"
+WAIT_S=3 wait_for "a press, 250 ms and a release (touchpad tap timing) on the submenu row did not run it" test -s "$MARKS"
 echo "pass files_submenu"

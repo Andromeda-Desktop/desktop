@@ -16,9 +16,9 @@ BEFORE_NOCTALIA='
   export DESK_A11Y_STRICT=1
   dbus-daemon --config-file=/usr/share/defaults/at-spi2/accessibility.conf --nofork --print-address=3 \
     3> "$RUNTIME/a11y-address" > "$OUT/at-spi.log" 2>&1 &
-  for _ in $(seq 100); do [[ -s $RUNTIME/a11y-address ]] && break; sleep 0.05; done
+  poll_for 5 test -s "$RUNTIME/a11y-address" || true
   python3 -I "$E2E_DIR/a11y_bus_mock.py" "$(head -n1 "$RUNTIME/a11y-address")" >> "$OUT/at-spi.log" 2>&1 &
-  for _ in $(seq 100); do gdbus call --session -d org.a11y.Bus -o /org/a11y/bus -m org.a11y.Bus.GetAddress > /dev/null 2>&1 && break; sleep 0.05; done
+  poll_for 5 gdbus call --session -d org.a11y.Bus -o /org/a11y/bus -m org.a11y.Bus.GetAddress > /dev/null 2>&1 || true
 ' with_noctalia '
   wait_for "the shell did not publish its tree" eval "grep -q \"accessibility tree published\" \"$OUT/noctalia.log\""
   "$NOCTALIA" msg panel-open launcher foot > /dev/null

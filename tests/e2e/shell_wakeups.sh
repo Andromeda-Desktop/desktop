@@ -49,7 +49,8 @@ with_noctalia '
   scenario idle
 
   python3 "$(dirname "$NOCTALIA")/../../tests/e2e/mpris_test_player.py" "$OUT/player-calls.txt" &
-  for _ in $(seq 50); do gdbus call --session -d org.freedesktop.DBus -o / -m org.freedesktop.DBus.NameHasOwner org.mpris.MediaPlayer2.e2e 2>/dev/null | grep -q true && break; sleep 0.1; done
+  mpris_owned() { gdbus call --session -d org.freedesktop.DBus -o / -m org.freedesktop.DBus.NameHasOwner org.mpris.MediaPlayer2.e2e 2>/dev/null | grep -q true; }
+  poll_for 5 mpris_owned || true
   sleep 3 # real time: the island grows into the media face and the position probe gives up
   grim -g "0,0 1280x40" "$OUT/media-a.png"
   sleep 0.1 # real time: the waveform loop moves on the compositor clock

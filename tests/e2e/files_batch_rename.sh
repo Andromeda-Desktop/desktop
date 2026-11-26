@@ -19,7 +19,8 @@ boot_headless 1
 if [[ ${SCALE:-1} == 2 ]]; then
   printf '\n[output.HEADLESS-1]\nmode = "2560x1440@60"\nscale = 2\n' >> "$RUNTIME/andromeda.toml"
   run "$ANDROMEDA" msg config-reload > /dev/null
-  for _ in $(seq 100); do run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null && break; sleep 0.05; done
+  scale_is_2() { run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
+  poll_for 5 scale_is_2 || true
 fi
 
 fail() { echo "FAIL: $*"; exit 1; }
@@ -57,12 +58,8 @@ run "${env_app[@]}" XDG_RUNTIME_DIR="$RUNTIME" "$FILEOPS" > "$OUT/fileops.log" 2
 run "${env_app[@]}" ANDROMEDA_LOG_LEVEL=debug "$FILES" "$DIR" > "$OUT/files.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 run "$ANDROMEDA" settle > /dev/null
 
 action() { # name [gvariant parameter list]
@@ -76,11 +73,8 @@ shot() { run "$ANDROMEDA" settle > /dev/null; sleep 0.4; run grim "$OUT/$1.png";
 
 wait_for "the daemon is not on the bus" \
   env DBUS_SESSION_BUS_ADDRESS="$BUS" gdbus introspect --session -d org.andromeda.FileOps1 -o /org/andromeda/FileOps1
-for _ in $(seq 40); do
-  action edit.select-all
-  grep -q "selected 24 of" "$OUT/files.log" && break
-  sleep 0.05
-done
+select_all() { action edit.select-all && grep -q "selected 24 of" "$OUT/files.log"; }
+wait_for "select-all did not select the 24 photos" select_all
 action file.rename
 wait_for "F2 on 24 photos did not open Batch Rename" logged "batch rename 24 items"
 

@@ -30,11 +30,8 @@ with_noctalia '
   grim -g "440,0 400x64" "$OUT/island-before.png"
   "$ANDROMEDA" lock-keys-test caps > /dev/null
   shown=0
-  for _ in $(seq 50); do
-    sleep 0.1
-    grim -g "440,0 400x64" "$OUT/island-caps.png"
-    cmp -s "$OUT/island-before.png" "$OUT/island-caps.png" || { shown=1; break; }
-  done
+  island_changed() { grim -g "440,0 400x64" "$OUT/island-caps.png"; ! cmp -s "$OUT/island-before.png" "$OUT/island-caps.png"; }
+  poll_for 5 island_changed && shown=1
   ((shown)) || layer_present noctalia-osd || { echo "FAIL: Caps Lock did not reach the shell"; exit 1; }
 '
 echo "PASS; artifacts: $OUT"

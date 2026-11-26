@@ -32,7 +32,7 @@ with_noctalia '
   events() { grep -c "\"event\":\"$1\"" "$OUT/hold.jsonl" || true; }
 
   XDG_STATE_HOME=$RUNTIME/linkd "$BIN/andromeda-linkd" > "$OUT/linkd.log" 2>&1 &
-  for _ in $(seq 100); do link CancelPairing > /dev/null 2>&1 && break; sleep 0.05; done
+  poll_for 5 link CancelPairing > /dev/null 2>&1 || true
   PORT=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[\"port\"])" "$RUNTIME/linkd/andromeda-link/devices.json")
   CODE=$(link StartPairing | sed -E "s/^\(.([0-9]+)., .*/\1/")
   "$BIN/andromeda-link-phone" --state "$RUNTIME/phone" --name "OnePlus 12" pair --code "$CODE" --addr "127.0.0.1:$PORT" \
@@ -46,12 +46,11 @@ with_noctalia '
 
   "$LINK_APP" >> "$OUT/app.log" 2>&1 &
   APP=$!
-  for _ in $(seq 100); do
+  link_window_mapped() {
     w=$("$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"dev.andromeda.Link\")][0] // empty")
-    [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-    sleep 0.1
-  done
-  [[ -n ${w:-} ]] || fail "the Link window did not map"
+    [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]
+  }
+  WAIT_S=10 wait_for "the Link window did not map" link_window_mapped
   [[ $(jq -r "[.w, .h] | join(\"x\")" <<< "$w") == 1200x592 ]] || fail "the points below assume a 1200x592 window: $w"
   WX=$(jq .x <<< "$w") WY=$(jq .y <<< "$w")
   # Window points: Mirror in the sidebar, the picture (x 596..834, y 88..513 for 720x1280), Stop in the caption.

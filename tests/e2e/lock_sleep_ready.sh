@@ -21,7 +21,7 @@ with_noctalia '
   wait_for "the mock did not start" busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" status org.freedesktop.login1 \
     > /dev/null 2>&1
   ANDROMEDA_LOG_LEVEL=debug "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
-  for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
   wtype -s 3600000 &
   sleep 0.3
 

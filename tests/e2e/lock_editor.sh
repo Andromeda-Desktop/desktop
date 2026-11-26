@@ -79,8 +79,7 @@ with_noctalia '
   grim "$OUT/slots.png"
   keys Tab Return Tab Tab Tab Tab Tab Tab Return
   wait_for "Done did not close the editor after the slots" closed 4
-  for _ in $(seq 50); do widgets && break; sleep 0.1; done
-  widgets || { dump; fail "Done did not save widgets = [\"weather\"]"; }
+  poll_for 5 widgets || { dump; fail "Done did not save widgets = [\"weather\"]"; }
   wait_for "Done did not save bottom_slot = phone" phone
 
   # Free: Tab Tab Return picks the Free segment; Tab Return turns Snap to zones off (drops on the 32 grid); five Tabs

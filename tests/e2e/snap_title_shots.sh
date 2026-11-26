@@ -33,7 +33,8 @@ with_noctalia '
   title_box() { "$ANDROMEDA" windows --json | jq -r ".[] | select(.title == \"Mail\") | \"\(.x - 8),\(.y - 48) \(.w + 16)x56\""; }
   FILL_COLOR=0xFFE8E8EE "$UNMAP" Notes 520 340 > "$OUT/notes.log" 2>&1 &
   FILL_COLOR=0xFFF4F4F8 "$UNMAP" Mail 560 360 > "$OUT/mail.log" 2>&1 &
-  for _ in $(seq 100); do [[ $(count) -ge 2 ]] && break; sleep 0.05; done
+  count_at_least() { [[ $(count) -ge $1 ]]; }
+  poll_for 5 count_at_least 2 || true
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   conf="$RUNTIME/andromeda.toml"
   for style in andromeda macos windows; do
@@ -84,7 +85,8 @@ with_noctalia '
   for t in Photos Music Terminal Code; do
     FILL_COLOR=0xFFDCDCE4 "$UNMAP" $t 420 300 > "$OUT/$t.log" 2>&1 &
   done
-  for _ in $(seq 100); do [[ $(count) -ge 6 ]] && break; sleep 0.05; done
+  count_at_least() { [[ $(count) -ge $1 ]]; }
+  poll_for 5 count_at_least 6 || true
   "$ANDROMEDA" msg window-focus:"$("$ANDROMEDA" windows --json | jq -r ".[] | select(.title == \"Mail\") | .id")" > /dev/null
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   "$ANDROMEDA" msg window-snap-layouts > /dev/null

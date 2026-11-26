@@ -24,7 +24,8 @@ with_noctalia '
   rss() { awk "/VmRSS/ {print \$2}" /proc/$(pgrep -f "^$NOCTALIA\$" | head -1)/status; }
   scheme() { impl Read ss org.freedesktop.appearance color-scheme | awk "{print \$NF}"; }
   wait_scheme() {
-    for _ in $(seq 50); do [[ $(scheme) == "$1" ]] && return 0; sleep 0.1; done
+    scheme_is() { [[ $(scheme) == "$1" ]]; }
+    poll_for 5 scheme_is "$1" && return 0
     echo "FAIL: color-scheme is $(scheme), wanted $1"; exit 1
   }
   "$NOCTALIA" msg theme-mode-set dark > /dev/null

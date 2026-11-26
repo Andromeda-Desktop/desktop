@@ -8,6 +8,7 @@
 # receive.jsonl, decline.jsonl, and hashes.txt to $OUT (default ./artifacts/quickshare).
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+source "$ROOT/tests/e2e/wait.sh"
 OUT=${OUT:-$(pwd)/artifacts/quickshare}
 BIN=${LINK_BIN:-$ROOT/link/target/debug}
 if [[ -z ${QS_IN_NS:-} ]]; then
@@ -25,7 +26,8 @@ ip link set lo up
 ip link add d0 type veth peer name p0
 unshare --net sleep infinity &
 PHONE_NS=$!
-for _ in $(seq 50); do [[ $(readlink /proc/$PHONE_NS/ns/net) != "$(readlink /proc/self/ns/net)" ]] && break; sleep 0.02; done
+phone_ns_ready() { [[ $(readlink /proc/$PHONE_NS/ns/net) != "$(readlink /proc/self/ns/net)" ]]; }
+poll_for 1 phone_ns_ready || true
 ip link set p0 netns "$PHONE_NS"
 ip addr add 10.78.0.1/24 dev d0
 ip link set d0 up
@@ -42,11 +44,13 @@ echo "a small note" > "$RUNTIME/files/note.txt"
 "$QS" --name Desktop receive --dir "$IN" --port 47100 --consent accept > "$OUT/receive.jsonl" 2> "$OUT/receive.log" &
 "$QS" --name Decliner receive --dir "$RUNTIME/declined" --port 47101 --consent decline > "$OUT/decline.jsonl" \
   2> "$OUT/decline.log" &
-for _ in $(seq 50); do [[ $(grep -c listening "$OUT/receive.jsonl" "$OUT/decline.jsonl" | grep -c ':1') == 2 ]] && break; sleep 0.1; done
+both_listening() { [[ $(grep -c listening "$OUT/receive.jsonl" "$OUT/decline.jsonl" | grep -c ':1') == 2 ]]; }
+poll_for 5 both_listening || true
 
 send() { in_phone "$QS" --name Phone send "$@" 2>> "$OUT/send.log"; }
 last_received() { grep '"received"\|"failed"' "$OUT/receive.jsonl" | tail -1; }
-wait_results() { for _ in $(seq 100); do [[ $(grep -c '"received"\|"failed"' "$OUT/receive.jsonl") -ge $1 ]] && return; sleep 0.1; done; fail "receiver reported nothing"; }
+results_reached() { [[ $(grep -c '"received"\|"failed"' "$OUT/receive.jsonl") -ge $1 ]]; }
+wait_results() { poll_for 10 results_reached "$1" && return; fail "receiver reported nothing"; }
 
 FOUND=$(in_phone "$QS" --name Phone discover --seconds 2)
 echo "$FOUND" | grep '"name":"Desktop"' | grep -q '10.78.0.1:47100' || fail "mDNS did not find the receiver: $FOUND"

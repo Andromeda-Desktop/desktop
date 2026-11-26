@@ -18,7 +18,7 @@ with_noctalia '
   [[ $(msg screen-record-region "100,50 600x400") == ok ]] || fail "region recording did not start"
   sleep 3 # real time: the recorded length
   [[ $(msg screen-record-region) == ok ]] || fail "region recording did not stop"
-  for _ in $(seq 50); do grep -q "recording saved to" "$OUT/noctalia.log" && break; sleep 0.1; done
+  poll_for 5 grep -q "recording saved to" "$OUT/noctalia.log" || true
   cp "$(sed -n "s/.*recording saved to //p" "$OUT/noctalia.log" | tail -1)" "$OUT/region.mp4"
 
   [[ $(msg screen-record-region "5000,5000 100x100") == error* ]] || fail "an off-display region was accepted"

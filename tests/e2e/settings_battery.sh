@@ -42,24 +42,24 @@ with_noctalia '
   kill %1; wait %1 2> /dev/null || true
   dbus-daemon --config-file='"$ROOT"'/tests/e2e/private-bus.conf --nofork --print-address=3 3> "$OUT/system-bus" &
   sysbus=$!
-  for _ in $(seq 50); do grep -q unix: "$OUT/system-bus" && break; sleep 0.1; done
+  poll_for 5 grep -q unix: "$OUT/system-bus" || true
   export DBUS_SYSTEM_BUS_ADDRESS=$(head -n1 "$OUT/system-bus")
   MOCK_BATTERY=1 MOCK_UNPLUGGED_HOURS=6 python3 '"$MOCK"' "$OUT/profiles.txt" > "$OUT/mock.log" 2>&1 &
   mock=$!
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
+  poll_for 5 grep -q ready "$OUT/mock.log" || true
   RUST_LOG=debug ANDROMEDA_SYSTEM_TEST=1 STATE_DIRECTORY="$OUT" '"$SYSTEM_BIN"' > "$OUT/system.log" 2>&1 &
   system=$!
-  for _ in $(seq 50); do busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" status org.andromeda.System1 > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 5 busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" status org.andromeda.System1 > /dev/null 2>&1 || true
   RUST_LOG=debug XDG_STATE_HOME="$OUT/session-state" XDG_CONFIG_HOME="$OUT/session-config" ANDROMEDA_RULES_DIR='"$ROOT"'/system/data/rules \
     '"$SYSTEM_BIN"' --session > "$OUT/session.log" 2>&1 &
   session=$!
   "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
   shell=$!
-  for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
   power() { busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" call org.freedesktop.UPower /org/freedesktop/UPower dsk.test.Power "$@" > /dev/null; }
   power SetBattery du 18 2
   power SetOnBattery b true
-  for _ in $(seq 50); do grep -q "Hold=power-saver" "$OUT/profiles.txt" && break; sleep 0.1; done
+  poll_for 5 grep -q "Hold=power-saver" "$OUT/profiles.txt" || true
   if ! grep -q "Hold=power-saver" "$OUT/profiles.txt"; then
     busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" introspect org.andromeda.System1 /org/andromeda/System1/Battery/DisplayDevice > "$OUT/battery.txt" 2>&1 || true
     busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" introspect org.andromeda.System1 /org/andromeda/System1/Power > "$OUT/power.txt" 2>&1 || true

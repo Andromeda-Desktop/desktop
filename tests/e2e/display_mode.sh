@@ -21,11 +21,8 @@ with_noctalia '
   expect() {
     local mode=$1 want=$2 got=
     "$NOCTALIA" msg panel-open display-mode "$mode" > /dev/null
-    for _ in $(seq 50); do
-      got=$(state)
-      [[ $got == *"$want"* ]] && { echo "PASS $mode: $got" | tee -a "$OUT/modes.txt"; return 0; }
-      sleep 0.1
-    done
+    mode_reached() { got=$(state); [[ $got == *"$want"* ]]; }
+    poll_for 5 mode_reached && { echo "PASS $mode: $got" | tee -a "$OUT/modes.txt"; return 0; }
     echo "FAIL $mode: wanted $want, got $got" | tee -a "$OUT/modes.txt"
     return 1
   }

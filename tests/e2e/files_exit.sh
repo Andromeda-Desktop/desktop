@@ -23,10 +23,9 @@ spawn env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_DATA_HOME="$HOME_
   ANDROMEDA_LOG_LEVEL=debug "$FILES" "$HOME_DIR" > "$OUT/files.log" 2>&1
 PID=$!
 mapped() { [[ $(run "$ANDROMEDA" windows --json | jq "[.. | objects | select(.app_id? == \"$APP\")] | length") -gt 0 ]]; }
-for _ in $(seq 200); do mapped && break; sleep 0.05; done
-mapped || fail "the Files window did not map"
+wait_for "the Files window did not map" mapped
 # The drive monitor starts 300 ms after the first window: let it come up so its teardown runs too.
-for _ in $(seq 40); do grep -q "sidebar" "$OUT/files.log" && break; sleep 0.05; done
+poll_for 2 grep -q "sidebar" "$OUT/files.log" || true
 sleep 0.5
 run "$ANDROMEDA" settle > /dev/null
 kill -TERM "$PID"

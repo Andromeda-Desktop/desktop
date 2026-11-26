@@ -13,10 +13,8 @@ POWER=$ROOT/compositor/build-debug/tests/output-power-client
 mark() { wc -l < "$OUT/andromeda.log"; }
 expect_log() {
   local from=$1 pattern=$2 label=$3
-  for _ in $(seq 50); do
-    tail -n +"$((from + 1))" "$OUT/andromeda.log" | grep -q "$pattern" && { echo "PASS $label" >> "$OUT/power.txt"; return; }
-    sleep 0.1
-  done
+  pattern_logged() { tail -n +"$((from + 1))" "$OUT/andromeda.log" | grep -q "$pattern"; }
+  poll_for 5 pattern_logged && { echo "PASS $label" >> "$OUT/power.txt"; return; }
   echo "FAIL $label (no \"$pattern\" in the log)" >> "$OUT/power.txt"
 }
 commits() { run "$ANDROMEDA" output-commits --json | jq '."HEADLESS-2"'; }
@@ -33,7 +31,8 @@ run "$ANDROMEDA" msg dpms-on > /dev/null
 expect_log "$from" "output 'HEADLESS-2': applied mode" "dpms-on powers the mirror back on"
 before=$(commits)
 run foot --config=/dev/null sh -c 'sleep 30' > /dev/null 2>&1 &
-for _ in $(seq 50); do (( $(commits) > before )) && break; sleep 0.1; done
+commits_grew() { (( $(commits) > before )); }
+poll_for 5 commits_grew || true
 (( $(commits) > before )) && echo "PASS the mirror draws again after power-on" >> "$OUT/power.txt" \
   || echo "FAIL the mirror did not draw after power-on" >> "$OUT/power.txt"
 

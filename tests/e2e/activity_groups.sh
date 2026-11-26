@@ -24,16 +24,13 @@ BG_CGROUP=$(XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user show -P ControlGroup 
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_systemd1.py"
 export SCOPE BG BG_CGROUP REAL_RUNTIME
 BEFORE_NOCTALIA='python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done'
+  poll_for 5 grep -q ready "$OUT/mock.log" || true'
 with_noctalia '
   XDG_RUNTIME_DIR=$REAL_RUNTIME systemd-run --user --quiet --scope --unit="$SCOPE" \
     env XDG_RUNTIME_DIR="$RUNTIME" foot --config=/dev/null --app-id=act-test --title=act-test sh -c "sleep 300" > /dev/null 2>&1 &
   scope_cgroup=""
-  for _ in $(seq 50); do
-    scope_cgroup=$(XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user show -P ControlGroup "$SCOPE" 2> /dev/null || true)
-    [[ -n $scope_cgroup ]] && break; sleep 0.1
-  done
-  [[ -n $scope_cgroup ]] || { echo "FAIL: foot scope did not start"; exit 1; }
+  scope_up() { scope_cgroup=$(XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user show -P ControlGroup "$SCOPE" 2> /dev/null || true); [[ -n $scope_cgroup ]]; }
+  WAIT_S=5 wait_for "foot scope did not start" scope_up
 
   call() { dbus-send --session --print-reply --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 "org.andromeda.MockSystemd.$@" > /dev/null; }
   "$NOCTALIA" msg activity-dump > /dev/null # takes the 10 s lease: live mode and sampling start
@@ -41,11 +38,11 @@ with_noctalia '
   call StartWithCgroup string:"$BG" string:background.slice string:"$BG_CGROUP"
 
   # Wait for the window to map and two samples to give rates.
-  for _ in $(seq 60); do
+  sampled() {
     "$NOCTALIA" msg activity-dump > "$OUT/dump.json"
-    jq -e --arg bg "$BG" '"'"'any(.rows[]; .app_id == "act-test" and .has_window) and any(.rows[]; .key == $bg and .memory_bytes > 0)'"'"' "$OUT/dump.json" > /dev/null 2>&1 && break
-    sleep 0.1
-  done
+    jq -e --arg bg "$BG" '"'"'any(.rows[]; .app_id == "act-test" and .has_window) and any(.rows[]; .key == $bg and .memory_bytes > 0)'"'"' "$OUT/dump.json" > /dev/null 2>&1
+  }
+  poll_for 6 sampled || true
 '
 jq . "$OUT/dump.json" > "$OUT/dump.pretty.json"
 jq -e '.available and .sampling' "$OUT/dump.json" > /dev/null || { echo "FAIL: monitor not sampling" >&2; exit 1; }

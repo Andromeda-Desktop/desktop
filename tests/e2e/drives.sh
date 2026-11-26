@@ -13,17 +13,17 @@ with_noctalia '
   kill %1; wait %1 2> /dev/null || true
   python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
   mock=$!
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done
+  poll_for 5 grep -q ready "$OUT/mock.log" || true
   "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
   shell=$!
-  for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+  poll_for 10 "$NOCTALIA" msg settings-close > /dev/null 2>&1 || true
   plug() {
     busctl --address="$DBUS_SYSTEM_BUS_ADDRESS" call org.freedesktop.UDisks2 /org/freedesktop/UDisks2 \
       dsk.test.UDisks Plug sbb "$1" "$2" "$3" > /dev/null
   }
   plug SYSTEMFS true true
   plug USBSTICK true false
-  for _ in $(seq 50); do grep -q "mounted USBSTICK" "$OUT/noctalia.log" && break; sleep 0.1; done
+  poll_for 5 grep -q "mounted USBSTICK" "$OUT/noctalia.log" || true
   grep -q "mounted USBSTICK at /run/media/test/USBSTICK" "$OUT/noctalia.log" \
     || { echo "FAIL: the removable drive was not mounted"; exit 1; }
   grep -q "Mount SYSTEMFS" "$OUT/calls.txt" && { echo "FAIL: a system filesystem was mounted"; exit 1; }

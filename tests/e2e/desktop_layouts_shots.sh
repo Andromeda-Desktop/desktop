@@ -47,8 +47,7 @@ with_noctalia '
 
   # 1-2. Gallery: the first card of the Windows page.
   "$NOCTALIA" msg settings-open layout > /dev/null
-  for _ in $(seq 100); do settings_up && break; sleep 0.05; done
-  settings_up || fail "the Settings window did not map"
+  WAIT_S=5 wait_for "the Settings window did not map" settings_up
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   grim "$OUT/gallery-light.png"
   "$NOCTALIA" msg theme-mode-set dark > /dev/null
@@ -64,26 +63,29 @@ with_noctalia '
   grim "$OUT/gallery-custom.png"
   "$NOCTALIA" msg config-set dock.enabled true > /dev/null
   "$NOCTALIA" msg settings-close > /dev/null
-  for _ in $(seq 100); do settings_up || break; sleep 0.05; done
+  settings_gone() { ! settings_up; }
+  poll_for 5 settings_gone || true
 
   # 3. Dock snap group, as compositor/tests/harness/checks/layout/snap_assist.sh: Free mode before the windows map,
   # Snap Layouts + Enter puts desk-a left, then Enter in snap assist puts desk-b right and forms the group.
   "$ANDROMEDA" msg workspace-set-layout:floating > /dev/null
   APP_ID=desk-b FILL_COLOR=0xFF30A060 "$UNMAP" desk-b 600 400 > "$OUT/client-b.log" 2>&1 &
-  for _ in $(seq 100); do [[ -n $(window desk-b) ]] && break; sleep 0.05; done
+  desk_b_mapped() { [[ -n $(window desk-b) ]]; }
+  poll_for 5 desk_b_mapped || true
   APP_ID=desk-a FILL_COLOR=0xFF3060C0 "$UNMAP" desk-a 600 400 > "$OUT/client-a.log" 2>&1 &
-  for _ in $(seq 100); do [[ -n $(window desk-a) && -n $(window desk-b) ]] && break; sleep 0.05; done
-  [[ -n $(window desk-a) && -n $(window desk-b) ]] || fail "the windows did not map"
+  desks_mapped() { [[ -n $(window desk-a) && -n $(window desk-b) ]]; }
+  WAIT_S=5 wait_for "the windows did not map" desks_mapped
   "$ANDROMEDA" settle > /dev/null
   "$ANDROMEDA" msg "window-focus:$(window desk-a | jq -r .id)" > /dev/null
   "$ANDROMEDA" msg window-snap-layouts > /dev/null
   "$POINTER" 1280 720 tap 28 > /dev/null
-  for _ in $(seq 60); do [[ $(window desk-a | jq -r .snap) == 1.1 ]] && break; sleep 0.05; done
-  [[ $(window desk-a | jq -r .snap) == 1.1 ]] || fail "Snap Layouts did not put desk-a in the left half"
+  desk_a_left() { [[ $(window desk-a | jq -r .snap) == 1.1 ]]; }
+  WAIT_S=3 wait_for "Snap Layouts did not put desk-a in the left half" desk_a_left
   # Snap assist opens once the snap motion ends; the harness runs with animations off.
   "$ANDROMEDA" settle > /dev/null
   "$POINTER" 1280 720 tap 28 > /dev/null
-  for _ in $(seq 60); do [[ $(window desk-b | jq -r .snap) == 1.2 ]] && break; sleep 0.05; done
+  desk_b_right() { [[ $(window desk-b | jq -r .snap) == 1.2 ]]; }
+  poll_for 3 desk_b_right || true
   group=$(window desk-a | jq -r .snap_group)
   [[ $group =~ ^[0-9]+$ && $(window desk-b | jq -r .snap_group) == "$group" ]] || fail "desk-a and desk-b formed no snap group (got $group)"
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
@@ -106,8 +108,8 @@ with_noctalia '
   printf "\n[output.HEADLESS-1]\nscale = 1.5\n" >> "$RUNTIME/andromeda.toml"
   sed -i "s/^mode = \"auto\"/mode = \"forced\"/; s/^style = \"andromeda\"/style = \"macos\"/; s/^button_position = .*/button_position = \"left\"/" "$RUNTIME/andromeda.toml"
   "$ANDROMEDA" msg config-reload > /dev/null
-  for _ in $(seq 100); do [[ $("$ANDROMEDA" outputs --json | jq -r ".[0].scale") == 1.5 ]] && break; sleep 0.05; done
-  [[ $("$ANDROMEDA" outputs --json | jq -r ".[0].scale") == 1.5 ]] || fail "the output did not take scale 1.5"
+  scale_is_1_5() { [[ $("$ANDROMEDA" outputs --json | jq -r ".[0].scale") == 1.5 ]]; }
+  WAIT_S=5 wait_for "the output did not take scale 1.5" scale_is_1_5
   "$NOCTALIA" msg config-set dock.enabled false > /dev/null
   "$NOCTALIA" msg config-set bar.default.position "\"bottom\"" > /dev/null
   "$NOCTALIA" msg config-set bar.default.islands false > /dev/null
@@ -125,10 +127,8 @@ with_noctalia '
   "$NOCTALIA" msg config-set bar.default.end "[\"tray\", \"group:status\", \"windows_clock\", \"notifications\", \"show_desktop\"]" > /dev/null
   "$ANDROMEDA" msg "window-focus:$(window desk-a | jq -r .id)" > /dev/null
   read -r lw lh < <("$ANDROMEDA" outputs --json | jq -r ".[0].logical_size | \"\(.width) \(.height)\"")
-  for _ in $(seq 100); do
-    [[ $("$ANDROMEDA" outputs --json | jq -r ".[0].usable_area.height") -lt $lh ]] && break
-    sleep 0.1
-  done
+  area_shrunk() { [[ $("$ANDROMEDA" outputs --json | jq -r ".[0].usable_area.height") -lt $lh ]]; }
+  poll_for 10 area_shrunk || true
   "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null
   grim "$OUT/scale15-title.png"
   grim -g "0,$((lh - 48)) ${lw}x48" "$OUT/scale15-taskbar.png"

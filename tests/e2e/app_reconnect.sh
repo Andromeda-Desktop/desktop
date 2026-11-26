@@ -39,8 +39,7 @@ app() {
 }
 mapped() { [[ $(run "$ANDROMEDA" windows --json | jq "[.. | objects | select(.app_id? // \"\" | test(\"$1\"))] | length") -gt 0 ]]; }
 await_mapped() {
-  for _ in $(seq 200); do mapped "$1" && return 0; sleep 0.05; done
-  fail "no $1 window $2"
+  wait_for "no $1 window $2" mapped "$1"
 }
 
 app "$FILES" "$HOME_DIR" > "$OUT/files.log" 2>&1 &
@@ -108,7 +107,8 @@ await_mapped Terminal "on the socket-activated compositor"
 held_compositor() { pgrep -P "$SUPERVISOR" -n; }
 first=$(held_compositor)
 kill -SEGV "$first"
-for _ in $(seq 100); do [[ $(held_compositor) != "$first" && -n $(held_compositor) ]] && break; sleep 0.05; done
+compositor_replaced() { [[ $(held_compositor) != "$first" && -n $(held_compositor) ]]; }
+poll_for 5 compositor_replaced || true
 await_mapped Files "after the socket-activated restart"
 await_mapped Terminal "after the socket-activated restart"
 for log in files terminal; do

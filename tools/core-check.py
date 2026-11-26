@@ -167,6 +167,11 @@ RULES = {
                    r"|install)\b|meson\s+configure\s+\S+\s+[-\"])(?![^\n]*(?:\buninstall\b|--no-rebuild))", ()),
     "e2e-wait": ("e2e scripts wait through wait_for, poll_for, log_since and wait_log in tests/e2e/wait.sh", (E2E,), (".sh",),
                  r"^\s*(wait_for|poll_for|wait_log|log_since)\s*\(\)", ("tests/e2e/wait.sh",)),
+    "e2e-poll": ("a hand retry loop: wait through poll_for or wait_for (tests/e2e/wait.sh) with a function for the step; "
+                 "settle loops that compare two reads and the 10 ms first-frame timer are exempt", (E2E,), (".sh",),
+                 r"for _ in \$\(seq [^)]*\); do(?:[^\n]*\n){0,4}?[^\n]*\b(?:break|return 0)\b(?:[^\n]*\n){0,2}?[^\n]*\bsleep\b",
+                 ("tests/e2e/wait.sh", "tests/e2e/wallpaper_first_frame.sh", "tests/e2e/control_center_vbar.sh",
+                  "tests/e2e/default_apps_watch.sh", "tests/e2e/settings_portal.sh")),
     "index-client": ("andromeda-index queries go through IndexClient (libdesk-system system/index_client.h)",
                      CPP_DIRS, CPP, r"andromeda-index\.sock", ("libdesk-system/src/system/index_client.cpp", "indexer/src/")),
     "harness-wait": ("compositor harness checks wait through await_until and its await_* owners in "

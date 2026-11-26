@@ -17,7 +17,8 @@ boot_headless 1
 if [[ ${SCALE:-1} == 2 ]]; then
   printf '\n[output.HEADLESS-1]\nmode = "2560x1440@60"\nscale = 2\n' >> "$RUNTIME/andromeda.toml"
   run "$ANDROMEDA" msg config-reload > /dev/null
-  for _ in $(seq 100); do run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null && break; sleep 0.05; done
+  scale_is_2() { run "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
+  poll_for 5 scale_is_2 || true
 fi
 
 fail() { echo "FAIL: $*"; exit 1; }
@@ -33,12 +34,8 @@ env_app=(env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_DATA_HOME="$HO
 run "${env_app[@]}" ANDROMEDA_LOG_LEVEL=debug "$FILES" "$DIR" > "$OUT/files.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 run "$ANDROMEDA" settle > /dev/null
 
 action() { # name [gvariant parameter list]
@@ -51,7 +48,8 @@ last_selected() { grep -o "selected [0-9]* of [0-9]* in $DIR" "$OUT/files.log" |
 selected_is() { [[ $(last_selected) == "selected $1 of $2 in $DIR" ]]; }
 
 wait_for "the folder did not list" logged "location $DIR"
-for _ in $(seq 40); do action edit.select-pattern; logged "pattern sheet" && break; sleep 0.05; done
+open_pattern() { action edit.select-pattern && logged "pattern sheet"; }
+wait_for "the pattern sheet did not open" open_pattern
 action pattern.text "[<'*.jpg | *.png'>]"
 run "$ANDROMEDA" settle > /dev/null
 sleep 0.3

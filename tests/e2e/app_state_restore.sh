@@ -23,17 +23,13 @@ start_app() {
   run env -u DBUS_SESSION_BUS_ADDRESS ANDROMEDA_LOG_LEVEL=debug XDG_STATE_HOME="$RUNTIME/home/.local/state" "${@:2}" \
     "$SAMPLE" > "$OUT/app-$1.log" 2>&1 &
   app_pid=$!
-  for _ in $(seq 100); do
-    w=$(win)
-    # Input waits for the open animation: settle returns once no animation is pending.
-    [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && run "$ANDROMEDA" settle > /dev/null && return 0
-    sleep 0.05
-  done
-  fail "the sample window did not map ($1)"
+  # Input waits for the open animation: settle returns once no animation is pending.
+  window_settled() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && run "$ANDROMEDA" settle > /dev/null; }
+  WAIT_S=5 wait_for "the sample window did not map ($1)" window_settled
 }
+state_has() { [[ -f $STATE ]] && jq -e "$1" "$STATE" > /dev/null 2>&1; }
 wait_state() { # jq filter on state.json
-  for _ in $(seq 60); do [[ -f $STATE ]] && jq -e "$1" "$STATE" > /dev/null 2>&1 && return 0; sleep 0.05; done
-  return 1
+  poll_for 3 state_has "$1"
 }
 # $app_pid is the `run` subshell; the compositor knows the app's own pid.
 kill_app() {
@@ -42,8 +38,8 @@ kill_app() {
   [[ $pid =~ ^[0-9]+$ ]] || fail "no pid for the sample window"
   kill -9 "$pid"
   wait "$app_pid" 2> /dev/null || true
-  for _ in $(seq 50); do [[ -z $(win) ]] && return; sleep 0.05; done
-  fail "the killed app's window is still mapped"
+  window_gone() { [[ -z $(win) ]]; }
+  WAIT_S=3 wait_for "the killed app's window is still mapped" window_gone
 }
 
 start_app first
@@ -55,15 +51,13 @@ run "$POINTER" 1280 720 move $((x + width + 4)) $((y + height + 4)) press 272 \
   move $((x + width + 64)) $((y + height + 44)) move $((x + width + 124)) $((y + height + 84)) release 272 > /dev/null
 # The drag has ended when the pointer client returns; wait until the window and state.json agree on one size.
 saved=false
-for _ in $(seq 60); do
+drag_saved() {
   w=$(win)
   read -r dragged_w dragged_h < <(jq -r '"\(.w) \(.h)"' <<< "$w")
-  if (( dragged_w > width )) && [[ -f $STATE ]] \
-    && jq -e ".window.main.width == $dragged_w and .window.main.height == $dragged_h" "$STATE" > /dev/null 2>&1; then
-    saved=true && break
-  fi
-  sleep 0.05
-done
+  (( dragged_w > width )) && [[ -f $STATE ]] \
+    && jq -e ".window.main.width == $dragged_w and .window.main.height == $dragged_h" "$STATE" > /dev/null 2>&1
+}
+poll_for 3 drag_saved && saved=true
 cp "$STATE" "$OUT/state.json" 2> /dev/null || true
 (( dragged_w > width && dragged_h > height )) || fail "the corner drag did not resize ($width x $height -> $dragged_w x $dragged_h)"
 $saved || { fail "state.json does not hold $dragged_w x $dragged_h"; }
@@ -79,8 +73,8 @@ echo "PASS size restored after kill -9 ($width2 x $height2)"
 # The maximize button: second of the three 24 px circles, 12 from the right edge, gap 8, centred in the 48 header.
 read -r x y width < <(jq -r '"\(.x) \(.y) \(.w)"' <<< "$w")
 run "$POINTER" 1280 720 move $((x + width - 12 - 24 - 8 - 12)) $((y + 24)) click 272 > /dev/null
-for _ in $(seq 60); do [[ $(win | jq .maximized) == true ]] && break; sleep 0.05; done
-[[ $(win | jq .maximized) == true ]] || fail "the maximize button did not maximize"
+window_maximized() { [[ $(win | jq .maximized) == true ]]; }
+WAIT_S=3 wait_for "the maximize button did not maximize" window_maximized
 wait_state '.window.main.maximized == true' || fail "state.json does not record maximized"
 kill_app
 

@@ -50,7 +50,7 @@ export ANDROMEDA_CGROUP_ROOT=$CG REAL_RUNTIME CG POINTER=$ROOT/compositor/build-
 export SCOPE1=${SCOPES[0]} SCOPE2=${SCOPES[1]} UNITS_LIST="${UNITS[*]}"
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_systemd1.py"
 BEFORE_NOCTALIA='REAL_RUNTIME=$REAL_RUNTIME python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
-  for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done'
+  poll_for 5 grep -q ready "$OUT/mock.log" || true'
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
   settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
@@ -63,8 +63,8 @@ with_noctalia '
     XDG_RUNTIME_DIR=$REAL_RUNTIME systemd-run --user --quiet --scope --unit="$s" \
       env XDG_RUNTIME_DIR="$RUNTIME" foot --config=/dev/null --title=Terminal sleep 600 > /dev/null 2>&1 &
     cg=""
-    for _ in $(seq 50); do cg=$(XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user show -P ControlGroup "$s" 2> /dev/null || true); [[ -n $cg ]] && break; sleep 0.1; done
-    [[ -n $cg ]] || fail "scope $s did not start"
+    scope_up() { cg=$(XDG_RUNTIME_DIR=$REAL_RUNTIME systemctl --user show -P ControlGroup "$s" 2> /dev/null || true); [[ -n $cg ]]; }
+    WAIT_S=5 wait_for "scope $s did not start" scope_up
     mkdir -p "$(dirname "$CG$cg")"; ln -sfn "/sys/fs/cgroup$cg" "$CG$cg"
     call StartWithCgroup string:"$s" string:app.slice string:"$cg"
   done

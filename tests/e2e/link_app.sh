@@ -53,12 +53,11 @@ with_noctalia '
     "$LINK_APP" >> "$OUT/app.log" 2>&1 &
     app_pid=$!
     w=
-    for _ in $(seq 100); do
+    link_window_mapped() {
       w=$("$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"dev.andromeda.Link\")][0] // empty")
-      [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-      sleep 0.1
-    done
-    [[ -n $w ]] || fail "the Link window did not map"
+      [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]
+    }
+    WAIT_S=10 wait_for "the Link window did not map" link_window_mapped
     [[ $(jq -r "[.w, .h] | join(\"x\")" <<< "$w") == 1200x592 ]] || fail "the points below assume a 1200x592 window: $w"
     WX=$(jq .x <<< "$w") WY=$(jq .y <<< "$w")
   }

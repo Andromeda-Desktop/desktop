@@ -1,6 +1,7 @@
 // Drives ActivityActions against mock_systemd1.py on DBUS_SESSION_BUS_ADDRESS (the user manager): Disable at login
 // for a plain unit and a socket-activated one, Enable (undo), Stop, and the XDG autostart override in a temp dir.
 // argv[1] is a scratch directory. Prints one line per check and exits non-zero on any failure.
+#include "core/deferred_call.h"
 #include "dbus/session_bus.h"
 #include "dbus/systemd/systemd_units_service.h"
 #include "system/activity_actions.h"
@@ -29,6 +30,10 @@ namespace {
   void pumpUntil(SessionBus& bus, const std::function<bool()>& done) {
     for (int i = 0; i < 300 && !done(); ++i) {
       bus.processPendingEvents();
+      DeferredCall::drainWakeFd();
+      for (auto& fn : DeferredCall::takePending()) {
+        fn();
+      }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }

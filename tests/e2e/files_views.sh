@@ -52,12 +52,8 @@ run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_D
   DESK_FILES_GEOMETRY=1 PATH="$RUNTIME/bin:$PATH" "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
-for _ in $(seq 100); do
-  w=$(win)
-  [[ -n $w && $(jq .w <<< "$w") -gt 0 ]] && break
-  sleep 0.05
-done
-[[ -n ${w:-} ]] || fail "the Files window did not map"
+win_mapped() { w=$(win); [[ -n $w && $(jq .w <<< "$w") -gt 0 ]]; }
+WAIT_S=5 wait_for "the Files window did not map" win_mapped
 WX=$(jq .x <<< "$w")
 WY=$(jq .y <<< "$w")
 run "$ANDROMEDA" settle > /dev/null
@@ -93,7 +89,7 @@ m=$(mark); keys tap 106                          # Right: expand
 wait_log "$m" "expand Alpha" || fail "Right did not expand Alpha"
 wait_log "$m" "expanded rows" || fail "Alpha's items did not join the list"
 run "$ANDROMEDA" settle > /dev/null
-for _ in $(seq 40); do grep -qE "geometry item Beta " "$OUT/files.log" && break; sleep 0.05; done
+poll_for 2 grep -qE "geometry item Beta " "$OUT/files.log" || true
 alpha_y=$(grep -E "geometry item Alpha " "$OUT/files.log" | tail -n 1 | awk '{print $NF}')
 beta_y=$(grep -E "geometry item Beta " "$OUT/files.log" | tail -n 1 | awk '{print $NF}')
 [[ -n $beta_y && $((beta_y - alpha_y)) -eq 32 ]] || fail "Beta is not the row under Alpha (Alpha y $alpha_y, Beta y ${beta_y:-none})"
@@ -189,7 +185,7 @@ m=$(mark); files_action go "[<'file://$SRC/Alpha'>]"
 wait_log "$m" "location $SRC/Alpha\$" || fail "go did not open Alpha"
 m=$(mark); keys mod shift tap 62 mod none        # Shift+F4 (KEY_F4)
 wait_log "$m" "terminal .*/andromeda-terminal in $SRC/Alpha\$" || fail "Shift+F4 did not open the terminal in Alpha"
-for _ in $(seq 40); do [[ -s $OUT/terminal-cwd ]] && break; sleep 0.05; done
+poll_for 2 test -s "$OUT/terminal-cwd" || true
 [[ $(cat "$OUT/terminal-cwd" 2> /dev/null) == "$SRC/Alpha" ]] || fail "the terminal did not start in Alpha"
 
 # FB4 context menu (mockup §4): a right click on Beta selects it and opens the menu with no highlight; Down, Down, Enter runs Get Info (the row after Open).
