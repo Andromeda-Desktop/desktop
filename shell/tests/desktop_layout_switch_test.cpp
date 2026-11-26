@@ -77,11 +77,12 @@ namespace {
     return std::format(
         "islands={} position={} dock={} thickness={} margin_ends={} margin_edge={} padding={} padding_end={} "
         "spacing={} start=[{}] center=[{}] end=[{}] background={} blur={} shadow={} border={} solid={} groups={} "
-        "battery_label={} launcher_glyph={} tray_slots={} launcher_layout={} launcher_position={} panel_gap={}",
+        "capsule_thickness={} capsule_radius={} battery_label={} launcher_glyph={} tray_slots={} launcher_layout={} launcher_position={} panel_gap={}",
         bar.islands, bar.position, cfg.dock.enabled, bar.thickness, bar.marginEnds, bar.marginEdge, bar.padding,
         bar.paddingEnd, bar.widgetSpacing, join(bar.startWidgets), join(bar.centerWidgets), join(bar.endWidgets),
         bar.backgroundOpacity, bar.compositorBlur, bar.shadow, bar.borderWidth,
         bar.solidOpacity ? std::format("{}", *bar.solidOpacity) : std::string("-"), bar.widgetCapsuleGroups.size(),
+        bar.capsuleThickness, bar.widgetCapsuleRadius ? std::format("{}", *bar.widgetCapsuleRadius) : std::string("-"),
         widgetSetting(cfg, "status_battery", "show_label"), widgetSetting(cfg, "launcher_button", "glyph"),
         widgetSetting(cfg, "tray", "bar_slots"), static_cast<int>(cfg.shell.launcher.layout),
         cfg.shell.panel.launcherPosition, cfg.shell.panel.floatingOffset

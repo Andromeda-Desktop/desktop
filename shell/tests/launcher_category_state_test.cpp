@@ -77,8 +77,8 @@ public:
 
   static void initialize(LauncherPanel& panel, Segmented& navigation, Segmented& categories) {
     panel.m_browserMode = true;
-    panel.m_launcherNavigation = &navigation;
-    panel.m_categoryFilter = &categories;
+    panel.m_ui.launcherNavigation = &navigation;
+    panel.m_ui.categoryFilter = &categories;
     panel.m_allResults = {
         {.id = "browser", .category = "Internet"},
         {.id = "editor", .category = "Development"},

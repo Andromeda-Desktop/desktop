@@ -67,6 +67,8 @@ namespace desktop_layout {
       std::int64_t padding;       // the leading end
       std::int64_t paddingEnd;    // the trailing end
       std::int64_t widgetSpacing; // between widgets in a lane
+      double capsuleThickness;    // capsule and hover height as a fraction of thickness
+      double capsuleRadius;       // capsule and hover corner radius; the default is a pill
       bool bare = false;          // no surface: background, blur, shadow and border off (macOS menu bar)
     };
     struct RowInt {
@@ -94,12 +96,13 @@ namespace desktop_layout {
     const BarRow* rowFor(std::string_view preset) {
       static const BarRow windows{
           {"weather"}, {"start", "search_pill", "task_view", "windows_taskbar"},
-          {"tray", "island_divider", "group:status", "island_divider", "windows_clock", "notifications", "show_desktop"},
-          48, std::nullopt, 0, 0, 4
+          {"tray", "island_divider", "group:status", "control_center_button", "island_divider", "windows_clock", "notifications",
+           "show_desktop"},
+          48, std::nullopt, 0, 0, 4, 40.0 / 48.0, Tokens::radiusR8
       };
       static const BarRow macos{
           {"brand", "macos_app"}, {}, {"tray", "group:status", "launcher_button", "control_center_button", "macos_clock", "notifications"},
-          32, std::nullopt, 12, 16, 16, true
+          32, std::nullopt, 12, 16, 16, 24.0 / 32.0, Tokens::radiusR8, true
       };
       return preset == "windows" ? &windows : preset == "macos" ? &macos : nullptr;
     }
@@ -108,10 +111,10 @@ namespace desktop_layout {
     const BarRow* legacyRowFor(std::string_view preset) {
       static const BarRow windows{
           {}, {"start", "task_view", "windows_taskbar"}, {"tray", "group:status", "windows_clock", "notifications", "show_desktop"}, 48,
-          std::nullopt, 0, 0, 4
+          std::nullopt, 0, 0, 4, 40.0 / 48.0, Tokens::radiusR8
       };
       static const BarRow macos{
-          {"brand", "macos_app"}, {}, {"group:status", "macos_clock", "notifications"}, 32, std::nullopt, 12, 16, 16
+          {"brand", "macos_app"}, {}, {"group:status", "macos_clock", "notifications"}, 32, std::nullopt, 12, 16, 16, 24.0 / 32.0, Tokens::radiusR8
       };
       return preset == "windows" ? &windows : preset == "macos" ? &macos : nullptr;
     }
@@ -157,7 +160,7 @@ namespace desktop_layout {
     // Every override a preset row writes on the first bar `first`, for both rows.
     std::vector<Path> rowPaths(const std::string& first) {
       std::vector<Path> out;
-      for (const std::string_view key : {"start", "center", "end", "capsule_group", "solid_opacity"}) {
+      for (const std::string_view key : {"start", "center", "end", "capsule_group", "solid_opacity", "capsule_thickness", "capsule_radius"}) {
         out.push_back(Path{"bar", first, std::string(key)});
       }
       for (const std::string_view key : kBareKeys) {
@@ -185,7 +188,7 @@ namespace desktop_layout {
       return out;
     }
 
-    BarCapsuleGroupStyle statusGroup() {
+    BarCapsuleGroupStyle statusGroup(std::string_view preset) {
       BarCapsuleGroupStyle group;
       group.id = "status";
       group.members = {"status_network", "status_volume", "status_battery"};
@@ -193,16 +196,22 @@ namespace desktop_layout {
       group.radius = Style::spaceSm;
       // Each icon opens its own page, so each lights alone.
       group.hoverAsOne = false;
+      if (preset == "windows") {
+        group.widgetSpacing = static_cast<std::int32_t>(Style::spaceSm);
+      }
       return group;
     }
 
-    // task_view and search_pill are optional: Windows bars saved before the row gained them still match.
+    // task_view, search_pill and the Windows control_center_button are optional: Windows bars saved before the row
+    // gained them still match.
     bool isRow(const BarConfig& bar, const BarRow& row) {
       auto withoutTaskView = row.center
           | std::views::filter([](std::string_view w) { return w != "task_view" && w != "search_pill"; });
+      auto withoutControlCenter = row.end | std::views::filter([](std::string_view w) { return w != "control_center_button"; });
       return std::ranges::equal(bar.startWidgets, row.start)
           && (std::ranges::equal(bar.centerWidgets, row.center) || std::ranges::equal(bar.centerWidgets, withoutTaskView))
-          && std::ranges::equal(bar.endWidgets, row.end);
+          && (std::ranges::equal(bar.endWidgets, row.end)
+              || (&row == rowFor("windows") && std::ranges::equal(bar.endWidgets, withoutControlCenter)));
     }
 
     // The preset row the bar is set up as (its v1 row counts), if any.
@@ -417,7 +426,9 @@ namespace desktop_layout {
         out.emplace_back(Path{"bar", first, "start"}, list(row->start));
         out.emplace_back(Path{"bar", first, "center"}, list(row->center));
         out.emplace_back(Path{"bar", first, "end"}, list(row->end));
-        out.emplace_back(Path{"bar", first, "capsule_group"}, std::vector<BarCapsuleGroupStyle>{statusGroup()});
+        out.emplace_back(Path{"bar", first, "capsule_group"}, std::vector<BarCapsuleGroupStyle>{statusGroup(preset)});
+        out.emplace_back(Path{"bar", first, "capsule_thickness"}, row->capsuleThickness);
+        out.emplace_back(Path{"bar", first, "capsule_radius"}, row->capsuleRadius);
         if (row->solidOpacity) {
           out.emplace_back(Path{"bar", first, "solid_opacity"}, *row->solidOpacity);
         }
