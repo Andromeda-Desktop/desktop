@@ -37,13 +37,15 @@ void AmbientLightService::sample() {
         if (alive.expired() || m_paused) {
           return;
         }
-        // No sensor, or System1 restarting: try again at the slow interval.
+        // No sensor: stop until the next resume (setPaused(false)); System1 restarting: retry at the slow interval.
         if (err.has_value()) {
           if (!m_readFailed) {
             kLog.info("no ambient light sensor: {}", err->what());
           }
           m_readFailed = true;
-          m_nextSample.start(kMaxSampleInterval, [this] { sample(); });
+          if (err->getName() != "org.freedesktop.DBus.Error.NotSupported") {
+            m_nextSample.start(kMaxSampleInterval, [this] { sample(); });
+          }
           return;
         }
         m_readFailed = false;
