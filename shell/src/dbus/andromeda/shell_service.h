@@ -11,13 +11,14 @@ class SessionBus;
 class NotificationManager;
 
 // org.andromeda.Shell1: what Andromeda Link's link-session needs from the shell. Do Not Disturb, read and set, with
-// PropertiesChanged; ScreenOff(); LockFromPhone(). For the `noctalia lock` process: LockNotices (read-only, the
+// PropertiesChanged; ScreenOff and ScreenOn(), with the read-only ScreenOff (every output off) and PropertiesChanged;
+// LockFromPhone(). For the `noctalia lock` process: LockNotices (read-only, the
 // unseen notification groups the lock screen shows, no content; lock_notice_wire.h), with PropertiesChanged.
 class AndromedaShellService {
 public:
   AndromedaShellService(
-      SessionBus& bus, NotificationManager& notifications, std::function<bool()> screenOff,
-      std::function<bool()> lockFromPhone
+      SessionBus& bus, NotificationManager& notifications, std::function<bool(bool on)> setScreenPower,
+      std::function<bool()> screenIsOff, std::function<bool()> lockFromPhone
   );
   ~AndromedaShellService();
   AndromedaShellService(const AndromedaShellService&) = delete;
@@ -25,12 +26,16 @@ public:
 
   // Call after any notification state change; signals only a Do Not Disturb change.
   void notificationStateChanged();
+  // Call after any output power change; signals only a change of ScreenOff.
+  void screenPowerChanged();
 
 private:
   void scheduleLockNotices();
 
   NotificationManager& m_notifications;
-  std::function<bool()> m_screenOff;
+  std::function<bool(bool on)> m_setScreenPower;
+  std::function<bool()> m_screenIsOff;
+  bool m_screenOff;
   std::function<bool()> m_lockFromPhone;
   std::unique_ptr<sdbus::IObject> m_object;
   bool m_doNotDisturb;

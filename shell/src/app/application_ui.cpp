@@ -18,6 +18,7 @@
 #include "system/crash_report.h"
 #include "core/input/cursor_shape.h"
 #include "dbus/accounts/accounts_service.h"
+#include "dbus/andromeda/shell_service.h"
 #include "dbus/file_manager1.h"
 #include "dbus/bluetooth/bluetooth_agent.h"
 #include "dbus/bluetooth/bluetooth_service.h"
@@ -391,9 +392,11 @@ void Application::initLockScreenAndSession() {
   m_compositorPlatform.setOutputPowerChangeCallback([this] {
     m_lockScreen.onOutputPowerChanged();
     syncLockStreamPause();
-    const auto states = m_compositorPlatform.outputPowerStates();
-    const bool screenOn = states.empty() || std::ranges::any_of(states, [](const auto& s) { return s.second; });
+    const bool screenOn = !m_compositorPlatform.allOutputsOff();
     applyPresence(m_presenceWatch.setScreenOn(screenOn));
+    if (m_andromedaShellService) {
+      m_andromedaShellService->screenPowerChanged();
+    }
     if (screenOn) {
       m_gammaService.onOutputsChanged();
     }

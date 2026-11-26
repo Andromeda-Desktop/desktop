@@ -2349,7 +2349,8 @@ void Application::initSessionBusServices() {
     }
     try {
       m_andromedaShellService = std::make_unique<AndromedaShellService>(
-          *m_bus, m_notificationManager, [this] { return setOutputPower(false); },
+          *m_bus, m_notificationManager, [this](bool on) { return setOutputPower(on); },
+          [this] { return m_compositorPlatform.allOutputsOff(); },
           [this] { return m_lockScreen.lockFromPhone(); }
       );
     } catch (const std::exception& e) {

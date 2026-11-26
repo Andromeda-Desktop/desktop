@@ -16,10 +16,11 @@ namespace {
 } // namespace
 
 AndromedaShellService::AndromedaShellService(
-    SessionBus& bus, NotificationManager& notifications, std::function<bool()> screenOff,
-    std::function<bool()> lockFromPhone
+    SessionBus& bus, NotificationManager& notifications, std::function<bool(bool on)> setScreenPower,
+    std::function<bool()> screenIsOff, std::function<bool()> lockFromPhone
 )
-    : m_notifications(notifications), m_screenOff(std::move(screenOff)), m_lockFromPhone(std::move(lockFromPhone)),
+    : m_notifications(notifications), m_setScreenPower(std::move(setScreenPower)),
+      m_screenIsOff(std::move(screenIsOff)), m_screenOff(m_screenIsOff()), m_lockFromPhone(std::move(lockFromPhone)),
       m_doNotDisturb(notifications.doNotDisturb()) {
   bus.connection().requestName(kBusName);
   m_object = sdbus::createObject(bus.connection(), kObjectPath);
@@ -28,9 +29,15 @@ AndromedaShellService::AndromedaShellService(
           sdbus::registerProperty("DoNotDisturb")
               .withGetter([this] { return m_notifications.doNotDisturb(); })
               .withSetter([this](const bool& on) { m_notifications.setDoNotDisturb(on); }),
+          sdbus::registerProperty("ScreenOff").withGetter([this] { return m_screenOff; }),
           sdbus::registerMethod("ScreenOff").implementedAs([this] {
-            if (!m_screenOff()) {
+            if (!m_setScreenPower(false)) {
               throw sdbus::Error(sdbus::Error::Name{"org.andromeda.Shell1.Error.Failed"}, "the outputs stayed on");
+            }
+          }),
+          sdbus::registerMethod("ScreenOn").implementedAs([this] {
+            if (!m_setScreenPower(true)) {
+              throw sdbus::Error(sdbus::Error::Name{"org.andromeda.Shell1.Error.Failed"}, "the outputs stayed off");
             }
           }),
           // Any session client may call this: it only makes the lock stricter (biometrics and grace off).
@@ -87,4 +94,13 @@ void AndromedaShellService::notificationStateChanged() {
   m_object->emitPropertiesChangedSignal(
       kInterface, std::vector<sdbus::PropertyName>{sdbus::PropertyName{"DoNotDisturb"}}
   );
+}
+
+void AndromedaShellService::screenPowerChanged() {
+  const bool now = m_screenIsOff();
+  if (now == m_screenOff) {
+    return;
+  }
+  m_screenOff = now;
+  m_object->emitPropertiesChangedSignal(kInterface, std::vector<sdbus::PropertyName>{sdbus::PropertyName{"ScreenOff"}});
 }

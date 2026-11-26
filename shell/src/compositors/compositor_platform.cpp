@@ -1095,6 +1095,11 @@ std::unordered_map<std::string, bool> CompositorPlatform::outputPowerStates() co
   return states;
 }
 
+bool CompositorPlatform::allOutputsOff() const {
+  const auto states = outputPowerStates();
+  return !states.empty() && std::ranges::none_of(states, [](const auto& s) { return s.second; });
+}
+
 bool CompositorPlatform::shouldSuppressLockTransition() const {
   if (m_outputPowerOffPending) {
     return true;
