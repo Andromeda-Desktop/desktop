@@ -56,8 +56,11 @@ action() { # name [gvariant parameter list]
 WAIT_S=5
 logged() { grep -qE -- "$1" "$OUT/files.log"; }
 shot() { run "$ANDROMEDA" settle > /dev/null; sleep 0.4; run grim "$OUT/$1.png"; }
-select_try() { action select "[<$2>]" && grep -q "selected $1 of" "$OUT/files.log"; }
-select_names() { poll_for 2 select_try "$1" "$2" || fail "could not select $2"; } # count, names gvariant
+select_try() { action select "[<$2>]" && tail -n +"$(($3 + 1))" "$OUT/files.log" | grep -q "selected $1 of"; }
+select_names() { # count, names gvariant; only a selection logged after this call counts
+  local m; m=$(wc -l < "$OUT/files.log")
+  poll_for 2 select_try "$1" "$2" "$m" || fail "could not select $2"
+}
 zip_check() { # every entry encrypted (flag bit 0) and the names listed
   python3 -I - "$1" <<'PY'
 import sys, zipfile
