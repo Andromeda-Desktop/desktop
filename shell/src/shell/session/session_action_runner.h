@@ -29,16 +29,16 @@ public:
   // `failed` runs on the main loop when the action could not start or its command exited non-zero.
   void invoke(const SessionPanelActionConfig& cfg, std::function<void()> failed = {}) const;
   [[nodiscard]] bool lock() const;
-  [[nodiscard]] bool requestSuspendDetached() const;
-  [[nodiscard]] bool requestRebootDetached() const;
-  [[nodiscard]] bool requestRebootUefiDetached() const;
-  [[nodiscard]] bool requestShutdownDetached() const;
+  // Power requests run on a worker thread, one at a time (a request while one runs is ignored). `failed` runs on
+  // the main loop when the request could not start.
+  void requestSuspend(std::function<void()> failed = {}) const;
+  void requestReboot(std::function<void()> failed = {}) const;
+  void requestShutdown(std::function<void()> failed = {}) const;
+  void requestHibernate(std::function<void()> failed = {}) const;
   // "suspend", "reboot" or "shutdown" past other apps' block inhibitors (logind *WithFlags with
   // SD_LOGIND_SKIP_INHIBITORS); polkit may refuse it without admin rights.
-  [[nodiscard]] bool requestPowerSkippingInhibitors(std::string_view action) const;
-  [[nodiscard]] bool requestHibernateDetached() const;
-  [[nodiscard]] bool requestSuspendThenHibernateDetached() const;
-  [[nodiscard]] bool lockThenSuspendDetached() const;
+  void requestPowerSkippingInhibitors(std::string_view action, std::function<void()> failed = {}) const;
+  void lockThenSuspend() const;
 
 private:
   struct PowerCall {
@@ -50,7 +50,6 @@ private:
   enum class PowerRun : std::uint8_t { Idle, Running };
 
   [[nodiscard]] PowerCall powerCall(std::string_view action) const;
-  [[nodiscard]] bool runNow(const PowerCall& power) const;
   // Hooks first, then the call on a worker thread; refused while another one runs.
   void runQueued(
       SessionActionHooks::AsyncHook hook, PowerCall power, std::string_view action, std::function<void()> failed

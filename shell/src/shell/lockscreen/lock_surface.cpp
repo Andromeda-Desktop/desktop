@@ -2027,17 +2027,23 @@ void LockSurface::runPower(int index, bool skipInhibitors) {
   }
   static constexpr std::array<const char*, 3> kActions{"suspend", "reboot", "shutdown"};
   const auto i = static_cast<std::size_t>(index);
-  bool ok = false;
+  m_powerError.clear();
+  auto failed = [this, alive = std::weak_ptr<void>(m_aliveGuard)] {
+    if (alive.expired()) {
+      return;
+    }
+    m_powerError = i18n::tr("lockscreen.power.blocked");
+    requestLayout();
+  };
   if (skipInhibitors) {
-    ok = m_sessionActions->requestPowerSkippingInhibitors(kActions[i]);
+    m_sessionActions->requestPowerSkippingInhibitors(kActions[i], std::move(failed));
   } else if (index == 0) {
-    ok = m_sessionActions->requestSuspendDetached();
+    m_sessionActions->requestSuspend(std::move(failed));
   } else if (index == 1) {
-    ok = m_sessionActions->requestRebootDetached();
+    m_sessionActions->requestReboot(std::move(failed));
   } else {
-    ok = m_sessionActions->requestShutdownDetached();
+    m_sessionActions->requestShutdown(std::move(failed));
   }
-  m_powerError = ok ? std::string{} : i18n::tr("lockscreen.power.blocked");
 }
 
 bool LockSurface::handleChromePress(float x, float y) {

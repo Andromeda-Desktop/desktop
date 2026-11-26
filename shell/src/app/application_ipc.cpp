@@ -1269,19 +1269,24 @@ bool Application::runIdleAction(const IdleActionRequest& action) {
     applyIdleDim(false);
     return true;
   case IdleActionKind::Suspend:
-    return m_sessionActionRunner.requestSuspendDetached();
+    m_sessionActionRunner.requestSuspend();
+    return true;
   case IdleActionKind::LockAndSuspend:
     if (!m_configService.isLockScreenEnabled()) {
-      return m_sessionActionRunner.requestSuspendDetached();
+      m_sessionActionRunner.requestSuspend();
+      return true;
     }
-    return m_sessionActionRunner.lockThenSuspendDetached();
+    m_sessionActionRunner.lockThenSuspend();
+    return true;
   case IdleActionKind::Hibernate:
     // Resume is not proven since the last kernel, command line or swap change: sleep keeps the session safe.
     if (m_powerConfigService != nullptr && !m_powerConfigService->hibernateVerified()) {
       kLog.warn("idle hibernate: resume not proven, sleeping instead");
-      return m_sessionActionRunner.requestSuspendDetached();
+      m_sessionActionRunner.requestSuspend();
+      return true;
     }
-    return m_sessionActionRunner.requestHibernateDetached();
+    m_sessionActionRunner.requestHibernate();
+    return true;
   }
   return false;
 }

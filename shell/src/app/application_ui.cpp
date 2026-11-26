@@ -268,7 +268,7 @@ void Application::initUiRenderSurfacesAndSettings() {
         }
         return failures;
       },
-      [this] { (void)m_sessionActionRunner.requestRebootDetached(); }
+      [this] { m_sessionActionRunner.requestReboot(); }
   );
   m_settingsWindow.setBatteryAppsSources(
       [this] { return ensureActivityMonitor(); }, &m_activityDetails, &m_screenTimeService,
