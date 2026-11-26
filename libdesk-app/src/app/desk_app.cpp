@@ -18,6 +18,7 @@
 #include "platform/text_input_service.h"
 
 #include <algorithm>
+#include <utility>
 #include <optional>
 #include <string_view>
 #include <csignal>
@@ -190,10 +191,13 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   m_services = createAppServices(
       m_info.id, m_info.name, m_info.singleInstance,
       {
-          .activate = [this](const std::string& token) { activate(token); },
-          .open = [this](const std::vector<std::string>& u, const std::string& token) { open(u, token); },
-          .action = [this](const std::string& name, const std::vector<std::string>& parameter,
-                           const std::string& token) { action(name, parameter, token); },
+          .activate = [this](const std::string& token) { whenStarted([this, token] { activate(token); }); },
+          .open = [this](const std::vector<std::string>& u, const std::string& token) {
+            whenStarted([this, u, token] { open(u, token); });
+          },
+          .action = [this](const std::string& name, const std::vector<std::string>& parameter, const std::string& token) {
+            whenStarted([this, name, parameter, token] { action(name, parameter, token); });
+          },
           .appearanceChanged =
               [this] {
                 m_loop.renderContext().setTextScale(m_services->textScale());
@@ -271,6 +275,10 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     activate(launchToken);
   } else {
     open(uris, launchToken);
+  }
+  m_phase = Phase::Started;
+  for (auto& request : std::exchange(m_earlyRequests, {})) {
+    request();
   }
   if (!serviceStart && m_windows.empty() && quitWithLastWindow()) {
     kLog.error("{} opened no window", m_info.id);
@@ -449,6 +457,14 @@ AppWindow* DeskApp::activeWindow() const {
     }
   }
   return last;
+}
+
+void DeskApp::whenStarted(std::function<void()> request) {
+  if (m_phase == Phase::Started) {
+    request();
+  } else {
+    m_earlyRequests.push_back(std::move(request));
+  }
 }
 
 void DeskApp::activate(const std::string& activationToken) {

@@ -12,6 +12,7 @@
 #include "core/timer_manager.h"
 
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -138,7 +139,12 @@ private:
   bool reconnect();
   // Rebuilds GL after a context reset and every window's scene, so textures upload again.
   void recoverGraphics();
+  // Runs a launch request now, or after startup() when it arrives before (a D-Bus call queued at activation).
+  void whenStarted(std::function<void()> request);
 
+  enum class Phase { Starting, Started };
+  Phase m_phase = Phase::Starting;
+  std::vector<std::function<void()>> m_earlyRequests; // launch requests held while Starting
   Info m_info;
   AppLoop m_loop;
   GraphicsRecovery m_graphicsRecovery{[this] { recoverGraphics(); }};
