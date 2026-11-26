@@ -1475,10 +1475,9 @@ namespace settings {
         .width = settings::metrics::kSelectWidth * scale,
         .height = Style::controlHeight * scale,
     });
-    input->setOnChange([inputPtr](const std::string& /*text*/) { inputPtr->setInvalid(false); });
-    input->setOnSubmit([configService = ctx.configService, clearOverride = ctx.clearOverride,
-                        setOverride = ctx.setOverride, path, inputPtr, minValue = setting.minValue,
-                        maxValue = setting.maxValue](const std::string& text) {
+    auto submit = std::make_shared<std::function<void(const std::string&)>>(
+        [configService = ctx.configService, clearOverride = ctx.clearOverride, setOverride = ctx.setOverride, path,
+         inputPtr, minValue = setting.minValue, maxValue = setting.maxValue](const std::string& text) {
       if (isBlankInput(text)) {
         inputPtr->setInvalid(false);
         if (configService != nullptr && configService->hasOverride(path)) {
@@ -1495,6 +1494,16 @@ namespace settings {
 
       inputPtr->setInvalid(false);
       setOverride(path, *parsed);
+    });
+    // Saves after a typing pause, as makeText does: closing or locking never loses the value.
+    auto saveTimer = std::make_shared<Timer>();
+    input->setOnChange([inputPtr, submit, saveTimer](const std::string& text) {
+      inputPtr->setInvalid(false);
+      saveTimer->start(kTextSaveDelay, [submit, text] { (*submit)(text); });
+    });
+    input->setOnSubmit([submit, saveTimer](const std::string& text) {
+      saveTimer->stop();
+      (*submit)(text);
     });
     return input;
   }
