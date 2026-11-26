@@ -6,12 +6,14 @@
 #include "core/log.h"
 #include "core/poll_loop.h"
 #include "core/sys/sys.h"
+#include "dbus/logind/logind_service.h"
+#include "dbus/system_bus.h"
+#include "dbus/system_bus_poll_source.h"
 #include "i18n/i18n.h"
 
 #include <algorithm>
 #include <fstream>
 #include <gio/gio.h>
-#include <gio/gunixfdlist.h>
 #include <gio/gunixmounts.h>
 #include <glib.h>
 #include <nlohmann/json.hpp>
@@ -276,37 +278,31 @@ void Vaults::lock(const Vault& vault, Done done) {
 
 int Vaults::guard(const fs::path& mount) {
   // logind waits for this delay inhibitor to close before sleep, so the vault locks while the system is still up.
-  GError* error = nullptr;
-  GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
-  if (bus == nullptr) {
-    kLog.warn("vault guard: no system bus: {}", error->message);
-    g_clear_error(&error);
+  std::unique_ptr<SystemBus> bus;
+  try {
+    bus = std::make_unique<SystemBus>();
+  } catch (const std::exception& e) {
+    kLog.warn("vault guard: no system bus: {}", e.what());
     return 1;
   }
   PollLoop loop;
   GlibSource glib;
   loop.addSource(&glib);
+  SystemBusPollSource busSource(*bus);
+  loop.addSource(&busSource);
   struct State {
     fs::path mount;
     PollLoop& loop;
-    GDBusConnection* bus;
-    int inhibit = -1;
-  } state{.mount = mount, .loop = loop, .bus = bus};
-  const auto takeInhibitor = [](State& st) {
-    GUnixFDList* fds = nullptr;
-    GVariant* reply = g_dbus_connection_call_with_unix_fd_list_sync(
-        st.bus, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "Inhibit",
-        g_variant_new("(ssss)", "sleep", "Files", i18n::tr("files.vaults.inhibit-reason").c_str(), "delay"), G_VARIANT_TYPE("(h)"),
-        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &fds, nullptr, nullptr);
-    if (reply != nullptr && fds != nullptr) {
-      st.inhibit = g_unix_fd_list_get(fds, 0, nullptr);
+    ipc::Fd inhibit;
+    bool done = false;
+  } state{.mount = mount, .loop = loop};
+  LogindService logind(*bus);
+  logind.inhibit("sleep", "Files", i18n::tr("files.vaults.inhibit-reason"), "delay", [&state](ipc::Fd fd) {
+    if (!state.done) {
+      state.inhibit = std::move(fd);
     }
-    if (reply != nullptr) {
-      g_variant_unref(reply);
-    }
-    g_clear_object(&fds);
-  };
-  takeInhibitor(state);
+  });
+  GError* error = nullptr;
   GDBusConnection* session = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
   if (session == nullptr) {
     kLog.warn("vault guard: no session bus: {}", error->message);
@@ -335,10 +331,8 @@ int Vaults::guard(const fs::path& mount) {
           fusermount(st.mount, true);
         }
         kLog.info("vault guard: locked {} before sleep", st.mount.string());
-        if (st.inhibit >= 0) {
-          ::close(st.inhibit);
-          st.inhibit = -1;
-        }
+        st.inhibit = {};
+        st.done = true;
         st.loop.quit();
       },
       &state, nullptr);
@@ -355,15 +349,12 @@ int Vaults::guard(const fs::path& mount) {
   if (mounted(mount)) {
     loop.run();
   }
+  loop.removeSource(&busSource);
   loop.removeSource(&glib);
   if (session != nullptr) {
     g_dbus_connection_signal_unsubscribe(session, sub);
     g_object_unref(session);
   }
   g_object_unref(monitor);
-  if (state.inhibit >= 0) {
-    ::close(state.inhibit);
-  }
-  g_object_unref(bus);
   return 0;
 }
