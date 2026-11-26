@@ -55,6 +55,7 @@ class SessionBus;
 class Box;
 class BluetoothService;
 class PrintersModel;
+class MprisService;
 class PipeWireService;
 class Slider;
 class INetworkService;
@@ -172,6 +173,7 @@ public:
   // Rebuilds an open Wi-Fi, Bluetooth or Network page; skipped while a password field is open.
   void onConnectivityChanged();
   void setAudioProvider(std::function<PipeWireService*()> audio) { m_audioProvider = std::move(audio); }
+  void setMprisProvider(std::function<MprisService*()> mpris) { m_mprisProvider = std::move(mpris); }
   void setPowerProfilesProvider(std::function<PowerProfilesService*()> profiles) {
     m_powerProfilesProvider = std::move(profiles);
   }
@@ -569,6 +571,7 @@ private:
   // Created when the Printers page first shows.
   std::unique_ptr<PrintersModel> m_printers;
   std::function<PipeWireService*()> m_audioProvider;
+  std::function<MprisService*()> m_mprisProvider;
   std::function<PowerProfilesService*()> m_powerProfilesProvider;
   std::function<PowerConfigService*()> m_powerConfigProvider;
   std::function<bool()> m_keyboardBacklightProbe;
@@ -612,7 +615,6 @@ private:
   std::vector<AppPermissions::Grant> m_backgroundGrants;
   bool m_backgroundLoaded = false;
   // (bus name suffix, Identity) of each running MPRIS player.
-  std::vector<std::pair<std::string, std::string>> m_mediaPlayers;
   bool m_servicesRequested = false;
   // Language: (locale id, display name) for every supported locale, built once on the worker.
   std::vector<std::pair<std::string, std::string>> m_localeNames;

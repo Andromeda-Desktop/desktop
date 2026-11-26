@@ -2375,21 +2375,22 @@ bool MprisService::cycleActivePlayer(int direction) {
   return setPinnedPlayerPreference(players[targetIndex].busName);
 }
 
-bool MprisService::isBlacklisted(const MprisPlayerInfo& player) const {
-  if (m_blacklist.empty()) {
+bool mprisPlayerBlacklisted(const std::vector<std::string>& blacklist, const MprisPlayerInfo& player) {
+  if (blacklist.empty()) {
     return false;
   }
-
   const std::string busName = normalizeFilterToken(player.busName);
   const std::string identity = normalizeFilterToken(player.identity);
   const std::string desktopEntry = normalizeFilterToken(player.desktopEntry);
-
-  return std::ranges::any_of(m_blacklist, [&](const auto& token) {
-    if (token == busName || token == identity || token == desktopEntry) {
-      return true;
-    }
-    return !token.empty() && busName.contains(token);
+  return std::ranges::any_of(blacklist, [&](const std::string& raw) {
+    const std::string token = normalizeFilterToken(raw);
+    return !token.empty()
+        && (token == busName || token == identity || token == desktopEntry || busName.contains(token));
   });
+}
+
+bool MprisService::isBlacklisted(const MprisPlayerInfo& player) const {
+  return mprisPlayerBlacklisted(m_blacklist, player);
 }
 
 bool MprisService::callPlayerMethod(const std::string& busName, const char* methodName) {

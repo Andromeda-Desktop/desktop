@@ -1,7 +1,6 @@
 #include "config/config_service.h"
-#include "protocols/bus_names.h"
+#include "dbus/mpris/mpris_service.h"
 #include "core/process/process.h"
-#include "core/shared_worker.h"
 #include "i18n/i18n.h"
 #include "protocols/xdg_dirs.h"
 #include "shell/settings/settings_content_automation.h"
@@ -16,7 +15,6 @@
 #include "ui/style.h"
 #include "util/string_utils.h"
 
-#include <gio/gio.h>
 
 #include <algorithm>
 #include <chrono>
@@ -62,61 +60,6 @@ namespace {
   std::string lowered(std::string text) {
     std::ranges::transform(text, text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return text;
-  }
-
-  // MprisService's match: a blacklist token equals the identity or bus suffix, or is part of the bus name.
-  bool playerHidden(const std::vector<std::string>& blacklist, const std::string& bus, const std::string& identity) {
-    const std::string b = lowered(bus);
-    const std::string id = lowered(identity);
-    return std::ranges::any_of(blacklist, [&](const std::string& raw) {
-      const std::string token = lowered(StringUtils::trim(raw));
-      return !token.empty() && (token == id || token == b || b.contains(token));
-    });
-  }
-
-  // (bus name suffix, Identity) of each MPRIS player on the session bus; blocking: runs on the worker.
-  std::vector<std::pair<std::string, std::string>> listMediaPlayers() {
-    constexpr std::string_view kPrefix = "org.mpris.MediaPlayer2.";
-    constexpr int kTimeoutMs = 500;
-    std::vector<std::pair<std::string, std::string>> out;
-    GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr);
-    if (bus == nullptr) {
-      return out;
-    }
-    GVariant* names = g_dbus_connection_call_sync(bus, busname::kDaemon, busname::kDaemonPath,
-                                                  busname::kDaemon, "ListNames", nullptr, G_VARIANT_TYPE("(as)"),
-                                                  G_DBUS_CALL_FLAGS_NONE, kTimeoutMs, nullptr, nullptr);
-    if (names != nullptr) {
-      GVariantIter* iter = nullptr;
-      g_variant_get(names, "(as)", &iter);
-      const char* name = nullptr;
-      while (g_variant_iter_loop(iter, "&s", &name)) {
-        const std::string_view busName = name;
-        if (!busName.starts_with(kPrefix)) {
-          continue;
-        }
-        std::string identity(busName.substr(kPrefix.size()));
-        if (GVariant* reply = g_dbus_connection_call_sync(
-                bus, name, "/org/mpris/MediaPlayer2", "org.freedesktop.DBus.Properties", "Get",
-                g_variant_new("(ss)", "org.mpris.MediaPlayer2", "Identity"), G_VARIANT_TYPE("(v)"),
-                G_DBUS_CALL_FLAGS_NONE, kTimeoutMs, nullptr, nullptr
-            );
-            reply != nullptr) {
-          GVariant* value = nullptr;
-          g_variant_get(reply, "(v)", &value);
-          if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
-            identity = g_variant_get_string(value, nullptr);
-          }
-          g_variant_unref(value);
-          g_variant_unref(reply);
-        }
-        out.emplace_back(std::string(busName.substr(kPrefix.size())), std::move(identity));
-      }
-      g_variant_iter_free(iter);
-      g_variant_unref(names);
-    }
-    g_object_unref(bus);
-    return out;
   }
 
 } // namespace
@@ -367,16 +310,6 @@ void SettingsWindow::addServicesContent(float scale) {
         }
       });
     }
-    m_mediaPlayers.clear();
-    SharedWorker::instance().post<std::vector<std::pair<std::string, std::string>>>(
-        std::weak_ptr<void>(m_aliveGuard), [] { return listMediaPlayers(); },
-        [this](std::vector<std::pair<std::string, std::string>> players) {
-          m_mediaPlayers = std::move(players);
-          if (isOpen() && m_selectedSection == "services") {
-            requestContentRebuild();
-          }
-        }
-    );
   }
 
   const auto entries = desktopEntriesSnapshot();
@@ -390,31 +323,35 @@ void SettingsWindow::addServicesContent(float scale) {
   };
 
   const std::vector<std::string>& blacklist = m_config->config().shell.mpris.blacklist;
-  const auto setHidden = [this](std::string bus, std::string identity, bool shown) {
+  const auto setHidden = [this](const MprisPlayerInfo& player, bool shown) {
     if (m_config == nullptr) {
       return;
     }
     auto next = m_config->config().shell.mpris.blacklist;
-    std::erase_if(next, [&](const std::string& token) { return playerHidden({token}, bus, identity); });
+    std::erase_if(next, [&](const std::string& token) { return mprisPlayerBlacklisted({token}, player); });
     if (!shown) {
-      next.push_back(lowered(identity));
+      next.push_back(lowered(player.identity));
     }
     setSettingOverride({"shell", "mpris", "blacklist"}, std::move(next));
     requestContentRebuild();
   };
   std::vector<settings::SettingsServicesContext::Player> players;
-  for (const auto& [bus, identity] : m_mediaPlayers) {
-    players.push_back({.label = identity,
-                       .shown = !playerHidden(blacklist, bus, identity),
-                       .setShown = [setHidden, bus, identity](bool shown) { setHidden(bus, identity, shown); }});
+  static const std::unordered_map<std::string, MprisPlayerInfo> kNoPlayers;
+  MprisService* mpris = m_mprisProvider ? m_mprisProvider() : nullptr;
+  const auto& running = mpris != nullptr ? mpris->players() : kNoPlayers;
+  for (const auto& [bus, player] : running) {
+    players.push_back({.label = player.identity.empty() ? bus : player.identity,
+                       .shown = !mprisPlayerBlacklisted(blacklist, player),
+                       .setShown = [setHidden, player](bool shown) { setHidden(player, shown); }});
   }
   for (const auto& token : blacklist) {
-    const bool running = std::ranges::any_of(m_mediaPlayers, [&](const auto& player) {
-      return playerHidden({token}, player.first, player.second);
+    const bool matchesRunning = std::ranges::any_of(running, [&](const auto& entry) {
+      return mprisPlayerBlacklisted({token}, entry.second);
     });
-    if (!running) {
+    if (!matchesRunning) {
+      const MprisPlayerInfo tokenOnly{.busName = token, .identity = token};
       players.push_back({.label = token, .shown = false,
-                         .setShown = [setHidden, token](bool shown) { setHidden(token, token, shown); }});
+                         .setShown = [setHidden, tokenOnly](bool shown) { setHidden(tokenOnly, shown); }});
     }
   }
 

@@ -253,6 +253,7 @@ void Application::initUiRenderSurfacesAndSettings() {
   m_settingsWindow.setSessionBus(m_bus.get());
   m_settingsWindow.setConnectivityProviders([this] { return network(); }, [this] { return bluetooth(); });
   m_settingsWindow.setAudioProvider([this] { return pipewire(); });
+  m_settingsWindow.setMprisProvider([this] { return mpris(); });
   m_settingsWindow.setPowerProfilesProvider([this] { return powerProfiles(); });
   m_settingsWindow.setKeyboardBacklightProbe([this] {
     return m_keyboardBacklightService != nullptr && m_keyboardBacklightService->available();

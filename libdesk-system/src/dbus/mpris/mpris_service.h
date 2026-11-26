@@ -45,6 +45,7 @@ struct MprisPlayerInfo {
   std::string sourceUrl;
   std::string artUrl;
   std::string loopStatus{"None"};
+
   bool shuffle{false};
   double volume{1.0};
   int64_t positionUs{0};
@@ -59,6 +60,10 @@ struct MprisPlayerInfo {
 
   bool operator==(const MprisPlayerInfo&) const = default;
 };
+
+// The shell.mpris.blacklist match: a token (trimmed, any case) equals the bus name, identity or desktop entry, or is
+// part of the bus name.
+[[nodiscard]] bool mprisPlayerBlacklisted(const std::vector<std::string>& blacklist, const MprisPlayerInfo& player);
 
 // Joins artist names with ", ".
 [[nodiscard]] std::string joinedArtists(const std::vector<std::string>& artists);
