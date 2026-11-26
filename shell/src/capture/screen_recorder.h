@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "capture/screencopy_capture.h"
 #include "core/poll_source.h"
 #include "dbus/name_owner_watch.h"
@@ -83,7 +84,7 @@ private:
   NameOwnerWatch m_portalOwnerWatch;
   std::string m_sessionHandle;
   std::string m_restoreToken;
-  std::uint64_t m_tokenSeq = 0;
+  RequestEpoch m_session;
   State m_state = State::Idle;
   std::optional<std::chrono::steady_clock::time_point> m_since; // set from Recording until Idle
   std::function<void()> m_activeCallback;

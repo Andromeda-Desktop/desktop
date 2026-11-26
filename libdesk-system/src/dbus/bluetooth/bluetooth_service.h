@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "core/timer_manager.h"
 
 #include <cstdint>
@@ -153,7 +154,7 @@ private:
   ConnectPass m_connectPass = ConnectPass::Idle;
   Timer m_connectPassTimer; // Arming: the controller delay; Draining: the deadline of the Connect out
   std::deque<std::string> m_connectQueue; // Draining only
-  std::uint64_t m_connectPassGeneration = 0; // a reply for an older step or pass is stale
+  LatestRequest m_connectPassRequest; // a reply for an older step or pass is stale
   bool m_connectWhenEnabled = false;
   bool m_connectionNotifications = true;
   bool m_hasStateSnapshot = false;

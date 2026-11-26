@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "core/input/key_chord.h"
 #include "core/timer_manager.h"
 #include "scripting/plugin_ipc.h"
@@ -147,7 +148,7 @@ private:
   bool m_needsFrameTick = false;
   bool m_open = false;
   std::string m_openContext;
-  std::uint64_t m_openGeneration = 0;
+  RequestEpoch m_openEpoch;
   bool m_hasOnIpc = false;
   bool m_hasOnIpcKnown = false;
   float m_preferredWidth;

@@ -778,12 +778,12 @@ void ClipboardService::activatePersistenceKey(security::SecureKey key) {
 void ClipboardService::openPersistence() {
   setPersistenceState(ClipboardPersistenceState::Opening, m_persistenceMigrationPending);
   const std::uint64_t generation = writeGeneration();
-  const std::uint64_t open = ++m_openSerial;
+  const LatestRequest::Ticket open = m_openRequest.begin();
   postStorageJob<OpenResult>(
       [key = m_dataKey] { return readStorage(*key); },
       [this, generation, open](OpenResult result) {
         // An older open read the disk before this one was asked for; only the newest snapshot applies.
-        if (generation == writeGeneration() && open == m_openSerial) {
+        if (generation == writeGeneration() && m_openRequest.current(open)) {
           applyOpen(std::move(result));
         }
       }

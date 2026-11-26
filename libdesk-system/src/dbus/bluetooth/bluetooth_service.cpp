@@ -927,7 +927,7 @@ void BluetoothService::cancelConnectPass() {
   m_connectQueue.clear();
   m_connectPass = ConnectPass::Idle;
   // Replies to Connect() calls already sent must not advance a newer pass.
-  ++m_connectPassGeneration;
+  m_connectPassRequest.cancel();
 }
 
 void BluetoothService::startConnectPass() {
@@ -953,9 +953,9 @@ void BluetoothService::connectNextQueued() {
     if (dev == nullptr || !dev->paired || !dev->trusted || dev->connected || dev->connecting) {
       continue;
     }
-    const std::uint64_t generation = ++m_connectPassGeneration;
-    if (dispatchConnect(path, [this, generation] {
-          if (generation == m_connectPassGeneration) {
+    const LatestRequest::Ticket ticket = m_connectPassRequest.begin();
+    if (dispatchConnect(path, [this, ticket] {
+          if (m_connectPassRequest.current(ticket)) {
             m_connectPassTimer.stop();
             connectNextQueued();
           }

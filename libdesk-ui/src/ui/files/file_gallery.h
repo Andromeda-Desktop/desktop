@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "core/timer_manager.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/node.h"
@@ -176,7 +177,7 @@ private:
   bool m_infoOpen = false;
   bool m_videoActive = false;
   std::array<float, 4> m_videoRect{};
-  std::uint64_t m_motionGeneration = 0;
+  LatestRequest m_motion;
   Flex* m_scrub = nullptr;
   Glyph* m_scrubGlyph = nullptr;
   Flex* m_scrubTrack = nullptr;

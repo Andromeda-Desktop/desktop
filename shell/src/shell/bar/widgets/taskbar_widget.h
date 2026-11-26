@@ -20,6 +20,7 @@
 
 class ContextMenuPopup;
 class ConfigService;
+struct ContextMenuControlEntry;
 class Box;
 class Flex;
 class InputArea;
@@ -40,6 +41,26 @@ enum class WorkspaceGroupContent {
   Count,
   Dots,
 };
+
+// Windows 11 "Combine taskbar buttons".
+enum class TaskbarCombine {
+  Always,
+  WhenFull,
+  Never,
+};
+
+struct TaskbarFit {
+  // Task indices to show, in strip order.
+  std::vector<std::size_t> visible;
+  // True when the rest fold into one trailing "..." tile that also needs one slot of the room.
+  bool overflow = false;
+};
+
+// Which of `count` tiles of `pitch` (tile plus `gap`) fit in `room`. When they do not all fit, one slot goes to the
+// overflow tile and the active tile (if any) takes the last visible slot.
+[[nodiscard]] TaskbarFit fitTaskbarTiles(
+    std::size_t count, float room, float pitch, float gap, std::optional<std::size_t> activeIndex
+);
 
 struct TaskbarWidgetOptions {
   bool groupByWorkspace = false;
@@ -79,8 +100,8 @@ struct TaskbarWidgetOptions {
   bool runningBar = false;
   // Hovering a running button for 400 ms shows its windows' previews instead of a tooltip.
   bool windowPreviews = false;
-  // One button per app (Windows 11 "combine"): it marks the app focused when any of its windows is.
-  bool combineApps = false;
+  // One button per app: it marks the app focused when any of its windows is.
+  TaskbarCombine combineApps = TaskbarCombine::Never;
 };
 
 struct TaskbarWidgetContext {
@@ -103,6 +124,8 @@ public:
   [[nodiscard]] bool wantsBarHoverHighlight() const noexcept override { return false; }
   // Steps through whatever this taskbar shows: workspace groups when grouping, else tasks.
   void cycleAdjacent(int direction);
+  // Width the flat strip may take on a horizontal bar before the rest of the bar overlaps; infinity is unbounded.
+  void setStripRoom(float room);
 
 private:
   friend class TaskbarWidgetTestAccess;
@@ -184,7 +207,7 @@ private:
     bool armed = false; // hold fired; goes active on the next motion
     std::size_t sourceIndex = 0;
     std::size_t targetIndex = 0;
-    // m_taskGeneration when the drag began; a rebuild invalidates the indices above.
+    // m_taskVersion when the drag began; a rebuild invalidates the indices above.
     std::uint64_t generation = 0;
     // Pointer position along the strip's layout axis: x when horizontal, y when vertical.
     float startMain = 0.0F;
@@ -204,7 +227,6 @@ private:
   void rebuild(Renderer& renderer);
   void clearChildren(Flex* flex) const;
   void buildTaskButtons(Renderer& renderer);
-  void updateModels();
   void syncWorkspaceGroupingCapability();
   [[nodiscard]] static std::string toLower(const std::string& value);
   [[nodiscard]] static const std::string& displayTitle(const TaskModel& task) noexcept;
@@ -217,6 +239,12 @@ private:
   void buildDesktopIconIndex();
   [[nodiscard]] ResolvedIcon resolveIcon(const std::string& appId, const std::string& iconNameOrPath);
   void openTaskContextMenu(const TaskModel& task, InputArea& area, const std::vector<TaskRef>& members = {});
+  void openOverflowMenu(InputArea& area, std::vector<TaskRef> hidden);
+  // Null while the shell has no render context.
+  [[nodiscard]] ContextMenuPopup* taskMenuPopup();
+  void openMenuBelowTile(InputArea& area, std::vector<ContextMenuControlEntry> entries);
+  // combineWhenFull: the "when full" mode combines windows per app in this pass.
+  void updateModels(bool combineWhenFull = false);
   // The pointer entered or left a task button: opens, moves or closes the window previews.
   void hoverTaskPreview(TaskRef ref, InputArea& area, bool entered);
   void openTaskPreview(TaskRef ref, PopupAnchorRect anchor);
@@ -316,6 +344,8 @@ private:
   std::shared_ptr<void> m_aliveGuard = std::make_shared<int>(0);
 
   float m_tilePitchMain = 0.0F; // Main-axis distance between adjacent tiles; set while building the flat strip.
+  float m_tileGap = 0.0F;
+  float m_stripRoom = std::numeric_limits<float>::infinity();
   bool m_rebuildPending = true;
   bool m_vertical = false;
   float m_containerWidth = 0.0F;
@@ -327,7 +357,7 @@ private:
 
   std::vector<TaskModel> m_tasks;
   // Retained controls resolve task indices only while this model generation matches.
-  std::uint64_t m_taskGeneration = 0;
+  std::uint64_t m_taskVersion = 0;
   // Non-owning; cleared before task-strip children are destroyed.
   std::vector<TaskTile> m_taskTiles;
   std::vector<WorkspaceModel> m_workspaces;

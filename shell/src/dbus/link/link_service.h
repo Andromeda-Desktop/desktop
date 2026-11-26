@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "core/timer_manager.h"
 #include "dbus/link/link_commands.h"
 #include "dbus/link/link_phone_state.h"
@@ -302,7 +303,7 @@ private:
   };
   std::set<PhotoKey> m_thumbnailsLoading;
   // Counts requests per phone so that a reply of an older request is dropped.
-  std::map<std::string, std::uint64_t> m_photoGeneration;
+  std::map<std::string, RequestEpoch> m_photoEpoch;
   Timer m_connectTimer;
   void forgetPhotos(const std::string& deviceId);
   std::map<std::string, LinkDeviceInfo> m_info;
@@ -334,7 +335,7 @@ private:
   ChangeCallback m_changeCallback;
   std::optional<LinkPairing> m_pairing;
   // Bumped by each start and cancel: a StartPairing reply for an older one is dropped.
-  std::uint64_t m_pairingRequest = 0;
+  LatestRequest m_pairingRequest;
   std::optional<LinkPairingOutcome> m_outcome;
   bool m_available = false;
   // Last member: expires first, so a worker reply never reaches a dying service.

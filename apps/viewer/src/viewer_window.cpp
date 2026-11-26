@@ -971,7 +971,7 @@ namespace viewer {
   void ViewerWindow::requestRender(std::vector<Page>& cache, std::size_t page, std::uint32_t width) {
     cache[page].requestedWidth = width;
     takeJob();
-    const std::uint64_t seq = ++m_renderSeq;
+    const std::uint64_t seq = ++m_renderOrdinal;
     m_helper->request(
         {.op = preview::op::Render, .a = static_cast<std::uint32_t>(page), .b = width, .c = kMaxPageHeight},
         [this, &cache, page, width, seq, generation = m_generation](const preview::HelperReply& reply) {
@@ -1037,7 +1037,7 @@ namespace viewer {
       rebuild();
     }
     // Its own counter: a new search drops the old search's finds and snippets, not the edits, renders or saves in flight.
-    ++m_searchGeneration;
+    m_search.advance();
     if (m_searchText.empty()) {
       m_model.clearSearch();
     } else {
@@ -1058,12 +1058,12 @@ namespace viewer {
     m_helper->request(
         {.op = preview::op::Find, .a = static_cast<std::uint32_t>(*page)},
         std::vector<std::uint8_t>(q.begin(), q.end()),
-        [this, page = *page, generation = m_generation, search = m_searchGeneration](const preview::HelperReply& reply) {
+        [this, page = *page, generation = m_generation, search = m_search.ticket()](const preview::HelperReply& reply) {
           if (generation != m_generation) {
             return;
           }
           m_scanPending = false;
-          if (search != m_searchGeneration) {
+          if (!m_search.current(search)) {
             scanNext();
             return;
           }
@@ -1949,12 +1949,12 @@ namespace viewer {
       m_helper->request(
           {.op = preview::op::Select, .a = static_cast<std::uint32_t>(r.page), .b = preview::kSelectLine},
           areaPayload(hit.x0, mid, hit.x1, mid),
-          [this, key, generation = m_generation, search = m_searchGeneration](const preview::HelperReply& reply) {
+          [this, key, generation = m_generation, search = m_search.ticket()](const preview::HelperReply& reply) {
             if (generation != m_generation) {
               return;
             }
             m_snippetPending = false;
-            if (search != m_searchGeneration) {
+            if (!m_search.current(search)) {
               requestSnippet();
               return;
             }
@@ -2312,7 +2312,7 @@ namespace viewer {
           }
           for (PendingInk& ink : m_pendingInk) {
             if (ink.page == page && !ink.shownAfter) {
-              ink.shownAfter = m_renderSeq; // a render sent after this one shows the stroke
+              ink.shownAfter = m_renderOrdinal; // a render sent after this one shows the stroke
             }
           }
           kLog.info("annotated page {} kind {} ({} edits)", page + 1, kind, m_edits.size());

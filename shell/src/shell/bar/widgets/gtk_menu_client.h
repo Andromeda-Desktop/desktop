@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "shell/bar/widgets/dbus_menu_client.h"
 
 #include <cstdint>
@@ -58,7 +59,7 @@ private:
   std::map<std::string, std::int32_t> m_idByAction;
   std::set<std::pair<std::uint32_t, std::uint32_t>> m_visiting; // (group, menu) on the current path
   std::vector<std::uint32_t> m_subscribed;
-  std::uint64_t m_loadGeneration = 0; // replies from an older load() are dropped
+  LatestRequest m_load; // replies from an older load() are dropped
   int m_nodeBudget = 0;               // rows build() may still add; caps menus that link one section many times
   DbusMenuNode m_root;
   bool m_loaded = false;

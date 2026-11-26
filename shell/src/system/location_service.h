@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "config/config_types.h"
 #include "dbus/name_owner_watch.h"
 
@@ -76,7 +77,7 @@ private:
   void stopGeoclue();
   void onGeoclueLocation(const std::string& path);
   void startAddressGeocode();
-  void handleResponse(const std::filesystem::path& path, bool autoLocated, bool success, std::uint64_t serial);
+  void handleResponse(const std::filesystem::path& path, bool autoLocated, bool success, LatestRequest::Ticket ticket);
   void clearResolved();
   void scheduleRetryAfterFailure();
   void loadCache();
@@ -110,7 +111,7 @@ private:
   std::string m_error;
 
   RequestKind m_requestKind = RequestKind::None;
-  std::uint64_t m_requestSerial = 0;
+  LatestRequest m_request;
   bool m_refreshQueued = false;
   std::chrono::system_clock::time_point m_nextRefreshAt;
 };

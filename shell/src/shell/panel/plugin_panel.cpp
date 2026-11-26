@@ -182,7 +182,7 @@ void PluginPanel::create() {
             .y = callback.pointerContext->y,
             .serial = callback.pointerContext->serial,
             .time = callback.pointerContext->time,
-            .surfaceGeneration = m_openGeneration,
+            .surfaceGeneration = m_openEpoch.ticket().id,
         };
       }
       (void)m_runtime->enqueueCallStrings(
@@ -236,7 +236,7 @@ void PluginPanel::startScript() {
 
 void PluginPanel::onOpen(std::string_view context) {
   closeContextMenu();
-  ++m_openGeneration;
+  m_openEpoch.advance();
   m_open = true;
   m_openContext = std::string(context);
   if (m_runtime != nullptr) {
@@ -251,7 +251,7 @@ void PluginPanel::onOpen(std::string_view context) {
 bool PluginPanel::isContextActive(std::string_view context) const { return m_open && m_openContext == context; }
 
 void PluginPanel::onClose() {
-  ++m_openGeneration;
+  m_openEpoch.advance();
   m_open = false;
   m_openContext.clear();
   closeContextMenu();
@@ -392,7 +392,7 @@ void PluginPanel::openContextMenu(scripting::ScriptContextMenuRequest request) {
   if (!m_open
       || m_runtime == nullptr
       || request.pointer.serial == 0
-      || request.pointer.surfaceGeneration != m_openGeneration) {
+      || !m_openEpoch.current(LatestRequest::Ticket{request.pointer.surfaceGeneration})) {
     return;
   }
   auto& panels = PanelManager::instance();
@@ -432,11 +432,11 @@ void PluginPanel::openContextMenu(scripting::ScriptContextMenuRequest request) {
   const std::string callback = std::move(request.onActivate);
   const std::optional<scripting::ScriptArg> callbackContext = std::move(request.context);
   const std::weak_ptr<bool> alive = m_alive;
-  const std::uint64_t openGeneration = m_openGeneration;
-  m_contextMenuPopup->setOnActivate([this, alive, openGeneration, actionIds = std::move(actionIds), callback,
+  const LatestRequest::Ticket openTicket = m_openEpoch.ticket();
+  m_contextMenuPopup->setOnActivate([this, alive, openTicket, actionIds = std::move(actionIds), callback,
                                      callbackContext](const ContextMenuControlEntry& entry) {
     const auto token = alive.lock();
-    if (token == nullptr || !*token || !m_open || m_openGeneration != openGeneration) {
+    if (token == nullptr || !*token || !m_open || !m_openEpoch.current(openTicket)) {
       return;
     }
     if (m_runtime == nullptr || entry.id < 0 || static_cast<std::size_t>(entry.id) >= actionIds.size()) {
@@ -517,7 +517,7 @@ void PluginPanel::setupScriptWatch() {
 void PluginPanel::teardownScriptWatch() { m_scriptWatcher.stop(); }
 
 void PluginPanel::reloadScript() {
-  ++m_openGeneration;
+  m_openEpoch.advance();
   closeContextMenu();
   std::string source = readFile(m_sourcePath);
   auto name = m_sourcePath.filename().string();

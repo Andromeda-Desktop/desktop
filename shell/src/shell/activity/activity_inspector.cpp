@@ -772,7 +772,7 @@ void ActivityWindow::addContainerInspector(Flex& inspector, const ContainerInfo&
 
 void ActivityWindow::resetSample() {
   m_sampleTimer.stop();
-  ++m_sampleGeneration;
+  m_sampleRun.advance();
   m_sample = {};
 }
 
@@ -799,8 +799,8 @@ void ActivityWindow::startSample() {
         }
         return snapshotThreads(pids);
       },
-      [this, generation = m_sampleGeneration](std::vector<ThreadSnapshot> before) {
-        if (generation != m_sampleGeneration) {
+      [this, ticket = m_sampleRun.ticket()](std::vector<ThreadSnapshot> before) {
+        if (!m_sampleRun.current(ticket)) {
           return;
         }
         if (before.empty()) {
@@ -809,12 +809,12 @@ void ActivityWindow::startSample() {
           return;
         }
         m_sample.before = std::move(before);
-        m_sampleTimer.start(kSampleFor, [this, generation] { finishSample(generation); });
+        m_sampleTimer.start(kSampleFor, [this, ticket] { finishSample(ticket); });
       }
   );
 }
 
-void ActivityWindow::finishSample(std::uint64_t generation) {
+void ActivityWindow::finishSample(LatestRequest::Ticket ticket) {
   std::vector<int> pids;
   for (const auto& thread : m_sample.before) {
     if (pids.empty() || pids.back() != thread.pid) {
@@ -830,8 +830,8 @@ void ActivityWindow::finishSample(std::uint64_t generation) {
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - startedAt).count();
         return summarizeSample(title, before, after, seconds, ::sysconf(_SC_CLK_TCK), std::time(nullptr));
       },
-      [this, generation](SampleSummary summary) {
-        if (generation != m_sampleGeneration) {
+      [this, ticket](SampleSummary summary) {
+        if (!m_sampleRun.current(ticket)) {
           return;
         }
         m_sample.phase = SampleRun::Phase::Done;

@@ -880,7 +880,7 @@ void ScreenTimeService::save(bool async) {
   // Temporary file + rename: a crash mid-write no longer truncates the history.
   std::string text = root.dump(2) + '\n';
   m_dirty = false;
-  const std::uint64_t generation = ++m_saveGeneration;
+  const std::uint64_t generation = ++m_saveVersion;
   if (!async) {
     if (!writeScreenTime(m_storagePath, text, generation)) {
       kLog.warn("failed to write {}", m_storagePath);

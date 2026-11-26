@@ -361,11 +361,11 @@ void LinkService::notify() {
 
 void LinkService::startPairing() {
   m_outcome.reset();
-  const std::uint64_t request = ++m_pairingRequest;
+  const LatestRequest::Ticket request = m_pairingRequest.begin();
   m_link->callMethodAsync("StartPairing")
       .onInterface(kLinkInterface)
       .uponReplyInvoke([this, request](std::optional<sdbus::Error> error, std::string code, std::string uri) {
-        if (request != m_pairingRequest) {
+        if (!m_pairingRequest.current(request)) {
           return;
         }
         if (error.has_value()) {
@@ -396,7 +396,7 @@ void LinkService::confirmBluetoothPairing(std::uint32_t passkey, std::function<v
 }
 
 void LinkService::cancelPairing() {
-  ++m_pairingRequest;
+  m_pairingRequest.cancel();
   m_pairing.reset();
   m_outcome.reset();
   m_link->callMethodAsync("CancelPairing")
@@ -836,14 +836,15 @@ void LinkService::disconnect(const std::string& deviceId, std::function<void(boo
 
 void LinkService::forgetPhotos(const std::string& deviceId) {
   m_photoLists.erase(deviceId);
-  ++m_photoGeneration[deviceId];
+  m_photoEpoch[deviceId].advance();
   m_thumbnails.eraseIf([&](const PhotoKey& key, const auto&) { return key.first == deviceId; });
   std::erase_if(m_thumbnailsLoading, [&](const PhotoKey& key) { return key.first == deviceId; });
 }
 
 void LinkService::requestPhotos(const std::string& deviceId, std::uint16_t count) {
   m_photoLists[deviceId].state = LinkPhotosState::Loading;
-  const std::uint64_t generation = ++m_photoGeneration[deviceId];
+  m_photoEpoch[deviceId].advance();
+  const LatestRequest::Ticket generation = m_photoEpoch[deviceId].ticket();
   m_link->callMethodAsync("RecentPhotos")
       .onInterface(kLinkInterface)
       .withArguments(deviceId, count)
@@ -851,7 +852,7 @@ void LinkService::requestPhotos(const std::string& deviceId, std::uint16_t count
                            std::optional<sdbus::Error> error,
                            std::vector<sdbus::Struct<std::string, std::string, std::uint64_t>> photos
                        ) {
-        if (m_photoGeneration[deviceId] != generation) {
+        if (!m_photoEpoch[deviceId].current(generation)) {
           return;
         }
         PhotoList& result = m_photoLists[deviceId];
@@ -888,13 +889,13 @@ LinkService::photoThumbnail(const std::string& deviceId, const std::string& path
   if (!m_thumbnailsLoading.insert(key).second) {
     return nullptr;
   }
-  const std::uint64_t generation = m_photoGeneration[deviceId];
+  const LatestRequest::Ticket generation = m_photoEpoch[deviceId].ticket();
   m_link->callMethodAsync("Thumbnail")
       .onInterface(kLinkInterface)
       .withArguments(deviceId, path, size)
       .uponReplyInvoke([this, key, generation](std::optional<sdbus::Error> error, std::vector<std::uint8_t> png) {
         logFailure("Thumbnail", error);
-        if (m_photoGeneration[key.first] != generation) {
+        if (!m_photoEpoch[key.first].current(generation)) {
           m_thumbnailsLoading.erase(key);
           return;
         }
@@ -917,7 +918,7 @@ LinkService::photoThumbnail(const std::string& deviceId, const std::string& path
             },
             [this, key, generation](std::shared_ptr<const NotificationImageData> image) {
               m_thumbnailsLoading.erase(key);
-              if (m_photoGeneration[key.first] != generation) {
+              if (!m_photoEpoch[key.first].current(generation)) {
                 return;
               }
               if (image == nullptr) {

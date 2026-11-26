@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "vault_sheet.h"
 
 #include "core/files/file_model.h"
@@ -336,7 +337,7 @@ private:
   [[nodiscard]] const std::vector<std::filesystem::path>& draggedPaths() const;
   std::vector<TrashItem> m_trash;
   FileBrowser::Listing m_trashListing; // built by loadTrash() while another folder shows
-  std::uint64_t m_trashGeneration = 0;
+  LatestRequest m_trashRequest;
   std::vector<std::function<void()>> m_trashThen; // run when the newest Trash read applies
   std::vector<service_menus::Action> m_serviceActions; // the last item menu's Actions rows
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // D-Bus replies skip a closed window

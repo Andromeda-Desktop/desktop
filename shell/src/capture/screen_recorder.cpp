@@ -161,12 +161,12 @@ std::string ScreenRecorder::toggle(std::optional<LogicalRect> region) {
           selectSources();
         },
         [this](sdbus::IProxy& portal, Results options) {
-          options["session_handle_token"] = sdbus::Variant{std::format("noctalia_rec{}", m_tokenSeq)};
+          options["session_handle_token"] = sdbus::Variant{std::format("noctalia_rec{}", m_session.ticket().id)};
           portal.callMethodAsync("CreateSession")
               .onInterface(kScreenCast)
               .withArguments(options)
-              .uponReplyInvoke([this, seq = m_tokenSeq](std::optional<sdbus::Error> error, sdbus::ObjectPath /*request*/) {
-                if (error.has_value() && m_state == State::Starting && seq == m_tokenSeq) {
+              .uponReplyInvoke([this, seq = m_session.ticket()](std::optional<sdbus::Error> error, sdbus::ObjectPath /*request*/) {
+                if (error.has_value() && m_state == State::Starting && m_session.current(seq)) {
                   finish(error->what());
                 }
               });
@@ -183,8 +183,9 @@ void ScreenRecorder::portalRequest(
     const std::string& method, std::function<void(std::uint32_t, const Results&)> onResponse,
     std::function<void(sdbus::IProxy&, Results)> call
 ) {
-  const std::uint64_t seq = ++m_tokenSeq;
-  const std::string token = std::format("noctalia_rec{}", seq);
+  m_session.advance();
+  const LatestRequest::Ticket seq = m_session.ticket();
+  const std::string token = std::format("noctalia_rec{}", seq.id);
   std::string sender = m_bus.connection().getUniqueName().substr(1);
   std::ranges::replace(sender, '.', '_');
   // Subscribed before the call, so a fast Response is never missed.
@@ -199,7 +200,7 @@ void ScreenRecorder::portalRequest(
         // The request proxy is running this handler; replace it only once the handler has returned.
         DeferredCall::callLaterIfAlive(m_alive, [this, onResponse, response, results, seq]() {
           // A start that ended, or a newer request, makes this answer stale.
-          if (m_state == State::Starting && seq == m_tokenSeq) {
+          if (m_state == State::Starting && m_session.current(seq)) {
             onResponse(response, results);
           }
         });
@@ -227,8 +228,8 @@ void ScreenRecorder::selectSources() {
         portal.callMethodAsync("SelectSources")
             .onInterface(kScreenCast)
             .withArguments(sdbus::ObjectPath{m_sessionHandle}, options)
-            .uponReplyInvoke([this, seq = m_tokenSeq](std::optional<sdbus::Error> error, sdbus::ObjectPath /*request*/) {
-              if (error.has_value() && m_state == State::Starting && seq == m_tokenSeq) {
+            .uponReplyInvoke([this, seq = m_session.ticket()](std::optional<sdbus::Error> error, sdbus::ObjectPath /*request*/) {
+              if (error.has_value() && m_state == State::Starting && m_session.current(seq)) {
                 finish(error->what());
               }
             });
@@ -273,10 +274,10 @@ void ScreenRecorder::startCast() {
           m_portal->callMethodAsync("OpenPipeWireRemote")
               .onInterface(kScreenCast)
               .withArguments(sdbus::ObjectPath{m_sessionHandle}, Results{})
-              .uponReplyInvoke([this, seq = m_tokenSeq, node = std::get<0>(list.front())](
+              .uponReplyInvoke([this, seq = m_session.ticket(), node = std::get<0>(list.front())](
                                    std::optional<sdbus::Error> error, sdbus::UnixFd fd
                                ) {
-                if (m_state != State::Starting || seq != m_tokenSeq) {
+                if (m_state != State::Starting || !m_session.current(seq)) {
                   return;
                 }
                 if (error.has_value()) {
@@ -304,8 +305,8 @@ void ScreenRecorder::startCast() {
         portal.callMethodAsync("Start")
             .onInterface(kScreenCast)
             .withArguments(sdbus::ObjectPath{m_sessionHandle}, std::string{}, options)
-            .uponReplyInvoke([this, seq = m_tokenSeq](std::optional<sdbus::Error> error, sdbus::ObjectPath /*request*/) {
-              if (error.has_value() && m_state == State::Starting && seq == m_tokenSeq) {
+            .uponReplyInvoke([this, seq = m_session.ticket()](std::optional<sdbus::Error> error, sdbus::ObjectPath /*request*/) {
+              if (error.has_value() && m_state == State::Starting && m_session.current(seq)) {
                 finish(error->what());
               }
             });

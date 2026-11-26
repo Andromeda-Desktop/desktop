@@ -129,16 +129,16 @@ void GtkMenuClient::load() {
   // The old groups end only after the new Start answers: GTK frees a group, and may reuse its id, at zero subscribers.
   auto previous = std::make_shared<std::vector<std::uint32_t>>(std::move(m_subscribed));
   m_subscribed.clear();
-  const std::uint64_t generation = ++m_loadGeneration;
+  const LatestRequest::Ticket ticket = m_load.begin();
   auto pending = std::make_shared<std::set<std::uint32_t>>();
   const auto start = std::make_shared<std::function<void(std::vector<std::uint32_t>)>>();
   // The function holds itself weakly; each pending reply holds it strongly until it runs.
-  *start = [this, alive = std::weak_ptr<bool>(m_alive), pending, previous, generation, staged,
+  *start = [this, alive = std::weak_ptr<bool>(m_alive), pending, previous, ticket, staged,
             weakStart = std::weak_ptr<std::function<void(std::vector<std::uint32_t>)>>(start)](
                std::vector<std::uint32_t> groups
            ) {
     const auto self = weakStart.lock();
-    if (alive.expired() || m_menus == nullptr || self == nullptr || generation != m_loadGeneration) {
+    if (alive.expired() || m_menus == nullptr || self == nullptr || !m_load.current(ticket)) {
       return;
     }
     m_subscribed.insert(m_subscribed.end(), groups.begin(), groups.end());
@@ -147,10 +147,10 @@ void GtkMenuClient::load() {
           .onInterface(kMenus)
           .withTimeout(kTimeout)
           .withArguments(groups)
-          .uponReplyInvoke([this, alive, pending, previous, generation, staged, self](
+          .uponReplyInvoke([this, alive, pending, previous, ticket, staged, self](
                                std::optional<sdbus::Error> error, std::vector<MenuGroup> menus
                            ) {
-            if (alive.expired() || generation != m_loadGeneration) {
+            if (alive.expired() || !m_load.current(ticket)) {
               return;
             }
             if (!previous->empty()) {

@@ -622,7 +622,7 @@ void PanelManager::unregisterPanel(const std::string& id) {
       m_panels.erase(it);
       DeferredCall::callLaterIfAlive(m_alive, [this] {
         if (m_activePanel != nullptr && m_activePanel == m_retiredActivePanel.get()) {
-          ++m_destroyGeneration;
+          m_destroy.advance();
           destroyPanel();
         }
         m_retiredActivePanel.reset();
@@ -631,7 +631,7 @@ void PanelManager::unregisterPanel(const std::string& id) {
     }
     // A closing panel is still read by its close animation: destroy it now and cancel
     // the pending deferred destroy.
-    ++m_destroyGeneration;
+    m_destroy.advance();
     destroyPanel();
   }
   m_panels.erase(it);
@@ -1422,10 +1422,10 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
         activateFocusGrab();
       }
       if (attachedKeyboardPlan.relaxed.has_value()) {
-        const std::uint64_t gen = m_destroyGeneration;
+        const LatestRequest::Ticket gen = m_destroy.ticket();
         const LayerShellKeyboard relaxed = *attachedKeyboardPlan.relaxed;
         m_keyboardRelaxTimer.start(kKeyboardRelaxDelay, [this, gen, relaxed] {
-          if (m_destroyGeneration != gen || !isAttachedOpen() || m_layerSurface == nullptr || m_lifecycle.closing()) {
+          if (!m_destroy.current(gen) || !isAttachedOpen() || m_layerSurface == nullptr || m_lifecycle.closing()) {
             return;
           }
           applyKeyboardRelaxation(relaxed);
@@ -1526,10 +1526,10 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     activateFocusGrab();
   }
   if (keyboardPlan.relaxed.has_value()) {
-    const std::uint64_t gen = m_destroyGeneration;
+    const LatestRequest::Ticket gen = m_destroy.ticket();
     const LayerShellKeyboard relaxed = *keyboardPlan.relaxed;
     m_keyboardRelaxTimer.start(kKeyboardRelaxDelay, [this, gen, relaxed] {
-      if (m_destroyGeneration != gen || m_layerSurface == nullptr || m_lifecycle.closing()) {
+      if (!m_destroy.current(gen) || m_layerSurface == nullptr || m_lifecycle.closing()) {
         return;
       }
       applyKeyboardRelaxation(relaxed);
@@ -1706,7 +1706,8 @@ void PanelManager::closePanel(bool animateClose) {
   m_attachedOpenAnimationPending = false;
 
   if (animateClose && m_sceneRoot != nullptr && m_activePanel != nullptr && m_activePanel->wantsCloseAnimation()) {
-    const std::uint64_t gen = ++m_destroyGeneration;
+    m_destroy.advance();
+    const LatestRequest::Ticket gen = m_destroy.ticket();
     if (m_attachedToBar && m_attachedRevealClipNode != nullptr) {
       if (!startAttachedCompositorClose(gen)) {
         m_attachedRevealAnimId = m_animations.drive(
@@ -1714,7 +1715,7 @@ void PanelManager::closePanel(bool animateClose) {
             [this](float v) { applyAttachedReveal(v); },
             [this, gen] {
               DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
-                if (m_destroyGeneration == gen) {
+                if (m_destroy.current(gen)) {
                   destroyPanel();
                 }
               });
@@ -1728,7 +1729,7 @@ void PanelManager::closePanel(bool animateClose) {
           0.0F,
           [this, gen] {
             DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
-              if (m_destroyGeneration == gen) {
+              if (m_destroy.current(gen)) {
                 destroyPanel();
               }
             });
@@ -1801,7 +1802,7 @@ void PanelManager::prewarmNext() {
 
 void PanelManager::destroyPanelNow() {
   // Bump the generation first so any in-flight deferred destroyPanel is a no-op.
-  ++m_destroyGeneration;
+  m_destroy.advance();
   destroyPanel();
 }
 
@@ -2497,7 +2498,7 @@ DskSurfaceClient::Value PanelManager::attachedRevealClip(double travel) const {
   return {};
 }
 
-bool PanelManager::startAttachedCompositorClose(std::uint64_t gen) {
+bool PanelManager::startAttachedCompositorClose(LatestRequest::Ticket gen) {
   using Property = DskSurfaceClient::Property;
   using Curve = DskSurfaceClient::Curve;
   if (!attachedRevealOnCompositor()) {
@@ -2511,7 +2512,7 @@ bool PanelManager::startAttachedCompositorClose(std::uint64_t gen) {
   m_dsk->animate(Property::Translate, Curve::SpringClose, attachedRevealShift(travel));
   m_dsk->animate(Property::Clip, Curve::SpringClose, attachedRevealClip(travel), [this, gen](DskSurfaceClient::EndReason) {
     DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
-      if (m_destroyGeneration == gen) {
+      if (m_destroy.current(gen)) {
         destroyPanel();
       }
     });
@@ -3085,7 +3086,7 @@ bool PanelManager::startPiecesOpen() {
   return true;
 }
 
-bool PanelManager::startPiecesClose(std::uint64_t gen) {
+bool PanelManager::startPiecesClose(LatestRequest::Ticket gen) {
   if (!piecesActive() || m_attachedToBar || m_sceneRoot == nullptr || !MotionService::instance().enabled() ||
       m_scaleFrom.has_value()) {
     return false;
@@ -3096,7 +3097,7 @@ bool PanelManager::startPiecesClose(std::uint64_t gen) {
       1.0F, 0.0F, Style::spring(Tokens::springClose), [](float) {},
       [this, gen] {
         DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
-          if (m_destroyGeneration == gen) {
+          if (m_destroy.current(gen)) {
             destroyPanel();
           }
         });
@@ -3312,7 +3313,7 @@ bool PanelManager::startScaleOpen(ScaleFrom from, ScaleOpenFade fade) {
   return true;
 }
 
-bool PanelManager::startDetachedScaleClose(std::uint64_t gen) {
+bool PanelManager::startDetachedScaleClose(LatestRequest::Ticket gen) {
   using Property = DskSurfaceClient::Property;
   using Curve = DskSurfaceClient::Curve;
   if (m_dsk == nullptr || !m_scaleFrom.has_value()) {
@@ -3341,7 +3342,7 @@ bool PanelManager::startDetachedScaleClose(std::uint64_t gen) {
       },
       [this, gen] {
         DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
-          if (m_destroyGeneration == gen) {
+          if (m_destroy.current(gen)) {
             destroyPanel();
           }
         });
@@ -3627,7 +3628,7 @@ void PanelManager::finishTrackerOpen(bool open) {
   }
 }
 
-bool PanelManager::startDetachedMorphClose(std::uint64_t gen) {
+bool PanelManager::startDetachedMorphClose(LatestRequest::Ticket gen) {
   using Property = DskSurfaceClient::Property;
   using Curve = DskSurfaceClient::Curve;
   // A sheet that opened with the scale motion closes with it: a return into the source would not mirror its open.
@@ -3652,14 +3653,14 @@ bool PanelManager::startDetachedMorphClose(std::uint64_t gen) {
       Property::Clip, Curve::SpringClose, *m_dsk->mappedClip(),
       [this, gen](DskSurfaceClient::EndReason) {
         DeferredCall::callLaterIfAlive(m_alive, [this, gen] {
-          if (m_destroyGeneration == gen) {
+          if (m_destroy.current(gen)) {
             destroyPanel();
           }
         });
       },
       // The content and the end fade follow the compositor's clock (7.1.7): start when its clip spring starts.
       [this, gen](std::uint32_t) {
-        if (m_destroyGeneration == gen) {
+        if (m_destroy.current(gen)) {
           driveContentMorph(0.0F, false);
         }
       }

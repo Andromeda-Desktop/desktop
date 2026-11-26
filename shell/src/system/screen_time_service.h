@@ -102,7 +102,7 @@ private:
   std::string m_activeAppKey;
   std::chrono::steady_clock::time_point m_activeSince;
   bool m_dirty = false;
-  std::uint64_t m_saveGeneration = 0;
+  std::uint64_t m_saveVersion = 0;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   bool m_enabled = false;
   std::uint8_t m_pauseReasons = 0;

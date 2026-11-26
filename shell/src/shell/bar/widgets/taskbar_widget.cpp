@@ -352,7 +352,7 @@ void TaskbarWidget::hoverTaskPreview(TaskRef ref, InputArea& area, bool entered)
 }
 
 void TaskbarWidget::openTaskPreview(TaskRef ref, PopupAnchorRect anchor) {
-  const TaskModel* task = resolveTask(m_tasks, ref, m_taskGeneration);
+  const TaskModel* task = resolveTask(m_tasks, ref, m_taskVersion);
   auto* renderContext = PanelManager::instance().renderContext();
   if (task == nullptr || !task->running || renderContext == nullptr) {
     return;
@@ -962,9 +962,10 @@ void TaskbarWidget::applyPinnedMerge(std::vector<TaskModel>& tasks) {
     tile.pinned = true;
     tile.running = true;
     tile.desktopEntryId = entry.id;
-    tile.instanceCount = matching.size();
+    tile.instanceCount = 0;
     tile.minimizedCount = 0;
     for (const std::size_t index : matching) {
+      tile.instanceCount += tasks[index].instanceCount;
       tile.minimizedCount += tasks[index].minimizedCount;
     }
     if (tile.idLower.empty()) {
@@ -1228,7 +1229,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
     assert(&task >= m_tasks.data() && &task < m_tasks.data() + m_tasks.size());
     return TaskRef{
         .index = static_cast<std::size_t>(&task - m_tasks.data()),
-        .generation = m_taskGeneration,
+        .generation = m_taskVersion,
     };
   };
 
@@ -1237,7 +1238,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
                             std::size_t badgeCount = 1) {
     // Unreachable at build time: every ref is built from a live m_tasks element at the current
     // generation. Kept as a release-safe guard so a stale ref cannot deref null.
-    const TaskModel* taskModel = resolveTask(m_tasks, taskRef, m_taskGeneration);
+    const TaskModel* taskModel = resolveTask(m_tasks, taskRef, m_taskVersion);
     assert(taskModel != nullptr);
     if (taskModel == nullptr) {
       return ui::inputArea({});
@@ -1248,7 +1249,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
     if (!cycleCandidates.empty()) {
       minimizedCount = 0;
       for (const TaskRef candidate : cycleCandidates) {
-        const TaskModel* member = resolveTask(m_tasks, candidate, m_taskGeneration);
+        const TaskModel* member = resolveTask(m_tasks, candidate, m_taskVersion);
         if (member != nullptr) {
           minimizedCount += member->minimizedCount;
         }
@@ -1284,7 +1285,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
           return;
         }
         // Only commit against the pin list the drag was measured on.
-        endDrag(m_drag.generation == m_taskGeneration);
+        endDrag(m_drag.generation == m_taskVersion);
         return;
       }
       if (data.button != BTN_LEFT) {
@@ -1302,7 +1303,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
       if (!tileDraggable) {
         return;
       }
-      m_drag.generation = m_taskGeneration;
+      m_drag.generation = m_taskVersion;
       m_drag.sourceIndex = taskRef.index;
       m_drag.targetIndex = taskRef.index;
       m_drag.startMain = pointerMainOnStrip(*dragArea, data.localX, data.localY);
@@ -1321,7 +1322,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
         if (m_drag.area != dragArea) {
           return;
         }
-        if (m_drag.generation != m_taskGeneration) {
+        if (m_drag.generation != m_taskVersion) {
           endDrag(false);
           return;
         }
@@ -1375,7 +1376,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
           m_suppressTileClick = false;
           return;
         }
-        const TaskModel* current = resolveTask(m_tasks, taskRef, m_taskGeneration);
+        const TaskModel* current = resolveTask(m_tasks, taskRef, m_taskVersion);
         if (current == nullptr) {
           return;
         }
@@ -1399,7 +1400,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
         if (data.button == BTN_MIDDLE) {
           if (!cycleCandidates.empty()) {
             for (const TaskRef candidate : cycleCandidates) {
-              const TaskModel* currentCandidate = resolveTask(m_tasks, candidate, m_taskGeneration);
+              const TaskModel* currentCandidate = resolveTask(m_tasks, candidate, m_taskVersion);
               if (currentCandidate != nullptr && currentCandidate->active) {
                 closeTaskModel(*currentCandidate);
                 return;
@@ -1415,7 +1416,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
             if (cursor >= cycleCandidates.size()) {
               cursor = 0;
             }
-            const TaskModel* target = resolveTask(m_tasks, cycleCandidates[cursor], m_taskGeneration);
+            const TaskModel* target = resolveTask(m_tasks, cycleCandidates[cursor], m_taskVersion);
             cursor = (cursor + 1) % cycleCandidates.size();
             if (target != nullptr) {
               activateTaskModel(*target);
@@ -1604,7 +1605,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
     // Installed even for a currently empty title: a title arriving later must surface without a
     // rebuild. Empty content measures to nothing, so the popup never shows.
     area->setTooltipProvider([this, taskRef, tooltipCandidates] -> TooltipContent {
-      const TaskModel* current = resolveTask(m_tasks, taskRef, m_taskGeneration);
+      const TaskModel* current = resolveTask(m_tasks, taskRef, m_taskVersion);
       // A running button shows its window previews instead.
       if (current == nullptr || (m_configOptions.windowPreviews && current->running)) {
         return TooltipContent{std::monostate{}};
@@ -1613,7 +1614,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
       if (!tooltipCandidates.empty()) {
         minimized = 0;
         for (const TaskRef candidate : tooltipCandidates) {
-          const TaskModel* member = resolveTask(m_tasks, candidate, m_taskGeneration);
+          const TaskModel* member = resolveTask(m_tasks, candidate, m_taskVersion);
           if (member != nullptr) {
             minimized += member->minimizedCount;
           }
@@ -2091,14 +2092,16 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
       pinnedCycleKeysThisFrame.insert(!task.desktopEntryId.empty() ? task.desktopEntryId : task.idLower);
     }
     const std::size_t badgeCount = task.pinned ? std::max<std::size_t>(1, task.instanceCount) : 1;
-    m_taskStrip->addChild(createTaskTile(TaskRef{.index = i, .generation = m_taskGeneration}, {}, {}, badgeCount));
+    m_taskStrip->addChild(createTaskTile(TaskRef{.index = i, .generation = m_taskVersion}, {}, {}, badgeCount));
   }
   std::erase_if(m_groupedAppCycleCursor, [&](const auto& item) {
     return !pinnedCycleKeysThisFrame.contains(item.first);
   });
 }
 
-void TaskbarWidget::updateModels() {
+void TaskbarWidget::updateModels(bool combineWhenFull) {
+  const bool combine = m_configOptions.combineApps == TaskbarCombine::Always
+      || (m_configOptions.combineApps == TaskbarCombine::WhenFull && combineWhenFull);
 
   syncWorkspaceGroupingCapability();
 
@@ -2232,6 +2235,7 @@ void TaskbarWidget::updateModels() {
       }
       if (appTask.has_value()) {
         TaskModel& combined = nextTasks[*appTask];
+        ++combined.instanceCount;
         if (activeHandle != nullptr && activeHandle == window.handle) {
           combined.active = true;
           combined.firstHandle = window.handle;
@@ -2260,7 +2264,7 @@ void TaskbarWidget::updateModels() {
       task.icon = resolveIcon(run.runningAppId, run.entry.icon);
       task.workspaceKey = {};
       nextTasks.push_back(std::move(task));
-      if (m_configOptions.combineApps) {
+      if (combine) {
         appTask = nextTasks.size() - 1;
       }
     }
@@ -3039,6 +3043,11 @@ void TaskbarWidget::updateModels() {
     sortTasks(nextTasks, true);
     applyPinnedMerge(nextTasks);
     dropUnpinnedTasks(nextTasks, m_configOptions.showRunning);
+    if (m_configOptions.combineApps == TaskbarCombine::WhenFull && !combineWhenFull && !m_vertical
+        && fitTaskbarTiles(nextTasks.size(), m_stripRoom, m_tilePitchMain, m_tileGap, std::nullopt).overflow) {
+      updateModels(true);
+      return;
+    }
   }
 
   const ModelComparison comparison =
@@ -3088,7 +3097,7 @@ void TaskbarWidget::updateModels() {
     }
     return;
   }
-  ++m_taskGeneration;
+  ++m_taskVersion;
   m_tasks = std::move(nextTasks);
   m_workspaces = std::move(nextWorkspaces);
   m_rebuildPending = true;
@@ -3214,7 +3223,7 @@ void TaskbarWidget::openTaskContextMenu(const TaskModel& task, InputArea& area, 
   } else if (!members.empty()) {
     minimizeTargets.reserve(members.size());
     for (const TaskRef member : members) {
-      if (const TaskModel* candidate = resolveTask(m_tasks, member, m_taskGeneration); candidate != nullptr) {
+      if (const TaskModel* candidate = resolveTask(m_tasks, member, m_taskVersion); candidate != nullptr) {
         minimizeTargets.push_back(toplevelInfoForTask(*candidate));
       }
     }
@@ -3298,10 +3307,9 @@ void TaskbarWidget::openTaskContextMenu(const TaskModel& task, InputArea& area, 
     return;
   }
 
-  if (m_contextMenuPopup == nullptr) {
-    m_contextMenuPopup = std::make_unique<ContextMenuPopup>(m_platform.wayland(), *renderContext);
+  if (taskMenuPopup() == nullptr) {
+    return;
   }
-  m_contextMenuPopup->setShadowConfig(m_configService.config().shell.shadow);
   m_contextMenuPopup->setOnActivate([this, entryActions, entryAppName, entryWorkingDir, entryTerminal, menuEntry,
                                      isPinned, infoClose, minimizeActions](const ContextMenuControlEntry& entry) {
     if (const auto action = minimizeActions.find(entry.id); action != minimizeActions.end()) {
@@ -3376,6 +3384,23 @@ void TaskbarWidget::openTaskContextMenu(const TaskModel& task, InputArea& area, 
     }
   });
 
+  openMenuBelowTile(area, std::move(entries));
+}
+
+ContextMenuPopup* TaskbarWidget::taskMenuPopup() {
+  auto* renderContext = PanelManager::instance().renderContext();
+  if (renderContext == nullptr) {
+    return nullptr;
+  }
+  if (m_contextMenuPopup == nullptr) {
+    m_contextMenuPopup = std::make_unique<ContextMenuPopup>(m_platform.wayland(), *renderContext);
+  }
+  m_contextMenuPopup->setShadowConfig(m_configService.config().shell.shadow);
+  return m_contextMenuPopup.get();
+}
+
+void TaskbarWidget::openMenuBelowTile(InputArea& area, std::vector<ContextMenuControlEntry> entries) {
+  Surface* pointerSurface = m_platform.wayland().pointerSurface();
   float absX = 0.0F;
   float absY = 0.0F;
   Node::absolutePosition(&area, absX, absY);
@@ -3451,6 +3476,82 @@ PopupParent{.surface = pointerSurface, .output = m_platform.wayland().outputId(m
           .placement = placement,
       }
   );
+}
+
+TaskbarFit fitTaskbarTiles(
+    std::size_t count, float room, float pitch, float gap, std::optional<std::size_t> activeIndex
+) {
+  TaskbarFit fit;
+  fit.visible.reserve(count);
+  const auto stripWidth = [&](std::size_t tiles) { return static_cast<float>(tiles) * pitch - gap; };
+  if (!(pitch > 0.0F) || count == 0 || stripWidth(count) <= room) {
+    for (std::size_t i = 0; i < count; ++i) {
+      fit.visible.push_back(i);
+    }
+    return fit;
+  }
+  fit.overflow = true;
+  const auto slots = static_cast<std::size_t>(std::max(0.0F, std::floor((room + gap) / pitch)));
+  const std::size_t shown = std::min(count, slots > 0 ? slots - 1 : 0);
+  const bool swapActive = shown > 0 && activeIndex.has_value() && *activeIndex >= shown;
+  for (std::size_t i = 0; i < shown - (swapActive ? 1 : 0); ++i) {
+    fit.visible.push_back(i);
+  }
+  if (swapActive) {
+    fit.visible.push_back(*activeIndex);
+  }
+  return fit;
+}
+
+void TaskbarWidget::setStripRoom(float room) {
+  if (room == m_stripRoom) {
+    return;
+  }
+  m_stripRoom = room;
+  m_rebuildPending = true;
+  if (m_configOptions.combineApps == TaskbarCombine::WhenFull) {
+    requestUpdate();
+  }
+  if (root() != nullptr) {
+    root()->markLayoutDirty();
+  }
+}
+
+void TaskbarWidget::openOverflowMenu(InputArea& area, std::vector<TaskRef> hidden) {
+  if (taskMenuPopup() == nullptr) {
+    return;
+  }
+  std::vector<ContextMenuControlEntry> entries;
+  entries.reserve(hidden.size());
+  for (std::size_t i = 0; i < hidden.size(); ++i) {
+    const TaskModel* task = resolveTask(m_tasks, hidden[i], m_taskVersion);
+    if (task == nullptr) {
+      continue;
+    }
+    const std::string& title = displayTitle(*task);
+    const std::string& name = !task->displayName.empty() ? task->displayName : title;
+    entries.push_back(
+        ContextMenuControlEntry{.id = static_cast<std::int32_t>(i), .label = name == title ? name : name + " — " + title}
+    );
+  }
+  if (entries.empty()) {
+    return;
+  }
+  m_contextMenuPopup->setOnActivate([this, hidden = std::move(hidden)](const ContextMenuControlEntry& entry) {
+    if (entry.id < 0 || static_cast<std::size_t>(entry.id) >= hidden.size()) {
+      return;
+    }
+    const TaskModel* task = resolveTask(m_tasks, hidden[static_cast<std::size_t>(entry.id)], m_taskVersion);
+    if (task == nullptr) {
+      return;
+    }
+    if (task->pinned) {
+      activateOrLaunchPinned(*task);
+    } else {
+      activateTaskModel(*task, true);
+    }
+  });
+  openMenuBelowTile(area, std::move(entries));
 }
 
 std::string TaskbarWidget::toLower(const std::string& value) { return StringUtils::toLower(value); }

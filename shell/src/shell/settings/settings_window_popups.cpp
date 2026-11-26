@@ -2539,7 +2539,7 @@ void SettingsWindow::openPluginStore() {
                     }
                     if (enable) {
                       (void)m_pluginManager->enable(id);
-                      ++m_pluginListRefreshGeneration;
+                      m_pluginListRefresh.advance();
                       m_pluginListDirty = false;
                       auto existing = std::ranges::find_if(m_pluginList, [&](const auto& p) { return p.id == id; });
                       if (existing != m_pluginList.end()) {

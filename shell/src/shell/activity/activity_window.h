@@ -109,7 +109,7 @@ private:
   void setShiftHeld(bool held);
   // Sample: two thread snapshots of the selected row, kSampleFor apart, then a text report in the inspector.
   void startSample();
-  void finishSample(std::uint64_t generation);
+  void finishSample(LatestRequest::Ticket ticket);
   void resetSample();
   void addSampleReport(Flex& details, float scale);
   void prepareFrame(bool needsUpdate, bool needsLayout);
@@ -295,7 +295,7 @@ private:
     SampleSummary summary; // Done only
   };
   SampleRun m_sample;
-  std::uint64_t m_sampleGeneration = 0; // drops worker results of a reset or replaced run
+  RequestEpoch m_sampleRun; // drops worker results of a reset or replaced run
   Timer m_sampleTimer;
   ClipboardService* m_clipboard = nullptr;
   std::string m_selectedKey;

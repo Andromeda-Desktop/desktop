@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "shell/switcher/window_switcher_mode.h"
 #include "shell/switcher/window_switcher_shortcut_state.h"
 #include "shell/switcher/window_switcher_tile.h"
@@ -114,7 +115,7 @@ private:
   wl_output* m_output = nullptr;
   wl_callback* m_shortcutReleaseSync = nullptr;
   WindowSwitcherShortcutState m_shortcutState;
-  std::uint64_t m_shortcutSessionGeneration = 0;
+  RequestEpoch m_shortcutSession;
   WindowSwitcherScope m_scopeOverride = WindowSwitcherScope::None;
   using Mode = WindowSwitcherMode;
   // Rejects what windowSwitcherModeAllowed rejects.

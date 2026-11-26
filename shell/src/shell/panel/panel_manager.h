@@ -1,4 +1,5 @@
 #pragma once
+#include "core/latest_request.h"
 #include "config/config_types.h"
 #include "design_tokens.h"
 #include "core/timer_manager.h"
@@ -274,7 +275,7 @@ private:
   bool startDetachedMorph();
   void bindTrackerOpen(const DskSurfaceClient::Value& islandClip);
   void settleDetachedMorph();
-  bool startDetachedMorphClose(std::uint64_t gen);
+  bool startDetachedMorphClose(LatestRequest::Ticket gen);
   void animateMorphClip();
   // The compositor draws the sheet's hairline while a clip cuts the bg box edge, in the bg border's colour.
   void sendSheetStroke();
@@ -296,7 +297,7 @@ private:
   void fadePiecesIn(bool gated);
   [[nodiscard]] std::vector<Node*> visiblePieces() const;
   bool startGrowOpen();
-  bool startDetachedScaleClose(std::uint64_t gen);
+  bool startDetachedScaleClose(LatestRequest::Ticket gen);
   // Glass pieces pour out of the panel's top edge, top piece first, and back on close (concept C).
   bool startPiecesOpen();
   bool ensureDsk();
@@ -307,7 +308,7 @@ private:
     float scaleX, scaleY, v;
   };
   PieceRest& pieceRest(Node& piece, bool open);
-  bool startPiecesClose(std::uint64_t gen);
+  bool startPiecesClose(LatestRequest::Ticket gen);
   void pourPieces(bool open);
   [[nodiscard]] DskSurfaceClient::Value detachedScaleShift(double scale) const;
   [[nodiscard]] static desk::motion::SpringConfig effectsSpring();
@@ -344,7 +345,7 @@ private:
   [[nodiscard]] double attachedRevealMaxTravel() const;
   [[nodiscard]] DskSurfaceClient::Value attachedRevealShift(double travel) const;
   [[nodiscard]] DskSurfaceClient::Value attachedRevealClip(double travel) const;
-  bool startAttachedCompositorClose(std::uint64_t gen);
+  bool startAttachedCompositorClose(LatestRequest::Ticket gen);
   void publishAttachedPanelGeometry(float revealProgress);
   // Restyle the attached-panel decoration nodes (bg fill, drop shadow, contact shadow)
   // using the cached attached background opacity and bar position. Geometry/positions are not touched.
@@ -534,6 +535,6 @@ private:
   ContextMenuPopup* m_activePopup = nullptr;
   std::unique_ptr<SelectDropdownPopup> m_selectPopup;
   std::unique_ptr<ContextMenuPopup> m_panelMenu;
-  std::uint64_t m_destroyGeneration = 0; // invalidates stale deferred destroyPanel calls
+  RequestEpoch m_destroy; // invalidates stale deferred destroyPanel calls
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

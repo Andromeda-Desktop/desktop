@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "config/config_limits.h"
 #include "core/text_clipboard.h"
 #include "security/storage_key_provider.h"
@@ -386,7 +387,7 @@ private:
   // Storage jobs whose completion has not run on the main thread.
   int m_storageJobs = 0;
   // Counts openPersistence calls; a completed open applies only when it is the newest.
-  std::uint64_t m_openSerial = 0;
+  LatestRequest m_openRequest;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   ClipboardPersistenceState m_persistenceState = ClipboardPersistenceState::Opening;
   bool m_persistenceMigrationPending = false;

@@ -489,7 +489,7 @@ void WeatherService::onConfigReload() {
 }
 
 void WeatherService::clearState() {
-  ++m_requestSerial;
+  m_request.cancel();
   m_loading = false;
   m_error.clear();
   m_requestKind = RequestKind::None;
@@ -516,18 +516,18 @@ void WeatherService::startWeatherFetch() {
       "&forecast_days={}&forecast_hours={}&timezone=auto",
       formatCoordinate(m_resolvedLatitude), formatCoordinate(m_resolvedLongitude), kForecastDays, kForecastHours
   );
-  const std::uint64_t serial = ++m_requestSerial;
+  const LatestRequest::Ticket ticket = m_request.begin();
   m_loading = true;
   m_error.clear();
   m_requestKind = RequestKind::FetchWeather;
   notifyChanged();
-  m_httpClient.download(url, path, [this, path, serial](bool success) {
-    handleWeatherResponse(path, success, serial);
+  m_httpClient.download(url, path, [this, path, ticket](bool success) {
+    handleWeatherResponse(path, success, ticket);
   });
 }
 
-void WeatherService::handleWeatherResponse(const std::filesystem::path& path, bool success, std::uint64_t serial) {
-  if (serial != m_requestSerial || !m_activeConfig.enabled) {
+void WeatherService::handleWeatherResponse(const std::filesystem::path& path, bool success, LatestRequest::Ticket ticket) {
+  if (!m_request.current(ticket) || !m_activeConfig.enabled) {
     return;
   }
   m_requestKind = RequestKind::None;

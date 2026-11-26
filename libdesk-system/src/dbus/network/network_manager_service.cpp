@@ -262,7 +262,7 @@ void NetworkManagerService::attach() {
             const bool enabled = it->second.get<bool>();
             wirelessNowOn = enabled;
             wirelessNowOff = !enabled;
-            ++m_scanGeneration;
+            m_scan.cancel();
           } catch (const sdbus::Error&) {
           }
         }
@@ -282,10 +282,10 @@ void NetworkManagerService::attach() {
           // NM starts its own scan as soon as the device reaches Disconnected;
           // just mark ourselves scanning and snapshot LastScan so the device
           // PropertiesChanged watcher clears the flag when the scan finishes.
-          const std::uint64_t generation = m_scanGeneration;
+          const LatestRequest::Ticket ticket = m_scan.begin();
           collectWifiDevices([this,
-                              generation](const std::vector<std::string>& devicePaths, std::int64_t lastScanBaseline) {
-            if (devicePaths.empty() || generation != m_scanGeneration) {
+                              ticket](const std::vector<std::string>& devicePaths, std::int64_t lastScanBaseline) {
+            if (devicePaths.empty() || !m_scan.current(ticket)) {
               return;
             }
             beginScan(lastScanBaseline);
@@ -330,7 +330,7 @@ void NetworkManagerService::detach() {
   m_anyCellularActive = false;
   endScan();
   m_scanBaselineLastScan = 0;
-  ++m_scanGeneration;
+  m_scan.cancel();
   m_pendingLocalWirelessEnabled.reset();
 
   const bool hadSnapshot = m_hasStateSnapshot;
@@ -442,10 +442,10 @@ void NetworkManagerService::requestScan() {
     return;
   }
   const std::weak_ptr<int> lifetimeToken = m_lifetimeToken;
-  const std::uint64_t generation = ++m_scanGeneration;
+  const LatestRequest::Ticket ticket = m_scan.begin();
   collectWifiDevices([this, lifetimeToken,
-                      generation](const std::vector<std::string>& devicePaths, std::int64_t lastScanBaseline) {
-    if (generation != m_scanGeneration) {
+                      ticket](const std::vector<std::string>& devicePaths, std::int64_t lastScanBaseline) {
+    if (!m_scan.current(ticket)) {
       return;
     }
     auto scanStarted = std::make_shared<bool>(false);
@@ -456,9 +456,9 @@ void NetworkManagerService::requestScan() {
             .callMethodAsync("RequestScan")
             .onInterface(kSystem1NetworkInterface)
             .withArguments(sdbus::ObjectPath{devicePath}, options)
-            .uponReplyInvoke([this, lifetimeToken, devicePath, lastScanBaseline, generation,
+            .uponReplyInvoke([this, lifetimeToken, devicePath, lastScanBaseline, ticket,
                               scanStarted](std::optional<sdbus::Error> err) {
-              if (lifetimeToken.expired() || generation != m_scanGeneration) {
+              if (lifetimeToken.expired() || !m_scan.current(ticket)) {
                 return;
               }
               if (err.has_value()) {

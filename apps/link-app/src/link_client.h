@@ -200,7 +200,7 @@ namespace linkapp {
     // One MirrorInput call (Link1.xml MirrorInput) while the mirror shows.
     void mirrorInput(const std::string& action, std::map<std::string, sdbus::Variant> args);
     std::function<void(const std::string&)> m_paired;
-    std::uint64_t m_pairSerial = 0; // StartPairing calls; a reply applies only to the latest
+    LatestRequest m_pairRequest; // StartPairing calls; a reply applies only to the latest
     std::uint64_t m_sent = 0;    // serial of the newest refresh asked
     std::uint64_t m_applied = 0; // serial of the newest refresh applied
     bool m_daemon = false;
@@ -208,10 +208,10 @@ namespace linkapp {
     Pair m_pair;
     std::vector<Phone> m_phones;
     std::optional<SystemCommand> m_command;
-    std::uint64_t m_commandSerial = 0;
+    std::uint64_t m_nextCommandId = 0;
     std::optional<PhotoFile> m_photoFile;
-    std::uint64_t m_photoSerial = 0;   // the viewer's read; a newer open makes older reads stale
-    std::uint64_t m_takeSerial = 0;
+    std::uint64_t m_photoOpens = 0;   // the viewer's read; a newer open makes older reads stale
+    std::uint64_t m_nextTakeId = 0;
     std::optional<std::uint64_t> m_takingPhoto; // the TakePhoto this app waits for
     std::string m_selected;
     Feed m_feed;

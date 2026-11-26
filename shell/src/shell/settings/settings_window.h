@@ -413,7 +413,7 @@ private:
   std::vector<scripting::PluginStatus> m_pluginList;
   bool m_pluginListDirty = true;
   bool m_pluginListRefreshInFlight = false;
-  std::uint64_t m_pluginListRefreshGeneration = 0;
+  RequestEpoch m_pluginListRefresh;
   // The plugin store sheet is the sheet currently on screen, so plugin events may rebuild
   // the sheet body; any other editor sheet must be left alone.
   bool m_pluginStoreSheetOpen = false;

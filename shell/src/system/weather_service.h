@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "protocols/backoff.h"
 #include "config/config_types.h"
 
@@ -145,7 +146,7 @@ private:
   void clearState();
   void notifyChanged();
   void startWeatherFetch();
-  void handleWeatherResponse(const std::filesystem::path& path, bool success, std::uint64_t serial);
+  void handleWeatherResponse(const std::filesystem::path& path, bool success, LatestRequest::Ticket ticket);
   void scheduleRetryAfterFailure();
   void loadCache();
   void saveCache() const;
@@ -171,5 +172,5 @@ private:
   double m_resolvedLatitude = 0.0;
   double m_resolvedLongitude = 0.0;
   RequestKind m_requestKind = RequestKind::None;
-  std::uint64_t m_requestSerial = 0;
+  LatestRequest m_request;
 };

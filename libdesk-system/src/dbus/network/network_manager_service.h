@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "core/timer_manager.h"
 #include "dbus/network/inetwork_service.h"
 #include "dbus/name_owner_watch.h"
@@ -180,7 +181,7 @@ private:
   bool m_anyCellularActive = false;
   std::int64_t m_scanBaselineLastScan = 0;
   Timer m_scanTimeoutTimer;
-  std::uint64_t m_scanGeneration = 0;
+  LatestRequest m_scan;
   std::optional<bool> m_pendingLocalWirelessEnabled;
   std::vector<std::shared_ptr<WirelessEnabledCompletion>> m_pendingWirelessCompletions;
   bool m_hasStateSnapshot = false;

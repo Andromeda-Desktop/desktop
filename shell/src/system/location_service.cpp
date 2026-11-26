@@ -376,17 +376,17 @@ void LocationService::startAddressGeocode() {
   const auto path = transportCacheDir() / "geocode.json";
   const std::string url =
       "https://geocoding-api.open-meteo.com/v1/search?count=1&name=" + uri::encodeComponent(m_config.address);
-  const std::uint64_t serial = ++m_requestSerial;
+  const LatestRequest::Ticket ticket = m_request.begin();
   m_requestKind = RequestKind::GeocodeAddress;
-  m_httpClient.download(url, path, [this, path, serial](bool success) {
-    handleResponse(path, false, success, serial);
+  m_httpClient.download(url, path, [this, path, ticket](bool success) {
+    handleResponse(path, false, success, ticket);
   });
 }
 
 void LocationService::handleResponse(
-    const std::filesystem::path& path, bool autoLocated, bool success, std::uint64_t serial
+    const std::filesystem::path& path, bool autoLocated, bool success, LatestRequest::Ticket ticket
 ) {
-  if (serial != m_requestSerial) {
+  if (!m_request.current(ticket)) {
     return;
   }
   m_requestKind = RequestKind::None;
@@ -439,7 +439,7 @@ void LocationService::scheduleRetryAfterFailure() {
 }
 
 void LocationService::clearResolved() {
-  ++m_requestSerial;
+  m_request.cancel();
   m_requestKind = RequestKind::None;
   m_resolved = false;
   m_resolvedAutoLocate = false;

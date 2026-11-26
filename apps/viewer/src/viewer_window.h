@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "annotations.h"
 #include "document_model.h"
 #include "file_kind.h"
@@ -257,7 +258,7 @@ namespace viewer {
     std::string m_error;
     std::uint64_t m_generation = 0;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // a tab closed in the same loop pass frees this before its deferred calls run
-    std::uint64_t m_searchGeneration = 0;
+    RequestEpoch m_search;
 
     std::unique_ptr<preview::HelperClient> m_helper;
     DocumentModel m_model;
@@ -297,7 +298,7 @@ namespace viewer {
     float m_resultWidth = 0.0F;
     Label* m_resultCount = nullptr;
     std::optional<std::pair<std::size_t, std::size_t>> m_shownHit;
-    std::unordered_map<std::uint64_t, std::string> m_snippets; // by page << 32 | index, for m_searchGeneration
+    std::unordered_map<std::uint64_t, std::string> m_snippets; // by page << 32 | index, for m_search
     bool m_snippetPending = false;
     std::vector<Flex*> m_outlineRows;
     std::optional<std::size_t> m_shownEntry;
@@ -312,7 +313,7 @@ namespace viewer {
     void endJob();
     // Stale replies are dropped: this document's jobs leave the window's budget at once.
     void releaseJobs();
-    std::uint64_t m_renderSeq = 0;
+    std::uint64_t m_renderOrdinal = 0;
     std::vector<PendingInk> m_pendingInk;
     std::vector<Node*> m_tileLayers;
     // Textures of evicted pages; build() unloads them, as only it has the renderer.

@@ -47,7 +47,7 @@ namespace session_end {
     bool apply(const Event& event) {
       if (const auto* run = std::get_if<Run>(&event)) {
         // A newer run supersedes one that hangs: it now owns Ending.
-        m_phase = Ending{.action = run->action, .generation = ++m_lastGeneration};
+        m_phase = Ending{.action = run->action, .generation = ++m_lastRunId};
         return true;
       }
       if (const auto* done = std::get_if<Succeeded>(&event)) {
@@ -65,7 +65,7 @@ namespace session_end {
 
   private:
     Phase m_phase = Idle{};
-    std::uint64_t m_lastGeneration = 0;
+    std::uint64_t m_lastRunId = 0;
   };
 
   // Inhibit portal session-state values.

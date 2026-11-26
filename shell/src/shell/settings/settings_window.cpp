@@ -1039,7 +1039,7 @@ void SettingsWindow::scheduleDeferredRebuild() {
 
 void SettingsWindow::markPluginListDirty() {
   m_pluginListDirty = true;
-  ++m_pluginListRefreshGeneration;
+  m_pluginListRefresh.advance();
 }
 
 void SettingsWindow::refreshPluginListIfNeeded() {
@@ -1048,7 +1048,7 @@ void SettingsWindow::refreshPluginListIfNeeded() {
   }
 
   m_pluginListRefreshInFlight = true;
-  const std::uint64_t generation = m_pluginListRefreshGeneration;
+  const LatestRequest::Ticket ticket = m_pluginListRefresh.ticket();
   auto* manager = m_pluginManager;
   PluginsConfig pluginsSnapshot = m_config->config().plugins;
   // Refresh the browsable catalog (throttled) so newly published plugins and update
@@ -1060,9 +1060,9 @@ void SettingsWindow::refreshPluginListIfNeeded() {
         scripting::PluginManager::fetchCatalogSources(fetchSources);
         return scripting::PluginManager::list(pluginsSnapshot, scripting::CatalogAccess::Network);
       },
-      [this, generation](std::vector<scripting::PluginStatus> plugins) mutable {
+      [this, ticket](std::vector<scripting::PluginStatus> plugins) mutable {
         m_pluginListRefreshInFlight = false;
-        if (generation != m_pluginListRefreshGeneration) {
+        if (!m_pluginListRefresh.current(ticket)) {
           refreshPluginListIfNeeded();
           return;
         }

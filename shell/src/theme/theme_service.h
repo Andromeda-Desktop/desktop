@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "config/config_types.h"
 #include "core/timer_manager.h"
 #include "render/animation/animation_manager.h"
@@ -93,7 +94,7 @@ namespace noctalia::theme {
     // applied, and deferred callbacks must be able to drop stale resolves.
     std::optional<GeneratedPalette> m_pendingResolvedPalette;
     std::string m_pendingResolvedMode;
-    std::uint64_t m_resolvedCallbackGeneration = 0;
+    RequestEpoch m_resolvedFlush;
 
     AnimationManager m_animations;
     Timer m_transitionTimer;

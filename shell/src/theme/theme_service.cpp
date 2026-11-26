@@ -153,7 +153,7 @@ namespace noctalia::theme {
     }
     m_pendingResolvedPalette = generated;
     m_pendingResolvedMode = std::string(mode);
-    ++m_resolvedCallbackGeneration;
+    m_resolvedFlush.advance();
   }
 
   void ThemeService::flushResolvedCallback(bool defer) {
@@ -163,13 +163,13 @@ namespace noctalia::theme {
 
     GeneratedPalette generated = std::move(*m_pendingResolvedPalette);
     std::string mode = std::move(m_pendingResolvedMode);
-    const std::uint64_t generation = m_resolvedCallbackGeneration;
+    const LatestRequest::Ticket ticket = m_resolvedFlush.ticket();
     m_pendingResolvedPalette.reset();
     m_pendingResolvedMode.clear();
 
     if (defer) {
-      DeferredCall::callLaterIfAlive(m_alive, [this, generation, generated = std::move(generated), mode = std::move(mode)] mutable {
-        if (generation == m_resolvedCallbackGeneration && m_resolvedCallback) {
+      DeferredCall::callLaterIfAlive(m_alive, [this, ticket, generated = std::move(generated), mode = std::move(mode)] mutable {
+        if (m_resolvedFlush.current(ticket) && m_resolvedCallback) {
           m_resolvedCallback(generated, mode);
         }
       });

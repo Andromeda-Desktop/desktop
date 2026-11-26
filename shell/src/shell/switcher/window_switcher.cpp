@@ -766,7 +766,7 @@ void WindowSwitcher::showWithDirection(wl_output* output, int direction) {
     recordFocusedWindow();
     cancelShortcutModifierReleaseCheck();
     m_shortcutState.reset();
-    ++m_shortcutSessionGeneration;
+    m_shortcutSession.advance();
   }
   m_output = output;
   const std::string focusedKey = currentFocusedWindowKey(*m_platform);
@@ -828,7 +828,7 @@ void WindowSwitcher::beginClose() {
   m_scopeOverride = WindowSwitcherScope::None;
   cancelShortcutModifierReleaseCheck();
   m_shortcutState.reset();
-  ++m_shortcutSessionGeneration;
+  m_shortcutSession.advance();
   cancelThumbnailCaptures();
   m_instance->pointerInside = false;
   m_instance->inputDispatcher.pointerLeave();
@@ -912,7 +912,7 @@ void WindowSwitcher::hide() {
   m_scopeOverride = WindowSwitcherScope::None;
   cancelShortcutModifierReleaseCheck();
   m_shortcutState.reset();
-  ++m_shortcutSessionGeneration;
+  m_shortcutSession.advance();
   cancelThumbnailCaptures();
   destroySurface();
 }
@@ -1466,9 +1466,9 @@ void WindowSwitcher::scheduleShortcutModifierReleaseCheck() {
     }
   }
 
-  const std::uint64_t generation = m_shortcutSessionGeneration;
-  DeferredCall::callLaterIfAlive(m_alive, [this, generation] {
-    if (generation != m_shortcutSessionGeneration) {
+  const LatestRequest::Ticket ticket = m_shortcutSession.ticket();
+  DeferredCall::callLaterIfAlive(m_alive, [this, ticket] {
+    if (!m_shortcutSession.current(ticket)) {
       return;
     }
     completeShortcutModifierReleaseCheck();

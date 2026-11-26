@@ -1599,8 +1599,8 @@ void FilesWindow::loadTrash(std::function<void()> then) {
   if (then) {
     m_trashThen.push_back(std::move(then));
   }
-  const std::uint64_t generation = ++m_trashGeneration;
-  BlockingPool::instance().run([this, dirs = trashDirs(), generation, alive = std::weak_ptr<bool>(m_alive)] {
+  const LatestRequest::Ticket trashTicket = m_trashRequest.begin();
+  BlockingPool::instance().run([this, dirs = trashDirs(), trashTicket, alive = std::weak_ptr<bool>(m_alive)] {
     std::vector<TrashItem> items;
     std::vector<std::shared_ptr<const FileInfo>> rows;
     for (const fs::path& dir : dirs) {
@@ -1619,8 +1619,8 @@ void FilesWindow::loadTrash(std::function<void()> then) {
         items.push_back(std::move(item));
       }
     }
-    DeferredCall::callLater([this, generation, alive, items = std::move(items), rows = std::move(rows)]() mutable {
-      if (alive.expired() || generation != m_trashGeneration) {
+    DeferredCall::callLater([this, trashTicket, alive, items = std::move(items), rows = std::move(rows)]() mutable {
+      if (alive.expired() || !m_trashRequest.current(trashTicket)) {
         return;
       }
       m_trash = std::move(items);

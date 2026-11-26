@@ -609,7 +609,7 @@ void FileGallery::enter(std::shared_ptr<State> state) {
 }
 
 void FileGallery::stopVideo() {
-  ++m_motionGeneration;
+  m_motion.cancel();
   if (m_videoActive) {
     m_videoActive = false;
     m_videoRect = {};
@@ -635,9 +635,9 @@ void FileGallery::startMotion() {
   if (!m_host.motionVideo) {
     return;
   }
-  const auto generation = ++m_motionGeneration;
-  m_host.motionVideo(photo, [this, alive = std::weak_ptr<bool>(m_alive), generation, photo](fs::path video) {
-    if (alive.expired() || generation != m_motionGeneration || video.empty() || m_items.empty() ||
+  const LatestRequest::Ticket motionTicket = m_motion.begin();
+  m_host.motionVideo(photo, [this, alive = std::weak_ptr<bool>(m_alive), motionTicket, photo](fs::path video) {
+    if (alive.expired() || !m_motion.current(motionTicket) || video.empty() || m_items.empty() ||
         m_items[m_current] != photo) {
       return;
     }

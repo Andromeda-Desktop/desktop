@@ -18,3 +18,14 @@ public:
 private:
   std::uint64_t m_current = 0;
 };
+
+// Latest epoch wins: every request started in one epoch (ticket()) applies until advance() starts the next.
+class RequestEpoch {
+public:
+  [[nodiscard]] LatestRequest::Ticket ticket() const noexcept { return LatestRequest::Ticket{m_current}; }
+  void advance() noexcept { ++m_current; }
+  [[nodiscard]] bool current(LatestRequest::Ticket ticket) const noexcept { return ticket.id == m_current; }
+
+private:
+  std::uint64_t m_current = 1;
+};

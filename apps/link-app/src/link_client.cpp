@@ -1169,12 +1169,12 @@ namespace linkapp {
 
   void LinkClient::startPairing() {
     if (!pairStep(m_pair, {.kind = PairEvent::Kind::Start})) return;
-    const std::uint64_t serial = ++m_pairSerial;
+    const LatestRequest::Ticket ticket = m_pairRequest.begin();
     m_proxy->callMethodAsync("StartPairing")
         .onInterface(kInterface)
-        .uponReplyInvoke([this, serial, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
+        .uponReplyInvoke([this, ticket, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
                                                                                std::string code, std::string uri) {
-          if (alive.expired() || serial != m_pairSerial) return;
+          if (alive.expired() || !m_pairRequest.current(ticket)) return;
           if (error) {
             kLog.warn("StartPairing: {}", error->getMessage());
             (void)pairStep(m_pair, {.kind = PairEvent::Kind::Failed, .error = error->getMessage()});
@@ -1188,7 +1188,7 @@ namespace linkapp {
   void LinkClient::cancelPairing() {
     const bool open = m_pair.kind == Pair::Kind::Starting || m_pair.kind == Pair::Kind::Showing;
     if (!pairStep(m_pair, {.kind = PairEvent::Kind::Cancel})) return;
-    ++m_pairSerial;
+    m_pairRequest.cancel();
     if (open) {
       m_proxy->callMethodAsync("CancelPairing").onInterface(kInterface).uponReplyInvoke([](std::optional<sdbus::Error> error) {
         if (error) kLog.warn("CancelPairing: {}", error->getMessage());
@@ -1263,7 +1263,7 @@ namespace linkapp {
   void LinkClient::setDnd(const std::string& deviceId, bool on) { sendSystemCommand(deviceId, "set-dnd", on ? 1 : 0); }
 
   void LinkClient::sendSystemCommand(const std::string& deviceId, const std::string& command, std::uint32_t value) {
-    const std::uint64_t serial = ++m_commandSerial;
+    const std::uint64_t serial = ++m_nextCommandId;
     m_command = SystemCommand{.device = deviceId, .command = command, .value = value, .serial = serial};
     changed();
     m_proxy->callMethodAsync("SendSystemCommand").onInterface(kInterface).withArguments(deviceId, command, value)
@@ -1314,12 +1314,12 @@ namespace linkapp {
     closePhoto();
     const std::filesystem::path dir = std::filesystem::path(g_get_user_cache_dir()) / "andromeda" / "link-app" / "view";
     std::error_code ec;
-    if (m_photoSerial == 1) std::filesystem::remove_all(dir, ec); // files a crash left behind
+    if (m_photoOpens == 1) std::filesystem::remove_all(dir, ec); // files a crash left behind
     std::filesystem::create_directories(dir, ec);
     auto download = std::make_shared<Download>();
     download->device = m_photos.device();
     download->phonePath = phonePath;
-    download->local = (dir / std::format("{}{}", m_photoSerial, std::filesystem::path(phonePath).extension().string())).string();
+    download->local = (dir / std::format("{}{}", m_photoOpens, std::filesystem::path(phonePath).extension().string())).string();
     download->file.reset(std::fopen(download->local.c_str(), "wb"));
     m_photoFile = PhotoFile{.phonePath = phonePath};
     if (!download->file) {
@@ -1328,8 +1328,8 @@ namespace linkapp {
       changed();
       return;
     }
-    const std::uint64_t serial = m_photoSerial;
-    download->stale = [this, serial] { return serial != m_photoSerial; };
+    const std::uint64_t serial = m_photoOpens;
+    download->stale = [this, serial] { return serial != m_photoOpens; };
     download->finished = [this, d = download.get()](bool ok) {
       m_photoFile->kind = ok ? PhotoFile::Kind::Ready : PhotoFile::Kind::Failed;
       if (ok) m_photoFile->local = d->local;
@@ -1342,7 +1342,7 @@ namespace linkapp {
   void LinkClient::closePhoto() {
     if (m_photoFile && !m_photoFile->local.empty()) std::remove(m_photoFile->local.c_str());
     m_photoFile.reset();
-    ++m_photoSerial;
+    ++m_photoOpens;
   }
 
   void LinkClient::savePhoto(const std::string& phonePath, std::function<void(const std::string&)> done) {
@@ -1358,7 +1358,7 @@ namespace linkapp {
   void LinkClient::takePhoto() {
     const std::string device = presence().phone.id;
     if (device.empty() || m_takingPhoto) return;
-    const std::uint64_t serial = ++m_takeSerial;
+    const std::uint64_t serial = ++m_nextTakeId;
     m_takingPhoto = serial;
     changed();
     m_proxy->callMethodAsync("TakePhoto")
