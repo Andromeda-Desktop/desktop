@@ -214,28 +214,42 @@ namespace term::agent {
     armHangCheck();
   }
 
+  namespace {
+    bool anyWaits(const auto& slots) {
+      return std::ranges::any_of(slots, [](const auto& entry) { return waitsOnAgent(entry.second.model->phase()); });
+    }
+  } // namespace
+
   void Host::armHangCheck() {
-    constexpr auto kHangTimeout = std::chrono::seconds(30);
-    const bool waiting = m_pid > 0 && std::ranges::any_of(m_slots, [](const auto& entry) {
-      const Phase phase = entry.second.model->phase();
-      return phase == Phase::Starting || phase == Phase::Cancelling;
-    });
-    if (!waiting) {
+    if (m_hang.update(m_pid > 0, anyWaits(m_slots), HangWatch::Clock::now())) {
+      syncHangTimer();
+    }
+  }
+
+  void Host::hangMessage() {
+    if (m_hang.message(m_pid > 0, anyWaits(m_slots), HangWatch::Clock::now())) {
+      syncHangTimer();
+    }
+  }
+
+  void Host::syncHangTimer() {
+    const auto deadline = m_hang.deadline();
+    if (!deadline) {
       m_hangCheck.stop();
       return;
     }
-    if (m_hangCheck.active()) {
-      return;
-    }
-    // One-shot, only while a session waits on the agent.
-    m_hangCheck.start(kHangTimeout, [this, kHangTimeout] {
+    const auto delay = std::chrono::ceil<std::chrono::milliseconds>(*deadline - HangWatch::Clock::now());
+    m_hangCheck.start(std::max(delay, std::chrono::milliseconds{0}), [this] {
+      if (!m_hang.expired(HangWatch::Clock::now())) {
+        return;
+      }
       // A leader that already exited may be reaped, and its pid reused: the exit path runs instead.
       pollfd exited{m_shared ? m_shared->exitFd : -1, POLLIN, 0};
       if (m_pid <= 0 || exited.fd < 0 || ::poll(&exited, 1, 0) != 0) {
         return;
       }
       constexpr Logger kLog("agent");
-      kLog.warn("agent {} sent nothing for {} s while a session waited; stopping it", m_pid, kHangTimeout.count());
+      kLog.warn("agent {} sent nothing for {} s while a session waited; stopping it", m_pid, HangWatch::kTimeout.count());
       ::kill(-m_pid, SIGKILL);
     });
   }
@@ -399,7 +413,7 @@ namespace term::agent {
   }
 
   void Host::onMessage(const Json& message) {
-    m_hangCheck.stop(); // the agent is alive: the wait starts again from this message
+    hangMessage();
     const auto method = message.value("method", std::string{});
     const auto params = message.value("params", Json::object());
     const auto id = message.find("id");
@@ -468,7 +482,7 @@ namespace term::agent {
 
   void Host::onExit(int status, std::string stderrTail) {
     m_pid = -1;
-    m_hangCheck.stop();
+    armHangCheck();
     m_initialized = false;
     if (m_shared) {
       {

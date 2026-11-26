@@ -170,4 +170,26 @@ namespace term::agent {
     std::vector<Json> m_outbox;
   };
 
+  // A session in this phase waits on the agent and shows no progress of its own: the hang check applies.
+  [[nodiscard]] constexpr bool waitsOnAgent(Phase phase) noexcept { return phase == Phase::Starting || phase == Phase::Cancelling; }
+
+  // Hang check for one agent process. While it runs and a session waits on it, a deadline is armed kTimeout after
+  // the wait began or the last agent message; when it passes, the host kills the agent and the exit fails the session.
+  class HangWatch {
+  public:
+    using Clock = std::chrono::steady_clock;
+    static constexpr std::chrono::seconds kTimeout{30};
+
+    // After a phase or process change. Returns true when the deadline changed.
+    bool update(bool running, bool waiting, Clock::time_point now);
+    // An agent message arrived; `waiting` is the state before the host handles it. Returns true when the deadline changed.
+    bool message(bool running, bool waiting, Clock::time_point now);
+    // True once when the deadline passed; disarms.
+    [[nodiscard]] bool expired(Clock::time_point now);
+    [[nodiscard]] std::optional<Clock::time_point> deadline() const noexcept { return m_deadline; }
+
+  private:
+    std::optional<Clock::time_point> m_deadline;
+  };
+
 } // namespace term::agent

@@ -58,6 +58,8 @@ namespace term::agent {
     void write(const Json& message);
     void onMessage(const Json& message);
     void onExit(int status, std::string stderrTail);
+    void hangMessage();
+    void syncHangTimer();
     Slot* slotBySessionId(const std::string& id, std::uint64_t* key);
 
     Kind m_kind;
@@ -72,9 +74,8 @@ namespace term::agent {
     bool m_initialized = false;
     std::int64_t m_initializeId = 0;
     std::int64_t m_nextId = 1'000'000; // above the ids the session models use
-    // Hang check: a session waiting on the agent (Starting, Cancelling) with no message from it for kHangTimeout
-    // ends the agent, so the exit path fails the session instead of leaving it waiting forever.
-    Timer m_hangCheck;
+    HangWatch m_hang;
+    Timer m_hangCheck; // fires at m_hang.deadline()
   };
 
 } // namespace term::agent

@@ -2,6 +2,7 @@
 // after every event (.agent/TASK-terminal.md, "Step 9 plan").
 #include "agent_session.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -31,6 +32,48 @@ namespace {
     int userAnswers = 0;
     int selectedResponses = 0;
     bool alive = true;
+    HangWatch watch;
+    HangWatch::Clock::time_point now{};
+    HangWatch::Clock::time_point lastWaitProgress{}; // last agent message, or the start of the wait
+
+    void hostUpdate() { watch.update(alive, waitsOnAgent(session.phase()), now); }
+
+    // An agent message as the host handles it: the hang watch sees it first; the host re-arms after handling only
+    // when it flushes a session, which every phase change does but a stray message does not.
+    void agentMessage(unsigned seed, int step) {
+      const auto before = session.phase();
+      watch.message(alive, waitsOnAgent(before), now);
+      lastWaitProgress = now;
+      agentEvent(seed, step);
+      if (!alive || session.phase() != before || pick(2) == 0) {
+        hostUpdate();
+      }
+    }
+
+    void userAction(unsigned seed, int step) {
+      const bool waited = waitsOnAgent(session.phase());
+      userEvent(seed, step);
+      if (!waited && waitsOnAgent(session.phase())) {
+        lastWaitProgress = now;
+      }
+      hostUpdate();
+    }
+
+    // Time passes; the host timer fires at the deadline and kills the agent, whose exit then fails the session.
+    void elapse(unsigned seed, int step) {
+      now += std::chrono::seconds(pick(25));
+      if (!watch.expired(now)) {
+        return;
+      }
+      check(alive && waitsOnAgent(session.phase()), "the hang check killed an agent no session waited on", seed, step);
+      check(now - lastWaitProgress >= HangWatch::kTimeout, "the hang check fired before the timeout", seed, step);
+      session.exited(-9, "killed");
+      alive = false;
+      promptInFlight = -1;
+      openRpc.clear();
+      hostUpdate();
+      check(session.phase() == Phase::Failed, "a hung session does not end Failed after the kill", seed, step);
+    }
 
     int pick(int n) { return std::uniform_int_distribution<int>(0, n - 1)(rng); }
 
@@ -179,6 +222,10 @@ namespace {
       check(session.phase() != Phase::Idle || promptInFlight < 0, "idle while a prompt is in flight", seed, step);
       check(!session.compacting() || session.phase() == Phase::Working || session.phase() == Phase::Cancelling,
             "compacting outside a running turn", seed, step);
+      const bool waits = alive && waitsOnAgent(session.phase());
+      check(waits == watch.deadline().has_value(), "a hang deadline is armed iff a running agent is waited on", seed, step);
+      check(!waits || !watch.deadline() || *watch.deadline() <= lastWaitProgress + HangWatch::kTimeout, "the hang deadline is later than the timeout", seed, step);
+      check(!waits || !watch.deadline() || *watch.deadline() > now, "a passed hang deadline did not fire", seed, step);
     }
   };
 
@@ -190,10 +237,11 @@ int main() {
     h.rng.seed(seed);
     for (int step = 0; step < 80; ++step) {
       if (h.pick(2) == 0 && h.alive) {
-        h.agentEvent(seed, step);
+        h.agentMessage(seed, step);
       } else {
-        h.userEvent(seed, step);
+        h.userAction(seed, step);
       }
+      h.elapse(seed, step);
       h.drain(seed, step);
       h.invariants(seed, step);
       if (g_failures > 20) {

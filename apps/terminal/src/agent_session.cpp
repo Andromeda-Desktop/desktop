@@ -497,4 +497,29 @@ namespace term::agent {
 
   std::vector<Json> Session::takeOutbox() { return std::exchange(m_outbox, {}); }
 
+  bool HangWatch::update(bool running, bool waiting, Clock::time_point now) {
+    const auto before = m_deadline;
+    if (!running || !waiting) {
+      m_deadline.reset();
+    } else if (!m_deadline) {
+      m_deadline = now + kTimeout;
+    }
+    return m_deadline != before;
+  }
+
+  bool HangWatch::message(bool running, bool waiting, Clock::time_point now) {
+    const auto before = m_deadline;
+    m_deadline.reset();
+    update(running, waiting, now);
+    return m_deadline != before;
+  }
+
+  bool HangWatch::expired(Clock::time_point now) {
+    if (!m_deadline || now < *m_deadline) {
+      return false;
+    }
+    m_deadline.reset();
+    return true;
+  }
+
 } // namespace term::agent
