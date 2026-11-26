@@ -34,6 +34,8 @@ RUN apt-get -o Acquire::Retries=5 update && apt-get install -y -qq --no-install-
   libsqlite3-dev libtomlplusplus-dev libcrypt-dev libglycin-2-dev libpam0g-dev \
   libalpm-dev libdbus-1-dev libssl-dev
 EOF
+# UBUNTU_IMAGE_ONLY=1: only the image, for tools/ubuntu-e2e.sh (the e2e workflow).
+[ -z "${UBUNTU_IMAGE_ONLY:-}" ] || exit 0
 
 failed=0
 run() {

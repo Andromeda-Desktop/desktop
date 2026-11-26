@@ -1,0 +1,37 @@
+# The unit suites and every headless E2E script in the Ubuntu container (tools/ubuntu-e2e.sh), on GitHub instead of
+# a developer machine. Started by hand: `just e2e-ci [name...]`.
+name: e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      names:
+        description: "tests/e2e script names, space separated; empty runs every script"
+        required: false
+        default: ""
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Image
+        run: UBUNTU_IMAGE_ONLY=1 tools/ubuntu-build.sh 26.04
+      - name: E2E
+        env:
+          NAMES: ${{ inputs.names }}
+        # NAMES splits into script names.
+        run: UBUNTU_BUILD_CPUS=$(nproc) tools/ubuntu-e2e.sh 26.04 $NAMES
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: e2e-logs
+          path: |
+            ~/.cache/andromeda-ubuntu/e2e-26.04/src/*.log
+            ~/.cache/andromeda-ubuntu/e2e-26.04/src/e2e-failed.txt
+            ~/.cache/andromeda-ubuntu/e2e-26.04/src/e2e-logs/
