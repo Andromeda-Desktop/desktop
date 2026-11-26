@@ -2016,10 +2016,14 @@ void Application::applyBrightnessStep() {
 // notifications.dnd (the Presenting mode): Do Not Disturb while the hold lasts. It turns off again only if the rule
 // turned it on and the user left it on.
 void Application::applyFocusTriggers() {
-  const bool screencast = pipewire() != nullptr
-      && std::ranges::any_of(pipewire()->privacyState().captures, [](const PrivacyCapture& capture) {
-           return capture.kind == PrivacyCaptureKind::Screen;
-         });
+  // The compositor sees every capture (PipeWire, screencopy) and a mirrored output; PipeWire is the fallback
+  // without it.
+  const auto presenting = m_sessionActivity != nullptr ? m_sessionActivity->presenting() : std::nullopt;
+  const bool screencast = presenting.has_value() ? *presenting
+      : pipewire() != nullptr
+          && std::ranges::any_of(pipewire()->privacyState().captures, [](const PrivacyCapture& capture) {
+               return capture.kind == PrivacyCaptureKind::Screen;
+             });
   m_notificationManager.setScreenShared(screencast);
   m_focusTriggerTimer.stop();
   if (m_focusTriggers.empty() && !m_focusTriggerState.applied.has_value()) {
@@ -2315,6 +2319,7 @@ void Application::initSessionBusServices() {
     try {
       m_sessionActivity = std::make_unique<SessionActivityWatch>(*m_bus);
       m_sessionActivity->addSleepListener([this](bool sleeping) { onSessionSleep(sleeping); });
+      m_sessionActivity->addChangeListener([this] { applyFocusTriggers(); });
     } catch (const std::exception& e) {
       kLog.warn("session activity watch disabled: {}", e.what());
       m_sessionActivity.reset();

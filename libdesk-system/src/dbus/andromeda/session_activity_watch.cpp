@@ -31,6 +31,9 @@ SessionActivityWatch::SessionActivityWatch(SessionBus& bus)
         if (const auto it = changed.find("Activity"); it != changed.end()) {
           apply(it->second.get<std::string>());
         }
+        if (const auto it = changed.find("Presenting"); it != changed.end()) {
+          applyPresenting(it->second.get<bool>());
+        }
       });
   const std::weak_ptr<int> alive = m_alive;
   m_apps->getPropertyAsync("Activity").onInterface(kAppsInterface).uponReplyInvoke(
@@ -45,6 +48,23 @@ SessionActivityWatch::SessionActivityWatch(SessionBus& bus)
         apply(value.get<std::string>());
       }
   );
+  m_apps->getPropertyAsync("Presenting").onInterface(kAppsInterface).uponReplyInvoke(
+      [this, alive](std::optional<sdbus::Error> error, const sdbus::Variant& value) {
+        if (!alive.expired() && !error.has_value()) {
+          applyPresenting(value.get<bool>());
+        }
+      }
+  );
+}
+
+void SessionActivityWatch::applyPresenting(bool presenting) {
+  if (m_presenting == presenting) {
+    return;
+  }
+  m_presenting = presenting;
+  for (const ChangeListener& listener : m_changeListeners) {
+    listener();
+  }
 }
 
 SessionActivityWatch::~SessionActivityWatch() = default;
