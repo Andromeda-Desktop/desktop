@@ -55,7 +55,7 @@ docker run --rm --security-opt seccomp=unconfined --user "$(id -u):$(id -g)" "${
   } > /src/unit.log 2>&1 || unit=1
   d=/tmp/andromeda-e2e; mkdir -p "$d"; : > /src/e2e-failed.txt
   for t in $SCRIPTS; do
-    n=$(basename "$t" .sh); case $n in lib|mirror) continue ;; esac
+    n=$(basename "$t" .sh); ! grep -qx "$n" tests/e2e/helpers.txt || continue
     rc=0; bash "$t" > "$d/$n.log" 2>&1 || rc=$?
     case $rc in 0) echo "pass $n" ;; 77) echo "skip $n" ;; *) echo "FAIL $n"; echo "$n" >> /src/e2e-failed.txt ;; esac
   done

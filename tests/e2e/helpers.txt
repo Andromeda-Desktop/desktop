@@ -1,0 +1,4 @@
+lib
+mirror
+activity_click
+wait

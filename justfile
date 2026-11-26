@@ -105,7 +105,7 @@ e2e-run +scripts:
     # failed.txt keeps the failures of the last full run; a pass removes its name, a failure adds it.
     d=/tmp/andromeda-e2e; mkdir -p "$d"; touch "$d/failed.txt"; bad=0
     for t in {{scripts}}; do
-      n=$(basename "$t" .sh); case $n in lib|mirror|activity_click) echo "skip $n: a helper, not a test"; continue ;; esac
+      n=$(basename "$t" .sh); if grep -qx "$n" tests/e2e/helpers.txt; then echo "skip $n: a helper, not a test"; continue; fi
       sed -i "/^$n\$/d" "$d/failed.txt"
       # Exit 77: the machine lacks a tool or device the test needs; its last line says which.
       bash "$t" > "$d/$n.log" 2>&1; rc=$?

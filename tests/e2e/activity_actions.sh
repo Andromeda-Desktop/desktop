@@ -14,7 +14,7 @@ SRC=$ROOT/shell
 BIN=$OUT/activity-actions
 g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-system/src" -I"$ROOT/libdesk-ui/src" -I"$ROOT/libdesk-ui" $(pkg-config --cflags gio-2.0) -o "$BIN" \
   "$(dirname "$0")/activity_actions.cpp" "$SRC/src/system/activity_actions.cpp" "$SRC/src/system/xdg_autostart.cpp" \
-  "$SRC/src/core/shared_worker.cpp" "$SRC/src/config/atomic_file.cpp" "$ROOT/tests/e2e/log_platform_none.cpp" \
+  "$SRC/src/core/shared_worker.cpp" "$SRC/src/config/atomic_file.cpp" \
   -Wl,--start-group "$SRC/build-debug/subprojects/libdesk-system/libdesk_system.a" "$SRC/build-debug/subprojects/libdesk-ui/libdesk_ui.a" -Wl,--end-group -lsdbus-c++ -lsystemd $(pkg-config --libs gio-2.0)
 
 MOCK="$ROOT/tests/e2e/mock_systemd1.py"

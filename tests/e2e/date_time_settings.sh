@@ -10,7 +10,7 @@ boot_headless 1
 
 SRC=$ROOT/shell
 g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-system/src" -I"$ROOT/libdesk-ui/src" -I"$ROOT/libdesk-ui" -o "$RUNTIME/timedate-set" \
-  "$(dirname "$0")/timedate_set.cpp" "$ROOT/tests/e2e/log_platform_none.cpp" \
+  "$(dirname "$0")/timedate_set.cpp" \
   -Wl,--start-group "$SRC/build-debug/subprojects/libdesk-system/libdesk_system.a" "$SRC/build-debug/subprojects/libdesk-ui/libdesk_ui.a" -Wl,--end-group -lsdbus-c++ -lsystemd
 
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_timedate1.py"

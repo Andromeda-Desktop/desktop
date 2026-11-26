@@ -11,7 +11,7 @@ boot_headless 1
 
 SRC=$ROOT/shell
 g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-ui/src" -I"$ROOT/libdesk-ui" -o "$RUNTIME/default-apps-set" \
-  "$(dirname "$0")/default_apps_set.cpp" "$SRC/src/system/default_apps.cpp" "$SRC/src/config/atomic_file.cpp" "$ROOT/tests/e2e/log_platform_none.cpp" \
+  "$(dirname "$0")/default_apps_set.cpp" "$SRC/src/system/default_apps.cpp" "$SRC/src/config/atomic_file.cpp" \
   "$SRC/build-debug/subprojects/libdesk-ui/libdesk_ui.a"
 
 MIMEAPPS="$RUNTIME/home/.config/mimeapps.list"
