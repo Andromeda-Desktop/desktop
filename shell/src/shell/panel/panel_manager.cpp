@@ -1304,7 +1304,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     // plus the screen-edge concave flare: those corners push the surface further into
     // the end margin, and computeBarSurfaceSpec folds the same inset into its start
     // margin. Omitting it here drifts the exclusion rect along the main axis.
-    const auto barShadowBleed = ui::surface_shadow::bleed(barConfig.shadow, shadowConfig);
+    const auto barShadowBleed = barSurfaceBleed(barConfig, shadowConfig);
     const auto barConcave = barConcaveShape(barConfig);
     const auto concaveStartInset = static_cast<std::int32_t>(
         std::ceil(std::max(0.0F, barIsVertical ? barConcave.logicalInset.top : barConcave.logicalInset.left))

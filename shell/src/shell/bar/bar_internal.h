@@ -25,6 +25,9 @@
 
 namespace bar_detail {
 
+  // A bare bar's root tone and scrim from its ink; other bars hide the scrim and keep their glass tone.
+  void applyBareInk(BarInstance& instance);
+
   // Hover highlight: peak fill alpha of the widget-foreground tint, and the cross-axis inset
   // (logical px, content-scaled) of per-member pills inside capsule groups.
   constexpr float kWidgetHoverFillAlpha = 0.1F;

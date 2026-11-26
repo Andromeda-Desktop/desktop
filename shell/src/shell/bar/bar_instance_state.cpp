@@ -321,7 +321,8 @@ void Bar::createInstance(const WaylandOutput& output, std::size_t barIndex, cons
 bool Bar::syncIslandLiquid(BarInstance& instance) {
   dsk_surface_manager_v1* manager = m_platform != nullptr ? m_platform->wayland().dskSurfaceManager() : nullptr;
   const bool want = instance.barConfig.islands && !Style::reduceTransparency();
-  if (instance.dsk == nullptr && want && manager != nullptr && instance.surface != nullptr
+  const bool bare = barIsBare(instance.barConfig);
+  if (instance.dsk == nullptr && (want || bare) && manager != nullptr && instance.surface != nullptr
       && instance.surface->wlSurface() != nullptr) {
     instance.dsk = instance.surface->dsk();
     instance.dsk->setOnDensity([inst = &instance](float density) {
@@ -329,6 +330,17 @@ bool Bar::syncIslandLiquid(BarInstance& instance) {
         inst->sceneRoot->setInkLift(std::round(density * 32.0F) / 32.0F);
       }
     });
+    instance.dsk->setOnLuminance([inst = &instance](float luminance) {
+      const BarInk ink =
+          nextBarInk(inst->ink, luminance, Tokens::componentBarScrimInkFlip, glass::kAdaptDeadband);
+      if (ink != inst->ink) {
+        inst->ink = ink;
+        applyBareInk(*inst);
+      }
+    });
+  }
+  if (instance.dsk != nullptr) {
+    instance.dsk->setBackdropProbe(bare);
   }
   instance.compositorTint = false;
   if (instance.dsk == nullptr || !instance.dsk->hasLiquidProperty()) {
@@ -435,6 +447,7 @@ void Bar::applyBackgroundPalette(BarInstance& instance) {
   const Node* tone = instance.sceneRoot.get();
   if (instance.sceneRoot != nullptr) {
     applyIslandTone(*instance.sceneRoot);
+    applyBareInk(instance);
   }
   const Color material = colorForRole(materialRole(), barBodyTint(instance.barConfig), tone);
   // Islands are small shapes: liquid glass with the launcher pill's clear tint.

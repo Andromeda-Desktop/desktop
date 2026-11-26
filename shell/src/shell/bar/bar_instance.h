@@ -12,6 +12,7 @@
 #include "shell/bar/widget.h"
 #include "shell/panel/attached_panel_context.h"
 #include "ui/signal.h"
+#include "shell/bar/bar_ink.h"
 #include "wayland/dsk_surface_client.h"
 #include "wayland/layer_surface.h"
 
@@ -89,6 +90,9 @@ struct BarInstance {
   bool compositorSliding = false;
   AnimationManager::Id slideAnimId = 0;
   bool compositorTint = false; // the compositor draws the island tint (dsk v9); islands paint no fill
+  // Bare bar (dsk v21 backdrop probe): ink from the luminance under the bar; the scrim follows it.
+  BarInk ink = BarInk::Light;
+  Box* scrim = nullptr;
   std::vector<InputRect> islandBlurStrips; // last blur region sent (islands or bar body); empty = none sent
   // dsk v10: one glass shape per island; the compositor draws its blur, rim and tint, so no blur region is sent.
   std::vector<std::unique_ptr<DskShapeClient>> islandShapes;

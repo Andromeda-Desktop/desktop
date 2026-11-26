@@ -1,9 +1,34 @@
 #pragma once
 
+#include "design_tokens.h"
 #include "ui/surface_shadow.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+
+/// A bar with no surface (macOS layout): its ink sits on the wallpaper over the edge scrim.
+[[nodiscard]] inline bool barIsBare(const BarConfig& barConfig) {
+  return !barConfig.islands && barConfig.backgroundOpacity <= 0.0F;
+}
+
+/// Room the bar surface keeps past the bar: the shadow bleed, and on the inner side of a bare bar the scrim.
+[[nodiscard]] inline ui::surface_shadow::Bleed
+barSurfaceBleed(const BarConfig& barConfig, const ShellConfig::ShadowConfig& shadowConfig) {
+  auto bleed = ui::surface_shadow::bleed(barConfig.shadow, shadowConfig);
+  if (!barIsBare(barConfig)) {
+    return bleed;
+  }
+  const auto reach = std::max<std::int32_t>(
+      0, static_cast<std::int32_t>(std::lround(Tokens::componentBarScrimHeight)) - barConfig.thickness
+  );
+  std::int32_t& inner = barConfig.position == "bottom" ? bleed.up
+      : barConfig.position == "left"                   ? bleed.right
+      : barConfig.position == "right"                  ? bleed.left
+                                                       : bleed.down;
+  inner = std::max(inner, reach);
+  return bleed;
+}
 
 /// Layer-shell exclusive zone the bar reserves on its anchored screen edge.
 /// Canonical definition shared by the bar surface and attached panels so a panel
@@ -19,7 +44,7 @@ reservedBarExclusiveZone(const BarConfig& barConfig, const ShellConfig::ShadowCo
   if ((barConfig.autoHide || barConfig.smartAutoHide) && mEdge > 0) {
     return barConfig.thickness + mEdge + mOpposite;
   }
-  const auto sb = ui::surface_shadow::bleed(barConfig.shadow, shadowConfig);
+  const auto sb = barSurfaceBleed(barConfig, shadowConfig);
   if (barConfig.position == "bottom") {
     return barConfig.thickness + std::min(mEdge, sb.down) + mOpposite;
   }
@@ -45,7 +70,7 @@ barEdgeLayerMargin(const BarConfig& barConfig, const ShellConfig::ShadowConfig& 
   if ((barConfig.autoHide || barConfig.smartAutoHide) && mEdge > 0) {
     return 0;
   }
-  const auto sb = ui::surface_shadow::bleed(barConfig.shadow, shadowConfig);
+  const auto sb = barSurfaceBleed(barConfig, shadowConfig);
   if (barConfig.position == "bottom") {
     return std::max<std::int32_t>(0, mEdge - sb.down);
   }

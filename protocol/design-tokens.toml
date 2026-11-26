@@ -476,6 +476,7 @@ dark_edge = 0.32    # black, behind white ink over a dark backdrop
 dark_mid = 0.12
 bright_edge = 0.45  # white, behind label_1 ink over a bright backdrop
 bright_mid = 0.15
+ink_flip = 0.15    # mean backdrop luminance where white ink (dark scrim) and label_1 ink (bright scrim) tie; glass::kAdaptDeadband each side
 
 [component.button]  # 9.5; small and regular r 8, large and primary capsules
 radius = 8.0

@@ -1227,6 +1227,7 @@ if build_tests
     'audio_route_selection',
     'speaker_sound',
     'ambient_brightness',
+    'bar_ink',
     'brightness_schedule',
     'battery_health',
     'battery_hook_state',

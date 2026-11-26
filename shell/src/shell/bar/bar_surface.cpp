@@ -283,6 +283,42 @@ namespace {
 
 namespace bar_detail {
 
+  void applyBareInk(BarInstance& instance) {
+    if (instance.scrim == nullptr || instance.sceneRoot == nullptr) {
+      return;
+    }
+    const bool bare = barIsBare(instance.barConfig);
+    instance.scrim->setVisible(bare);
+    if (!bare) {
+      return;
+    }
+    instance.sceneRoot->setPaletteTone(barInkTone(instance.ink));
+    const bool white = instance.ink == BarInk::Dark;
+    const float edge = white ? Tokens::componentBarScrimBrightEdge : Tokens::componentBarScrimDarkEdge;
+    const float mid = white ? Tokens::componentBarScrimBrightMid : Tokens::componentBarScrimDarkMid;
+    const float tone = white ? 1.0F : 0.0F;
+    const bool fromEnd = instance.barConfig.position == "bottom" || instance.barConfig.position == "right";
+    const auto stop = [&](float pos, float alpha) {
+      return GradientStop{fromEnd ? 1.0F - pos : pos, rgba(tone, tone, tone, alpha)};
+    };
+    auto stops = fromEnd ? std::array{stop(1.0F, 0.0F), stop(1.0F, 0.0F), stop(0.5F, mid), stop(0.0F, edge)}
+                         : std::array{stop(0.0F, edge), stop(0.5F, mid), stop(1.0F, 0.0F), stop(1.0F, 0.0F)};
+    const bool vertical = instance.barConfig.position == "left" || instance.barConfig.position == "right";
+    instance.scrim->setStyle(
+        RoundedRectStyle{
+            .fill = rgba(0.0F, 0.0F, 0.0F, 0.0F),
+            .border = rgba(0.0F, 0.0F, 0.0F, 0.0F),
+            .fillMode = FillMode::LinearGradient,
+            .gradientDirection = vertical ? GradientDirection::Horizontal : GradientDirection::Vertical,
+            .gradientStops = {stops[0], stops[1], stops[2], stops[3]},
+            .radius = 0.0F,
+            .softness = 0.0F,
+            .borderWidth = 0.0F,
+        }
+    );
+  }
+
+
   [[nodiscard]] BarSurfaceSpec
   computeBarSurfaceSpec(const BarConfig& barConfig, const ShellConfig::ShadowConfig& shadowConfig) {
     const bool vertical = (barConfig.position == "left" || barConfig.position == "right");
@@ -291,7 +327,7 @@ namespace bar_detail {
     const std::int32_t mEnds =
         barConfig.islands ? static_cast<std::int32_t>(Tokens::spaceChromeGap) : barConfig.marginEnds;
     const std::int32_t mEdge = barConfig.marginEdge;
-    const auto sb = ui::surface_shadow::bleed(barConfig.shadow, shadowConfig);
+    const auto sb = barSurfaceBleed(barConfig, shadowConfig);
     const int edgeGutter = barAutoHideEdgeGutter(barConfig);
     const auto concave = barConcaveShape(barConfig);
     const int insetL = static_cast<int>(std::ceil(std::max(0.0F, concave.logicalInset.left)));
@@ -375,7 +411,7 @@ namespace bar_detail {
     const bool isBottom = cfg.position == "bottom";
     const bool isRight = cfg.position == "right";
     const bool isVertical = (cfg.position == "left" || cfg.position == "right");
-    const auto sbi = ui::surface_shadow::bleed(cfg.shadow, shadow);
+    const auto sbi = barSurfaceBleed(cfg, shadow);
     const auto concave = barConcaveShape(cfg);
     const float insetL = std::ceil(std::max(0.0F, concave.logicalInset.left));
     const float insetT = std::ceil(std::max(0.0F, concave.logicalInset.top));
@@ -1097,6 +1133,8 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
     slide->setParticipatesInLayout(false);
     instance.slideRoot = instance.sceneRoot->addChild(std::move(slide));
 
+    instance.scrim = static_cast<Box*>(instance.slideRoot->addChild(ui::box()));
+    instance.scrim->setHitTestVisible(false);
     // Bar background
     instance.bg = static_cast<Box*>(instance.slideRoot->addChild(ui::box()));
     instance.edgeLine = static_cast<Box*>(instance.slideRoot->addChild(ui::box()));
@@ -1244,11 +1282,21 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
         barAreaH + concave.logicalInset.top + concave.logicalInset.bottom
     );
   }
+  if (instance.scrim != nullptr) {
+    const std::string& position = instance.barConfig.position;
+    const float reach = Tokens::componentBarScrimHeight;
+    const bool vertical = position == "left" || position == "right";
+    instance.scrim->setSize(vertical ? std::min(reach, w) : w, vertical ? h : std::min(reach, h));
+    instance.scrim->setPosition(
+        position == "right" ? w - instance.scrim->width() : 0.0F,
+        position == "bottom" ? h - instance.scrim->height() : 0.0F
+    );
+    applyBareInk(instance);
+  }
   if (instance.edgeLine != nullptr) {
     const std::string& position = instance.barConfig.position;
     // A bare bar (no body, macOS layout) has no edge to mark.
-    const bool flush = !instance.barConfig.islands && instance.barConfig.marginEdge == 0
-        && instance.barConfig.backgroundOpacity > 0.0F;
+    const bool flush = !instance.barConfig.islands && instance.barConfig.marginEdge == 0 && !barIsBare(instance.barConfig);
     instance.edgeLine->setVisible(flush);
     instance.edgeLine->setFill(colorSpecFromRole(ColorRole::Stroke));
     const float line = 1.0F;
