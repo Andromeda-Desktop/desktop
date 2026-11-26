@@ -557,7 +557,7 @@ void CocoaDisplay::clearDropTarget(const Surface& surface) {
 }
 
 // No NSDraggingSession source yet: a drag stays inside its window.
-bool CocoaDisplay::startDrag(const Surface& /*origin*/, DragSource /*source*/) { return false; }
+bool CocoaDisplay::startDrag(const Surface& /*origin*/, DragOffer /*source*/) { return false; }
 
 std::unique_ptr<Surface> CocoaDisplay::createDragIcon(std::uint32_t /*width*/, std::uint32_t /*height*/, std::int32_t /*bufferScale*/) {
   return nullptr;

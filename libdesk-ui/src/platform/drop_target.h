@@ -21,7 +21,7 @@ struct DropTarget {
 };
 
 // A drag this app starts from a pointer press, offered to every drop target (its own surfaces too).
-struct DragSource {
+struct DragOffer {
   std::vector<std::string> mimeTypes;
   std::function<std::string(const std::string& mime)> data; // bytes for one offered type
   std::uint32_t actions = DropCopy | DropMove;
