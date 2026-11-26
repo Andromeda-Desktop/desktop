@@ -1747,7 +1747,8 @@ void LockScreen::tryAuthenticate() {
   }
   const bool allowEmptyPassword =
       m_configService != nullptr && m_configService->config().lockscreen.allowEmptyPassword;
-  if (m_password.empty() && !allowEmptyPassword && m_face != nullptr && faceEnabled() && faceOnRequest()) {
+  if (m_password.empty() && !allowEmptyPassword && m_face != nullptr && faceEnabled() && faceOnRequest()
+      && m_face->available()) {
     requestFace();
     return;
   }
