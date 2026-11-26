@@ -397,13 +397,14 @@ void DialogPopupHost::onKeyboardEvent(const KeyboardEvent& event) {
     return;
   }
 
-  if (event.pressed && !event.preedit && KeybindMatcher::matches(KeybindAction::Cancel, event.sym, event.modifiers)) {
-    cancel();
+  // The content sees Escape first: a sheet with a selection clears it instead of cancelling.
+  if (preDispatchKeyboard(event)) {
+    markDirtyTail();
     return;
   }
 
-  if (preDispatchKeyboard(event)) {
-    markDirtyTail();
+  if (event.pressed && !event.preedit && KeybindMatcher::matches(KeybindAction::Cancel, event.sym, event.modifiers)) {
+    cancel();
     return;
   }
 

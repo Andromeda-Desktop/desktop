@@ -460,15 +460,16 @@ namespace settings {
       }
       return true;
     }
-    if (event.pressed && !event.preedit && KeybindMatcher::matches(KeybindAction::Cancel, event.sym, event.modifiers)) {
-      requestCloseTop();
-      return true;
-    }
+    // The content sees Escape first: a sheet with a selection clears it instead of closing.
     const auto preDispatch = m_impl->entries.back().node->preDispatchCallback();
     if (preDispatch && preDispatch(event)) {
       if (m_impl->requestLayout) {
         m_impl->requestLayout();
       }
+      return true;
+    }
+    if (event.pressed && !event.preedit && KeybindMatcher::matches(KeybindAction::Cancel, event.sym, event.modifiers)) {
+      requestCloseTop();
       return true;
     }
     if (event.pressed && !event.preedit) {
