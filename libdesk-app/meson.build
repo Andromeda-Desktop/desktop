@@ -58,7 +58,7 @@ if is_wayland
   )
 else
   add_languages('objcpp', native: false)
-  _platform_sources = files('src/app/app_notifier_macos.mm', 'src/app/app_services_none.cpp', 'src/app/file_chooser_macos.mm')
+  _platform_sources = files('src/app/app_notifier_macos.mm', 'src/app/app_notifier_macos_app.cpp', 'src/app/app_services_none.cpp', 'src/app/file_chooser_macos.mm')
   _deps += dependency('appleframeworks', modules: ['AppKit', 'UserNotifications'])
 endif
 

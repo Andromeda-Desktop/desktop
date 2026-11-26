@@ -1,5 +1,4 @@
 #include "app/app_notifier.h"
-#include "app/desk_app.h"
 
 #include "core/log.h"
 
@@ -167,7 +166,10 @@ struct AppNotifier::Impl {
   }
 };
 
-AppNotifier::AppNotifier(DeskApp& app) : m_impl(std::make_unique<Impl>(app.info().name)) {}
+// desk_app.h reaches ui/style.h, whose namespace Style collides with MacTypes.h's Style: app_notifier_macos_app.cpp.
+std::string deskAppName(const DeskApp& app);
+
+AppNotifier::AppNotifier(DeskApp& app) : m_impl(std::make_unique<Impl>(deskAppName(app))) {}
 AppNotifier::~AppNotifier() = default;
 
 void AppNotifier::notify(const AppNotice& notice, const std::string& key, ActionFn onAction, std::function<void()> onClosed) {
