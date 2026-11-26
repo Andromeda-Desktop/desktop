@@ -1,5 +1,6 @@
 #include "system/brightness_service.h"
 #include "protocols/bus_names.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/crash_capture.h"
 #include "util/thread_name.h"
 
@@ -1248,25 +1249,42 @@ struct BrightnessService::Impl {
     writeSysfsBacklight(display, rawValue);
   }
 
-  bool writeSysfsBacklight(DisplayInternal& display, std::uint32_t rawValue) {
+  void writeSysfsBacklight(const DisplayInternal& display, std::uint32_t rawValue) {
     const std::string brightnessPath = display.sysfsPath + "/brightness";
-    std::ofstream file(brightnessPath);
-    if (!file.is_open()) {
-      kLog.warn("cannot open sysfs brightness file '{}'", brightnessPath);
-      return false;
-    }
-    file << rawValue;
-    file.close();
-    if (file.fail()) {
-      kLog.warn("failed to write brightness to '{}'", brightnessPath);
-      return false;
-    }
-    display.pub.brightness = static_cast<float>(rawValue) / static_cast<float>(display.maxRaw);
-    syncPublicDisplay(display);
-    if (changeCallback) {
-      changeCallback();
-    }
-    return true;
+    const std::weak_ptr<int> token = aliveToken;
+    // sysfs takes the value in place: no temporary file and rename.
+    const andromeda::WriteFn writeInPlace = [](const std::filesystem::path& path, const std::string& text) {
+      std::ofstream file(path);
+      if (!file.is_open()) {
+        return false;
+      }
+      file << text;
+      file.close();
+      return !file.fail();
+    };
+    andromeda::writeFileAsync(
+        brightnessPath, std::to_string(rawValue), writeInPlace,
+        [this, token, id = display.pub.id, brightnessPath, rawValue](bool ok) {
+          if (token.expired()) {
+            return;
+          }
+          if (!ok) {
+            kLog.warn("failed to write brightness to '{}'", brightnessPath);
+            return;
+          }
+          const auto it = std::ranges::find_if(internals, [&id](const DisplayInternal& candidate) {
+            return candidate.pub.id == id;
+          });
+          if (it == internals.end()) {
+            return;
+          }
+          it->pub.brightness = static_cast<float>(rawValue) / static_cast<float>(it->maxRaw);
+          syncPublicDisplay(*it);
+          if (changeCallback) {
+            changeCallback();
+          }
+        }
+    );
   }
 
   void setDdcBrightness(DisplayInternal& display, float value) {

@@ -1741,7 +1741,7 @@ bool SetupWizardPanel::handleGlobalKey(std::uint32_t sym, std::uint32_t modifier
 
 void SetupWizardPanel::commit() {
   if (m_config != nullptr) {
-    (void)m_config->markSetupWizardCompleted();
+    m_config->markSetupWizardCompleted();
   }
   kLog.info("setup complete");
   PanelManager::instance().close();
@@ -1829,6 +1829,6 @@ void SetupWizardPanel::onClose() {
   m_layoutSelect = nullptr;
   m_zoneSelect = nullptr;
   if (m_config != nullptr) {
-    (void)m_config->markSetupWizardCompleted();
+    m_config->markSetupWizardCompleted();
   }
 }

@@ -795,8 +795,10 @@ bool ConfigService::shouldRunSetupWizard() const {
   }
   // Single canonical signal: the marker file. If we have no state dir we cannot
   // persist completion, so never show the wizard (it would loop forever).
-  return !m_setupMarkerPath.empty() && !std::filesystem::exists(m_setupMarkerPath);
+  return !m_setupMarkerPath.empty() && !setupMarkerPresent();
 }
+
+bool ConfigService::setupMarkerPresent() const { return configFileExists(m_setupMarkerPath); }
 
 std::optional<bool> ConfigService::stateBool(std::string_view owner, std::string_view key) const {
   return m_stateStore.boolValue(owner, key);
@@ -1008,8 +1010,8 @@ DirectoryWatcher::WatchId ConfigService::watchDirectory(const std::filesystem::p
 }
 
 void ConfigService::onWatchedChange(WatchReload reload) {
-  if (reload == WatchReload::Overrides && m_writtenOverridesContent
-      && readTextFile(m_overridesPath) == *m_writtenOverridesContent) {
+  if (reload == WatchReload::Overrides && m_appliedOverridesContent
+      && readTextFile(m_overridesPath) == *m_appliedOverridesContent) {
     reload = WatchReload::None;
   }
   if (reload == WatchReload::None) {
@@ -1377,10 +1379,12 @@ void ConfigService::loadOverridesFromFile() {
 
   if (m_overridesPath.empty() || !configFileExists(m_overridesPath)) {
     m_persistedOverridesTable = toml::table{};
+    m_appliedOverridesContent.reset();
     return;
   }
 
   kLog.info("loading {}", m_overridesPath);
+  m_appliedOverridesContent = readTextFile(m_overridesPath);
   try {
     m_overridesTable = parseConfigFile(m_overridesPath);
     m_persistedOverridesTable = m_overridesTable;

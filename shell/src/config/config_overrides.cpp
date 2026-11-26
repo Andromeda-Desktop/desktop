@@ -1024,12 +1024,9 @@ bool ConfigService::setLockscreenWidgetsState(const LockscreenWidgetsConfig& loc
   return commitOverrideTable(std::move(next), nullptr);
 }
 
-bool ConfigService::markSetupWizardCompleted() {
-  if (m_setupMarkerPath.empty()) {
-    return false;
-  }
-  if (std::filesystem::exists(m_setupMarkerPath)) {
-    return true;
+void ConfigService::markSetupWizardCompleted() {
+  if (m_setupMarkerPath.empty() || setupMarkerPresent()) {
+    return;
   }
 
   // The bundled wallpaper is served via firstRunWallpaperPath() until setup
@@ -1042,12 +1039,11 @@ bool ConfigService::markSetupWizardCompleted() {
     }
   }
 
-  std::ofstream out(m_setupMarkerPath, std::ios::trunc);
-  if (!out.is_open()) {
-    kLog.warn("failed to write {}", m_setupMarkerPath);
-    return false;
-  }
-  return true;
+  writeTextFileAtomicAsync(m_setupMarkerPath, "", std::nullopt, [path = m_setupMarkerPath](bool ok) {
+    if (!ok) {
+      kLog.warn("failed to write {}", path);
+    }
+  });
 }
 
 bool ConfigService::hasOverride(const std::vector<std::string>& path) const {
@@ -2085,7 +2081,7 @@ bool ConfigService::hasConfiguredWallpaper() const {
 }
 
 std::string ConfigService::firstRunWallpaperPath() const {
-  if (m_setupMarkerPath.empty() || std::filesystem::exists(m_setupMarkerPath)) {
+  if (m_setupMarkerPath.empty() || setupMarkerPresent()) {
     return {};
   }
   if (hasConfiguredWallpaper()) {
@@ -2466,6 +2462,6 @@ bool ConfigService::writeOverridesToFile(const OverrideDiagnostics& known) {
       }
   );
   m_persistedOverridesTable = m_overridesTable;
-  m_writtenOverridesContent = std::move(text);
+  m_appliedOverridesContent = std::move(text);
   return true;
 }

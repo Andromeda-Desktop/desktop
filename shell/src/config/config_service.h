@@ -156,7 +156,7 @@ public:
   bool setStateBool(std::string_view owner, std::string_view key, bool value);
   bool setStateString(std::string_view owner, std::string_view key, std::string_view value);
   bool clearStateOwner(std::string_view owner);
-  bool markSetupWizardCompleted();
+  void markSetupWizardCompleted();
   [[nodiscard]] bool hasOverride(const std::vector<std::string>& path) const;
   [[nodiscard]] bool hasEffectiveOverride(const std::vector<std::string>& path) const;
   // Lane content as the settings GUI presents it: the widget list plus the capsule groups it
@@ -293,6 +293,8 @@ private:
   // Marker file (state dir): its existence means onboarding has been completed
   // or dismissed. Single canonical signal for the setup wizard.
   std::string m_setupMarkerPath;
+  // The marker on disk or queued for the background writer.
+  [[nodiscard]] bool setupMarkerPresent() const;
   toml::table m_overridesTable;
   toml::table m_persistedOverridesTable;
   std::unordered_set<std::string> m_configFileBarNames;
@@ -349,8 +351,8 @@ private:
   std::vector<std::filesystem::path> m_includeLoadedFiles;
   std::vector<std::filesystem::path> m_includeDirs;
 
-  // Text of our last overrides write: the watcher ignores an event while the file still holds it.
-  std::optional<std::string> m_writtenOverridesContent;
+  // Overrides text in effect (last write or last load): the watcher ignores an event while the file holds it.
+  std::optional<std::string> m_appliedOverridesContent;
   std::string m_lastMutationError;
   int m_wallpaperBatchDepth = 0;
   bool m_wallpaperBatchDirty = false;
