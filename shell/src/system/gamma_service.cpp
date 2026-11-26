@@ -263,8 +263,12 @@ void GammaService::syncOutputs() {
 
   const auto& wlOutputs = m_wayland.outputs();
 
-  // Remove entries for outputs that no longer exist.
+  // Remove entries for outputs that no longer exist, and failed ones: wlroots fails a control made while the output
+  // has no CRTC (blanked), so a later sync must ask again.
   std::erase_if(m_outputs, [&](OutputGamma& og) {
+    if (og.control == nullptr) {
+      return true;
+    }
     for (const auto& wo : wlOutputs) {
       if (wo.output == og.wlOutput) {
         return false;

@@ -389,7 +389,11 @@ void Application::initLockScreenAndSession() {
     m_lockScreen.onOutputPowerChanged();
     syncLockStreamPause();
     const auto states = m_compositorPlatform.outputPowerStates();
-    applyPresence(m_presenceWatch.setScreenOn(states.empty() || std::ranges::any_of(states, [](const auto& s) { return s.second; })));
+    const bool screenOn = states.empty() || std::ranges::any_of(states, [](const auto& s) { return s.second; });
+    applyPresence(m_presenceWatch.setScreenOn(screenOn));
+    if (screenOn) {
+      m_gammaService.onOutputsChanged();
+    }
   });
   if (m_logindService != nullptr) {
     m_logindService->setSessionLockIntegrationEnabled(m_configService.isLockScreenEnabled());
