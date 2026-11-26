@@ -52,16 +52,16 @@ with_noctalia '
   wait_for "phone not listed" eval "[[ \$(msg link-devices) == *\"E2E Phone\" ]]"
   ID=$(msg link-devices | cut -d" " -f1)
   [[ $(msg link-ring "$ID") == *"is not connected"* ]] || fail "link-ring to a disconnected phone: $(msg link-ring "$ID")"
-
+  # The microphone and screen switches on, as the phone user would turn them on: the phone panel shows Mic and Sound.
   # The microphone switch on, as the phone user would turn it on: the phone panel shows its Mic key.
-  python3 -c "import json,sys; s=json.load(open(sys.argv[1])); s[\"peers\"][0].setdefault(\"grants\", {}).update(mic=True); json.dump(s, open(sys.argv[1], \"w\"))" "$RUNTIME/phone/devices.json"
+  python3 -c "import json,sys; s=json.load(open(sys.argv[1])); s[\"peers\"][0].setdefault(\"grants\", {}).update(mic=True, screen=True); json.dump(s, open(sys.argv[1], \"w\"))" "$RUNTIME/phone/devices.json"
   mkfifo "$RUNTIME/phone.in"
   exec 3<> "$RUNTIME/phone.in"
   RUST_LOG=info "$BIN/andromeda-link-phone" --state "$RUNTIME/phone" --name "E2E Phone" --transcript "$OUT/transcript.jsonl" \
     hold < "$RUNTIME/phone.in" > "$OUT/hold.jsonl" 2>> "$OUT/phone.log" &
   hold=$!
   wait_for "phone never shown connected" eval "[[ \$(msg link-devices) == \"$ID connected E2E Phone\" ]]"
-  wait_for "DeviceInfo has no mic" eval "busctl --user get-property org.andromeda.Link1 /org/andromeda/Link1 org.andromeda.Link1 DeviceInfo | grep -q ready"
+  wait_for "DeviceInfo has no mic or sound" eval "busctl --user get-property org.andromeda.Link1 /org/andromeda/Link1 org.andromeda.Link1 DeviceInfo | grep mic..s..ready | grep -q sound..s..ready"
   msg panel-open phone > /dev/null
   sleep 1 # real time: the panel opens
   grim "$OUT/ring-phone-panel.png"

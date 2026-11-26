@@ -267,6 +267,8 @@
     "dnd": "Do not disturb",
     "mic-start": "Use as microphone",
     "mic-stop": "Stop microphone",
+    "sound-start": "Play phone sound here",
+    "sound-stop": "Stop phone sound",
     "no-phone": "No phone yet",
     "not-running": "Link is not running",
     "pair-another": "Pair Another Phone…",

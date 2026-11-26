@@ -26,6 +26,9 @@ void LinkService::applyDeviceState(const std::map<std::string, sdbus::Variant>& 
         if (const auto mic = fields.find("mic"); mic != fields.end()) {
           info.mic = mic->second.get<std::string>();
         }
+        if (const auto sound = fields.find("sound"); sound != fields.end()) {
+          info.sound = sound->second.get<std::string>();
+        }
       }
     } catch (const sdbus::Error& e) {
       kLog.warn("malformed DeviceInfo: {}", e.what());

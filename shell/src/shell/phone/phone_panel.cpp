@@ -22,7 +22,7 @@ namespace {
   constexpr std::array kTooltips{
       "bar.widgets.phone.ring",  "bar.widgets.phone.send-clipboard", "bar.widgets.phone.dnd",
       "bar.widgets.phone.ringer", "bar.widgets.phone.wifi",          "bar.widgets.phone.bluetooth",
-      "bar.widgets.phone.torch", "bar.widgets.phone.mic-start",
+      "bar.widgets.phone.torch", "bar.widgets.phone.mic-start",   "bar.widgets.phone.sound-start",
   };
 
 } // namespace
@@ -69,8 +69,9 @@ void PhonePanel::create() {
   );
   auto actions = ui::row({.align = FlexAlign::Stretch, .gap = Style::spaceSm * scale});
   auto toggles = ui::row({.out = &m_toggles, .align = FlexAlign::Stretch, .gap = Style::spaceSm * scale});
+  auto audio = ui::row({.out = &m_audio, .align = FlexAlign::Stretch, .gap = Style::spaceSm * scale});
   for (std::uint8_t i = 0; i < ActionCount; ++i) {
-    (i < kFirstToggle ? actions : toggles)
+    (i < kFirstToggle ? actions : i < kFirstAudio ? toggles : audio)
         ->addChild(
             ui::button({
                 .out = &m_actions[i],
@@ -95,13 +96,13 @@ void PhonePanel::create() {
             })
         );
   }
-  for (Node*& gap : m_toggleGaps) {
-    auto spacer = ui::spacer();
-    gap = spacer.get();
-    toggles->addChild(std::move(spacer));
-  }
+  // Empty cells keep the shorter rows on the four-column grid of the actions.
+  toggles->addChild(ui::spacer());
+  audio->addChild(ui::spacer());
+  audio->addChild(ui::spacer());
   layout->addChild(std::move(actions));
   layout->addChild(std::move(toggles));
+  layout->addChild(std::move(audio));
   // Rulebook 9.13: an error shows where it happened, with the action that fixes it.
   layout->addChild(
       ui::row(
@@ -228,16 +229,14 @@ void PhonePanel::doUpdate(Renderer& /*renderer*/) {
   const LinkCommandState* command = connected ? m_link->commandState(phone->id) : nullptr;
   const LinkDeviceInfo* info = connected ? m_link->info(phone->id) : nullptr;
   const std::string mic = info != nullptr ? info->mic : std::string();
-  m_toggles->setVisible(keys.has_value() || !mic.empty());
-  for (Action action : {Wifi, Bluetooth, Torch}) {
-    m_actions[action]->setVisible(keys.has_value());
-  }
-  m_actions[Mic]->setVisible(!mic.empty());
-  for (std::size_t i = 0; i < m_toggleGaps.size(); ++i) {
-    m_toggleGaps[i]->setVisible(!keys.has_value() || (i == 0 && mic.empty()));
-  }
+  const std::string sound = info != nullptr ? info->sound : std::string();
+  m_toggles->setVisible(keys.has_value());
+  m_audio->setVisible(!mic.empty() || !sound.empty());
   set(Mic, "microphone", i18n::tr("bar.widgets.phone.mic"), !mic.empty(), mic == "asking" || mic == "on");
   m_actions[Mic]->setTooltip(i18n::tr(mic == "ready" ? "bar.widgets.phone.mic-start" : "bar.widgets.phone.mic-stop"));
+  set(Sound, "volume", i18n::tr("bar.widgets.phone.sound"), !sound.empty(), sound == "asking" || sound == "on");
+  m_actions[Sound]->setTooltip(
+      i18n::tr(sound == "ready" ? "bar.widgets.phone.sound-start" : "bar.widgets.phone.sound-stop"));
   for (std::uint8_t i = 0; keys.has_value() && i < keys->size(); ++i) {
     const phone::ToggleKey& key = (*keys)[i];
     const auto action = static_cast<Action>(kFirstToggle + i);
@@ -283,7 +282,12 @@ void PhonePanel::act(Action action) {
     break;
   case Mic:
     if (const LinkDeviceInfo* info = m_link->info(phone->id); info != nullptr && !info->mic.empty()) {
-      m_link->setMic(phone->id, info->mic == "ready");
+      m_link->setPhoneAudio(phone->id, LinkService::PhoneAudio::Mic, info->mic == "ready");
+    }
+    break;
+  case Sound:
+    if (const LinkDeviceInfo* info = m_link->info(phone->id); info != nullptr && !info->sound.empty()) {
+      m_link->setPhoneAudio(phone->id, LinkService::PhoneAudio::Sound, info->sound == "ready");
     }
     break;
   case ActionCount:

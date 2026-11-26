@@ -47,6 +47,7 @@ namespace linkapp {
     std::optional<PhonePlayer> player;
     bool paused = false;
     std::string mic;           // ready, asking or on; empty while the phone cannot give its microphone
+    std::string sound;         // ready, asking or on; empty while the phone cannot send its sound
   };
 
   struct Presence {

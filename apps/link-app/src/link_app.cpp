@@ -1418,8 +1418,9 @@ namespace linkapp {
       const auto& command = m_client->systemCommand();
       const bool mine = command && command->device == id;
       const bool hasToggles = phone.wifi >= 0 || phone.bluetooth >= 0 || phone.torch >= 0;
-      // At most five keys a row: with the toggles or the microphone, a second row holds the phone's own settings.
-      const bool secondRow = hasToggles || !phone.mic.empty();
+      // At most five keys a row: with the toggles, the microphone or the sound, a second row holds the phone's own
+      // settings and the sound.
+      const bool secondRow = hasToggles || !phone.mic.empty() || !phone.sound.empty();
       auto settings = secondRow ? ui::row({.align = FlexAlign::Center, .justify = FlexJustify::SpaceBetween,
                                             .paddingV = Tokens::spaceP4 * s})
                                  : nullptr;
@@ -1432,7 +1433,7 @@ namespace linkapp {
       if (!presence.phone.mic.empty()) {
         const bool micOn = presence.phone.mic != "ready";
         keys->addChild(round("microphone", i18n::tr(micOn ? "link.phone-card.mic-stop" : "link.phone-card.mic-start"), micOn,
-                             [this, id, micOn] { m_client->setMic(id, !micOn); }));
+                             [this, id, micOn] { m_client->setPhoneAudio(id, LinkClient::PhoneAudio::Mic, !micOn); }));
       }
       card->addChild(std::move(keys));
       if (hasToggles) {
@@ -1465,7 +1466,23 @@ namespace linkapp {
           settings->addChild(std::move(button));
         }
       }
-      if (secondRow) card->addChild(std::move(settings));
+      if (!phone.sound.empty()) {
+        const bool soundOn = phone.sound != "ready";
+        settings->addChild(round("volume", i18n::tr(soundOn ? "link.phone-card.sound-stop" : "link.phone-card.sound-start"),
+                                 soundOn, [this, id, soundOn] {
+                                   m_client->setPhoneAudio(id, LinkClient::PhoneAudio::Sound, !soundOn);
+                                 }));
+      }
+      if (secondRow) {
+        // Empty cells keep the second row on the five-column grid of the keys above.
+        while (settings->children().size() < 5) {
+          auto cell = ui::spacer();
+          cell->setFlexGrow(0.0F);
+          cell->setSize(key, key);
+          settings->addChild(std::move(cell));
+        }
+        card->addChild(std::move(settings));
+      }
       if (mine && command->phase == LinkClient::SystemCommand::Phase::Failed) {
         // Rulebook 9.13: an error shows where it happened, with the action that fixes it.
         auto error = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});

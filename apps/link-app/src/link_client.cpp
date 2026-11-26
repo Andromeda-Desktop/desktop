@@ -260,6 +260,7 @@ namespace linkapp {
               phone.lastSeen = value<std::int64_t>(it->second, "last_seen", 0);
               phone.battery = value<std::int32_t>(it->second, "battery", -1);
               phone.mic = value<std::string>(it->second, "mic", "");
+              phone.sound = value<std::string>(it->second, "sound", "");
             }
             if (const auto it = status.find(phone.id); it != status.end()) {
               phone.battery = static_cast<int>(it->second.get<0>());
@@ -1227,10 +1228,12 @@ namespace linkapp {
         });
   }
 
-  void LinkClient::setMic(const std::string& deviceId, bool on) {
-    m_proxy->callMethodAsync(on ? "StartMic" : "StopMic").onInterface(kInterface).withArguments(deviceId)
-        .uponReplyInvoke([on](std::optional<sdbus::Error> error) {
-          if (error) kLog.warn("{}: {}", on ? "StartMic" : "StopMic", error->getMessage());
+  void LinkClient::setPhoneAudio(const std::string& deviceId, PhoneAudio audio, bool on) {
+    const char* method =
+        audio == PhoneAudio::Mic ? (on ? "StartMic" : "StopMic") : (on ? "StartPhoneSound" : "StopPhoneSound");
+    m_proxy->callMethodAsync(method).onInterface(kInterface).withArguments(deviceId)
+        .uponReplyInvoke([method](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("{}: {}", method, error->getMessage());
         });
   }
 

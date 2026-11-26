@@ -948,8 +948,8 @@ void LinkService::savePhoto(
       });
 }
 
-void LinkService::setMic(const std::string& deviceId, bool on) {
-  const char* method = on ? "StartMic" : "StopMic";
+void LinkService::setPhoneAudio(const std::string& deviceId, PhoneAudio audio, bool on) {
+  const char* method = audio == PhoneAudio::Mic ? (on ? "StartMic" : "StopMic") : (on ? "StartPhoneSound" : "StopPhoneSound");
   m_link->callMethodAsync(method)
       .onInterface(kLinkInterface)
       .withArguments(deviceId)

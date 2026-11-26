@@ -143,8 +143,9 @@ namespace linkapp {
     void showInFolder(const std::vector<std::string>& paths);
     void connect(const std::string& deviceId);
     void ring(const std::string& deviceId);
-    // Starts or stops the phone's microphone as the desktop's default source.
-    void setMic(const std::string& deviceId, bool on);
+    enum class PhoneAudio : std::uint8_t { Mic, Sound };
+    // Starts or stops the phone's microphone as the default source, or its sound on the default sink.
+    void setPhoneAudio(const std::string& deviceId, PhoneAudio audio, bool on);
     void dial(const std::string& deviceId, const std::string& number);
     void setDnd(const std::string& deviceId, bool on);
     // The window's last system command until it succeeds.

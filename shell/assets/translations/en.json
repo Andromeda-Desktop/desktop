@@ -352,6 +352,9 @@
         "mic": "Mic",
         "mic-start": "Use phone as microphone",
         "mic-stop": "Stop phone microphone",
+        "sound": "Listen",
+        "sound-start": "Play phone sound here",
+        "sound-stop": "Stop phone sound",
         "wifi-carries-link": "Link reaches the phone over Wi-Fi",
         "bluetooth-carries-link": "Link reaches the phone over Bluetooth",
         "try-again": "Try Again"

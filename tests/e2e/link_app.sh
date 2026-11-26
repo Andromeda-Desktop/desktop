@@ -107,7 +107,7 @@ with_noctalia '
   grant() { gdbus call --session -d org.andromeda.Link1 -o /org/andromeda/Link1 -m org.andromeda.Link1.SetGrant "$ID" "$1" true > /dev/null; }
   grant browse; grant messages; grant screen
   # The phone keeps its own switches for this desk; turn the same ones on, as its user would.
-  python3 -c "import json,sys; s=json.load(open(sys.argv[1])); s[\"peers\"][0].setdefault(\"grants\", {}).update(browse=True, messages=True, mic=True); json.dump(s, open(sys.argv[1], \"w\"))" "$RUNTIME/phone/devices.json"
+  python3 -c "import json,sys; s=json.load(open(sys.argv[1])); s[\"peers\"][0].setdefault(\"grants\", {}).update(browse=True, messages=True, mic=True, screen=True); json.dump(s, open(sys.argv[1], \"w\"))" "$RUNTIME/phone/devices.json"
   for v in messages calls photos files activity; do view $v; shot $v-away; done
   step "away: every view with its switch on and the phone not connected"
   view waiting

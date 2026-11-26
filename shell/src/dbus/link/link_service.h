@@ -39,6 +39,8 @@ struct LinkDeviceInfo {
   std::string transport;
   // ready, asking or on; empty while the phone cannot give its microphone.
   std::string mic;
+  // ready, asking or on; empty while the phone cannot send its sound.
+  std::string sound;
 };
 
 // A phone's own settings, from phones with system control: -1 or empty where the phone does not say.
@@ -166,8 +168,9 @@ public:
   [[nodiscard]] bool granted(const std::string& deviceId, std::string_view feature) const;
   // Starts or stops ringing a phone.
   void ring(const std::string& deviceId, bool on);
-  // Starts or stops the phone's microphone as the default source.
-  void setMic(const std::string& deviceId, bool on);
+  enum class PhoneAudio : std::uint8_t { Mic, Sound };
+  // Starts or stops the phone's microphone as the default source, or its sound on the default sink.
+  void setPhoneAudio(const std::string& deviceId, PhoneAudio audio, bool on);
   // Sends a text through the phone; `done` gets the daemon's error, or nothing once the phone reports it sent.
   void sendText(
       const std::string& deviceId, const std::string& to, const std::string& body,
