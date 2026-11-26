@@ -18,26 +18,27 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; grim "$OUT/fail.png" || true; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   locked() { msg status | grep -q "\"locked\": true"; }
-  not_black() { grim -t ppm - | tail -c 30000 | od -An -tu1 -v | awk "{ for (i = 1; i <= NF; i++) s += \$i } END { exit !(s > 0) }"; }
-  shot_differs() { grim -t ppm "$OUT/now.ppm" && ! cmp -s "$OUT/now.ppm" "$1"; }
+  # A capture is black while locked: the compositor log shows each lock surface commit instead.
+  lock_frames() { grep -c "lock frame output=HEADLESS-1" "$OUT/andromeda.log" || true; }
+  drew_since() { (( $(lock_frames) > $1 )); }
 
   wtype -s 3600000 &
   sleep 0.3
   [[ $(msg session lock) == ok ]] || fail "lock refused"
   wait_for "did not lock" locked
-  wait_for "the lock screen did not draw" not_black
+  wait_for "the lock screen did not draw" drew_since 0
 
   "$ANDROMEDA" output-destroy HEADLESS-1 > /dev/null || fail "output-destroy failed"
   sleep 1
+  n=$(lock_frames)
   "$ANDROMEDA" output-create HEADLESS-1 > /dev/null || fail "output-create failed"
   locked || fail "losing the output unlocked the session"
-  wait_for "the lock screen did not draw on the re-created output (black)" not_black
+  wait_for "the lock screen did not draw on the re-created output" drew_since "$n"
   sleep 1
-  grim -t ppm "$OUT/back.ppm"
-  grim "$OUT/back.png"
 
+  n=$(lock_frames)
   wtype abcdef
-  wait_for "the lock screen did not redraw after typing" shot_differs "$OUT/back.ppm"
+  wait_for "the lock screen did not redraw after typing" drew_since "$n"
   locked || fail "the session unlocked"
   echo "PASS"
 '

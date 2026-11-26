@@ -133,6 +133,10 @@ namespace andromeda {
   void LockSurface::onCommit(wl_listener* listener, void* /*data*/) {
     LockSurface* self = wl_container_of(listener, self, m_commit);
     self->updateBlur();
+    // A capture is black while locked, so tests see the lock draw through this line.
+    if (const wlr_surface* surface = self->surface(); surface != nullptr && surface->buffer != nullptr) {
+      kLog.debug("lock frame output={}", self->m_lockSurface->output != nullptr ? self->m_lockSurface->output->name : "(none)");
+    }
   }
 
   void LockSurface::updateBlur() {

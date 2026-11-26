@@ -17,7 +17,9 @@ with_noctalia '
   fail() { echo "FAIL: $*" >&2; grim "$OUT/fail.png" || true; exit 1; }
   msg() { "$NOCTALIA" msg "$@" 2>&1 || true; }
   locked() { msg status | grep -q "\"locked\": true"; }
-  shot_differs() { grim -t ppm "$OUT/now.ppm" && ! cmp -s "$OUT/now.ppm" "$1"; }
+  # A capture is black while locked: the compositor log shows each lock surface commit instead.
+  lock_frames() { grep -c "lock frame output=" "$OUT/andromeda.log" || true; }
+  drew_since() { (( $(lock_frames) > $1 )); }
 
   wtype -s 3600000 &
   sleep 0.3
@@ -34,12 +36,10 @@ with_noctalia '
   wtype -k Shift_L
   wait_for "a key press did not wake the output" log_since "$OUT/andromeda.log" "$mark" "applied mode="
   sleep 1
-  grim -t ppm "$OUT/woke.ppm"
-  grim "$OUT/woke.png"
+  n=$(lock_frames)
 
   wtype abcdef
-  wait_for "the lock screen did not redraw after typing (frame loop stuck)" shot_differs "$OUT/woke.ppm"
-  grim "$OUT/typed.png"
+  wait_for "the lock screen did not redraw after typing (frame loop stuck)" drew_since "$n"
 
   locked || fail "the session unlocked"
   echo "PASS"
