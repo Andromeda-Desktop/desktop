@@ -72,6 +72,12 @@ class Manager(Object):
         self.agent = None
         AgentManager(bus, BASE + "/AgentManager", {})
 
+    @dbus.service.method("org.test.MockNM", in_signature="a{sv}")
+    def SetRoot(self, values):
+        """Changes NetworkManager root properties (State, Connectivity, WirelessEnabled, ...) and announces them."""
+        self.props[NM].update(values)
+        self.PropertiesChanged(NM, values, [])
+
     @dbus.service.method("org.test.MockNM", out_signature="s")
     def AskSecrets(self):
         try:

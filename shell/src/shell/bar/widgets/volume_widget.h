@@ -31,7 +31,7 @@ public:
     bool showGlyph = true;
     bool showLabel = true;
     bool hideWhenInactive = false;
-    ColorSpec muteColor = colorSpecFromRole(ColorRole::DangerText);
+    ColorSpec muteColor = colorSpecFromRole(ColorRole::Label1); // muted reads as a state, not an alarm
   };
 
   VolumeWidget(PipeWireService* audio, EasyEffectsService* easyEffects, Options options);

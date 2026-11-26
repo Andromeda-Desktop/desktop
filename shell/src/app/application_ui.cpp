@@ -1611,7 +1611,7 @@ TimeService::Precision Application::timePrecisionNeeded() const {
 
 void Application::syncLockStreamPause() {
   const PowerProfilesService* profiles = powerProfiles();
-  const bool powerSaver = profiles != nullptr && profiles->activeProfile() == "power-saver";
+  const bool powerSaver = profiles != nullptr && profiles->powerSaverActive();
   setLockClockPowerSaver(powerSaver);
   m_lockscreenWidgetsController.setStreamsPaused(powerSaver, m_compositorPlatform.outputPowerStates());
 }

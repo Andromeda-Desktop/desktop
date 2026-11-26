@@ -47,8 +47,17 @@ enum class NetworkConnectivity {
 // Activating: NetworkManager has a VPN connection that is not up yet (no routes, or waiting for a secret).
 enum class VpnState : std::uint8_t { Off, Activating, Up };
 
+// What the primary connection reaches: NetworkManager's Connectivity property (NMConnectivityState 0..4).
+enum class InternetReach : std::uint8_t { Unknown, None, Portal, Limited, Full };
+
+[[nodiscard]] constexpr InternetReach internetReachFromNm(std::uint32_t connectivity) noexcept {
+  return connectivity <= 4 ? static_cast<InternetReach>(connectivity) : InternetReach::Unknown;
+}
+
 struct NetworkState {
   NetworkConnectivity kind = NetworkConnectivity::Unknown;
+  InternetReach internet = InternetReach::Unknown;
+  bool airplane = false; // every radio is soft-blocked (rfkill)
   bool connected = false;
   bool resolving = false; // active connection is activating, not yet connected
   bool wirelessEnabled = false;

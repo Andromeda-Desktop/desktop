@@ -6,8 +6,22 @@ struct NetworkState;
 
 namespace network_display {
 
+  // How the bar draws a network state: the glyph, a dim full glyph under it for the unlit arcs, dim ink, and arcs that
+  // cycle while connecting.
+  struct GlyphLook {
+    const char* glyph = "wifi";
+    const char* under = nullptr;
+    bool dim = false;
+    bool cycling = false;
+  };
+  [[nodiscard]] GlyphLook glyphLookForState(const NetworkState& state) noexcept;
+  // The glyph of glyphLookForState, for one-glyph surfaces.
   [[nodiscard]] const char* glyphForState(const NetworkState& state) noexcept;
+  // Glyphs a connecting Wi-Fi cycles through, weakest first.
+  inline constexpr const char* kWifiCycle[] = {"wifi-1", "wifi-2", "wifi"};
   [[nodiscard]] const char* vpnGlyph() noexcept;
+  // A VPN that is not up yet; drawn dim.
+  [[nodiscard]] const char* vpnActivatingGlyph() noexcept;
   [[nodiscard]] const char* wifiGlyphForState(const NetworkState& state) noexcept;
   [[nodiscard]] const char* wifiGlyphForSignal(std::uint8_t signal) noexcept;
   // Signal band 0 (weakest) .. 4 (strongest) — the bands the wifi glyph draws.

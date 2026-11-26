@@ -2,31 +2,62 @@
 
 #include "dbus/network/network_types.h"
 
+#include <string_view>
+
 namespace network_display {
 
-  const char* glyphForState(const NetworkState& state) noexcept {
+  namespace {
+    // Connected, but NetworkManager found no way out (none, captive portal, limited). Unknown means "not checked".
+    bool noInternet(const NetworkState& state) noexcept {
+      return state.connected
+          && (state.internet == InternetReach::None || state.internet == InternetReach::Portal
+              || state.internet == InternetReach::Limited);
+    }
+  } // namespace
+
+  GlyphLook glyphLookForState(const NetworkState& state) noexcept {
     if (state.kind == NetworkConnectivity::Wired) {
-      return state.connected ? "ethernet" : "ethernet-off";
+      if (!state.connected) {
+        return {.glyph = "ethernet-off"};
+      }
+      return {.glyph = noInternet(state) ? "ethernet-exclamation" : "ethernet"};
     }
     if (state.kind == NetworkConnectivity::Cellular) {
-      return state.connected ? "cell-signal-1" : cellularOffGlyph();
+      return {.glyph = state.connected ? "cell-signal-1" : cellularOffGlyph()};
     }
-    return wifiGlyphForState(state);
+    if (state.airplane) {
+      return {.glyph = "plane"};
+    }
+    if (!state.wirelessEnabled) {
+      return {.glyph = "wifi-off"};
+    }
+    if (state.kind == NetworkConnectivity::Wireless && state.connected) {
+      if (noInternet(state)) {
+        return {.glyph = "wifi-exclamation"};
+      }
+      const char* glyph = wifiGlyphForSignal(state.signalStrength);
+      return {.glyph = glyph, .under = std::string_view(glyph) == "wifi" ? nullptr : "wifi"};
+    }
+    if (state.resolving) {
+      return {.glyph = "wifi", .dim = true, .cycling = true};
+    }
+    return {.glyph = "wifi", .dim = true};
   }
 
+  const char* glyphForState(const NetworkState& state) noexcept { return glyphLookForState(state).glyph; }
+
   const char* vpnGlyph() noexcept { return "shield-check"; }
+
+  const char* vpnActivatingGlyph() noexcept { return "shield"; }
 
   const char* wifiGlyphForState(const NetworkState& state) noexcept {
     if (!state.wirelessEnabled) {
       return "wifi-off";
     }
-    if (state.kind == NetworkConnectivity::Unknown) {
-      return "wifi-question";
-    }
     if (state.kind == NetworkConnectivity::Wireless && state.connected) {
-      return wifiGlyphForSignal(state.signalStrength);
+      return noInternet(state) ? "wifi-exclamation" : wifiGlyphForSignal(state.signalStrength);
     }
-    return "wifi-exclamation";
+    return "wifi";
   }
 
   int wifiSignalBand(std::uint8_t signal) noexcept {
@@ -50,13 +81,10 @@ namespace network_display {
     case 4:
       return "wifi";
     case 3:
-      return "wifi-3";
     case 2:
       return "wifi-2";
-    case 1:
-      return "wifi-1";
     default:
-      return "wifi-0";
+      return "wifi-1";
     }
   }
 

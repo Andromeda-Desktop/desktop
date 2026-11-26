@@ -299,7 +299,7 @@ namespace {
     }
 
     void syncStreamPause() {
-      const bool powerSaver = m_powerProfiles != nullptr && m_powerProfiles->activeProfile() == "power-saver";
+      const bool powerSaver = m_powerProfiles != nullptr && m_powerProfiles->powerSaverActive();
       setLockClockPowerSaver(powerSaver);
       m_widgetsHost.setStreamsPaused(powerSaver, m_platform.outputPowerStates());
     }

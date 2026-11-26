@@ -1,4 +1,5 @@
 #include "dbus/network/network_lock_client.h"
+#include "system/rfkill_helper.h"
 
 #include "core/log.h"
 #include "dbus/system_bus.h"
@@ -131,6 +132,10 @@ bool NetworkLockClient::apply(const std::map<std::string, sdbus::Variant>& prope
     }
   }
   (void)read(properties, "WirelessEnabled", next.wirelessEnabled);
+  if (std::uint32_t connectivity = 0; read(properties, "Connectivity", connectivity)) {
+    next.internet = internetReachFromNm(connectivity);
+  }
+  next.airplane = !next.wirelessEnabled && areAllRadiosSoftBlocked();
   if (next.kind != m_state.kind || next.connected != m_state.connected) {
     next.signalStrength = 0;
   }

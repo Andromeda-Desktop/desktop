@@ -11,7 +11,9 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 
+#include <algorithm>
 #include <chrono>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -90,6 +92,16 @@ void NetworkWidget::create() {
           .glyph = "shield-check",
           .glyphSize = Style::baseGlyphSize * m_contentScale,
           .color = widgetIconColorOr(colorSpecFromRole(ColorRole::Label1)),
+          .visible = false,
+      })
+  );
+
+  area->addChild(
+      ui::glyph({
+          .out = &m_underGlyph,
+          .glyph = "wifi",
+          .glyphSize = Style::baseGlyphSize * m_contentScale,
+          .color = widgetIconColorOr(colorSpecFromRole(ColorRole::Label3)),
           .visible = false,
       })
   );
@@ -242,6 +254,37 @@ void NetworkWidget::doLayout(Renderer& renderer, float containerWidth, float con
     }
     rootNode->setSize(totalWidth, h);
   }
+  if (m_underGlyph != nullptr && m_underGlyph->visible()) {
+    m_underGlyph->setPosition(m_glyph->x(), m_glyph->y());
+  }
+}
+
+void NetworkWidget::setCycling(bool cycling) {
+  if (!cycling || m_animations == nullptr) {
+    if (m_cycleAnim != 0 && m_animations != nullptr) {
+      m_animations->cancel(m_cycleAnim);
+    }
+    m_cycleAnim = 0;
+    return;
+  }
+  if (m_cycleAnim != 0) {
+    return;
+  }
+  constexpr float kCycleMs = 1200.0F;
+  constexpr auto kSteps = static_cast<float>(std::size(network_display::kWifiCycle));
+  m_cycleAnim = m_animations->animateTimer(
+      0.0F, kSteps, kCycleMs, Easing::Linear,
+      [this](float step) {
+        const auto index = std::min(static_cast<std::size_t>(step), std::size(network_display::kWifiCycle) - 1);
+        m_glyph->setGlyph(network_display::kWifiCycle[index]);
+        requestRedraw();
+      },
+      [this] {
+        m_cycleAnim = 0;
+        setCycling(true);
+      },
+      this
+  );
 }
 
 void NetworkWidget::doUpdate(Renderer& renderer) { syncState(renderer); }
@@ -291,13 +334,17 @@ void NetworkWidget::syncState(Renderer& renderer) {
   const bool showSpinner = s.kind == NetworkConnectivity::Wired && s.resolving;
 
   // VPN glyph (both mode): show shield icon next to network icon
+  const ColorSpec ink = widgetIconColorOr(colorSpecFromRole(ColorRole::Label1));
+  const ColorSpec dimInk = widgetIconColorOr(colorSpecFromRole(ColorRole::Label3));
+  const bool vpnUp = s.vpn == VpnState::Up;
+  const char* vpnGlyph = vpnUp ? network_display::vpnGlyph() : network_display::vpnActivatingGlyph();
   if (m_vpnGlyph != nullptr) {
-    const bool showVpn = m_vpnStatusMode == VpnStatusMode::Both && s.vpn == VpnState::Up;
+    const bool showVpn = m_vpnStatusMode == VpnStatusMode::Both && s.vpn != VpnState::Off;
     m_vpnGlyph->setVisible(showVpn);
     if (showVpn) {
-      m_vpnGlyph->setGlyph(network_display::vpnGlyph());
+      m_vpnGlyph->setGlyph(vpnGlyph);
       m_vpnGlyph->setGlyphSize(Style::baseGlyphSize * m_contentScale);
-      m_vpnGlyph->setColor(widgetIconColorOr(colorSpecFromRole(ColorRole::Label1)));
+      m_vpnGlyph->setColor(vpnUp ? ink : dimInk);
       m_vpnGlyph->measure(renderer);
     }
   }
@@ -305,19 +352,31 @@ void NetworkWidget::syncState(Renderer& renderer) {
   // Main network glyph: replace mode uses the VPN icon when active; a primary
   // cellular connection shows live ModemManager signal bars.
   m_glyph->setVisible(!showSpinner);
-  if (m_vpnStatusMode == VpnStatusMode::Replace && s.vpn == VpnState::Up) {
-    m_glyph->setGlyph(network_display::vpnGlyph());
+  network_display::GlyphLook look;
+  if (m_vpnStatusMode == VpnStatusMode::Replace && s.vpn != VpnState::Off) {
+    look = {.glyph = vpnGlyph, .dim = !vpnUp};
   } else if (cellularPrimary && modem != nullptr) {
-    m_glyph->setGlyph(
-        modem->enabled() ? network_display::cellularGlyphForSignal(modem->signalQuality)
-                         : network_display::cellularOffGlyph()
-    );
+    look = {
+        .glyph = modem->enabled() ? network_display::cellularGlyphForSignal(modem->signalQuality)
+                                  : network_display::cellularOffGlyph()
+    };
   } else {
-    m_glyph->setGlyph(network_display::glyphForState(s));
+    look = network_display::glyphLookForState(s);
+  }
+  setCycling(look.cycling && !showSpinner);
+  if (!look.cycling) {
+    m_glyph->setGlyph(look.glyph);
   }
   m_glyph->setGlyphSize(Style::baseGlyphSize * m_contentScale);
-  m_glyph->setColor(widgetIconColorOr(colorSpecFromRole(ColorRole::Label1)));
+  m_glyph->setColor(look.dim ? dimInk : ink);
   m_glyph->measure(renderer);
+  m_underGlyph->setVisible(look.under != nullptr && !showSpinner);
+  if (look.under != nullptr) {
+    m_underGlyph->setGlyph(look.under);
+    m_underGlyph->setGlyphSize(Style::baseGlyphSize * m_contentScale);
+    m_underGlyph->setColor(dimInk);
+    m_underGlyph->measure(renderer);
+  }
 
   if (m_spinner != nullptr) {
     m_spinner->setVisible(showSpinner);

@@ -37,5 +37,68 @@ int main() {
   cellular.connected = false;
   ok = expectGlyph(network_display::glyphForState(cellular), "cell-signal-off", "disconnected cellular fallback") && ok;
 
+  // Every Wi-Fi state draws what the approved sheet shows; a connected link with no way out shows the exclamation.
+  struct Case {
+    const char* name;
+    NetworkState state;
+    const char* glyph;
+    const char* under;
+    bool dim;
+    bool cycling;
+  };
+  const auto wifi = [](std::uint8_t signal, InternetReach internet) {
+    NetworkState s;
+    s.kind = NetworkConnectivity::Wireless;
+    s.connected = true;
+    s.wirelessEnabled = true;
+    s.signalStrength = signal;
+    s.internet = internet;
+    return s;
+  };
+  NetworkState connecting;
+  connecting.kind = NetworkConnectivity::Wireless;
+  connecting.wirelessEnabled = true;
+  connecting.resolving = true;
+  NetworkState noNetwork;
+  noNetwork.wirelessEnabled = true;
+  NetworkState off;
+  NetworkState airplane;
+  airplane.airplane = true;
+  NetworkState wired;
+  wired.kind = NetworkConnectivity::Wired;
+  wired.connected = true;
+  wired.internet = InternetReach::Full;
+  NetworkState wiredPortal = wired;
+  wiredPortal.internet = InternetReach::Portal;
+  const Case cases[] = {
+      {"strong", wifi(90, InternetReach::Full), "wifi", nullptr, false, false},
+      {"medium", wifi(50, InternetReach::Full), "wifi-2", "wifi", false, false},
+      {"weak", wifi(10, InternetReach::Full), "wifi-1", "wifi", false, false},
+      {"not yet checked", wifi(90, InternetReach::Unknown), "wifi", nullptr, false, false},
+      {"no internet", wifi(90, InternetReach::None), "wifi-exclamation", nullptr, false, false},
+      {"captive portal", wifi(50, InternetReach::Portal), "wifi-exclamation", nullptr, false, false},
+      {"limited", wifi(50, InternetReach::Limited), "wifi-exclamation", nullptr, false, false},
+      {"connecting", connecting, "wifi", nullptr, true, true},
+      {"no network", noNetwork, "wifi", nullptr, true, false},
+      {"wifi off", off, "wifi-off", nullptr, false, false},
+      {"airplane", airplane, "plane", nullptr, false, false},
+      {"ethernet", wired, "ethernet", nullptr, false, false},
+      {"ethernet portal", wiredPortal, "ethernet-exclamation", nullptr, false, false},
+  };
+  for (const Case& c : cases) {
+    const auto look = network_display::glyphLookForState(c.state);
+    ok = expectGlyph(look.glyph, c.glyph, c.name) && ok;
+    if ((look.under == nullptr) != (c.under == nullptr) || (c.under != nullptr && std::strcmp(look.under, c.under) != 0)
+        || look.dim != c.dim || look.cycling != c.cycling) {
+      std::println(stderr, "network_display_test: {}: wrong under, dim or cycling", c.name);
+      ok = false;
+    }
+  }
+  if (internetReachFromNm(4) != InternetReach::Full || internetReachFromNm(1) != InternetReach::None
+      || internetReachFromNm(9) != InternetReach::Unknown) {
+    std::println(stderr, "network_display_test: NM connectivity maps to the wrong reach");
+    ok = false;
+  }
+
   return ok ? 0 : 1;
 }

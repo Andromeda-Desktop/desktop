@@ -2878,7 +2878,14 @@ void NetworkManagerService::readStateAsync(const std::function<void(NetworkState
               } catch (const sdbus::Error&) {
               }
             }
+            if (auto connectivityIt = nmProperties.find("Connectivity"); connectivityIt != nmProperties.end()) {
+              try {
+                next->internet = internetReachFromNm(connectivityIt->second.get<std::uint32_t>());
+              } catch (const sdbus::Error&) {
+              }
+            }
           }
+          next->airplane = !next->wirelessEnabled && areAllRadiosSoftBlocked();
           readActiveConnectionState();
         });
   } catch (const sdbus::Error&) {

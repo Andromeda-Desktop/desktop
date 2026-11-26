@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dbus/upower/upower_service.h"
+#include "shell/bar/widgets/battery_tone.h"
 #include "render/animation/animation_manager.h"
 #include "shell/bar/widget.h"
 #include "ui/palette.h"
@@ -9,6 +10,7 @@
 #include <string>
 
 class Box;
+class PowerProfilesService;
 class Glyph;
 class Label;
 
@@ -29,7 +31,7 @@ public:
     bool islandStyle = false; // outlined 22 px icon of the design reference (horizontal bars)
   };
 
-  BatteryWidget(UPowerService* upower, Options options);
+  BatteryWidget(UPowerService* upower, PowerProfilesService* powerProfiles, Options options);
 
   void create() override;
 
@@ -42,6 +44,7 @@ private:
   void updateFillGeometry();
   void syncPalette();
   [[nodiscard]] std::string buildLabelText(int pct, const UPowerState& state) const;
+  [[nodiscard]] ColorSpec toneColor(const ColorSpec& normal) const;
 
   void createGraphicMode();
   void createGlyphMode();
@@ -51,6 +54,7 @@ private:
   void layoutLabelOnlyMode(Renderer& renderer, float containerWidth, float containerHeight);
 
   UPowerService* m_upower = nullptr;
+  PowerProfilesService* m_powerProfiles = nullptr;
   std::string m_deviceSelector = "auto";
   int m_warningThreshold = 0;
   ColorSpec m_warningColor;
@@ -80,6 +84,7 @@ private:
   BatteryState m_lastState = BatteryState::Unknown;
   bool m_lastPluggedIn = false;
   bool m_lastPresent = false;
+  BatteryTone m_lastTone = BatteryTone::Normal;
   bool m_isVertical = false;
   bool m_lastVertical = false;
 

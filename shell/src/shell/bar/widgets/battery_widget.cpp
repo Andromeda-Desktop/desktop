@@ -1,5 +1,7 @@
 #include "shell/bar/widgets/battery_widget.h"
 
+#include "dbus/power/power_profiles_service.h"
+
 #include "dbus/upower/upower_service.h"
 #include "i18n/i18n.h"
 #include "render/scene/input_area.h"
@@ -48,15 +50,6 @@ namespace {
   // lands just short of a full minute from pushing the refresh out to two.
   constexpr auto kTooltipForceRefreshInterval = std::chrono::seconds(59);
 
-  const char* batteryStateGlyph(BatteryState state) {
-    if (state == BatteryState::Charging) {
-      return "bolt-filled";
-    }
-    if (state == BatteryState::FullyCharged || state == BatteryState::PendingCharge) {
-      return "plug-filled";
-    }
-    return nullptr;
-  }
 
   std::string formatCompactDuration(std::int64_t seconds) {
     const auto hours = seconds / 3600;
@@ -86,8 +79,8 @@ namespace {
 
 } // namespace
 
-BatteryWidget::BatteryWidget(UPowerService* upower, Options options)
-    : m_upower(upower), m_deviceSelector(std::move(options.deviceSelector)),
+BatteryWidget::BatteryWidget(UPowerService* upower, PowerProfilesService* powerProfiles, Options options)
+    : m_upower(upower), m_powerProfiles(powerProfiles), m_deviceSelector(std::move(options.deviceSelector)),
       m_warningThreshold(options.warningThreshold), m_warningColor(options.warningColor),
       m_displayMode(options.displayMode), m_labelContent(options.labelContent), m_showLabel(options.showLabel),
       m_hideWhenPlugged(options.hideWhenPlugged), m_hideWhenFull(options.hideWhenFull),
@@ -96,7 +89,24 @@ BatteryWidget::BatteryWidget(UPowerService* upower, Options options)
 // Vertical bars are too narrow for time or rate text, so they always show the bare percentage; the
 // tooltip carries the full detail. Time and rate are only known while the battery is actively charging
 // or discharging, and the percentage stands in whenever the selected content has no value to show.
+ColorSpec BatteryWidget::toneColor(const ColorSpec& normal) const {
+  switch (m_lastTone) {
+  case BatteryTone::Charging:
+    return colorSpecFromRole(ColorRole::Success);
+  case BatteryTone::Low:
+  case BatteryTone::Critical:
+    return m_warningColor;
+  case BatteryTone::Saver:
+    return colorSpecFromRole(ColorRole::Warning);
+  default:
+    return normal;
+  }
+}
+
 std::string BatteryWidget::buildLabelText(int pct, const UPowerState& state) const {
+  if (state.state == BatteryState::Unknown) {
+    return "\u2014";
+  }
   if (m_isVertical) {
     return std::to_string(pct);
   }
@@ -447,15 +457,16 @@ void BatteryWidget::updateFillGeometry() {
 
 void BatteryWidget::syncPalette() {
   const ColorSpec normalFg = widgetForegroundOr(colorSpecFromRole(ColorRole::Label1));
-  const bool isWarning = m_warningThreshold > 0
-      && m_lastPct >= 0.0
-      && std::round(m_lastPct) <= m_warningThreshold
-      && !m_lastPluggedIn;
-  const ColorSpec foreground = isWarning ? m_warningColor : normalFg;
+  const ColorSpec foreground = toneColor(normalFg);
 
   if (m_islandStyle) {
     m_bodyBg->setFill(Color{0.0F, 0.0F, 0.0F, 0.0F});
-    m_bodyBg->setBorder(foreground, 1.8F * Tokens::componentIslandIcon / 24.0F * m_contentScale);
+    const float stroke = 1.8F * Tokens::componentIslandIcon / 24.0F * m_contentScale;
+    m_bodyBg->setBorder(foreground, stroke);
+    // An unknown state draws the body dashed.
+    auto style = m_bodyBg->style();
+    style.borderDash = m_lastTone == BatteryTone::Unknown ? stroke : 0.0F;
+    m_bodyBg->setStyle(style);
     m_fillRect->setFill(foreground);
     m_terminalNub->setFill(foreground);
     if (m_overlayLabel != nullptr) {
@@ -490,6 +501,10 @@ void BatteryWidget::syncState(Renderer& renderer) {
   }
 
   const auto s = m_upower->stateForDevice(m_deviceSelector);
+  const bool saver = m_powerProfiles != nullptr && m_powerProfiles->powerSaverActive();
+  const BatteryTone tone = batteryTone(
+      s.state, static_cast<int>(std::round(s.percentage)), s.pluggedIn(), m_warningThreshold, saver
+  );
 
   const auto now = std::chrono::steady_clock::now();
   const bool forceTimeRefresh = (m_lastTooltipRefreshTime == std::chrono::steady_clock::time_point{})
@@ -501,6 +516,7 @@ void BatteryWidget::syncState(Renderer& renderer) {
       && s.isPresent == m_lastPresent
       && s.energyRate == m_lastEnergyRate
       && s.timeToEmpty == m_lastTimeToEmpty
+      && tone == m_lastTone
       && m_isVertical == m_lastVertical
       && !forceTimeRefresh) {
     return;
@@ -510,6 +526,7 @@ void BatteryWidget::syncState(Renderer& renderer) {
   m_lastState = s.state;
   m_lastPluggedIn = s.pluggedIn();
   m_lastPresent = s.isPresent;
+  m_lastTone = tone;
   m_lastEnergyRate = s.energyRate;
   m_lastTimeToEmpty = s.timeToEmpty;
   m_lastVertical = m_isVertical;
@@ -535,7 +552,6 @@ void BatteryWidget::syncState(Renderer& renderer) {
   }
 
   const int pct = static_cast<int>(std::round(s.percentage));
-  const bool isWarning = m_warningThreshold > 0 && pct <= m_warningThreshold && !isPluggedIn;
 
   if (m_displayMode == BatteryDisplayMode::Graphic) {
     syncPalette();
@@ -567,7 +583,7 @@ void BatteryWidget::syncState(Renderer& renderer) {
     }
 
     // State icon
-    const char* stateGlyph = batteryStateGlyph(s.state);
+    const char* stateGlyph = batteryToneGlyph(tone, s.state);
     if (m_overlayGlyph != nullptr && stateGlyph != nullptr) {
       m_overlayGlyph->setGlyph(stateGlyph);
       m_overlayGlyph->measure(renderer);
@@ -585,9 +601,8 @@ void BatteryWidget::syncState(Renderer& renderer) {
       m_fillRect->setVisible(stateGlyph == nullptr);
     }
   } else if (m_displayMode == BatteryDisplayMode::Glyph) {
-    const ColorSpec iconColor = isWarning ? m_warningColor : widgetIconColorOr(colorSpecFromRole(ColorRole::Label1));
-    const ColorSpec labelColor =
-        isWarning ? m_warningColor : widgetForegroundOr(colorSpecFromRole(ColorRole::Label1));
+    const ColorSpec iconColor = toneColor(widgetIconColorOr(colorSpecFromRole(ColorRole::Label1)));
+    const ColorSpec labelColor = toneColor(widgetForegroundOr(colorSpecFromRole(ColorRole::Label1)));
 
     if (m_glyph != nullptr) {
       m_glyph->setGlyph(batteryGlyphName(s.percentage, s.state));
@@ -603,8 +618,7 @@ void BatteryWidget::syncState(Renderer& renderer) {
       m_label->measure(renderer);
     }
   } else if (m_displayMode == BatteryDisplayMode::None) {
-    const ColorSpec normalFgColor = widgetForegroundOr(colorSpecFromRole(ColorRole::Label1));
-    const ColorSpec fgColor = isWarning ? m_warningColor : normalFgColor;
+    const ColorSpec fgColor = toneColor(widgetForegroundOr(colorSpecFromRole(ColorRole::Label1)));
 
     if (m_label != nullptr && m_showLabel) {
       m_label->setFontSize((m_isVertical ? Style::fontSizeCaption : Style::fontSizeBody) * fontScale());

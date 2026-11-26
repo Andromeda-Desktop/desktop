@@ -51,6 +51,7 @@ public:
   [[nodiscard]] bool hasStateSnapshot() const noexcept { return m_hasStateSnapshot; }
   [[nodiscard]] const PowerProfilesState& state() const noexcept { return m_state; }
   [[nodiscard]] const std::string& activeProfile() const noexcept { return m_state.activeProfile; }
+  [[nodiscard]] bool powerSaverActive() const noexcept { return m_state.activeProfile == "power-saver"; }
   [[nodiscard]] const std::vector<std::string>& profiles() const noexcept { return m_state.profiles; }
 
   [[nodiscard]] bool setActiveProfile(std::string_view profile);

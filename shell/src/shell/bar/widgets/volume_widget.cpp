@@ -143,15 +143,16 @@ void VolumeWidget::syncState(Renderer& renderer) {
     return;
   }
 
+  // No device: the muted glyph, dim.
+  const ColorSpec iconInk = node == nullptr ? widgetIconColorOr(colorSpecFromRole(ColorRole::Label3))
+      : muted                               ? m_muteColor
+                                            : widgetIconColorOr(colorSpecFromRole(ColorRole::Label1));
   if (m_image != nullptr) {
-    widget_custom_image::sync(
-        *m_image, renderer, m_customImage, m_contentScale,
-        muted ? m_muteColor : widgetIconColorOr(colorSpecFromRole(ColorRole::Label1))
-    );
+    widget_custom_image::sync(*m_image, renderer, m_customImage, m_contentScale, iconInk);
   } else if (m_glyph != nullptr) {
     m_glyph->setGlyph(glyphName(volume, muted, effectsProfile));
     m_glyph->setGlyphSize(Style::baseGlyphSize * m_contentScale);
-    m_glyph->setColor(muted ? m_muteColor : widgetIconColorOr(colorSpecFromRole(ColorRole::Label1)));
+    m_glyph->setColor(iconInk);
     m_glyph->measure(renderer);
   }
 

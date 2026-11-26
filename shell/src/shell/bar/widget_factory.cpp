@@ -197,7 +197,7 @@ std::unique_ptr<Widget> WidgetFactory::create(
             options.displayMode = BatteryDisplayMode::None;
             options.labelContent = BatteryLabelContent::Percent;
             options.showLabel = true;
-            return createWidget<BatteryWidget>(context.contentScale, f.m_upower, options);
+            return createWidget<BatteryWidget>(context.contentScale, f.m_upower, f.m_powerProfiles, options);
           }},
       {"island_bluetooth", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
             auto options = bluetoothWidgetDefinition().resolve(context.config, context.settingContext);
@@ -256,7 +256,7 @@ std::unique_ptr<Widget> WidgetFactory::create(
             );
             // The unlabelled battery symbol is the outlined reference icon, as in the islands.
             options.islandStyle = options.displayMode == BatteryDisplayMode::Graphic && !options.showLabel;
-            return createWidget<BatteryWidget>(context.contentScale, f.m_upower, options);
+            return createWidget<BatteryWidget>(context.contentScale, f.m_upower, f.m_powerProfiles, options);
           }},
       {"bluetooth", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
             return createWidget<BluetoothWidget>(

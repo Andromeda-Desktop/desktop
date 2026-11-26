@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dbus/network/inetwork_service.h"
+#include "render/animation/animation_manager.h"
 #include "shell/bar/widget.h"
 #include "ui/tooltip_content.h"
 
@@ -40,6 +41,7 @@ private:
   void doUpdate(Renderer& renderer) override;
   void syncState(Renderer& renderer);
   [[nodiscard]] std::vector<TooltipRow> buildTooltipRows() const;
+  void setCycling(bool cycling);
 
   INetworkService* m_network = nullptr;
   SystemMonitorService* m_monitor = nullptr;
@@ -47,8 +49,10 @@ private:
   bool m_showLabel = true;
   bool m_showVpnLabel = false;
   VpnStatusMode m_vpnStatusMode = VpnStatusMode::Replace;
+  Glyph* m_underGlyph = nullptr; // dim full Wi-Fi under a weaker one: the unlit arcs
   Glyph* m_glyph = nullptr;
   Glyph* m_vpnGlyph = nullptr;
+  AnimationManager::Id m_cycleAnim = 0; // arcs cycling while Wi-Fi connects
   Spinner* m_spinner = nullptr;
   Label* m_label = nullptr;
   Label* m_vpnLabel = nullptr;
