@@ -348,9 +348,10 @@ namespace {
       ::poll(nullptr, 0, 10);
     }
 
+    // The group outlives a reaped leader while descendants live, so its id is not reused; a reaped pid may be.
     ::kill(-pid, SIGKILL);
-    ::kill(pid, SIGKILL);
     if (!reaped) {
+      ::kill(pid, SIGKILL);
       exitCode = waitBlocking(pid);
     }
   }
