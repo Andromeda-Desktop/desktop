@@ -180,6 +180,13 @@ RULES = {
                  r"getenv\(\"XDG_(?:(?:CONFIG|DATA|STATE|CACHE)_HOME|RUNTIME_DIR|(?:DATA|CONFIG)_DIRS)\"\)", ()),
     "protocol-copy": ("a Wayland protocol XML used by more than one module lives once in protocol/; module protocols/ "
                       "dirs link to it", ("",), ("/protocols/",), r"", ()),
+    "main-io": ("a file write blocks its thread for 100s of ms under disk load: the compositor writes through "
+                "core/async_file_writer.h writeFileAsync or MainLoopWorker, the shell through SharedWorker::post; "
+                "a direct write here must run off the main thread", ("compositor/src/", "shell/src/", "libdesk-ui/src/"),
+                CPP, r"\bstd::ofstream\b|\b(fsync|fdatasync)\s*\(|\bfopen\s*\([^;]*\"[wa]\+?b?\"|"
+                r"\b(writeTextFileAtomic|writeEncryptedFile|rewriteGeneratedToml)\s*\(",
+                ("compositor/src/core/async_file_writer.cpp", "compositor/src/config/generated_file.",
+                 "shell/src/config/atomic_file.", "shell/src/security/encrypted_file_store.")),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",
                     ("apps/",), ("meson.build",), r"subproject\('libdesk-ui'|\b_?desk_ui_dep\b", ()),
 }
