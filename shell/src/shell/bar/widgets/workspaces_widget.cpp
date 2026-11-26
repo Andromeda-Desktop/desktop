@@ -1060,6 +1060,17 @@ WorkspacesWidget::layoutSlide(std::vector<Item>& items, std::size_t from, std::s
     }
     flowItems(items, gap);
   };
+  if (from + 1 < to || to + 1 < from) {
+    // A jump over other dots: only its two ends change width, and the capsule fades out on `from` and in on `to`,
+    // so it never sweeps over the dots between.
+    const float t = std::clamp(static_cast<float>(progress), 0.0F, 1.0F);
+    layoutAt(static_cast<double>(from));
+    items[from].currentWidth = std::lerp(items[from].activeWidth, items[from].inactiveWidth, t);
+    items[to].currentWidth = std::lerp(items[to].inactiveWidth, items[to].activeWidth, t);
+    flowItems(items, gap);
+    const Item& on = items[t < 0.5F ? from : to];
+    return {.start = on.currentX, .end = on.currentX + on.currentWidth, .opacity = std::abs(1.0F - 2.0F * t)};
+  }
   // The capsule keeps its rest size and travels from its rest place on `from` to its rest place on `to`; past the
   // end (a spring's overshoot) it keeps going along the same line.
   layoutAt(static_cast<double>(from));
@@ -1094,7 +1105,8 @@ bool WorkspacesWidget::applySlide() {
   // speed, at most one gap; the leading edge stays on the compositor's position. Reduced motion has no stretch.
   const double dt = (follow.slide.timeMs - follow.timeMs) / 1000.0;
   if (dt > 0.0) {
-    follow.velocity = static_cast<float>((follow.span.start - follow.lensStart) / dt);
+    // A jump fades instead of travelling, so it has no speed to stretch by.
+    follow.velocity = follow.span.opacity < 1.0F ? 0.0F : static_cast<float>((follow.span.start - follow.lensStart) / dt);
   }
   follow.lensStart = follow.span.start;
   follow.timeMs = follow.slide.timeMs;
@@ -1135,7 +1147,7 @@ void WorkspacesWidget::placeSlideLens() {
   const SlideFollow& follow = *m_slideFollow;
   m_lens.follow(
       follow.span.start - std::max(follow.stretch, 0.0F), follow.span.end + std::max(-follow.stretch, 0.0F), 0.0F,
-      m_indicatorHeight, m_indicatorHeight * 0.5F
+      m_indicatorHeight, m_indicatorHeight * 0.5F, follow.span.opacity
   );
   if (root() != nullptr) {
     root()->markPaintDirty();
@@ -1178,9 +1190,18 @@ void WorkspacesWidget::syncLens(bool animate) {
   }
   for (const auto& item : m_items) {
     if (!item.exiting && workspaceUsesFocusedStyle(item.workspace, item.output)) {
+      // A move past another dot jumps and fades in, so the capsule never sweeps over the dots between.
+      const float from = (m_lens.start() + m_lens.end()) * 0.5F;
+      const float to = item.currentX + item.currentWidth * 0.5F;
+      const bool skips = std::ranges::any_of(m_items, [&](const Item& other) {
+        const float center = other.currentX + other.currentWidth * 0.5F;
+        return &other != &item && !other.exiting && other.currentWidth > 0.0F && center > std::min(from, to) + 0.5F
+            && center < std::max(from, to) - 0.5F;
+      });
       // The capsule follows the dot as it is now, so it cannot settle before the dots it sits between.
       m_lens.moveTo(
-          item.currentX, item.currentX + item.currentWidth, 0.0F, m_indicatorHeight, m_indicatorHeight * 0.5F, animate
+          item.currentX, item.currentX + item.currentWidth, 0.0F, m_indicatorHeight, m_indicatorHeight * 0.5F, animate,
+          skips
       );
       return;
     }

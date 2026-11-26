@@ -25,6 +25,20 @@ public:
     const auto span = WorkspacesWidget::layoutSlide(items, from, to, progress, 5.0F);
     return {span.start, span.end};
   }
+
+  struct Jump {
+    WorkspacesWidget::LensSpan span;
+    std::vector<WorkspacesWidget::Item> items;
+  };
+  static Jump slideJump(std::size_t count, std::size_t from, std::size_t to, double progress) {
+    Jump jump{.span = {}, .items = std::vector<WorkspacesWidget::Item>(count)};
+    for (auto& item : jump.items) {
+      item.inactiveWidth = 7.0F;
+      item.activeWidth = 20.0F;
+    }
+    jump.span = WorkspacesWidget::layoutSlide(jump.items, from, to, progress, 5.0F);
+    return jump;
+  }
 };
 
 namespace {
@@ -53,10 +67,15 @@ int main() {
   // 40 %: the capsule keeps its 20 px and is 40 % of the way from 12 to 24.
   const auto between = WorkspacesWidgetTestAccess::slideLens(4, 1, 2, 0.4);
   TEST_CHECK(near(between.first, 16.8F) && near(between.second, 36.8F));
-  // A jump from 0 to 3 passes the dots between: half way, it sits half way between dots 1 and 2.
-  const auto jump = WorkspacesWidgetTestAccess::slideLens(4, 0, 3, 0.5);
-  const auto jumpRef = WorkspacesWidgetTestAccess::slideLens(4, 1, 2, 0.5);
-  TEST_CHECK(near(jump.first, jumpRef.first) && near(jump.second, jumpRef.second));
+  // A jump from 0 to 3 never passes the dots between: they keep their rest width, and the capsule sits on dot 0
+  // fading out, then on dot 3 fading in.
+  for (const double p : {0.0, 0.2, 0.45, 0.5, 0.8, 1.0}) {
+    const auto jump = WorkspacesWidgetTestAccess::slideJump(4, 0, 3, p);
+    TEST_CHECK(near(jump.items[1].currentWidth, 7.0F) && near(jump.items[2].currentWidth, 7.0F));
+    const auto& on = jump.items[p < 0.5 ? 0 : 3];
+    TEST_CHECK(near(jump.span.start, on.currentX) && near(jump.span.end, on.currentX + on.currentWidth));
+    TEST_CHECK(near(jump.span.opacity, static_cast<float>(std::abs(1.0 - 2.0 * p))));
+  }
   // A swipe back toward a lower workspace mirrors the forward slide.
   const auto back = WorkspacesWidgetTestAccess::slideLens(4, 2, 1, 0.6);
   TEST_CHECK(near(back.first, between.first) && near(back.second, between.second));

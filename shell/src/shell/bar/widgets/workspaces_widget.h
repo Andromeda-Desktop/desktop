@@ -166,6 +166,7 @@ private:
   struct LensSpan {
     float start = 0.0F;
     float end = 0.0F;
+    float opacity = 1.0F;
   };
   [[nodiscard]] static LensSpan
   layoutSlide(std::vector<Item>& items, std::size_t from, std::size_t to, double progress, float gap);

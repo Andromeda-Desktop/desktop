@@ -54,8 +54,9 @@ public:
     m_lens->setZIndex(z);
   }
 
-  // `start`/`end` are main-axis edges; `cross`/`crossSize` place the pane on the other axis.
-  void moveTo(float start, float end, float cross, float crossSize, float radius, bool animate) {
+  // `start`/`end` are main-axis edges; `cross`/`crossSize` place the pane on the other axis. `skips` says the move
+  // passes over other items: the lens then jumps and fades in instead of sweeping over them.
+  void moveTo(float start, float end, float cross, float crossSize, float radius, bool animate, bool skips = false) {
     if (m_lens == nullptr) {
       return;
     }
@@ -77,7 +78,7 @@ public:
       apply();
       return;
     }
-    if (MotionService::instance().reduced()) {
+    if (MotionService::instance().reduced() || skips) {
       // Rulebook 7.8: the lens jumps and its new place fades in. A fade already running keeps going: the dots move the
       // lens every frame of their own travel.
       cancelTravel();
@@ -123,7 +124,7 @@ public:
   }
 
   // Puts the pane where an outside driver has it this frame (the compositor's workspace slide): no spring of its own.
-  void follow(float start, float end, float cross, float crossSize, float radius) {
+  void follow(float start, float end, float cross, float crossSize, float radius, float opacity = 1.0F) {
     if (m_lens == nullptr) {
       return;
     }
@@ -135,6 +136,7 @@ public:
     m_start = m_targetStart = start;
     m_end = m_targetEnd = end;
     apply();
+    setOpacity(opacity);
   }
 
   // Main-axis edges as drawn now.
