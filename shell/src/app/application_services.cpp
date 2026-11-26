@@ -630,10 +630,8 @@ void Application::applyPowerSourceProfile() {
   }
   const BatteryConfig& battery = m_configService.config().battery;
   const std::string& profile = onBattery ? battery.profileOnBattery : battery.profileOnAc;
-  if (!profile.empty() && profile != powerProfiles()->activeProfile()) {
-    kLog.info("power source {}: switching profile to {}", onBattery ? "battery" : "ac", profile);
-    (void)powerProfiles()->setActiveProfile(profile);
-  }
+  kLog.info("power source {}: holding profile {}", onBattery ? "battery" : "ac", profile.empty() ? "(none)" : profile);
+  powerProfiles()->holdProfile(profile, onBattery ? "battery.profile_on_battery" : "battery.profile_on_ac");
 }
 
 void Application::syncScreenTimeService() {

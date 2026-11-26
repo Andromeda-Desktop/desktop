@@ -1,4 +1,6 @@
 #include "dbus/power/power_profiles_service.h"
+
+#include "dbus/reply_log.h"
 #include "protocols/bus_names.h"
 
 #include "core/log.h"
@@ -13,6 +15,7 @@
 #include <sdbus-c++/IProxy.h>
 #include <sdbus-c++/Types.h>
 #include <span>
+#include <utility>
 #include <vector>
 
 std::string profileLabel(std::string_view profile) {
@@ -218,6 +221,48 @@ void PowerProfilesService::refresh() {
       m_refreshQueued = false;
       refresh();
     }
+  }
+}
+
+void PowerProfilesService::holdProfile(std::string profile, std::string reason) {
+  const auto ticket = m_holdRequest.begin();
+  const std::weak_ptr<int> lifetimeToken = m_lifetimeToken;
+  try {
+    const std::shared_ptr<sdbus::IProxy> knobs =
+        sdbus::createProxy(m_bus.connection(), kPowerProfilesBusName, kKnobsPath);
+    if (!m_profileHoldId.empty()) {
+      knobs->callMethodAsync("Release")
+          .onInterface(kKnobsInterface)
+          .withArguments(std::exchange(m_profileHoldId, {}))
+          .uponReplyInvoke([knobs, log = logReply(kLog, "Release", ReplyFailure::Debug)](std::optional<sdbus::Error> e) {
+            log(std::move(e));
+          });
+    }
+    if (profile.empty()) {
+      return;
+    }
+    knobs->callMethodAsync("Hold")
+        .onInterface(kKnobsInterface)
+        .withArguments(std::string("power.profile"), sdbus::Variant(profile), reason)
+        .uponReplyInvoke([this, lifetimeToken, ticket, knobs](std::optional<sdbus::Error> err, std::string id) {
+          if (lifetimeToken.expired() || err.has_value()) {
+            if (err.has_value()) {
+              kLog.warn("power profile hold failed: {}", err->what());
+            }
+            return;
+          }
+          if (!m_holdRequest.current(ticket)) {
+            knobs->callMethodAsync("Release").onInterface(kKnobsInterface).withArguments(id).uponReplyInvoke(
+                [knobs, log = logReply(kLog, "Release", ReplyFailure::Debug)](std::optional<sdbus::Error> e) {
+                  log(std::move(e));
+                }
+            );
+            return;
+          }
+          m_profileHoldId = std::move(id);
+        });
+  } catch (const sdbus::Error& e) {
+    kLog.warn("power profile hold dispatch failed: {}", e.what());
   }
 }
 

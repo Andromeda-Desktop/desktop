@@ -2,6 +2,8 @@
 
 #include "dbus/name_owner_watch.h"
 
+#include "core/latest_request.h"
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -52,6 +54,9 @@ public:
   [[nodiscard]] const std::vector<std::string>& profiles() const noexcept { return m_state.profiles; }
 
   [[nodiscard]] bool setActiveProfile(std::string_view profile);
+  /// An automatic System1 hold on power.profile (empty releases it): rule holds merge with it lowest power first, and
+  /// the user's next profile choice ends it. Not a user choice, so it never undoes a rule episode.
+  void holdProfile(std::string profile, std::string reason);
   /// The profile of the last change the daemon refused; empty after the next change starts.
   [[nodiscard]] const std::string& failedProfile() const noexcept { return m_failedProfile; }
   /// Step through profiles in canonical power order, wrapping at the ends.
@@ -72,6 +77,9 @@ private:
   std::optional<std::string> m_pendingLocalActiveProfile;
   std::string m_failedProfile;
   ChangeCallback m_changeCallback;
+  // The System1 hold id of holdProfile; empty when none is held. A Hold reply that is no longer current is released.
+  std::string m_profileHoldId;
+  LatestRequest m_holdRequest;
   bool m_hasStateSnapshot = false;
   bool m_refreshInFlight = false;
   bool m_refreshQueued = false;
