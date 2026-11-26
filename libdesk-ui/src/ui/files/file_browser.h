@@ -474,6 +474,8 @@ private:
   bool m_skeletonHeld = false;
 
   std::vector<std::filesystem::path> m_dragPaths; // our own drag; empty for other apps' drags
+  // Write access per drop folder for the drag in progress: one access() per folder, not per motion (NFS, FUSE).
+  std::map<std::filesystem::path, bool> m_dropWritable;
   Node* m_placeCue = nullptr;                    // the Place::dropFiles row with the drop cue
   ColorSpec m_placeCueFill;                      // its fill before the cue (the selected row's tint)
   std::optional<std::string> m_dropItem;         // the folder row with the drop cue

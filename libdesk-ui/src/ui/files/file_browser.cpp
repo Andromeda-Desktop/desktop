@@ -4558,7 +4558,14 @@ std::optional<FileBrowser::DropTarget> FileBrowser::dragOver(float sceneX, float
   // A listing that takes drops writes through its host (as root), so the user's write access does not matter.
   const bool listingDrops = m_listing.has_value() && !m_listing->dropFolder.empty();
   const auto accept = [this](const fs::path& folder, bool listing = false) -> std::optional<DropTarget> {
-    if (folder.empty() || insideDragged(folder, m_dragPaths) || (!listing && !writable(folder))) {
+    const auto canWrite = [this](const fs::path& dir) {
+      const auto [it, added] = m_dropWritable.try_emplace(dir);
+      if (added) {
+        it->second = writable(dir);
+      }
+      return it->second;
+    };
+    if (folder.empty() || insideDragged(folder, m_dragPaths) || (!listing && !canWrite(folder))) {
       return std::nullopt;
     }
     // Dropping items back into the folder they come from does nothing.
@@ -4731,6 +4738,7 @@ void FileBrowser::updateEdgeScroll(float sceneX, float sceneY) {
 }
 
 void FileBrowser::dragLeave() {
+  m_dropWritable.clear();
   m_edgeScroll.stop();
   m_edgeSpeed = 0.0F;
   m_springTimer.stop();
