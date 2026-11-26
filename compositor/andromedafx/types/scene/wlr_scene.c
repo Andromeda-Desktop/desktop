@@ -676,6 +676,8 @@ void wlr_scene_node_destroy(struct wlr_scene_node* node) {
       wl_list_remove(&scene->gamma_control_manager_v1_set_gamma.link);
       wl_list_remove(&scene->color_manager_v1_destroy.link);
       pixman_region32_fini(&scene->blur_visibility_stale);
+      pixman_region32_fini(&scene->batch_update);
+      pixman_region32_fini(&scene->batch_damage);
     } else {
       assert(node->parent);
     }
@@ -735,6 +737,8 @@ struct wlr_scene* wlr_scene_create(void) {
   scene->blur_data = blur_data_get_default();
   scene->background_color[3] = 1.0f;
   pixman_region32_init(&scene->blur_visibility_stale);
+  pixman_region32_init(&scene->batch_update);
+  pixman_region32_init(&scene->batch_damage);
 
   return scene;
 }
@@ -2035,12 +2039,41 @@ static void scene_node_damage_update(struct wlr_scene_node* node, pixman_region3
     }
   }
 
+  if (scene->update_batch_depth > 0) {
+    // The new visibility is not known before the batch end, so the new bounds stand in for it.
+    pixman_region32_union(&scene->batch_update, &scene->batch_update, &update_region);
+    pixman_region32_union(&scene->batch_damage, &scene->batch_damage, &update_region);
+    pixman_region32_fini(&update_region);
+    pixman_region32_fini(damage);
+    return;
+  }
+
   scene_update_region(scene, &update_region);
   pixman_region32_fini(&update_region);
 
   scene_node_visibility(node, damage);
   scene_damage_outputs(scene, damage);
   pixman_region32_fini(damage);
+}
+
+void wlr_scene_update_batch_begin(struct wlr_scene* scene) { scene->update_batch_depth++; }
+
+void wlr_scene_update_batch_end(struct wlr_scene* scene) {
+  assert(scene->update_batch_depth > 0);
+  if (--scene->update_batch_depth > 0 || pixman_region32_empty(&scene->batch_update)) {
+    return;
+  }
+  // Recomputing visibility over a larger area is exact, and one box walks faster than a many-rect union.
+  pixman_region32_t update_region;
+  const struct pixman_box32* extents = pixman_region32_extents(&scene->batch_update);
+  pixman_region32_init_rect(
+      &update_region, extents->x1, extents->y1, extents->x2 - extents->x1, extents->y2 - extents->y1
+  );
+  pixman_region32_clear(&scene->batch_update);
+  scene_update_region(scene, &update_region);
+  pixman_region32_fini(&update_region);
+  scene_damage_outputs(scene, &scene->batch_damage);
+  pixman_region32_clear(&scene->batch_damage);
 }
 
 // Damages the node's drawn bounds, including any expand margin, on every

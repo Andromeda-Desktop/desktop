@@ -75,6 +75,7 @@
 #include "server/syncobj_superseded_release.h"
 #include "server/syncobj_unmap_release.h"
 #include "view/view.h"
+#include "scene/update_batch.h"
 #include "wlr.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
@@ -3219,8 +3220,11 @@ namespace andromeda {
     // what makes that hold, since finishing the overview calls focusView, which reorders the view registry after every
     // view has already ticked.
     m_animatablesScratch.assign(m_animatables.begin(), m_animatables.end());
-    for (Animatable* owner : m_animatablesScratch) {
-      active = owner->tickAnimations(nowMsec) || active;
+    {
+      const SceneUpdateBatch batch(m_scene);
+      for (Animatable* owner : m_animatablesScratch) {
+        active = owner->tickAnimations(nowMsec) || active;
+      }
     }
 
     std::erase_if(m_launchFeedback, [](const auto& entry) { return entry.second->finished(); });

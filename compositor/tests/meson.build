@@ -23,6 +23,7 @@ unit_tests = [
   ['presented-crop', ['unit/presented_crop.cpp'], []],
   ['scene-node', ['unit/scene_node.cpp'], []],
   ['scene-clip', ['unit/scene_clip.cpp'], [wayland_server_dep]],
+  ['scene-batch', ['unit/scene_batch.cpp'], [wayland_server_dep]],
   ['crash-capture', ['unit/crash_capture.cpp'], [], ['-I' + meson.project_source_root()]],
   ['xwayland-outputs', ['unit/xwayland_outputs.cpp'], [andromeda_core_dep]],
   ['xwayland-xsettings', ['unit/xwayland_xsettings.cpp'], []],

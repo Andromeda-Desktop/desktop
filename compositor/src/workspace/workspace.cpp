@@ -27,6 +27,7 @@
 #include <limits>
 #include <ranges>
 #include <utility>
+#include "scene/update_batch.h"
 #include "wlr.h"
 // clang-format on
 
@@ -1286,6 +1287,7 @@ namespace andromeda {
   } // namespace
 
   void Workspace::applyTiledMotion(const wlr_box& usable, bool animate) {
+    const SceneUpdateBatch batch(m_group->server()->scene());
     const Overview* overview = m_group->server()->overview();
     const bool overviewActive = overview != nullptr && overview->active();
 
