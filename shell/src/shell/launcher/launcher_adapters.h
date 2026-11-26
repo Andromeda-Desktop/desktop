@@ -404,11 +404,13 @@ public:
       if (section.resultIndices.empty()) {
         continue;
       }
-      LauncherSectionRowData header;
-      header.kind = LauncherSectionRowData::Kind::Header;
-      header.label = section.label;
-      header.glyphName = m_pillStyle ? std::string() : section.glyphName;
-      m_rows.push_back(std::move(header));
+      if (!section.label.empty()) {
+        LauncherSectionRowData header;
+        header.kind = LauncherSectionRowData::Kind::Header;
+        header.label = section.label;
+        header.glyphName = m_pillStyle ? std::string() : section.glyphName;
+        m_rows.push_back(std::move(header));
+      }
 
       for (std::size_t offset = 0; offset < section.resultIndices.size(); offset += columns) {
         LauncherSectionRowData row;
