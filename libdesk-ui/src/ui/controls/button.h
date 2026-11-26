@@ -56,6 +56,8 @@ public:
 
   void setText(std::string_view text);
   void setGlyph(std::string_view name);
+  // The glyph goes after the label (a menu chevron) instead of before it.
+  void setGlyphTrailing(bool trailing);
   void setFontSize(float size);
   void setGlyphSize(float size);
   // Pin the button to an exact height (e.g. Style::controlHeight) instead of the content-derived
@@ -115,6 +117,8 @@ private:
   void refreshInputAreaEnabled();
   void ensureLabel();
   void ensureGlyph();
+  [[nodiscard]] std::size_t glyphIndex() const;
+  void placeGlyph();
   void applyVariant();
   void onPaletteToneChanged() override {
     Flex::onPaletteToneChanged();
@@ -137,6 +141,7 @@ private:
   void ensureBadge();
 
   Glyph* m_glyph = nullptr;
+  bool m_glyphTrailing = false;
   Label* m_label = nullptr;
   Flex* m_badge = nullptr;
   Label* m_badgeLabel = nullptr;

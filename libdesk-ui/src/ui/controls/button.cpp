@@ -618,27 +618,46 @@ void Button::ensureLabel() {
   if (m_glyph != nullptr) {
     setDirection(FlexDirection::Horizontal);
     setGap(Style::spaceXs);
+    placeGlyph();
   }
   applyColors(m_targetBg, m_targetBorder, m_targetLabel);
+}
+
+std::size_t Button::glyphIndex() const {
+  const auto& kids = children();
+  for (std::size_t i = 0; i < kids.size(); ++i) {
+    if (kids[i].get() == m_label) {
+      return m_glyphTrailing ? i + 1 : i;
+    }
+  }
+  return kids.size();
+}
+
+void Button::setGlyphTrailing(bool trailing) {
+  if (m_glyphTrailing == trailing) {
+    return;
+  }
+  m_glyphTrailing = trailing;
+  placeGlyph();
+}
+
+void Button::placeGlyph() {
+  if (m_glyph == nullptr || m_label == nullptr) {
+    return;
+  }
+  auto glyph = removeChild(m_glyph);
+  m_glyph = static_cast<Glyph*>(insertChildAt(glyphIndex(), std::move(glyph)));
+  markLayoutDirty();
 }
 
 void Button::ensureGlyph() {
   if (m_glyph != nullptr) {
     return;
   }
-  // insertChildAt so the glyph lands before the label in the children vector,
-  // which is what Flex iterates to assign layout positions
+  // Flex places children in vector order: the glyph goes next to the label, on the side m_glyphTrailing names.
   if (m_label != nullptr) {
-    const auto& kids = children();
-    std::size_t labelIndex = 0;
-    for (std::size_t i = 0; i < kids.size(); ++i) {
-      if (kids[i].get() == m_label) {
-        labelIndex = i;
-        break;
-      }
-    }
     auto glyph = std::make_unique<Glyph>();
-    m_glyph = static_cast<Glyph*>(insertChildAt(labelIndex, std::move(glyph)));
+    m_glyph = static_cast<Glyph*>(insertChildAt(glyphIndex(), std::move(glyph)));
   } else {
     auto glyph = std::make_unique<Glyph>();
     m_glyph = static_cast<Glyph*>(addChild(std::move(glyph)));

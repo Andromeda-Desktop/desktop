@@ -148,7 +148,7 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
     }));
     return head;
   };
-  const auto smallButton = [scale](Button** out, std::string text, std::string glyph, std::function<void()> onClick) {
+  const auto smallButton = [scale](Button** out, std::string text, std::string glyph, bool trailing, std::function<void()> onClick) {
     return ui::button({
         .out = out,
         .text = std::move(text),
@@ -161,13 +161,14 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
         .gap = Tokens::spaceP4 * scale,
         .radius = Style::scaledRadius(Tokens::radiusR8, scale),
         .onClick = std::move(onClick),
+        .configure = [trailing](Button& button) { button.setGlyphTrailing(trailing); },
     });
   };
   const auto spacer = [] { return ui::row({.flexGrow = 1.0F}); };
 
   auto pinnedHead = sectionHead(&m_startPinnedHead, i18n::tr("launcher.start.pinned"));
   pinnedHead->addChild(spacer());
-  pinnedHead->addChild(smallButton(&m_startShowAll, i18n::tr("launcher.start.show-all"), "chevron-down", [this] {
+  pinnedHead->addChild(smallButton(&m_startShowAll, i18n::tr("launcher.start.show-all"), "chevron-down", true, [this] {
     m_startShowAllPins = !m_startShowAllPins;
     syncStartSheet();
   }));
@@ -209,13 +210,13 @@ void LauncherPanel::createStartSheet(std::unique_ptr<Input> input, std::unique_p
   }));
 
   auto allHead = sectionHead(&m_startAllHead, i18n::tr("launcher.start.all"));
-  allHead->addChild(smallButton(&m_startBack, {}, "chevron-left", [this] {
+  allHead->addChild(smallButton(&m_startBack, {}, "chevron-left", false, [this] {
     m_activeCategoryType = All;
     m_activeCategory.clear();
     applyActiveCategory();
   }));
   allHead->addChild(spacer());
-  allHead->addChild(smallButton(&m_startViewButton, {}, "chevron-down", [this] { openStartViewMenu(); }));
+  allHead->addChild(smallButton(&m_startViewButton, {}, "chevron-down", true, [this] { openStartViewMenu(); }));
   content->addChild(std::move(allHead));
 
   m_startCardAdapter = std::make_unique<LauncherStartCardAdapter>(&m_startCards, scale, [this](std::size_t card) {
