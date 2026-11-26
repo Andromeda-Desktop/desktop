@@ -172,6 +172,7 @@ namespace {
     env.ddcutilAvailable = true;
     env.systemdUserManaged = true;
     env.gammaControlAvailable = true;
+    env.lightSensorAvailable = true;
     env.greeterSyncAvailable = true;
     env.batteryAvailable = true;
     env.systemBatteryAvailable = true;

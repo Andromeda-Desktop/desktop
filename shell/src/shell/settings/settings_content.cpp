@@ -500,58 +500,6 @@ namespace settings {
       section.addChild(std::move(block));
     };
 
-    const auto makeShortcutListBlock = [&](Flex& section, const SettingEntry& entry,
-                                           const ShortcutListSetting& shortcuts) {
-      const bool overridden = (ctx.configService != nullptr && ctx.configService->hasEffectiveOverride(entry.path));
-
-      auto block = makeCollectionBlock(entry, overridden);
-
-      std::vector<std::string> itemTypes;
-      itemTypes.reserve(shortcuts.items.size());
-      for (const auto& item : shortcuts.items) {
-        itemTypes.push_back(item.type);
-      }
-
-      std::vector<ListEditorOption> suggestedOptions;
-      suggestedOptions.reserve(shortcuts.suggestedOptions.size());
-      for (const auto& opt : shortcuts.suggestedOptions) {
-        suggestedOptions.push_back(ListEditorOption{.value = opt.value, .label = opt.label});
-      }
-
-      auto listEditor = std::make_unique<ListEditor>();
-      listEditor->setScale(scale);
-      listEditor->setMaxItems(shortcuts.maxItems);
-      listEditor->setAddPlaceholder(i18n::tr("settings.controls.list.add-entry-placeholder"));
-      listEditor->setSuggestedOptions(std::move(suggestedOptions));
-      listEditor->setItems(std::move(itemTypes));
-      listEditor->setOnAddRequested([setOverride = ctx.setOverride, items = shortcuts.items,
-                                     path = entry.path](std::string value) mutable {
-        if (value.empty() || std::ranges::contains(items, value, &ShortcutConfig::type)) {
-          return;
-        }
-        items.push_back(ShortcutConfig{std::move(value)});
-        setOverride(path, items);
-      });
-      listEditor->setOnRemoveRequested([setOverride = ctx.setOverride, items = shortcuts.items,
-                                        path = entry.path](std::size_t index) mutable {
-        if (index >= items.size()) {
-          return;
-        }
-        items.erase(items.begin() + static_cast<std::ptrdiff_t>(index));
-        setOverride(path, items);
-      });
-      listEditor->setReorderTooltip(i18n::tr("settings.controls.list.drag"));
-      listEditor->setOnMoveRequested([setOverride = ctx.setOverride, items = shortcuts.items,
-                                      path = entry.path](ReorderDrag::Move move) mutable {
-        if (applyReorder(items, move)) {
-          setOverride(path, items);
-        }
-      });
-      block->addChild(std::move(listEditor));
-
-      section.addChild(std::move(block));
-    };
-
     const auto makeSessionActionsInlineBlock = [&](Flex& section, const SettingEntry& entry,
                                                    const SessionPanelActionsSetting& sa) {
       const bool overridden = (ctx.configService != nullptr && ctx.configService->hasEffectiveOverride(entry.path));
@@ -921,8 +869,6 @@ namespace settings {
               return nullptr;
             } else if constexpr (std::is_same_v<T, StringMapSetting>) {
               return nullptr;
-            } else if constexpr (std::is_same_v<T, ShortcutListSetting>) {
-              return nullptr;
             } else if constexpr (std::is_same_v<T, KeybindListSetting>) {
               return nullptr;
             } else if constexpr (std::is_same_v<T, SessionPanelActionsSetting>) {
@@ -1120,8 +1066,6 @@ namespace settings {
         }
       } else if (const auto* map = std::get_if<StringMapSetting>(&entry.control)) {
         factory.makeStringMapBlock(*activeGroupBody, entry, *map);
-      } else if (const auto* shortcuts = std::get_if<ShortcutListSetting>(&entry.control)) {
-        makeShortcutListBlock(*activeGroupBody, entry, *shortcuts);
       } else if (const auto* keybindList = std::get_if<KeybindListSetting>(&entry.control)) {
         if (activeKeybindRow == nullptr || activeKeybindRowCount >= kKeybindsPerRow) {
           auto row = ui::row({

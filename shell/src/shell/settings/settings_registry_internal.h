@@ -86,6 +86,8 @@ namespace settings {
         return env.faceAvailable;
       case Needs::Fingerprint:
         return env.fingerprintAvailable;
+      case Needs::LightSensor:
+        return env.lightSensorAvailable;
       }
       return true;
     }
@@ -118,13 +120,8 @@ namespace settings {
           continue;
         }
         const RowSpec& row = *field.row;
-        assert(env || row.needs == RowSpec::Needs::None);
-        // Biometric rows hide without their sensor, so they need no "missing" text.
-        const bool hidesWhenMissing = row.needs == RowSpec::Needs::Face || row.needs == RowSpec::Needs::Fingerprint;
-        assert(
-            row.needs == RowSpec::Needs::None
-            || (row.kind == RowSpec::Kind::Toggle && (hidesWhenMissing || !row.missingKey.empty()))
-        );
+        assert(env || (row.needs == RowSpec::Needs::None && row.hideWithout == RowSpec::Needs::None));
+        assert(row.needs == RowSpec::Needs::None || (row.kind == RowSpec::Kind::Toggle && !row.missingKey.empty()));
         toml::table written;
         field.write(written, values);
         const auto value = std::as_const(written)[field.key];
@@ -236,10 +233,10 @@ namespace settings {
         path.emplace_back(field.key);
         const std::string label = row.label.empty() ? std::string(row.section) + "." + i18n::keySegment(field.key)
                                                     : std::string(row.label);
-        const bool featureMissing = row.needs != RowSpec::Needs::None && !hasFeature(*env, row.needs);
-        if (featureMissing && hidesWhenMissing) {
+        if (row.hideWithout != RowSpec::Needs::None && !hasFeature(*env, row.hideWithout)) {
           continue;
         }
+        const bool featureMissing = row.needs != RowSpec::Needs::None && !hasFeature(*env, row.needs);
         if (featureMissing) {
           auto& toggle = std::get<ToggleSetting>(control);
           toggle.enabled = toggle.checked;

@@ -227,11 +227,6 @@ struct BarConfig {
   bool operator==(const BarConfig&) const = default;
 };
 
-struct ShortcutConfig {
-  std::string type;
-  bool operator==(const ShortcutConfig&) const = default;
-};
-
 enum class SessionActionButtonVariant : std::uint8_t {
   Default,
   Primary,
@@ -403,7 +398,7 @@ void normalizeIdleBehaviorAction(IdleBehaviorConfig& behavior);
 [[nodiscard]] std::vector<KeyChord> defaultKeybindSet(KeybindAction action);
 
 using ConfigOverrideValue = std::variant<
-    bool, std::int64_t, double, std::string, std::vector<std::string>, std::vector<ShortcutConfig>,
+    bool, std::int64_t, double, std::string, std::vector<std::string>,
     std::vector<SessionPanelActionConfig>, std::vector<IdleBehaviorConfig>, std::vector<NotificationFilterConfig>,
     std::vector<KeyChord>, std::vector<BarCapsuleGroupStyle>>;
 

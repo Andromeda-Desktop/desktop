@@ -39,3 +39,20 @@ private:
   std::chrono::seconds m_interval{3};
   std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);
 };
+
+// Whether System1 has an ambient light sensor (Sensors.HasLight), read once; false until the reply.
+class LightSensorPresence {
+public:
+  LightSensorPresence(SystemBus& bus, std::function<void()> onChanged);
+  ~LightSensorPresence();
+
+  LightSensorPresence(const LightSensorPresence&) = delete;
+  LightSensorPresence& operator=(const LightSensorPresence&) = delete;
+
+  [[nodiscard]] bool present() const noexcept { return m_present; }
+
+private:
+  std::unique_ptr<sdbus::IProxy> m_proxy;
+  bool m_present = false;
+  std::shared_ptr<int> m_lifetimeToken = std::make_shared<int>(0);
+};

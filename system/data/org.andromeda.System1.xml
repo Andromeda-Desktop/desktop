@@ -238,6 +238,7 @@
       </method>
     <method name="ReleasePresence">
       </method>
+    <property name="HasLight" type="b" access="read" />
     <property name="Presence" type="u" access="read" />
     <property name="ProximityMm" type="u" access="read" />
   </interface>

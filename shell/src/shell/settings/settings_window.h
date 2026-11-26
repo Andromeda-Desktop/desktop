@@ -2,6 +2,7 @@
 
 #include "core/files/file_watcher.h"
 #include "core/timer_manager.h"
+#include "dbus/sensor/ambient_light_service.h"
 #include "dbus/locale/locale_service.h"
 #include "dbus/timedate/timedate_service.h"
 #include "render/animation/animation_manager.h"
@@ -613,6 +614,7 @@ private:
   bool m_localeNamesRequested = false;
   bool m_userDeleteBusy = false;
   std::unique_ptr<BiometricEnrollment> m_enroll;
+  std::unique_ptr<LightSensorPresence> m_lightSensor;
   std::pair<bool, bool> m_biometricPresence{false, false}; // face, fingerprint at the last registry build
   std::string m_privacyStatus;
   settings::PasswordDraft m_passwordDraft;
@@ -632,6 +634,7 @@ private:
   // Leaving the page or closing the window: a running enroll releases the camera or reader, typed passwords go.
   void leavePrivacy();
   void ensureEnrollment();
+  void ensureLightSensor();
   void changePassword();
   std::string m_userDeleteError;
   // Settings › Users › Login Screen: result of the last switch, shown under the select.

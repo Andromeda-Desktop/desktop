@@ -240,6 +240,18 @@ void SettingsWindow::ensureEnrollment() {
   m_enroll->probe();
 }
 
+void SettingsWindow::ensureLightSensor() {
+  if (m_lightSensor != nullptr || m_systemBus == nullptr) {
+    return;
+  }
+  // A found sensor adds the automatic brightness and adaptive white point rows.
+  m_lightSensor = std::make_unique<LightSensorPresence>(*m_systemBus, [this] {
+    if (isOpen()) {
+      requestContentRebuild(/*refreshRegistry=*/true, /*refreshFilterRow=*/true);
+    }
+  });
+}
+
 void SettingsWindow::leavePrivacy() {
   // Runs on every rebuild of another page, so it must not request a rebuild itself.
   for (const gs::Action& action : m_globalShortcuts.handle(gs::Leave{})) {

@@ -265,14 +265,6 @@ namespace {
       list->items = *items;
       return true;
     }
-    if (auto* shortcuts = std::get_if<settings::ShortcutListSetting>(&entry.control)) {
-      const auto* items = std::get_if<std::vector<ShortcutConfig>>(&value);
-      if (items == nullptr) {
-        return false;
-      }
-      shortcuts->items = *items;
-      return true;
-    }
     if (auto* keybinds = std::get_if<settings::KeybindListSetting>(&entry.control)) {
       const auto* items = std::get_if<std::vector<KeyChord>>(&value);
       if (items == nullptr) {
@@ -712,6 +704,7 @@ settings::RegistryEnvironment SettingsWindow::buildRegistryEnvironment() const {
   env.gammaControlAvailable = (m_wayland != nullptr && m_wayland->hasGammaControl());
   env.faceAvailable = m_enroll != nullptr && m_enroll->facePresent();
   env.fingerprintAvailable = m_enroll != nullptr && m_enroll->fingerPresent();
+  env.lightSensorAvailable = m_lightSensor != nullptr && m_lightSensor->present();
   if (std::ifstream state("/sys/kernel/sched_ext/state"); state) {
     std::string value;
     std::getline(state, value);
@@ -1731,6 +1724,7 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
 void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
   ensureCompositorSettings();
   ensureEnrollment();
+  ensureLightSensor();
   SettingsProfileWatch phaseProfileWatch;
 
   const auto env = buildRegistryEnvironment();

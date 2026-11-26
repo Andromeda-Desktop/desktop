@@ -346,8 +346,8 @@ namespace noctalia::config::schema {
           .kind = kind, .section = "security", .group = "lock-screen", .label = label, .tags = tags, .suffix = suffix
       };
     };
-    const auto needing = [](RowSpec row, RowSpec::Needs needs) {
-      row.needs = needs;
+    const auto needing = [](RowSpec row, RowSpec::Needs sensor) {
+      row.hideWithout = sensor;
       return row;
     };
     const auto lockSelect = [&](std::string_view label, std::string_view tags, std::vector<RowSpec::Choice> choices,
@@ -635,6 +635,7 @@ namespace noctalia::config::schema {
                 .tags = "nightlight true tone ambient white balance",
                 .needs = RowSpec::Needs::GammaControl,
                 .missingKey = "requires-gamma-control",
+                .hideWithout = RowSpec::Needs::LightSensor,
             }
         ),
         field(
@@ -1163,6 +1164,7 @@ namespace noctalia::config::schema {
                 .group = "brightness",
                 .label = "services.automatic-brightness",
                 .tags = "ambient light sensor auto adaptive",
+                .hideWithout = RowSpec::Needs::LightSensor,
             }
         ),
         field(

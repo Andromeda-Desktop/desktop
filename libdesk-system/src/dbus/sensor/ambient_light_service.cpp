@@ -73,3 +73,19 @@ void AmbientLightService::setPaused(bool paused) {
     sample();
   }
 }
+
+LightSensorPresence::LightSensorPresence(SystemBus& bus, std::function<void()> onChanged) {
+  m_proxy = sdbus::createProxy(bus.connection(), kBusName, kPath);
+  const std::weak_ptr<int> alive = m_lifetimeToken;
+  m_proxy->getPropertyAsync("HasLight")
+      .onInterface(kInterface)
+      .uponReplyInvoke([this, alive, onChanged = std::move(onChanged)](std::optional<sdbus::Error> err, sdbus::Variant value) {
+        if (alive.expired() || err.has_value() || !value.containsValueOfType<bool>() || !value.get<bool>()) {
+          return;
+        }
+        m_present = true;
+        onChanged();
+      });
+}
+
+LightSensorPresence::~LightSensorPresence() { m_lifetimeToken.reset(); }

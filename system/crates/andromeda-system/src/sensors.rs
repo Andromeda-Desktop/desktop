@@ -66,6 +66,12 @@ impl Sensors {
             .map_err(|e| Error::NotSupported(format!("{e:#}")))
     }
 
+    /// True when `ReadLight` has a sensor to read.
+    #[zbus(property)]
+    fn has_light(&self) -> bool {
+        light_device(&self.root).is_ok()
+    }
+
     /// 0 unknown (no claim, or no sensor), 1 absent, 2 present.
     #[zbus(property)]
     fn presence(&self) -> u32 {

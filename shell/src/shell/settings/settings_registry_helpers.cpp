@@ -257,7 +257,7 @@ namespace settings {
     // differs from the schema order, or that sit between hand-written rows of their group.
     void appendRow(std::vector<SettingEntry>& entries, std::vector<SettingEntry>& generated, std::string_view key) {
       const auto it = std::ranges::find_if(generated, [key](const SettingEntry& e) { return e.path.back() == key; });
-      // A key without a RowSpec has no row; settings_rows_generated reports it as missing.
+      // A key without a RowSpec, or a row hidden without its sensor, has no row.
       if (it == generated.end()) {
         return;
       }

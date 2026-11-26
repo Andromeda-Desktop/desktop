@@ -257,11 +257,6 @@ namespace settings {
     std::string valuePlaceholder;
   };
 
-  struct ShortcutListSetting {
-    std::vector<ShortcutConfig> items;
-    std::vector<SelectOption> suggestedOptions;
-    std::size_t maxItems = 0;
-  };
 
   struct KeybindListSetting {
     std::vector<KeyChord> items;
@@ -312,7 +307,7 @@ namespace settings {
 
   using SettingControl = std::variant<
       ToggleSetting, SelectSetting, SliderSetting, RangeSliderSetting, TextSetting, OptionalNumberSetting,
-      OptionalStepperSetting, StepperSetting, ListSetting, StringMapSetting, ShortcutListSetting, KeybindListSetting,
+      OptionalStepperSetting, StepperSetting, ListSetting, StringMapSetting, KeybindListSetting,
       SessionPanelActionsSetting, IdleBehaviorsSetting, NotificationFiltersSetting, MultiSelectSetting,
       ButtonSetting, ColorSpecPickerSetting, SearchPickerSetting, GestureActionSetting>;
 
@@ -349,6 +344,7 @@ namespace settings {
     bool gammaControlAvailable = false;         // hide night-light entries when gamma control is unavailable
     bool faceAvailable = false;                 // a face unlock camera (gazed) is present
     bool fingerprintAvailable = false;          // an fprintd reader is present
+    bool lightSensorAvailable = false;          // System1 Sensors.HasLight
     std::string schedExtScheduler; // the running sched_ext scheduler; app priority (CPU weights) has no effect under it
     std::optional<std::size_t> backgroundActivityCount; // flagged background services at the last check; none = not checked
     std::function<void()> openActivity;
