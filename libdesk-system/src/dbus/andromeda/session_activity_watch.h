@@ -34,6 +34,8 @@ public:
   // Compositor1.Apps Presenting: an app captures the screen, or an output mirrors another (a projector). nullopt
   // until the compositor answers, and on a compositor without the interface.
   [[nodiscard]] std::optional<bool> presenting() const noexcept { return m_presenting; }
+  // Runs on each change into "idle" (true) and out of it (false).
+  void addIdleListener(SleepListener listener) { m_idleListeners.push_back(std::move(listener)); }
   // Runs after Presenting changes.
   void addChangeListener(ChangeListener listener) { m_changeListeners.push_back(std::move(listener)); }
 
@@ -44,7 +46,9 @@ private:
   std::unique_ptr<sdbus::IProxy> m_apps;
   std::vector<SleepListener> m_listeners;
   std::vector<ChangeListener> m_changeListeners;
+  std::vector<SleepListener> m_idleListeners;
   bool m_sleeping = false;
+  bool m_idle = false;
   std::optional<bool> m_presenting;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };

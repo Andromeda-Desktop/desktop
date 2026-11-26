@@ -349,7 +349,7 @@ void Application::initLockScreenAndSession() {
         m_lockscreenWidgetsController.onLockStateChanged();
         m_idleManager.setSessionLocked(true);
         applyPresence(m_presenceWatch.setLocked(true));
-        m_screenTimeService.setSessionLocked(true);
+        m_screenTimeService.setPaused(ScreenTimeService::Locked, true);
         m_hookManager.fire(HookKind::SessionLocked);
         syncLockScreenDoNotDisturb();
         if (m_logindService != nullptr) {
@@ -364,7 +364,7 @@ void Application::initLockScreenAndSession() {
         m_lockscreenWidgetsController.onLockStateChanged();
         m_idleManager.setSessionLocked(false);
         applyPresence(m_presenceWatch.setLocked(false));
-        m_screenTimeService.setSessionLocked(false);
+        m_screenTimeService.setPaused(ScreenTimeService::Locked, false);
         m_hookManager.fire(HookKind::SessionUnlocked);
         syncLockScreenDoNotDisturb();
         notifyFailedUnlocks(m_lockScreen.takeRejectedWhileLocked());

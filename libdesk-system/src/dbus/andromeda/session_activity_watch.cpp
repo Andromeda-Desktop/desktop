@@ -72,6 +72,12 @@ SessionActivityWatch::~SessionActivityWatch() = default;
 void SessionActivityWatch::addSleepListener(SleepListener listener) { m_listeners.push_back(std::move(listener)); }
 
 void SessionActivityWatch::apply(const std::string& activity) {
+  if (const bool idle = activity == "idle"; idle != m_idle) {
+    m_idle = idle;
+    for (const SleepListener& listener : m_idleListeners) {
+      listener(idle);
+    }
+  }
   const bool sleeping = activity == "sleeping" || activity == "sleeping-locked";
   if (sleeping == m_sleeping) {
     return;

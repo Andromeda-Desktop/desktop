@@ -1435,13 +1435,13 @@ void Application::onSessionSleep(bool sleeping) {
     // lose the window, and idempotently again after the lock armed below.
     m_lockScreen.resetGracePeriod();
     // Screen time must not accumulate across suspend even when lock-before-suspend is off.
-    m_screenTimeService.setSuspendPaused(true);
+    m_screenTimeService.setPaused(ScreenTimeService::Suspended, true);
     // The compositor holds the sleep until the lock is on screen or the hooks send sleep_ready.
     m_lockBeforeSleep.onPrepareForSleep(true);
     m_lockScreen.onSessionSleep(true);
     return;
   }
-  m_screenTimeService.setSuspendPaused(false);
+  m_screenTimeService.setPaused(ScreenTimeService::Suspended, false);
   m_lockBeforeSleep.onPrepareForSleep(false);
   m_lockScreen.onSessionSleep(false);
   if (m_powerConfigService != nullptr) {
@@ -2318,6 +2318,7 @@ void Application::initSessionBusServices() {
       m_sessionActivity = std::make_unique<SessionActivityWatch>(*m_bus);
       m_sessionActivity->addSleepListener([this](bool sleeping) { onSessionSleep(sleeping); });
       m_sessionActivity->addChangeListener([this] { applyFocusTriggers(); });
+      m_sessionActivity->addIdleListener([this](bool idle) { m_screenTimeService.setPaused(ScreenTimeService::Idle, idle); });
     } catch (const std::exception& e) {
       kLog.warn("session activity watch disabled: {}", e.what());
       m_sessionActivity.reset();

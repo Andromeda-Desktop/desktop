@@ -49,8 +49,9 @@ public:
   void onFocusChange();
   void setChangeCallback(std::function<void()> callback);
   void setEnabled(bool enabled);
-  void setSessionLocked(bool locked);
-  void setSuspendPaused(bool paused);
+  // Time counts only while no reason holds: Idle is the compositor's session idle (60 s without input or inhibit).
+  enum PauseReason : std::uint8_t { Locked = 1U << 0U, Suspended = 1U << 1U, Idle = 1U << 2U };
+  void setPaused(PauseReason reason, bool paused);
   [[nodiscard]] bool enabled() const noexcept { return m_enabled; }
 
   [[nodiscard]] ScreenTimeSnapshot snapshot(int rangeDays = 1);
@@ -104,6 +105,5 @@ private:
   std::uint64_t m_saveGeneration = 0;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   bool m_enabled = false;
-  bool m_sessionLocked = false;
-  bool m_suspendPaused = false;
+  std::uint8_t m_pauseReasons = 0;
 };

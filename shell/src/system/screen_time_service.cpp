@@ -323,28 +323,18 @@ void ScreenTimeService::setEnabled(bool enabled) {
   }
 }
 
-void ScreenTimeService::setSessionLocked(bool locked) {
-  if (m_sessionLocked == locked) {
+void ScreenTimeService::setPaused(PauseReason reason, bool paused) {
+  const std::uint8_t next = paused ? (m_pauseReasons | reason) : (m_pauseReasons & ~reason);
+  if (next == m_pauseReasons) {
     return;
   }
-  m_sessionLocked = locked;
-  if (locked) {
+  const bool wasPaused = m_pauseReasons != 0;
+  m_pauseReasons = next;
+  if (!wasPaused && next != 0) {
     pauseTracking();
-    return;
+  } else if (wasPaused && next == 0) {
+    resumeTracking();
   }
-  resumeTracking();
-}
-
-void ScreenTimeService::setSuspendPaused(bool paused) {
-  if (m_suspendPaused == paused) {
-    return;
-  }
-  m_suspendPaused = paused;
-  if (paused) {
-    pauseTracking();
-    return;
-  }
-  resumeTracking();
 }
 
 void ScreenTimeService::pauseTracking() {
@@ -360,14 +350,14 @@ void ScreenTimeService::pauseTracking() {
 }
 
 void ScreenTimeService::resumeTracking() {
-  if (!m_enabled || m_sessionLocked || m_suspendPaused) {
+  if (!m_enabled || m_pauseReasons != 0) {
     return;
   }
   onFocusChange();
 }
 
 void ScreenTimeService::onFocusChange() {
-  if (!m_enabled || m_sessionLocked || m_suspendPaused) {
+  if (!m_enabled || m_pauseReasons != 0) {
     return;
   }
   const std::string candidate = appKeyForActive();
@@ -396,7 +386,7 @@ void ScreenTimeService::onFocusChange() {
 // wake, and nothing is armed while no app is active.
 void ScreenTimeService::scheduleNextTick() {
   m_tickTimer.stop();
-  if (!m_enabled || m_sessionLocked || m_suspendPaused || m_activeAppKey.empty()) {
+  if (!m_enabled || m_pauseReasons != 0 || m_activeAppKey.empty()) {
     return;
   }
   using namespace std::chrono;
@@ -407,7 +397,7 @@ void ScreenTimeService::scheduleNextTick() {
 }
 
 void ScreenTimeService::tick() {
-  if (!m_enabled || m_sessionLocked || m_suspendPaused) {
+  if (!m_enabled || m_pauseReasons != 0) {
     return;
   }
   flushActiveSession(std::chrono::steady_clock::now());
