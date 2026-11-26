@@ -46,6 +46,7 @@ namespace linkapp {
     int torch = -1;
     std::optional<PhonePlayer> player;
     bool paused = false;
+    std::string mic;           // ready, asking or on; empty while the phone cannot give its microphone
   };
 
   struct Presence {

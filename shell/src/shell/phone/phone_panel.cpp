@@ -22,7 +22,7 @@ namespace {
   constexpr std::array kTooltips{
       "bar.widgets.phone.ring",  "bar.widgets.phone.send-clipboard", "bar.widgets.phone.dnd",
       "bar.widgets.phone.ringer", "bar.widgets.phone.wifi",          "bar.widgets.phone.bluetooth",
-      "bar.widgets.phone.torch",
+      "bar.widgets.phone.torch", "bar.widgets.phone.mic-start",
   };
 
 } // namespace
@@ -95,8 +95,11 @@ void PhonePanel::create() {
             })
         );
   }
-  // An empty fourth cell keeps the toggles on the grid of the actions above.
-  toggles->addChild(ui::spacer());
+  for (Node*& gap : m_toggleGaps) {
+    auto spacer = ui::spacer();
+    gap = spacer.get();
+    toggles->addChild(std::move(spacer));
+  }
   layout->addChild(std::move(actions));
   layout->addChild(std::move(toggles));
   // Rulebook 9.13: an error shows where it happened, with the action that fixes it.
@@ -223,7 +226,18 @@ void PhonePanel::doUpdate(Renderer& /*renderer*/) {
 
   const auto keys = connected ? phone::toggleKeys(*m_link, phone->id) : std::nullopt;
   const LinkCommandState* command = connected ? m_link->commandState(phone->id) : nullptr;
-  m_toggles->setVisible(keys.has_value());
+  const LinkDeviceInfo* info = connected ? m_link->info(phone->id) : nullptr;
+  const std::string mic = info != nullptr ? info->mic : std::string();
+  m_toggles->setVisible(keys.has_value() || !mic.empty());
+  for (Action action : {Wifi, Bluetooth, Torch}) {
+    m_actions[action]->setVisible(keys.has_value());
+  }
+  m_actions[Mic]->setVisible(!mic.empty());
+  for (std::size_t i = 0; i < m_toggleGaps.size(); ++i) {
+    m_toggleGaps[i]->setVisible(!keys.has_value() || (i == 0 && mic.empty()));
+  }
+  set(Mic, "microphone", i18n::tr("bar.widgets.phone.mic"), !mic.empty(), mic == "asking" || mic == "on");
+  m_actions[Mic]->setTooltip(i18n::tr(mic == "ready" ? "bar.widgets.phone.mic-start" : "bar.widgets.phone.mic-stop"));
   for (std::uint8_t i = 0; keys.has_value() && i < keys->size(); ++i) {
     const phone::ToggleKey& key = (*keys)[i];
     const auto action = static_cast<Action>(kFirstToggle + i);
@@ -265,6 +279,11 @@ void PhonePanel::act(Action action) {
     if (const auto keys = phone::toggleKeys(*m_link, phone->id); keys.has_value()) {
       const phone::ToggleKey& key = (*keys)[action - kFirstToggle];
       m_link->sendSystemCommand(phone->id, key.command, key.on ? 0 : 1);
+    }
+    break;
+  case Mic:
+    if (const LinkDeviceInfo* info = m_link->info(phone->id); info != nullptr && !info->mic.empty()) {
+      m_link->setMic(phone->id, info->mic == "ready");
     }
     break;
   case ActionCount:

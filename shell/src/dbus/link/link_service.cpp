@@ -948,6 +948,14 @@ void LinkService::savePhoto(
       });
 }
 
+void LinkService::setMic(const std::string& deviceId, bool on) {
+  const char* method = on ? "StartMic" : "StopMic";
+  m_link->callMethodAsync(method)
+      .onInterface(kLinkInterface)
+      .withArguments(deviceId)
+      .uponReplyInvoke([method](std::optional<sdbus::Error> error) { logFailure(method, error); });
+}
+
 void LinkService::ring(const std::string& deviceId, bool on) {
   m_link->callMethodAsync("Ring")
       .onInterface(kLinkInterface)

@@ -53,12 +53,19 @@ with_noctalia '
   ID=$(msg link-devices | cut -d" " -f1)
   [[ $(msg link-ring "$ID") == *"is not connected"* ]] || fail "link-ring to a disconnected phone: $(msg link-ring "$ID")"
 
+  # The microphone switch on, as the phone user would turn it on: the phone panel shows its Mic key.
+  python3 -c "import json,sys; s=json.load(open(sys.argv[1])); s[\"peers\"][0].setdefault(\"grants\", {}).update(mic=True); json.dump(s, open(sys.argv[1], \"w\"))" "$RUNTIME/phone/devices.json"
   mkfifo "$RUNTIME/phone.in"
   exec 3<> "$RUNTIME/phone.in"
   RUST_LOG=info "$BIN/andromeda-link-phone" --state "$RUNTIME/phone" --name "E2E Phone" --transcript "$OUT/transcript.jsonl" \
     hold < "$RUNTIME/phone.in" > "$OUT/hold.jsonl" 2>> "$OUT/phone.log" &
   hold=$!
   wait_for "phone never shown connected" eval "[[ \$(msg link-devices) == \"$ID connected E2E Phone\" ]]"
+  wait_for "DeviceInfo has no mic" eval "busctl --user get-property org.andromeda.Link1 /org/andromeda/Link1 org.andromeda.Link1 DeviceInfo | grep -q ready"
+  msg panel-open phone > /dev/null
+  sleep 1 # real time: the panel opens
+  grim "$OUT/ring-phone-panel.png"
+  msg panel-close > /dev/null
   msg panel-open control-center devices > /dev/null
 
   [[ $(msg link-ring "$ID") == ok ]] || fail "link-ring"
@@ -109,7 +116,7 @@ awk -v m="$max" 'BEGIN {exit !(m > -12)}' || { echo "FAIL: the ring is not loud 
 BIN=${LINK_BIN:-$ROOT/link/target/debug}
 "$BIN/andromeda-link-phone" check-transcript "$ROOT/link/api/messages.cddl" "$OUT/transcript.jsonl" \
   | tee "$OUT/transcript-check.json" || { echo "FAIL: the transcript violates the schema" >&2; exit 1; }
-for shot in ring-phone-ringing ring-desktop-ringing; do
+for shot in ring-phone-panel ring-phone-ringing ring-desktop-ringing; do
   [[ -s $OUT/$shot.png ]] || { echo "FAIL: no $shot.png" >&2; exit 1; }
 done
 echo "PASS; artifacts: $OUT"

@@ -1418,16 +1418,22 @@ namespace linkapp {
       const auto& command = m_client->systemCommand();
       const bool mine = command && command->device == id;
       const bool hasToggles = phone.wifi >= 0 || phone.bluetooth >= 0 || phone.torch >= 0;
-      // With the toggles, two rows of four: actions, then the phone's own settings.
-      auto settings = hasToggles ? ui::row({.align = FlexAlign::Center, .justify = FlexJustify::SpaceBetween,
+      // At most five keys a row: with the toggles or the microphone, a second row holds the phone's own settings.
+      const bool secondRow = hasToggles || !phone.mic.empty();
+      auto settings = secondRow ? ui::row({.align = FlexAlign::Center, .justify = FlexJustify::SpaceBetween,
                                             .paddingV = Tokens::spaceP4 * s})
                                  : nullptr;
       const bool dndPending = mine && command->phase == LinkClient::SystemCommand::Phase::Pending && command->command == "set-dnd";
       auto dndKey = round("circle-minus", i18n::tr("link.phone-card.dnd"), dndPending ? command->value == 1 : dnd,
                           [this, id, dnd] { m_client->setDnd(id, !dnd); });
       if (dndPending) dndKey->setEnabled(false);
-      (hasToggles ? settings : keys)->addChild(std::move(dndKey));
+      (secondRow ? settings : keys)->addChild(std::move(dndKey));
       keys->addChild(round("arrow-up", i18n::tr("link.phone-card.send-files"), false, [this, id] { chooseAndSend(id); }));
+      if (!presence.phone.mic.empty()) {
+        const bool micOn = presence.phone.mic != "ready";
+        keys->addChild(round("microphone", i18n::tr(micOn ? "link.phone-card.mic-stop" : "link.phone-card.mic-start"), micOn,
+                             [this, id, micOn] { m_client->setMic(id, !micOn); }));
+      }
       card->addChild(std::move(keys));
       if (hasToggles) {
         // Turning off the radio Link runs on would end the connection: the key stays on and says why, and linkd's
@@ -1458,8 +1464,8 @@ namespace linkapp {
           button->setEnabled(live && toggle.state >= 0 && !pending);
           settings->addChild(std::move(button));
         }
-        card->addChild(std::move(settings));
       }
+      if (secondRow) card->addChild(std::move(settings));
       if (mine && command->phase == LinkClient::SystemCommand::Phase::Failed) {
         // Rulebook 9.13: an error shows where it happened, with the action that fixes it.
         auto error = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});

@@ -265,6 +265,8 @@
     "bluetooth-carries": "Link reaches the phone over Bluetooth",
     "choose": "Choose phone",
     "dnd": "Do not disturb",
+    "mic-start": "Use as microphone",
+    "mic-stop": "Stop microphone",
     "no-phone": "No phone yet",
     "not-running": "Link is not running",
     "pair-another": "Pair Another Phone…",

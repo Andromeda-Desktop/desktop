@@ -259,6 +259,7 @@ namespace linkapp {
               phone.transport = value<std::string>(it->second, "transport", "");
               phone.lastSeen = value<std::int64_t>(it->second, "last_seen", 0);
               phone.battery = value<std::int32_t>(it->second, "battery", -1);
+              phone.mic = value<std::string>(it->second, "mic", "");
             }
             if (const auto it = status.find(phone.id); it != status.end()) {
               phone.battery = static_cast<int>(it->second.get<0>());
@@ -1223,6 +1224,13 @@ namespace linkapp {
     m_proxy->callMethodAsync("Connect").onInterface(kInterface).withArguments(deviceId)
         .uponReplyInvoke([](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("Connect: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::setMic(const std::string& deviceId, bool on) {
+    m_proxy->callMethodAsync(on ? "StartMic" : "StopMic").onInterface(kInterface).withArguments(deviceId)
+        .uponReplyInvoke([on](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("{}: {}", on ? "StartMic" : "StopMic", error->getMessage());
         });
   }
 

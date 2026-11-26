@@ -30,7 +30,7 @@ public:
   [[nodiscard]] PanelPlacement panelPlacement() const noexcept override { return PanelPlacement::Attached; }
 
 private:
-  enum Action : std::uint8_t { Ring, Clipboard, Dnd, Ringer, Wifi, Bluetooth, Torch, ActionCount };
+  enum Action : std::uint8_t { Ring, Clipboard, Dnd, Ringer, Wifi, Bluetooth, Torch, Mic, ActionCount };
   static constexpr std::uint8_t kFirstToggle = Wifi;
 
   void doLayout(Renderer& renderer, float width, float height) override;
@@ -44,6 +44,8 @@ private:
   Label* m_state = nullptr;
   std::array<Button*, ActionCount> m_actions{};
   Flex* m_toggles = nullptr;
+  // Empty cells that keep the toggle row on the grid of the actions above.
+  std::array<Node*, 3> m_toggleGaps{};
   Flex* m_error = nullptr;
   Label* m_errorText = nullptr;
   Button* m_retry = nullptr;

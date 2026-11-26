@@ -349,6 +349,9 @@
         "wifi": "Wi-Fi",
         "bluetooth": "Bluetooth",
         "torch": "Torch",
+        "mic": "Mic",
+        "mic-start": "Use phone as microphone",
+        "mic-stop": "Stop phone microphone",
         "wifi-carries-link": "Link reaches the phone over Wi-Fi",
         "bluetooth-carries-link": "Link reaches the phone over Bluetooth",
         "try-again": "Try Again"
