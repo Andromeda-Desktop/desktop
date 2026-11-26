@@ -398,9 +398,7 @@ namespace term {
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
       constexpr std::uint32_t kEscape = 0xff1b;
       if (m_dragGhost && event.pressed && event.sym == kEscape) {
-        for (const auto& [id, row] : m_rows) {
-          row->cancelDrag();
-        }
+        cancelDrags();
         return true;
       }
       // Browse mode takes every key, so none reaches the shell; its own binding closes it.
@@ -2579,6 +2577,15 @@ namespace term {
             },
         .ring = [this] { return m_settings.settings().focusRing; },
         .treeChanged = [this] { if (m_layoutChanged) m_layoutChanged(); },
+        .drag =
+            [this](std::uint64_t id, SplitView::Callbacks::DragPhase phase, float x, float y) {
+              using P = SplitView::Callbacks::DragPhase;
+              rowDrag(id,
+                      phase == P::Move   ? StatusRow::DragPhase::Move
+                      : phase == P::Drop ? StatusRow::DragPhase::Drop
+                                         : StatusRow::DragPhase::Cancel,
+                      x, y);
+            },
     };
   }
 
@@ -2600,13 +2607,19 @@ namespace term {
 
   std::optional<ui::SplitDrop> TerminalWindow::dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const {
     const auto shown = m_sessions.shown();
-    if (!shown || dragged == *shown || m_sessions.splitOf(dragged) != nullptr) {
+    if (!shown) {
       return std::nullopt;
     }
-    if (const auto* split = m_sessions.splitOf(*shown); split != nullptr && split->size() >= kMaxPanes) {
+    const auto drop = m_split.dropAt(*shown, sceneX, sceneY);
+    if (!drop || drop->target == dragged) {
       return std::nullopt;
     }
-    return m_split.dropAt(*shown, sceneX, sceneY);
+    // A member re-joins elsewhere in its own split without growing it; another split must have room.
+    const auto* into = m_sessions.splitOf(drop->target);
+    if (into != nullptr && !std::ranges::contains(*into, dragged) && into->size() >= kMaxPanes) {
+      return std::nullopt;
+    }
+    return drop;
   }
 
   // A member dropped outside its sidebar block leaves the split.
@@ -2701,10 +2714,9 @@ namespace term {
     const float margin = m_window.surface() != nullptr ? static_cast<float>(m_window.surface()->margin()) : 0.0F;
     const bool inside = root == nullptr || (sceneX >= margin && sceneY >= margin && sceneX < root->width() - margin &&
                                             sceneY < root->height() - margin);
-    const auto row = std::ranges::find(m_rows, id, &std::pair<std::uint64_t, StatusRow*>::first);
     // A lone session of the only window has nowhere to go: no other window, and a tear-off would change nothing.
-    const bool somewhere = m_rows.size() > 1 || (m_windows ? m_windows().size() : 0) > 1;
-    if (s_dragOut || inside || row == m_rows.end() || m_window.surface() == nullptr || !somewhere) {
+    const bool somewhere = m_sessions.sessions().size() > 1 || (m_windows ? m_windows().size() : 0) > 1;
+    if (s_dragOut || inside || m_sessions.find(id) == nullptr || m_window.surface() == nullptr || !somewhere) {
       return false;
     }
     const std::string data = std::format("{}:{}", ::getpid(), id);
@@ -2744,7 +2756,7 @@ namespace term {
                                            m_dragIcon.reset();
                                            m_dragImage.reset();
                                            // Dropped on no terminal window: the row tears off into a new window.
-                                           if (!dropped && m_rows.size() > 1 && m_sessions.find(id) != nullptr) {
+                                           if (!dropped && m_sessions.sessions().size() > 1 && m_sessions.find(id) != nullptr) {
                                              moveToNewWindow(id);
                                            }
                                          }})) {
@@ -2753,9 +2765,16 @@ namespace term {
       return false;
     }
     s_dragOut = DragOut{.id = id, .window = m_windowId};
-    // The window system holds the pointer now: the row sees no release, so its drag ends here.
-    row->second->cancelDrag();
+    // The window system holds the pointer now: the row or pane sees no release, so its drag ends here.
+    cancelDrags();
     return true;
+  }
+
+  void TerminalWindow::cancelDrags() {
+    for (const auto& [id, row] : m_rows) {
+      row->cancelDrag();
+    }
+    m_split.cancelPaneDrag();
   }
 
   TerminalWindow* TerminalWindow::holderOf(std::uint64_t id) const {
@@ -2850,6 +2869,9 @@ namespace term {
       }
     }
     if (target && phase == StatusRow::DragPhase::Drop) {
+      if (m_sessions.splitOf(id) != nullptr) {
+        apply(session_event::Leave{id});
+      }
       m_split.pendJoin({.target = target->target, .joining = id, .edge = target->edge}, target->rect);
       apply(session_event::Join{.target = target->target, .joining = id, .before = target->before});
       focusGrid();

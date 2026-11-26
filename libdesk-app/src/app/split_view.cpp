@@ -165,20 +165,38 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
     card.captionArea = area.get();
     struct Press {
       bool down = false;
+      bool handle = false; // on the lead or the name: the press drags the pane
       std::uint32_t serial = 0;
       float x = 0.0F;
       float y = 0.0F;
     };
     auto press = std::make_shared<Press>();
-    area->setOnPress([press](const InputArea::PointerData& data) {
-      if (data.button == BTN_LEFT) {
-        *press = {.down = data.pressed, .serial = data.serial, .x = data.localX, .y = data.localY};
+    area->setOnPress([this, press, id = card.id](const InputArea::PointerData& data) {
+      if (data.button != BTN_LEFT) {
+        return;
+      }
+      // By id: m_cards grows while the cards build.
+      const auto card = std::ranges::find(m_cards, id, &Card::id);
+      const auto on = [&](const Node* node) { return node != nullptr && node->containsScenePoint(data.sceneX, data.sceneY); };
+      const bool handle = m_callbacks.drag && card != m_cards.end() && (on(card->lead) || on(card->name));
+      *press = {.down = data.pressed, .handle = handle, .serial = data.serial,
+                .x = data.localX, .y = data.localY};
+      if (!data.pressed && m_dragPane == id) {
+        m_dragPane.reset();
+        m_callbacks.drag(id, Callbacks::DragPhase::Drop, data.sceneX, data.sceneY);
       }
     });
-    area->setOnMotion([this, press, s](const InputArea::PointerData& data) {
+    area->setOnMotion([this, press, s, id = card.id](const InputArea::PointerData& data) {
       if (press->down && std::hypot(data.localX - press->x, data.localY - press->y) > 4.0F * s) {
         press->down = false;
-        m_window.beginMove(press->serial);
+        if (!press->handle) {
+          m_window.beginMove(press->serial);
+          return;
+        }
+        m_dragPane = id;
+      }
+      if (m_dragPane == id) {
+        m_callbacks.drag(id, Callbacks::DragPhase::Move, data.sceneX, data.sceneY);
       }
     });
     Caption parts = m_callbacks.caption(card.id);
@@ -641,6 +659,12 @@ void SplitView::repaintFocus() {
     fitCaptions(renderer);
     m_slot->markLayoutDirty();
   });
+}
+
+void SplitView::cancelPaneDrag() {
+  if (const auto id = std::exchange(m_dragPane, std::nullopt); id && m_callbacks.drag) {
+    m_callbacks.drag(*id, Callbacks::DragPhase::Cancel, 0.0F, 0.0F);
+  }
 }
 
 bool SplitView::setCaption(std::uint64_t id, const std::string& name, const std::string& state, ColorSpec stateInk) {

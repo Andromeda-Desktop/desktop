@@ -350,6 +350,7 @@ namespace term {
     static inline std::optional<DragOut> s_dragOut; // the row this process carries between windows, if any
     // A row dragged past the window edge becomes a drag between windows; true once it started.
     bool dragOutOfWindow(std::uint64_t id, float sceneX, float sceneY);
+    void cancelDrags(); // every row and pane drag of this window ends with Cancel
     [[nodiscard]] TerminalWindow* holderOf(std::uint64_t id) const; // the window of this app holding the session
     [[nodiscard]] std::optional<std::uint32_t> barWindowAt(float sceneX, float sceneY) const;
     std::vector<std::pair<std::uint32_t, Button*>> m_barWindows; // the foot bar's other-window items

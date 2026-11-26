@@ -49,6 +49,10 @@ public:
     std::function<bool()> ring;
     // A split's tree changed (a pane joined, left or swapped, a divider settled): a saved layout is stale.
     std::function<void()> treeChanged;
+    // A press on a caption's lead or name that moves past a few px drags the pane: Move per motion, then Drop on
+    // release or Cancel (cancelPaneDrag). The rest of the caption moves the window.
+    enum class DragPhase : std::uint8_t { Move, Drop, Cancel };
+    std::function<void(std::uint64_t id, DragPhase phase, float sceneX, float sceneY)> drag;
   };
 
   SplitView(AppWindow& window, Callbacks callbacks);
@@ -66,6 +70,8 @@ public:
 
   [[nodiscard]] bool split() const { return !m_cards.empty(); }
   [[nodiscard]] bool dragging() const { return m_dragDivider.has_value(); }
+  // Ends a pane drag in progress with Cancel; its release then does nothing.
+  void cancelPaneDrag();
   // The card that has focus; 0 while one item shows.
   [[nodiscard]] std::uint64_t focusedPane() const { return m_ringPane; }
   // The rect of a card in the slot (px).
@@ -161,6 +167,7 @@ private:
   ui::SplitTrees m_trees;
   std::vector<Divider> m_dividers;
   std::optional<std::size_t> m_dragDivider; // the divider under a held button
+  std::optional<std::uint64_t> m_dragPane;  // the pane whose caption handle drags
   Box* m_dropPreview = nullptr;
   std::optional<ClosedCard> m_closedCard;
   std::optional<std::pair<std::uint64_t, PaneRect>> m_dropFrom;
