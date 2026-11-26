@@ -331,7 +331,11 @@ namespace {
   }
   void pointerFrame(void*, wl_pointer*) {}
   void pointerAxisSource(void*, wl_pointer*, uint32_t) {}
-  void pointerAxisStop(void*, wl_pointer*, uint32_t, uint32_t) {}
+  void pointerAxisStop(void* data, wl_pointer*, uint32_t, uint32_t axis) {
+    if (static_cast<State*>(data)->logPointerInput) {
+      std::println("pointer-axis-stop axis={}", axis);
+    }
+  }
   void pointerAxisDiscrete(void*, wl_pointer*, uint32_t, int32_t) {}
   void pointerAxisValue120(void*, wl_pointer*, uint32_t, int32_t) {}
   void pointerAxisRelativeDirection(void*, wl_pointer*, uint32_t, uint32_t) {}

@@ -1561,6 +1561,14 @@ namespace andromeda {
     if (Overview* overview = m_server->overview()) {
       overview->cancelNavigation();
     }
+    // A stop carries no direction: it ends the client's scroll stream (axis_stop), whatever modifiers are held now.
+    if (event->delta == 0 && event->delta_discrete == 0) {
+      wlr_seat_pointer_notify_axis(
+          m_server->seat()->wlr(), event->time_msec, event->orientation, 0, 0, event->source,
+          event->relative_direction
+      );
+      return;
+    }
     // Arm only when a bind matches this exact direction and modifier set.
     bool armed = false;
     for (const Keybind& bind : config().keybinds) {
