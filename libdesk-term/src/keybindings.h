@@ -52,6 +52,7 @@ namespace term {
     RotateSplit,
     MoveSessionUp,
     MoveSessionDown,
+    ReopenClosed,
     Copy,
     Paste,
     CopyLastOutput,

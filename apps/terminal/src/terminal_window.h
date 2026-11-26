@@ -101,6 +101,17 @@ namespace term {
   using ChooseSaveFile = std::function<void(const std::string& suggested,
                                             std::function<void(std::optional<std::filesystem::path>)> picked)>;
 
+  // A shell session closed for good, as "Reopen closed" brings it back: its window, folder and name, the list session it
+  // stood before (0: the end) and the pane it was split with, on its side (TileEdge; 0: none).
+  struct ClosedSession {
+    std::uint32_t window = 0;
+    SavedSession session;
+    std::uint64_t before = 0;
+    std::uint64_t splitWith = 0;
+    std::uint32_t edge = 0;
+  };
+  using ClosedItem = std::variant<ClosedSession, SavedWindow>; // a closed window keeps its whole layout
+
   class TerminalWindow {
   public:
     // origins: one session each, in order; the last one is shown. close: closes this window later, outside the
@@ -161,6 +172,13 @@ namespace term {
     void setNameChanged(std::function<void()> changed) { m_nameChanged = std::move(changed); }
     // The saved layout is stale without a session event: a split's tree or the window name changed.
     void setLayoutChanged(std::function<void()> changed) { m_layoutChanged = std::move(changed); }
+    // closed: a session or window this window closed for good. reopen: the newest closed item comes back; false: none.
+    void setClosedStack(std::function<void(ClosedItem)> closed, std::function<bool()> reopen, std::function<bool()> any) {
+      m_closed = std::move(closed);
+      m_reopen = std::move(reopen);
+      m_anyClosed = std::move(any);
+    }
+    void reopenSession(const ClosedSession& closed);
     [[nodiscard]] const std::optional<std::string>& userName() const noexcept { return m_name; }
     // The app's text zoom (steps added to the size setting), shared by all windows; save keeps it for the next start.
     void setZoomStore(int steps, std::function<void(int)> save) {
@@ -287,6 +305,12 @@ namespace term {
     std::string m_publishedName;
     std::function<void()> m_nameChanged;
     std::function<void()> m_layoutChanged;
+    std::function<void(ClosedItem)> m_closed;
+    std::function<bool()> m_reopen;
+    std::function<bool()> m_anyClosed;
+    // Before a user close: the closed sessions, or the window when they are all of it, go on the reopen stack.
+    void recordClose(const std::vector<std::uint64_t>& ids);
+    [[nodiscard]] std::string cwdOf(std::uint64_t id) const;
     Input* m_search = nullptr;
     bool m_rail = false; // the sidebar is an icon rail
     Flex* m_agentBar = nullptr; // title band pills of the shown agent session

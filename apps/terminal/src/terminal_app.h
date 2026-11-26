@@ -13,6 +13,7 @@
 #include <nlohmann/json_fwd.hpp>
 
 #include <array>
+#include <deque>
 #include <map>
 #include <memory>
 #include <string>
@@ -74,6 +75,9 @@ namespace term {
     enum class LayoutWrites : std::uint8_t { Live, Kept };
     LayoutWrites m_layoutWrites = LayoutWrites::Live;
     void saveLayouts();
+    std::deque<ClosedItem> m_closed; // newest first: what "Reopen closed" brings back
+    void pushClosed(ClosedItem item);
+    bool reopenClosed(AppWindow& from); // false: nothing closed
     void sessionsChanged(LayoutSave save);
 
     // org.andromeda.Terminal1 (control_dbus.cpp, Linux) or the control socket (control_socket.cpp, macOS):

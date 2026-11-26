@@ -189,6 +189,7 @@
   "palette": {
     "not-in-split": "Not in a split",
     "split-full": "A split holds 4 panes at most",
+    "nothing-closed": "Nothing closed yet",
     "no-selection": "No selection",
     "split-with": "Split with…",
     "no-join": "No session can join",

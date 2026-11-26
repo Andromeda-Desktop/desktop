@@ -526,6 +526,9 @@ namespace term {
               const bool killed = status == 128 + SIGHUP || status == 128 + SIGTERM || status == 128 + SIGKILL;
               DeferredCall::callLater([this, id, alive, killed] {
                 if (!alive.expired()) {
+                  if (!killed) {
+                    recordClose({id});
+                  }
                   apply(session_event::Close{id}, killed ? LayoutSave::Unsaved : LayoutSave::Saved);
                 }
               });
@@ -743,12 +746,75 @@ namespace term {
     return id;
   }
 
+  std::string TerminalWindow::cwdOf(std::uint64_t id) const {
+    const auto it = std::ranges::find(m_views, id, &Session::id);
+    const auto* view = it != m_views.end() ? dynamic_cast<const TerminalView*>(it->view.get()) : nullptr;
+    return view != nullptr ? view->cwd() : std::string();
+  }
+
+  void TerminalWindow::recordClose(const std::vector<std::uint64_t>& ids) {
+    if (!m_closed) {
+      return;
+    }
+    if (std::ranges::all_of(m_sessions.sessions(), [&](const SessionInfo& s) { return std::ranges::contains(ids, s.id); })) {
+      if (SavedWindow saved = layout(); !saved.sessions.empty()) {
+        m_closed(std::move(saved));
+      }
+      return;
+    }
+    const auto& list = m_sessions.sessions();
+    for (const std::uint64_t id : ids) {
+      const auto it = std::ranges::find(list, id, &SessionInfo::id);
+      if (it == list.end() || it->kind != SessionKind::Shell) {
+        continue;
+      }
+      ClosedSession closed{.window = m_windowId, .session = {cwdOf(id), it->name}};
+      const auto next = std::find_if(it + 1, list.end(), [&](const SessionInfo& s) { return !std::ranges::contains(ids, s.id); });
+      closed.before = next != list.end() ? next->id : 0;
+      // The pane beside it in the tree, and the side it took of that pane.
+      using Tree = andromeda::tiling::DwindleTree;
+      const Tree* tree = m_split.treeOf(id);
+      const Tree::Node* leaf = tree != nullptr ? tree->find(id) : nullptr;
+      if (const Tree::Node* parent = leaf != nullptr ? leaf->parent : nullptr; parent != nullptr) {
+        const bool first = parent->left.get() == leaf;
+        const Tree::Node* other = first ? parent->right.get() : parent->left.get();
+        while (other != nullptr && other->type != Tree::Node::Leaf) {
+          other = other->left.get();
+        }
+        const bool across = parent->type == Tree::Node::HSplit ||
+                            (parent->type == Tree::Node::AutoSplit && parent->area.width >= parent->area.height);
+        if (other != nullptr && !std::ranges::contains(ids, other->key)) {
+          closed.splitWith = other->key;
+          closed.edge = across ? (first ? andromeda::tiling::EdgeLeft : andromeda::tiling::EdgeRight)
+                               : (first ? andromeda::tiling::EdgeTop : andromeda::tiling::EdgeBottom);
+        }
+      }
+      m_closed(std::move(closed));
+    }
+  }
+
+  void TerminalWindow::reopenSession(const ClosedSession& closed) {
+    std::error_code error;
+    const std::string& cwd = closed.session.cwd;
+    const std::uint64_t id = openSession(NewShell{.cwd = std::filesystem::is_directory(cwd, error) ? cwd : ""});
+    if (!closed.session.name.empty()) {
+      apply(session_event::Rename{id, closed.session.name});
+    }
+    if (closed.before != 0 && m_sessions.find(closed.before) != nullptr) {
+      apply(session_event::Move{.id = id, .before = closed.before});
+    }
+    const auto* split = closed.splitWith != 0 ? m_sessions.splitOf(closed.splitWith) : nullptr;
+    if (closed.splitWith != 0 && m_sessions.find(closed.splitWith) != nullptr && (split == nullptr || split->size() < kMaxPanes)) {
+      m_split.pendJoin({.target = closed.splitWith, .joining = id, .edge = closed.edge});
+      apply(session_event::Join{.target = closed.splitWith, .joining = id,
+                                .before = closed.edge == andromeda::tiling::EdgeLeft || closed.edge == andromeda::tiling::EdgeTop});
+      focusGrid();
+    }
+  }
+
   SavedWindow TerminalWindow::layout() const {
-    SavedWindow saved = saveLayout(m_sessions, [this](std::uint64_t id) {
-      const auto it = std::ranges::find(m_views, id, &Session::id);
-      const auto* view = it != m_views.end() ? dynamic_cast<const TerminalView*>(it->view.get()) : nullptr;
-      return view != nullptr ? view->cwd() : std::string();
-    }, [this](std::uint64_t id) { return m_split.treeOf(id); });
+    SavedWindow saved = saveLayout(m_sessions, [this](std::uint64_t id) { return cwdOf(id); },
+                                   [this](std::uint64_t id) { return m_split.treeOf(id); });
     saved.name = m_name;
     return saved;
   }
@@ -1197,6 +1263,7 @@ namespace term {
         m_window.requestRebuild();
         return true;
       case Action::MoveSessionUp: return moveShownBlock(true);
+      case Action::ReopenClosed: return m_reopen && m_reopen();
       case Action::MoveSessionDown: return moveShownBlock(false);
       case Action::ResizeSplitLeft: return m_split.nudgeDivider(-1.0F, 0.0F);
       case Action::ResizeSplitRight: return m_split.nudgeDivider(1.0F, 0.0F);
@@ -1444,7 +1511,10 @@ namespace term {
     m_window.activate(m_window.activationToken());
   }
 
-  void TerminalWindow::closeSession(std::uint64_t id) { apply(session_event::Close{id}); }
+  void TerminalWindow::closeSession(std::uint64_t id) {
+    recordClose({id});
+    apply(session_event::Close{id});
+  }
 
   void TerminalWindow::renameSession(std::uint64_t id, std::string name) {
     apply(session_event::Rename{id, std::move(name)});
@@ -1612,6 +1682,7 @@ namespace term {
 
   void TerminalWindow::askClose(std::vector<std::uint64_t> ids, bool window) {
     const auto close = [this](const std::vector<std::uint64_t>& targets) {
+      recordClose(targets);
       for (const std::uint64_t target : targets) {
         apply(session_event::Close{target});
       }
@@ -2087,6 +2158,8 @@ namespace term {
       std::string off;
       if (focus && !m_split.split()) {
         off = i18n::tr("terminal.palette.not-in-split");
+      } else if (action == Action::ReopenClosed && !(m_anyClosed && m_anyClosed())) {
+        off = i18n::tr("terminal.palette.nothing-closed");
       } else if (opensSplit && m_split.split() &&
                  m_sessions.splitOf(*m_sessions.shown())->size() >= kMaxPanes) {
         off = i18n::tr("terminal.palette.split-full");

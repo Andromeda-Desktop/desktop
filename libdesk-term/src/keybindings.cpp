@@ -62,6 +62,7 @@ namespace term {
         {Action::RotateSplit, "rotate_split", "Rotate the split (side by side or stacked)", "ctrl+alt+r"},
         {Action::MoveSessionUp, "move_session_up", "Move the session up the list", "ctrl+shift+page_up"},
         {Action::MoveSessionDown, "move_session_down", "Move the session down the list", "ctrl+shift+page_down"},
+        {Action::ReopenClosed, "reopen_closed", "Reopen the last closed session or window", "ctrl+shift+z"},
         {Action::Copy, "copy", "Copy", "ctrl+shift+c"},
         {Action::Paste, "paste", "Paste", "ctrl+shift+v"},
         {Action::CopyLastOutput, "copy_last_output", "Copy last command output", "ctrl+shift+x"},

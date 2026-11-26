@@ -130,6 +130,8 @@ namespace term {
     if (auto name = std::exchange(m_nextName, std::nullopt)) m_windows[&window]->renameWindow(std::move(*name));
     m_windows[&window]->setNameChanged([this] { workspacesChanged(); });
     m_windows[&window]->setLayoutChanged([this] { saveLayouts(); });
+    m_windows[&window]->setClosedStack([this](ClosedItem item) { pushClosed(std::move(item)); },
+                                       [this, &window] { return reopenClosed(window); }, [this] { return !m_closed.empty(); });
     workspacesChanged(); // the other windows' bars gain this one
     m_windows[&window]->setZoomStore(state().get("/terminal/zoom", 0),
                                      [this](int steps) { state().set("/terminal/zoom", steps); });
@@ -157,6 +159,12 @@ namespace term {
     if (&window == m_prefsWindow) {
       m_prefs.reset();
       m_prefsWindow = nullptr;
+    }
+    // A window the user closed with its sessions (not a quit, not emptied by moves or closes) can be reopened.
+    if (const auto it = m_windows.find(&window); it != m_windows.end() && m_layoutWrites == LayoutWrites::Live) {
+      if (SavedWindow saved = it->second->layout(); !saved.sessions.empty()) {
+        pushClosed(std::move(saved));
+      }
     }
     // The window's shells and its workspace end with it.
     m_windowWorkspaces.closed(&window);
@@ -333,6 +341,40 @@ namespace term {
     if (AppWindow& window = createWindow(); window.open()) {
       window.activate(activationToken);
     }
+  }
+
+  void TerminalApp::pushClosed(ClosedItem item) {
+    constexpr std::size_t kKept = 10;
+    m_closed.push_front(std::move(item));
+    if (m_closed.size() > kKept) {
+      m_closed.pop_back();
+    }
+  }
+
+  bool TerminalApp::reopenClosed(AppWindow& from) {
+    if (m_closed.empty()) {
+      return false;
+    }
+    ClosedItem item = std::move(m_closed.front());
+    m_closed.pop_front();
+    if (auto* saved = std::get_if<SavedWindow>(&item)) {
+      m_nextOrigins.clear();
+      AppWindow& window = createWindow();
+      m_windows.at(&window)->restore(*saved);
+      if (window.open()) {
+        window.activate(from.activationToken());
+      }
+      return true;
+    }
+    const auto& closed = std::get<ClosedSession>(item);
+    // Its own window when still open, else the window that asked.
+    AppWindow* into = &from;
+    for (const auto& [app, terminal] : m_windows) {
+      if (terminal->windowId() == closed.window) into = app;
+    }
+    m_windows.at(into)->reopenSession(closed);
+    if (into != &from) into->activate(from.activationToken());
+    return true;
   }
 
   void TerminalApp::openWindow(const std::string& activationToken) {
