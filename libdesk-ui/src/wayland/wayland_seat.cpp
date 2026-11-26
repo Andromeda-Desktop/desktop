@@ -402,6 +402,9 @@ void WaylandSeat::handlePointerButton(
 ) {
   auto* self = static_cast<WaylandSeat*>(data);
   self->m_lastSerial = serial;
+  if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+    self->m_lastPressSerial = serial;
+  }
   self->m_lastInputSource = InputSource::Pointer;
   self->m_pendingPointerEvents.push_back(
       PointerEvent{
@@ -563,6 +566,7 @@ void WaylandSeat::handleTouchDown(
   self->m_lastPointerY = wl_fixed_to_double(y);
   self->m_hasPointerPosition = true;
   self->m_lastSerial = serial;
+  self->m_lastPressSerial = serial;
   self->m_lastInputSource = InputSource::Touch;
   self->m_pendingTouchEvents.push_back(
       PointerEvent{

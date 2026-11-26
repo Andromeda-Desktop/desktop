@@ -342,7 +342,12 @@ namespace term {
     static inline std::uint64_t s_nextId = 1;
     void registerDropTarget();
     Toplevel* m_dropSurface = nullptr; // the surface the drop target is on
-    bool m_sessionOffer = false;       // the drag over this window carries a session row
+    bool m_sessionOffer = false;       // the drag over this window carries a row of this process
+    struct DragOut {
+      std::uint64_t id = 0;
+      std::uint32_t window = 0;
+    };
+    static inline std::optional<DragOut> s_dragOut; // the row this process carries between windows, if any
     // A row dragged past the window edge becomes a drag between windows; true once it started.
     bool dragOutOfWindow(std::uint64_t id, float sceneX, float sceneY);
     // A session row dropped here: it moves to the bar item's window under (x, y), else to this window.

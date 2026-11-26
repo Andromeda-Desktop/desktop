@@ -1945,6 +1945,9 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
   case PointerEvent::Type::Leave:
     m_pointerInside = false;
     m_input.pointerLeave();
+    // A held button keeps the pointer here (implicit grab): a leave means a grab took it, and its release never comes.
+    m_buttonDown = false;
+    m_buttonsHeld = 0;
     break;
   case PointerEvent::Type::Motion:
     m_input.pointerMotion(x, y, event.serial);

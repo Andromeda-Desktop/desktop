@@ -1478,7 +1478,7 @@ void WaylandConnection::clearDropTarget(const Surface& surface) {
 
 bool WaylandConnection::startDrag(const Surface& origin, DragSource source) {
   DragAndDrop* dnd = dragAndDrop();
-  return dnd != nullptr && dnd->startDrag(wlSurfaceOf(origin), lastInputSerial(),
+  return dnd != nullptr && dnd->startDrag(wlSurfaceOf(origin), m_seatHandler.lastPressSerial(),
                                           {.mimeTypes = std::move(source.mimeTypes),
                                            .data = std::move(source.data),
                                            .actions = source.actions,

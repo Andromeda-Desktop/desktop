@@ -59,6 +59,8 @@ public:
   void cleanup();
 
   [[nodiscard]] std::uint32_t lastSerial() const noexcept { return m_lastSerial; }
+  // The last pointer press or touch down: the serial a drag or move must start from.
+  [[nodiscard]] std::uint32_t lastPressSerial() const noexcept { return m_lastPressSerial; }
   [[nodiscard]] wl_seat* seat() const noexcept { return m_seat; }
   [[nodiscard]] wl_pointer* pointer() const noexcept { return m_pointer; }
 
@@ -180,6 +182,7 @@ private:
 
   wl_seat* m_seat = nullptr;
   std::uint32_t m_lastSerial = 0;
+  std::uint32_t m_lastPressSerial = 0;
   InputSource m_lastInputSource = InputSource::None;
 
   // Keyboard

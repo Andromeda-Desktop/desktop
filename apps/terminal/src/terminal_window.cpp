@@ -276,6 +276,7 @@ namespace term {
                              .gap = Tokens::spaceP8 * s});
       m_footTrack = nullptr;
       m_footBar = nullptr;
+      m_barWindows.clear();
       m_footWidth = width - 3.0F * Tokens::spaceP8 * s - 2.0F * Tokens::spaceP4 * s - button;
       if (!m_rail) {
         auto track = ui::row({.out = &m_footTrack, .align = FlexAlign::Center, .padding = Tokens::spaceP4 * s,
@@ -779,8 +780,8 @@ namespace term {
 
   void TerminalWindow::fillFootBar(Renderer& renderer) {
     m_shownBar = m_bar != nullptr ? m_bar() : std::vector<workspace_bar::Item>{};
-    if (m_footBar == nullptr) return;
     m_barWindows.clear();
+    if (m_footBar == nullptr) return;
     while (!m_footBar->children().empty()) m_footBar->removeChild(m_footBar->children().back().get());
     m_footTrack->setVisible(!m_shownBar.empty());
     const auto here = std::ranges::find(m_shownBar, true, &workspace_bar::Item::here);
@@ -2447,13 +2448,15 @@ namespace term {
         {
             .enter =
                 [this](const std::vector<std::string>& mimes) {
-                  m_sessionOffer = std::ranges::contains(mimes, kSessionMime);
+                  // Only a row this process carries; a drop back on its own window moves it only onto a bar item.
+                  m_sessionOffer = s_dragOut.has_value() && std::ranges::contains(mimes, kSessionMime);
                   return true;
                 },
             .motion = [this, over](float x, float y) -> std::uint32_t {
               if (m_sessionOffer) {
-                markBar(barWindowAt(x, y));
-                return DropMove;
+                const auto bar = barWindowAt(x, y);
+                markBar(bar);
+                return bar || s_dragOut->window != m_windowId ? DropMove : DropNone;
               }
               return over(x, y) != nullptr ? DropCopy : DropNone;
             },
@@ -2462,7 +2465,9 @@ namespace term {
                 [this, over](float x, float y, std::uint32_t /*action*/, const std::string& mime, std::string data) {
                   markBar(std::nullopt);
                   if (mime == kSessionMime) {
-                    dropSession(x, y, data);
+                    if (m_sessionOffer) {
+                      dropSession(x, y, data);
+                    }
                   } else if (TerminalView* view = over(x, y); view != nullptr) {
                     view->pasteDrop(mime, data);
                   }
@@ -2689,7 +2694,10 @@ namespace term {
     while (root != nullptr && root->parent() != nullptr) {
       root = root->parent();
     }
-    const bool inside = root == nullptr || (sceneX >= 0.0F && sceneY >= 0.0F && sceneX < root->width() && sceneY < root->height());
+    // The scene is the surface: the window plus its shadow margin on every side.
+    const float margin = m_window.surface() != nullptr ? static_cast<float>(m_window.surface()->margin()) : 0.0F;
+    const bool inside = root == nullptr || (sceneX >= margin && sceneY >= margin && sceneX < root->width() - margin &&
+                                            sceneY < root->height() - margin);
     const auto row = std::ranges::find(m_rows, id, &std::pair<std::uint64_t, StatusRow*>::first);
     if (inside || row == m_rows.end() || m_window.surface() == nullptr || (m_windows ? m_windows().size() : 0) < 2) {
       return false;
@@ -2724,6 +2732,7 @@ namespace term {
                                      .icon = m_dragIcon.get(),
                                      .finished =
                                          [this, alive = std::weak_ptr<bool>(m_alive)](std::uint32_t, bool) {
+                                           s_dragOut.reset();
                                            if (!alive.expired()) {
                                              m_dragIcon.reset();
                                              m_dragImage.reset();
@@ -2733,6 +2742,7 @@ namespace term {
       m_dragImage.reset();
       return false;
     }
+    s_dragOut = DragOut{.id = id, .window = m_windowId};
     // The window system holds the pointer now: the row sees no release, so its drag ends here.
     row->second->cancelDrag();
     return true;
