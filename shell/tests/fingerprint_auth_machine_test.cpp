@@ -105,6 +105,10 @@ namespace {
     void checkAlways() const {
       if (machine.phase() == Phase::Verifying) {
         TEST_CHECK(machine.claimed());
+        TEST_CHECK(machine.available());
+      }
+      if (machine.phase() == Phase::Off || machine.phase() == Phase::Idle || machine.phase() == Phase::Aborted) {
+        TEST_CHECK(!machine.available());
       }
       if (machine.phase() == Phase::Sleeping) {
         TEST_CHECK(asleep);
@@ -257,6 +261,7 @@ namespace {
     }
     TEST_CHECK(machine.verifyStatus(miss, true) == fingerprint_auth::VerifyStop);
     TEST_CHECK(machine.phase() == Phase::Idle);
+    TEST_CHECK(!machine.available());
     TEST_CHECK(machine.retryDue() == fingerprint_auth::None);
     TEST_CHECK(machine.claimed());
   }

@@ -72,7 +72,6 @@ FingerprintAuthenticator::FingerprintAuthenticator(SystemBus& bus) : m_bus(bus) 
         }
         kLog.info("fprintd left the bus; claiming the fingerprint device again");
         m_device.reset();
-        setAvailable(false);
         run(m_machine.serviceLost());
       }
   );
@@ -115,6 +114,7 @@ void FingerprintAuthenticator::run(fingerprint_auth::Commands commands) {
   } else if (!m_retryTimer.active()) {
     m_retryTimer.start(kRetryDelay, [this] { run(m_machine.retryDue()); });
   }
+  notifyAvailability();
 }
 
 // Async: GetDefaultDevice D-Bus-activates fprintd, which can take seconds; the lock screen must not wait for it.
@@ -129,7 +129,6 @@ void FingerprintAuthenticator::requestDevice(std::uint64_t attempt) {
           }
           if (e.has_value()) {
             kLog.info("no fprintd device available: {}", e->what());
-            setAvailable(false);
           }
           const bool ok = !e.has_value() && createDeviceProxy(path);
           run(m_machine.deviceReply(attempt, ok));
@@ -137,7 +136,7 @@ void FingerprintAuthenticator::requestDevice(std::uint64_t attempt) {
   } catch (const sdbus::Error& e) {
     kLog.info("no fprintd device available: {}", e.what());
     m_machine.callFailed(attempt);
-    setAvailable(false);
+    notifyAvailability();
   }
 }
 
@@ -189,21 +188,17 @@ void FingerprintAuthenticator::claimDevice(std::uint64_t attempt) {
         .onInterface(kDeviceInterface)
         .withArguments(std::string{})
         .uponReplyInvoke([this](std::optional<sdbus::Error> e) {
-          const bool waiting = m_machine.phase() == Phase::Claiming;
           if (e.has_value()) {
             kLog.info("could not claim fingerprint device: {}", e->what());
           } else {
             kLog.info("claimed fingerprint device");
           }
           run(m_machine.claimReply(!e.has_value()));
-          if (e.has_value() && waiting) {
-            setAvailable(false);
-          }
         });
   } catch (const sdbus::Error& e) {
     kLog.info("could not claim fingerprint device: {}", e.what());
     m_machine.callFailed(attempt);
-    setAvailable(false);
+    notifyAvailability();
   }
 }
 
@@ -225,25 +220,23 @@ void FingerprintAuthenticator::startVerify(std::uint64_t attempt) {
           run(m_machine.verifyStartReply(attempt, !e.has_value(), claimLost));
           if (m_machine.phase() == Phase::Verifying) {
             kLog.debug("fingerprint verification started");
-            setAvailable(true);
             emitStatus(i18n::tr("auth.fingerprint.ready"), false);
           } else if (m_machine.phase() == Phase::Idle) {
-            setAvailable(false);
             emitStatus({}, false); // issue loading: drop the status message
           }
         });
   } catch (const sdbus::Error& e) {
     kLog.info("could not start fingerprint verification: {}", e.what());
     m_machine.callFailed(attempt);
-    setAvailable(false);
+    notifyAvailability();
   }
 }
 
-void FingerprintAuthenticator::setAvailable(bool available) {
-  if (available == m_available) {
+void FingerprintAuthenticator::notifyAvailability() {
+  if (available() == m_reportedAvailable) {
     return;
   }
-  m_available = available;
+  m_reportedAvailable = available();
   if (m_onAvailability) {
     m_onAvailability();
   }

@@ -46,6 +46,10 @@ namespace fingerprint_auth {
     [[nodiscard]] std::uint64_t attempt() const noexcept { return m_attempt; }
     [[nodiscard]] int retries() const noexcept { return m_retries; }
     [[nodiscard]] bool active() const noexcept { return m_phase != Phase::Off; }
+    // The sensor verified in this run (so a finger is enrolled) and will listen again without a new start().
+    [[nodiscard]] bool available() const noexcept {
+      return m_verified && m_phase != Phase::Off && m_phase != Phase::Idle && m_phase != Phase::Aborted;
+    }
     [[nodiscard]] bool current(std::uint64_t attempt, Phase expected) const noexcept {
       return attempt == m_attempt && m_phase == expected;
     }
@@ -56,6 +60,7 @@ namespace fingerprint_auth {
       }
       m_retries = 0;
       m_reclaimed = false;
+      m_verified = false;
       return begin(false);
     }
 
@@ -119,6 +124,7 @@ namespace fingerprint_auth {
       }
       if (ok) {
         m_phase = Phase::Verifying;
+        m_verified = true;
         m_reclaimed = false;
         m_retries += m_countRetry ? 1 : 0;
       } else if (claimLost && !m_reclaimed) {
@@ -150,6 +156,7 @@ namespace fingerprint_auth {
       m_claimInFlight = false;
       m_deviceKnown = false;
       m_reclaimed = false;
+      m_verified = false;
       if (m_phase == Phase::Off || m_phase == Phase::Aborted || m_phase == Phase::Sleeping) {
         return None;
       }
@@ -259,6 +266,7 @@ namespace fingerprint_auth {
     bool m_countRetry = false;
     // Mirrors the session sleep, so an attempt that starts during sleep waits for wake.
     bool m_asleep = false;
+    bool m_verified = false;
   };
 
 } // namespace fingerprint_auth

@@ -30,8 +30,8 @@ public:
   void setAuthenticatedCallback(AuthenticatedCallback callback);
   void setStatusCallback(StatusCallback callback);
   void setAvailabilityCallback(AvailabilityCallback callback) { m_onAvailability = std::move(callback); }
-  // A sensor is claimed and verifying, so a finger is enrolled (false until fprintd answers).
-  [[nodiscard]] bool available() const noexcept { return m_available; }
+  // A finger is enrolled and the sensor listens now or after the running retry (false until fprintd answers).
+  [[nodiscard]] bool available() const noexcept { return m_machine.available(); }
 
   void start();
   void stop();
@@ -40,7 +40,7 @@ public:
 
 private:
   void run(fingerprint_auth::Commands commands);
-  void setAvailable(bool available);
+  void notifyAvailability();
   // Asks fprintd for its default device without blocking; on the reply it sets up m_device and claims it.
   void requestDevice(std::uint64_t attempt);
   bool createDeviceProxy(const std::string& path);
@@ -62,6 +62,7 @@ private:
   Timer m_retryTimer;
 
   fingerprint_auth::Machine m_machine;
-  bool m_available = false;
+  // The available() value the callback last reported; only edge detection, never read as state.
+  bool m_reportedAvailable = false;
   AvailabilityCallback m_onAvailability;
 };
