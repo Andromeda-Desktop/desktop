@@ -39,6 +39,9 @@ namespace settings {
     // Plain title/subtitle/control row for pages without a SettingEntry.
     [[nodiscard]] static std::unique_ptr<Flex>
     makeRow(std::string_view title, std::unique_ptr<Node> control, float scale, std::string_view subtitle = {});
+    // Gives every hand-built row under `root` (a horizontal flex with a label and exactly one control, a switch or a
+    // menu, and no click of its own) the layoutRow click: a click anywhere on the row acts on that control.
+    static void bindRowClicks(Node& root);
     // Title (+ subtitle) beside `actions`; a click on the row acts on the last action when it is a switch or menu.
     [[nodiscard]] static std::unique_ptr<Flex> layoutRow(
         std::unique_ptr<Flex> titleRow, std::string_view subtitle, bool tightCopy, std::unique_ptr<Flex> actions,

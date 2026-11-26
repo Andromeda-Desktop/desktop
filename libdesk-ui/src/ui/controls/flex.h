@@ -115,6 +115,7 @@ public:
   // A node over the whole flex, outside layout, at z index 1 above the children (a click area for a pressable row);
   // a child control that must stay pressable sets a higher z index.
   void setCover(std::unique_ptr<Node> cover);
+  [[nodiscard]] bool hasCover() const noexcept { return m_cover != nullptr; }
 
 protected:
   void doLayout(Renderer& renderer) override;

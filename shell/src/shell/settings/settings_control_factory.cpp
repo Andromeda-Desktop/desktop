@@ -17,9 +17,16 @@
 #include "shell/settings/settings_selection_style.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
+#include "ui/controls/checkbox.h"
+#include "ui/controls/color_picker.h"
 #include "ui/controls/flex.h"
+#include "ui/controls/glyph_picker.h"
 #include "ui/controls/input.h"
+#include "ui/controls/label.h"
 #include "ui/controls/list_editor.h"
+#include "ui/controls/radio_button.h"
+#include "ui/controls/range_slider.h"
+#include "ui/controls/search_picker.h"
 #include "ui/controls/segmented.h"
 #include "ui/controls/select.h"
 #include "ui/controls/slider.h"
@@ -43,6 +50,56 @@
 #include <utility>
 
 namespace settings {
+
+namespace {
+
+  // A switch or menu a row click acts on, or nothing.
+  std::function<void()> rowActivation(Node* control) {
+    if (auto* toggle = dynamic_cast<Toggle*>(control)) {
+      return [toggle] { toggle->activate(); };
+    }
+    if (auto* select = dynamic_cast<Select*>(control)) {
+      return [select] { select->toggleOpen(); };
+    }
+    return {};
+  }
+
+  // Anything a pointer press acts on; labels are input areas too but take no press.
+  bool isRowControl(Node* node) {
+    if (dynamic_cast<Label*>(node) != nullptr) {
+      return false;
+    }
+    return dynamic_cast<Toggle*>(node) != nullptr || dynamic_cast<Select*>(node) != nullptr
+        || dynamic_cast<Button*>(node) != nullptr || dynamic_cast<Input*>(node) != nullptr
+        || dynamic_cast<Slider*>(node) != nullptr || dynamic_cast<RangeSlider*>(node) != nullptr
+        || dynamic_cast<Segmented*>(node) != nullptr || dynamic_cast<Stepper*>(node) != nullptr
+        || dynamic_cast<Checkbox*>(node) != nullptr || dynamic_cast<RadioButton*>(node) != nullptr
+        || dynamic_cast<ColorPicker*>(node) != nullptr || dynamic_cast<SearchPicker*>(node) != nullptr
+        || dynamic_cast<GlyphPicker*>(node) != nullptr || dynamic_cast<InputArea*>(node) != nullptr;
+  }
+
+  struct RowScan {
+    int controls = 0;
+    bool hasLabel = false;
+    Node* control = nullptr;
+    Node* holder = nullptr; // the row's direct child that holds the control
+  };
+
+  void scanRow(Node& node, Node* holder, RowScan& scan) {
+    for (const auto& child : node.children()) {
+      Node* top = holder != nullptr ? holder : child.get();
+      if (isRowControl(child.get())) {
+        ++scan.controls;
+        scan.control = child.get();
+        scan.holder = top;
+      } else {
+        scan.hasLabel = scan.hasLabel || dynamic_cast<Label*>(child.get()) != nullptr;
+        scanRow(*child, top, scan);
+      }
+    }
+  }
+
+} // namespace
 
   namespace {
     constexpr std::chrono::milliseconds kTextSaveDelay{700};
@@ -478,6 +535,30 @@ namespace settings {
     return layoutRow(std::move(titleRow), subtitle, true, std::move(actions), scale);
   }
 
+  void SettingsControlFactory::bindRowClicks(Node& root) {
+    if (isRowControl(&root)) {
+      return;
+    }
+    auto* row = dynamic_cast<Flex*>(&root);
+    if (row != nullptr && row->direction() == FlexDirection::Horizontal) {
+      if (row->hasCover()) {
+        return;
+      }
+      RowScan scan;
+      scanRow(*row, nullptr, scan);
+      if (scan.controls == 1 && scan.hasLabel) {
+        if (std::function<void()> click = rowActivation(scan.control)) {
+          scan.holder->setZIndex(2);
+          row->setCover(ui::inputArea({.onClick = [click](const InputArea::PointerData&) { click(); }}));
+          return;
+        }
+      }
+    }
+    for (const auto& child : root.children()) {
+      bindRowClicks(*child);
+    }
+  }
+
   std::unique_ptr<Flex> SettingsControlFactory::layoutRow(
       std::unique_ptr<Flex> titleRow, std::string_view subtitle, bool tightCopy, std::unique_ptr<Flex> actions,
       float scale
@@ -492,13 +573,8 @@ namespace settings {
       copy->addChild(makeSettingSubtitleLabel(subtitle, scale));
     }
     // A click anywhere on a switch or menu row acts on its control; the actions stay above the row's cover.
-    std::function<void()> rowClick;
-    Node* control = actions->children().empty() ? nullptr : actions->children().back().get();
-    if (auto* toggle = dynamic_cast<Toggle*>(control)) {
-      rowClick = [toggle] { toggle->activate(); };
-    } else if (auto* select = dynamic_cast<Select*>(control)) {
-      rowClick = [select] { select->toggleOpen(); };
-    }
+    std::function<void()> rowClick =
+        rowActivation(actions->children().empty() ? nullptr : actions->children().back().get());
     if (rowClick) {
       actions->setZIndex(2);
     }

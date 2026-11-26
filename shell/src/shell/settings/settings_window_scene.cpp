@@ -1250,6 +1250,7 @@ void SettingsWindow::rebuildSettingsContent() {
     m_groupJumpRow->setVisible(hasJumpRow);
     m_groupJumpRow->setParticipatesInLayout(hasJumpRow);
   }
+  settings::SettingsControlFactory::bindRowClicks(*m_contentContainer);
   logSettingsProfile("rebuildContent plugins", phaseProfileWatch);
   logSettingsProfile("rebuildContent total", totalProfileWatch);
   if (noctalia::profiling::enabled()) {
