@@ -11,6 +11,8 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOW = os.path.join(ROOT, "tools/core-check-allow.txt")
+# --staged (the pre-commit hook): check what the commit holds, not other sessions' unstaged edits in the shared tree.
+STAGED = "--staged" in sys.argv
 CPP = (".c", ".cc", ".cpp", ".h", ".hpp")
 CPP_DIRS = ("compositor/src/", "shell/src/", "libdesk-ui/src/", "libdesk-app/src/", "libdesk-system/src/",
             "libdesk-term/src/", "apps/", "portal/src/", "indexer/src/", "andromeda-preview/", "session/", "system/")
@@ -207,8 +209,27 @@ RULES = {
 }
 
 
+def unstaged():
+    """--staged: paths whose working-tree text differs from the index; read() takes those from the index."""
+    if not STAGED:
+        return set()
+    out = subprocess.run(["git", "-C", ROOT, "diff-files", "--name-only", "-z"], capture_output=True, text=True, check=True).stdout
+    return set(filter(None, out.split("\0")))
+
+
+UNSTAGED = unstaged()
+
+
+def read(path):
+    if path in UNSTAGED:
+        shown = subprocess.run(["git", "-C", ROOT, "show", f":{path}"], capture_output=True)
+        return shown.stdout.decode("utf-8", "replace") if shown.returncode == 0 else ""
+    return open(os.path.join(ROOT, path), encoding="utf-8", errors="replace").read()
+
+
 def tracked():
-    out = subprocess.run(["git", "-C", ROOT, "ls-files", "--cached", "--others", "--exclude-standard"], capture_output=True, text=True, check=True).stdout
+    listed = ["--cached"] if STAGED else ["--cached", "--others", "--exclude-standard"]
+    out = subprocess.run(["git", "-C", ROOT, "ls-files", *listed], capture_output=True, text=True, check=True).stdout
     return [p for p in out.splitlines()
             if (not SKIP.search(p) or p.startswith((E2E, HARNESS)) and p.endswith(".sh")) and os.path.isfile(os.path.join(ROOT, p))]
 
@@ -264,7 +285,7 @@ def scan():
             full = os.path.join(ROOT, path)
             if os.path.islink(full) and os.path.relpath(os.path.realpath(full), ROOT).startswith(owners):
                 continue
-            text = open(os.path.join(ROOT, path), encoding="utf-8", errors="replace").read()
+            text = read(path)
             if path.endswith(CPP):
                 text = LINE_COMMENT.sub("", text)
             if rule == "std-fs-async":
@@ -284,7 +305,7 @@ def scan():
 def load():
     allow = {}
     if os.path.exists(ALLOW):
-        for line in open(ALLOW):
+        for line in read(os.path.relpath(ALLOW, ROOT)).splitlines():
             if line.strip() and not line.startswith("#"):
                 rule, path, count = line.split()
                 allow[(rule, path)] = int(count)
