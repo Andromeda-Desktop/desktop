@@ -23,6 +23,7 @@
 namespace andromeda {
 
   namespace {
+    constexpr Logger kLog("output");
 
     constexpr uint32_t kVersion = 1;
 
@@ -253,11 +254,12 @@ namespace andromeda {
       ));
       return;
     }
-    const std::filesystem::path file = configRootPath().parent_path() / "displays.toml";
-    if (!std::ranges::contains(configWatchPaths(), file)) {
+    const std::optional<std::filesystem::path> displays = includedDisplaysFile();
+    if (!displays.has_value()) {
       reject(configRootPath().filename().string() + " does not include displays.toml");
       return;
     }
+    const std::filesystem::path& file = *displays;
     // The reader refuses min_workspaces next to a fixed count, so a count drops it and the minimum needs dynamic.
     const OutputRule* rule = findOutputRule(config(), output->identity());
     const bool fixedCount = rule != nullptr && rule->workspaces.has_value();
@@ -265,15 +267,15 @@ namespace andromeda {
       reject("min_workspaces applies to dynamic workspaces");
       return;
     }
-    if (key == "workspaces" && std::holds_alternative<int64_t>(*parsed)
-        && !saveOutputProperty(file, name, "min_workspaces", std::monostate{})) {
-      reject("cannot write " + file.string());
-      return;
+    const auto logFailure = [file](bool ok) {
+      if (!ok) {
+        kLog.warn("cannot write {}", file.string());
+      }
+    };
+    if (key == "workspaces" && std::holds_alternative<int64_t>(*parsed)) {
+      saveOutputProperty(file, name, "min_workspaces", std::monostate{}, logFailure);
     }
-    if (!saveOutputProperty(file, name, key, *parsed)) {
-      reject("cannot write " + file.string());
-      return;
-    }
+    saveOutputProperty(file, name, key, *parsed, logFailure);
     m_server.handleConfigReload(reloadConfig());
   }
 

@@ -145,12 +145,18 @@ namespace andromeda {
       );
       return;
     }
-    const auto file = configRootPath().parent_path() / "displays.toml";
+    const std::optional<std::filesystem::path> file = includedDisplaysFile();
+    if (!file.has_value()) {
+      kLog.warn("{} does not include displays.toml; mirror state is not saved", configRootPath().filename().string());
+      return;
+    }
     const std::optional<std::string> saved =
         source != nullptr ? std::optional{savedOutputName(source->identity())} : std::nullopt;
-    if (!saveMirror(file, targetName, saved)) {
-      kLog.warn("failed to save mirror state to '{}'", file.string());
-    }
+    saveMirror(*file, targetName, saved, [path = *file](bool ok) {
+      if (!ok) {
+        kLog.warn("failed to save mirror state to '{}'", path.string());
+      }
+    });
   }
 
   void Server::refreshOutputPolicies() {

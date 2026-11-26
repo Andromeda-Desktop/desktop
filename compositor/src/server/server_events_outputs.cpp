@@ -1506,8 +1506,8 @@ namespace andromeda {
                 "output '{}': {} sets mirror; not saving it to displays.toml", name,
                 configRootPath().filename().string()
             );
-          } else {
-            (void)saveMirror(configRootPath().parent_path() / "displays.toml", name, std::nullopt);
+          } else if (const auto file = includedDisplaysFile()) {
+            saveMirror(*file, name, std::nullopt);
           }
         }
         entry.output->adoptOutputManagerEnabled(entry.head->state.enabled);
@@ -1580,8 +1580,14 @@ namespace andromeda {
         }
         saved.push_back(std::move(changed));
       }
-      if (const auto file = configRootPath().parent_path() / "displays.toml"; !saveOutputs(file, saved)) {
-        kLog.warn("failed to save output state to '{}'", file.string());
+      if (const auto file = includedDisplaysFile()) {
+        saveOutputs(*file, saved, [path = *file](bool ok) {
+          if (!ok) {
+            kLog.warn("failed to save output state to '{}'", path.string());
+          }
+        });
+      } else {
+        kLog.warn("{} does not include displays.toml; output state is not saved", configRootPath().filename().string());
       }
     }
     if (commitAttempted) {

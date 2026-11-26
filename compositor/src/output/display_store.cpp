@@ -98,13 +98,13 @@ namespace andromeda {
     return editGeneratedToml(existing, kHeader, [&](toml::table& root) { setMirror(root, name, source); });
   }
 
-  bool saveOutputs(const std::filesystem::path& file, std::span<const SavedOutput> outputs) {
-    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) { mergeOutputs(root, outputs); });
-    return true;
+  void saveOutputs(const std::filesystem::path& file, std::span<const SavedOutput> outputs, WriteDone done) {
+    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) { mergeOutputs(root, outputs); }, std::move(done));
   }
 
-  bool saveOutputProperty(
-      const std::filesystem::path& file, const std::string& name, std::string_view key, const SavedProperty& value
+  void saveOutputProperty(
+      const std::filesystem::path& file, const std::string& name, std::string_view key, const SavedProperty& value,
+      WriteDone done
   ) {
     rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) {
       toml::table& table = generatedTable(root, {"output", name});
@@ -118,14 +118,14 @@ namespace andromeda {
           },
           value
       );
-    });
-    return true;
+    }, std::move(done));
   }
 
-  bool
-  saveMirror(const std::filesystem::path& file, const std::string& name, const std::optional<std::string>& source) {
-    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) { setMirror(root, name, source); });
-    return true;
+  void saveMirror(
+      const std::filesystem::path& file, const std::string& name, const std::optional<std::string>& source,
+      WriteDone done
+  ) {
+    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) { setMirror(root, name, source); }, std::move(done));
   }
 
   bool

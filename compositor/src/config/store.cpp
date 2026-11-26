@@ -525,4 +525,12 @@ namespace andromeda {
 
   const std::vector<std::filesystem::path>& configWatchPaths() { return configStore().watchPaths(); }
 
+  std::optional<std::filesystem::path> includedDisplaysFile() {
+    std::filesystem::path file = configRootPath().parent_path() / "displays.toml";
+    if (!std::ranges::contains(configWatchPaths(), file)) {
+      return std::nullopt;
+    }
+    return file;
+  }
+
 } // namespace andromeda

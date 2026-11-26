@@ -1418,6 +1418,9 @@ namespace andromeda {
   // What the config watcher calls: no reload when the watched files are the ones the last reload read.
   [[nodiscard]] std::optional<ConfigReloadResult> reloadConfigIfChanged();
   [[nodiscard]] const std::vector<std::filesystem::path>& configWatchPaths();
+  // displays.toml beside the root config, where display changes are saved; nullopt when the root does not include it,
+  // so a saved change would be lost at the next login.
+  [[nodiscard]] std::optional<std::filesystem::path> includedDisplaysFile();
   [[nodiscard]] const std::vector<ConfigDiagnostic>& configDiagnostics();
   [[nodiscard]] const std::filesystem::path& configRootPath();
   [[nodiscard]] bool configHasMissingIncludes();

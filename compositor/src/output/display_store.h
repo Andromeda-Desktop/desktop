@@ -1,5 +1,7 @@
 #pragma once
 
+#include "protocols/async_file_writer.h"
+
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -56,17 +58,21 @@ namespace andromeda {
   mergeSavedMirror(std::string_view existing, const std::string& name, const std::optional<std::string>& source);
 
   // Merges `outputs` into `file` through a temporary file and a rename, so a config reload never reads a partial file.
-  // Returns false on any I/O error.
-  bool saveOutputs(const std::filesystem::path& file, std::span<const SavedOutput> outputs);
-  bool saveMirror(const std::filesystem::path& file, const std::string& name, const std::optional<std::string>& source);
+  // The write runs on the writer thread; `done` gets its result.
+  void saveOutputs(const std::filesystem::path& file, std::span<const SavedOutput> outputs, WriteDone done = {});
+  void saveMirror(
+      const std::filesystem::path& file, const std::string& name, const std::optional<std::string>& source,
+      WriteDone done = {}
+  );
 
   // A display property a settings app sets beyond what zwlr_output_manager_v1 carries ("hdr", "workspaces");
   // std::monostate removes the key.
   using SavedProperty = std::variant<std::monostate, bool, int64_t, double, std::string>;
 
-  // Sets or removes one key of output `name`'s saved table in `file`. Returns false on any I/O error.
-  bool saveOutputProperty(
-      const std::filesystem::path& file, const std::string& name, std::string_view key, const SavedProperty& value
+  // Sets or removes one key of output `name`'s saved table in `file`; `done` gets the write result.
+  void saveOutputProperty(
+      const std::filesystem::path& file, const std::string& name, std::string_view key, const SavedProperty& value,
+      WriteDone done = {}
   );
 
   // True when `configRoot` (the user's own config.toml, without its includes) sets `key` in its [output.<name>] table.
