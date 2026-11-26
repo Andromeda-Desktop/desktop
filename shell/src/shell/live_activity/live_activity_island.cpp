@@ -363,18 +363,19 @@ bool LiveActivityIsland::showOsd(const OsdContent& content) {
 }
 
 bool LiveActivityIsland::showBanner(const Notification& n, NotificationEvent event) {
-  const auto item = [&n] {
+  const NotificationConfig* shown = m_config != nullptr ? &m_config->config().notification : nullptr;
+  const auto item = [&n, shown] {
     return BannerItem{
         .id = n.id,
         .title = n.summary.empty() || n.hideContent ? notificationDisplayAppName(n) : n.summary,
         .body = n.hideContent ? std::string{} : n.body,
         .defaultAction = hasDefaultAction(n.actions),
-        .appName = notificationDisplayAppName(n),
+        .appName = shown == nullptr || shown->showAppName ? notificationDisplayAppName(n) : std::string{},
         .time = i18n::tr("control-center.detail.notifications.now"),
         .icon = n.icon.value_or(std::string{}),
         .desktopEntry = n.desktopEntry.value_or(std::string{}),
         .imageData = n.hideContent ? std::nullopt : n.imageData,
-        .actions = bannerActions(n.actions),
+        .actions = shown == nullptr || shown->showActions ? bannerActions(n.actions) : decltype(bannerActions(n.actions)){},
         .sticky = n.urgency == Urgency::Critical || n.timeout == 0,
         .critical = n.urgency == Urgency::Critical,
         .respectsDnd = n.dndPolicy == NotificationDndPolicy::Respect,

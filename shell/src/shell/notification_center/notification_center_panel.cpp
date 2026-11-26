@@ -1,6 +1,7 @@
 #include "shell/notification_center/notification_center_panel.h"
 
 #include "compositors/compositor_platform.h"
+#include "config/config_service.h"
 #include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "notification/notification_display_name.h"
@@ -400,9 +401,10 @@ std::unique_ptr<Flex> NotificationCenterPanel::makeCard(const Notification& n) {
 
   Card entry;
   const float small = Tokens::typeFootnote.size * scale;
+  const bool showAppName = m_config == nullptr || m_config->config().notification.showAppName;
   auto top = ui::row(
       {.align = FlexAlign::Center, .gap = Tokens::spaceP8 * scale, .fillWidth = true},
-      ui::label({.text = notificationDisplayAppName(n), .fontSize = small, .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1,
+      ui::label({.text = showAppName ? notificationDisplayAppName(n) : std::string{}, .fontSize = small, .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1,
                  .flexGrow = 1.0F}),
       ui::label({.out = &entry.age, .text = nc::ageText(n), .fontSize = small, .color = colorSpecFromRole(ColorRole::Label2)})
   );
@@ -428,7 +430,8 @@ std::unique_ptr<Flex> NotificationCenterPanel::makeCard(const Notification& n) {
   // The app's first named action (Reply, Open) as a pill under the text; "default" is the card click.
   Node* actionPtr = nullptr;
   std::string actionKey;
-  if (m_notifications != nullptr && m_notifications->canInvokeActions(n.id)) {
+  if (m_notifications != nullptr && m_notifications->canInvokeActions(n.id)
+      && (m_config == nullptr || m_config->config().notification.showActions)) {
     for (std::size_t a = 0; a + 1 < n.actions.size(); a += 2) {
       if (n.actions[a] != "default" && !n.actions[a + 1].empty()) {
         actionKey = n.actions[a];

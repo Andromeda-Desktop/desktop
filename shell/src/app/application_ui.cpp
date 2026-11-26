@@ -837,7 +837,7 @@ void Application::initPanelManagerAndPanels() {
     m_panelManager.registerPanel("launcher", std::move(launcherPanel));
   }
   m_panelManager.registerPanel(
-      "notification-center", std::make_unique<NotificationCenterPanel>(&m_notificationManager, &m_compositorPlatform)
+      "notification-center", std::make_unique<NotificationCenterPanel>(&m_notificationManager, &m_compositorPlatform, &m_configService)
   );
   m_panelManager.registerPanel(
       "calendar", std::make_unique<CalendarPanel>(&m_configService, &m_calendarService, &m_compositorPlatform)

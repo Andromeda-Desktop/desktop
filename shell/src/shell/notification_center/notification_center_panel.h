@@ -25,10 +25,12 @@ struct NotificationImageData;
 
 // Concept C notification center (proto overlays.js renderNC): a head capsule and app groups of cards, each its own
 // glass piece, in a 360 column under the island.
+class ConfigService;
+
 class NotificationCenterPanel final : public Panel {
 public:
-  NotificationCenterPanel(NotificationManager* notifications, CompositorPlatform* platform)
-      : m_notifications(notifications), m_platform(platform) {}
+  NotificationCenterPanel(NotificationManager* notifications, CompositorPlatform* platform, const ConfigService* config)
+      : m_notifications(notifications), m_platform(platform), m_config(config) {}
 
   void create() override;
   void onOpen(std::string_view context) override;
@@ -84,6 +86,7 @@ private:
 
   NotificationManager* m_notifications = nullptr;
   CompositorPlatform* m_platform = nullptr;
+  const ConfigService* m_config = nullptr;
   IconResolver m_iconResolver{true};
   std::optional<int> m_eventToken;
 

@@ -552,7 +552,7 @@ void LauncherPanel::create() {
       m_modeDrops[i].node = node.get();
       searchRow->addChild(std::move(node));
     }
-    {
+    if (m_config == nullptr || m_config->config().shell.launcher.showSessionButton) {
       // Power: Lock, Log Out, Sleep, Restart, Shut Down, one click from the launcher as in a Start menu.
       auto node = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .minHeight = drop});
       node->setMinWidth(drop);
@@ -1201,7 +1201,6 @@ void LauncherPanel::onClose() {
   m_launcherNavigation = nullptr;
   m_launcherAvatar = nullptr;
   m_launcherAvatarFallback = nullptr;
-  m_launcherSettingsButton = nullptr;
   m_launcherUsageButton = nullptr;
   m_launcherGridButton = nullptr;
   m_launcherPowerButton = nullptr;
