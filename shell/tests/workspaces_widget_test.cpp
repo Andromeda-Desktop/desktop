@@ -96,6 +96,20 @@ int main() {
     TEST_CHECK(near(lens.start(), 16.8F) && near(lens.end(), 36.8F));
   }
 
+  // A jump slide fades the lens while it follows; once the slide ends the lens is opaque again, also on the same target.
+  for (const bool sameTarget : {true, false}) {
+    Node parent;
+    AnimationManager animations;
+    LensTrack lens;
+    lens.setFlat(colorSpecFromRole(ColorRole::Accent));
+    lens.attach(parent, &animations, false, 1.0F);
+    lens.moveTo(12.0F, 32.0F, 0.0F, 7.0F, 3.5F, false);
+    lens.follow(40.0F, 60.0F, 0.0F, 7.0F, 3.5F, 0.4F);
+    TEST_CHECK(near(lens.opacity(), 0.4F));
+    lens.moveTo(sameTarget ? 40.0F : 44.0F, sameTarget ? 60.0F : 64.0F, 0.0F, 7.0F, 3.5F, false);
+    TEST_CHECK(near(lens.opacity(), 1.0F));
+  }
+
   // Reduced motion: the lens jumps with the dots each frame of their travel, and its fade-in keeps rising.
   {
     MotionService::instance().setReduced(true);

@@ -60,6 +60,10 @@ public:
     if (m_lens == nullptr) {
       return;
     }
+    // A follow may have left the pane part-transparent; only a running fade owns the opacity.
+    if (m_fadeId == 0 && opacity() != 1.0F) {
+      setOpacity(1.0F);
+    }
     if (m_shown && start == m_targetStart && end == m_targetEnd && cross == m_cross && crossSize == m_crossSize
         && radius == m_radius) {
       return;
