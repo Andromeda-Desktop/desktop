@@ -27,6 +27,8 @@ RUN apt-get -o Acquire::Retries=5 update && apt-get install -y -qq --no-install-
   pulseaudio-utils gstreamer1.0-tools xdotool mpv flatpak libgl1-mesa-dri mesa-vulkan-drivers fonts-noto-core \
   fonts-noto-color-emoji python3-gi python3-dbus python3-pil gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
   xkb-data gdb systemd procps iproute2
+# The container runs as the caller's uid; dbus-daemon and id need it in the passwd database.
+RUN groupadd -o -g $(id -g) e2e && useradd -o -u $(id -u) -g $(id -g) -d /tmp -M e2e
 EOF
 
 names=("$@")

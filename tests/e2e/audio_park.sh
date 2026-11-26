@@ -8,6 +8,7 @@ PARK=e2e_park
 DIR=$(mktemp -d /tmp/audio-park.XXXX)
 fail() { echo "FAIL: $*" >&2; exit 1; }
 source "$ROOT/tests/e2e/wait.sh"
+pactl info > /dev/null 2>&1 || { echo "SKIP: no PulseAudio or PipeWire server"; exit 77; }
 sink_of() { pactl list short sink-inputs | awk -F'\t' -v i="$1" '$1 == i { print $2 }'; }
 sink_index() { pactl list short sinks | awk -F'\t' -v n="$1" '$2 == n { print $1 }'; }
 state_of() { pactl list short sinks | awk -F'\t' -v n="$1" '$2 == n { print $5 }'; }

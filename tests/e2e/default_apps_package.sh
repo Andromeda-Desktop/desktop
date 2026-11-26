@@ -11,6 +11,7 @@ trap 'rm -rf "$STAGE"' EXIT
 fail() { echo "FAIL: $*"; exit 1; }
 
 for app in files viewer player; do
+  [[ -f $ROOT/apps/$app/build/meson-private/install.dat ]] || { echo "SKIP: apps/$app/build is not built"; exit 77; }
   meson install -C "$ROOT/apps/$app/build" --destdir "$STAGE" --skip-subprojects --no-rebuild --quiet > /dev/null
 done
 APPS=$(find "$STAGE" -type d -path '*/share/applications' | head -n 1)
