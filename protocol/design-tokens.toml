@@ -897,6 +897,7 @@ hero = 0.5           # Home: galaxy hero height, share of the screen; the sheet 
 hero_scene = 0.28    # Home: the galaxy moves this share of the sheet's scroll
 hero_identity = 0.6  # Home: the name block moves this share of the sheet's scroll
 sheet_radius = 32.0  # Home: top corners of the sheet over the galaxy
+sheet_lift = 24.0    # Home: shadow elevation of the sheet's top edge over the light sky
 level_gap = 12.0     # Home: gap between the media tile and the two level pills
 
 [component.page]  # window content, 8
