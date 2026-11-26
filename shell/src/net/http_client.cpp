@@ -189,7 +189,7 @@ struct HttpClient::DownloadPart {
     }
     std::error_code ignored;
     std::filesystem::create_directories(path.parent_path(), ignored);
-    fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0644);
     failed = fd < 0;
     return !failed;
   }

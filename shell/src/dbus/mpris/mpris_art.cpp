@@ -3,6 +3,7 @@
 #include "dbus/mpris/mpris_service.h"
 #include "net/http_client.h"
 #include "net/uri.h"
+#include "protocols/xdg_dirs.h"
 
 #include <format>
 #include <string_view>
@@ -195,7 +196,7 @@ namespace mpris {
   std::string normalizeArtPath(std::string_view artUrl) { return uri::normalizeFileUrl(artUrl); }
 
   std::filesystem::path artCachePath(std::string_view artUrl) {
-    const std::filesystem::path cacheDir = std::filesystem::path("/tmp") / "noctalia-media-art";
+    const std::filesystem::path cacheDir = std::filesystem::path(xdg::cacheHome()) / "andromeda" / "shell" / "media-art";
     const std::size_t hash = std::hash<std::string_view>{}(artUrl);
     return cacheDir / (std::to_string(hash) + ".img");
   }

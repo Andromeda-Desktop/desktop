@@ -31,7 +31,7 @@ namespace {
     if (const std::string cache = xdg::cacheHome(); !cache.empty()) {
       return std::filesystem::path(cache) / "andromeda" / "klipy";
     }
-    return std::filesystem::path("/tmp") / "andromeda-klipy";
+    return std::filesystem::path(xdg::runtimeDir()) / "andromeda" / "klipy";
   }
 
   // Ids come from the API; keep only characters that are safe in a file name.

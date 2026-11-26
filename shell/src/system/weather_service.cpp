@@ -690,13 +690,13 @@ bool WeatherService::coordinatesValid() const noexcept {
       && m_resolvedLongitude <= 180.0;
 }
 
-std::filesystem::path WeatherService::transportCacheDir() { return std::filesystem::path("/tmp") / "noctalia-weather"; }
+std::filesystem::path WeatherService::transportCacheDir() { return stateCacheFilePath().parent_path() / "weather"; }
 
 std::filesystem::path WeatherService::stateCacheFilePath() {
   if (const std::string cache = xdg::cacheHome(); !cache.empty()) {
     return std::filesystem::path(cache) / "andromeda" / "shell" / "weather.json";
   }
-  return std::filesystem::path("/tmp") / "noctalia-weather-cache.json";
+  return std::filesystem::path(xdg::runtimeDir()) / "andromeda" / "shell" / "weather.json";
 }
 
 std::string WeatherService::formatCoordinate(double value) { return std::format("{:.4F}", value); }

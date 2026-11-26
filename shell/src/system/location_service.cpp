@@ -469,14 +469,14 @@ bool LocationService::coordinatesValid(double latitude, double longitude) noexce
 }
 
 std::filesystem::path LocationService::transportCacheDir() {
-  return std::filesystem::path("/tmp") / "noctalia-location";
+  return stateCacheFilePath().parent_path() / "location";
 }
 
 std::filesystem::path LocationService::stateCacheFilePath() {
   if (const std::string cache = xdg::cacheHome(); !cache.empty()) {
     return std::filesystem::path(cache) / "andromeda" / "shell" / "location.json";
   }
-  return std::filesystem::path("/tmp") / "noctalia-location-cache.json";
+  return std::filesystem::path(xdg::runtimeDir()) / "andromeda" / "shell" / "location.json";
 }
 
 std::string LocationService::compactLocationLabel(const std::string& name, const std::string& country) {
