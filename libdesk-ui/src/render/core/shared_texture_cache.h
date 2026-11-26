@@ -33,9 +33,12 @@ enum class SharedTextureKind : std::uint8_t {
 // filter while the result stays at least this large on both axes: exactly the mip levels the GPU would generate and
 // never sample for that coverage, so nothing on screen changes. An empty coverage keeps the full resolution, as do
 // disabled mipmaps (the renderer then samples the base level directly, so dropping it would change pixels).
+// With centerCrop the image is drawn 1:1 around the output center: the cache keeps only the centered width x height
+// region at full resolution (an unblurred request only; the shader then sees that region as the whole image).
 struct TextureCoverage {
   int width = 0;
   int height = 0;
+  bool centerCrop = false;
 
   [[nodiscard]] bool empty() const noexcept { return width <= 0 || height <= 0; }
   bool operator==(const TextureCoverage&) const = default;

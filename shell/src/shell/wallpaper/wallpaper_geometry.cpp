@@ -65,6 +65,10 @@ TextureCoverage wallpaperTextureCoverage(
   auto height = static_cast<float>(output->effectiveLogicalHeight());
   switch (fillMode) {
   case WallpaperFillMode::Center:
+    // The shader draws one image pixel per logical pixel, so only the logical output size is visible.
+    return {
+        .width = static_cast<int>(std::ceil(width)), .height = static_cast<int>(std::ceil(height)), .centerCrop = true
+    };
   case WallpaperFillMode::Repeat:
     return {};
   case WallpaperFillMode::Span: {

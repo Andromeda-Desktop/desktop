@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "core/sys/sys.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 #include "render/backend/render_backend.h"
 #include "render/core/image_file_loader.h"
@@ -88,7 +89,7 @@ namespace {
       const std::int64_t fields[] = {
           // ctime and the inode change on every write or replacement, even when a copy keeps the old mtime.
           static_cast<std::int64_t>(info.st_dev), static_cast<std::int64_t>(info.st_ino), info.st_size,
-          sys::ctimeNs(info), coverage.width, coverage.height,
+          sys::ctimeNs(info), coverage.width, coverage.height, coverage.centerCrop ? 1 : 0,
       };
       mix(fields, sizeof(fields));
       return dir / std::format("{:016x}.rgba", hash);
@@ -114,25 +115,15 @@ namespace {
       return true;
     }
 
-    // Written to a per-process temporary name and renamed, since the shell and the lock may write the same key.
+    // Replaced whole, since the shell and the lock may write the same key.
     void write(const std::filesystem::path& file, const Header& header, const std::vector<std::uint8_t>& pixels) {
-      std::error_code ec;
-      std::filesystem::create_directories(file.parent_path(), ec);
-      const std::filesystem::path temporary = std::format("{}.{}.tmp", file.string(), ::getpid());
-      {
-        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-        out.write(reinterpret_cast<const char*>(&header), sizeof(header));
-        out.write(reinterpret_cast<const char*>(pixels.data()), static_cast<std::streamsize>(pixels.size()));
-        if (!out.flush()) {
-          std::filesystem::remove(temporary, ec);
-          return;
-        }
-      }
-      std::filesystem::rename(temporary, file, ec);
-      if (ec) {
-        std::filesystem::remove(temporary, ec);
+      if (!andromeda::writeFileReplacing(
+              file, {std::string_view(reinterpret_cast<const char*>(&header), sizeof(header)),
+                     std::string_view(reinterpret_cast<const char*>(pixels.data()), pixels.size())}
+          )) {
         return;
       }
+      std::error_code ec;
       std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> files;
       for (const auto& entry : std::filesystem::directory_iterator(file.parent_path(), ec)) {
         if (entry.path().extension() == ".rgba") {
@@ -150,7 +141,7 @@ namespace {
 
   // Number of 2x halvings that keep the image at least `coverage` on both axes.
   [[nodiscard]] int reductionLevel(int width, int height, TextureCoverage coverage) {
-    if (coverage.empty()) {
+    if (coverage.empty() || coverage.centerCrop) {
       return 0;
     }
     int level = 0;
@@ -490,7 +481,9 @@ bool SharedTextureCache::resolvePending(LeaseRecord& record) {
 }
 
 TextureCoverage SharedTextureCache::effectiveCoverage(TextureCoverage coverage) {
-  return coverage.empty() || !TextureManager::globalMipmapsEnabled() ? TextureCoverage{} : coverage;
+  // A crop drops no texel the renderer samples, so it holds with mipmaps off too.
+  return coverage.empty() || (!coverage.centerCrop && !TextureManager::globalMipmapsEnabled()) ? TextureCoverage{}
+                                                                                              : coverage;
 }
 
 void SharedTextureCache::requestDecode(const SharedTextureRequest& request) {
@@ -639,7 +632,9 @@ void SharedTextureCache::workerLoop(std::size_t slot) {
     if (!alphaMask) {
       std::vector<DecodedImage> cached;
       for (const SharedTextureRequest& request : batch) {
-        const auto file = pixel_cache::fileFor(path, request.coverage);
+        // A blurred request is never cropped, so it must not read the cropped file of the same coverage.
+        const bool croppedFile = request.coverage.centerCrop && request.blur > 0.0F;
+        const auto file = croppedFile ? std::nullopt : pixel_cache::fileFor(path, request.coverage);
         DecodedImage image{.request = request};
         pixel_cache::Header header;
         if (!file || !pixel_cache::read(*file, header, image.pixels)) {
@@ -700,43 +695,78 @@ void SharedTextureCache::workerLoop(std::size_t slot) {
           .opaque = opaque,
       };
     };
-    // Only a reduced image: a full-size copy would cost as much disk as it saves decode time. Runs after the result is
-    // pushed, so a cache miss does not wait for the disk write.
-    const auto store = [&](TextureCoverage coverage) {
-      if (alphaMask || level == 0) {
+    // Copies the centered region of the full-size buffer. The kept size has the source's parity, so the crop starts
+    // on a whole pixel and the shader's center mapping samples the same texels as with the full image.
+    const auto crop = [&](DecodedImage& image) {
+      const TextureCoverage coverage = image.request.coverage;
+      if (!coverage.centerCrop || image.request.blur > 0.0F || level != 0) {
+        return false;
+      }
+      const auto kept = [](int source, int wanted) {
+        const int size = std::min(source, wanted);
+        return size + (source - size) % 2;
+      };
+      const int cropWidth = kept(width, coverage.width);
+      const int cropHeight = kept(height, coverage.height);
+      const std::size_t bytes = alphaMask ? 1U : 4U;
+      const std::size_t rowBytes = static_cast<std::size_t>(cropWidth) * bytes;
+      image.pixels.resize(rowBytes * static_cast<std::size_t>(cropHeight));
+      for (int y = 0; y < cropHeight; ++y) {
+        const std::size_t sourceRow = static_cast<std::size_t>(y + (height - cropHeight) / 2);
+        const std::size_t from =
+            (sourceRow * static_cast<std::size_t>(width) + static_cast<std::size_t>((width - cropWidth) / 2)) * bytes;
+        std::copy_n(pixels.begin() + static_cast<std::ptrdiff_t>(from), rowBytes,
+                    image.pixels.begin() + static_cast<std::ptrdiff_t>(rowBytes * static_cast<std::size_t>(y)));
+      }
+      image.width = cropWidth;
+      image.height = cropHeight;
+      return true;
+    };
+    // Only a reduced or cropped image: a full-size copy would cost as much disk as it saves decode time. Runs after
+    // the result is pushed, so a cache miss does not wait for the disk write.
+    const auto store = [&](TextureCoverage coverage, int storedWidth, int storedHeight,
+                           const std::vector<std::uint8_t>& stored) {
+      if (alphaMask) {
         return;
       }
       if (const auto file = pixel_cache::fileFor(path, coverage)) {
         pixel_cache::write(
             *file,
-            {.width = width,
-             .height = height,
+            {.width = storedWidth,
+             .height = storedHeight,
              .sourceWidth = sourceWidth,
              .sourceHeight = sourceHeight,
              .opaque = opaque ? 1U : 0U},
-            pixels
+            stored
         );
       }
     };
-    for (std::size_t i = 0; i + 1 < batch.size(); ++i) {
-      DecodedImage image = reduce(batch[i]);
+    const auto publish = [&](DecodedImage image, bool last) {
       const TextureCoverage coverage = image.request.coverage;
-      image.pixels = pixels;
+      std::optional<std::vector<std::uint8_t>> cropped;
+      if (crop(image)) {
+        if (!alphaMask) {
+          cropped = image.pixels;
+        }
+      } else if (last && (alphaMask || level == 0)) {
+        image.pixels = std::move(pixels);
+      } else {
+        image.pixels = pixels;
+      }
+      const int storedWidth = image.width;
+      const int storedHeight = image.height;
       blur(image);
       pushResult(std::move(image));
-      store(coverage);
+      if (cropped) {
+        store(coverage, storedWidth, storedHeight, *cropped);
+      } else if (level > 0) {
+        store(coverage, width, height, pixels);
+      }
+    };
+    for (std::size_t i = 0; i + 1 < batch.size(); ++i) {
+      publish(reduce(batch[i]), false);
     }
-    DecodedImage last = reduce(batch.back());
-    const TextureCoverage coverage = last.request.coverage;
-    const bool keep = !alphaMask && level > 0;
-    if (keep) {
-      last.pixels = pixels;
-    } else {
-      last.pixels = std::move(pixels);
-    }
-    blur(last);
-    pushResult(std::move(last));
-    store(coverage);
+    publish(reduce(batch.back()), true);
   }
 }
 
