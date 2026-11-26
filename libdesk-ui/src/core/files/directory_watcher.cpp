@@ -13,6 +13,10 @@ namespace {
   constexpr Logger kLog("dir-watch");
   constexpr std::uint32_t kMask = IN_CREATE | IN_DELETE | IN_MODIFY | IN_ATTRIB | IN_CLOSE_WRITE | IN_MOVED_FROM
       | IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF | IN_ONLYDIR | IN_EXCL_UNLINK;
+  // A followed path's ancestor reports only arrivals and its own end; IN_MASK_ADD keeps a wider mask another watch of
+  // the same directory set.
+  constexpr std::uint32_t kAncestorMask = IN_CREATE | IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF | IN_ONLYDIR
+      | IN_MASK_ADD;
   // A MOVED_FROM whose MOVED_TO does not come within this time was a move out of the directory.
   constexpr int kMovePairMs = 20;
 } // namespace
@@ -101,7 +105,7 @@ void DirectoryWatcher::follow(WatchId id, bool announce) {
     while (!std::filesystem::is_directory(dir, ec) && dir.has_relative_path()) {
       dir = dir.parent_path();
     }
-    int wd = inotify_add_watch(m_fd, dir.c_str(), kMask);
+    int wd = inotify_add_watch(m_fd, dir.c_str(), dir == target ? kMask : kAncestorMask);
     int error = wd < 0 ? errno : 0;
     // A directory that exists but cannot be watched (permission, watch limit): wait on its parent, whose events
     // (a chmod, a recreate) try it again.
@@ -109,7 +113,7 @@ void DirectoryWatcher::follow(WatchId id, bool announce) {
     while (wd < 0 && error != ENOENT && error != ENOTDIR && dir.has_relative_path()) {
       kLog.warn("cannot watch {}: {}; waiting on its parent", dir.string(), std::strerror(error));
       dir = dir.parent_path();
-      wd = inotify_add_watch(m_fd, dir.c_str(), kMask);
+      wd = inotify_add_watch(m_fd, dir.c_str(), kAncestorMask | IN_ATTRIB);
       error = wd < 0 ? errno : 0;
       blocked = true;
     }

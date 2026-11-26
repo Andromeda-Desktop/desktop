@@ -87,9 +87,7 @@ namespace system_font {
     std::vector<std::filesystem::path> files;
     for (const auto& file : candidates) {
       std::error_code ec;
-      if (std::filesystem::is_directory(file.parent_path(), ec)) {
-        files.push_back(file);
-      }
+      files.push_back(file);
       // Dotfile managers symlink settings.ini; editors then write the target, not the link's directory.
       if (std::filesystem::is_symlink(file, ec)) {
         if (auto target = std::filesystem::canonical(file, ec); !ec) {
