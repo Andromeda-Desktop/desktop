@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "greeter/appearance_sync.h"
 #include "greeter/greeter_config_store.h"
+#include "protocols/toml.h"
 
 #include <cerrno>
 #include <algorithm>
@@ -18,7 +19,6 @@
 #include <sstream>
 #include <string_view>
 #include <sys/stat.h>
-#include <toml++/toml.hpp>
 #include <unistd.h>
 #include <utility>
 #include <vector>

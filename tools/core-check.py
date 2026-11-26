@@ -195,6 +195,8 @@ RULES = {
                          CPP_DIRS + ("shell/tools/",), CPP,
                          r"\bstd::ofstream\b(?:\s+\w+)?\s*\((?![^,)]*(?i:tmp|temp|part|\.new))",
                          ("shell/src/config/atomic_file.", "apps/files/src/state_file.", "libdesk-app/src/app/state_store.")),
+    "toml-wrapper": ("toml++ comes in through protocol/toml.h, which silences its warnings under the project flags",
+                     CPP_DIRS + ("shell/tools/", "protocol/"), CPP, r"#include\s*<toml\+\+/", ("protocol/toml.h",)),
     "app-desk-ui": ("apps get libdesk-ui only through libdesk-app's desk_app_dep (AR7)",
                     ("apps/",), ("meson.build",), r"subproject\('libdesk-ui'|\b_?desk_ui_dep\b", ()),
     "defer-this": ("a deferred call that captures this can run after its owner is freed (a tab or window closed in the "

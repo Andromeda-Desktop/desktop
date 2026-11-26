@@ -3,6 +3,7 @@
 #include "core/fd_watch.h"
 #include "core/poll_loop.h"
 #include "core/timer_manager.h"
+#include "protocols/toml.h"
 #include "protocols/xdg_dirs.h"
 
 #include <cerrno>
@@ -15,7 +16,6 @@
 #include <string_view>
 #include <poll.h>
 #include <sys/inotify.h>
-#include <toml++/toml.hpp>
 #include <unistd.h>
 #include <utility>
 

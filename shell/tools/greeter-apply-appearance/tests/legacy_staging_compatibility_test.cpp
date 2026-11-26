@@ -4,7 +4,7 @@
 #include "greeter/greeter_preferences.h"
 #include "tools/secure_appearance_sync.h"
 
-#include <toml++/toml.hpp>
+#include "protocols/toml.h"
 
 #include <algorithm>
 #include <array>
