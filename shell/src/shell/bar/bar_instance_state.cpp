@@ -201,6 +201,8 @@ void Bar::syncInstances() {
     }
     return !found || recreate;
   });
+  // Before any create: a new surface can reuse a destroyed one's address, and the inhibitors are keyed by it.
+  syncIdleInhibitorAnchors();
   if (m_centerIslandSpaceCallback) {
     m_centerIslandSpaceCallback();
   }

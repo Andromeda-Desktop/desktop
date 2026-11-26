@@ -450,6 +450,7 @@ void Bar::closeAllInstances() {
   m_surfaceMap.clear();
   m_hoveredInstance = nullptr;
   m_instances.clear();
+  syncIdleInhibitorAnchors();
   if (m_centerIslandSpaceCallback) {
     m_centerIslandSpaceCallback();
   }
