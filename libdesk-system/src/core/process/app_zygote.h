@@ -1,5 +1,7 @@
 #pragma once
 
+#include "protocols/ipc_channel.h"
+
 #include <sys/types.h>
 
 #include <chrono>
@@ -44,6 +46,8 @@ namespace process::zygote {
     enum class Outcome { Started, Refused, Unknown };
     Outcome outcome = Outcome::Refused;
     pid_t pid = 0; // Started only
+    // Started only; pins the child even after it exits. Empty from a zygote older than this field.
+    ipc::Fd pidfd;
   };
 
   // Asks the zygote of appId to start a child. When the reply does not come within 1 s, asks for the launch's status

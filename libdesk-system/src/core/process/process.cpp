@@ -827,7 +827,7 @@ namespace {
     if (manager == nullptr) {
       return Refused;
     }
-    const auto launched =
+    auto launched =
         process::zygote::launch("appd", {.argv = args, .workingDir = workingDir, .activationToken = activationToken});
     if (launched.outcome != Started) {
       return launched.outcome;
@@ -836,10 +836,14 @@ namespace {
     std::erase(uuid, '-');
     const std::string unit = std::format("app-andromeda-{}-{}.scope", escapeSystemdUnitName(appName), uuid);
     using Property = sdbus::Struct<std::string, sdbus::Variant>;
-    const std::vector<std::uint32_t> pids(1, static_cast<std::uint32_t>(launched.pid));
+    // A pidfd names the child even after it exits and its pid is reused (PIDFDs: systemd >= 255).
+    const bool byPidfd = static_cast<bool>(launched.pidfd);
+    const sdbus::Variant members = byPidfd
+        ? sdbus::Variant{std::vector<sdbus::UnixFd>{sdbus::UnixFd{launched.pidfd.release(), sdbus::adopt_fd}}}
+        : sdbus::Variant{std::vector<std::uint32_t>(1, static_cast<std::uint32_t>(launched.pid))};
     const std::vector<Property> properties{
         {"Description", sdbus::Variant{args.front()}},
-        {"PIDs", sdbus::Variant{pids}},
+        {byPidfd ? "PIDFDs" : "PIDs", members},
         {"Slice", sdbus::Variant{std::string("app.slice")}},
         {"CollectMode", sdbus::Variant{std::string("inactive-or-failed")}},
         {"CPUWeight", sdbus::Variant{std::uint64_t{1000}}},

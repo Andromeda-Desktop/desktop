@@ -3,6 +3,7 @@
 #include "core/process/app_zygote.h"
 #include "render/text/cairo_text_renderer.h"
 
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -127,8 +128,13 @@ int main() {
     const auto result = dir / std::format("result-{}", i);
     const process::zygote::Request request{
         .argv = {self.string(), result.string()}, .workingDir = (dir / "work").string(), .activationToken = std::format("token-{}", i)};
-    expect(waitFor([&] { return process::zygote::launch("test.zygote", request).outcome == Started; }), "zygote never answered");
+    process::zygote::LaunchResult launched;
+    expect(waitFor([&] { return (launched = process::zygote::launch("test.zygote", request)).outcome == Started; }),
+           "zygote never answered");
     expect(waitFor([&] { return !readFile(result).empty(); }), std::format("child {} wrote no result (hung on a font?)", i));
+    // The pidfd names this child: it reports the exit, so a scope built from it never takes a reused pid.
+    pollfd exited{.fd = launched.pidfd.get(), .events = POLLIN, .revents = 0};
+    expect(launched.pidfd && poll(&exited, 1, 5000) == 1, std::format("child {} came with no pidfd that sees it exit", i));
     expect(readFile(result) == std::format("1 {} token-{}", (dir / "work").string(), i),
            std::format("child {} result: '{}'", i, readFile(result)));
   }

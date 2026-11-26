@@ -4,8 +4,8 @@
 #include "protocols/xdg_dirs.h"
 #include "util/string_utils.h"
 
+#include <poll.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -25,12 +25,7 @@ namespace process::zygote {
 
     // A connected SEQPACKET socket with 1 s send and receive timeouts, or -1.
     int connectTo(const std::filesystem::path& path) {
-      ipc::Fd fd = ipc::connectTo(path, std::chrono::steady_clock::now() + std::chrono::seconds(1), SOCK_SEQPACKET);
-      if (fd) {
-        const timeval timeout{.tv_sec = 1, .tv_usec = 0};
-        setsockopt(fd.get(), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-      }
-      return fd.release();
+      return ipc::connectTo(path, std::chrono::steady_clock::now() + std::chrono::seconds(1), SOCK_SEQPACKET).release();
     }
 
     bool sendMessage(int fd, const Message& message) {
@@ -38,12 +33,23 @@ namespace process::zygote {
       return send(fd, bytes.data(), bytes.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(bytes.size());
     }
 
-    std::optional<std::int32_t> receiveReply(int fd) {
-      std::int32_t reply = 0;
-      if (recv(fd, &reply, sizeof(reply), 0) != sizeof(reply)) {
+    struct Reply {
+      std::int32_t value = 0;
+      ipc::Fd pidfd; // empty from a zygote that sends none
+    };
+
+    // Waits up to 1 s.
+    std::optional<Reply> receiveReply(int fd) {
+      pollfd ready{.fd = fd, .events = POLLIN, .revents = 0};
+      if (poll(&ready, 1, 1000) != 1) {
         return std::nullopt;
       }
-      return reply;
+      std::int32_t value = 0;
+      auto received = ipc::recvFds(fd, std::as_writable_bytes(std::span(&value, 1)), 1);
+      if (received.kind != ipc::Received::Kind::Data || received.size != sizeof(value)) {
+        return std::nullopt;
+      }
+      return Reply{.value = value, .pidfd = received.fds.empty() ? ipc::Fd{} : std::move(received.fds.front())};
     }
   } // namespace
 
@@ -109,8 +115,9 @@ namespace process::zygote {
 
   LaunchResult launch(std::string_view appId, const Request& request) {
     using enum LaunchResult::Outcome;
-    const auto toResult = [](std::int32_t reply) {
-      return reply > 0 ? LaunchResult{.outcome = Started, .pid = reply} : LaunchResult{.outcome = Refused};
+    const auto toResult = [](Reply& reply) {
+      return reply.value > 0 ? LaunchResult{.outcome = Started, .pid = reply.value, .pidfd = std::move(reply.pidfd)}
+                             : LaunchResult{.outcome = Refused};
     };
     const auto path = socketPath(appId);
     Request timed = request;
@@ -125,7 +132,7 @@ namespace process::zygote {
       close(fd);
       return {.outcome = Refused};
     }
-    const auto reply = receiveReply(fd);
+    auto reply = receiveReply(fd);
     close(fd);
     if (reply) {
       return toResult(*reply);
@@ -134,9 +141,9 @@ namespace process::zygote {
     if (statusFd < 0) {
       return {.outcome = Unknown};
     }
-    const auto status = sendMessage(statusFd, StatusQuery{.id = timed.id}) ? receiveReply(statusFd) : std::nullopt;
+    auto status = sendMessage(statusFd, StatusQuery{.id = timed.id}) ? receiveReply(statusFd) : std::nullopt;
     close(statusFd);
-    return status && *status != 0 ? toResult(*status) : LaunchResult{.outcome = Unknown};
+    return status && status->value != 0 ? toResult(*status) : LaunchResult{.outcome = Unknown};
   }
 
 } // namespace process::zygote

@@ -4,7 +4,9 @@
 
 #include <dlfcn.h>
 #include <glib.h>
+#include <fcntl.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -105,13 +107,24 @@ namespace process::zygote {
     struct LaunchRecord {
       std::string id;
       std::int32_t reply;
+      ipc::Fd pidfd;
     };
     std::deque<LaunchRecord> outcomes;
-    const auto record = [&outcomes](std::string id, std::int32_t reply) {
+    const auto record = [&outcomes](std::string id, std::int32_t reply, ipc::Fd pidfd = {}) -> const LaunchRecord& {
       if (outcomes.size() == 64) {
         outcomes.pop_front();
       }
-      outcomes.push_back({.id = std::move(id), .reply = reply});
+      return outcomes.emplace_back(LaunchRecord{.id = std::move(id), .reply = reply, .pidfd = std::move(pidfd)});
+    };
+    // The reply with the child's pidfd, so the client names the child even after it exits and its pid is reused.
+    const auto answer = [](int conn, const LaunchRecord* launch) {
+      const std::int32_t reply = launch != nullptr ? launch->reply : 0;
+      const std::string_view bytes(reinterpret_cast<const char*>(&reply), sizeof(reply));
+      std::vector<int> fds;
+      if (launch != nullptr && launch->pidfd) {
+        fds.push_back(launch->pidfd.get());
+      }
+      (void)ipc::sendFds(conn, bytes, fds, std::chrono::steady_clock::now() + std::chrono::seconds(1));
     };
     std::array<char, 64 * 1024> buffer{};
     for (;;) {
@@ -129,8 +142,7 @@ namespace process::zygote {
       auto message = size > 0 ? decode(std::span(buffer.data(), static_cast<std::size_t>(size))) : std::nullopt;
       if (const auto* status = message ? std::get_if<StatusQuery>(&*message) : nullptr) {
         const auto found = std::ranges::find(outcomes, status->id, &LaunchRecord::id);
-        const std::int32_t reply = found != outcomes.end() ? found->reply : 0;
-        send(conn, &reply, sizeof(reply), MSG_NOSIGNAL);
+        answer(conn, found != outcomes.end() ? &*found : nullptr);
         close(conn);
         continue;
       }
@@ -148,8 +160,15 @@ namespace process::zygote {
         std::fprintf(stderr, "zygote: replaced by an upgrade; exiting\n");
         std::exit(0);
       }
-      const pid_t pid = fork();
+      // The child waits for EOF on gate until the pidfd is open: it cannot exit (and be reaped) before then.
+      std::array<int, 2> gate{-1, -1};
+      const pid_t pid = pipe2(gate.data(), O_CLOEXEC) == 0 ? fork() : -1;
       if (pid == 0) {
+        close(gate[1]);
+        char go = 0;
+        while (read(gate[0], &go, 1) < 0 && errno == EINTR) {
+        }
+        close(gate[0]);
         close(listener);
         close(conn);
         sys::resetChildSignals();
@@ -169,9 +188,13 @@ namespace process::zygote {
         }
         return std::move(*request);
       }
-      const std::int32_t reply = pid > 0 ? pid : -1;
-      record(request->id, reply);
-      send(conn, &reply, sizeof(reply), MSG_NOSIGNAL);
+      ipc::Fd pidfd(pid > 0 ? static_cast<int>(::syscall(SYS_pidfd_open, pid, 0U)) : -1);
+      for (const int end : gate) {
+        if (end >= 0) {
+          close(end);
+        }
+      }
+      answer(conn, &record(request->id, pid > 0 ? pid : -1, std::move(pidfd)));
       close(conn);
     }
   }
