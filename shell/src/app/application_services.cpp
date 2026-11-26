@@ -9,6 +9,7 @@
 #include "compositors/andromeda/andromeda_audio_provider.h"
 #include "compositors/compositor_detect.h"
 #include "config/config_types.h"
+#include "core/blocking_pool.h"
 #include "core/build_info.h"
 #include "core/deferred_call.h"
 #include "core/shared_worker.h"
@@ -124,6 +125,8 @@
 #include "util/file_utils.h"
 #include "util/string_utils.h"
 
+#include <mutex>
+#include <atomic>
 #include <array>
 #include <algorithm>
 #include <chrono>
@@ -194,16 +197,32 @@ namespace {
     if (home == nullptr) {
       return;
     }
-    for (const char* dir : {"gtk-3.0", "gtk-4.0"}) {
-      const std::string path = std::string(home) + "/.config/" + dir + "/settings.ini";
-      GKeyFile* ini = g_key_file_new();
-      if (g_key_file_load_from_file(ini, path.c_str(), G_KEY_FILE_KEEP_COMMENTS, nullptr) != FALSE
-          && g_key_file_has_key(ini, "Settings", "gtk-application-prefer-dark-theme", nullptr) != FALSE) {
-        g_key_file_set_boolean(ini, "Settings", "gtk-application-prefer-dark-theme", mode == "light" ? FALSE : TRUE);
-        g_key_file_save_to_file(ini, path.c_str(), nullptr);
+    // g_key_file_save_to_file fsyncs: off the main thread, only on a change, and the newest request wins.
+    static std::atomic<std::uint64_t> latest{0};
+    static std::mutex writing;
+    const std::uint64_t request = ++latest;
+    const gboolean dark = mode == "light" ? FALSE : TRUE;
+    BlockingPool::instance().run([request, dark, home = std::string(home)] {
+      const std::scoped_lock lock(writing);
+      if (request != latest.load()) {
+        return;
       }
-      g_key_file_free(ini);
-    }
+      for (const char* dir : {"gtk-3.0", "gtk-4.0"}) {
+        const std::string path = home + "/.config/" + dir + "/settings.ini";
+        GKeyFile* ini = g_key_file_new();
+        GError* error = nullptr;
+        if (g_key_file_load_from_file(ini, path.c_str(), G_KEY_FILE_KEEP_COMMENTS, nullptr) != FALSE
+            && g_key_file_has_key(ini, "Settings", "gtk-application-prefer-dark-theme", nullptr) != FALSE) {
+          const gboolean current = g_key_file_get_boolean(ini, "Settings", "gtk-application-prefer-dark-theme", &error);
+          if (error != nullptr || current != dark) {
+            g_key_file_set_boolean(ini, "Settings", "gtk-application-prefer-dark-theme", dark);
+            g_key_file_save_to_file(ini, path.c_str(), nullptr);
+          }
+        }
+        g_clear_error(&error);
+        g_key_file_free(ini);
+      }
+    });
   }
 } // namespace
 
