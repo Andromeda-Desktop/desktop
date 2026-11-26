@@ -4,6 +4,7 @@
 #include "protocols/xdg_dirs.h"
 #include "shell/settings/settings_content.h"
 #include "shell/settings/settings_content_common.h"
+#include "shell/settings/settings_control_factory.h"
 #include "shell/settings/settings_selection_style.h"
 #include "ui/builders.h"
 #include "ui/controls/flex.h"
@@ -91,14 +92,15 @@ namespace settings {
     // A row the settings file customises carries the same reset control as registry rows: it clears the key so
     // config.toml or the built-in default applies again.
     std::unique_ptr<Flex> makeInputRow(
-        std::string_view title, std::unique_ptr<Node> control, std::string_view key, const SettingsInputContext& ctx
+        std::string_view title, std::unique_ptr<Node> control, std::string_view key, const SettingsInputContext& ctx,
+        std::string_view subtitle = {}
     ) {
       const float scale = ctx.scale;
-      auto row = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * scale, .minHeight = metrics::kRowHeight * scale, .fillWidth = true});
-      row->addChild(
+      auto titleRow = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * scale, .fillWidth = true});
+      titleRow->addChild(
           makeLabel(title, Style::fontSizeBody * scale, colorSpecFromRole(ColorRole::Label1), FontWeight::Medium)
       );
-      row->addChild(ui::spacer());
+      auto row = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * scale});
       if (ctx.input->customized(key)) {
         row->addChild(
             ui::button({
@@ -115,7 +117,7 @@ namespace settings {
         );
       }
       row->addChild(std::move(control));
-      return row;
+      return SettingsControlFactory::layoutRow(std::move(titleRow), subtitle, true, std::move(row), scale);
     }
 
     std::unique_ptr<Node> makeInputSelect(
@@ -480,21 +482,24 @@ namespace settings {
       Flex* body = addSettingsCard(content, i18n::tr("settings.input.touchpad"), ctx.scale);
       addToggleRow(*body, "settings.input.touchpad.enabled", "input.touchpad.enabled", ctx);
 
-      const auto boolRow = [&](std::string_view titleKey, std::string_view key) {
+      const auto boolRow = [&](std::string_view titleKey, std::string_view key, std::string_view subtitle = {}) {
         body->addChild(makeInputRow(
             i18n::tr(titleKey),
             makeInputToggle(
                 input.value(key) == "true", ctx.scale,
                 [set = ctx.set, key = std::string(key)](bool checked) { set(key, checked ? "true" : "false"); }
             ),
-            key, ctx
+            key, ctx, subtitle
         ));
       };
 
       boolRow("settings.input.touchpad.tap", "input.touchpad.tap");
       boolRow("settings.input.touchpad.natural-scroll", "input.touchpad.natural_scroll");
       boolRow("settings.input.touchpad.disable-while-typing", "input.touchpad.disable_while_typing");
-      boolRow("settings.input.touchpad.left-handed", "input.touchpad.left_handed");
+      boolRow(
+          "settings.input.touchpad.left-handed", "input.touchpad.left_handed",
+          i18n::tr("settings.input.touchpad.left-handed-subtitle")
+      );
       boolRow("settings.input.touchpad.natural-swipe", "input.touchpad.natural_swipe");
       boolRow("settings.input.touchpad.disable-on-external-mouse", "input.touchpad.disable_on_external_mouse");
 

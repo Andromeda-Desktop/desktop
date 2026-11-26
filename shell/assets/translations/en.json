@@ -7270,6 +7270,7 @@
       "touchpad.natural-scroll": "Natural scrolling",
       "touchpad.disable-while-typing": "Disable while typing",
       "touchpad.left-handed": "Left-handed",
+      "touchpad.left-handed-subtitle": "Swaps the left and right click areas. Taps stay the same.",
       "touchpad.click-method": "Click method",
       "touchpad.click-method.button-areas": "Button areas",
       "touchpad.click-method.clickfinger": "Click-finger",

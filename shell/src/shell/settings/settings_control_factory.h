@@ -39,6 +39,11 @@ namespace settings {
     // Plain title/subtitle/control row for pages without a SettingEntry.
     [[nodiscard]] static std::unique_ptr<Flex>
     makeRow(std::string_view title, std::unique_ptr<Node> control, float scale, std::string_view subtitle = {});
+    // Title (+ subtitle) beside `actions`; a click on the row acts on the last action when it is a switch or menu.
+    [[nodiscard]] static std::unique_ptr<Flex> layoutRow(
+        std::unique_ptr<Flex> titleRow, std::string_view subtitle, bool tightCopy, std::unique_ptr<Flex> actions,
+        float scale
+    );
 
     [[nodiscard]] std::unique_ptr<Toggle> makeToggle(
         bool checked, bool enabled, const std::vector<std::string>& path,
@@ -103,10 +108,6 @@ namespace settings {
     [[nodiscard]] std::unique_ptr<Flex> makeOverrideResetActions(const std::vector<std::string>& path);
 
   private:
-    [[nodiscard]] static std::unique_ptr<Flex> layoutRow(
-        std::unique_ptr<Flex> titleRow, std::string_view subtitle, bool tightCopy, std::unique_ptr<Flex> actions,
-        float scale
-    );
     [[nodiscard]] std::unique_ptr<Flex>
     makeStatusBadge(std::string_view label, const ColorSpec& fill, const ColorSpec& color, bool matchResetHeight);
     // Resets several config paths as one setting (e.g. a range slider's low + high paths).
