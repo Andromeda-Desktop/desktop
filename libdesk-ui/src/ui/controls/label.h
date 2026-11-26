@@ -90,6 +90,8 @@ public:
   [[nodiscard]] const TextFont& font() const noexcept;
   [[nodiscard]] TextAlign textAlign() const noexcept;
   [[nodiscard]] TextEllipsize ellipsize() const noexcept;
+  // The last layout cut the text; valid after arrange.
+  [[nodiscard]] bool ellipsized() const noexcept { return m_ellipsized; }
   [[nodiscard]] LabelBaselineMode baselineMode() const noexcept { return m_baselineMode; }
   [[nodiscard]] float baselineOffset() const noexcept { return m_baselineOffset; }
   // Left edge of the drawn text inside the label (alignment and scroll included).
@@ -157,6 +159,7 @@ private:
   // Line count from the last measure pass; the arrange re-measure must agree
   // (line breaking is decided once, on measure). -1 until first measure.
   int m_measuredLineCount = -1;
+  bool m_ellipsized = false;
 
   float m_userMaxWidth = 0.0F;
   int m_userMaxLines = 0;

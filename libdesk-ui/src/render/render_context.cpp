@@ -668,7 +668,8 @@ TextMetrics RenderContext::measureTextScaled(
       .inkLeft = m.inkLeft,
       .inkRight = m.inkRight,
       .lineCount = m.lineCount,
-      .alignOffsetX = m.alignOffsetX
+      .alignOffsetX = m.alignOffsetX,
+      .ellipsized = m.ellipsized
   };
 }
 

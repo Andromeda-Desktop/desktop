@@ -644,6 +644,7 @@ CairoTextRenderer::TextMetrics CairoTextRenderer::metricsFromLayout(float conten
   m.inkLeft = inkLeft;
   m.inkRight = inkRight;
   m.lineCount = pango_layout_get_line_count(layout);
+  m.ellipsized = pango_layout_is_ellipsized(layout) != FALSE;
   // Whole raster pixels, as rasterizeLayout's blockLeftPx.
   m.alignOffsetX = static_cast<float>(logical.x / PANGO_SCALE) * invScale;
   return m;

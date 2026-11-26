@@ -124,9 +124,6 @@ void StatusRow::setData(const Data& data) {
   m_status->setVisible(!data.status.empty());
   m_status->setParticipatesInLayout(!data.status.empty());
   m_time->setText(data.time);
-  if (m_rail) {
-    m_area->setTooltip(data.name);
-  }
   applyState();
   markLayoutDirty();
 }
@@ -157,7 +154,6 @@ void StatusRow::setRail(bool rail) {
   setJustify(rail ? FlexJustify::Center : FlexJustify::Start);
   m_text->setVisible(!rail);
   m_text->setParticipatesInLayout(!rail);
-  m_area->setTooltip(rail ? m_data.name : std::string());
   applyState();
   markLayoutDirty();
 }
@@ -264,6 +260,13 @@ void StatusRow::placeArea() {
   if (m_area != nullptr) {
     m_area->setPosition(0.0F, 0.0F);
     m_area->setSize(width(), height());
+    // Set only on a change: a new tooltip while hovered restarts the shown one.
+    std::string tooltip = m_rail || m_name->ellipsized() ? m_data.name : std::string();
+    const TooltipContent current = m_area->tooltipContent();
+    const auto* shown = std::get_if<std::string>(&current);
+    if (shown != nullptr ? *shown != tooltip : !tooltip.empty()) {
+      m_area->setTooltip(std::move(tooltip));
+    }
   }
   m_shadow->setPosition(0.0F, Tokens::elevationE1.keyY * m_scale);
   m_shadow->setSize(width(), height());

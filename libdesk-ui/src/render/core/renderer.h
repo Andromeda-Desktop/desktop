@@ -89,6 +89,8 @@ struct TextMetrics {
   // Left edge of the leftmost line within maxWidth for wrapped text. Drawn text starts at the draw x, so a
   // caller that needs each line where Pango placed it (e.g. right-aligned RTL paragraphs) offsets by this.
   float alignOffsetX = 0.0F;
+  // Pango cut the text to fit maxWidth/maxLines.
+  bool ellipsized = false;
 };
 
 // One line of text as 8-bit coverage at the renderer scale (a compositor glass mask). left/top: the bitmap's

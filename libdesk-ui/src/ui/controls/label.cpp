@@ -620,6 +620,7 @@ LayoutSize Label::measureWithConstraints(Renderer& renderer, const LayoutConstra
   if (m_sensitive) {
     renderer.setTextCaching(true);
   }
+  m_ellipsized = metrics.ellipsized;
   // Line breaking is decided once, on the measure pass. A divergent line count
   // on arrange means the wrap budget drifted between phases — the baseline mode
   // would flip between measure and paint (renders as ±1px vertical jitter), so

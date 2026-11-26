@@ -51,6 +51,7 @@ public:
     int lineCount = 0;      // laid-out line count (0 for empty text)
     // Left edge of the leftmost line within maxWidth; rasterizeLayout crops it.
     float alignOffsetX = 0.0F;
+    bool ellipsized = false;
   };
 
   CairoTextRenderer();
