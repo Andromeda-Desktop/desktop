@@ -9,6 +9,9 @@
 
 class CompositorPlatform;
 class ConfigService;
+namespace greeter {
+  enum class GreeterSyncLaunch;
+}
 namespace noctalia::theme {
   class ThemeService;
 }
@@ -40,6 +43,8 @@ public:
 
 private:
   void reportFailure(bool quiet);
+  // Main loop, after the staging job of the current sync.
+  void onLaunched(std::uint64_t generation, bool quiet, greeter::GreeterSyncLaunch launch);
 
   ConfigService& m_config;
   noctalia::theme::ThemeService& m_theme;

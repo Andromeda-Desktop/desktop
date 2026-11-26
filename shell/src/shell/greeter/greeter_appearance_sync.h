@@ -29,26 +29,25 @@ namespace greeter {
 
   enum class GreeterSyncLaunch {
     Failed,
-    Busy,
     LaunchedConstrained,
     LaunchedLegacy,
     StagedOnly,
   };
 
+  using SyncLaunched = std::function<void(GreeterSyncLaunch)>;
   using SyncCompletion = std::function<void(bool success)>;
 
   // True when noctalia-greeter and the privileged apply helper are installed.
   [[nodiscard]] bool appearanceSyncAvailable(const ShellGreeterSyncConfig& greeterSync) noexcept;
 
-  // Negotiates the installed helper protocol before staging. Current helpers receive
-  // an appearance-only payload through pkexec and --sync; older helpers retain the
-  // administrator-authenticated positional mode and its session payload. Returns Busy
-  // without touching staging while another sync runs. Legacy mode may return StagedOnly
-  // when no login session can host a Polkit prompt. onComplete runs (on the main loop's thread)
-  // only after a successfully launched helper exits.
-  [[nodiscard]] GreeterSyncLaunch syncAppearanceToGreeterAsync(
-      const ConfigService& config, std::string_view resolvedThemeMode, SyncCompletion onComplete = {},
-      const CompositorPlatform* platform = nullptr, bool logindOnSystemBus = false
+  // Copies the inputs now and stages them on SharedWorker; false (nothing posted) while another sync runs. The
+  // staging job negotiates the helper protocol: current helpers receive an appearance-only payload through pkexec
+  // and --sync; older helpers keep the administrator-authenticated positional mode and its session payload, and give
+  // StagedOnly when no login session can host a Polkit prompt. onLaunched runs on the main loop after staging, with
+  // the helper started when the result is Launched*. onComplete runs (on a process thread) after that helper exits.
+  [[nodiscard]] bool syncAppearanceToGreeterAsync(
+      const ConfigService& config, std::string_view resolvedThemeMode, SyncLaunched onLaunched = {},
+      SyncCompletion onComplete = {}, const CompositorPlatform* platform = nullptr, bool logindOnSystemBus = false
   );
 
   // The lock clock's gradient ink (packed 0xRRGGBBAA, LockScreen::setClockGradient); synced as [lockscreen] clock_ink_*.

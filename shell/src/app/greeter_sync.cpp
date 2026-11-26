@@ -68,10 +68,14 @@ void GreeterSync::sync(bool quiet) {
     });
   };
 
-  const auto launch = greeter::syncAppearanceToGreeterAsync(
-      m_config, m_theme.resolvedShellMode(), complete, &m_platform, m_hooks.logindOnSystemBus()
-  );
-  if (launch == greeter::GreeterSyncLaunch::Busy) {
+  const auto launched = [this, generation, quiet](greeter::GreeterSyncLaunch launch) {
+    if (generation == m_generation) {
+      onLaunched(generation, quiet, launch);
+    }
+  };
+  if (!greeter::syncAppearanceToGreeterAsync(
+          m_config, m_theme.resolvedShellMode(), launched, complete, &m_platform, m_hooks.logindOnSystemBus()
+      )) {
     // A change (or a finished wallpaper bake) during a running sync syncs again after it, or the greeter keeps the
     // older look until an unrelated sync. The helper's deadline bounds the retries.
     if (quiet) {
@@ -87,6 +91,9 @@ void GreeterSync::sync(bool quiet) {
 
   m_generation = generation;
   m_timeoutTimer.stop();
+}
+
+void GreeterSync::onLaunched(std::uint64_t generation, bool quiet, greeter::GreeterSyncLaunch launch) {
   if (launch == greeter::GreeterSyncLaunch::Failed) {
     reportFailure(quiet);
     return;
