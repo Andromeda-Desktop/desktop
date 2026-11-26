@@ -1,3 +1,4 @@
+#include "config/config_service.h"
 #include "core/files/file_watcher.h"
 #include "shell/settings/settings_content_default_apps.h"
 #include "shell/settings/settings_window.h"
@@ -29,7 +30,16 @@ void SettingsWindow::addDefaultAppsContent(float scale) {
                             ) { return default_apps::effectiveDefault(category); },
           .setDefault =
               [this](default_apps::Category category, std::string desktopId) {
-                default_apps::setUserDefault(category, desktopId);
+                default_apps::setUserDefault(
+                    category, desktopId,
+                    [config = m_config, alive = std::weak_ptr<void>(m_aliveGuard)](
+                        bool ok, const std::filesystem::path& failedPath
+                    ) {
+                      if (!ok && !alive.expired() && config != nullptr) {
+                        config->notifySaveFailed(failedPath);
+                      }
+                    }
+                );
                 requestContentRebuild();
               },
       }

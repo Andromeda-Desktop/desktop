@@ -96,6 +96,10 @@ public:
   // unlabeled subscribers are reported by registration index.
   void addReloadCallback(ReloadCallback callback, std::string_view label = {});
   void setNotificationManager(NotificationManager* manager);
+  // A user-facing save that failed on disk: one critical notification names the file, and each live subscriber (an
+  // open Settings window) shows the error. The change stays applied in memory until the next start.
+  void notifySaveFailed(const std::filesystem::path& path);
+  void addSaveFailedCallback(std::weak_ptr<const void> owner, std::function<void()> callback);
   void forceReload();
   // forceReload() with every section marked changed, for edits that no config diff shows (dev token reload).
   void reloadAllSections();
@@ -317,6 +321,9 @@ private:
   ConfigProblem m_overridesParseError;
   ConfigProblem m_pendingError;             // parse error from initial load, notified once the manager is wired up
   uint32_t m_configErrorNotificationId = 0; // ID of the active config-error notification, 0 if none
+  uint32_t m_saveFailedNotificationId = 0;
+  std::vector<std::pair<std::weak_ptr<const void>, std::function<void()>>> m_saveFailedCallbacks;
+  std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   noctalia::config::LegacyConfigIssues m_legacyConfigIssues;
   std::string m_loggedLegacyIssueFingerprint;
   bool m_legacyReminderPending = false;

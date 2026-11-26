@@ -227,6 +227,13 @@ void SettingsWindow::initialize(
   m_dependencies = dependencies;
   m_upower = upower;
   m_accounts = accounts;
+  if (m_config != nullptr) {
+    m_config->addSaveFailedCallback(m_aliveGuard, [this] {
+      if (isOpen()) {
+        markSettingsWriteError(i18n::tr("settings.errors.write"));
+      }
+    });
+  }
   settings::prefetchFontFamilies();
   KeybindRecorder::setRecordingObserver([this](bool recording) {
     if (m_shortcutsInhibitor != nullptr) {

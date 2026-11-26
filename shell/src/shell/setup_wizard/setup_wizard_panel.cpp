@@ -887,9 +887,15 @@ std::unique_ptr<Flex> SetupWizardPanel::buildApps(float scale) {
         .horizontalPadding = Tokens::spaceP8 * scale,
         .width = kChoiceWidth * scale,
         .onSelectionChanged =
-            [category, ids = std::move(ids)](std::size_t index, std::string_view /*label*/) {
+            [this, category, ids = std::move(ids)](std::size_t index, std::string_view /*label*/) {
               if (index < ids.size()) {
-                (void)default_apps::setUserDefault(category, ids[index]);
+                default_apps::setUserDefault(
+                    category, ids[index], [config = m_config](bool ok, const std::filesystem::path& failedPath) {
+                      if (!ok && config != nullptr) {
+                        config->notifySaveFailed(failedPath);
+                      }
+                    }
+                );
               }
             },
     }));

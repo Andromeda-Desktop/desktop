@@ -2457,7 +2457,14 @@ bool ConfigService::writeOverridesToFile(const OverrideDiagnostics& known) {
     return false;
   }
   std::string text = out.str();
-  writeTextFileAtomicAsync(m_overridesPath, text);
+  writeTextFileAtomicAsync(
+      m_overridesPath, text, std::nullopt,
+      [this, alive = std::weak_ptr<int>(m_alive), path = m_overridesPath](bool ok) {
+        if (!ok && !alive.expired()) {
+          notifySaveFailed(path);
+        }
+      }
+  );
   m_persistedOverridesTable = m_overridesTable;
   m_writtenOverridesContent = std::move(text);
   return true;

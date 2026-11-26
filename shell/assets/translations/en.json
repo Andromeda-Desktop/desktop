@@ -1876,6 +1876,8 @@
       "network-connect-failed-title": "Could not connect to {ssid}",
       "polkit-agent": "Polkit Agent",
       "polkit-no-session": "Polkit agent needs logind, elogind, or XDG_SESSION_ID. On seatd-only setups it cannot register for graphical prompts. Use terminal pkexec for greeter sync, or install elogind for in-session authentication.",
+      "save-failed-body": "Could not write {path}. The change applies now but is lost at the next start.",
+      "save-failed-title": "Settings not saved",
       "screen-time-reset": "Screen Time",
       "screen-time-reset-success": "Usage history cleared.",
       "session-bus-unavailable": "Session bus unavailable",

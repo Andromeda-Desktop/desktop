@@ -685,6 +685,29 @@ void ConfigService::setNotificationManager(NotificationManager* manager) {
   }
 }
 
+void ConfigService::notifySaveFailed(const std::filesystem::path& path) {
+  kLog.warn("save failed: {}", path.string());
+  std::erase_if(m_saveFailedCallbacks, [](const auto& entry) { return entry.first.expired(); });
+  for (const auto& [owner, callback] : m_saveFailedCallbacks) {
+    callback();
+  }
+  if (m_notificationManager == nullptr) {
+    return;
+  }
+  if (m_saveFailedNotificationId != 0) {
+    m_notificationManager->close(m_saveFailedNotificationId);
+  }
+  m_saveFailedNotificationId = m_notificationManager->addInternal(
+      "Noctalia", i18n::tr("notifications.internal.save-failed-title"),
+      i18n::tr("notifications.internal.save-failed-body", "path", path.string()), Urgency::Critical, 0
+  );
+}
+
+void ConfigService::addSaveFailedCallback(std::weak_ptr<const void> owner, std::function<void()> callback) {
+  std::erase_if(m_saveFailedCallbacks, [](const auto& entry) { return entry.first.expired(); });
+  m_saveFailedCallbacks.emplace_back(std::move(owner), std::move(callback));
+}
+
 void ConfigService::forceReload() {
   const auto oldDefault = m_defaultWallpaperPath;
   const auto oldLast = m_lastWallpaperPath;

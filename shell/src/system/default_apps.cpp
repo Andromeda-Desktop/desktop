@@ -77,15 +77,33 @@ namespace default_apps {
     }
   } // namespace
 
-  bool setUserDefault(Category category, const std::string& desktopId) {
-    bool ok = setDefault(mimeAppsListPath(), category, desktopId);
+  void setUserDefault(Category category, const std::string& desktopId, SetDefaultDone done) {
+    std::vector<std::filesystem::path> lists{mimeAppsListPath()};
     for (const std::string& prefix : currentDesktopPrefixes()) {
-      const std::filesystem::path list = configHome() / (prefix + "mimeapps.list");
+      std::filesystem::path list = configHome() / (prefix + "mimeapps.list");
       if (!currentDefault(list, category).empty()) {
-        ok = setDefault(list, category, desktopId) && ok;
+        lists.push_back(std::move(list));
       }
     }
-    return ok;
+    struct Pending {
+      std::size_t remaining = 0;
+      std::filesystem::path failedPath;
+      SetDefaultDone done;
+    };
+    auto pending = std::make_shared<Pending>(Pending{lists.size(), {}, std::move(done)});
+    for (const auto& list : lists) {
+      const bool queued = setDefault(list, category, desktopId, [pending, list](bool ok) {
+        if (!ok && pending->failedPath.empty()) {
+          pending->failedPath = list;
+        }
+        if (--pending->remaining == 0 && pending->done) {
+          pending->done(pending->failedPath.empty(), pending->failedPath);
+        }
+      });
+      if (!queued) {
+        return;
+      }
+    }
   }
 
   std::string effectiveDefault(Category category) {
@@ -183,7 +201,9 @@ namespace default_apps {
     return byMime.empty() ? byCategory : byMime;
   }
 
-  bool setDefault(const std::filesystem::path& path, Category category, const std::string& desktopId) {
+  bool setDefault(
+      const std::filesystem::path& path, Category category, const std::string& desktopId, andromeda::WriteDone done
+  ) {
     const auto it = std::ranges::find(kCategories, category, &CategorySpec::category);
     if (it == kCategories.end()) {
       return false;
@@ -238,7 +258,7 @@ namespace default_apps {
     for (const std::string& line : lines) {
       text += line + '\n';
     }
-    writeTextFileAtomicAsync(path, std::move(text));
+    writeTextFileAtomicAsync(path, std::move(text), std::nullopt, std::move(done));
     return true;
   }
 
