@@ -194,9 +194,27 @@ namespace {
     expect(g_syntheticMigrationApplications == 1, "synthetic upgrade did not execute exactly one pending body");
   }
 
+  void checkTaskbarCombineMigration() {
+    toml::table root = toml::parse(
+        "config_version = 17\n"
+        "[widget.on]\ncombine_apps = true\n"
+        "[widget.off]\ncombine_apps = false\n"
+        "[widget.enum]\ncombine_apps = \"when_full\"\n"
+        "[widget.other]\nrunning_bar = true\n"
+    );
+    noctalia::config::schema::Diagnostics diag;
+    const int applied = noctalia::config::applyPendingConfigMigrations(root, 17, diag);
+    expect(applied == noctalia::config::currentConfigVersion(), "combine migration did not reach current version");
+    expect(root["widget"]["on"]["combine_apps"].value<std::string>() == "always", "true did not become always");
+    expect(root["widget"]["off"]["combine_apps"].value<std::string>() == "never", "false did not become never");
+    expect(root["widget"]["enum"]["combine_apps"].value<std::string>() == "when_full", "an enum value was rewritten");
+    expect(!root["widget"]["other"]["combine_apps"], "a widget without the key gained one");
+  }
+
 } // namespace
 
 int main() {
+  checkTaskbarCombineMigration();
   checkLockscreenThemeMigration();
   checkVersionGating();
   checkReminderFingerprint();

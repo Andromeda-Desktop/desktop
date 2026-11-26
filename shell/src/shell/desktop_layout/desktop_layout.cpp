@@ -1,19 +1,24 @@
 #include "shell/desktop_layout/desktop_layout.h"
 
 #include "compositors/settings_control.h"
+#include "config/config_service.h"
 #include "i18n/i18n.h"
 #include "render/scene/rect_node.h"
 #include "ui/builders.h"
+#include "shell/settings/settings_registry.h"
 #include "shell/settings/settings_selection_style.h"
 #include "ui/style.h"
 #include "ui/palette.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <iterator>
 #include <optional>
 #include <ranges>
 #include <span>
+#include <type_traits>
+#include <variant>
 
 namespace desktop_layout {
 
@@ -62,6 +67,7 @@ namespace desktop_layout {
       std::int64_t padding;       // the leading end
       std::int64_t paddingEnd;    // the trailing end
       std::int64_t widgetSpacing; // between widgets in a lane
+      bool bare = false;          // no surface: background, blur, shadow and border off (macOS menu bar)
     };
     struct RowInt {
       std::string_view key;
@@ -87,6 +93,20 @@ namespace desktop_layout {
     // macOS 12 from the leading edge, 16 from the trailing edge and between items.
     const BarRow* rowFor(std::string_view preset) {
       static const BarRow windows{
+          {"weather"}, {"start", "search_pill", "task_view", "windows_taskbar"},
+          {"tray", "island_divider", "group:status", "island_divider", "windows_clock", "notifications", "show_desktop"},
+          48, std::nullopt, 0, 0, 4
+      };
+      static const BarRow macos{
+          {"brand", "macos_app"}, {}, {"tray", "group:status", "launcher_button", "control_center_button", "macos_clock", "notifications"},
+          32, std::nullopt, 12, 16, 16, true
+      };
+      return preset == "windows" ? &windows : preset == "macos" ? &macos : nullptr;
+    }
+
+    // The v1 rows: bars saved before Desktop Layouts v2 still read as their preset.
+    const BarRow* legacyRowFor(std::string_view preset) {
+      static const BarRow windows{
           {}, {"start", "task_view", "windows_taskbar"}, {"tray", "group:status", "windows_clock", "notifications", "show_desktop"}, 48,
           std::nullopt, 0, 0, 4
       };
@@ -95,6 +115,28 @@ namespace desktop_layout {
       };
       return preset == "windows" ? &windows : preset == "macos" ? &macos : nullptr;
     }
+
+    // Per-widget settings a row writes: (widget, key, value).
+    struct WidgetSetting {
+      std::string_view widget;
+      std::string_view key;
+      std::variant<bool, std::int64_t, std::string_view> value;
+    };
+    std::span<const WidgetSetting> widgetSettings(std::string_view preset) {
+      static const std::array<WidgetSetting, 3> kWindows{{
+          {"status_battery", "show_label", true},
+          {"tray", "bar_slots", std::int64_t{3}},
+          {"notifications", "show_count", true},
+      }};
+      static const std::array<WidgetSetting, 2> kMacos{{
+          {"launcher_button", "glyph", std::string_view("search")},
+          {"tray", "bar_slots", std::int64_t{5}},
+      }};
+      return preset == "windows" ? std::span<const WidgetSetting>(kWindows)
+          : preset == "macos"    ? std::span<const WidgetSetting>(kMacos)
+                                 : std::span<const WidgetSetting>{};
+    }
+    constexpr std::array<std::string_view, 4> kBareKeys{"background_opacity", "compositor_blur", "shadow", "border_width"};
 
     std::span<const std::string_view> capsuledWidgets(std::string_view preset) {
       static constexpr std::array<std::string_view, 2> kWindows{"windows_clock", "notifications"};
@@ -106,6 +148,17 @@ namespace desktop_layout {
       std::vector<Path> out;
       for (const std::string_view key : {"start", "center", "end", "capsule_group", "solid_opacity"}) {
         out.push_back(Path{"bar", first, std::string(key)});
+      }
+      for (const std::string_view key : kBareKeys) {
+        out.push_back(Path{"bar", first, std::string(key)});
+      }
+      for (const std::string_view preset : {"windows", "macos"}) {
+        for (const WidgetSetting& setting : widgetSettings(preset)) {
+          Path path{"widget", std::string(setting.widget), std::string(setting.key)};
+          if (!std::ranges::contains(out, path)) {
+            out.push_back(std::move(path));
+          }
+        }
       }
       for (const RowInt& field : kRowGeometry) {
         out.push_back(Path{"bar", first, std::string(field.key)});
@@ -129,18 +182,19 @@ namespace desktop_layout {
       return group;
     }
 
-    // task_view is optional: Windows bars saved before the row gained it still match.
+    // task_view and search_pill are optional: Windows bars saved before the row gained them still match.
     bool isRow(const BarConfig& bar, const BarRow& row) {
-      auto withoutTaskView = row.center | std::views::filter([](std::string_view w) { return w != "task_view"; });
+      auto withoutTaskView = row.center
+          | std::views::filter([](std::string_view w) { return w != "task_view" && w != "search_pill"; });
       return std::ranges::equal(bar.startWidgets, row.start)
           && (std::ranges::equal(bar.centerWidgets, row.center) || std::ranges::equal(bar.centerWidgets, withoutTaskView))
           && std::ranges::equal(bar.endWidgets, row.end);
     }
 
-    // The preset row the bar is set up as, if any.
+    // The preset row the bar is set up as (its v1 row counts), if any.
     const BarRow* currentRow(const BarConfig& bar) {
       for (const std::string_view name : {"windows", "macos"}) {
-        if (isRow(bar, *rowFor(name))) {
+        if (isRow(bar, *rowFor(name)) || isRow(bar, *legacyRowFor(name))) {
           return rowFor(name);
         }
       }
@@ -364,6 +418,25 @@ namespace desktop_layout {
         if (row->solidOpacity) {
           out.emplace_back(Path{"bar", first, "solid_opacity"}, *row->solidOpacity);
         }
+        if (row->bare) {
+          out.emplace_back(Path{"bar", first, "background_opacity"}, 0.0);
+          out.emplace_back(Path{"bar", first, "compositor_blur"}, false);
+          out.emplace_back(Path{"bar", first, "shadow"}, false);
+          out.emplace_back(Path{"bar", first, "border_width"}, 0.0);
+        }
+        for (const WidgetSetting& setting : widgetSettings(preset)) {
+          Path path{"widget", std::string(setting.widget), std::string(setting.key)};
+          std::visit(
+              [&](const auto& v) {
+                if constexpr (!std::is_same_v<std::decay_t<decltype(v)>, std::string_view>) {
+                  out.emplace_back(std::move(path), v);
+                } else {
+                  out.emplace_back(std::move(path), std::string(v));
+                }
+              },
+              setting.value
+          );
+        }
         for (const RowInt& field : kRowGeometry) {
           const std::int64_t value = field.key == "thickness" ? row->thickness
               : field.key == "padding"                    ? row->padding
@@ -388,6 +461,11 @@ namespace desktop_layout {
     for (const auto& [key, value] : compositorParts(*p)) {
       out.emplace_back(compositorPath(key), std::string(value));
     }
+    // Windows opens with Frosted glass at 84 %; the glass kind stays the one island glass.
+    if (preset == "windows") {
+      out.emplace_back(compositorPath("appearance.glass_style"), std::string("frosted"));
+      out.emplace_back(compositorPath("appearance.glass"), std::string("0.84"));
+    }
     return out;
   }
 
@@ -404,6 +482,10 @@ namespace desktop_layout {
     const BarRow* row = now.bars.empty() ? nullptr : currentRow(now.bars.front());
     if (row != nullptr && row != rowFor(preset)) {
       std::ranges::move(rowPaths(now.bars.front().name), std::back_inserter(out));
+      if (row == rowFor("windows")) {
+        out.push_back(compositorPath("appearance.glass_style"));
+        out.push_back(compositorPath("appearance.glass"));
+      }
     }
     if (!hasDesktopIcons(preset)) {
       out.push_back(Path{"desktop_icons", "start_corner"});
@@ -429,6 +511,40 @@ namespace desktop_layout {
         .owner = "desktop_layout",
         .paths = rowPaths(now.bars.front().name),
     };
+  }
+
+  bool apply(std::string_view preset, ConfigService& config, SettingsControl* compositor) {
+    const Snapshot now = snapshot(config.config(), compositor);
+    std::vector<Write> shellWrites = writes(preset, now);
+    if (shellWrites.empty()) {
+      return false;
+    }
+    std::vector<Path> shellClears = clears(preset, now);
+    const std::optional<OverrideStash> saved = stash(preset, now);
+    // Compositor clears go first, so a set of the same key wins.
+    std::vector<std::pair<std::string, std::string>> compositorWrites;
+    for (const Path& path : shellClears) {
+      if (const auto key = settings::compositorSettingKey(path)) {
+        compositorWrites.emplace_back(*key, std::string{});
+      }
+    }
+    std::erase_if(shellClears, [](const Path& path) { return settings::compositorSettingKey(path).has_value(); });
+    std::erase_if(shellWrites, [&compositorWrites](const Write& write) {
+      const auto key = settings::compositorSettingKey(write.first);
+      if (key.has_value()) {
+        compositorWrites.emplace_back(*key, settings::compositorSettingText(write.second));
+      }
+      return key.has_value();
+    });
+    if (!config.mutateOverrides(shellWrites, shellClears, nullptr, saved ? &*saved : nullptr)) {
+      return false;
+    }
+    if (compositor != nullptr) {
+      for (const auto& [key, value] : compositorWrites) {
+        compositor->set(key, value);
+      }
+    }
+    return true;
   }
 
   std::string current(const Config& cfg, const SettingsControl* compositor) {

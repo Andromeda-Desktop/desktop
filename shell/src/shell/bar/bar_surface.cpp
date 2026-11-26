@@ -571,8 +571,6 @@ namespace {
     layoutWidgets(instance.centerWidgets);
     layoutWidgets(instance.endWidgets);
 
-    // App menus in the start section fill the bar up to the center section, or up to the end section when the
-    // center is empty.
     if (!isVertical) {
       const auto sectionWidth = [padding](const std::vector<std::unique_ptr<Widget>>& widgets, const Widget* skip) {
         float width = 0.0F;
@@ -583,6 +581,21 @@ namespace {
         }
         return width;
       };
+      // A centre task strip takes the room the centred centre section can grow to before it reaches the start or end
+      // section; the strip folds what does not fit.
+      for (auto& widget : instance.centerWidgets) {
+        auto* taskbar = dynamic_cast<TaskbarWidget*>(widget.get());
+        if (taskbar == nullptr || taskbar->root() == nullptr) {
+          continue;
+        }
+        const float sides = std::max(sectionWidth(instance.startWidgets, nullptr), sectionWidth(instance.endWidgets, nullptr));
+        taskbar->setStripRoom(
+            std::max(1.0F, barAreaW - 2.0F * padding - 2.0F * sides - sectionWidth(instance.centerWidgets, taskbar) - padding)
+        );
+        taskbar->layout(renderer, barAreaW, barAreaH);
+      }
+      // App menus in the start section fill the bar up to the center section, or up to the end section when the
+      // center is empty.
       for (auto& widget : instance.startWidgets) {
         auto* menu = dynamic_cast<WindowMenuWidget*>(widget.get());
         if (menu == nullptr || menu->root() == nullptr) {
@@ -1233,7 +1246,9 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
   }
   if (instance.edgeLine != nullptr) {
     const std::string& position = instance.barConfig.position;
-    const bool flush = !instance.barConfig.islands && instance.barConfig.marginEdge == 0;
+    // A bare bar (no body, macOS layout) has no edge to mark.
+    const bool flush = !instance.barConfig.islands && instance.barConfig.marginEdge == 0
+        && instance.barConfig.backgroundOpacity > 0.0F;
     instance.edgeLine->setVisible(flush);
     instance.edgeLine->setFill(colorSpecFromRole(ColorRole::Stroke));
     const float line = 1.0F;

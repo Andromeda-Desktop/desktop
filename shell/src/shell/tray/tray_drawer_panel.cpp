@@ -182,5 +182,5 @@ std::size_t TrayDrawerPanel::visibleItemCount() const {
       ++visible;
     }
   }
-  return visible;
+  return visible > options.barSlots ? visible - options.barSlots : 0;
 }

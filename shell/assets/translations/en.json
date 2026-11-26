@@ -406,6 +406,9 @@
         "reload-failed": "Script reload failed",
         "reloaded": "Reloaded script"
       },
+      "taskbar": {
+        "overflow": "{count} more windows"
+      },
       "volume": {
         "device": "Device",
         "mic": "Mic",
@@ -1349,6 +1352,7 @@
         "internet": "Internet",
         "multimedia": "Multimedia",
         "office": "Office",
+        "other": "Other",
         "system": "System",
         "utilities": "Utilities"
       },
@@ -6441,6 +6445,7 @@
         "instance": "Per Placement",
         "minimal": "Minimal",
         "name": "Name",
+        "never": "Never",
         "none": "None",
         "on-hover": "On Hover",
         "output": "Output",
@@ -6455,6 +6460,7 @@
         "text": "Text",
         "text-only": "Text Only",
         "time": "Time",
+        "when-full": "When Full",
         "workspace-label-centered": "Centered",
         "workspace-label-corner": "Corner",
         "workspace-label-inside": "Inside Pill"
@@ -6543,6 +6549,10 @@
           "description": "Square cell for each button; 0 fits the icon",
           "label": "Button Size"
         },
+        "pill-width": {
+          "description": "Draw a search pill this many pixels wide with the search text; 0 shows the icon alone",
+          "label": "Search Pill Width"
+        },
         "centered": {
           "description": "Center visualizer bars instead of aligning them to the edge",
           "label": "Centered"
@@ -6562,6 +6572,10 @@
         "color-2": {
           "description": "Second gradient color in the visualizer",
           "label": "Color 2"
+        },
+        "combine-apps": {
+          "description": "Show one button per app; \"When Full\" combines only when the buttons no longer fit",
+          "label": "Combine Taskbar Buttons"
         },
         "custom-image": {
           "description": "Path to a custom image; leave empty to use the icon glyph",
@@ -6596,6 +6610,10 @@
         "drawer": {
           "description": "Show a tray button in the bar and open items in a panel",
           "label": "Use Drawer Panel"
+        },
+        "bar-slots": {
+          "description": "Unpinned tray icons shown in the bar before the rest fold into the drawer",
+          "label": "Icons in Bar"
         },
         "drawer-columns": {
           "description": "Number of tray icons per row in the drawer panel",
@@ -6724,6 +6742,10 @@
         "hide-when-no-unread": {
           "description": "Hide the notifications widget when there are no unread notifications",
           "label": "Hide When No New"
+        },
+        "show-count": {
+          "description": "Show the number of unread notifications on the bell instead of a dot",
+          "label": "Show Unread Count"
         },
         "hide-when-off": {
           "description": "Hide the lock key indicator when inactive",

@@ -16,6 +16,7 @@ namespace noctalia::config {
     constexpr int kLockscreenThemeMigrationVersion = 17;
     // Fingerprint id for the [shell.animation] reminder; no stored-file migration carries this number.
     constexpr int kShellAnimationIssueVersion = 18;
+    constexpr int kTaskbarCombineMigrationVersion = 19;
 
     // lockscreen.style (ryoku | classic) became lockscreen.theme (ryoku | andromeda). keepRyokuWhenUnset writes ryoku
     // when neither key is set, for installs from before the theme key.
@@ -48,6 +49,23 @@ namespace noctalia::config {
       migrateLockscreenTheme(root, root.contains(kConfigVersionKey), [&diag](const std::string& path) {
         diag.warn(path, "lockscreen style is now theme");
       });
+    }
+
+    // taskbar combine_apps (bool) became an enum: true is "always", false is "never".
+    void migrateTaskbarCombine(toml::table& root, schema::Diagnostics& diag) {
+      auto* widgets = root["widget"].as_table();
+      if (widgets == nullptr) {
+        return;
+      }
+      for (auto&& [name, node] : *widgets) {
+        auto* widget = node.as_table();
+        const auto combine = widget != nullptr ? (*widget)["combine_apps"].value<bool>() : std::nullopt;
+        if (!combine.has_value()) {
+          continue;
+        }
+        widget->insert_or_assign("combine_apps", *combine ? "always" : "never");
+        diag.warn(std::format("widget.{}.combine_apps", name.str()), "combine_apps is now always, when_full or never");
+      }
     }
 
     std::uint64_t stableIssueHash(int migrationVersion, std::string_view path) {
@@ -91,6 +109,11 @@ namespace noctalia::config {
             .toVersion = kLockscreenThemeMigrationVersion,
             .summary = "lockscreen: style (ryoku | classic) is now theme (ryoku | andromeda)",
             .apply = migrateLockscreenThemeSidecar,
+        },
+        {
+            .toVersion = kTaskbarCombineMigrationVersion,
+            .summary = "taskbar: combine_apps (true | false) is now always | when_full | never",
+            .apply = migrateTaskbarCombine,
         },
     };
     return migrations;

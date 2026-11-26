@@ -162,6 +162,24 @@ const noctalia::bar::WidgetDefinition<TaskbarWidgetOptions>& taskbarWidgetDefini
                           }),
                           field<&Options::combineApps>({
                               .key = "combine_apps",
+                              .choices =
+                                  {
+                                      {
+                                          .value = TaskbarCombine::Always,
+                                          .configValue = "always",
+                                          .labelKey = "settings.widgets.options.always",
+                                      },
+                                      {
+                                          .value = TaskbarCombine::WhenFull,
+                                          .configValue = "when_full",
+                                          .labelKey = "settings.widgets.options.when-full",
+                                      },
+                                      {
+                                          .value = TaskbarCombine::Never,
+                                          .configValue = "never",
+                                          .labelKey = "settings.widgets.options.never",
+                                      },
+                                  },
                               .presentation = presentation("taskbar.windows", matches("group_by_workspace", {"false"})),
                           }),
                           field<&Options::runningBar>({

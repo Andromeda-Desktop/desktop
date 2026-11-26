@@ -343,6 +343,23 @@ namespace settings {
 
   } // namespace registry_detail
 
+  std::string compositorSettingText(const ConfigOverrideValue& value) {
+    return std::visit(
+        []<typename T>(const T& v) -> std::string {
+          if constexpr (std::is_same_v<T, bool>) {
+            return v ? "true" : "false";
+          } else if constexpr (std::is_same_v<T, std::int64_t> || std::is_same_v<T, double>) {
+            return std::format("{}", v);
+          } else if constexpr (std::is_same_v<T, std::string>) {
+            return v;
+          } else {
+            return {};
+          }
+        },
+        value
+    );
+  }
+
   std::optional<std::string> compositorSettingKey(const std::vector<std::string>& path) {
     if (path.size() < 2 || path.front() != kCompositorPathRoot) {
       return std::nullopt;

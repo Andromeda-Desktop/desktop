@@ -52,6 +52,8 @@ public:
   ~LiveAppearanceSync();
 
   void initialize(ShellWaylandConnection& wayland, ChangeCallback onChange);
+  // The shell's long-lived compositor settings connection; null before initialize().
+  [[nodiscard]] SettingsControl* settingsControl() noexcept { return m_control.get(); }
   enum class AccentOrigin : std::uint8_t { Saved, Wallpaper };
 
   // Sets each key the compositor holds with a different value; before the first batch arrives, it waits for it. The

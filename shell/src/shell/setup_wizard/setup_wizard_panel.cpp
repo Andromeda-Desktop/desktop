@@ -718,34 +718,7 @@ std::unique_ptr<Flex> SetupWizardPanel::buildLayout(float scale) {
 
 void SetupWizardPanel::applyLayout(const std::string& preset) {
   m_layoutPick = preset;
-  const desktop_layout::Snapshot now = desktop_layout::snapshot(m_config->config(), m_compositorSettings.get());
-  std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> shell;
-  const auto compositorKey = [](const std::vector<std::string>& path) {
-    std::string key;
-    for (std::size_t i = 1; i < path.size(); ++i) {
-      key += (i > 1 ? "." : "") + path[i];
-    }
-    return key;
-  };
-  for (auto& [path, value] : desktop_layout::writes(preset, now)) {
-    if (!path.empty() && path.front() == "andromeda") {
-      if (m_compositorSettings != nullptr) {
-        m_compositorSettings->set(compositorKey(path), std::get<std::string>(value));
-      }
-    } else {
-      shell.emplace_back(std::move(path), std::move(value));
-    }
-  }
-  m_config->setOverrides(shell);
-  for (const auto& path : desktop_layout::clears(preset, now)) {
-    if (!path.empty() && path.front() == "andromeda") {
-      if (m_compositorSettings != nullptr) {
-        m_compositorSettings->set(compositorKey(path), {});
-      }
-    } else {
-      m_config->clearOverride(path);
-    }
-  }
+  desktop_layout::apply(preset, *m_config, m_compositorSettings.get());
   syncSelection();
 }
 

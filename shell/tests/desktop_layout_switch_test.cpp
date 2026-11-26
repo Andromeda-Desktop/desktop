@@ -51,13 +51,39 @@ namespace {
     return out;
   }
 
+  std::string widgetSetting(const Config& cfg, const std::string& widget, const std::string& key) {
+    const auto it = cfg.widgets.find(widget);
+    if (it == cfg.widgets.end()) {
+      return "-";
+    }
+    const auto value = it->second.settings.find(key);
+    if (value == it->second.settings.end()) {
+      return "-";
+    }
+    if (const auto* b = std::get_if<bool>(&value->second)) {
+      return *b ? "true" : "false";
+    }
+    if (const auto* text = std::get_if<std::string>(&value->second)) {
+      return *text;
+    }
+    if (const auto* count = std::get_if<std::int64_t>(&value->second)) {
+      return std::to_string(*count);
+    }
+    return "?";
+  }
+
   std::string barState(const Config& cfg) {
     const BarConfig& bar = cfg.bars.front();
     return std::format(
         "islands={} position={} dock={} thickness={} margin_ends={} margin_edge={} padding={} padding_end={} "
-        "spacing={} start=[{}] center=[{}] end=[{}]",
+        "spacing={} start=[{}] center=[{}] end=[{}] background={} blur={} shadow={} border={} solid={} groups={} "
+        "battery_label={} launcher_glyph={} tray_slots={}",
         bar.islands, bar.position, cfg.dock.enabled, bar.thickness, bar.marginEnds, bar.marginEdge, bar.padding,
-        bar.paddingEnd, bar.widgetSpacing, join(bar.startWidgets), join(bar.centerWidgets), join(bar.endWidgets)
+        bar.paddingEnd, bar.widgetSpacing, join(bar.startWidgets), join(bar.centerWidgets), join(bar.endWidgets),
+        bar.backgroundOpacity, bar.compositorBlur, bar.shadow, bar.borderWidth,
+        bar.solidOpacity ? std::format("{}", *bar.solidOpacity) : std::string("-"), bar.widgetCapsuleGroups.size(),
+        widgetSetting(cfg, "status_battery", "show_label"), widgetSetting(cfg, "launcher_button", "glyph"),
+        widgetSetting(cfg, "tray", "bar_slots")
     );
   }
 
@@ -148,6 +174,37 @@ int main() {
         got == expected[std::string(preset)],
         std::format("old windows > {}\n  got  {}\n  want {}", preset, got, expected[std::string(preset)])
     );
+  }
+
+  // Bars saved with the v1 rows still read as their preset: every pick from them clears the row like from v2.
+  const std::vector<std::pair<std::string_view, desktop_layout::Write>> v1Rows{
+      {"windows", {{"bar", "default", "start"}, std::vector<std::string>{}}},
+      {"windows", {{"bar", "default", "center"}, std::vector<std::string>{"start", "task_view", "windows_taskbar"}}},
+      {"windows",
+       {{"bar", "default", "end"},
+        std::vector<std::string>{"tray", "group:status", "windows_clock", "notifications", "show_desktop"}}},
+      {"macos", {{"bar", "default", "end"}, std::vector<std::string>{"group:status", "macos_clock", "notifications"}}},
+  };
+  for (const std::string_view from : {"windows", "macos"}) {
+    for (const std::string_view preset : presets) {
+      resetState(root);
+      ConfigService config;
+      expect(config.setOverrides(own), "own bar writes");
+      pick(config, from);
+      std::vector<desktop_layout::Write> v1;
+      for (const auto& [name, write] : v1Rows) {
+        if (name == from) {
+          v1.push_back(write);
+        }
+      }
+      expect(config.setOverrides(v1), std::format("v1 {} row", from));
+      pick(config, preset);
+      const std::string got = barState(config.config());
+      expect(
+          got == expected[std::string(preset)],
+          std::format("v1 {} > {}\n  got  {}\n  want {}", from, preset, got, expected[std::string(preset)])
+      );
+    }
   }
 
   std::filesystem::remove_all(root);

@@ -436,8 +436,16 @@ void Bar::attachWidgetsToSections(BarInstance& instance) {
         }
         const auto island = islandRectAt(*inst, anchorX, anchorY);
         // A bar with no islands (Windows and macOS layouts): the sheet morphs out of the clicked widget instead.
-        const auto widgetRect = [w]() -> std::optional<std::array<float, 4>> {
+        // A member of a capsule group (the status cell) opens from the whole group.
+        const auto widgetRect = [inst, w]() -> std::optional<std::array<float, 4>> {
           const Node* node = w->barHoverBox();
+          for (const auto* runs : {&inst->startCapsuleRuns, &inst->centerCapsuleRuns, &inst->endCapsuleRuns}) {
+            for (const BarCapsuleRun& run : *runs) {
+              if (run.widgets.size() > 1 && std::ranges::contains(run.widgets, w)) {
+                node = run.shell;
+              }
+            }
+          }
           if (node == nullptr || node->width() <= 0.0F || node->height() <= 0.0F) {
             node = w->root();
           }
@@ -456,6 +464,9 @@ void Bar::attachWidgetsToSections(BarInstance& instance) {
         if (island) {
           anchorX = endIsland ? (*island)[0] + (*island)[2] : (*island)[0] + (*island)[2] * 0.5F;
           anchorY = (*island)[1] + (*island)[3] * 0.5F;
+        } else if (source && !anchorSurfaceX.has_value()) {
+          anchorX = (*source)[0] + (*source)[2] * 0.5F;
+          anchorY = (*source)[1] + (*source)[3] * 0.5F;
         }
         if (m_platform != nullptr && inst->output != nullptr) {
           if (const auto* out = m_platform->findOutputByWl(inst->output); out != nullptr && out->hasUsableGeometry()) {

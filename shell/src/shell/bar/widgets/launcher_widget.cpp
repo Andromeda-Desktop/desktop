@@ -7,6 +7,7 @@
 #include "ui/builders.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "i18n/i18n.h"
 
 #include <algorithm>
 #include <cmath>
@@ -15,7 +16,7 @@
 LauncherWidget::LauncherWidget(wl_output* /*output*/, Options options)
     : m_barGlyphId(std::move(options.glyph)),
       m_customImage(widget_custom_image::fromConfig(options.customImage, options.customImageColorize)),
-      m_iconSize(options.iconSize), m_cellSize(options.cellSize) {}
+      m_iconSize(options.iconSize), m_cellSize(options.cellSize), m_pillWidth(options.pillWidth) {}
 
 void LauncherWidget::create() {
   auto area = ui::inputArea({});
@@ -32,6 +33,17 @@ void LauncherWidget::create() {
             .color = widgetIconColorOr(colorSpecFromRole(ColorRole::Label1)),
         })
     );
+  }
+  if (m_pillWidth > 0) {
+    m_lens->setFill(colorSpecFromRole(ColorRole::Fill2));
+    m_lens->setVisible(true);
+    area->addChild(ui::label({
+        .out = &m_label,
+        .text = i18n::tr("launcher.search-placeholder"),
+        .fontSize = Style::fontSizeBody * m_contentScale,
+        .color = colorSpecFromRole(ColorRole::Label2),
+        .maxLines = 1,
+    }));
   }
 
   setRoot(std::move(area));
@@ -53,11 +65,30 @@ void LauncherWidget::doLayout(Renderer& renderer, float /*containerWidth*/, floa
     m_glyph->setGlyphSize((m_iconSize > 0 ? static_cast<float>(m_iconSize) : Style::baseGlyphSize) * m_contentScale);
     m_glyph->setColor(widgetIconColorOr(colorSpecFromRole(ColorRole::Label1)));
     m_glyph->measure(renderer);
+    if (m_label != nullptr) {
+      m_label->setFontSize(Style::fontSizeBody * m_contentScale);
+      m_label->measure(renderer);
+    }
     fitCell(*node, *m_glyph);
   }
 }
 
 void LauncherWidget::fitCell(Node& node, Node& icon) const {
+  if (m_label != nullptr) {
+    // Search pill: control height, glyph inset 12, text 8 after it, cut at the pill end.
+    const float h = Style::controlHeight * m_contentScale;
+    const float w = static_cast<float>(m_pillWidth) * m_contentScale;
+    const float inset = Tokens::spaceP12 * m_contentScale;
+    const float gap = Style::spaceSm * m_contentScale;
+    icon.setPosition(inset, std::round((h - icon.height()) * 0.5F));
+    const float textX = inset + icon.width() + gap;
+    m_label->setMaxWidth(std::max(0.0F, w - textX - inset));
+    m_label->setPosition(textX, std::round((h - m_label->height()) * 0.5F));
+    node.setSize(w, h);
+    m_lens->setSize(w, h);
+    m_lens->setRadius(h * 0.5F);
+    return;
+  }
   const float cell = static_cast<float>(m_cellSize) * m_contentScale;
   const float w = std::max(cell, icon.width());
   const float h = std::max(cell, icon.height());
@@ -69,6 +100,15 @@ void LauncherWidget::fitCell(Node& node, Node& icon) const {
 
 void LauncherWidget::doUpdate(Renderer& /*renderer*/) {
   const bool open = PanelManager::instance().isOpenPanel("launcher");
+  if (m_label != nullptr) {
+    // The pill keeps its capsule; an open launcher deepens it.
+    if (open != m_pillOpen) {
+      m_pillOpen = open;
+      m_lens->setFill(colorSpecFromRole(open ? ColorRole::Fill3 : ColorRole::Fill2));
+      requestRedraw();
+    }
+    return;
+  }
   if (m_lens->visible() != open) {
     m_lens->setVisible(open);
     requestRedraw();

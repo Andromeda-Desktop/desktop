@@ -30,6 +30,8 @@ public:
     std::vector<std::string> pinnedItems;
     bool hidePassive = true;
     bool drawerMode = true;
+    // Unpinned items the bar shows beside the pinned ones before the rest fold into the drawer.
+    std::size_t barSlots = 0;
     std::function<void()> itemActivated;
     std::string barPosition = "top";
     bool panelGridMode = false;
@@ -98,6 +100,7 @@ private:
   bool m_isVertical = false;
   bool m_rebuildPending = true;
   bool m_drawerMode = false;
+  std::size_t m_barSlots = 0;
   std::function<void()> m_itemActivated;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   std::string m_barPosition;

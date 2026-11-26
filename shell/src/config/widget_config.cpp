@@ -73,13 +73,12 @@ namespace noctalia::config {
     date.settings["display"] = std::string("date");
     seed("date", std::move(date));
 
-    // Desktop Layouts, Windows: the Start button (the amark line glyph, board section 1) opens the launcher's apps grid;
-    // it shares the 28 px icon and 44 px cell of the taskbar apps.
+    // Desktop Layouts v2, Windows: the Start button (layout-grid glyph) opens the launcher's apps grid in the 44 px
+    // cell of the taskbar apps.
     WidgetConfig start;
     start.type = "launcher";
-    start.settings["custom_image"] = paths::assetPath("amark.svg").string();
-    start.settings["custom_image_colorize"] = true;
-    start.settings["icon_size"] = std::int64_t{28};
+    start.settings["glyph"] = std::string("layout-grid");
+    start.settings["icon_size"] = std::int64_t{24};
     start.settings["cell_size"] = std::int64_t{44};
     start.tables["actions"]["left"] = "panel-toggle launcher apps";
     seed("start", std::move(start));
@@ -87,7 +86,7 @@ namespace noctalia::config {
     // Desktop Layouts, Windows: Task View next to Start opens the overview; the Start cell's size.
     WidgetConfig taskView;
     taskView.type = "launcher";
-    taskView.settings["glyph"] = std::string("layout-dashboard");
+    taskView.settings["glyph"] = std::string("layout-board-split");
     taskView.settings["icon_size"] = std::int64_t{24};
     taskView.settings["cell_size"] = std::int64_t{44};
     taskView.tables["actions"]["left"] = "overview-toggle";
@@ -100,7 +99,7 @@ namespace noctalia::config {
     windowsTaskbar.settings["cell_size"] = std::int64_t{44};
     windowsTaskbar.settings["running_bar"] = true;
     windowsTaskbar.settings["window_previews"] = true;
-    windowsTaskbar.settings["combine_apps"] = true;
+    windowsTaskbar.settings["combine_apps"] = std::string("always");
     seed("windows_taskbar", std::move(windowsTaskbar));
 
     // Desktop Layouts: Wi-Fi in the status cell is the symbol alone; the network name stays in its flyout.
@@ -151,6 +150,13 @@ namespace noctalia::config {
     launcherButton.settings["glyph"] = std::string("layout-grid");
   launcherButton.settings["cell_size"] = static_cast<std::int64_t>(Tokens::componentIslandCell);
     seed("launcher_button", std::move(launcherButton));
+
+    // The Windows taskbar search pill: opens the launcher with its field focused.
+    WidgetConfig searchPill;
+    searchPill.type = "launcher";
+    searchPill.settings["glyph"] = std::string("search");
+    searchPill.settings["pill_width"] = static_cast<std::int64_t>(200);
+    seed("search_pill", std::move(searchPill));
 
     WidgetConfig controlCenterButton;
     controlCenterButton.type = "control-center";

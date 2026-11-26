@@ -5,6 +5,7 @@
 #include "render/scene/node.h"
 #include "shell/panel/panel_manager.h"
 #include "ui/builders.h"
+#include "ui/controls/count_badge.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 
@@ -15,7 +16,7 @@ namespace {
 } // namespace
 
 NotificationWidget::NotificationWidget(NotificationManager* manager, wl_output* /*output*/, Options options)
-    : m_manager(manager), m_hideWhenNoUnread(options.hideWhenNoUnread) {}
+    : m_manager(manager), m_hideWhenNoUnread(options.hideWhenNoUnread), m_showCount(options.showCount) {}
 
 void NotificationWidget::create() {
   auto area = ui::inputArea({});
@@ -29,16 +30,31 @@ void NotificationWidget::create() {
       })
   );
 
-  const float dotSize = kDotBaseSize * m_contentScale;
-  m_dot = area->addChild(
-      ui::box({
-          .fill = colorSpecFromRole(ColorRole::Accent),
-          .radius = dotSize * 0.5F,
-          .width = dotSize,
-          .height = dotSize,
-          .visible = false,
-      })
-  );
+  if (m_showCount) {
+    auto badge = ui::box({
+        .out = &m_countBadge,
+        .fill = colorSpecFromRole(ColorRole::Accent),
+        .visible = false,
+    });
+    badge->addChild(ui::label({
+        .out = &m_countLabel,
+        .fontSize = Style::fontSizeCaption * m_contentScale,
+        .fontWeight = FontWeight::Bold,
+        .color = colorSpecFromRole(ColorRole::OnAccent),
+    }));
+    area->addChild(std::move(badge));
+  } else {
+    const float dotSize = kDotBaseSize * m_contentScale;
+    m_dot = area->addChild(
+        ui::box({
+            .fill = colorSpecFromRole(ColorRole::Accent),
+            .radius = dotSize * 0.5F,
+            .width = dotSize,
+            .height = dotSize,
+            .visible = false,
+        })
+    );
+  }
 
   setRoot(std::move(area));
   refreshIndicatorState();
@@ -76,12 +92,30 @@ void NotificationWidget::doLayout(Renderer& renderer, float /*containerWidth*/, 
     // Inside the symbol box, not the §9.4 overhang: bar slots clip to the widget bounds (deviations.md).
     m_dot->setPosition(m_glyph->width() - dotSize, 0.0F);
   }
+  layoutCountBadge(renderer);
 }
 
-void NotificationWidget::doUpdate(Renderer& /*renderer*/) { refreshIndicatorState(); }
+// Inside the symbol box, top right, like the dot: bar slots clip to the widget bounds.
+void NotificationWidget::layoutCountBadge(Renderer& renderer) {
+  if (m_countBadge == nullptr || m_countLabel == nullptr || m_glyph == nullptr) {
+    return;
+  }
+  const float height = Tokens::componentBadgeHeight * m_contentScale;
+  const float width = count_badge::layout(renderer, *m_countBadge, *m_countLabel, m_unreadCount, height, m_contentScale);
+  m_countBadge->setPosition(std::max(0.0F, m_glyph->width() - width), 0.0F);
+}
+
+void NotificationWidget::doUpdate(Renderer& renderer) {
+  const std::size_t unread = m_unreadCount;
+  refreshIndicatorState();
+  if (m_unreadCount != unread) {
+    layoutCountBadge(renderer);
+  }
+}
 
 void NotificationWidget::refreshIndicatorState() {
   const bool hasNotifications = (m_manager != nullptr) && m_manager->hasUnreadNotificationHistory();
+  const std::size_t unread = m_manager != nullptr ? m_manager->unreadNotificationCount() : 0;
   const bool dndEnabled = (m_manager != nullptr) && m_manager->doNotDisturb();
 
   if (Node* rootNode = root(); rootNode != nullptr) {
@@ -103,9 +137,11 @@ void NotificationWidget::refreshIndicatorState() {
       glyph = on->glyph;
     }
   }
-  if (hasNotifications == m_hasNotifications && dndEnabled == m_dndEnabled && glyph == m_glyphName) {
+  if (hasNotifications == m_hasNotifications && dndEnabled == m_dndEnabled && glyph == m_glyphName
+      && unread == m_unreadCount) {
     return;
   }
+  m_unreadCount = unread;
   m_hasNotifications = hasNotifications;
   m_dndEnabled = dndEnabled;
   m_glyphName = glyph;
@@ -115,5 +151,8 @@ void NotificationWidget::refreshIndicatorState() {
   }
   if (m_dot != nullptr) {
     m_dot->setVisible(m_hasNotifications && !m_dndEnabled);
+  }
+  if (m_countBadge != nullptr) {
+    m_countBadge->setVisible(m_unreadCount > 0 && !m_dndEnabled);
   }
 }

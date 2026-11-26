@@ -114,23 +114,6 @@ namespace {
 
   constexpr Logger kLog("settings");
 
-  std::string compositorSettingText(const ConfigOverrideValue& value) {
-    return std::visit(
-        []<typename T>(const T& v) -> std::string {
-          if constexpr (std::is_same_v<T, bool>) {
-            return v ? "true" : "false";
-          } else if constexpr (std::is_same_v<T, std::int64_t> || std::is_same_v<T, double>) {
-            return std::format("{}", v);
-          } else if constexpr (std::is_same_v<T, std::string>) {
-            return v;
-          } else {
-            return {};
-          }
-        },
-        value
-    );
-  }
-
 } // namespace
 
 bool SettingsWindow::commitCompositorSetting(const std::vector<std::string>& path, const std::string& value) {
@@ -143,7 +126,7 @@ bool SettingsWindow::commitCompositorSetting(const std::vector<std::string>& pat
 }
 
 void SettingsWindow::setSettingOverride(std::vector<std::string> path, ConfigOverrideValue value) {
-  if (commitCompositorSetting(path, compositorSettingText(value))) {
+  if (commitCompositorSetting(path, settings::compositorSettingText(value))) {
     return;
   }
   if (path.size() == 2 && path[0] == "shell" && path[1] == "font_family") {
@@ -190,7 +173,7 @@ void SettingsWindow::setSettingOverrides(
   std::erase_if(overrides, [&compositorWrites](const auto& overrideEntry) {
     const auto key = settings::compositorSettingKey(overrideEntry.first);
     if (key.has_value()) {
-      compositorWrites.emplace_back(*key, compositorSettingText(overrideEntry.second));
+      compositorWrites.emplace_back(*key, settings::compositorSettingText(overrideEntry.second));
     }
     return key.has_value();
   });
@@ -298,7 +281,7 @@ void SettingsWindow::mutateSettingOverrides(
   std::erase_if(overrides, [&compositorWrites](const auto& overrideEntry) {
     const auto key = settings::compositorSettingKey(overrideEntry.first);
     if (key.has_value()) {
-      compositorWrites.emplace_back(*key, compositorSettingText(overrideEntry.second));
+      compositorWrites.emplace_back(*key, settings::compositorSettingText(overrideEntry.second));
     }
     return key.has_value();
   });

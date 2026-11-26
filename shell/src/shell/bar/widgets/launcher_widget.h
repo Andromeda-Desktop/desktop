@@ -9,6 +9,7 @@
 class Box;
 class Glyph;
 class Image;
+class Label;
 class Node;
 struct wl_output;
 
@@ -22,6 +23,8 @@ public:
     int iconSize = 0;
     // Logical px square the icon centres in; 0 = the icon's own size. The Start button matches the taskbar cells.
     int cellSize = 0;
+    // Logical px; > 0 draws a search pill this wide: the glyph and "Search" in a capsule (Windows taskbar).
+    int pillWidth = 0;
   };
 
   LauncherWidget(wl_output* output, Options options);
@@ -36,6 +39,9 @@ private:
   WidgetCustomImage m_customImage;
   int m_iconSize = 0;
   int m_cellSize = 0;
+  int m_pillWidth = 0;
+  Label* m_label = nullptr;
+  bool m_pillOpen = false;
   Box* m_lens = nullptr;
   Glyph* m_glyph = nullptr;
   Image* m_image = nullptr;

@@ -108,6 +108,8 @@
 #include "ui/dialogs/glyph_picker_dialog.h"
 #include "ui/style.h"
 #include "util/file_utils.h"
+#include "shell/desktop_layout/desktop_layout.h"
+#include "compositors/settings_control.h"
 #include "util/string_utils.h"
 
 #include <algorithm>
@@ -154,6 +156,16 @@ void Application::initIpc() {
   m_dmenuIpc.setLauncherPanel(m_launcherPanel);
   m_dmenuIpc.setPanelManager(&m_panelManager);
   m_dmenuIpc.start();
+
+  m_ipcService.bind(noctalia::cli::msg::desktopLayoutSet, [this](const std::string& args) -> std::string {
+    const std::string preset = StringUtils::trim(args);
+    SettingsControl* compositor = m_liveAppearance.settingsControl();
+    if (compositor == nullptr || !compositor->ready()) {
+      return "error: the compositor settings are not known yet\n";
+    }
+    return desktop_layout::apply(preset, m_configService, compositor) ? "ok\n"
+                                                                     : "error: unknown preset or refused write: " + preset + "\n";
+  });
 
   // One notice for the compositor's current configuration problems: each batch replaces it, an empty one clears it.
   m_ipcService.bind(noctalia::cli::msg::configDiagnostics, [this](const std::string& args) -> std::string {

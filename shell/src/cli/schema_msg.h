@@ -42,6 +42,7 @@ namespace noctalia::cli {
                                                                                   "false", "1",   "0"};
   inline constexpr std::array<std::string_view, 3> kMsgBarLayerSetLayerChoices{"top", "overlay", "auto"};
   inline constexpr std::array<std::string_view, 2> kMsgEffectsProfileSetKindChoices{"output", "input"};
+  inline constexpr std::array<std::string_view, 4> kMsgDesktopLayoutSetPresetChoices{"andromeda", "macos", "windows", "tiling"};
   inline constexpr std::array<std::string_view, 4> kMsgLogLevelSetLevelChoices{"debug", "info", "warn", "error"};
   inline constexpr std::array<std::string_view, 11> kMsgMediaActionChoices{
       "next",        "previous",        "toggle",    "play",        "pause",     "stop",
@@ -115,6 +116,9 @@ namespace noctalia::cli {
   };
   inline constexpr std::array kMsgConfigUnsetPositionals{
       Positional{"path", "Dotted config path (e.g. desktop_icons.snap_to_grid)", {}, true, false, false},
+  };
+  inline constexpr std::array kMsgDesktopLayoutSetPositionals{
+      Positional{"preset", {}, kMsgDesktopLayoutSetPresetChoices, true, false, false},
   };
   inline constexpr std::array kMsgEffectsProfileSetPositionals{
       Positional{"kind", {}, kMsgEffectsProfileSetKindChoices, true, false, false},
@@ -561,6 +565,10 @@ namespace noctalia::cli {
                                         false};
     inline constexpr Command dpmsOff{"dpms-off", "Turn monitors off", {}, {}, {}, {}, {}, false};
     inline constexpr Command dpmsOn{"dpms-on", "Turn monitors on", {}, {}, {}, {}, {}, false};
+    inline constexpr Command desktopLayoutSet{
+        "desktop-layout-set", "Apply a Desktop Layout preset, as the Settings gallery does", {}, {}, {},
+        kMsgDesktopLayoutSetPositionals, {}, false
+    };
     inline constexpr Command effectsProfileSet{
         "effects-profile-set",
         "Set the EasyEffects output or input profile",
@@ -1193,6 +1201,7 @@ namespace noctalia::cli {
       msg::desktopWidgetsHide,
       msg::desktopWidgetsShow,
       msg::desktopWidgetsToggle,
+      msg::desktopLayoutSet,
       msg::desktopWidgetsToggleEdit,
       msg::dockHide,
       msg::dockReload,

@@ -1,5 +1,7 @@
 #include "core/files/resource_paths.h"
 #include "shell/dock/dock_items.h"
+
+#include "ui/controls/count_badge.h"
 #include "config/app_icon_settings.h"
 
 #include "config/config_service.h"
@@ -36,7 +38,6 @@ namespace {
   // Badge geometry (component.badge at component.dock.icon), scaled with the icon size.
   TOKENS_LIVE(kBadgeSizeRatio, Tokens::componentBadgeHeight / Tokens::componentDockIcon);
   constexpr float kBadgeMinSize = 16.0F;
-  TOKENS_LIVE(kBadgePaddingX, Tokens::componentBadgePaddingX);
   TOKENS_LIVE(kBadgeFontRatio, Tokens::typeCaption.size / Tokens::componentBadgeHeight);
   TOKENS_LIVE(kBadgeCornerInsetX, 1.0F - Tokens::componentBadgeOverhang / Tokens::componentBadgeHeight);
   TOKENS_LIVE(kBadgeCornerInsetY, Tokens::componentBadgeOverhang / Tokens::componentBadgeHeight);
@@ -1162,22 +1163,16 @@ namespace shell::dock {
         item.badge->setVisible(show);
         item.badgeLabel->setVisible(show);
         if (show) {
-          const std::string label = (shown > 99) ? "99+" : std::to_string(shown);
-          item.badgeLabel->setText(label);
           item.badgeLabel->setColor(
               unread ? fixedColorSpec(Color{.r = 1.0F, .g = 1.0F, .b = 1.0F}) : colorSpecFromRole(ColorRole::OnAccent)
           );
           item.badge->setFill(colorSpecFromRole(unread ? ColorRole::Danger : ColorRole::Accent));
           const float bd = std::max(kBadgeMinSize, static_cast<float>(cfg.iconSize) * kBadgeSizeRatio);
-          item.badgeLabel->measure(renderer);
-          const float badgeW = std::max(bd, std::round(item.badgeLabel->width() + 2.0F * kBadgePaddingX));
+          const float previousRight = item.badge->x() + item.badge->width();
+          const float badgeW = count_badge::layout(renderer, *item.badge, *item.badgeLabel, shown, bd, 1.0F);
           if (edge != DockEdge::Right) {
-            item.badge->setPosition(item.badge->x() + item.badge->width() - badgeW, item.badge->y());
+            item.badge->setPosition(previousRight - badgeW, item.badge->y());
           }
-          item.badge->setFrameSize(badgeW, bd);
-          item.badgeLabel->setPosition(
-              std::round((badgeW - item.badgeLabel->width()) * 0.5F), std::round((bd - item.badgeLabel->height()) * 0.5F)
-          );
         }
       }
     }

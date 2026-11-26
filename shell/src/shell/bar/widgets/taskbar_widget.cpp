@@ -1233,7 +1233,19 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
     };
   };
 
-  const std::size_t draggableTileCount = reorderEnabled() ? pinnedConfigIds().size() : 0;
+  const float tilePitch = (m_vertical ? tileSize : tileWidthWithTitle) + tileGap;
+  std::optional<std::size_t> activeTask;
+  for (std::size_t i = 0; i < m_tasks.size() && !activeTask.has_value(); ++i) {
+    if (m_tasks[i].active) {
+      activeTask = i;
+    }
+  }
+  const bool boundedStrip = !m_groupByWorkspace && !m_vertical;
+  const TaskbarFit fit = fitTaskbarTiles(
+      m_tasks.size(), boundedStrip ? m_stripRoom : std::numeric_limits<float>::infinity(), tilePitch, tileGap, activeTask
+  );
+  m_stripFolded = fit.overflow;
+  const std::size_t draggableTileCount = reorderEnabled() && !fit.overflow ? pinnedConfigIds().size() : 0;
   auto createTaskTile = [&](TaskRef taskRef, std::vector<TaskRef> cycleCandidates = {}, std::string cycleKey = {},
                             std::size_t badgeCount = 1) {
     // Unreachable at build time: every ref is built from a live m_tasks element at the current
@@ -1539,7 +1551,24 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
 
     area->addChild(std::move(content));
 
-    if (badgeCount > 1) {
+    if (badgeCount > 1 && !m_groupByWorkspace) {
+      // Stacked plate (board desktop-layouts v2, Windows taskbar): a fill_3 card behind the icon, offset 3 right and
+      // 1 up on a 24 px icon.
+      const float unit = iconSize / 24.0F;
+      auto plate = ui::box({
+          .fill = colorSpecFromRole(ColorRole::Fill3),
+          .radius = std::round(6.0F * unit),
+          .width = iconSize,
+          .height = iconSize,
+      });
+      plate->setHitTestVisible(false);
+      plate->setZIndex(-1);
+      const float iconLeft = showWindowTitle ? 0.0F : centeredOffset(tileSize, iconSize);
+      plate->setPosition(
+          std::round(iconLeft + 3.0F * unit), std::round(centeredOffset(tileSize, iconSize) - 1.0F * unit)
+      );
+      area->addChild(std::move(plate));
+    } else if (badgeCount > 1) {
       const std::size_t dotCount = badgeCount >= 4 ? 3U : (badgeCount == 3 ? 2U : 1U);
       const float dotSize = std::round(std::max(2.0F, Style::baseGlyphSize * 0.16F * m_contentScale));
       const float dotGap = std::round(std::max(1.0F, dotSize * 0.55F));
@@ -2084,15 +2113,57 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
   }
   m_taskStrip->setPadding(0.0F, 0.0F, 0.0F, 0.0F);
   m_taskStrip->setGap(tileGap);
-  m_tilePitchMain = (m_vertical ? tileSize : tileWidthWithTitle) + tileGap;
+  const bool fitInputsChanged = m_tilePitchMain != tilePitch || m_tileGap != tileGap;
+  m_tilePitchMain = tilePitch;
+  m_tileGap = tileGap;
+  if (fitInputsChanged && m_configOptions.combineApps == TaskbarCombine::WhenFull) {
+    requestUpdate();
+  }
   std::unordered_set<std::string> pinnedCycleKeysThisFrame;
-  for (std::size_t i = 0; i < m_tasks.size(); ++i) {
+  std::vector<bool> shown(m_tasks.size(), false);
+  for (const std::size_t i : fit.visible) {
+    shown[i] = true;
     const auto& task = m_tasks[i];
     if (task.pinned && task.running && task.instanceCount > 1) {
       pinnedCycleKeysThisFrame.insert(!task.desktopEntryId.empty() ? task.desktopEntryId : task.idLower);
     }
-    const std::size_t badgeCount = task.pinned ? std::max<std::size_t>(1, task.instanceCount) : 1;
+    const std::size_t badgeCount = std::max<std::size_t>(1, task.instanceCount);
     m_taskStrip->addChild(createTaskTile(TaskRef{.index = i, .generation = m_taskVersion}, {}, {}, badgeCount));
+  }
+  if (fit.overflow) {
+    std::vector<TaskRef> hidden;
+    for (std::size_t i = 0; i < m_tasks.size(); ++i) {
+      if (!shown[i]) {
+        hidden.push_back(TaskRef{.index = i, .generation = m_taskVersion});
+      }
+    }
+    const std::size_t hiddenCount = hidden.size();
+    auto overflow = ui::inputArea({});
+    overflow->setFrameSize(tileSize, tileSize);
+    overflow->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT}));
+    InputArea* overflowPtr = overflow.get();
+    overflow->setOnClick([this, overflowPtr, hidden = std::move(hidden)](const InputArea::PointerData& data) {
+      if (data.button == BTN_LEFT) {
+        openOverflowMenu(*overflowPtr, hidden);
+      }
+    });
+    auto content = ui::flex(
+        FlexDirection::Horizontal,
+        {.align = FlexAlign::Center, .justify = FlexJustify::Center, .width = tileSize, .height = tileSize}
+    );
+    auto glyph = ui::glyph({
+        .glyph = "dots",
+        .glyphSize = std::round(iconSize * 20.0F / 24.0F),
+        .color = colorSpecFromRole(ColorRole::Label2),
+    });
+    glyph->measure(renderer);
+    content->addChild(std::move(glyph));
+    overflow->addChild(std::move(content));
+    overflow->setTooltipProvider([hiddenCount] -> TooltipContent {
+      return TooltipContent{i18n::tr("bar.widgets.taskbar.overflow", "count", std::to_string(hiddenCount))};
+    });
+    attachHover(*overflow, tileSize, tileSize);
+    m_taskStrip->addChild(std::move(overflow));
   }
   std::erase_if(m_groupedAppCycleCursor, [&](const auto& item) {
     return !pinnedCycleKeysThisFrame.contains(item.first);
@@ -3052,7 +3123,7 @@ void TaskbarWidget::updateModels(bool combineWhenFull) {
 
   const ModelComparison comparison =
       compareModels(m_groupByWorkspace, m_tasks, m_workspaces, nextTasks, nextWorkspaces);
-  if (comparison.layoutEqual) {
+  if (comparison.layoutEqual && !(m_stripFolded && comparison.activesChanged)) {
     m_tasks = std::move(nextTasks);
     m_workspaces = std::move(nextWorkspaces);
     if (comparison.titlesChanged || comparison.activesChanged || comparison.minimizeStatesChanged) {

@@ -25,6 +25,12 @@ const noctalia::bar::WidgetDefinition<TrayWidget::Options, TrayWidgetDefinitionC
               field<&Options::drawerMode>({
                   .key = "drawer",
               }),
+              field<&Options::barSlots>({
+                  .key = "bar_slots",
+                  .minValue = 0.0,
+                  .maxValue = 12.0,
+                  .step = 1.0,
+              }),
               field<&Options::panelGridColumns>({
                   .key = "drawer_columns",
                   .minValue = 1.0,

@@ -17,6 +17,11 @@ const noctalia::bar::WidgetDefinition<LauncherWidget::Options>& launcherWidgetDe
           .minValue = 0.0,
           .maxValue = 96.0,
           .step = 4.0,
+      }), noctalia::bar::field<&Options::pillWidth>({
+          .key = "pill_width",
+          .minValue = 0.0,
+          .maxValue = 400.0,
+          .step = 8.0,
       })),
       .glyph = [](const Options& options) { return options.glyph; },
   };

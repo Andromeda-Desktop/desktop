@@ -345,6 +345,8 @@ private:
 
   float m_tilePitchMain = 0.0F; // Main-axis distance between adjacent tiles; set while building the flat strip.
   float m_tileGap = 0.0F;
+  // The built strip hides tasks behind the overflow tile, so a change of the active task moves tiles.
+  bool m_stripFolded = false;
   float m_stripRoom = std::numeric_limits<float>::infinity();
   bool m_rebuildPending = true;
   bool m_vertical = false;

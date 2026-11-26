@@ -10,6 +10,9 @@ const noctalia::bar::WidgetDefinition<NotificationWidget::Options>& notification
           field<&Options::hideWhenNoUnread>({
               .key = "hide_when_no_unread",
           }),
+          field<&Options::showCount>({
+              .key = "show_count",
+          }),
       },
   };
   return definition;

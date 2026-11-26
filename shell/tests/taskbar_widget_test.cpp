@@ -1,6 +1,7 @@
 #include "shell/bar/widgets/taskbar_widget.h"
 #include "tests/test_check.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -212,5 +213,31 @@ int main() {
   auto noPins = std::vector{TaskbarWidgetTestAccess::task(11, "running-window")};
   TaskbarWidgetTestAccess::dropUnpinned(noPins, false);
   TEST_CHECK(noPins.empty());
+
+  // The fold keeps the strip inside its room at any window count and scale, and never hides the active task.
+  for (const float scale : {1.0F, 1.5F}) {
+    const float gap = 4.0F * scale;
+    const float tile = 44.0F * scale;
+    const float pitch = tile + gap;
+    for (const std::size_t count : {std::size_t{1}, std::size_t{12}, std::size_t{40}}) {
+      for (float room = 0.0F; room <= 1366.0F; room += 7.0F) {
+        for (std::size_t active = 0; active < count; ++active) {
+          const TaskbarFit fit = fitTaskbarTiles(count, room, pitch, gap, active);
+          const std::size_t slots = fit.visible.size() + (fit.overflow ? 1U : 0U);
+          TEST_CHECK(fit.overflow == (static_cast<float>(count) * pitch - gap > room));
+          if (room >= tile) {
+            TEST_CHECK(static_cast<float>(slots) * pitch - gap <= room);
+          }
+          if (room >= 2.0F * pitch - gap) {
+            TEST_CHECK(!fit.visible.empty());
+            TEST_CHECK(std::ranges::contains(fit.visible, active));
+          }
+          TEST_CHECK(std::ranges::is_sorted(fit.visible));
+          TEST_CHECK(std::ranges::adjacent_find(fit.visible) == fit.visible.end());
+          TEST_CHECK(fit.visible.empty() || fit.visible.back() < count);
+        }
+      }
+    }
+  }
   return 0;
 }
