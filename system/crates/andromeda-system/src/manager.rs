@@ -72,9 +72,14 @@ impl Manager {
         Ok(id)
     }
 
-    fn unwatch(&mut self, id: u32) {
-        self.watches.remove(&id);
-        self.publish_watched();
+    /// Ends one of the caller's watches; another caller's id is ignored.
+    #[allow(clippy::needless_pass_by_value)] // zbus hands the header by value
+    fn unwatch(&mut self, id: u32, #[zbus(header)] header: Header<'_>) {
+        let Some(sender) = header.sender() else { return };
+        if self.watches.get(&id).is_some_and(|(owner, _)| owner == sender.as_str()) {
+            self.watches.remove(&id);
+            self.publish_watched();
+        }
     }
 }
 
