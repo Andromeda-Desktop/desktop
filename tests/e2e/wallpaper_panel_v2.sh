@@ -33,9 +33,7 @@ with_noctalia '
     fail "the screen did not settle"
   }
   changed_from() { grim "$OUT/now.png"; ! cmp -s "$1" "$OUT/now.png"; }
-  # A new virtual keyboard needs one key to get focus before the shell routes its keys: Pause goes first. Keys can
-  # still be lost while the window takes the new keyboard, so each step retries until its result shows.
-  key() { local a=(tap 119 tap 119) k; for k in "$@"; do a+=(tap "$k"); done; "$POINTER" 1280 720 "${a[@]}" > /dev/null; }
+  key() { local a=() k; for k in "$@"; do a+=(tap "$k"); done; "$POINTER" 1280 720 "${a[@]}" > /dev/null; }
 
   "$NOCTALIA" msg theme-mode-set light > /dev/null
   poll_for 5 theme_is light || fail "theme did not become light"

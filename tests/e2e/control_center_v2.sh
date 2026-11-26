@@ -60,8 +60,7 @@ PY
   # The Wi-Fi chevron opens the Wi-Fi page; Escape returns to the sheet.
   step 3-wifi-page 1070 87
   cp "$OUT/1-page1.png" "$OUT/4-back.png"
-  # A new virtual keyboard needs one key to get focus before the shell routes its keys: Pause goes first.
-  key() { local a=(tap 119 tap 119) k; for k in "$@"; do a+=(tap "$k"); done; "$POINTER" 1280 720 "${a[@]}" > /dev/null; }
+  key() { local a=() k; for k in "$@"; do a+=(tap "$k"); done; "$POINTER" 1280 720 "${a[@]}" > /dev/null; }
   # press_until REF KEY: a key can still be lost while the shell takes focus of a new virtual keyboard, so resend
   # until the screen matches REF (at most 3 sends).
   press_until() { local ref=$1 try; shift; for try in 1 2 3; do key "$@"; poll_for 2 panel_matches "$ref" && return 0; cp "$OUT/now.png" "$OUT/press-miss-$try.png"; done; return 1; }
@@ -81,7 +80,7 @@ PY
 
   # A keyboard that already sent events needs no priming: "/" right after Escape reopens the search. The page left by
   # Escape must not keep keyboard focus in its text field.
-  "$POINTER" 1280 720 tap 119 tap 119 tap 53 tap 1 tap 53 > /dev/null
+  "$POINTER" 1280 720 tap 53 tap 1 tap 53 > /dev/null
   cp "$OUT/4-back.png" "$OUT/last.png"
   poll_for 5 panel_changed || fail "an unprimed / after Escape did not reopen the search"
   panel_matches "$OUT/closed.png" && fail "the sheet closed instead of reopening the search"

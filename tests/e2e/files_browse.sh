@@ -40,8 +40,7 @@ run "$ANDROMEDA" settle > /dev/null
 # Waits until a line matching $2 appears in the log after line $1.
 LOG=$OUT/files.log
 mark() { wc -l < "$OUT/files.log"; }
-# The first key of a new virtual keyboard only gives it focus: Pause goes first.
-keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
+keys() { run "$POINTER" 1280 720 keyboard-only "$@" > /dev/null; }
 
 wait_log 0 "location $SRC" || fail "the window did not list $SRC"
 wait_log 0 "first frame" || fail "the window drew no first frame"

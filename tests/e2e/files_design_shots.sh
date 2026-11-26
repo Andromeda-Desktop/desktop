@@ -52,7 +52,7 @@ export FILES POINTER H D
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
   settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
-  keys() { "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
+  keys() { "$POINTER" 1280 720 keyboard-only "$@" > /dev/null; }
   "$ANDROMEDA" msg config-reload > /dev/null
   scale_is_2() { "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
   WAIT_S=5 wait_for "the output did not take scale 2" scale_is_2

@@ -42,7 +42,7 @@ win_mapped() {
 WAIT_S=5 wait_for "the Files window did not map" win_mapped
 WX=$(jq .x <<< "$w"); WY=$(jq .y <<< "$w")
 mark() { wc -l < "$LOG"; }
-keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
+keys() { run "$POINTER" 1280 720 keyboard-only "$@" > /dev/null; }
 at() { local line; line=$(grep -E "geometry $1( |$)" "$LOG" | tail -n 1); [[ -n $line ]] || fail "no geometry for $1"
   read -r x y <<< "$(awk '{print $(NF-1), $NF}' <<< "$line")"; echo "$((WX + x)) $((WY + y))"; }
 wait_log 0 "location $A\$" || fail "Files did not open $A"

@@ -96,7 +96,7 @@ export FILES FILEOPS POINTER INDEX H P
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
   settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
-  keys() { "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
+  keys() { "$POINTER" 1280 720 keyboard-only "$@" > /dev/null; }
   log() { cat "$OUT/files.log"; }
   mark() { wc -l < "$OUT/files.log"; }
   LOG=$OUT/files.log
@@ -198,7 +198,7 @@ with_noctalia '
   shot d-search
   # §15 Gallery, dark then light (mockup section 15 left): Ctrl+4 in a folder of photos.
   action go "[<\"file://$H/Pictures/Trip\">]"
-  m=$(mark); "$POINTER" 1280 720 keyboard-only tap 119 pause 100 mod control tap 5 mod none > /dev/null
+  m=$(mark); "$POINTER" 1280 720 keyboard-only mod control tap 5 mod none > /dev/null
   wait_log "$m" "view gallery" || fail "Ctrl+4 did not open the Gallery"
   wait_log "$m" "gallery photo full size" || fail "the Gallery showed no full-size photo"
   m=$(mark); keys tap 23 # I: the Info card, as the mockup shows it

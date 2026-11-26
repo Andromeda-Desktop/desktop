@@ -63,8 +63,7 @@ at() {
   echo "$((WX + x)) $((WY + y))"
 }
 ptr() { run "$POINTER" 1280 720 "$@" > /dev/null; }
-# Pause first: the first key of a new virtual keyboard only gives it focus.
-ptrk() { run "$POINTER" 1280 720 tap 119 pause 100 "$@" > /dev/null; }
+ptrk() { run "$POINTER" 1280 720 "$@" > /dev/null; }
 # A drag in steps past the start threshold, a rest on the target, then the drop.
 drag() {
   local from=($1) to=($2) mods=${3:-none} rest=${4:-150}

@@ -54,7 +54,7 @@ BEFORE_NOCTALIA='REAL_RUNTIME=$REAL_RUNTIME python3 '"$MOCK"' "$OUT/calls.txt" >
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
   settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
-  keys() { "$POINTER" 1720 1000 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
+  keys() { "$POINTER" 1720 1000 keyboard-only "$@" > /dev/null; }
   call() { dbus-send --session --print-reply --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 "org.andromeda.MockSystemd.$@" > /dev/null; }
   "$ANDROMEDA" msg config-reload > /dev/null
   "$NOCTALIA" msg config-set dock.enabled false > /dev/null || true

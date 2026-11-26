@@ -68,7 +68,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert all(i.flag_bits & 1 for i in infos), "an entry is not encrypted"
 PY
 }
-ptr() { run "$POINTER" 1280 720 tap 119 pause 100 "$@" > /dev/null; }
+ptr() { run "$POINTER" 1280 720 "$@" > /dev/null; }
 drag() { # from to: a drag in steps past the start threshold, a rest on the target, then the drop
   local from=($1) to=($2)
   ptr move "${from[0]}" "${from[1]}" pause 450 press 272 \

@@ -132,7 +132,7 @@ echo "PASS restore"
 # files another app copied (wl-copy stands in for it). Real keys: the compositor takes a clipboard only with the
 # serial of an input event.
 POINTER=${POINTER:-$ROOT/compositor/build-debug/tests/pointer-client}
-keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
+keys() { run "$POINTER" 1280 720 keyboard-only "$@" > /dev/null; }
 action go "[<'$DST'>]"
 select_names "$DST" 1 "['a.txt']"
 keys mod control tap 46 mod none                 # Ctrl+C (KEY_C)

@@ -25,7 +25,7 @@ namespace andromeda {
     [[nodiscard]] ToplevelDragManager& toplevelDrags() const { return *m_toplevelDrags; }
 
     void applyConfig();
-    void updateCapabilities(bool hasKeyboard, bool hasTouch);
+    void updateCapabilities(bool hasTouch);
     void notifyPointerModifiers(bool clear = false);
 
   private:

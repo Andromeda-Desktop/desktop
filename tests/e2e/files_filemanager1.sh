@@ -48,7 +48,7 @@ m=$(mark); call ShowItems "file://$SRC/report.txt"
 wait_log "$m" "location $SRC\$" || fail "ShowItems did not open $SRC"
 wait_log "$m" "selected 1 of 1 in $SRC" || fail "ShowItems did not select report.txt"
 # Shift+Del asks first; Escape keeps the file.
-m=$(mark); run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 mod shift tap 111 mod none > /dev/null
+m=$(mark); run "$POINTER" 1280 720 keyboard-only mod shift tap 111 mod none > /dev/null
 wait_log "$m" "ask delete 1 items" || fail "Shift+Del did not ask before deleting"
 run "$POINTER" 1280 720 keyboard-only tap 1 > /dev/null
 [[ -f $SRC/report.txt ]] || fail "Escape on the delete sheet deleted the file"

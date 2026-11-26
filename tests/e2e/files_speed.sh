@@ -51,7 +51,7 @@ run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_D
 
 LOG=$OUT/files.log
 mark() { wc -l < "$OUT/files.log"; }
-keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
+keys() { run "$POINTER" 1280 720 keyboard-only "$@" > /dev/null; }
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
 num() { grep -E "$1" "$OUT/files.log" | tail -n 1 | grep -oE "$2" | grep -oE '[0-9.]+' | head -n 1; }
 mem() { # label: RSS and PSS of the Files process (smaps_rollup), MB

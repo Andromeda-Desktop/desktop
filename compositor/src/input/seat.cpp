@@ -126,11 +126,10 @@ namespace andromeda {
     }
   }
 
-  void Seat::updateCapabilities(bool hasKeyboard, bool hasTouch) {
-    uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
-    if (hasKeyboard) {
-      caps |= WL_SEAT_CAPABILITY_KEYBOARD;
-    }
+  // Pointer and keyboard stay advertised with no device: a client binds wl_keyboard only after the capability
+  // appears, so a keyboard that comes later would lose its first key to that round trip.
+  void Seat::updateCapabilities(bool hasTouch) {
+    uint32_t caps = WL_SEAT_CAPABILITY_POINTER | WL_SEAT_CAPABILITY_KEYBOARD;
     if (hasTouch) {
       caps |= WL_SEAT_CAPABILITY_TOUCH;
     }

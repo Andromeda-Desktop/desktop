@@ -2823,7 +2823,7 @@ namespace andromeda {
     if (m_seat == nullptr) {
       return;
     }
-    m_seat->updateCapabilities(!m_keyboards.empty(), !m_touchDevices.empty());
+    m_seat->updateCapabilities(!m_touchDevices.empty());
     inputDevicesChanged();
   }
 

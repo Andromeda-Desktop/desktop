@@ -50,7 +50,7 @@ start() {
   run "$ANDROMEDA" settle > /dev/null
 }
 mark() { wc -l < "$LOG"; }
-keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
+keys() { run "$POINTER" 1280 720 keyboard-only "$@" > /dev/null; }
 at() { local line; line=$(grep -E "geometry $1( |$)" "$LOG" | tail -n 1); [[ -n $line ]] || fail "no geometry for $1"
   read -r x y <<< "$(awk '{print $(NF-1), $NF}' <<< "$line")"; echo "$((WX + x)) $((WY + y))"; }
 

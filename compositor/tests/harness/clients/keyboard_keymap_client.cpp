@@ -331,9 +331,10 @@ int main() {
     return EXIT_FAILURE;
   }
 
+  // The seat keeps the keyboard capability with no device, so the client's wl_keyboard gets the next keymap first.
   zwp_virtual_keyboard_v1_destroy(virtualKeyboard);
-  if (!roundtripTwice(state) || state.keyboard != nullptr) {
-    std::println(stderr, "keyboard-keymap-client: keyboard capability remains after the last device was removed");
+  if (!roundtripTwice(state) || state.keyboard == nullptr) {
+    std::println(stderr, "keyboard-keymap-client: keyboard capability went away with the last device");
     return EXIT_FAILURE;
   }
   virtualKeyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(state.keyboardManager, state.seat);

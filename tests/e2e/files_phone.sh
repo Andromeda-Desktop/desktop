@@ -98,7 +98,7 @@ WX=$(jq .x <<< "$w"); WY=$(jq .y <<< "$w")
 at() { local line; line=$(grep -E "geometry $1( |$)" "$OUT/files.log" | tail -n 1); [[ -n $line ]] || fail "no geometry for $1"
   read -r x y <<< "$(awk '{print $(NF-1), $NF}' <<< "$line")"; echo "$((WX + x)) $((WY + y))"; }
 from=($(at "item note.txt")); to=($(at "place Pixel E2E"))
-run "$POINTER" 1280 720 tap 119 pause 100 move "${from[0]}" "${from[1]}" pause 450 press 272 \
+run "$POINTER" 1280 720 move "${from[0]}" "${from[1]}" pause 450 press 272 \
   move $((from[0] + 6)) $((from[1] + 6)) move $((from[0] + 20)) $((from[1] + 20)) \
   move $(((from[0] + to[0]) / 2)) $(((from[1] + to[1]) / 2)) move "${to[0]}" "${to[1]}" \
   pause 150 move $((to[0] + 1)) "${to[1]}" pause 50 release 272 > /dev/null

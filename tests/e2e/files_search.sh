@@ -50,7 +50,7 @@ run "$ANDROMEDA" settle > /dev/null
 
 LOG=$OUT/files.log
 mark() { wc -l < "$OUT/files.log"; }
-keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
+keys() { run "$POINTER" 1280 720 keyboard-only "$@" > /dev/null; }
 ptr() { run "$POINTER" 1280 720 "$@" > /dev/null; }
 at() {
   local line
