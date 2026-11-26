@@ -98,22 +98,31 @@ jobs:
       ANDROMEDA_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - name: Tools
-        run: pacman -Syu --noconfirm --needed git zstd github-cli
+        run: pacman -Syu --noconfirm --needed git ccache zstd github-cli
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ env.REF }}
+      # The core release's ccache (saved on main by release-arch); libdesk and the apps share most objects with it.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-release-arch-${{ github.run_id }}
+          restore-keys: ccache-release-arch-
       - name: Build user
         run: |
           useradd -m builder
           echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
           git config --system --add safe.directory '*'
+          mkdir -p .ccache
           chown -R builder: "$GITHUB_WORKSPACE"
+          sed -i 's/^BUILDENV=(\(.*\)!ccache/BUILDENV=(\1ccache/' /etc/makepkg.conf
       - name: Packages
         working-directory: pkg
         run: >
           sudo -u builder env HOME=/home/builder CARGO_HOME=/home/builder/.cargo ANDROMEDA_SOURCE="file://$GITHUB_WORKSPACE"
-          ANDROMEDA_APP="$ANDROMEDA_APP" ANDROMEDA_VERSION="$ANDROMEDA_VERSION" makepkg --syncdeps --noconfirm --force
+          ANDROMEDA_APP="$ANDROMEDA_APP" ANDROMEDA_VERSION="$ANDROMEDA_VERSION" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
+          makepkg --syncdeps --noconfirm --force
       - name: Release
         if: env.PUBLISH == 'true'
         env:
@@ -159,6 +168,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release download -R Andromeda-Desktop/link -p 'andromeda-link_*_amd64.deb' -D "$HOME/.cache/andromeda-ubuntu/link-${{ matrix.base }}"
+      # Ubuntu's ccache (saved on main by check-ubuntu); Debian testing has none (cache space goes to Arch and Ubuntu).
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.base == '26.04'
+        with:
+          path: ~/.cache/andromeda-ubuntu/ccache-deb-${{ matrix.base }}
+          key: ccache-deb-${{ matrix.base }}-${{ github.run_id }}
+          restore-keys: ccache-deb-${{ matrix.base }}-
       - name: Packages
         run: tools/ubuntu-deb.sh --clean ${{ matrix.base }}
       - name: Repository
