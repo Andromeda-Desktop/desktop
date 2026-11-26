@@ -527,8 +527,8 @@ namespace settings {
     if (ctx.facePresent) {
       face = ctx.faces.empty() ? i18n::tr("settings.privacy.not-set-up")
                                : countText(ctx.faces.size(), "settings.privacy.faces-one", "settings.privacy.faces-many");
-      if (!ctx.faces.empty() && ctx.faceOnRequest) {
-        face += " · " + i18n::tr("settings.privacy.on-tap");
+      if (!ctx.faces.empty() && (!ctx.faceUnlock || ctx.faceOnRequest)) {
+        face += " · " + i18n::tr(ctx.faceUnlock ? "settings.privacy.on-tap" : "common.states.off");
       }
     }
     std::string finger = unavailable;
@@ -536,6 +536,9 @@ namespace settings {
       finger = ctx.fingers.empty()
                    ? i18n::tr("settings.privacy.not-set-up")
                    : countText(ctx.fingers.size(), "settings.privacy.fingers-one", "settings.privacy.fingers-many");
+      if (!ctx.fingers.empty() && !ctx.fingerprintUnlock) {
+        finger += " · " + i18n::tr("common.states.off");
+      }
     }
     if (ctx.password != nullptr) {
       const std::string passwordTitle = i18n::tr("settings.privacy.password");
