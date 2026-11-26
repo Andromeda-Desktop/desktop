@@ -394,8 +394,13 @@ namespace settings {
     appendRow(entries, brightnessRows, "sync_all_monitors");
     appendRow(entries, brightnessRows, "automatic");
     appendRow(entries, brightnessRows, "scheduled");
-    appendRow(entries, brightnessRows, "scheduled_day");
-    appendRow(entries, brightnessRows, "scheduled_night");
+    // setBrightness clamps to the floor, so a scheduled level below it has no effect.
+    for (const std::string_view key : {"scheduled_day", "scheduled_night"}) {
+      appendRow(entries, brightnessRows, key);
+      auto& slider = std::get<SliderSetting>(entries.back().control);
+      slider.minValue = std::max(slider.minValue, static_cast<double>(cfg.brightness.minimumBrightness));
+      slider.value = std::max(slider.value, slider.minValue);
+    }
     auto bluetoothRows =
         generateSchemaEntries(noctalia::config::schema::bluetoothSchema(), cfg.bluetooth, {"bluetooth"});
     appendGroup(entries, bluetoothRows, "bluetooth");

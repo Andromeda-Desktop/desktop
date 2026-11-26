@@ -1,6 +1,7 @@
 #include "core/log.h"
 #include "core/process/process.h"
 #include "util/file_utils.h"
+#include "i18n/i18n.h"
 #include "dbus/andromeda/software_update_service.h"
 #include "shell/settings/settings_content_software_update.h"
 #include "shell/settings/settings_window.h"
@@ -52,14 +53,18 @@ void SettingsWindow::addSoftwareUpdateContent(float scale) {
           .setCheckDaily =
               [this, checkOff](bool on) {
                 std::error_code error;
+                bool ok = true;
                 if (on) {
                   std::filesystem::remove(checkOff, error);
+                  ok = !error;
                 } else {
                   std::filesystem::create_directories(checkOff.parent_path(), error);
                   std::ofstream file(checkOff);
-                  if (!file) {
-                    kLog.warn("check daily off: cannot write {}", checkOff.string());
-                  }
+                  ok = static_cast<bool>(file);
+                }
+                if (!ok) {
+                  kLog.warn("check daily: cannot change {}", checkOff.string());
+                  showTransientStatus(i18n::tr("settings.errors.write"), true);
                 }
                 requestContentRebuild();
               },

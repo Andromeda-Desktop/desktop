@@ -127,6 +127,10 @@ namespace {
     if (path.size() >= 2 && path[0] == "shell" && path[1] == "greeter_sync") {
       return true;
     }
+    // The floor is the minimum of the scheduled level sliders.
+    if (path == std::vector<std::string>{"brightness", "minimum_brightness"}) {
+      return true;
+    }
     return false;
   }
 

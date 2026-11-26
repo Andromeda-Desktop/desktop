@@ -639,7 +639,7 @@ namespace noctalia::config::schema {
             }
         ),
         field(
-            &NightLightConfig::dayTemperature, "temperature_day", Range<std::int64_t>{1000, 25000},
+            &NightLightConfig::dayTemperature, "temperature_day", Range<std::int64_t>{NightLightConfig::kTemperatureMin, NightLightConfig::kTemperatureMax},
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "location",
@@ -653,7 +653,7 @@ namespace noctalia::config::schema {
             }
         ),
         field(
-            &NightLightConfig::nightTemperature, "temperature_night", Range<std::int64_t>{1000, 25000},
+            &NightLightConfig::nightTemperature, "temperature_night", Range<std::int64_t>{NightLightConfig::kTemperatureMin, NightLightConfig::kTemperatureMax},
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "location",
