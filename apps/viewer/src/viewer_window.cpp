@@ -15,6 +15,7 @@
 #include "core/files/directory_scanner.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "render/core/texture_manager.h"
 #include "render/scene/input_area.h"
 #include "i18n/i18n.h"
@@ -2418,38 +2419,49 @@ namespace viewer {
     m_helper->request(
         {.op = preview::op::Save}, fd,
         [this, temp, target, depth = m_edits.size(), then = std::move(then), generation = m_generation](const preview::HelperReply& reply) {
-          std::error_code err;
-          const bool written = reply.msg.op == preview::op::Saved && temp->keep >= 0 && fsync(temp->keep) == 0;
-          if (temp->keep >= 0) {
-            close(std::exchange(temp->keep, -1));
-          }
-          const std::string tmp = std::exchange(temp->path, {});
-          if (!written) {
-            std::filesystem::remove(tmp, err);
-          } else {
-            std::filesystem::rename(tmp, target, err);
-            if (err) {
-              std::filesystem::remove(tmp, err);
-            } else if (const int dir = ::open(target.parent_path().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC); dir >= 0) {
-              // The rename itself reaches the disk with the directory.
-              fsync(dir);
-              close(dir);
-            }
-          }
-          if (generation != m_generation) {
-            return;
-          }
-          m_saving = false;
-          if (!written || err) {
-            kLog.warn("saving {} failed", m_path.string());
-            return;
-          }
-          m_savedDepth = depth;
-          kLog.info("saved {}", m_path.string());
-          updateTitle();
-          if (then && !unsaved()) {
-            then();
-          }
+          const bool saved = reply.msg.op == preview::op::Saved;
+          // fsync and rename block for 100s of ms under disk load: they run on the file-op thread.
+          andromeda::runFileOpAsync(
+              [temp, target, saved] {
+                std::error_code err;
+                const bool written = saved && temp->keep >= 0 && fsync(temp->keep) == 0;
+                if (temp->keep >= 0) {
+                  close(std::exchange(temp->keep, -1));
+                }
+                const std::string part = std::exchange(temp->path, {});
+                if (!written) {
+                  std::filesystem::remove(part, err);
+                  return false;
+                }
+                std::filesystem::rename(part, target, err);
+                if (err) {
+                  std::filesystem::remove(part, err);
+                  return false;
+                }
+                if (const int dir = ::open(target.parent_path().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC); dir >= 0) {
+                  // The rename itself reaches the disk with the directory.
+                  fsync(dir);
+                  close(dir);
+                }
+                return true;
+              },
+              [this, alive = std::weak_ptr<bool>(m_alive), depth, then, generation](bool ok) {
+                if (alive.expired() || generation != m_generation) {
+                  return;
+                }
+                m_saving = false;
+                if (!ok) {
+                  kLog.warn("saving {} failed", m_path.string());
+                  return;
+                }
+                m_savedDepth = depth;
+                kLog.info("saved {}", m_path.string());
+                updateTitle();
+                if (then && !unsaved()) {
+                  then();
+                }
+              }
+          );
         }
     );
     close(fd);
