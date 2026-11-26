@@ -187,9 +187,9 @@ namespace andromeda::ov {
       return std::clamp((row - jump.from) / (jump.to - jump.from), 0.0, 1.0);
     }
 
-    // Row i's distance from the centred row, in rows. A jump closes the gap of the rows it skips, so they never
-    // cross the screen: they wait three rows out, where nothing is drawn.
-    double stripOffset(const Input& in, double row, double i) {
+    // Row i's distance from the shown row, in rows. A jump closes the gap of the rows it skips, so they never cross
+    // the screen: they wait three rows out, where nothing is drawn.
+    double rowOffset(const Input& in, double row, double i) {
       if (!skipsRows(in.jump)) {
         return i - row;
       }
@@ -219,7 +219,7 @@ namespace andromeda::ov {
       const double step = (in.horizontal ? fw : fh) + kStripGap;
       const double row = in.stripRow.value_or(static_cast<double>(in.current));
       const auto frameAt = [&](double i) {
-        const double offset = stripOffset(in, row, i) * step;
+        const double offset = rowOffset(in, row, i) * step;
         return in.horizontal ? Rect{fx + offset, fy, fw, fh} : Rect{fx, fy + offset, fw, fh};
       };
       for (size_t i = 0; i < n; ++i) {
@@ -227,7 +227,7 @@ namespace andromeda::ov {
         out.cards.push_back({i, frame, CardKind::Frame});
         const Fit fit{s, frame.x, frame.y};
         // Full on the chosen row, kPeekOpacity one row away, 0 two rows away: a row fades in and out as it scrolls.
-        const double away = std::abs(stripOffset(in, row, static_cast<double>(i)));
+        const double away = std::abs(rowOffset(in, row, static_cast<double>(i)));
         const double peek = away <= 1.0 ? 1.0 - (1.0 - kPeekOpacity) * away : kPeekOpacity * std::max(0.0, 2.0 - away);
         for (const Member& m : in.workspaces[i].members) {
           const bool away = in.workspaces[i].arrangement == Arrangement::Scrolling && offscreen(m.desk, in.width);
@@ -374,7 +374,8 @@ namespace andromeda::ov {
   }
 
   Rect deskRect(const Input& input, const Rect& desk, size_t workspace, double row) {
-    const double offset = (static_cast<double>(workspace) - row) * (input.horizontal ? input.width : input.height);
+    const double extent = input.horizontal ? input.width : input.height;
+    const double offset = rowOffset(input, row, static_cast<double>(workspace)) * extent;
     return input.horizontal ? Rect{desk.x + offset, desk.y, desk.w, desk.h}
                             : Rect{desk.x, desk.y + offset, desk.w, desk.h};
   }

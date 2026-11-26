@@ -201,6 +201,8 @@ ANDROMEDA_TEST(placeAtJumpSkipsTheRowsBetween) {
   Input plain = in;
   plain.jump.reset();
   for (double row = 0.0; row <= 3.0; row += 0.125) {
+    // An open or close in flight grows the last workspace's windows from at most one output away.
+    CHECK(std::abs(deskRect(in, {0, 0, kW, kH}, 3, row).y) <= kH + 1e-6);
     for (const WindowPlace& w : placeAt(Style::Strip, in, row).windows) {
       if (w.workspace == 1 || w.workspace == 2) {
         CHECK_EQ(w.opacity, 0.0);
