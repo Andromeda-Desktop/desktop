@@ -211,17 +211,6 @@ namespace desktop_layout {
       };
     }
 
-    std::vector<std::string> compositorPath(std::string_view key) {
-      std::vector<std::string> path{"andromeda"};
-      size_t start = 0;
-      while (start <= key.size()) {
-        const size_t end = std::min(key.find('.', start), key.size());
-        path.emplace_back(key.substr(start, end - start));
-        start = end + 1;
-      }
-      return path;
-    }
-
     // macOS and Windows show desktop icons, from their own corner (DESIGN.md "Desktop icons").
     bool hasDesktopIcons(std::string_view name) { return name == "macos" || name == "windows"; }
 
@@ -459,12 +448,12 @@ namespace desktop_layout {
       out.emplace_back(Path{"desktop_icons", "start_corner"}, std::string(preset == "macos" ? "top_right" : "top_left"));
     }
     for (const auto& [key, value] : compositorParts(*p)) {
-      out.emplace_back(compositorPath(key), std::string(value));
+      out.emplace_back(settings::compositorSettingPath(key), std::string(value));
     }
     // Windows opens with Frosted glass at 84 %; the glass kind stays the one island glass.
     if (preset == "windows") {
-      out.emplace_back(compositorPath("appearance.glass_style"), std::string("frosted"));
-      out.emplace_back(compositorPath("appearance.glass"), std::string("0.84"));
+      out.emplace_back(settings::compositorSettingPath("appearance.glass_style"), std::string("frosted"));
+      out.emplace_back(settings::compositorSettingPath("appearance.glass"), std::string("0.84"));
     }
     return out;
   }
@@ -476,15 +465,15 @@ namespace desktop_layout {
     }
     std::vector<Path> out;
     for (const std::string& key : now.workspaceModes) {
-      out.push_back(compositorPath(key));
+      out.push_back(settings::compositorSettingPath(key));
     }
     // Leaving a preset row (to another preset or to none) takes its lanes, group and geometry away.
     const BarRow* row = now.bars.empty() ? nullptr : currentRow(now.bars.front());
     if (row != nullptr && row != rowFor(preset)) {
       std::ranges::move(rowPaths(now.bars.front().name), std::back_inserter(out));
       if (row == rowFor("windows")) {
-        out.push_back(compositorPath("appearance.glass_style"));
-        out.push_back(compositorPath("appearance.glass"));
+        out.push_back(settings::compositorSettingPath("appearance.glass_style"));
+        out.push_back(settings::compositorSettingPath("appearance.glass"));
       }
     }
     if (!hasDesktopIcons(preset)) {
@@ -492,7 +481,7 @@ namespace desktop_layout {
     }
     // Earlier builds wrote radius 8 for Windows; window corners follow radius set B in every preset.
     if (now.cornerRadius == "8") {
-      out.push_back(compositorPath("appearance.corner_radius"));
+      out.push_back(settings::compositorSettingPath("appearance.corner_radius"));
     }
     return out;
   }

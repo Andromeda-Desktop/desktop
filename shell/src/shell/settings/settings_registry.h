@@ -392,6 +392,8 @@ namespace settings {
   // Entries for compositor settings carry {"andromeda", <config key parts>...}; they commit through the compositor's
   // settings manager instead of overrides.toml. Returns the dotted compositor key, or nothing for a shell path.
   [[nodiscard]] std::optional<std::string> compositorSettingKey(const std::vector<std::string>& path);
+  // The entry path of a dotted compositor key: {"andromeda", <key parts>...}.
+  [[nodiscard]] std::vector<std::string> compositorSettingPath(std::string_view key);
   // A shell override value as the compositor settings manager takes it.
   [[nodiscard]] std::string compositorSettingText(const ConfigOverrideValue& value);
   // Maps ids of merged sections (templates, osd, andromeda) to the page that now holds them.

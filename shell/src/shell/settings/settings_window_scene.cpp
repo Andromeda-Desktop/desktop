@@ -1203,7 +1203,7 @@ void SettingsWindow::rebuildSettingsContent() {
   phaseProfileWatch.reset();
 
   if (pageRows) {
-    addInputContent(scale);
+    addInputContent(scale, [&] { return makeContentContext(cfg, selectedBar, selectedMonitorOverride); });
     addShortcutsContent(scale);
     addDateTimeContent(scale);
     addLanguageContent(scale);

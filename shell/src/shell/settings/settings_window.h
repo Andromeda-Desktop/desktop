@@ -293,7 +293,7 @@ private:
   void refreshPluginListIfNeeded();
   void addDisplaysContent(float scale);
   void onDisplaysChanged();
-  void addInputContent(float scale);
+  void addInputContent(float scale, const std::function<settings::SettingsContentContext()>& contentContext);
   void addShortcutsContent(float scale);
   // Binds the compositor's settings manager for as long as Settings is open; a no-op when it is not advertised.
   void ensureCompositorSettings();

@@ -84,11 +84,6 @@ namespace settings {
       return value;
     }
 
-    std::optional<std::size_t> indexOf(const std::vector<std::string>& values, std::string_view value) {
-      const auto it = std::ranges::find(values, value);
-      return it != values.end() ? std::optional<std::size_t>(it - values.begin()) : std::nullopt;
-    }
-
     // A row the settings file customises carries the same reset control as registry rows: it clears the key so
     // config.toml or the built-in default applies again.
     std::unique_ptr<Flex> makeInputRow(
@@ -102,19 +97,7 @@ namespace settings {
       );
       auto row = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * scale});
       if (ctx.input->customized(key)) {
-        row->addChild(
-            ui::button({
-                .glyph = "arrow-back-up",
-                .glyphSize = Style::fontSizeBody * scale,
-                .variant = ButtonVariant::Ghost,
-                .tooltip = i18n::tr("settings.actions.reset-to-default"),
-                .minWidth = Style::controlHeight * scale,
-                .minHeight = Style::controlHeight * scale,
-                .padding = Style::spaceXs * scale,
-                .radius = Style::scaledRadiusMd(scale),
-                .onClick = [set = ctx.set, key = std::string(key)]() { set(key, ""); },
-            })
-        );
+        row->addChild(ctx.factory->makeResetButton(compositorSettingPath(key)));
       }
       row->addChild(std::move(control));
       return SettingsControlFactory::layoutRow(std::move(titleRow), subtitle, true, std::move(row), scale);
@@ -138,12 +121,19 @@ namespace settings {
       });
     }
 
-    std::unique_ptr<Node> makeInputToggle(bool checked, float scale, std::function<void(bool)> onChange) {
-      return ui::toggle({
-          .checked = checked,
-          .scale = scale,
-          .onChange = std::move(onChange),
-      });
+    std::unique_ptr<Node> makeInputChoice(
+        std::string_view key, const std::vector<std::string>& values, const std::vector<std::string>& labels,
+        const SettingsInputContext& ctx
+    ) {
+      SelectSetting setting{.selectedValue = ctx.input->value(key), .allowEmptySelection = true};
+      for (std::size_t i = 0; i < values.size() && i < labels.size(); ++i) {
+        setting.options.push_back({.value = values[i], .label = labels[i]});
+      }
+      return ctx.factory->makeSelect(setting, compositorSettingPath(key));
+    }
+
+    std::unique_ptr<Node> makeInputToggle(std::string_view key, const SettingsInputContext& ctx) {
+      return ctx.factory->makeValueToggle(ctx.input->value(key) == "true", compositorSettingPath(key), "true", "false");
     }
 
     std::unique_ptr<Node> makeInputSlider(
@@ -175,29 +165,16 @@ namespace settings {
     void addToggleRow(Flex& body, std::string_view titleKey, std::string_view key, const SettingsInputContext& ctx) {
       body.addChild(makeInputRow(
           i18n::tr(titleKey),
-          makeInputToggle(
-              ctx.input->value(key) == "true", ctx.scale,
-              [set = ctx.set, key = std::string(key)](bool checked) { set(key, checked ? "true" : "false"); }
-          ),
+          makeInputToggle(key, ctx),
           key, ctx
       ));
     }
 
     void addChoiceRow(
-        Flex& body, std::string_view titleKey, std::string_view key, std::vector<std::string> values,
-        std::vector<std::string> labels, const SettingsInputContext& ctx
+        Flex& body, std::string_view titleKey, std::string_view key, const std::vector<std::string>& values,
+        const std::vector<std::string>& labels, const SettingsInputContext& ctx
     ) {
-      const std::optional<std::size_t> selected = indexOf(values, ctx.input->value(key));
-      body.addChild(makeInputRow(
-          i18n::tr(titleKey),
-          makeInputSelect(
-              std::move(labels), selected, ctx.scale,
-              [set = ctx.set, key = std::string(key), values = std::move(values)](std::size_t index) {
-                set(key, values[index]);
-              }
-          ),
-          key, ctx
-      ));
+      body.addChild(makeInputRow(i18n::tr(titleKey), makeInputChoice(key, values, labels, ctx), key, ctx));
     }
 
     // Icon themes with a cursors directory, in the XCursor search order (user dirs first, first name wins).
@@ -425,10 +402,7 @@ namespace settings {
       constexpr std::string_view numlockKey = "input.keyboard.numlock_toggle";
       body->addChild(makeInputRow(
           i18n::tr("settings.input.keyboard.numlock"),
-          makeInputToggle(
-              input.value("input.keyboard.numlock_toggle") == "true", ctx.scale,
-              [set = ctx.set](bool checked) { set("input.keyboard.numlock_toggle", checked ? "true" : "false"); }
-          ),
+          makeInputToggle("input.keyboard.numlock_toggle", ctx),
           numlockKey, ctx
       ));
 
@@ -485,10 +459,7 @@ namespace settings {
       const auto boolRow = [&](std::string_view titleKey, std::string_view key, std::string_view subtitle = {}) {
         body->addChild(makeInputRow(
             i18n::tr(titleKey),
-            makeInputToggle(
-                input.value(key) == "true", ctx.scale,
-                [set = ctx.set, key = std::string(key)](bool checked) { set(key, checked ? "true" : "false"); }
-            ),
+            makeInputToggle(key, ctx),
             key, ctx, subtitle
         ));
       };
@@ -528,12 +499,7 @@ namespace settings {
       };
       body->addChild(makeInputRow(
           i18n::tr("settings.input.touchpad.click-method"),
-          makeInputSelect(
-              clickLabels, indexOf(clickValues, input.value("input.touchpad.click_method")), ctx.scale,
-              [set = ctx.set, clickValues](std::size_t index) {
-                set("input.touchpad.click_method", clickValues[index]);
-              }
-          ),
+          makeInputChoice("input.touchpad.click_method", clickValues, clickLabels, ctx),
           clickKey, ctx
       ));
 
@@ -544,12 +510,7 @@ namespace settings {
       };
       body->addChild(makeInputRow(
           i18n::tr("settings.input.accel-profile"),
-          makeInputSelect(
-              accelLabels, indexOf(accelValues, input.value("input.touchpad.accel_profile")), ctx.scale,
-              [set = ctx.set, accelValues](std::size_t index) {
-                set("input.touchpad.accel_profile", accelValues[index]);
-              }
-          ),
+          makeInputChoice("input.touchpad.accel_profile", accelValues, accelLabels, ctx),
           accelKey, ctx
       ));
 
@@ -587,20 +548,14 @@ namespace settings {
       constexpr std::string_view naturalKey = "input.mouse.natural_scroll";
       body->addChild(makeInputRow(
           i18n::tr("settings.input.touchpad.natural-scroll"),
-          makeInputToggle(
-              input.value("input.mouse.natural_scroll") == "true", ctx.scale,
-              [set = ctx.set](bool checked) { set("input.mouse.natural_scroll", checked ? "true" : "false"); }
-          ),
+          makeInputToggle("input.mouse.natural_scroll", ctx),
           naturalKey, ctx
       ));
 
       constexpr std::string_view leftHandedKey = "input.mouse.left_handed";
       body->addChild(makeInputRow(
           i18n::tr("settings.input.touchpad.left-handed"),
-          makeInputToggle(
-              input.value("input.mouse.left_handed") == "true", ctx.scale,
-              [set = ctx.set](bool checked) { set("input.mouse.left_handed", checked ? "true" : "false"); }
-          ),
+          makeInputToggle("input.mouse.left_handed", ctx),
           leftHandedKey, ctx
       ));
 
@@ -611,10 +566,7 @@ namespace settings {
       };
       body->addChild(makeInputRow(
           i18n::tr("settings.input.accel-profile"),
-          makeInputSelect(
-              accelLabels, indexOf(accelValues, input.value("input.mouse.accel_profile")), ctx.scale,
-              [set = ctx.set, accelValues](std::size_t index) { set("input.mouse.accel_profile", accelValues[index]); }
-          ),
+          makeInputChoice("input.mouse.accel_profile", accelValues, accelLabels, ctx),
           accelKey, ctx
       ));
 

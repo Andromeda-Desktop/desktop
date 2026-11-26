@@ -44,14 +44,6 @@ namespace settings {
 
     constexpr std::string_view kCompositorPathRoot = "andromeda";
 
-    std::vector<std::string> compositorPath(std::string_view key) {
-      std::vector<std::string> path{std::string(kCompositorPathRoot)};
-      for (const auto part : std::views::split(key, '.')) {
-        path.emplace_back(std::string_view(part));
-      }
-      return path;
-    }
-
     // "appearance.blur.radius" -> "settings.schema.andromeda.appearance-blur-radius"
     std::string compositorLabelKey(std::string_view key) {
       std::string id(key);
@@ -80,7 +72,7 @@ namespace settings {
                            SettingControl control, std::string tags, bool advanced = false) {
         const std::string labelKey = compositorLabelKey(key);
         entries.push_back(makeEntry(
-            section, std::string(group), tr(labelKey + ".label"), tr(labelKey + ".description"), compositorPath(key),
+            section, std::string(group), tr(labelKey + ".label"), tr(labelKey + ".description"), compositorSettingPath(key),
             std::move(control), std::move(tags), advanced
         ));
       };
@@ -198,12 +190,12 @@ namespace settings {
       // Captioned as the shell rows they replace: the compositor runs every animation on the desktop.
       entries.push_back(makeEntry(
           Motion, "motion", tr("settings.schema.appearance.animations.label"),
-          tr("settings.schema.appearance.animations.description"), compositorPath("animation.enabled"),
+          tr("settings.schema.appearance.animations.description"), compositorSettingPath("animation.enabled"),
           ToggleSetting{isOn("animation.enabled")}, "motion animations window compositor"
       ));
       entries.push_back(makeEntry(
           Motion, "motion", tr("settings.schema.appearance.animation-speed.label"),
-          tr("settings.schema.appearance.animation-speed.description"), compositorPath("animation.speed"),
+          tr("settings.schema.appearance.animation-speed.description"), compositorSettingPath("animation.speed"),
           SliderSetting(compositorNumber(compositor, "animation.speed"), 0.05, 4.0, 0.05, false),
           "motion animation speed"
       ));
@@ -365,6 +357,14 @@ namespace settings {
       return std::nullopt;
     }
     return StringUtils::join(std::vector<std::string>(path.begin() + 1, path.end()), ".");
+  }
+
+  std::vector<std::string> compositorSettingPath(std::string_view key) {
+    std::vector<std::string> path{std::string(kCompositorPathRoot)};
+    for (const auto part : std::views::split(key, '.')) {
+      path.emplace_back(std::string_view(part));
+    }
+    return path;
   }
 
 } // namespace settings
