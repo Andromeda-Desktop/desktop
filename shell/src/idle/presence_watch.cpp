@@ -38,7 +38,9 @@ PresenceWatch::Effects PresenceWatch::settle() {
     return effects;
   }
   const Mode want = watchMode();
-  const bool holdsAway = (m_mode == Mode::Away || m_mode == Mode::Locking) && want == Mode::Leaving;
+  // A lock while away keeps the dim: the lock screen stays dark until a present reading or input.
+  const bool lockedAway = m_locked && m_screenOn && m_settings.onLeave != Leave::Off && m_presence == Presence::Absent;
+  const bool holdsAway = (m_mode == Mode::Away || m_mode == Mode::Locking) && (want == Mode::Leaving || lockedAway);
   if (!holdsAway && !(m_mode == Mode::Leaving && want == Mode::Leaving)) {
     transition(want, effects);
   }
@@ -105,7 +107,7 @@ PresenceWatch::Effects PresenceWatch::timer(std::int64_t idleSeconds) {
     }
     if (idleSeconds >= kDebounceSeconds + m_settings.leaveDelaySeconds) {
       transition(Mode::Locking, effects);
-      effects.lock = true;
+      effects.lock = !m_locked;
     } else {
       transition(Mode::Watching, effects);
       transition(watchMode(), effects);

@@ -78,5 +78,6 @@ PresenceService::~PresenceService() {
 }
 
 void PresenceService::report(std::uint32_t value) {
+  kLog.info("presence {}", value == 1 ? "absent" : value == 2 ? "present" : "unknown");
   m_onChange(value > 2 ? Presence::Unknown : static_cast<Presence>(value));
 }

@@ -43,7 +43,7 @@ namespace {
         TEST_CHECK(!watch.claimed());
       }
       if (watch.dimmed()) {
-        TEST_CHECK(settings.onLeave != PresenceWatch::Leave::Off && !locked && screenOn && presence == Presence::Absent);
+        TEST_CHECK(settings.onLeave != PresenceWatch::Leave::Off && screenOn && presence == Presence::Absent);
       }
       if (watch.mode() == PresenceWatch::Mode::Waking || watch.mode() == PresenceWatch::Mode::Approach) {
         TEST_CHECK(settings.wakeOnApproach && !screenOn);
@@ -133,10 +133,30 @@ namespace {
     TEST_CHECK(effects.lock);
   }
 
+  // An idle lock while away keeps the dim until the user returns.
+  void lockWhileAwayKeepsDim() {
+    World w;
+    w.settings = {.onLeave = PresenceWatch::Leave::Dim};
+    w.apply(w.watch.setSettings(w.settings));
+    w.presence = Presence::Absent;
+    w.absentSince = 0;
+    w.apply(w.watch.reading(Presence::Absent));
+    w.elapse(5);
+    TEST_CHECK(w.watch.dimmed());
+    w.locked = true;
+    w.apply(w.watch.setLocked(true));
+    TEST_CHECK(w.watch.dimmed());
+    w.presence = Presence::Present;
+    w.absentSince.reset();
+    w.apply(w.watch.reading(Presence::Present));
+    TEST_CHECK(!w.watch.dimmed() && !w.watch.claimed());
+  }
+
 } // namespace
 
 int main() {
   walkAwayLocks();
+  lockWhileAwayKeepsDim();
   for (std::uint32_t seed = 1; seed <= 300; ++seed) {
     run(seed);
   }
