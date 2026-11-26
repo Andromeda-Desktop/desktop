@@ -29,6 +29,9 @@ public:
   void toggle();
   void setEnabled(bool enabled);
   [[nodiscard]] bool enabled() const noexcept { return m_enabled; }
+  // An app holds an idle inhibit (portal, D-Bus ScreenSaver): the compositor gets a Wayland inhibitor for it too, so
+  // its own idle state (screen time, session.idle) agrees with the shell's.
+  void setAppInhibited(bool inhibited);
   [[nodiscard]] bool available() const noexcept;
   void setChangeCallback(ChangeCallback callback);
 
@@ -53,6 +56,7 @@ private:
   AnchorSurfacesProvider m_anchorSurfacesProvider;
   ChangeCallback m_changeCallback;
   bool m_enabled = false;
+  bool m_appInhibited = false;
   bool m_loggedWaylandEnable = false;
   bool m_loggedLogindEnable = false;
 };

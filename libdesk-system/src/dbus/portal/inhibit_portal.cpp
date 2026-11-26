@@ -104,7 +104,7 @@ void InhibitPortal::inhibit(
   }
   kLog.info("{} inhibits flags {}", who, flags);
   m_handles.insert_or_assign(handle, std::move(entry));
-  if ((flags & (kFlagLogout | kFlagSuspend)) != 0 && m_changeCallback) {
+  if ((flags & (kFlagLogout | kFlagSuspend | kFlagIdle)) != 0 && m_changeCallback) {
     m_changeCallback();
   }
 }
@@ -117,6 +117,12 @@ std::vector<InhibitPortal::LogoutInhibitor> InhibitPortal::logoutInhibitors() co
     }
   }
   return out;
+}
+
+std::int64_t InhibitPortal::idleInhibitorCount() const {
+  return std::ranges::count_if(m_handles, [](const auto& entry) {
+    return !entry.second.monitor && (entry.second.flags & kFlagIdle) != 0;
+  });
 }
 
 std::vector<std::string> InhibitPortal::sleepInhibitorAppIds() const {
@@ -178,7 +184,7 @@ void InhibitPortal::close(const std::string& handle) {
     return;
   }
   it->second.inhibitors.clear();
-  const bool notify = !it->second.monitor && (it->second.flags & (kFlagLogout | kFlagSuspend)) != 0;
+  const bool notify = !it->second.monitor && (it->second.flags & (kFlagLogout | kFlagSuspend | kFlagIdle)) != 0;
   // The object is running this Close call; destroy it once the call has returned.
   DeferredCall::callLater([this, handle, notify]() {
     m_handles.erase(handle);

@@ -417,6 +417,7 @@ private:
   void applyAmbientLight(double lux);
   void applyBrightnessStep();
   void applyRuleDoNotDisturb();
+  void syncAppIdleInhibit();
   // lockscreen.dnd: Do Not Disturb while locked, as a Focus started by "lockscreen" that unlock ends.
   void syncLockScreenDoNotDisturb();
   // Reads the trigger inputs, starts or ends the trigger Focus, and arms the timer for the next schedule edge.

@@ -1258,9 +1258,7 @@ void Application::initWaylandCallbacks() {
   m_idleInhibitor.initialize(m_wayland);
   m_idleInhibitor.setChangeCallback([this, shouldRefreshControlCenter] {
     m_idleManager.setCaffeine(m_idleInhibitor.enabled());
-    m_pluginIdleWatches.setScreenSaverInhibited(
-        m_idleInhibitor.enabled() || (screenSaver() != nullptr && screenSaver()->inhibitLocks() > 0)
-    );
+    syncAppIdleInhibit();
     if (m_configService.config().osd.kinds.caffeine) {
       m_osdOverlay.show(caffeineOsdContent(m_idleInhibitor.enabled()));
     }
@@ -2357,6 +2355,7 @@ void Application::initSessionBusServices() {
       m_inhibitPortal->setChangeCallback([this] {
         m_powerOverlay.onToplevelChange();
         syncAppActivity();
+        syncAppIdleInhibit();
       });
       m_powerOverlay.setInhibitPortal(m_inhibitPortal.get());
       m_backgroundPortal = std::make_unique<BackgroundPortal>(

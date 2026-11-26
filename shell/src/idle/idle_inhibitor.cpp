@@ -39,7 +39,7 @@ void IdleInhibitor::setLogindService(LogindService* logind) {
   m_logind = logind;
   if (m_logind != nullptr) {
     m_logind->setIdleInhibitCallback([this] {
-      if (m_enabled) {
+      if (m_enabled || m_appInhibited) {
         syncInhibitor();
       }
     });
@@ -77,20 +77,27 @@ void IdleInhibitor::setEnabled(bool enabled) {
 
 void IdleInhibitor::setChangeCallback(ChangeCallback callback) { m_changeCallback = std::move(callback); }
 
+// Caffeine holds logind's idle lock when it can; the compositor sees only Wayland inhibitors, so it gets one for
+// Caffeine or an app inhibit either way.
 void IdleInhibitor::syncInhibitor(bool logTransitions) {
-  if (!m_enabled) {
-    destroyWaylandInhibitors(false);
+  if (m_enabled) {
+    syncLogindInhibit(logTransitions);
+  } else {
     releaseLogindInhibit();
-    return;
   }
-
-  syncLogindInhibit(logTransitions);
-  if (m_logind != nullptr && m_logind->hasIdleInhibit()) {
+  if (m_enabled || m_appInhibited) {
+    syncWaylandInhibitors(logTransitions);
+  } else {
     destroyWaylandInhibitors(false);
+  }
+}
+
+void IdleInhibitor::setAppInhibited(bool inhibited) {
+  if (m_appInhibited == inhibited) {
     return;
   }
-
-  syncWaylandInhibitors(logTransitions);
+  m_appInhibited = inhibited;
+  syncInhibitor(false);
 }
 
 void IdleInhibitor::syncWaylandInhibitors(bool logTransitions) {
@@ -172,13 +179,13 @@ void IdleInhibitor::notifyChanged() {
 
 void IdleInhibitor::onOutputChange() {
   destroyWaylandInhibitors(false);
-  if (m_enabled) {
+  if (m_enabled || m_appInhibited) {
     syncInhibitor(false);
   }
 }
 
 void IdleInhibitor::resyncAnchorSurfaces() {
-  if (!m_enabled) {
+  if (!m_enabled && !m_appInhibited) {
     return;
   }
   syncInhibitor(false);

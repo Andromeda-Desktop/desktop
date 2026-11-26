@@ -1144,12 +1144,8 @@ void Application::initNotificationAndOsd() {
     kLog.error("service modules: {}", m_services.error());
   }
   if (screenSaver() != nullptr) {
-    screenSaver()->setChangeCallback([this](std::int64_t locks) {
-      m_idleManager.setScreenSaverInhibitLocks(locks);
-      m_pluginIdleWatches.setScreenSaverInhibited(locks > 0 || m_idleInhibitor.enabled());
-    });
-    m_idleManager.setScreenSaverInhibitLocks(screenSaver()->inhibitLocks());
-    m_pluginIdleWatches.setScreenSaverInhibited(screenSaver()->inhibitLocks() > 0 || m_idleInhibitor.enabled());
+    screenSaver()->setChangeCallback([this](std::int64_t /*locks*/) { syncAppIdleInhibit(); });
+    syncAppIdleInhibit();
   } else if (!m_screenSaverModule->startError().empty()) {
     kLog.warn("idle inhibit service disabled: {}", m_screenSaverModule->startError());
   }
@@ -1697,4 +1693,14 @@ SoftwareUpdateService* Application::softwareUpdateService() {
     }
   }
   return m_softwareUpdateService.get();
+}
+
+// One app idle inhibit: D-Bus ScreenSaver locks and portal idle requests. The idle behaviors, plugin watches and the
+// compositor (through a Wayland inhibitor) all follow it.
+void Application::syncAppIdleInhibit() {
+  const std::int64_t locks = (screenSaver() != nullptr ? screenSaver()->inhibitLocks() : 0)
+      + (m_inhibitPortal != nullptr ? m_inhibitPortal->idleInhibitorCount() : 0);
+  m_idleManager.setScreenSaverInhibitLocks(locks);
+  m_pluginIdleWatches.setScreenSaverInhibited(locks > 0 || m_idleInhibitor.enabled());
+  m_idleInhibitor.setAppInhibited(locks > 0);
 }
