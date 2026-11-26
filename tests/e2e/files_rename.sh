@@ -50,7 +50,6 @@ wait_file() {
 }
 mark() { wc -l < "$OUT/files.log"; }
 keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
-shot() { run "$ANDROMEDA" settle > /dev/null; run grim "$OUT/$1.png"; }
 # evdev codes: F2 60, Enter 28, Tab 15, Esc 1, slash 53, z 44, n 49, letters below.
 type_word() {
   local args=() ch

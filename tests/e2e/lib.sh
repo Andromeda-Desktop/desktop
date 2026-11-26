@@ -72,6 +72,9 @@ stable_grim() {
 }
 export -f stable_grim
 
+# shot NAME: save $OUT/NAME.png once the compositor has settled.
+shot() { run "$ANDROMEDA" settle > /dev/null; run grim "$OUT/$1.png"; }
+
 # start_andromeda_system: start andromeda-system on the private system bus (sets $system). Exported into with_noctalia.
 export ANDROMEDA_SYSTEM=${ANDROMEDA_SYSTEM:-$ROOT/system/target/debug/andromeda-system}
 start_andromeda_system() {

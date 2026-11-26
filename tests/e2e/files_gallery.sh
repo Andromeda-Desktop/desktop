@@ -116,7 +116,6 @@ run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_D
 LOG=$OUT/files.log
 mark() { wc -l < "$OUT/files.log"; }
 keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
-shot() { run "$ANDROMEDA" settle > /dev/null; run grim "$OUT/$1.png"; }
 missed_since() { tail -n +"$(($1 + 1))" "$OUT/files.log" | grep -oE "anim .* missed [0-9]+" | grep -oE '[0-9]+$' | paste -sd+ | bc; }
 
 wait_log 0 "first frame at" 10 || fail "the window drew no first frame"

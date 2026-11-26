@@ -64,7 +64,6 @@ wait_rows() {
   done
   return 1
 }
-shot() { run "$ANDROMEDA" settle > /dev/null; run grim "$OUT/$1.png"; }
 # Screen point of a geometry entry: "item alpha.txt", "place Trash", "view".
 at() {
   local line

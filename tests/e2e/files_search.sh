@@ -57,7 +57,6 @@ LOG=$OUT/files.log
 mark() { wc -l < "$OUT/files.log"; }
 keys() { run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 "$@" > /dev/null; }
 ptr() { run "$POINTER" 1280 720 "$@" > /dev/null; }
-shot() { run "$ANDROMEDA" settle > /dev/null; run grim "$OUT/$1.png"; }
 at() {
   local line
   line=$(grep -E "geometry $1 -?[0-9]+ -?[0-9]+$" "$OUT/files.log" | tail -n 1)

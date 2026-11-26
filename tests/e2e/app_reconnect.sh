@@ -42,7 +42,6 @@ await_mapped() {
   for _ in $(seq 200); do mapped "$1" && return 0; sleep 0.05; done
   fail "no $1 window $2"
 }
-shot() { run "$ANDROMEDA" settle > /dev/null; run grim "$OUT/$1.png"; }
 
 app "$FILES" "$HOME_DIR" > "$OUT/files.log" 2>&1 &
 FILES_PID=$!
