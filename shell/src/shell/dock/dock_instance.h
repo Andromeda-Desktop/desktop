@@ -204,4 +204,8 @@ namespace shell::dock {
   // Slides the dock away while the overview is open, whatever its auto-hide mode, and back when it closes.
   void setOverviewSteppedAside(DockInstance& instance, bool aside);
 
+  [[nodiscard]] bool activeWorkspaceHasWindows(const CompositorPlatform& platform, wl_output* output);
+  // True when smart auto-hide keeps the dock shown on `output`: no unminimized window on its active workspace.
+  [[nodiscard]] bool smartAutoHideWantsPinnedVisible(const CompositorPlatform& platform, wl_output* output);
+
 } // namespace shell::dock

@@ -554,6 +554,8 @@ namespace noctalia::cli {
     };
     inline constexpr Command dockHide{"dock-hide", "Hide the dock (persists override)", {}, {}, {}, {}, {}, false};
     inline constexpr Command dockReload{"dock-reload", "Reload dock configuration", {}, {}, {}, {}, {}, false};
+    inline constexpr Command dockState{"dock-state", "Print each dock's smart auto-hide inputs", {}, {}, {}, {}, {},
+                                       false};
     inline constexpr Command dockShow{"dock-show", "Show the dock (persists override)", {}, {}, {}, {}, {}, false};
     inline constexpr Command dockToggle{"dock-toggle", "Toggle dock visibility (persists override)", {}, {}, {}, {}, {},
                                         false};
@@ -1195,6 +1197,7 @@ namespace noctalia::cli {
       msg::dockHide,
       msg::dockReload,
       msg::dockShow,
+      msg::dockState,
       msg::dockToggle,
       msg::dpmsOff,
       msg::dpmsOn,

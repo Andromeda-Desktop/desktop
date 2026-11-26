@@ -341,61 +341,6 @@ namespace {
     return {"dock", "pinned"};
   }
 
-  [[nodiscard]] bool workspaceKeyMatchesAssignment(std::string_view assignmentKey, const Workspace& workspace) {
-    if (assignmentKey.empty()) {
-      return false;
-    }
-    if (!workspace.id.empty() && assignmentKey == workspace.id) {
-      return true;
-    }
-    if (!workspace.name.empty() && assignmentKey == workspace.name) {
-      return true;
-    }
-    if (workspace.index > 0 && assignmentKey == std::to_string(workspace.index)) {
-      return true;
-    }
-    return false;
-  }
-
-  [[nodiscard]] bool activeWorkspaceHasWindows(const CompositorPlatform& platform, wl_output* output) {
-    const auto workspaces = platform.workspaces(output);
-    const Workspace* active = nullptr;
-    for (const auto& workspace : workspaces) {
-      if (workspace.active) {
-        active = &workspace;
-        break;
-      }
-    }
-    if (active == nullptr) {
-      return false;
-    }
-
-    const auto assignments = platform.workspaceWindowAssignments(output);
-    for (const auto& assignment : assignments) {
-      if (assignment.minimizeState.has_value() && assignment.minimizeState->minimized) {
-        continue;
-      }
-      if (workspaceKeyMatchesAssignment(assignment.workspaceKey, *active)) {
-        return true;
-      }
-    }
-    if (!assignments.empty()) {
-      return false;
-    }
-    if (platform.hasUnminimizedToplevels(output) == false) {
-      return false;
-    }
-    return active->occupied;
-  }
-
-  [[nodiscard]] bool dockSmartAutoHideWantsPinnedVisible(const CompositorPlatform& platform, wl_output* output) {
-    // The Andromeda overview sends the dock away instead (setOverviewSteppedAside).
-    if (platform.hasOverviewState() && platform.isOverviewOpen() && !platform.overviewStepsChromeAside()) {
-      return true;
-    }
-    return !activeWorkspaceHasWindows(platform, output);
-  }
-
 } // namespace
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -942,7 +887,7 @@ void Dock::reevaluateSmartAutoHide() {
       m_hoveredInstance = instance;
     }
 
-    const bool wantsPinned = dockSmartAutoHideWantsPinnedVisible(*m_platform, instance->output);
+    const bool wantsPinned = shell::dock::smartAutoHideWantsPinnedVisible(*m_platform, instance->output);
     const bool pinnedChanged = wantsPinned != instance->smartAutoHidePinnedVisible;
     instance->smartAutoHidePinnedVisible = wantsPinned;
 
@@ -1713,6 +1658,38 @@ void Dock::registerIpc(IpcService& ipc) {
     reload();
     return "ok\n";
   });
+
+  ipc.bind(noctalia::cli::msg::dockState, [this](const std::string&) -> std::string {
+    std::string out;
+    for (const auto& inst : m_instances) {
+      const auto workspaces = m_platform->workspaces(inst->output);
+      const auto active = std::ranges::find_if(workspaces, [](const Workspace& w) { return w.active; });
+      const auto unminimized = m_platform->hasUnminimizedToplevels(inst->output);
+      const WaylandOutput* wlOut = m_platform->findOutputByWl(inst->output);
+      out += std::format(
+          "{} smart={} pointerInside={} pinnedVisible={} wantsPinned={} hasWindows={} hideOpacity={:.2f} mode={} "
+          "aside={} overviewOpen={} unminimized={} active={}\n",
+          wlOut != nullptr ? wlOut->connectorName : std::string("?"), inst->config.smartAutoHide, inst->pointerInside,
+          inst->smartAutoHidePinnedVisible, shell::dock::smartAutoHideWantsPinnedVisible(*m_platform, inst->output),
+          shell::dock::activeWorkspaceHasWindows(*m_platform, inst->output), inst->hideOpacity,
+          static_cast<int>(inst->visibility.mode()), inst->visibility.aside(),
+          m_platform->hasOverviewState() && m_platform->isOverviewOpen(),
+          unminimized.has_value() ? (*unminimized ? "yes" : "no") : "unknown",
+          active == workspaces.end() ? std::string("none")
+                                     : std::format("id={} name={} index={} occupied={}", active->id, active->name,
+                                                   active->index, active->occupied)
+      );
+      for (const auto& w : workspaces) {
+        out += std::format("  ws id={} name={} index={} active={} occupied={}\n", w.id, w.name, w.index, w.active,
+                           w.occupied);
+      }
+      for (const auto& a : m_platform->workspaceWindowAssignments(inst->output)) {
+        out += std::format("  win {} app={} ws={} minimized={}\n", a.windowId, a.appId, a.workspaceKey,
+                           a.minimizeState.has_value() ? (a.minimizeState->minimized ? "yes" : "no") : "unknown");
+      }
+    }
+    return out.empty() ? "no dock\n" : out;
+  }, IpcService::HandlerOptions{.actionEditorVisibility = IpcService::ActionEditorVisibility::Hidden});
 }
 
 void Dock::onItemHover(shell::dock::DockInstance& instance, InputArea* area) {
