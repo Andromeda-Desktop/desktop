@@ -190,10 +190,12 @@ RULES = {
     "main-io": ("a file write blocks its thread for 100s of ms under disk load: write through protocol/async_file_writer.h "
                 "(writeFileAsync, runFileOpAsync; the sync owners writeFileReplacing, writeKernelAttribute, writeTextFileAtomic "
                 "report a disk write on a running loop at run time), or put the raw write inside a runFileOpAsync, "
-                "SharedWorker::post or BlockingPool::run call", ("compositor/src/", "shell/src/", "libdesk-ui/src/"),
-                CPP, r"\bstd::ofstream\b|\b(fsync|fdatasync)\s*\(|\bfopen\s*\([^;]*\"[wa]\+?b?\"",
+                "SharedWorker::post or BlockingPool::run call", ("compositor/src/", "shell/src/", "libdesk-ui/src/", "apps/",
+                "libdesk-app/src/", "andromeda-preview/"),
+                CPP, r"\bstd::ofstream\b|\b(fsync|fdatasync)\s*\(|\bfopen\s*\([^;]*\"[wa]\+?b?x?\"",
                 ("compositor/src/config/generated_file.", "compositor/src/util/private_state_file.",
-                 "shell/src/config/atomic_file.", "shell/src/security/encrypted_file_store.")),
+                 "shell/src/config/atomic_file.", "shell/src/security/encrypted_file_store.", "apps/files/src/state_file.",
+                 "libdesk-app/src/app/state_store.", "apps/files/src/exif_date.", "apps/player/src/music_library.")),
     "final-path-write": ("a write to the final path leaves a truncated file after a full disk or a crash: replace the file "
                          "whole (writeFileReplacing / writeFileAsync in protocol/async_file_writer.h, writeTextFileAtomic, "
                          "Files writeStateFile, libdesk-app StateStore); sysfs, markers and debug dumps are allowlisted",
@@ -263,7 +265,7 @@ def async_hits(text, rx):
             if any(a <= m.start() <= b for a, b in inside) and not any(a <= m.start() <= b for a, b in blocking)]
 
 
-WORKER_CALL = re.compile(r"\b(?:runFileOpAsync|SharedWorker::instance\(\)\.post(?:<[^>]*>)?|BlockingPool::instance\(\)\.run(?:<[^>]*>)?)\s*\(")
+WORKER_CALL = re.compile(r"\b(?:runFileOpAsync|startDownload|SharedWorker::instance\(\)\.post(?:<[^>]*>)?|BlockingPool::instance\(\)\.run(?:<[^>]*>)?)\s*\(")
 
 
 def outside_workers(text, rx):

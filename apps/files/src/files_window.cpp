@@ -936,25 +936,39 @@ void FilesWindow::dropData(const fs::path& folder, const std::string& mime, cons
   const bool image = mime == "image/png";
   const std::string stem = i18n::tr(image ? "files.drop.image" : "files.drop.text");
   const std::string ext = image ? ".png" : ".txt";
-  std::string name = stem + ext;
-  std::error_code ec;
-  for (int n = 2; fs::exists(folder / name, ec); ++n) {
-    name = std::format("{} {}{}", stem, n, ext);
-  }
-  FILE* out = std::fopen((folder / name).c_str(), "wbx");
-  const bool written = out != nullptr && std::fwrite(data.data(), 1, data.size(), out) == data.size();
-  const bool closed = out != nullptr && std::fclose(out) == 0;
-  if (!written || !closed) {
-    if (out != nullptr) {
-      fs::remove(folder / name, ec); // ours (wbx made it): a short write leaves no half file behind
-    }
-    showToast(i18n::tr(image ? "files.drop.save-failed-image" : "files.drop.save-failed-text"), false);
-    return;
-  }
-  kLog.debug("dropped data {}", (folder / name).string());
-  if (folder == location()) {
-    m_browser->renameWhenListed(name);
-  }
+  // The name probe and the write block under disk load: they run on the file-op thread.
+  auto name = std::make_shared<std::string>();
+  andromeda::runFileOpAsync(
+      [folder, data, stem, ext, name] {
+        std::error_code ec;
+        *name = stem + ext;
+        for (int n = 2; fs::exists(folder / *name, ec); ++n) {
+          *name = std::format("{} {}{}", stem, n, ext);
+        }
+        FILE* out = std::fopen((folder / *name).c_str(), "wbx");
+        const bool written = out != nullptr && std::fwrite(data.data(), 1, data.size(), out) == data.size();
+        const bool closed = out != nullptr && std::fclose(out) == 0;
+        if (written && closed) {
+          return true;
+        }
+        if (out != nullptr) {
+          fs::remove(folder / *name, ec); // ours (wbx made it): a short write leaves no half file behind
+        }
+        return false;
+      },
+      [this, alive = std::weak_ptr<bool>(m_alive), folder, image, name](bool ok) {
+        if (alive.expired()) {
+          return;
+        }
+        if (!ok) {
+          showToast(i18n::tr(image ? "files.drop.save-failed-image" : "files.drop.save-failed-text"), false);
+          return;
+        }
+        kLog.debug("dropped data {}", (folder / *name).string());
+        if (folder == location()) {
+          m_browser->renameWhenListed(*name);
+        }
+      });
 }
 
 void FilesWindow::newFolder() {
