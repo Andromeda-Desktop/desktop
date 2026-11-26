@@ -314,6 +314,7 @@ private:
   // supersedes it, so a late reply cannot show its error on another row or a reopened window.
   LatestRequest m_actionRequest;
   void clearActionError();
+  void setSelectedKey(std::string key);
   // Starts an action: supersedes earlier replies and clears their error, so a retry that works shows none.
   [[nodiscard]] LatestRequest::Ticket beginAction();
   void reportActionError(LatestRequest::Ticket ticket, std::string error);

@@ -185,14 +185,14 @@ void ActivityWindow::refreshRowStates(bool force) {
 void ActivityWindow::open(const std::string& rowKey) {
   if (rowKey == "containers" || rowKey.starts_with("ctr:")) {
     m_pane = Pane::Containers;
-    m_selectedKey = rowKey == "containers" ? "" : rowKey;
+    setSelectedKey(rowKey == "containers" ? "" : rowKey);
     m_inspectorScroll = {};
     m_containerTicks = 0;
   } else if (!rowKey.empty()) {
     if (m_pane == Pane::Containers) {
       m_pane = Pane::Memory;
     }
-    m_selectedKey = rowKey;
+    setSelectedKey(rowKey);
     m_inspectorScroll = {};
     m_inspectorHidden = false;
     m_confirm = Confirm::None;
@@ -443,7 +443,7 @@ void ActivityWindow::buildScene(Renderer& renderer, float width, float height) {
   const float scale = uiScale();
   if (m_pane == Pane::Containers && !containersAvailable()) {
     m_pane = Pane::Memory;
-    m_selectedKey.clear();
+    setSelectedKey({});
   }
   refreshRowStates(false);
   if (m_order.empty() || m_orderAt == std::chrono::steady_clock::time_point{}) {
@@ -877,9 +877,8 @@ void ActivityWindow::select(const std::string& key) {
     m_inspectTab = InspectTab::Overview;
     m_pendingLimits.reset();
   }
-  m_selectedKey = key;
+  setSelectedKey(key);
   m_inspectorHidden = false;
-  clearActionError();
   requestRebuild();
 }
 
@@ -899,7 +898,8 @@ void ActivityWindow::setPane(Pane pane) {
     return;
   }
   if ((pane == Pane::Containers) != (m_pane == Pane::Containers)) {
-    m_selectedKey.clear();
+    clearActionError();
+    setSelectedKey({});
     m_inspectorScroll = {};
     m_containerTicks = 0;
   }
@@ -937,8 +937,19 @@ void ActivityWindow::clearActionError() {
 }
 
 LatestRequest::Ticket ActivityWindow::beginAction() {
+  if (!m_actionError.empty()) {
+    requestRebuild();
+  }
   clearActionError();
   return m_actionRequest.begin();
+}
+
+// A late action reply belongs to the selection that started it.
+void ActivityWindow::setSelectedKey(std::string key) {
+  if (key != m_selectedKey) {
+    clearActionError();
+    m_selectedKey = std::move(key);
+  }
 }
 
 // Only a failure reports: an OK reply from one unit must not clear an error another unit of the same action set.
@@ -1096,7 +1107,7 @@ void ActivityWindow::onKeyboardEvent(const KeyboardEvent& event) {
       if (m_confirm != Confirm::None) {
         m_confirm = Confirm::None;
       } else {
-        m_selectedKey.clear();
+        setSelectedKey({});
       }
       requestRebuild();
       return;

@@ -3,6 +3,7 @@
 #include "link_model.h"
 #include "mirror_decoder.h"
 #include "dbus/name_owner_watch.h"
+#include "core/latest_request.h"
 
 #include <cstdint>
 #include <functional>
@@ -231,11 +232,13 @@ namespace linkapp {
       std::list<std::string>::iterator use;
     };
     static constexpr std::size_t kThumbBytes = std::size_t{48} << 20;
-    // Fetches path's PNG with ask() once and caches it; null until it comes.
-    template <typename Ask> const std::vector<std::uint8_t>* cachedImage(const std::string& path, Ask ask);
+    // Fetches the PNG for key with ask() once and caches it; null until it comes.
+    template <typename Ask> const std::vector<std::uint8_t>* cachedImage(const std::string& key, Ask ask);
     std::map<std::string, Thumb> m_thumbs; // key (photo:<device>:<path>, mms:<device>:<part>) -> PNG, at most kThumbBytes; the least recently drawn go first
-    std::list<std::string> m_thumbUse;     // paths, most recently drawn first
+    std::list<std::string> m_thumbUse;     // keys, most recently drawn first
     std::size_t m_thumbBytes = 0;
+    LatestRequest m_thumbEpoch; // clearThumbs() supersedes the replies still in flight
+    LatestRequest::Ticket m_thumbTicket = m_thumbEpoch.begin();
     std::function<void()> m_thumbnailReady;
     std::int64_t m_photosSeenS = 0; // the newest photo of m_photos.device() the user saw
     PhoneSettings m_phoneSettings;

@@ -657,10 +657,9 @@ void ActivityWindow::addContainerCards(Flex& list, float scale) {
           .radius = Style::scaledRadius(Tokens::radiusR4, scale),
           .onClick =
               [this, key] {
-                m_selectedKey = key;
+                setSelectedKey(key);
                 m_inspectorScroll = {};
                 m_inspectorHidden = false;
-                clearActionError();
                 requestRebuild();
               },
           .configure =

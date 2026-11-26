@@ -645,6 +645,7 @@ namespace linkapp {
     m_thumbs.clear();
     m_thumbUse.clear();
     m_thumbBytes = 0;
+    m_thumbTicket = m_thumbEpoch.begin();
   }
 
   void LinkClient::markPhotosSeen() {
@@ -709,25 +710,25 @@ namespace linkapp {
     });
   }
 
-  template <typename Ask> const std::vector<std::uint8_t>* LinkClient::cachedImage(const std::string& path, Ask ask) {
-    if (const auto it = m_thumbs.find(path); it != m_thumbs.end()) {
+  template <typename Ask> const std::vector<std::uint8_t>* LinkClient::cachedImage(const std::string& key, Ask ask) {
+    if (const auto it = m_thumbs.find(key); it != m_thumbs.end()) {
       m_thumbUse.splice(m_thumbUse.begin(), m_thumbUse, it->second.use);
       return it->second.png.empty() ? nullptr : &it->second.png;
     }
-    m_thumbUse.push_front(path);
-    m_thumbs.emplace(path, Thumb{.png = {}, .use = m_thumbUse.begin()});
-    ask().uponReplyInvoke([this, path, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
+    m_thumbUse.push_front(key);
+    m_thumbs.emplace(key, Thumb{.png = {}, .use = m_thumbUse.begin()});
+    ask().uponReplyInvoke([this, key, ticket = m_thumbTicket, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
                                                                              std::vector<std::uint8_t> png) {
-          if (alive.expired()) return;
-          const auto entry = m_thumbs.find(path);
+          if (alive.expired() || !m_thumbEpoch.current(ticket)) return;
+          const auto entry = m_thumbs.find(key);
           if (entry == m_thumbs.end()) return;
           if (error) {
-            kLog.debug("image {}: {}", path, error->getMessage());
+            kLog.debug("image {}: {}", key, error->getMessage());
             m_thumbUse.erase(entry->second.use);
             m_thumbs.erase(entry); // the next bind of its tile asks again
             return;
           }
-          m_thumbBytes += png.size();
+          m_thumbBytes += png.size() - entry->second.png.size();
           entry->second.png = std::move(png);
           while (m_thumbBytes > kThumbBytes && m_thumbUse.size() > 1) {
             const auto old = m_thumbs.find(m_thumbUse.back());
