@@ -292,7 +292,7 @@ namespace bar_detail {
     if (!bare) {
       return;
     }
-    instance.sceneRoot->setPaletteTone(barInkTone(instance.ink));
+    applyBackdropTone(*instance.sceneRoot, barInkTone(instance.ink));
     const bool white = instance.ink == BarInk::Dark;
     const float edge = white ? Tokens::componentBarScrimBrightEdge : Tokens::componentBarScrimDarkEdge;
     const float mid = white ? Tokens::componentBarScrimBrightMid : Tokens::componentBarScrimDarkMid;

@@ -67,6 +67,9 @@ void sendIslandGlass(Target& target, const DskSurfaceClient& surface, bool on) {
 // Sets the island tone on `node`, the root of a surface that carries the island glass.
 template <typename N> void applyIslandTone(N& node) { node.setPaletteTone(glassTone(glass::Kind::Shape)); }
 
+// Sets the tone of a surface root drawn with no glass body (a bare bar): its ink follows the backdrop under it.
+template <typename N> void applyBackdropTone(N& node, PaletteTone tone) { node.setPaletteTone(tone); }
+
 // Sets the island tone on the node in `root` now and after each glass change, then runs `then` after each change. A
 // node put in the slot later takes the tone at the next change; the slot must outlive the connection.
 template <typename Ptr>
