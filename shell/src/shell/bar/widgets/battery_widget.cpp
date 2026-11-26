@@ -450,7 +450,7 @@ void BatteryWidget::syncPalette() {
   const bool isWarning = m_warningThreshold > 0
       && m_lastPct >= 0.0
       && std::round(m_lastPct) <= m_warningThreshold
-      && !batteryStatePlugged(m_lastState).value_or(false);
+      && !m_lastPluggedIn;
   const ColorSpec foreground = isWarning ? m_warningColor : normalFg;
 
   if (m_islandStyle) {
@@ -497,6 +497,7 @@ void BatteryWidget::syncState(Renderer& renderer) {
 
   if (s.percentage == m_lastPct
       && s.state == m_lastState
+      && s.pluggedIn() == m_lastPluggedIn
       && s.isPresent == m_lastPresent
       && s.energyRate == m_lastEnergyRate
       && s.timeToEmpty == m_lastTimeToEmpty
@@ -507,13 +508,14 @@ void BatteryWidget::syncState(Renderer& renderer) {
 
   m_lastPct = s.percentage;
   m_lastState = s.state;
+  m_lastPluggedIn = s.pluggedIn();
   m_lastPresent = s.isPresent;
   m_lastEnergyRate = s.energyRate;
   m_lastTimeToEmpty = s.timeToEmpty;
   m_lastVertical = m_isVertical;
   m_lastTooltipRefreshTime = now;
 
-  const bool isPluggedIn = batteryStatePlugged(s.state).value_or(false);
+  const bool isPluggedIn = s.pluggedIn();
 
   const bool hasVisibleContent = m_displayMode != BatteryDisplayMode::None || m_showLabel;
 

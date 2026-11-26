@@ -118,6 +118,11 @@ struct UPowerState {
   double energy = 0.0;          // Wh
   bool isPresent = false;
   bool onBattery = false;
+  // The battery powers this machine (UPower PowerSupply; always true for the default state).
+  bool powerSupply = false;
+
+  // On AC: the line power for a battery that powers the machine, the charge state for a peripheral.
+  [[nodiscard]] bool pluggedIn() const;
 
   bool operator==(const UPowerState&) const = default;
 };
@@ -207,6 +212,7 @@ private:
   };
 
   [[nodiscard]] UPowerState readDefaultState() const;
+  [[nodiscard]] UPowerState readDefaultDeviceState() const;
   struct PropertyCache;
 
   [[nodiscard]] UPowerDeviceInfo readDeviceInfoBase(std::string path) const;

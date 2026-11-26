@@ -150,7 +150,7 @@ void Application::onUpowerStateChangedForHooks() {
     return;
   }
   const auto& state = upower()->state();
-  const auto plugged = state.isPresent ? batteryStatePlugged(state.state) : std::nullopt;
+  const auto plugged = state.isPresent ? std::optional(state.pluggedIn()) : std::nullopt;
   if (plugged.has_value()) {
     if (m_prevBatteryPluggedForEvents.has_value()
         && *m_prevBatteryPluggedForEvents != *plugged

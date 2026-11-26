@@ -177,9 +177,9 @@ void BatteryWarningMonitor::evaluate(
     const UPowerState& warningState = isSystem ? combined : device.state;
     auto& state = m_devices[key];
 
-    // Re-arm when charging, absent, or warnings disabled. firedLevel is percentage-based, so a
+    // Re-arm when on AC (a peripheral: charging), absent, or warnings disabled. firedLevel is percentage-based, so a
     // threshold change across config reloads needs no special handling — the next level decides.
-    if (!warningState.isPresent || batteryStatePlugged(warningState.state).value_or(false) || threshold <= 0) {
+    if (!warningState.isPresent || warningState.pluggedIn() || threshold <= 0) {
       state.firedLevel = kNoLevel;
       continue;
     }

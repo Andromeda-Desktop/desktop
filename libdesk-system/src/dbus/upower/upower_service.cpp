@@ -246,6 +246,7 @@ namespace {
   UPowerState deviceState(const Props& props, bool onBattery) {
     UPowerState next;
     next.onBattery = onBattery;
+    next.powerSupply = propOr<bool>(props, "PowerSupply", false);
     next.percentage = propOr<double>(props, "Percent", 0.0);
     next.isPresent = propOr<bool>(props, "Present", false);
     next.state = decodeBatteryState(propOr<std::string>(props, "State", ""));
@@ -285,6 +286,7 @@ namespace {
     info.state.energy = 36.2;
     info.state.isPresent = true;
     info.state.onBattery = true;
+    info.state.powerSupply = true;
     return info;
   }
 
@@ -574,6 +576,12 @@ void UPowerService::applyEnumeratedDevices(const std::vector<std::string>& paths
 }
 
 UPowerState UPowerService::readDefaultState() const {
+  UPowerState next = readDefaultDeviceState();
+  next.powerSupply = true;
+  return next;
+}
+
+UPowerState UPowerService::readDefaultDeviceState() const {
   UPowerState next;
   const bool onBattery = m_onBattery;
   next.onBattery = onBattery;
@@ -596,6 +604,10 @@ UPowerState UPowerService::readDefaultState() const {
   }
   next.onBattery = onBattery;
   return next;
+}
+
+bool UPowerState::pluggedIn() const {
+  return powerSupply ? !onBattery : batteryStatePlugged(state).value_or(false);
 }
 
 UPowerDeviceInfo UPowerService::readDeviceInfoBase(std::string path) const {

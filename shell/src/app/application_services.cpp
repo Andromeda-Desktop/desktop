@@ -1631,7 +1631,7 @@ void Application::initSystemBusServices() {
                   const auto& initialPower = service.state();
                   m_batteryHookState.reset(initialPower);
                   m_prevBatteryPluggedForEvents =
-                      initialPower.isPresent ? batteryStatePlugged(initialPower.state) : std::nullopt;
+                      initialPower.isPresent ? std::optional(initialPower.pluggedIn()) : std::nullopt;
                   m_batteryWarningMonitor.evaluate(m_configService.config().battery, service, m_notificationManager);
                   applyPowerSourceProfile();
                   // The first snapshot lands after startup: show it and give Bluetooth its peripheral batteries.

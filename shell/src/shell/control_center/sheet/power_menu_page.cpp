@@ -117,7 +117,7 @@ bool PowerMenuPage::updateOffered() const {
   }
   if (m_services.upower != nullptr) {
     const UPowerState& power = m_services.upower->state();
-    if (power.isPresent && power.state != BatteryState::Charging && power.percentage < kUpdateMinBattery) {
+    if (power.isPresent && !power.pluggedIn() && power.percentage < kUpdateMinBattery) {
       return false;
     }
   }
