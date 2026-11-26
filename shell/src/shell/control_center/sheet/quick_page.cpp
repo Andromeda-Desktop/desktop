@@ -57,8 +57,6 @@ namespace {
   // Anatomy: docs/design-system.md "Control center"; values: protocol/design-tokens.toml [component.*].
   TOKENS_LIVE(kRoundIcon, Tokens::componentRoundIconSize);
   TOKENS_LIVE(kPillHeight, Tokens::componentSliderHeight);
-  // The bus name andromeda-linkd exports a phone's player under, followed by the device id.
-  constexpr std::string_view kPhonePlayerPrefix = "org.mpris.MediaPlayer2.andromeda_link_";
   constexpr float kChevronGlyph = 12.0F;
   constexpr float kTileDragSlop = 8.0F;
   constexpr std::size_t kDropsPerRow = 5;
@@ -1429,10 +1427,9 @@ void QuickPage::syncMedia(Renderer& renderer) {
   }
   m_mediaTitle->setText(player->title);
   std::string artist = joinedArtists(player->artists);
-  if (m_services.link != nullptr && player->busName.starts_with(kPhonePlayerPrefix)) {
-    const std::string_view id = std::string_view(player->busName).substr(kPhonePlayerPrefix.size());
+  if (const auto id = phone::playerDeviceId(player->busName); m_services.link != nullptr && id.has_value()) {
     for (const LinkDevice& device : m_services.link->devices()) {
-      if (device.id == id) {
+      if (device.id == *id) {
         const std::string on = i18n::tr("control-center.detail.phone.on-phone", "phone", device.name);
         artist = artist.empty() ? on : artist + " · " + on;
         break;

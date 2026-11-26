@@ -11,6 +11,19 @@
 
 namespace phone {
 
+  namespace {
+    constexpr std::string_view kPlayerPrefix = "org.mpris.MediaPlayer2.andromeda_link_";
+  } // namespace
+
+  std::string playerBusName(std::string_view deviceId) { return std::string(kPlayerPrefix).append(deviceId); }
+
+  std::optional<std::string_view> playerDeviceId(std::string_view busName) {
+    if (!busName.starts_with(kPlayerPrefix)) {
+      return std::nullopt;
+    }
+    return busName.substr(kPlayerPrefix.size());
+  }
+
   const LinkDevice* primary(const LinkPhoneState& link) {
     const auto& devices = link.devices();
     if (devices.empty()) {

@@ -18,8 +18,6 @@
 
 namespace {
 
-  // The bus name andromeda-linkd exports a phone's player under, followed by the device id.
-  constexpr std::string_view kPhonePlayerPrefix = "org.mpris.MediaPlayer2.andromeda_link_";
   constexpr float kMargin = 48.0F;
   constexpr float kMaxPlayerWidth = 320.0F;
 
@@ -83,10 +81,11 @@ void LockPhoneRow::sync(const MprisService* mpris) {
 
   std::string playing;
   if (mpris != nullptr) {
-    const auto& players = mpris->players();
-    if (const auto it = players.find(std::string(kPhonePlayerPrefix) + phone->id);
-        it != players.end() && !it->second.title.empty()) {
-      playing = trackLine(it->second.title, joinedArtists(it->second.artists));
+    // listPlayers leaves out blacklisted players, as every other media surface does.
+    const auto players = mpris->listPlayers();
+    if (const auto it = std::ranges::find(players, phone::playerBusName(phone->id), &MprisPlayerInfo::busName);
+        it != players.end() && !it->title.empty()) {
+      playing = trackLine(it->title, joinedArtists(it->artists));
     }
   }
   (void)m_player->setText(playing);

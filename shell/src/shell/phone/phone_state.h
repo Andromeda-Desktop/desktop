@@ -24,6 +24,10 @@ namespace phone {
   // The set-ringer value that follows `ringer` in the cycle normal, vibrate, silent.
   [[nodiscard]] std::uint32_t nextRinger(std::string_view ringer);
   [[nodiscard]] std::string ringerGlyph(std::string_view ringer);
+  // The MPRIS bus name linkd gives a phone's player (link-daemon mpris.rs NAME_PREFIX).
+  [[nodiscard]] std::string playerBusName(std::string_view deviceId);
+  // The phone id in a phone player's bus name; nullopt for any other player.
+  [[nodiscard]] std::optional<std::string_view> playerDeviceId(std::string_view busName);
 
   // One of a phone's Wi-Fi, Bluetooth and torch keys, as the phone panel and the control center draw it.
   struct ToggleKey {

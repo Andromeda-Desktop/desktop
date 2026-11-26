@@ -38,7 +38,6 @@ namespace {
   constexpr Color kFill2 = rgba(1.0F, 1.0F, 1.0F, 26.0F / 255.0F);
   constexpr Color kWell = rgba(1.0F, 1.0F, 1.0F, 36.0F / 255.0F); // concept C --well, 14 %
   constexpr Color kTextShadow = rgba(0.0F, 0.0F, 0.0F, 0.30F);
-  constexpr std::string_view kPhonePlayerPrefix = "org.mpris.MediaPlayer2.andromeda_link_";
   constexpr float kCardH = 64.0F;
   constexpr const float& kCardGap = Tokens::spaceP8;
 
@@ -600,7 +599,7 @@ LockCards::Data collectLockCards(
           .notices = link->granted(phone->id, "notifications") ? link->notificationCount(phone->id) : 0,
       };
       // The phone's own player shows as the phone card's line, not as the desktop media card.
-      if (data.media.has_value() && data.media->busName == std::string(kPhonePlayerPrefix) + phone->id) {
+      if (data.media.has_value() && data.media->busName == phone::playerBusName(phone->id)) {
         data.media.reset();
       }
     }
