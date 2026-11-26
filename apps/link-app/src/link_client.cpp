@@ -948,26 +948,37 @@ namespace linkapp {
     const std::filesystem::path dir = g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD) != nullptr
                                           ? g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD)
                                           : std::filesystem::path(g_get_home_dir()) / "Downloads";
-    const std::filesystem::path base(name);
-    for (int n = 0; n < 1000 && !download->file; ++n) {
-      const std::string candidate =
-          n == 0 ? name : std::format("{} ({}){}", base.stem().string(), n, base.extension().string());
-      download->local = (dir / candidate).string();
-      download->file.reset(std::fopen(download->local.c_str(), "wbx"));
-      if (!download->file && errno != EEXIST) break;
-    }
-    if (!download->file) {
-      kLog.warn("save {}: cannot create a file in {}", name, dir.string());
-      (void)m_files.saveFailed(phonePath);
-      changed();
-      return;
-    }
     download->progress = [this, phonePath](std::uint64_t got) { (void)m_files.saveProgress(phonePath, got); };
     download->finished = [this, d = download.get()](bool ok) {
       (void)(ok ? m_files.saveDone(d->phonePath, d->local) : m_files.saveFailed(d->phonePath));
     };
     changed();
-    readChunk(download);
+    startDownload(download, [dir, name](Download& d) {
+      const std::filesystem::path base(name);
+      for (int n = 0; n < 1000 && !d.file; ++n) {
+        const std::string candidate =
+            n == 0 ? name : std::format("{} ({}){}", base.stem().string(), n, base.extension().string());
+        d.local = (dir / candidate).string();
+        d.file.reset(std::fopen(d.local.c_str(), "wbx"));
+        if (!d.file && errno != EEXIST) break;
+      }
+      if (!d.file) kLog.warn("save {}: cannot create a file in {}", name, dir.string());
+      return d.file != nullptr;
+    });
+  }
+
+  // The file opens, takes each chunk and closes on the file-op thread (ordered); the next read starts after its write.
+  void LinkClient::startDownload(const std::shared_ptr<Download>& download, std::function<bool(Download&)> open) {
+    andromeda::runFileOpAsync([download, open = std::move(open)] { return open(*download); },
+                              [this, download, alive = std::weak_ptr<bool>(m_alive)](bool ok) {
+                                if (alive.expired()) return;
+                                if (!ok) {
+                                  download->finished(false);
+                                  changed();
+                                  return;
+                                }
+                                readChunk(download);
+                              });
   }
 
   void LinkClient::readChunk(const std::shared_ptr<Download>& download) {
@@ -978,36 +989,47 @@ namespace linkapp {
         .uponReplyInvoke([this, download, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
                                                                                  std::vector<std::uint8_t> data) {
           if (alive.expired()) return;
+          const auto drop = [](Download& d) {
+            d.file.reset();
+            std::remove(d.local.c_str());
+          };
           if (download->stale && download->stale()) {
-            download->file.reset();
-            std::remove(download->local.c_str());
+            andromeda::runFileOpAsync([download, drop] {
+              drop(*download);
+              return true;
+            });
             return;
           }
-          const bool wrote = !error && std::fwrite(data.data(), 1, data.size(), download->file.get()) == data.size();
-          if (!wrote) {
-            if (error) kLog.warn("ReadFile: {}", error->getMessage());
-            download->file.reset();
-            std::remove(download->local.c_str());
-            download->finished(false);
-            changed();
-            return;
-          }
-          download->got += data.size();
-          if (data.size() < kChunk) {
-            const bool closed = std::fclose(download->file.release()) == 0;
-            if (!closed) std::remove(download->local.c_str());
-            download->finished(closed);
-            changed();
-            return;
-          }
-          // Progress repaints at most 4 times a second (rulebook §16); a read with no progress to show repaints only at its end.
-          const auto now = std::chrono::steady_clock::now();
-          if (download->progress) download->progress(download->got);
-          if (download->progress && now - download->shown >= std::chrono::milliseconds(250)) {
-            download->shown = now;
-            changed();
-          }
-          readChunk(download);
+          if (error) kLog.warn("ReadFile: {}", error->getMessage());
+          const std::size_t size = data.size();
+          const bool last = size < kChunk;
+          andromeda::runFileOpAsync(
+              [download, drop, data = std::move(data), failed = error.has_value(), last] {
+                if (failed || std::fwrite(data.data(), 1, data.size(), download->file.get()) != data.size()
+                    || (last && std::fclose(download->file.release()) != 0)) {
+                  drop(*download);
+                  return false;
+                }
+                return true;
+              },
+              [this, download, alive, size, last](bool ok) {
+                if (alive.expired()) return;
+                if (!ok || last) {
+                  download->got += ok ? size : 0;
+                  download->finished(ok);
+                  changed();
+                  return;
+                }
+                download->got += size;
+                // Progress repaints at most 4 times a second (rulebook §16); a read with no progress to show repaints only at its end.
+                const auto now = std::chrono::steady_clock::now();
+                if (download->progress) download->progress(download->got);
+                if (download->progress && now - download->shown >= std::chrono::milliseconds(250)) {
+                  download->shown = now;
+                  changed();
+                }
+                readChunk(download);
+              });
         });
   }
 
@@ -1313,30 +1335,28 @@ namespace linkapp {
     if (m_photoFile && m_photoFile->phonePath == phonePath && m_photoFile->kind != PhotoFile::Kind::Failed) return;
     closePhoto();
     const std::filesystem::path dir = std::filesystem::path(g_get_user_cache_dir()) / "andromeda" / "link-app" / "view";
-    std::error_code ec;
-    if (m_photoOpens == 1) std::filesystem::remove_all(dir, ec); // files a crash left behind
-    std::filesystem::create_directories(dir, ec);
     auto download = std::make_shared<Download>();
     download->device = m_photos.device();
     download->phonePath = phonePath;
     download->local = (dir / std::format("{}{}", m_photoOpens, std::filesystem::path(phonePath).extension().string())).string();
-    download->file.reset(std::fopen(download->local.c_str(), "wb"));
     m_photoFile = PhotoFile{.phonePath = phonePath};
-    if (!download->file) {
-      kLog.warn("view {}: cannot create {}", phonePath, download->local);
-      m_photoFile->kind = PhotoFile::Kind::Failed;
-      changed();
-      return;
-    }
     const std::uint64_t serial = m_photoOpens;
     download->stale = [this, serial] { return serial != m_photoOpens; };
-    download->finished = [this, d = download.get()](bool ok) {
+    download->finished = [this, serial, d = download.get()](bool ok) {
+      if (serial != m_photoOpens) return;
       m_photoFile->kind = ok ? PhotoFile::Kind::Ready : PhotoFile::Kind::Failed;
       if (ok) m_photoFile->local = d->local;
       m_photoFile->size = d->got;
     };
     changed();
-    readChunk(download);
+    startDownload(download, [dir, phonePath, clearOld = m_photoOpens == 1](Download& d) {
+      std::error_code ec;
+      if (clearOld) std::filesystem::remove_all(dir, ec); // files a crash left behind
+      std::filesystem::create_directories(dir, ec);
+      d.file.reset(std::fopen(d.local.c_str(), "wb"));
+      if (!d.file) kLog.warn("view {}: cannot create {}", phonePath, d.local);
+      return d.file != nullptr;
+    });
   }
 
   void LinkClient::closePhoto() {

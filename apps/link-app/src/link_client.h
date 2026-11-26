@@ -180,6 +180,7 @@ namespace linkapp {
   private:
     void openMirror(const std::string& device, std::uint64_t session, bool withCodecs);
     struct Download;
+    void startDownload(const std::shared_ptr<Download>& download, std::function<bool(Download&)> open);
     void readChunk(const std::shared_ptr<Download>& download);
     void refresh();
     void refreshNearby();
