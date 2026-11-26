@@ -62,6 +62,10 @@ jobs:
   core-arch:
     needs: plan
     uses: ./.github/workflows/release-arch.yml
+    # Its relay job (skipped here) asks for actions: write; a called workflow may not ask for more than its caller.
+    permissions:
+      contents: write
+      actions: write
     secrets: inherit
     with: { tag: "v${{ needs.plan.outputs.core }}", ref: "${{ needs.plan.outputs.sha }}" }
 
