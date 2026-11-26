@@ -24,14 +24,7 @@ printf '\n[wallpaper]\ndirectory = "%s"\n' "$RUNTIME/walls" >> "$RUNTIME/home/.c
 with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
   theme_is() { [[ $("$NOCTALIA" msg theme-mode-get 2> /dev/null) == *"$1"* ]]; }
-  settle() {
-    local i
-    for i in $(seq 25); do
-      grim "$OUT/prev.png"; sleep 0.2; grim "$OUT/now.png"
-      cmp -s "$OUT/prev.png" "$OUT/now.png" && return 0
-    done
-    fail "the screen did not settle"
-  }
+  settle() { stable_grim "$OUT/now.png"; }
   changed_from() { grim "$OUT/now.png"; ! cmp -s "$1" "$OUT/now.png"; }
   key() { local a=() k; for k in "$@"; do a+=(tap "$k"); done; "$POINTER" 1280 720 "${a[@]}" > /dev/null; }
 

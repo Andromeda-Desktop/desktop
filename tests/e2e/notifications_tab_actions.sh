@@ -11,14 +11,7 @@ boot_headless 1
 
 with_noctalia '
   fail() { echo "FAIL: $*" >&2; exit 1; }
-  settle() {
-    local i
-    for i in $(seq 25); do
-      grim "$OUT/prev.png"; sleep 0.2; grim "$OUT/now.png"
-      cmp -s "$OUT/prev.png" "$OUT/now.png" && return 0
-    done
-    fail "the screen did not settle"
-  }
+  settle() { stable_grim "$OUT/now.png"; }
   tag=e2e-nc-$$-$RANDOM
   # notify-send -w stays connected and prints the invoked action key: that is the app side of ActionInvoked.
   grim "$OUT/0-before.png"

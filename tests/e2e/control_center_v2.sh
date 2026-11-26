@@ -27,14 +27,7 @@ PY
   # The pills and footer only: a keyboard focus ring on a tile must not decide a match.
   panel_matches() { ! BOX=880,205,1280,330 panel_changed "$1"; }
   # settle: wait until two shots 0.2 s apart are equal (animations done).
-  settle() {
-    local i
-    for i in $(seq 25); do
-      grim "$OUT/prev.png"; sleep 0.2; grim "$OUT/now.png"
-      cmp -s "$OUT/prev.png" "$OUT/now.png" && return 0
-    done
-    fail "the screen did not settle"
-  }
+  settle() { stable_grim "$OUT/now.png"; }
   # step NAME X Y: click, wait for the sheet to change, keep the shot as $OUT/NAME.png.
   step() {
     "$POINTER" 1280 720 move "$2" "$3" > /dev/null

@@ -28,4 +28,13 @@ poll_for() {
 log_since() { (($(tail -n +"$(($2 + 1))" "$1" | grep -cE -- "$3") >= ${4:-1})); }
 # wait_log FROM REGEX [SECONDS]: as poll_for SECONDS (default 5) log_since "$LOG" FROM REGEX.
 wait_log() { poll_for "${3:-5}" log_since "$LOG" "$1" "$2"; }
-export -f wait_for poll_for log_since wait_log
+# wait_calls PATTERN COUNT: the mock's $OUT/calls.txt has COUNT lines matching PATTERN within 5 s; else it prints
+# the file and fails.
+calls_reached() { (($(grep -c -- "$1" "$OUT/calls.txt" || true) >= $2)); }
+wait_calls() {
+  poll_for 5 calls_reached "$1" "$2" && return 0
+  echo "FAIL: mock never saw $1 x$2"
+  cat "$OUT/calls.txt"
+  exit 1
+}
+export -f wait_for poll_for log_since wait_log calls_reached wait_calls

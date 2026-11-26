@@ -56,7 +56,6 @@ with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
   WAIT_S=5
   logged() { grep -qsE -- "$2" "$1"; }
-  settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
   # The headless seat has a keyboard only while a virtual keyboard exists, and the shell binds wl_keyboard when it
   # appears: a key sent in the same burst as its click was lost while the shell bound it (log: "keyboard: bound" and
   # "released" around the press, no key). One keyboard held for the whole test keeps it bound.
@@ -75,7 +74,7 @@ with_noctalia '
   win() { "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.title? == \"$1\")][0] // empty"; }
 
   wait_for "the desktop did not map" bash -c "[[ \$(\"$ANDROMEDA\" layers --json | jq \"[.[] | select(.namespace == \\\"andromeda-desktop-icons\\\" and .w > 0)] | length\") -gt 0 ]]"
-  settle
+  settle_shell
   desk=$(layer andromeda-desktop-icons)
   DX=$(jq .x <<< "$desk"); DY=$(jq .y <<< "$desk"); DW=$(jq .w <<< "$desk")
   # Folders first: Inbox is the top-right cell (96 x 104, 16 from the edge, plate 72).
@@ -83,7 +82,7 @@ with_noctalia '
 
   GDK_BACKEND=wayland python3 -I "'"$ROOT"'/tests/e2e/dnd_app.py" dnd-app "$H/outside.txt" > "$OUT/dnd-app.log" 2>&1 &
   wait_for "the GTK app did not map" bash -c "[[ -n \$(\"$ANDROMEDA\" windows --json | jq -r \".. | objects | select(.title? == \\\"dnd-app\\\") | .title\") ]]"
-  settle
+  settle_shell
   w=$(win dnd-app)
   WX=$(jq .x <<< "$w"); WY=$(jq .y <<< "$w"); WW=$(jq .w <<< "$w"); WH=$(jq .h <<< "$w")
   SRC_X=$((WX + WW / 4)); SRC_Y=$((WY + WH / 2)); DROP_X=$((WX + 3 * WW / 4))
@@ -113,7 +112,7 @@ with_noctalia '
   echo "PASS move into a desktop folder and undo"
 
   # 3. Desktop icon -> GTK app: the app gets the file URI.
-  settle
+  settle_shell
   drag "$INBOX_X" "$INBOX_Y" "$DROP_X" "$SRC_Y"
   wait_for "the GTK app got no URI from the desktop drag" logged "$OUT/dnd-app.log" "^dropped file://.*/Desktop/Inbox$"
   [[ -d $DESK/Inbox ]] || fail "the drag moved Inbox off the desktop"
@@ -123,7 +122,7 @@ with_noctalia '
   env DESK_FILES_GEOMETRY=1 ANDROMEDA_LOG_LEVEL=debug "$FILES" "$H/Docs" > "$OUT/files.log" 2>&1 &
   FILES_PID=$!
   wait_for "Files did not list report.txt" logged "$OUT/files.log" "geometry item report.txt "
-  settle
+  settle_shell
   f=$(win Docs)
   [[ -n $f ]] || f=$("$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"dev.andromeda.Files\")][0]")
   read -r rx ry <<< "$(grep -E "geometry item report.txt " "$OUT/files.log" | tail -n 1 | awk "{print \$(NF-1), \$NF}")"
@@ -149,26 +148,26 @@ with_noctalia '
   # The desktop menu toggle writes this key; the config watcher applies it.
   sed -i "s/^start_corner = \"top_right\"$/start_corner = \"top_right\"\nstacks = true/" "$H/.config/andromeda/shell/config.toml"
   wait_for "the desktop did not switch to stacks" logged "$OUT/noctalia.log" "desktop stacks on"
-  settle
+  settle_shell
   grim "$OUT/stacks.png"
   # Order with stacks: Inbox, then the Images stack, then the documents (outside.txt alone).
   STACK_X=$INBOX_X; STACK_Y=$((INBOX_Y + 104))
   "$POINTER" 1280 720 move "$STACK_X" "$STACK_Y" click 272 > /dev/null
   wait_for "a click did not open the Images stack" logged "$OUT/noctalia.log" "stack Images expanded"
-  settle
+  settle_shell
   grim "$OUT/stack-open.png"
   "$POINTER" 1280 720 move "$STACK_X" "$STACK_Y" click 272 > /dev/null
   wait_for "a second click did not close the Images stack" logged "$OUT/noctalia.log" "stack Images collapsed"
   # One file picked inside an open stack is only that file: Delete trashes beach.png, forest.png stays.
   "$POINTER" 1280 720 move "$STACK_X" "$STACK_Y" click 272 > /dev/null
   wait_for "the Images stack did not open again" bash -c "[[ \$(grep -c \"stack Images expanded\" \"$OUT/noctalia.log\") -ge 2 ]]"
-  settle
+  settle_shell
   # Key and click go in two steps: in one burst the shell can read Delete before the click selected the file.
   click_beach() { "$POINTER" 1280 720 move "$STACK_X" $((STACK_Y + 104)) click 272 > /dev/null; logged "$OUT/noctalia.log" "desktop press beach.png"; }
   poll_for 2 click_beach || fail "the click did not reach beach.png in the open stack"
   "$POINTER" 1280 720 keyboard-only tap 111 > /dev/null
   wait_for "Delete did not trash beach.png" bash -c "[[ ! -e \"$DESK/beach.png\" ]]"
-  settle
+  settle_shell
   [[ -f $DESK/forest.png ]] || fail "Delete on one file of an open stack trashed the whole stack"
   echo "PASS Use Stacks"
 '

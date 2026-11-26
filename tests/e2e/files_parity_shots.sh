@@ -95,7 +95,6 @@ PY
 export FILES FILEOPS POINTER INDEX H P
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
-  settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
   keys() { "$POINTER" 1280 720 keyboard-only "$@" > /dev/null; }
   log() { cat "$OUT/files.log"; }
   mark() { wc -l < "$OUT/files.log"; }
@@ -104,7 +103,7 @@ with_noctalia '
     -m org.freedesktop.Application.ActivateAction "$1" "${2:-[]}" "{}" > /dev/null; }
   at() { local line; line=$(grep -E "geometry $1( |$)" "$OUT/files.log" | tail -n 1); [[ -n $line ]] || fail "no geometry for $1"
     read -r x y <<< "$(awk "{print \$(NF-1), \$NF}" <<< "$line")"; echo "$((WX + x)) $((WY + y))"; }
-  shot() { sleep 0.4; settle; grim "$OUT/$1.png"; }
+  shot() { sleep 0.4; settle_shell; grim "$OUT/$1.png"; }
   "$ANDROMEDA" msg config-reload > /dev/null
   scale_is_2() { "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
   poll_for 5 scale_is_2 || true
@@ -162,7 +161,7 @@ with_noctalia '
   action go "[<\"file://$P\">]"
   keys mod control tap 2 mod none
   m=$(mark); wait_log 0 "geometry item report.pdf" || fail "no geometry for report.pdf"
-  sleep 0.5; settle
+  sleep 0.5; settle_shell
   "$POINTER" 1280 720 move $(at "item report.pdf") click 273 > /dev/null
   shot l-item-menu
   keys tap 1
@@ -191,7 +190,7 @@ with_noctalia '
   wait_log "$m" "search mode on" || fail "Ctrl+F did not start the search mode header"
   m=$(mark); keys tap 23 tap 49 tap 47 tap 24 tap 23 tap 46 tap 18
   wait_log "$m" "geometry chip This PC" || fail "the search chips did not show"
-  sleep 0.3; settle
+  sleep 0.3; settle_shell
   m=$(mark); "$POINTER" 1280 720 move $(at "chip This PC") click 272 > /dev/null
   wait_log "$m" "search results [1-9]" || fail "This PC found nothing for invoice"
   wait_log "$m" "geometry item invoice-2026-10.pdf" || fail "This PC did not list invoice-2026-10.pdf"

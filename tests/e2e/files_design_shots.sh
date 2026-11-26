@@ -51,7 +51,6 @@ PY
 export FILES POINTER H D
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
-  settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
   keys() { "$POINTER" 1280 720 keyboard-only "$@" > /dev/null; }
   "$ANDROMEDA" msg config-reload > /dev/null
   scale_is_2() { "$ANDROMEDA" outputs --json | jq -e ".[0].scale == 2" > /dev/null; }
@@ -61,13 +60,13 @@ with_noctalia '
   HOME="$H" XDG_CONFIG_HOME="$H/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug "$FILES" "$D" > "$OUT/files.log" 2>&1 &
   WAIT_S=5 wait_for "Files drew no first frame" grep -q "first frame" "$OUT/files.log"
   WAIT_S=3 wait_for "Files did not follow the light scheme" grep -q "scheme light" "$OUT/files.log"
-  sleep 0.5; settle; grim "$OUT/1-icons-light.png"
-  keys mod control tap 3 mod none; sleep 0.5; settle; grim "$OUT/2-list-light.png"
-  keys mod control tap 4 mod none; sleep 0.5; settle; grim "$OUT/3-columns-light.png"
+  sleep 0.5; settle_shell; grim "$OUT/1-icons-light.png"
+  keys mod control tap 3 mod none; sleep 0.5; settle_shell; grim "$OUT/2-list-light.png"
+  keys mod control tap 4 mod none; sleep 0.5; settle_shell; grim "$OUT/3-columns-light.png"
   "$NOCTALIA" msg theme-mode-set dark > /dev/null
   WAIT_S=3 wait_for "Files did not follow the dark scheme" grep -q "scheme dark" "$OUT/files.log"
-  sleep 0.5; settle; grim "$OUT/4-columns-dark.png"
-  keys mod control tap 3 mod none; sleep 0.5; settle; grim "$OUT/5-list-dark.png"
-  keys mod control tap 2 mod none; sleep 0.5; settle; grim "$OUT/6-icons-dark.png"
+  sleep 0.5; settle_shell; grim "$OUT/4-columns-dark.png"
+  keys mod control tap 3 mod none; sleep 0.5; settle_shell; grim "$OUT/5-list-dark.png"
+  keys mod control tap 2 mod none; sleep 0.5; settle_shell; grim "$OUT/6-icons-dark.png"
   echo "pass files_design_shots"
 '

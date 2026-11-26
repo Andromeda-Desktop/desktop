@@ -70,6 +70,10 @@ stable_grim() {
 }
 export -f stable_grim
 
+# settle_shell: the shell has handled every earlier request and the compositor has drawn its frames.
+settle_shell() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
+export -f settle_shell
+
 # shot NAME: save $OUT/NAME.png once the compositor has settled.
 shot() { run "$ANDROMEDA" settle > /dev/null; run grim "$OUT/$1.png"; }
 

@@ -53,7 +53,6 @@ BEFORE_NOCTALIA='REAL_RUNTIME=$REAL_RUNTIME python3 '"$MOCK"' "$OUT/calls.txt" >
   poll_for 5 grep -q ready "$OUT/mock.log" || true'
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
-  settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
   keys() { "$POINTER" 1720 1000 keyboard-only "$@" > /dev/null; }
   call() { dbus-send --session --print-reply --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 "org.andromeda.MockSystemd.$@" > /dev/null; }
   "$ANDROMEDA" msg config-reload > /dev/null
@@ -84,7 +83,7 @@ with_noctalia '
     WAIT_S=10 wait_for "no CPU rate for zen-browser" dump_has '"'"'any(.rows[]; .key == "zen-browser" and .cpu_percent > 0)'"'"'
     keys $4
     WAIT_S=5 wait_for "the header does not show $5" dump_has "any(.buttons[]?; .text == \"$5\")"
-    settle
+    settle_shell
     grim "$OUT/$1.png"
   }
   cp "$RUNTIME/andromeda.toml" "$RUNTIME/andromeda.base.toml"

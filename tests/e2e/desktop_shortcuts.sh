@@ -41,7 +41,6 @@ with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
   WAIT_S=5
   logged() { grep -qsE -- "$2" "$1"; }
-  settle() { "$NOCTALIA" msg status > /dev/null; "$ANDROMEDA" settle > /dev/null; }
   tail -f /dev/null | "$POINTER" 1280 720 keyboard-only mod none hold > /dev/null &
   keyboard_bound() { [[ $(grep -c "keyboard: bound" "$OUT/noctalia.log") -gt $(grep -c "keyboard: released" "$OUT/noctalia.log") ]]; }
   wait_for "the held keyboard did not bind" keyboard_bound
@@ -52,7 +51,7 @@ with_noctalia '
 
   # 1. Icons in the Andromeda layout: desktop_icons.enabled alone maps the surface.
   wait_for "the desktop did not map without a macOS/Windows layout" bash -c "[[ \$(\"$ANDROMEDA\" layers --json | jq \"[.[] | select(.namespace == \\\"andromeda-desktop-icons\\\" and .w > 0)] | length\") -gt 0 ]]"
-  settle
+  settle_shell
   desk=$(layer andromeda-desktop-icons)
   DX=$(jq .x <<< "$desk"); DY=$(jq .y <<< "$desk")
   echo "PASS icons in the Andromeda layout"
@@ -60,7 +59,7 @@ with_noctalia '
   # 2. Launcher -> desktop: the app row dragged out makes a shortcut where it lands.
   "$NOCTALIA" msg panel-open launcher "Drop Catch" > /dev/null
   wait_for "the launcher did not draw" logged "$OUT/noctalia.log" "open to first frame"
-  settle
+  settle_shell
   panel=$("$ANDROMEDA" layers --json | jq -c "[.[] | select(.namespace | test(\"panel|launcher\"))] | max_by(.w * .h)")
   PX=$(jq .x <<< "$panel"); PY=$(jq .y <<< "$panel"); PW=$(jq .w <<< "$panel"); PH=$(jq .h <<< "$panel")
   # Walk the pointer down the middle of the panel until it enters the selected row: the layout above it varies.
@@ -80,7 +79,7 @@ with_noctalia '
     move $((OX - 40)) "$TY" mark out pause 200 move "$TX" "$TY" pause 200 move $((TX + 1)) "$TY" pause 100 release 272 > /dev/null
   wait_for "the launcher did not start an app drag" logged "$OUT/noctalia.log" "launcher app drag started .*dropcatch.desktop"
   wait_for "the drop made no shortcut in ~/Desktop" test -f "$DESK/dropcatch.desktop"
-  settle
+  settle_shell
   grim "$OUT/launcher-drag.png"
   slot=$(slot_of dropcatch.desktop)
   [[ -n $slot ]] || fail "the shortcut got no place under the pointer"
@@ -90,7 +89,7 @@ with_noctalia '
   "$POINTER" 1280 720 move $((DX + 600)) $((DY + 600)) click 272 > /dev/null
   "$POINTER" 1280 720 keyboard-only mod control+shift tap 49 mod none > /dev/null
   wait_for "Ctrl+Shift+N made no folder" logged "$OUT/noctalia.log" "desktop new [Uu]ntitled [Ff]older"
-  settle
+  settle_shell
   grim "$OUT/new-folder.png"
   wtype -s 50 Projects -k Return
   wait_for "typing a name did not rename the new folder" test -d "$DESK/Projects"
@@ -99,7 +98,7 @@ with_noctalia '
   # 4. Snap to Grid off: the icon keeps the exact drop point.
   [[ $("$NOCTALIA" msg config-set desktop_icons.snap_to_grid false) == ok ]] || fail "config-set snap_to_grid false failed"
   wait_for "snap_to_grid = false did not apply" logged "$OUT/noctalia.log" "desktop free placement"
-  settle
+  settle_shell
   # Projects is the first folder: top-left cell (96 x 104, 16 from the edge, plate 72).
   FX=$((DX + 16 + 48)); FY=$((DY + 16 + 36))
   "$POINTER" 1280 720 move "$FX" "$FY" pause 300 press 272 move $((FX + 10)) $((FY + 10)) move $((FX + 150)) $((FY + 130)) \
@@ -108,7 +107,7 @@ with_noctalia '
   place=$(slot_of Projects)
   x=$(jq ".[2] | floor" <<< "$place"); y=$(jq ".[3] | floor" <<< "$place")
   (( x >= 16 + 238 - 4 && x <= 16 + 238 + 4 && y >= 16 + 211 - 4 && y <= 16 + 211 + 4 )) || fail "the free drop moved off the drop point: $place"
-  settle
+  settle_shell
   grim "$OUT/free-place.png"
   echo "PASS free placement ($place)"
 
@@ -122,7 +121,7 @@ with_noctalia '
   # 6. Focus grab: an open panel has no full-screen shield; a click outside closes it and still reaches the desktop.
   "$NOCTALIA" msg panel-open launcher > /dev/null
   wait_for "the launcher did not open again" bash -c "[[ \$(grep -c \"opened \\\"launcher\\\"\" \"$OUT/noctalia.log\") -ge 2 ]]"
-  settle
+  settle_shell
   [[ $(layer noctalia-panel-click-shield) == null ]] || fail "the panel still put a full-screen click shield up"
   # The shortcut sits in cell [1,3] (96 x 104, 16 from the edge), left of the launcher pill.
   SCX=$((DX + 16 + 96 + 48)); SCY=$((DY + 16 + 3 * 104 + 36))
@@ -140,10 +139,10 @@ with_noctalia '
 
   # Menus, for the screenshot compare (DESIGN.md "Desktop icons").
   "$POINTER" 1280 720 move $((FX + 238)) $((FY + 211)) click 273 > /dev/null
-  settle; grim "$OUT/item-menu.png"
+  settle_shell; grim "$OUT/item-menu.png"
   "$POINTER" 1280 720 keyboard-only tap 1 > /dev/null
   "$POINTER" 1280 720 move $((DX + 700)) $((DY + 300)) click 273 > /dev/null
-  settle; grim "$OUT/desktop-menu.png"
+  settle_shell; grim "$OUT/desktop-menu.png"
   "$POINTER" 1280 720 keyboard-only tap 1 > /dev/null
 '
 ls "$OUT"/*.png
