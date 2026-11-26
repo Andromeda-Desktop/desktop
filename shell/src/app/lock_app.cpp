@@ -23,7 +23,6 @@
 #include "dbus/link/link_lock_client.h"
 #include "dbus/logind/logind_service.h"
 #include "dbus/mpris/mpris_service.h"
-#include "dbus/network/network_display.h"
 #include "dbus/network/network_lock_client.h"
 #include "dbus/power/power_profiles_service.h"
 #include "dbus/session_bus.h"
@@ -52,6 +51,7 @@
 #include "system/weather_service.h"
 #include "theme/live_appearance_sync.h"
 #include "theme/theme_service.h"
+#include "shell/auth/auth_status_source.h"
 #include "shell/auth/auth_column.h"
 #include "ui/controls/input.h"
 #include "ui/style.h"
@@ -423,11 +423,9 @@ namespace {
     }
 
     void refreshStatus() {
-      AuthColumn::Status status;
+      AuthColumn::Status status = authStatusFrom(m_upower.get(), m_network.get());
       if (m_upower != nullptr && m_upower->state().isPresent) {
         const auto& battery = m_upower->state();
-        status.batteryGlyph = batteryGlyphName(battery.percentage, battery.state);
-        status.batteryText = std::format("{}%", static_cast<int>(std::lround(battery.percentage)));
         if (battery.state == BatteryState::Charging) {
           const std::int64_t minutes = battery.timeToFull / 60;
           status.chargingText = minutes <= 0
@@ -439,10 +437,7 @@ namespace {
                 );
         }
       }
-      if (m_network != nullptr && m_network->hasState()) {
-        status.networkGlyph = network_display::glyphForState(m_network->state());
-        kLog.debug("network glyph {}", status.networkGlyph);
-      }
+      kLog.debug("network glyph {}", status.networkGlyph);
       m_lock.setStatus(std::move(status));
     }
 

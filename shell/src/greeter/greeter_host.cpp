@@ -8,6 +8,12 @@
 #include "protocols/crash_capture.h"
 #include "protocols/heap.h"
 #include "core/ui_phase.h"
+#include "dbus/network/network_lock_client.h"
+#include "dbus/power/power_profiles_service.h"
+#include "dbus/reply_log.h"
+#include "dbus/system_bus.h"
+#include "dbus/system_bus_poll_source.h"
+#include "dbus/upower/upower_service.h"
 #include "greeter/greetd_client.h"
 #include "greeter/lockscreen_sync.h"
 #include "protocols/xdg_dirs.h"
@@ -19,6 +25,7 @@
 #include "shell/auth/auth_chrome.h"
 #include "shell/auth/auth_clock.h"
 #include "shell/auth/auth_layout.h"
+#include "shell/auth/auth_status_source.h"
 #include "shell/auth/auth_column.h"
 #include "shell/auth/clock_glass_sync.h"
 #include "shell/auth/clock_style.h"
@@ -46,7 +53,6 @@
 #include <cmath>
 #include <filesystem>
 #include <format>
-#include <gio/gio.h>
 #include <linux/input-event-codes.h>
 #include <pwd.h>
 #include <fstream>
@@ -305,111 +311,6 @@ namespace {
     return users;
   }
 
-  GDBusConnection* systemBus() {
-    static GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, nullptr);
-    return bus;
-  }
-
-  // Short timeouts: these run on the UI thread, and a missing service must not stall the greeter.
-  GVariant* properties(const char* dest, const char* path, const char* iface) {
-    if (systemBus() == nullptr) {
-      return nullptr;
-    }
-    GVariant* reply = g_dbus_connection_call_sync(
-        systemBus(), dest, path, "org.freedesktop.DBus.Properties", "GetAll", g_variant_new("(s)", iface),
-        G_VARIANT_TYPE("(a{sv})"), G_DBUS_CALL_FLAGS_NONE, 300, nullptr, nullptr
-    );
-    if (reply == nullptr) {
-      return nullptr;
-    }
-    GVariant* dict = g_variant_get_child_value(reply, 0);
-    g_variant_unref(reply);
-    return dict;
-  }
-
-  const char* batteryGlyph(double percentage, std::uint32_t state) {
-    // UPower states: 1 charging, 4 fully charged, 5 pending charge.
-    if (state == 1) {
-      return "battery-charging";
-    }
-    if (state == 4 || state == 5) {
-      return "battery-plugged";
-    }
-    return percentage >= 85.0 ? "battery-4"
-        : percentage >= 55.0  ? "battery-3"
-        : percentage >= 30.0  ? "battery-2"
-        : percentage >= 10.0  ? "battery-1"
-                              : "battery";
-  }
-
-  // Clock motion stops under the power-saver profile, as on the lock screen.
-  bool readPowerSaver() {
-    bool saver = false;
-    if (GVariant* dict = properties("org.andromeda.System1", "/org/andromeda/System1/Power", "org.andromeda.System1.Power")) {
-      const gchar* profile = nullptr;
-      g_variant_lookup(dict, "Profile", "&s", &profile);
-      saver = profile != nullptr && std::string_view(profile) == "power-saver";
-      g_variant_unref(dict);
-    }
-    return saver;
-  }
-
-  AuthColumn::Status readStatus() {
-    AuthColumn::Status status;
-    if (GVariant* dict = properties(
-            "org.andromeda.System1", "/org/andromeda/System1/Battery/DisplayDevice", "org.andromeda.System1.Battery"
-        )) {
-      gboolean present = FALSE;
-      gdouble percentage = 0.0;
-      const gchar* stateName = nullptr;
-      g_variant_lookup(dict, "Present", "b", &present);
-      g_variant_lookup(dict, "Percent", "d", &percentage);
-      g_variant_lookup(dict, "State", "&s", &stateName);
-      const std::string_view stateText = stateName != nullptr ? stateName : "";
-      // Back to UPower's state numbers, which batteryGlyph takes: 1 charging, 4 fully charged, 5 pending charge.
-      const guint32 state = stateText == "charging" ? 1U
-          : stateText == "fully-charged"            ? 4U
-          : stateText == "pending-charge"           ? 5U
-                                                    : 0U;
-      if (present != FALSE) {
-        status.batteryGlyph = batteryGlyph(percentage, state);
-        status.batteryText = std::format("{}%", static_cast<int>(std::lround(percentage)));
-      }
-      g_variant_unref(dict);
-    }
-    if (GVariant* dict =
-            properties("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager", "org.freedesktop.NetworkManager")) {
-      const gchar* type = nullptr;
-      guint32 state = 0;
-      g_variant_lookup(dict, "PrimaryConnectionType", "&s", &type);
-      g_variant_lookup(dict, "State", "u", &state);
-      // NM_STATE_CONNECTED_SITE = 60 and above.
-      const std::string_view kind = type != nullptr ? type : "";
-      status.networkGlyph = state < 60 ? "wifi-off" : kind == "802-11-wireless" ? "wifi" : "network";
-      g_variant_unref(dict);
-    }
-    return status;
-  }
-
-  // logind with interactive = false: its polkit rules decide; the greeter never runs a command for this.
-  void logindCall(const char* method) {
-    if (systemBus() == nullptr) {
-      kLog.error("no system bus; cannot {}", method);
-      return;
-    }
-    GError* error = nullptr;
-    GVariant* reply = g_dbus_connection_call_sync(
-        systemBus(), "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", method,
-        g_variant_new("(b)", FALSE), nullptr, G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, &error
-    );
-    if (reply != nullptr) {
-      g_variant_unref(reply);
-    } else {
-      kLog.error("logind {} failed: {}", method, error != nullptr ? error->message : "unknown error");
-      g_clear_error(&error);
-    }
-  }
-
   std::size_t codepointCount(const std::string& text) {
     return static_cast<std::size_t>(std::ranges::count_if(text, [](char c) { return (c & 0xC0) != 0x80; }));
   }
@@ -520,11 +421,11 @@ namespace {
         }
 
         int timeoutMs = msToNextTick(secondsClock() ? 1000 : 60000);
-        if (m_trimmed) {
-          const auto untilStatus = std::chrono::duration_cast<std::chrono::milliseconds>(
-              m_nextStatus - std::chrono::steady_clock::now()
-          );
-          timeoutMs = std::min(timeoutMs, static_cast<int>(std::max<std::int64_t>(0, untilStatus.count())));
+        if (m_systemBusPoll != nullptr) {
+          const int busTimeout = m_systemBusPoll->pollTimeoutMs();
+          if (busTimeout >= 0 && (timeoutMs < 0 || busTimeout < timeoutMs)) {
+            timeoutMs = busTimeout;
+          }
         }
         if (Surface::hasPendingFrameWork() || Surface::hasPendingRenders()) {
           timeoutMs = 0;
@@ -546,13 +447,16 @@ namespace {
         if (greetdTimeout >= 0 && (timeoutMs < 0 || greetdTimeout < timeoutMs)) {
           timeoutMs = greetdTimeout;
         }
-        std::array<pollfd, 2> pfds{
+        std::vector<pollfd> pfds{
             pollfd{.fd = wl_display_get_fd(display), .events = POLLIN, .revents = 0},
             pollfd{.fd = m_greetd.fd(), .events = POLLIN, .revents = 0},
         };
-        pollfd& pfd = pfds[0];
-        const nfds_t count = m_greetd.fd() >= 0 ? 2 : 1;
-        if (poll(pfds.data(), count, timeoutMs) > 0 && (pfd.revents & POLLIN) != 0) {
+        if (m_systemBusPoll != nullptr) {
+          m_systemBusPoll->addPollFds(pfds);
+        }
+        const pollfd& pfd = pfds[0];
+        const bool greetdOpen = m_greetd.fd() >= 0;
+        if (poll(pfds.data(), pfds.size(), timeoutMs) > 0 && (pfd.revents & POLLIN) != 0) {
           if (wl_display_read_events(display) < 0) {
             kLog.error("Wayland read failed");
             return 1;
@@ -568,8 +472,11 @@ namespace {
           kLog.info("compositor closed the connection");
           return 0;
         }
-        if (count == 2 && (pfds[1].revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+        if (greetdOpen && (pfds[1].revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
           onGreetdReadable();
+        }
+        if (m_systemBusPoll != nullptr) {
+          m_systemBusPoll->dispatch(pfds, 2);
         }
         if (const auto late = m_greetd.timedOutRequest()) {
           kLog.error("greetd did not answer {} in time", greetdRequestTypeName(late->request));
@@ -616,23 +523,60 @@ namespace {
             && !Surface::hasPendingFrameWork() && !Surface::hasPendingRenders()) {
           m_trimmed = true;
           trimAllocator();
-          m_nextStatus = std::chrono::steady_clock::now();
-        }
-        // UPower and NetworkManager are read after the first frame and then every 30 s, never before it.
-        if (m_trimmed && std::chrono::steady_clock::now() >= m_nextStatus) {
-          m_nextStatus = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-          const bool powerSaver = readPowerSaver();
-          if (auto status = readStatus(); status != m_status || powerSaver != m_powerSaver) {
-            m_status = std::move(status);
-            m_powerSaver = powerSaver;
-            relayout();
-          }
+          startStatus();
         }
       }
       return 0;
     }
 
   private:
+    // Battery, network and the power-saver profile come from the lock screen's owners after the first frame, never
+    // before it; their change signals update the status.
+    void startStatus() {
+      try {
+        m_systemBus = std::make_unique<SystemBus>();
+        m_systemBusPoll = std::make_unique<SystemBusPollSource>(*m_systemBus);
+        m_upower = std::make_unique<UPowerService>(*m_systemBus);
+        m_upower->setChangeCallback([this](const UPowerChange& /*change*/) { refreshStatus(); });
+        m_powerProfiles = std::make_unique<PowerProfilesService>(*m_systemBus);
+        m_powerProfiles->setChangeCallback([this](const auto& /*state*/, auto /*origin*/) { refreshStatus(); });
+        m_network = std::make_unique<NetworkLockClient>(*m_systemBus);
+        m_network->setChangeCallback([this] { refreshStatus(); });
+        // The greeter is always shown, so the Wi-Fi strength is always wanted.
+        m_network->setSignalGate([] { return true; });
+      } catch (const std::exception& e) {
+        kLog.warn("system bus: {}", e.what());
+      }
+    }
+
+    void refreshStatus() {
+      AuthColumn::Status status = authStatusFrom(m_upower.get(), m_network.get());
+      const bool powerSaver = m_powerProfiles != nullptr && m_powerProfiles->powerSaverActive();
+      if (status != m_status || powerSaver != m_powerSaver) {
+        m_status = std::move(status);
+        m_powerSaver = powerSaver;
+        relayout();
+      }
+    }
+
+    // logind with interactive = false: its polkit rules decide; the greeter never runs a command for this.
+    void logindCall(const char* method) {
+      if (m_systemBus == nullptr) {
+        kLog.error("no system bus; cannot {}", method);
+        return;
+      }
+      if (m_logind == nullptr) {
+        m_logind = sdbus::createProxy(
+            m_systemBus->connection(), sdbus::ServiceName{"org.freedesktop.login1"},
+            sdbus::ObjectPath{"/org/freedesktop/login1"}
+        );
+      }
+      m_logind->callMethodAsync(method)
+          .onInterface("org.freedesktop.login1.Manager")
+          .withArguments(false)
+          .uponReplyInvoke(logReply(kLog, std::format("logind {}", method)));
+    }
+
     static int msToNextTick(std::int64_t periodMs) {
       const auto now = std::chrono::system_clock::now().time_since_epoch();
       const auto into = std::chrono::duration_cast<std::chrono::milliseconds>(now).count() % periodMs;
@@ -1166,7 +1110,12 @@ namespace {
     std::vector<SessionEntry> m_sessions;
     std::size_t m_sessionIndex = 0;
     AuthColumn::Status m_status;
-    std::chrono::steady_clock::time_point m_nextStatus{};
+    std::unique_ptr<SystemBus> m_systemBus;
+    std::unique_ptr<SystemBusPollSource> m_systemBusPoll;
+    std::unique_ptr<UPowerService> m_upower;
+    std::unique_ptr<PowerProfilesService> m_powerProfiles;
+    std::unique_ptr<NetworkLockClient> m_network;
+    std::unique_ptr<sdbus::IProxy> m_logind;
     AuthChrome::Menu m_menu = AuthChrome::Menu::None;
     OutputView* m_menuView = nullptr;
     OutputView* m_pointerView = nullptr;
@@ -1174,7 +1123,7 @@ namespace {
     float m_pointerY = 0.0F;
     // Minimal shows the island and chrome only after the pointer moves.
     bool m_pointerMoved = false;
-    // The power-saver profile (org.andromeda.System1.Power), read with the status every 30 s.
+    // The power-saver profile is active: the clock motion stops, as on the lock screen.
     bool m_powerSaver = false;
     int m_hover = -1;
     GreetdClient m_greetd;

@@ -1128,7 +1128,7 @@ noctalia_exe = executable('andromeda-shell',
     + _protocol_headers
     # The sanitizer runtime reads the suppressions from the executable, not from the RTLD_LOCAL module.
     + (sanitize ? files('src/core/lsan_suppressions.cpp') : []),
-  dependencies: [desk_ui_dep, gio_dep, tomlplusplus_dep, nlohmann_dep, libsodium_dep, xkbcommon_dep]
+  dependencies: [desk_ui_dep, desk_system_dep, tomlplusplus_dep, nlohmann_dep, libsodium_dep, xkbcommon_dep]
     + (dl_dep.found() ? [dl_dep] : []),
   include_directories: _noctalia_inc + [include_directories('tools/greeter-apply-appearance/src')],
   cpp_args: _noctalia_cpp_args,
