@@ -19,7 +19,8 @@
 
 namespace fs = std::filesystem;
 
-// Model test: random file operations against three watches; after each operation every watch whose trigger the
+// Model test: random file operations against four watches, one of them on a symlink that is made, retargeted,
+// removed and unwatched; after each operation every watch whose trigger the
 // operation matches was called, no other was, and no watch was called twice in one loop turn. The watched directory
 // and its parent are also deleted and made again: a watch made while the directory is missing still fires.
 namespace {
@@ -34,7 +35,7 @@ namespace {
 
   void write(const fs::path& path) { std::ofstream(path) << "x"; }
 
-  enum class W : std::uint8_t { AModified, AComplete, BModified, Count };
+  enum class W : std::uint8_t { AModified, AComplete, BModified, LinkModified, Count };
 
   struct Harness {
     DirectoryWatcher dirs;
@@ -86,6 +87,16 @@ int main() {
   h.watch("a", FileWatcher::WatchTrigger::WriteCompleted, W::AComplete);
   auto bId = h.watch("b", FileWatcher::WatchTrigger::Modified, W::BModified);
   expect(bId >= 0, "watch failed");
+  // A link in its own directory to a target in another: writes to the target reach the link's watch.
+  fs::create_directories(root / "links");
+  fs::create_directories(root / "targets");
+  write(root / "targets" / "t");
+  write(root / "targets" / "u");
+  const fs::path link = root / "links" / "l";
+  std::string linkTo; // "", "t" or "u"
+  const auto watchLink = [&] { return h.files.watch(link, [&h] { h.calls[W::LinkModified].push_back(h.turn); }); };
+  auto linkId = watchLink();
+  expect(linkId >= 0, "watch link failed");
 
   std::mt19937 rng(std::random_device{}());
   int held = -1;
@@ -95,7 +106,7 @@ int main() {
     h.calls.clear();
     std::vector<W> want;
     std::string op;
-    const int pick = held >= 0 || dirGone ? -1 : static_cast<int>(rng() % 11);
+    const int pick = held >= 0 || dirGone ? -1 : static_cast<int>(rng() % 15);
     if (dirGone) {
       const auto how = rng() % 4;
       if (how == 0) {
@@ -150,7 +161,9 @@ int main() {
       want = {W::AModified, W::AComplete};
     } else if (pick == 4) {
       op = "delete a";
-      fs::remove(h.dir / "a");
+      if (fs::remove(h.dir / "a")) {
+        want = {W::AModified};
+      }
     } else if (pick == 5) {
       op = "write b";
       write(h.dir / "b");
@@ -163,6 +176,37 @@ int main() {
       fs::remove_all(h.dir);
       dirGone = true;
       want = all;
+    } else if (pick == 11 || pick == 12) {
+      const std::string target = pick == 11 ? "t" : "u";
+      op = std::format("write target {} (link to '{}', watched {})", target, linkTo, linkId >= 0);
+      write(root / "targets" / target);
+      if (linkId >= 0 && linkTo == target) {
+        want = {W::LinkModified};
+      }
+    } else if (pick == 13) {
+      linkTo = linkTo == "t" ? "u" : "t";
+      op = std::format("point the link at {}", linkTo);
+      fs::create_symlink(root / "targets" / linkTo, root / "links" / "l.tmp");
+      fs::rename(root / "links" / "l.tmp", link);
+      if (linkId >= 0) {
+        want = {W::LinkModified};
+      }
+    } else if (pick == 14 && !linkTo.empty()) {
+      op = "remove the link";
+      fs::remove(link);
+      linkTo.clear();
+      if (linkId >= 0) {
+        want = {W::LinkModified};
+      }
+    } else if (pick == 14) {
+      op = linkId >= 0 ? "unwatch the link" : "watch the link again";
+      if (linkId >= 0) {
+        h.files.unwatch(linkId);
+        linkId = -1;
+      } else {
+        linkId = watchLink();
+        expect(linkId >= 0, "watch link failed");
+      }
     } else if (pick == 10) {
       op = "move the directory away";
       fs::rename(h.dir, h.outside / std::format("away-{}", step));
@@ -171,7 +215,7 @@ int main() {
     } else if (pick == 9) {
       op = "delete the parent, unwatch b: b is watched again while it is missing";
       fs::remove_all(h.dir.parent_path());
-      h.dirs.unwatch(bId);
+      h.files.unwatch(bId);
       bId = -1;
       dirGone = true;
       want = {W::AModified, W::AComplete};
@@ -179,7 +223,7 @@ int main() {
       op = "write b, unwatch b before its call runs";
       write(h.dir / "b");
       h.dirs.processEvents();
-      h.dirs.unwatch(bId);
+      h.files.unwatch(bId);
       bId = -1;
     }
     expect(h.settle(), std::format("step {} ({}): sentinel never fired", step, op));

@@ -5,6 +5,7 @@
 #include "config/schema/diagnostics.h"
 #include "config/state_store.h"
 #include "core/files/directory_watcher.h"
+#include "core/files/file_watcher.h"
 #include "core/timer_manager.h"
 #include "protocols/toml.h"
 #include "ui/ui_settings.h"
@@ -342,8 +343,11 @@ private:
   using WatchMatch = std::function<WatchReload(std::string_view name)>;
   DirectoryWatcher::WatchId watchDirectory(const std::filesystem::path& dir, WatchMatch match);
   void onWatchedChange(WatchReload reload);
-  // The config dir, the overrides dir and the directories of symlink targets.
+  // The config dir and the overrides dir.
   std::vector<DirectoryWatcher::WatchId> m_watches;
+  // The overrides file: a symlink to it moves its writes to the target's directory. Loaded *.toml files are
+  // followed by m_includeDirWatches.
+  std::optional<FileWatcher> m_files;
   // Directories that hold [include]d files: canonical path -> watch; any *.toml change there is a config change.
   std::unordered_map<std::string, DirectoryWatcher::WatchId> m_includeDirWatches;
   // Set by the last loadAll(): every file pulled in (root + included) and every

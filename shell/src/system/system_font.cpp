@@ -84,18 +84,7 @@ namespace system_font {
       // dconf-service replaces this database on every write.
       candidates.push_back(*database);
     }
-    std::vector<std::filesystem::path> files;
-    for (const auto& file : candidates) {
-      std::error_code ec;
-      files.push_back(file);
-      // Dotfile managers symlink settings.ini; editors then write the target, not the link's directory.
-      if (std::filesystem::is_symlink(file, ec)) {
-        if (auto target = std::filesystem::canonical(file, ec); !ec) {
-          files.push_back(std::move(target));
-        }
-      }
-    }
-    return files;
+    return candidates;
   }
 
   std::string resolveFamily(std::string_view configured, const std::optional<std::string>& system) {

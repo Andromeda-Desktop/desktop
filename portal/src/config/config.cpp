@@ -1,22 +1,18 @@
 #include "config/config.h"
 
-#include "core/fd_watch.h"
+#include "core/files/directory_watcher.h"
+#include "core/files/file_watcher.h"
 #include "core/poll_loop.h"
 #include "core/timer_manager.h"
 #include "protocols/toml.h"
 #include "protocols/xdg_dirs.h"
 
-#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <string_view>
-#include <poll.h>
-#include <sys/inotify.h>
-#include <unistd.h>
 #include <utility>
 
 namespace xdpu {
@@ -24,33 +20,9 @@ namespace xdpu {
   namespace {
 
     constexpr int kDebounceMs = 50;
-    constexpr uint32_t kFileWatchMask =
-        IN_MODIFY | IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE_SELF | IN_MOVE_SELF | IN_IGNORED;
-    constexpr uint32_t kDirWatchMask =
-        IN_MODIFY | IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE_SELF | IN_DELETE | IN_MOVED_FROM | IN_IGNORED;
-
-    void closeFd(int fd) {
-      if (fd >= 0) {
-        while (::close(fd) < 0 && errno == EINTR) {
-        }
-      }
-    }
 
     std::filesystem::path configPath() {
       return std::filesystem::path(xdg::configHome()) / "xdg-desktop-portal-andromeda" / "config.toml";
-    }
-
-    std::filesystem::path normalized(const std::filesystem::path& path) {
-      std::error_code error;
-      auto absolute = std::filesystem::absolute(path, error);
-      if (error) {
-        absolute = path;
-      }
-      return absolute.lexically_normal();
-    }
-
-    bool eventNameMatches(const inotify_event& event, std::string_view name) {
-      return event.len > 0 && name == std::string_view(event.name);
     }
 
     void readString(const toml::table& table, std::string_view tableName, std::string_view key, std::string& target) {
@@ -97,121 +69,22 @@ namespace xdpu {
 
   struct ConfigWatcher::Impl {
     Impl(PollLoop& loop, std::function<void(const Config& oldCfg, const Config& newCfg)> onChange)
-        : loop(loop), onChange(std::move(onChange)), path(normalized(configPath())), configDir(path.parent_path()),
-          configDirName(configDir.filename().string()), current(loadConfig()) {
-      fd = ::inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-      if (fd < 0) {
-        std::fprintf(stderr, "config: inotify unavailable; hot reload disabled: %s\n", std::strerror(errno));
-        return;
+        : loop(loop), onChange(std::move(onChange)), current(loadConfig()) {
+      loop.addSource(&dirs);
+      watch = files.watch(configPath(), [this] { scheduleReload(); });
+      if (watch < 0) {
+        std::fprintf(stderr, "config: cannot watch %s; hot reload disabled\n", configPath().c_str());
       }
-
-      establishWatches();
-
-      fdWatch = std::make_unique<FdWatch>(loop, fd, POLLIN, [this](short) { handleInotify(); });
     }
 
     ~Impl() {
       reloadTimer.stop();
-      fdWatch.reset();
-      if (fd >= 0) {
-        if (fileWatch >= 0) {
-          ::inotify_rm_watch(fd, fileWatch);
-        }
-        if (dirWatch >= 0) {
-          ::inotify_rm_watch(fd, dirWatch);
-        }
-        if (ancestorWatch >= 0) {
-          ::inotify_rm_watch(fd, ancestorWatch);
-        }
-        closeFd(fd);
-        fd = -1;
-      }
+      files.unwatch(watch);
+      loop.removeSource(&dirs);
     }
 
-    // Set up the full watch chain.  When the config directory doesn't exist,
-    // watch the nearest existing ancestor so we notice its creation.
-    void establishWatches() {
-      addDirectoryWatch();
-      addFileWatch();
-
-      // If the config directory didn't exist (dirWatch < 0), watch the
-      // nearest ancestor that does so we detect mkdir/rename-into.
-      if (dirWatch < 0) {
-        addAncestorWatch();
-      } else {
-        removeAncestorWatch();
-      }
-    }
-
-    void addDirectoryWatch() {
-      if (fd < 0) {
-        return;
-      }
-
-      if (dirWatch >= 0) {
-        ::inotify_rm_watch(fd, dirWatch);
-        dirWatch = -1;
-      }
-
-      if (configDir.empty()) {
-        return;
-      }
-
-      dirWatch = ::inotify_add_watch(fd, configDir.c_str(), kDirWatchMask);
-      if (dirWatch < 0 && errno != ENOENT) {
-        std::fprintf(stderr, "config: unable to watch directory %s: %s\n", configDir.c_str(), std::strerror(errno));
-      }
-    }
-
-    void addFileWatch() {
-      if (fd < 0) {
-        return;
-      }
-
-      if (fileWatch >= 0) {
-        ::inotify_rm_watch(fd, fileWatch);
-        fileWatch = -1;
-      }
-
-      fileWatch = ::inotify_add_watch(fd, path.c_str(), kFileWatchMask);
-      if (fileWatch < 0 && errno != ENOENT) {
-        std::fprintf(stderr, "config: unable to watch file %s: %s\n", path.c_str(), std::strerror(errno));
-      }
-    }
-
-    void addAncestorWatch() {
-      if (fd < 0) {
-        return;
-      }
-
-      removeAncestorWatch();
-
-      // Walk up from the config directory until we find one that exists.
-      std::error_code ec;
-      for (auto candidate = configDir.parent_path(); !candidate.empty() && candidate != candidate.parent_path();
-           candidate = candidate.parent_path()) {
-        if (!std::filesystem::is_directory(candidate, ec)) {
-          continue;
-        }
-        ancestorWatch = ::inotify_add_watch(fd, candidate.c_str(), kDirWatchMask);
-        if (ancestorWatch >= 0) {
-          ancestorPath = candidate;
-          return;
-        }
-        if (errno != ENOENT) {
-          std::fprintf(stderr, "config: unable to watch ancestor %s: %s\n", candidate.c_str(), std::strerror(errno));
-          return;
-        }
-      }
-    }
-
-    void removeAncestorWatch() {
-      if (fd >= 0 && ancestorWatch >= 0) {
-        ::inotify_rm_watch(fd, ancestorWatch);
-        ancestorWatch = -1;
-        ancestorPath.clear();
-      }
-    }
+    Impl(const Impl&) = delete;
+    Impl& operator=(const Impl&) = delete;
 
     void scheduleReload() {
       reloadTimer.start(std::chrono::milliseconds(kDebounceMs), [this] { reload(); });
@@ -230,123 +103,12 @@ namespace xdpu {
       }
     }
 
-    void handleEvent(const inotify_event& event, bool& changed, bool& rewatchFile, bool& rewatchAll) {
-      // Event on the config file itself.
-      if (event.wd == fileWatch) {
-        if ((event.mask & (IN_MODIFY | IN_CLOSE_WRITE | IN_DELETE_SELF | IN_MOVE_SELF | IN_IGNORED)) != 0) {
-          changed = true;
-        }
-        if ((event.mask & (IN_DELETE_SELF | IN_MOVE_SELF | IN_IGNORED)) != 0) {
-          fileWatch = -1;
-          rewatchFile = true;
-        }
-        return;
-      }
-
-      // Event on the config directory.
-      if (event.wd == dirWatch) {
-        if ((event.mask & IN_IGNORED) != 0) {
-          dirWatch = -1;
-          rewatchAll = true;
-          return;
-        }
-        if ((event.mask & (IN_DELETE_SELF | IN_MOVE_SELF)) != 0) {
-          // Directory removed — need to fall back to ancestor watch.
-          dirWatch = -1;
-          rewatchAll = true;
-          changed = true;
-          return;
-        }
-        if (!eventNameMatches(event, path.filename().string())) {
-          return;
-        }
-        if ((event.mask & (IN_MODIFY | IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE | IN_MOVED_FROM)) != 0) {
-          changed = true;
-        }
-        if ((event.mask & (IN_MOVED_TO | IN_CREATE | IN_CLOSE_WRITE)) != 0) {
-          rewatchFile = true;
-        }
-        return;
-      }
-
-      // Event on the ancestor directory — config dir may have been created.
-      if (event.wd == ancestorWatch) {
-        if ((event.mask & IN_IGNORED) != 0) {
-          ancestorWatch = -1;
-          rewatchAll = true;
-          return;
-        }
-        // Check whether the event is for our config directory name, or if
-        // the ancestor itself was deleted (re-watch higher).
-        if ((event.mask & (IN_DELETE_SELF | IN_MOVE_SELF)) != 0) {
-          ancestorWatch = -1;
-          rewatchAll = true;
-          return;
-        }
-        if (eventNameMatches(event, configDirName) && (event.mask & (IN_CREATE | IN_MOVED_TO)) != 0) {
-          // Config directory appeared — try the full watch chain.
-          rewatchAll = true;
-          changed = true;
-        }
-      }
-    }
-
-    void handleInotify() {
-      alignas(inotify_event) char buffer[4096];
-      bool changed = false;
-      bool rewatchFile = false;
-      bool rewatchAll = false;
-
-      while (true) {
-        const ssize_t size = ::read(fd, buffer, sizeof(buffer));
-        if (size < 0) {
-          if (errno == EINTR) {
-            continue;
-          }
-          if (errno != EAGAIN && errno != EWOULDBLOCK) {
-            std::fprintf(stderr, "config: inotify read failed: %s\n", std::strerror(errno));
-          }
-          break;
-        }
-        if (size == 0) {
-          break;
-        }
-
-        size_t offset = 0;
-        while (offset < static_cast<size_t>(size)) {
-          const auto* event = reinterpret_cast<const inotify_event*>(buffer + offset);
-          if ((event->mask & IN_Q_OVERFLOW) != 0) {
-            changed = true;
-            rewatchAll = true;
-          } else {
-            handleEvent(*event, changed, rewatchFile, rewatchAll);
-          }
-          offset += sizeof(inotify_event) + event->len;
-        }
-      }
-
-      if (rewatchAll) {
-        establishWatches();
-      } else if (rewatchFile) {
-        addFileWatch();
-      }
-      if (changed) {
-        scheduleReload();
-      }
-    }
-
     PollLoop& loop;
     std::function<void(const Config& oldCfg, const Config& newCfg)> onChange;
-    std::filesystem::path path;
-    std::filesystem::path configDir;
-    std::string configDirName;
     Config current;
-    int fd = -1;
-    std::unique_ptr<FdWatch> fdWatch;
-    int fileWatch = -1;
-    int dirWatch = -1;
-    int ancestorWatch = -1;
-    std::filesystem::path ancestorPath;
+    DirectoryWatcher dirs;
+    FileWatcher files{dirs};
+    FileWatcher::WatchId watch = -1;
     Timer reloadTimer;
   };
 

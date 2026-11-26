@@ -16,7 +16,7 @@ namespace system_font {
   // The family of a Pango font name ("Noto Sans Bold 11" -> "Noto Sans"); nullopt when it names none.
   std::optional<std::string> familyOfFontName(std::string_view fontName);
 
-  // Files whose change can change readFamily(), including the targets of symlinked settings.ini files.
+  // Files whose change can change readFamily().
   std::vector<std::filesystem::path> watchFiles();
 
   // The family the shell draws with: `configured`, else `system`, else Inter (the design-token face).

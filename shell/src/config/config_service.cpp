@@ -631,6 +631,9 @@ ConfigService::WallpaperBatch::~WallpaperBatch() {
 }
 
 ConfigService::ConfigService(DirectoryWatcher* dirs) : m_dirs(dirs) {
+  if (m_dirs != nullptr) {
+    m_files.emplace(*m_dirs);
+  }
   m_configDir = FileUtils::configDir();
 
   // Create the state dir eagerly so override writes don't
@@ -1260,35 +1263,6 @@ void ConfigService::setupWatch() {
   m_watches.push_back(configWatch);
   kLog.debug("watching {} for changes", m_configDir);
 
-  const auto watchTarget = [this](const std::filesystem::path& real, WatchReload reload) {
-    const auto id = watchDirectory(real.parent_path(), [name = real.filename().string(), reload](std::string_view changed) {
-      return changed == name ? reload : WatchReload::None;
-    });
-    if (id >= 0) {
-      m_watches.push_back(id);
-      kLog.debug("watching symlink target {}", real.string());
-    }
-  };
-
-  // For any *.toml entries that are symlinks, also watch the real target's parent
-  // directory so that edits to the target file (e.g. via dotfile management) trigger
-  // a reload even though the modification event fires in a different directory.
-  std::error_code scanEc;
-  for (const auto& entry : std::filesystem::directory_iterator(m_configDir, scanEc)) {
-    if (entry.path().extension() != ".toml") {
-      continue;
-    }
-    std::error_code symlinkEc;
-    if (!entry.is_symlink(symlinkEc) || symlinkEc) {
-      continue;
-    }
-    std::error_code canonEc;
-    const auto real = std::filesystem::canonical(entry.path(), canonEc);
-    if (!canonEc) {
-      watchTarget(real, WatchReload::Config);
-    }
-  }
-
   // Also watch the state dir for overrides file edits (external writes).
   if (!m_overridesPath.empty()) {
     const std::filesystem::path overrides(m_overridesPath);
@@ -1302,10 +1276,9 @@ void ConfigService::setupWatch() {
       m_watches.push_back(overridesWatch);
     }
 
-    const auto target = resolveAtomicWriteTarget(m_overridesPath);
-    if (target.has_value() && target->throughSymlink) {
-      watchTarget(target->path, WatchReload::Overrides);
-    }
+    // Follows the file if it is or becomes a symlink.
+    m_files->watch(overrides, [this] { onWatchedChange(WatchReload::Overrides); },
+                   FileWatcher::WatchTrigger::WriteCompleted);
   }
 
   // The ctor's first loadAll() ran before the watches existed, so establish the

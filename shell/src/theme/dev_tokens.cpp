@@ -271,11 +271,6 @@ namespace noctalia::theme::dev_tokens {
     if (path.empty()) {
       return;
     }
-    // An editor's atomic rename happens in the directory of the real file, so watch that one.
-    std::error_code ec;
-    if (auto real = std::filesystem::canonical(path, ec); !ec) {
-      path = std::move(real);
-    }
     watcher.watch(
         path,
         [path, onApplied = std::move(onApplied)] {
