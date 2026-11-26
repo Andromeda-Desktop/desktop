@@ -10,6 +10,7 @@
 #include "render/scene/node.h"
 #include "render/scene/rect_node.h"
 #include "ui/builders.h"
+#include "ui/controls/select_dropdown_popup.h"
 #include "ui/popup_chrome.h"
 #include "ui/popup_parent.h"
 #include "ui/style.h"
@@ -181,6 +182,18 @@ bool DialogPopupHost::openPopupAsChild(PopupSurfaceConfig config, const PopupPar
   return true;
 }
 
+void DialogPopupHost::attachSelectDropdown(Node& contentParent) {
+  if (m_display == nullptr || m_renderContext == nullptr || m_surface == nullptr) {
+    return;
+  }
+  if (m_selectPopup == nullptr) {
+    m_selectPopup = std::make_unique<SelectDropdownPopup>(*m_display, *m_renderContext);
+  }
+  m_selectPopup->setShadowConfig(shadowStyle());
+  m_selectPopup->setParent(m_surface.get(), OutputId::None);
+  contentParent.setPopupContext(m_selectPopup.get());
+}
+
 void DialogPopupHost::destroyPopup() {
   if (m_phase == PopupPhase::Opening || m_phase == PopupPhase::OpeningClosed) {
     m_phase = PopupPhase::OpeningClosed;
@@ -205,6 +218,9 @@ void DialogPopupHost::destroyPopup() {
   // any sheet-specific cleanup (e.g. FileDialogSheet::onClose()) while their
   // sheet pointer is still wired into the scene.
   if (m_sceneRoot != nullptr || m_surface != nullptr) {
+    if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
+      m_selectPopup->closeSelectDropdown();
+    }
     onSheetClose();
   }
   m_bgNode = nullptr;
@@ -297,6 +313,15 @@ PopupSurfaceConfig DialogPopupHost::defaultPopupConfig(
 }
 
 bool DialogPopupHost::onPointerEvent(const PointerEvent& event) {
+  if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
+    if (m_selectPopup->onPointerEvent(event)) {
+      return true;
+    }
+    if (event.type == PointerEvent::Type::Button && event.pressed) {
+      m_selectPopup->closeSelectDropdown();
+      return true;
+    }
+  }
   if (m_surface == nullptr || m_phase == PopupPhase::Fading) {
     return false;
   }
@@ -364,6 +389,10 @@ bool DialogPopupHost::onPointerEvent(const PointerEvent& event) {
 }
 
 void DialogPopupHost::onKeyboardEvent(const KeyboardEvent& event) {
+  if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
+    m_selectPopup->onKeyboardEvent(event);
+    return;
+  }
   if (m_surface == nullptr || m_phase == PopupPhase::Fading) {
     return;
   }

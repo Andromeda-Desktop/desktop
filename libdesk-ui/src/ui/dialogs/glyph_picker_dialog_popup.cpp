@@ -5,7 +5,6 @@
 #include "render/render_context.h"
 #include "render/scene/node.h"
 #include "ui/controls/glyph_picker.h"
-#include "ui/controls/select_dropdown_popup.h"
 #include "platform/input_events.h"
 
 #include <memory>
@@ -27,31 +26,6 @@ bool GlyphPickerDialogPopup::openGlyphPicker() {
 
 void GlyphPickerDialogPopup::closeGlyphPickerWithoutResult() { destroyPopup(); }
 
-bool GlyphPickerDialogPopup::onPointerEvent(const PointerEvent& event) {
-  if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
-    if (m_selectPopup->onPointerEvent(event)) {
-      return true;
-    }
-    if (event.type == PointerEvent::Type::Button && event.pressed) {
-      m_selectPopup->closeSelectDropdown();
-      return true;
-    }
-  }
-  return DialogPopupHost::onPointerEvent(event);
-}
-
-void GlyphPickerDialogPopup::onKeyboardEvent(const KeyboardEvent& event) {
-  if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
-    m_selectPopup->onKeyboardEvent(event);
-    return;
-  }
-  DialogPopupHost::onKeyboardEvent(event);
-}
-
-bool GlyphPickerDialogPopup::ownsSelectDropdownSurface(const Surface* surface) const noexcept {
-  return m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen() && m_selectPopup->surface() == surface;
-}
-
 void GlyphPickerDialogPopup::populateContent(Node* contentParent, std::uint32_t /*width*/, std::uint32_t /*height*/) {
   auto sheet = std::make_unique<GlyphPicker>(uiScale());
   sheet->setTitle(GlyphPickerDialog::currentOptions().title);
@@ -63,14 +37,7 @@ void GlyphPickerDialogPopup::populateContent(Node* contentParent, std::uint32_t 
   m_sheet = sheet.get();
   contentParent->addChild(std::move(sheet));
 
-  if (display() != nullptr && renderContext() != nullptr && surface() != nullptr) {
-    if (m_selectPopup == nullptr) {
-      m_selectPopup = std::make_unique<SelectDropdownPopup>(*display(), *renderContext());
-    }
-    m_selectPopup->setShadowConfig(shadowStyle());
-    m_selectPopup->setParent(surface(), OutputId::None);
-    contentParent->setPopupContext(m_selectPopup.get());
-  }
+  attachSelectDropdown(*contentParent);
 }
 
 void GlyphPickerDialogPopup::layoutSheet(float contentWidth, float contentHeight) {
@@ -85,12 +52,6 @@ void GlyphPickerDialogPopup::cancelToFacade() { GlyphPickerDialog::cancelIfPendi
 
 InputArea* GlyphPickerDialogPopup::initialFocusArea() {
   return m_sheet != nullptr ? m_sheet->initialFocusArea() : nullptr;
-}
-
-void GlyphPickerDialogPopup::onSheetClose() {
-  if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
-    m_selectPopup->closeSelectDropdown();
-  }
 }
 
 // Enter picks the selected glyph (rulebook 9.10: Enter = default), also from the search field.

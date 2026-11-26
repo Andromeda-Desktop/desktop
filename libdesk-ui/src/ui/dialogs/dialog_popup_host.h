@@ -17,6 +17,7 @@ class Node;
 class RectNode;
 class Renderer;
 class RenderContext;
+class SelectDropdownPopup;
 class UiSettings;
 class Display;
 struct KeyboardEvent;
@@ -131,6 +132,9 @@ protected:
   /// laying out sheet nodes so measurements use the updated inner size.
   void syncSceneGeometryFromSurface();
 
+  // A Select in the sheet opens its dropdown as a child popup of this one; input goes to an open dropdown first.
+  void attachSelectDropdown(Node& contentParent);
+
   // ── Hooks ────────────────────────────────────────────────────────
   //
   // Pure virtual:
@@ -204,6 +208,7 @@ protected:
   AnimationManager::Id m_acceptFadeAnim = 0; // Fading only
   std::function<void()> m_acceptThen; // runs once the popup is gone, whatever ends the fade
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+  std::unique_ptr<SelectDropdownPopup> m_selectPopup;
 
 private:
   // Tear down any popup parented to this one (e.g. a glyph/color/file picker
