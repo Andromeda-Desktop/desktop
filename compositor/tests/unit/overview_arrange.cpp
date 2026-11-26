@@ -193,4 +193,33 @@ ANDROMEDA_TEST(windowOpacityFadesHiddenMinimizedAndDimmedWindows) {
   CHECK_EQ(windowOpacity(place, false, 2.0), 0.5);
 }
 
+// A jump across rows passes over none of them: Strip never draws a skipped row; Spaces and Task View morph straight
+// from the first workspace's placement to the last one's.
+ANDROMEDA_TEST(placeAtJumpSkipsTheRowsBetween) {
+  Input in = sample(Arrangement::Scrolling, 5);
+  in.jump = RowJump{.from = 0, .to = 3};
+  Input plain = in;
+  plain.jump.reset();
+  for (double row = 0.0; row <= 3.0; row += 0.125) {
+    for (const WindowPlace& w : placeAt(Style::Strip, in, row).windows) {
+      if (w.workspace == 1 || w.workspace == 2) {
+        CHECK_EQ(w.opacity, 0.0);
+      }
+    }
+    for (const Style style : {Style::Spaces, Style::TaskView}) {
+      const Placement a = placeAt(style, plain, 0.0);
+      const Placement b = placeAt(style, plain, 3.0);
+      for (const WindowPlace& w : placeAt(style, in, row).windows) {
+        const WindowPlace* from = findWindow(a, w.id);
+        const WindowPlace* to = findWindow(b, w.id);
+        if (from != nullptr && to != nullptr) {
+          const double t = row / 3.0;
+          CHECK(std::abs(w.rect.x - (from->rect.x + (to->rect.x - from->rect.x) * t)) < 1e-6);
+          CHECK(std::abs(w.rect.y - (from->rect.y + (to->rect.y - from->rect.y) * t)) < 1e-6);
+        }
+      }
+    }
+  }
+}
+
 int main() { return RUN_TESTS(); }

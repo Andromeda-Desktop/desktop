@@ -41,6 +41,14 @@ namespace andromeda::ov {
     bool operator==(const Workspace&) const = default;
   };
 
+  // A row move from `from` to `to`. When it passes more than one row, the rows between are skipped, so it looks
+  // like a one-row move.
+  struct RowJump {
+    double from = 0;
+    double to = 0;
+    bool operator==(const RowJump&) const = default;
+  };
+
   struct Input {
     double width = 0;
     double height = 0;
@@ -54,6 +62,8 @@ namespace andromeda::ov {
     double stripScale = 0.5;
     bool horizontal = false;
     double ui = 1; // the shell's ui_scale: chrome sizes (the filter field, the gaps around it) scale by it
+    // The row move in flight; placeAt skips the rows it passes over.
+    std::optional<RowJump> jump = std::nullopt;
 
     bool operator==(const Input&) const = default;
   };
@@ -112,6 +122,8 @@ namespace andromeda::ov {
   // scrolls its column; Spaces and Task View morph between the two neighbouring workspaces' placements.
   // `input.current` and `input.stripRow` are ignored.
   [[nodiscard]] Placement placeAt(Style style, Input input, double row);
+  // The chosen workspace that `row` shows: `row` itself, or one end of a jump that skips rows.
+  [[nodiscard]] double shownRow(const std::optional<RowJump>& jump, double row);
 
   // Where a window of workspace `workspace` sits on the desktop while the workspaces are scrolled to `row`: its own
   // rect, one output away per workspace along the workspace axis. Open progress 0 starts here.

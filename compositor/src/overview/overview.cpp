@@ -495,6 +495,7 @@ namespace andromeda {
     const ov::Style style = configuredStyle();
     const double row = state.rowScroll.current();
     ov::Input input = placementInput(state, false);
+    input.jump = rowJump(state);
     std::vector<uintptr_t>& structure = state.nextStructure;
     structure.assign({static_cast<uintptr_t>(style), input.workspaces.size()});
     for (const ov::Workspace& workspace : input.workspaces) {
@@ -913,7 +914,10 @@ namespace andromeda {
     const size_t current = m_chromeWorkspaces.empty()
         ? 0
         : static_cast<size_t>(
-              std::clamp(std::lround(state.rowScroll.current()), 0L, static_cast<long>(m_chromeWorkspaces.size() - 1))
+              std::clamp(
+                  std::lround(ov::shownRow(rowJump(state), state.rowScroll.current())), 0L,
+                  static_cast<long>(m_chromeWorkspaces.size() - 1)
+              )
           );
     state.chrome->update({
         .style = state.placedStyle,
@@ -1504,8 +1508,16 @@ namespace andromeda {
     }
   }
 
+  std::optional<ov::RowJump> Overview::rowJump(const OutputState& state) {
+    return state.rowScroll.animating() ? std::optional(state.rowJump) : std::nullopt;
+  }
+
   void Overview::animateRow(OutputState& state, double target, std::optional<double> release, const Tokens::Spring& spring) {
     const double releaseVelocity = release.value_or(0.0);
+    // A move back to either end of the jump in flight keeps that jump, so the rows do not reshuffle mid-move.
+    if (!rowJump(state).has_value() || (target != state.rowJump.from && target != state.rowJump.to)) {
+      state.rowJump = {.from = release.has_value() ? target : state.rowScroll.current(), .to = target};
+    }
     const auto& animation = config().animation;
     const auto& overview = animation.overview;
     if (!animation.enabled || !overview.enabled) {
@@ -2158,6 +2170,8 @@ namespace andromeda {
       const double delta = static_cast<double>(active->index()) - static_cast<double>(state->activeWorkspaceIndex);
       state->activeWorkspaceIndex = active->index();
       state->rowScroll.translate(delta);
+      state->rowJump.from += delta;
+      state->rowJump.to += delta;
     }
     syncWorkspaceRows(*state, *group);
     layoutOutput(*state);

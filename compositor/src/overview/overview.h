@@ -356,6 +356,8 @@ namespace andromeda {
       // its rows by it, Spaces and Task View morph between neighbours. Wheel steps, keyboard moves and touchpad
       // releases all animate this one value; a gesture in flight snaps it to follow the fingers.
       AnimatedValue rowScroll;
+      // The move rowScroll animates; placement reads it only while rowScroll animates.
+      ov::RowJump rowJump;
       // A reduced-motion row move snapped rowScroll: the next layout crossfades what it moved.
       bool rowJumped = false;
       size_t activeWorkspaceIndex = 0;
@@ -511,6 +513,8 @@ namespace andromeda {
     // `release` is set only for a gesture release: the speed the fingers left behind, in overview progress per second,
     // which the zoom settles with on `page`. Every other start runs `open` or `close` from the zoom's current speed.
     void startAnimation(double target, bool closing, std::optional<double> release = std::nullopt);
+    // The jump rowScroll runs, or none while it rests.
+    static std::optional<ov::RowJump> rowJump(const OutputState& state);
     // Move one output's filmstrip onto row `target`. `release` is set only for a touchpad gesture's release or cancel:
     // the speed the fingers left behind, in rows per second (0 for a cancel or a resting hand). `spring` moves a row
     // without a release: a close passes the zoom's, so the row and the zoom arrive as one motion.
