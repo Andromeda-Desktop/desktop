@@ -914,6 +914,9 @@ void VirtualGridView::onPointerMotion(float localX, float localY) {
   m_hoveredIndex = idx;
   m_hoveredOverlayIndex = overlayIdx;
   markLayoutDirty();
+  if (m_selectionFollowsHover && idx.has_value()) {
+    setSelectedIndex(idx, false);
+  }
 }
 
 void VirtualGridView::onPointerLeave() {

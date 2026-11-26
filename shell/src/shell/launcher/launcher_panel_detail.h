@@ -91,6 +91,8 @@ namespace launcher_detail {
   constexpr float kIconSizeDefault = 32.0F;
   constexpr float kIconSizeCompact = 24.0F;
   constexpr std::size_t kAppGridColumns = 6;
+  // The apps grid beside the category list (rulebook 9.14).
+  constexpr std::size_t kAppGridColumnsBesideCategories = 5;
   constexpr std::size_t kEmojiColumns = 12;
   constexpr std::size_t kMaxSectionColumns = kEmojiColumns;
   // Klipy "sm" GIFs are short loops; the caps bound GPU memory for a hostile file.
@@ -127,12 +129,12 @@ namespace launcher_detail {
     }
     return Tokens::componentLauncherRow;
   }
-  // Rulebook 9.14, the apps grid: field, g 8, p, grid rows with g 8, page dots, p.
+  // Rulebook 9.14, the apps grid: field, g 8, p, grid rows with g 4, page dots, p, footer.
   [[nodiscard]] inline float launcherSheetHeight() {
     const float rows = static_cast<float>(Tokens::componentLauncherRows);
     return Tokens::componentLauncherSearch + Tokens::spaceP8 + 2.0F * Tokens::componentLauncherResultsPadding
-        + 2.0F * Tokens::spaceP8 + rows * Tokens::componentLauncherCellHeight + (rows - 1.0F) * Tokens::spaceP8
-        + Tokens::componentPageDotsRow;
+        + 2.0F * Tokens::spaceP8 + rows * Tokens::componentLauncherCellHeight + (rows - 1.0F) * Tokens::spaceP4
+        + Tokens::componentPageDotsRow + Tokens::componentLauncherFooter;
   }
   // The tallest result list (LauncherPanel::measureContentHeight): the top hit, 8 rows under 3 section headers and
   // the footer.
@@ -753,7 +755,7 @@ namespace launcher_detail {
               .fontSize = Style::fontSizeCaption * m_style.scale,
               .fontWeight = FontWeight::Normal,
               .color = colorSpecFromRole(ColorRole::Label1),
-              .maxLines = 2,
+              .maxLines = 1,
               .configure = [](Label& label) { label.setTextAlign(TextAlign::Center); },
           })
       );
@@ -786,7 +788,7 @@ namespace launcher_detail {
       const float pinSize = Style::fontSizeBody * m_style.scale;
       const float padding = Style::spaceSm * m_style.scale;
       m_pinnedGlyph->setGlyphSize(pinSize);
-      m_pinnedGlyph->setVisible(result.pinned);
+      m_pinnedGlyph->setVisible(result.pinned && selected);
       m_pinnedGlyph->setPosition(Style::rtl() ? padding : width - padding - pinSize, padding);
       m_pinnedGlyph->setFrameSize(pinSize, pinSize);
       const bool hasOrigin = m_style.showAppOriginIndicator && !result.originGlyph.empty();
@@ -887,8 +889,6 @@ namespace launcher_detail {
       ));
       if (m_selected) {
         m_col->setFill(colorSpecFromRole(ColorRole::Lens));
-      } else if (m_hovered) {
-        m_col->setFill(colorSpecFromRole(ColorRole::Fill1));
       } else {
         m_col->setFill(m_style.listItemBackground.value_or(clearColorSpec()));
       }

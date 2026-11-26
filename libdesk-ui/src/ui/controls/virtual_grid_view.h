@@ -175,6 +175,8 @@ public:
   [[nodiscard]] std::size_t layoutColumnCount() const noexcept { return m_layoutColumns; }
 
   void setOnSelectionChanged(std::function<void(std::optional<std::size_t>)> callback);
+  // The pointer moving onto an item selects it, so hover and keyboard share one highlight.
+  void setSelectionFollowsHover(bool follows) noexcept { m_selectionFollowsHover = follows; }
 
   // Paged mode (rows > 0): pages of columns x rows slide horizontally, `pageGap` apart; a press-drag swipes,
   // and a click activates on release. rows 0 = one vertically scrolling grid.
@@ -258,6 +260,7 @@ private:
 
   std::optional<std::size_t> m_selectedIndex;
   std::optional<std::size_t> m_hoveredIndex;
+  bool m_selectionFollowsHover = false;
   std::optional<std::size_t> m_hoveredOverlayIndex;
   std::function<void(std::optional<std::size_t>)> m_onSelectionChanged;
 

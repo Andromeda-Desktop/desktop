@@ -101,7 +101,7 @@ public:
 private:
   friend class LauncherPanelTestAccess;
 
-  enum ActiveCategoryType { All, Pinned, RecentlyUsed, Category };
+  enum ActiveCategoryType { All, Pinned, RecentlyUsed, Category, Other };
   enum class ResultsTransition : std::uint8_t { None, NavigationForward, NavigationBackward };
 
   struct CategoryFilterSlot {
@@ -145,6 +145,9 @@ private:
   [[nodiscard]] ActiveCategoryType defaultCategoryType() const;
   void applyDefaultView();
   void updateCategorySelectionChrome();
+  void rebuildAppsCategoryList();
+  void selectAppsCategory(ActiveCategoryType type, const std::string& category);
+  [[nodiscard]] bool showAppsCategoryList() const;
   void updateLauncherOptionButtons();
   void setCategoryFilterVisible(bool visible);
   void setActiveCategorySlot(std::size_t slotIndex);
@@ -216,6 +219,13 @@ private:
   Segmented* m_categoryFilter = nullptr;
   Flex* m_body = nullptr;
   Flex* m_resultsViewport = nullptr;
+  Flex* m_appsCategoryList = nullptr;
+  struct AppsCategoryRow {
+    ActiveCategoryType type;
+    std::string category;
+    Button* button = nullptr;
+  };
+  std::vector<AppsCategoryRow> m_appsCategoryRows;
   Flex* m_launcherToolbar = nullptr;
   Segmented* m_launcherNavigation = nullptr;
   Image* m_launcherAvatar = nullptr;

@@ -468,7 +468,25 @@ void LauncherPanel::create() {
           .participatesInLayout = false,
       })
   );
-  body->addChild(std::move(resultsViewport));
+  if (m_browserMode) {
+    auto appsRow = ui::row({
+        .align = FlexAlign::Stretch,
+        .gap = Style::spaceSm * scale,
+        .fillWidth = true,
+        .flexGrow = 1.0F,
+    });
+    appsRow->addChild(ui::column({
+        .out = &m_appsCategoryList,
+        .align = FlexAlign::Stretch,
+        .width = Tokens::componentLauncherCategoryList * scale,
+        .visible = false,
+        .participatesInLayout = false,
+    }));
+    appsRow->addChild(std::move(resultsViewport));
+    body->addChild(std::move(appsRow));
+  } else {
+    body->addChild(std::move(resultsViewport));
+  }
 
   if (m_browserMode) {
     // The panel does not pad this content (padsContent): the field fills the 56 pill edge to edge.
@@ -798,11 +816,14 @@ void LauncherPanel::create() {
       );
     };
     auto footer = ui::column({.out = &m_pillFooter, .align = FlexAlign::Stretch, .visible = false, .participatesInLayout = false});
+    // The hairline is part of the footer's height.
+    constexpr float kHairline = 1.0F;
+    footer->addChild(ui::separator({.color = colorSpecFromRole(ColorRole::Separator), .thickness = kHairline, .spacing = 0.0F}));
     auto footerRow = ui::row({
         .align = FlexAlign::Center,
         .gap = Tokens::spaceP12 * scale,
         .paddingH = Tokens::spaceP12 * scale,
-        .minHeight = Tokens::componentLauncherFooter * scale,
+        .minHeight = Tokens::componentLauncherFooter * scale - kHairline,
         .fillWidth = true,
     });
     footerRow->addChild(ui::label({
@@ -1479,7 +1500,7 @@ void LauncherPanel::applyEmptyState() {
     m_resultsPiece->setVisible(expanded);
     m_resultsPiece->setParticipatesInLayout(expanded);
     syncModeDrops();
-    const bool footer = expanded && !shouldUseAppGrid() && !previewSplit();
+    const bool footer = expanded && !previewSplit();
     m_pillFooter->setVisible(footer);
     m_pillFooter->setParticipatesInLayout(footer);
     m_pillCount->setText(

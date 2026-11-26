@@ -470,6 +470,13 @@ height = 16.0
 padding_x = 4.0
 overhang = 4.0
 
+[component.bar_scrim]  # a bar with no surface (macOS layout): gradient from the screen edge, alpha at the edge -> half -> 0
+height = 56.0
+dark_edge = 0.32    # black, behind white ink over a dark backdrop
+dark_mid = 0.12
+bright_edge = 0.45  # white, behind label_1 ink over a bright backdrop
+bright_mid = 0.15
+
 [component.button]  # 9.5; small and regular r 8, large and primary capsules
 radius = 8.0
 height_s = 24.0
@@ -757,8 +764,9 @@ field_text = 20.0  # concept C capsule text, weight 400
 results_padding = 8.0
 results_radius = "= component.sheet.radius"
 columns = 6
-rows = 2  # apps grid rows per page (12 apps)
+rows = 3  # apps grid rows per page (15 apps beside the category list)
 cell_height = 112.0
+category_list = 168.0  # apps category list beside the grid: rows 32, glyph, name, count
 icon = 64.0
 section_header = 28.0
 row = 44.0
@@ -773,7 +781,7 @@ emoji_cell = 56.0  # emoji grid cell height, r16; 12 columns, gap space.p4, side
 emoji_preview = 88.0
 gif_cell = 96.0
 sticker_cell = 80.0
-footer = 28.0
+footer = 36.0
 tabs = 40.0
 list_pane = 360.0
 preview_min = 320.0
