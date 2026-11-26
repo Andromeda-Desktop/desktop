@@ -3,9 +3,11 @@
 // the bar a pure function of the last pick, so a pick applies in one tap and leaving the Windows or macOS row gives
 // the user's own bar back.
 
+#include "async_file_wait.h"
 #include "config/config_service.h"
 #include "config/config_types.h"
 #include "shell/desktop_layout/desktop_layout.h"
+#include "util/file_utils.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -32,6 +34,13 @@ namespace {
     std::filesystem::create_directories(path.parent_path());
     std::ofstream out(path, std::ios::trunc);
     out << content;
+  }
+
+  // A fresh state dir: the last instance's queued override and state writes land first, or they recreate it.
+  void resetState(const std::filesystem::path& root) {
+    const std::filesystem::path state = FileUtils::stateDir();
+    expect(waitFileWritten(state / "overrides.toml") && waitFileWritten(state / "state.toml"), "state writes landed");
+    std::filesystem::remove_all(root / "state");
   }
 
   std::string join(const std::vector<std::string>& names) {
@@ -94,7 +103,7 @@ int main() {
   std::map<std::string, std::string> expected;
   {
     for (const std::string_view preset : desktop_layout::kPresets) {
-      std::filesystem::remove_all(root / "state");
+      resetState(root);
       ConfigService config;
       expect(config.setOverrides(own), "own bar writes");
       pick(config, preset);
@@ -106,7 +115,7 @@ int main() {
   for (const std::string_view a : presets) {
     for (const std::string_view b : presets) {
       for (const std::string_view c : presets) {
-        std::filesystem::remove_all(root / "state");
+        resetState(root);
         ConfigService config;
         expect(config.setOverrides(own), "own bar writes");
         std::string history;
@@ -125,7 +134,7 @@ int main() {
 
   // A Windows bar saved before the row gained task_view is still the Windows layout, and picks from it stay pure.
   for (const std::string_view preset : presets) {
-    std::filesystem::remove_all(root / "state");
+    resetState(root);
     ConfigService config;
     expect(config.setOverrides(own), "own bar writes");
     pick(config, "windows");

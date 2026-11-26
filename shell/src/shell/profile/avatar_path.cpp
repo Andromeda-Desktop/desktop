@@ -2,6 +2,7 @@
 
 #include "config/config_service.h"
 #include "config/config_types.h"
+#include "core/blocking_pool.h"
 #include "core/log.h"
 #include "dbus/accounts/accounts_service.h"
 #include "protocols/xdg_dirs.h"
@@ -148,45 +149,64 @@ namespace shell {
     return resolvedAvatarPath(accounts, config);
   }
 
-  AvatarApplyResult applyAvatarPath(AccountsService* accounts, ConfigService* config, std::string_view path) {
+  void applyAvatarPath(
+      AccountsService* accounts, ConfigService* config, std::string_view path, std::weak_ptr<const void> alive,
+      std::function<void(AvatarApplyResult)> done
+  ) {
     if (config == nullptr) {
-      return {.error = AvatarApplyError::ConfigFailed};
+      done({.error = AvatarApplyError::ConfigFailed});
+      return;
     }
-
+    struct Prepared {
+      AvatarApplyError error = AvatarApplyError::None;
+      std::string accountsPath;
+    };
     const std::string normalizedPath = path.empty() ? std::string{} : FileUtils::normalizeWallpaperPath(path);
-    if (!normalizedPath.empty()) {
-      std::error_code ec;
-      if (!std::filesystem::is_regular_file(FileUtils::expandUserPath(normalizedPath), ec) || ec) {
-        kLog.warn("avatar path is not a regular file: {}", normalizedPath);
-        return {.error = AvatarApplyError::InvalidPath};
-      }
-    }
-
-    std::string accountsPath = normalizedPath;
-    if (accounts != nullptr && !normalizedPath.empty()) {
-      const auto sourcePath = FileUtils::expandUserPath(normalizedPath);
-      AvatarPrepareError prepareError = AvatarPrepareError::LoadFailed;
-      std::string prepareDetail;
-      const auto prepared = prepareAvatarForAccounts(sourcePath, prepareError, &prepareDetail);
-      if (!prepared.has_value()) {
-        kLog.warn("failed to prepare avatar from '{}': {}", normalizedPath, prepareDetail);
-        return {
-            .error = prepareError == AvatarPrepareError::WriteFailed ? AvatarApplyError::WriteFailed
-                                                                     : AvatarApplyError::LoadFailed
-        };
-      }
-      accountsPath = prepared->string();
-      if (!accounts->setIconFile(accountsPath)) {
-        kLog.warn("AccountsService SetIconFile failed for '{}', falling back to config override", accountsPath);
-      }
-    }
-
-    if (!config->setOverride({"shell", "avatar_path"}, normalizedPath)) {
-      kLog.warn("failed to persist shell.avatar_path");
-      return {.error = AvatarApplyError::ConfigFailed};
-    }
-
-    return {};
+    BlockingPool::instance().run<Prepared>(
+        alive,
+        [normalizedPath, prepare = accounts != nullptr] {
+          if (normalizedPath.empty()) {
+            return Prepared{};
+          }
+          const auto sourcePath = FileUtils::expandUserPath(normalizedPath);
+          std::error_code ec;
+          if (!std::filesystem::is_regular_file(sourcePath, ec) || ec) {
+            kLog.warn("avatar path is not a regular file: {}", normalizedPath);
+            return Prepared{.error = AvatarApplyError::InvalidPath};
+          }
+          if (!prepare) {
+            return Prepared{.accountsPath = normalizedPath};
+          }
+          AvatarPrepareError prepareError = AvatarPrepareError::LoadFailed;
+          std::string prepareDetail;
+          const auto prepared = prepareAvatarForAccounts(sourcePath, prepareError, &prepareDetail);
+          if (!prepared.has_value()) {
+            kLog.warn("failed to prepare avatar from '{}': {}", normalizedPath, prepareDetail);
+            return Prepared{
+                .error = prepareError == AvatarPrepareError::WriteFailed ? AvatarApplyError::WriteFailed
+                                                                         : AvatarApplyError::LoadFailed
+            };
+          }
+          return Prepared{.accountsPath = prepared->string()};
+        },
+        [accounts, config, normalizedPath, done = std::move(done)](Prepared prepared) {
+          if (prepared.error != AvatarApplyError::None) {
+            done({.error = prepared.error});
+            return;
+          }
+          if (accounts != nullptr && !normalizedPath.empty() && !accounts->setIconFile(prepared.accountsPath)) {
+            kLog.warn(
+                "AccountsService SetIconFile failed for '{}', falling back to config override", prepared.accountsPath
+            );
+          }
+          if (!config->setOverride({"shell", "avatar_path"}, normalizedPath)) {
+            kLog.warn("failed to persist shell.avatar_path");
+            done({.error = AvatarApplyError::ConfigFailed});
+            return;
+          }
+          done({});
+        }
+    );
   }
 
   const char* avatarApplyErrorTranslationKey(AvatarApplyError error) noexcept {

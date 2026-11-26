@@ -316,6 +316,7 @@ void CalendarService::syncCachePersistence() {
   }
 
   m_cacheKey.reset();
+  invalidateCacheWrites();
   m_cacheWritable = false;
   setCachePersistenceState(CachePersistenceState::Opening, m_cacheMigrationPending);
   if (m_storageKeyProvider.state() == security::StorageKeyState::Ready) {
@@ -356,10 +357,17 @@ void CalendarService::syncCachePersistence() {
   setCachePersistenceState(state, m_cacheMigrationPending);
 }
 
+void CalendarService::invalidateCacheWrites() {
+  // Waits for a running save, so no write with the old key lands after this.
+  std::scoped_lock lock(m_cacheWriteGate->mutex);
+  ++m_cacheWriteGate->generation;
+}
+
 void CalendarService::retryCachePersistence() { m_storageKeyProvider.retry(); }
 
 bool CalendarService::clearEncryptedCacheForRecovery() {
   m_cacheKey.reset();
+  invalidateCacheWrites();
   m_cacheWritable = false;
   std::error_code ec;
   std::filesystem::remove(cacheFilePath(), ec);
@@ -1651,14 +1659,22 @@ void CalendarService::saveCache() {
     }
   }
 
-  // The write encrypts and fsyncs: it runs on SharedWorker, whose one thread keeps saves in order.
-  SharedWorker::instance().post<bool>(
+  // The write encrypts the whole cache: it runs on SharedWorker, whose one thread keeps saves in order.
+  SharedWorker::instance().post<std::optional<bool>>(
       m_alive,
-      [path = cacheFilePath(), contents = nlohmann::json{{"events", std::move(events)}}.dump(), key = m_cacheKey] {
+      [path = cacheFilePath(), contents = nlohmann::json{{"events", std::move(events)}}.dump(), key = m_cacheKey,
+       gate = m_cacheWriteGate, generation = m_cacheWriteGate->generation]() -> std::optional<bool> {
+        std::scoped_lock lock(gate->mutex);
+        if (gate->generation != generation) {
+          return std::nullopt;
+        }
         return calendar::cache::writeEncrypted(path, contents, *key);
       },
-      [this, key = m_cacheKey](bool written) {
-        if (written) {
+      [this, key = m_cacheKey](std::optional<bool> written) {
+        if (!written.has_value()) {
+          return;
+        }
+        if (*written) {
           m_storageKeyProvider.noteEncryptedDataExists();
           return;
         }

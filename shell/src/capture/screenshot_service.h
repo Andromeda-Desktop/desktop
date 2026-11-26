@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -250,6 +251,9 @@ private:
   std::optional<PendingDelivery> m_pendingDelivery;
   FreezeTarget m_freezeTarget = FreezeTarget::Region;
   SoundPlayer* m_soundPlayer = nullptr;
+  // Screenshot paths whose save job runs now.
+  std::unordered_set<std::string> m_savingPaths;
+  std::uint64_t m_annotationSession = 0;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 };
 

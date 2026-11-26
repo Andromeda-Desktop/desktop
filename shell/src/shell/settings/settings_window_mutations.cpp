@@ -160,12 +160,13 @@ void SettingsWindow::setSettingOverride(std::vector<std::string> path, ConfigOve
         markSettingsWriteError(i18n::tr("settings.errors.write"));
         return;
       }
-      const auto result = shell::applyAvatarPath(m_accounts, m_config, *avatarPath);
-      if (result.success()) {
-        markSettingsWriteSuccess();
-        return;
-      }
-      markSettingsWriteError(i18n::tr(shell::avatarApplyErrorTranslationKey(result.error)));
+      shell::applyAvatarPath(m_accounts, m_config, *avatarPath, m_aliveGuard, [this](shell::AvatarApplyResult result) {
+        if (result.success()) {
+          markSettingsWriteSuccess();
+          return;
+        }
+        markSettingsWriteError(i18n::tr(shell::avatarApplyErrorTranslationKey(result.error)));
+      });
       return;
     }
     bool changed = false;

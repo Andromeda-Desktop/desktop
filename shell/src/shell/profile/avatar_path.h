@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -31,9 +33,12 @@ namespace shell {
   [[nodiscard]] std::string avatarDisplayPath(const AccountsService* accounts, const Config& config);
 
   // Persists shell.avatar_path and updates AccountsService when it is connected.
-  // Large images are center-cropped and downscaled before AccountsService accepts them.
-  [[nodiscard]] AvatarApplyResult
-  applyAvatarPath(AccountsService* accounts, ConfigService* config, std::string_view path);
+  // Large images are center-cropped and downscaled before AccountsService accepts them. The file check, decode and
+  // cache write run on BlockingPool; `done` runs on the main loop while `alive` lives.
+  void applyAvatarPath(
+      AccountsService* accounts, ConfigService* config, std::string_view path, std::weak_ptr<const void> alive,
+      std::function<void(AvatarApplyResult)> done
+  );
 
   [[nodiscard]] const char* avatarApplyErrorTranslationKey(AvatarApplyError error) noexcept;
 

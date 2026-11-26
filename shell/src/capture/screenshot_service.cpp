@@ -1383,6 +1383,7 @@ void ScreenshotService::finishFreezeCapture() {
     if (m_annotationOverlay->isActive()) {
       m_annotationOverlay->resumeAfterCapture();
     } else {
+      ++m_annotationSession;
       m_annotationOverlay->begin();
     }
     return;
@@ -1563,8 +1564,9 @@ void ScreenshotService::ensureAnnotationOverlay() {
         options.saveToFile ? std::optional(makeScreenshotPath(options, "annotated")) : std::nullopt;
     const bool closeOnDelivery = (action == capture::AnnotationExport::Copy && options.closeOnCopy)
                                  || (action == capture::AnnotationExport::Save && options.closeOnSave);
-    finishDelivery(std::move(image), options, destPath, [this, closeOnDelivery](bool delivered) {
-      if (delivered && closeOnDelivery && m_annotationOverlay != nullptr) {
+    finishDelivery(std::move(image), options, destPath, [this, closeOnDelivery, session = m_annotationSession](bool delivered) {
+      // The encode ends later: a newer editor session must stay open.
+      if (delivered && closeOnDelivery && session == m_annotationSession && m_annotationOverlay != nullptr) {
         m_annotationOverlay->cancel();
       }
     });
@@ -1593,6 +1595,7 @@ void ScreenshotService::beginAnnotation(RenderContext& renderContext, const Outp
   }
 
   m_annotationOverlay->setFrozenScreenshots({});
+  ++m_annotationSession;
   m_annotationOverlay->begin();
 }
 
@@ -1633,6 +1636,7 @@ void ScreenshotService::beginImageAnnotation(
   m_annotationOverlay->setCursorVisible(options.showCursor);
   m_annotationOverlay->setCopyOnClose(options.copyOnClose);
   m_annotationOverlay->setScreenshotBackdrop(loadScreenshotBackdrop());
+  ++m_annotationSession;
   m_annotationOverlay->beginImage(std::move(image), preferredCaptureOutput());
 }
 
@@ -2135,6 +2139,10 @@ void ScreenshotService::finishDelivery(
   const bool needsPng = options.copyToClipboard || pipe || (saveFile && options.format == ScreenshotFormat::Png);
 
   // Encoding a full-resolution frame and writing it take 100s of ms: both run off the main thread.
+  // The file appears only when the job ends: makeScreenshotPath skips reserved paths meanwhile.
+  if (saveFile) {
+    m_savingPaths.insert(destPath->string());
+  }
   BlockingPool::instance().run<Encoded>(
       m_alive,
       [image = std::move(image), backdrop = options.backdrop, format = options.format, quality = options.quality,
@@ -2182,7 +2190,10 @@ void ScreenshotService::finishDelivery(
         }
         return result;
       },
-      [this, options, destPath, needsPng, pipe, done = std::move(done)](Encoded result) {
+      [this, options, destPath, saveFile, needsPng, pipe, done = std::move(done)](Encoded result) {
+        if (saveFile) {
+          m_savingPaths.erase(destPath->string());
+        }
         if (needsPng && result.png.empty()) {
           notifyError(result.failureMessage);
           if (done) {
@@ -2257,7 +2268,7 @@ ScreenshotService::makeScreenshotPath(const OutputOptions& options, const std::s
     filename.append(extension);
     std::filesystem::path path = dir / filename;
     std::error_code ec;
-    if (!std::filesystem::exists(path, ec)) {
+    if (!m_savingPaths.contains(path.string()) && !std::filesystem::exists(path, ec)) {
       return path;
     }
   }

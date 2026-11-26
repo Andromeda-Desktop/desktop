@@ -61,7 +61,7 @@ public:
 private:
   void checkOnDemand(const SystemdUnit& unit, ActivityActionResult result, Reply reply);
   sdbus::IProxy& proxyFor(const SystemdUnit& unit, const std::string& path);
-  // setAutostartHidden on BlockingPool; `reply` runs on the main loop.
+  // setAutostartHidden on SharedWorker; `reply` runs on the main loop.
   void setAutostartHiddenAsync(
       const SystemdUnit& unit, const std::vector<AutostartEntry>& autostart, const std::string& autostartUserDir,
       bool hidden, Reply reply

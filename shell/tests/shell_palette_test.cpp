@@ -1,3 +1,4 @@
+#include "async_file_wait.h"
 #include "theme/builtin_palettes.h"
 #include "theme/color.h"
 #include "theme/contrast.h"
@@ -158,6 +159,7 @@ namespace {
       ok = expect(toolkit_theme::write(light ? "light" : "dark", out.accent, out.accentText, out.onAccent), "writer ran")
           && ok;
       for (const char* dir : {"gtk-3.0", "gtk-4.0"}) {
+        ok = expect(waitFileWritten(root / "config" / dir / "andromeda.css"), "toolkit css written") && ok;
         std::ifstream in(root / "config" / dir / "andromeda.css");
         std::stringstream text;
         text << in.rdbuf();

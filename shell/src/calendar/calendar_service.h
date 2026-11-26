@@ -16,6 +16,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <poll.h>
 #include <set>
@@ -179,6 +180,7 @@ private:
   [[nodiscard]] bool loadCache();
   [[nodiscard]] bool parseCache(std::span<const std::uint8_t> contents);
   void saveCache();
+  void invalidateCacheWrites();
   [[nodiscard]] static std::filesystem::path cacheFilePath();
   [[nodiscard]] static std::filesystem::path legacyCacheFilePath();
   void setCachePersistenceState(CachePersistenceState state, bool migrationPending);
@@ -197,6 +199,12 @@ private:
   security::StorageKeyProvider& m_storageKeyProvider;
   // Shared with the cache write on SharedWorker.
   std::shared_ptr<const security::SecureKey> m_cacheKey;
+  // A queued cache save writes only if no key reset or recovery came after it (invalidateCacheWrites).
+  struct CacheWriteGate {
+    std::mutex mutex;
+    std::uint64_t generation = 0;
+  };
+  std::shared_ptr<CacheWriteGate> m_cacheWriteGate = std::make_shared<CacheWriteGate>();
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
 
   struct GoogleSession {

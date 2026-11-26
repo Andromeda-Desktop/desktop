@@ -1,6 +1,7 @@
 #include "system/activity_actions.h"
 
-#include "core/blocking_pool.h"
+#include "config/atomic_file.h"
+#include "core/shared_worker.h"
 #include "dbus/system_interactive_call.h"
 
 #include <algorithm>
@@ -111,7 +112,10 @@ bool setAutostartHidden(const std::string& userDir, const AutostartEntry& entry,
     if (ours) {
       fs::remove(target, ec);
     } else if (!current.empty()) {
-      std::ofstream(target) << withHidden(current, false);
+      if (!writeTextFileAtomic(target, withHidden(current, false))) {
+        error = "Can't write " + target.string();
+        return false;
+      }
     }
     return true;
   }
@@ -122,9 +126,7 @@ bool setAutostartHidden(const std::string& userDir, const AutostartEntry& entry,
   } else {
     text = "[Desktop Entry]\nType=Application\nName=" + entry.name + "\nHidden=true\n" + kOverrideMarker + "\n";
   }
-  std::ofstream out(target);
-  out << text;
-  if (!out) {
+  if (!writeTextFileAtomic(target, text)) {
     error = "Can't write " + target.string();
     return false;
   }
@@ -301,7 +303,8 @@ void ActivityActions::setAutostartHiddenAsync(
     reply(ActivityActionResult{.error = "No autostart file for " + unit.name});
     return;
   }
-  BlockingPool::instance().run<ActivityActionResult>(
+  // SharedWorker's one thread keeps toggles of one file in order.
+  SharedWorker::instance().post<ActivityActionResult>(
       m_alive,
       [userDir = autostartUserDir, entry = *entry, hidden] {
         ActivityActionResult result;

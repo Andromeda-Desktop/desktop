@@ -83,6 +83,20 @@ namespace {
     DeferredCall::callLater([cb = std::move(cb)] mutable { cb(HttpStreamResult{}); });
   }
 
+  // Download bodies stay in memory until the worker writes them.
+  constexpr std::size_t kMaxDownloadBytes = 64 * 1024 * 1024;
+
+  // Returning less than the chunk size aborts the transfer with CURLE_WRITE_ERROR.
+  std::size_t captureDownload(char* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
+    const std::size_t bytes = size * nmemb;
+    auto* body = static_cast<std::string*>(userdata);
+    if (body->size() + bytes > kMaxDownloadBytes) {
+      return 0;
+    }
+    body->append(ptr, bytes);
+    return bytes;
+  }
+
   std::size_t captureResponse(char* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
     const std::size_t bytes = size * nmemb;
     if (userdata == nullptr || ptr == nullptr || bytes == 0) {
@@ -233,7 +247,8 @@ void HttpClient::download(std::string_view url, const std::filesystem::path& des
   const std::string urlStr(url);
   applyCommonOptions(easy);
   libcurl().curl_easy_setopt(easy, CURLOPT_URL, urlStr.c_str());
-  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, captureResponse);
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, captureDownload);
+  libcurl().curl_easy_setopt(easy, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(kMaxDownloadBytes));
   libcurl().curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
   libcurl().curl_easy_setopt(easy, CURLOPT_FAILONERROR, 1L);
   libcurl().curl_easy_setopt(easy, CURLOPT_TIMEOUT, 30L);
