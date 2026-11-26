@@ -7473,11 +7473,15 @@ static bool should_blur_node_extend_damage(
     if (blur_node->strength < 1.0f) {
       *blur_data = blur_data_apply_strength(blur_data, blur_node->strength);
     }
-    // A probe-only node draws only on the frames its probe samples; between them it needs no offscreen buffers.
-    if (blur_node->probe_only) {
-      fx_pass->has_blur = fx_pass->has_blur
-          || (blur_node->backdrop_probe != NULL && fx_backdrop_probe_due(blur_node->backdrop_probe));
+    // A probe-only node draws only on the frames its probe samples; between them it needs no offscreen buffers. On a
+    // sample frame it widens damage like any blur, so the kernel fringe holds this frame's backdrop.
+    if (blur_node->probe_only
+        && (blur_node->backdrop_probe == NULL || !fx_backdrop_probe_due(blur_node->backdrop_probe))) {
       return false;
+    }
+    if (blur_node->probe_only) {
+      fx_pass->has_blur = true;
+      break;
     }
     // Glass without a blur pass reads only its own rectangle: it needs the offscreen buffers, not wider damage.
     if (!is_scene_blur_enabled(blur_data) && blur_node_is_glass(blur_node)) {

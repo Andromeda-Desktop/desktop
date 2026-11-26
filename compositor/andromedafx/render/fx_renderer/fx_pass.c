@@ -3218,10 +3218,12 @@ static struct fx_framebuffer* get_main_buffer_blur(
   // Upscale
   const int last_upsample = final_upsample != NULL ? 1 : 0;
   for (int i = blur_data.num_passes - 1; i >= last_upsample; --i) {
-    // when upsampling we make the region twice as big; the final pass also applies the blur effects
+    // when upsampling we make the region twice as big; the final pass also applies the blur effects, except for a
+    // probe-only node: it measures the backdrop itself, not the glass look
     wlr_region_scale(&scaled_damage, &damage, 1.0f / (1 << i));
     render_blur_segments(
-        pass, fx_options, &renderer->shaders.blur2, i == 0 ? &renderer->shaders.blur2_with_effects : NULL, 1 << (i + 1)
+        pass, fx_options, &renderer->shaders.blur2,
+        i == 0 && !fx_options->probe_only ? &renderer->shaders.blur2_with_effects : NULL, 1 << (i + 1)
     );
   }
   if (final_upsample != NULL) {
