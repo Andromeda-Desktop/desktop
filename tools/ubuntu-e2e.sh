@@ -42,7 +42,8 @@ docker run --rm --security-opt seccomp=unconfined --user "$(id -u):$(id -g)" "${
   set -o pipefail
   # A setup that failed halfway leaves a dir without build.ninja; remove it and set up again.
   { [ -f compositor/build-debug/build.ninja ] || { rm -rf compositor/build-debug &&
-      meson setup --buildtype=debug -Dtests=enabled compositor/build-debug compositor; }
+      meson setup --buildtype=debug -Dtests=enabled --force-fallback-for=wlroots-0.20,libliftoff \
+        -Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=static -Dlibliftoff:werror=false compositor/build-debug compositor; }
     [ -f shell/build-debug/build.ninja ] || { rm -rf shell/build-debug && meson setup --buildtype=debug shell/build-debug shell; }
     [ -f indexer/build/build.ninja ] || { rm -rf indexer/build && meson setup indexer/build indexer; }
     # -k0: one run shows every compile error, not only the first.
