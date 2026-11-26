@@ -289,7 +289,8 @@ namespace settings {
     };
 
     const auto makeMultiSelectBlock = [&](Flex& section, const SettingEntry& entry, const MultiSelectSetting& setting) {
-      const bool overridden = (ctx.configService != nullptr && ctx.configService->hasEffectiveOverride(entry.path));
+      const bool overridden = ctx.configService != nullptr
+          && settingEntryHasEffectiveOverride(entry, *ctx.configService, ctx.compositorSettings);
 
       auto block = makeCollectionBlock(entry, overridden);
 
@@ -362,7 +363,8 @@ namespace settings {
 
     const auto makeKeybindListBlock = [&](Flex& section, const SettingEntry& entry,
                                           const KeybindListSetting& keybinds) {
-      const bool overridden = (ctx.configService != nullptr && ctx.configService->hasEffectiveOverride(entry.path));
+      const bool overridden = ctx.configService != nullptr
+          && settingEntryHasEffectiveOverride(entry, *ctx.configService, ctx.compositorSettings);
 
       auto block = makeCollectionBlock(entry, false, true, true, true, true, true);
       block->setClipChildren(true);
@@ -502,7 +504,8 @@ namespace settings {
 
     const auto makeSessionActionsInlineBlock = [&](Flex& section, const SettingEntry& entry,
                                                    const SessionPanelActionsSetting& sa) {
-      const bool overridden = (ctx.configService != nullptr && ctx.configService->hasEffectiveOverride(entry.path));
+      const bool overridden = ctx.configService != nullptr
+          && settingEntryHasEffectiveOverride(entry, *ctx.configService, ctx.compositorSettings);
 
       auto block = makeCollectionBlock(entry, overridden);
 
@@ -625,7 +628,8 @@ namespace settings {
 
     const auto makeIdleBehaviorsInlineBlock = [&](Flex& section, const SettingEntry& entry,
                                                   const IdleBehaviorsSetting& idle) {
-      const bool overridden = (ctx.configService != nullptr && ctx.configService->hasEffectiveOverride(entry.path));
+      const bool overridden = ctx.configService != nullptr
+          && settingEntryHasEffectiveOverride(entry, *ctx.configService, ctx.compositorSettings);
 
       auto block = makeCollectionBlock(entry, overridden);
 
@@ -735,7 +739,8 @@ namespace settings {
 
     const auto makeNotificationFiltersInlineBlock = [&](Flex& section, const SettingEntry& entry,
                                                         const NotificationFiltersSetting& filters) {
-      const bool overridden = (ctx.configService != nullptr && ctx.configService->hasEffectiveOverride(entry.path));
+      const bool overridden = ctx.configService != nullptr
+          && settingEntryHasEffectiveOverride(entry, *ctx.configService, ctx.compositorSettings);
 
       auto block = makeCollectionBlock(entry, overridden);
 

@@ -877,7 +877,6 @@
   },
   "settings": {
     "actions": {
-      "confirm-reset": "Visszaállítás megerősítése",
       "reset": "Visszaállítás"
     },
     "badges": {

@@ -333,6 +333,9 @@ namespace andromeda {
     // A reload that changed nothing (the watcher seeing the compositor's own settings write) wakes no client.
     if (result.success && !result.change.any() && !result.effects.any()) {
       kLog.info("config reloaded (sections: none; effects: none)");
+      if (m_desktopSettingsManager != nullptr) {
+        m_desktopSettingsManager->settingsFileMaybeChanged();
+      }
     } else if (result.success) {
       // The localed query is a D-Bus round trip plus a keymap compile (~10 ms on an HD 520 laptop): only an input edit
       // asks for it, and it runs on a worker.

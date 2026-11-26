@@ -2,12 +2,14 @@
 
 #include "protocols/glass_material.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 
 class SettingsControl;
 class ShellWaylandConnection;
@@ -79,6 +81,8 @@ private:
   void onSettingsChanged();
   void flush();
   void push(const std::string& key, const std::string& value, bool differs);
+  void setStyleLayer(const std::string& key, const std::string& value);
+  void dropShellSaves(const std::array<std::pair<std::string, std::string>, 3>& recipe);
 
   std::unique_ptr<SettingsControl> m_control;
   LiveAppearance m_state;
@@ -96,7 +100,8 @@ private:
   std::string m_accent;
   AccentOrigin m_accentOrigin = AccentOrigin::Saved;
   std::string m_wallpaperAccent;
-  std::string m_layerAccent; // the accent in the compositor's "style" layer now
+  std::unordered_map<std::string, std::string> m_styleLayer; // accent and blur recipe in the "style" layer now
+  bool m_droppedShellSaves = false;
   std::unordered_map<std::string, std::string> m_sent; // last value set per key, until the compositor has it
   ChangeCallback m_onChange;
   std::function<void(std::string_view)> m_onExternalScheme;

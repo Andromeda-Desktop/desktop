@@ -920,13 +920,6 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
       .clearOverrides = clearOverrides,
       .mutateOverrides = mutateOverrides,
       .resetBarLane = resetLane,
-      .isResetConfirmationPending =
-          [this](const std::vector<std::vector<std::string>>& paths) { return m_pendingResetSettingPaths == paths; },
-      .requestResetConfirmation =
-          [this](std::vector<std::vector<std::string>> paths) {
-            m_pendingResetPageScope.clear();
-            m_pendingResetSettingPaths = std::move(paths);
-          },
       .renameWidgetInstance = renameWidget,
       .openSessionActionEntryEditor = [this](std::size_t entryIndex) { openSessionActionEntryEditor(entryIndex); },
       .openIdleBehaviorEntryEditor = [this](std::size_t entryIndex) { openIdleBehaviorEntryEditor(entryIndex); },
@@ -1280,9 +1273,8 @@ std::unique_ptr<Flex> SettingsWindow::buildSearchField(float scale) {
         const bool wasSearchActive = !m_searchQuery.empty();
         m_searchQuery = value;
         const bool searchActiveChanged = wasSearchActive != !m_searchQuery.empty();
-        const bool hadPendingReset = !m_pendingResetPageScope.empty() || !m_pendingResetSettingPaths.empty();
+        const bool hadPendingReset = !m_pendingResetPageScope.empty();
         m_pendingResetPageScope.clear();
-        m_pendingResetSettingPaths.clear();
 
         if (hadPendingReset || searchActiveChanged) {
           // Toggling between empty/non-empty changes the sidebar highlight and the title, and recreates the
@@ -2339,7 +2331,6 @@ bool SettingsWindow::tryPatchSettingsRegistryResetValues(const std::vector<std::
 }
 
 void SettingsWindow::requestResetPageConfirmation() {
-  m_pendingResetSettingPaths.clear();
   m_pendingResetPageScope = pageScopeKey(m_selectedSection, m_selectedBarName, m_selectedMonitorOverride);
   requestContentRebuild(/*refreshRegistry=*/false, /*refreshFilterRow=*/true);
 }

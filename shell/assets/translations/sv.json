@@ -794,7 +794,6 @@
   },
   "settings": {
     "actions": {
-      "confirm-reset": "Bekräfta återställning",
       "reset": "Återställ"
     },
     "badges": {

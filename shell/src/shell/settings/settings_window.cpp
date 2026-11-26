@@ -764,7 +764,6 @@ void SettingsWindow::destroyWindow() {
   m_renamingMonitorOverrideMatch.clear();
   m_renamingDockMonitorOverride.clear();
   m_pendingResetPageScope.clear();
-  m_pendingResetSettingPaths.clear();
   m_searchQuery.clear();
   m_selectedSection.clear();
   m_selectedBarName.clear();
@@ -1088,7 +1087,6 @@ void SettingsWindow::clearTransientSettingsState() {
   m_renamingMonitorOverrideBarName.clear();
   m_renamingMonitorOverrideMatch.clear();
   m_pendingResetPageScope.clear();
-  m_pendingResetSettingPaths.clear();
   m_expertOpen = false;
   m_detail.clear();
   m_expertQuery.clear();

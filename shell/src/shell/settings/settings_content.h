@@ -114,8 +114,6 @@ namespace settings {
     )>
         mutateOverrides;
     std::function<void(std::vector<std::string>)> resetBarLane;
-    std::function<bool(const std::vector<std::vector<std::string>>&)> isResetConfirmationPending;
-    std::function<void(std::vector<std::vector<std::string>>)> requestResetConfirmation;
     std::function<void(std::string, std::string, std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>>)>
         renameWidgetInstance;
 

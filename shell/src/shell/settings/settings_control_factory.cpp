@@ -243,27 +243,19 @@ namespace {
   ) {
     auto& ctx = m_ctx;
     const float scale = m_scale;
-    const bool pendingConfirmation = ctx.isResetConfirmationPending && ctx.isResetConfirmationPending(paths);
     return ui::button({
-        .text = pendingConfirmation ? std::optional{i18n::tr("settings.actions.confirm-reset")} : std::nullopt,
         .glyph = "arrow-back-up",
         .fontSize = Style::fontSizeCaption * scale,
         .glyphSize = Style::fontSizeBody * scale,
-        .variant = pendingConfirmation ? ButtonVariant::Destructive : ButtonVariant::Ghost,
+        .variant = ButtonVariant::Ghost,
         .tooltip = i18n::tr("settings.actions.reset-to-default"),
         .minWidth = Style::controlHeight * scale,
         .minHeight = Style::controlHeight * scale,
         .paddingV = Style::spaceXs * scale,
         .paddingH = Style::spaceXs * scale,
         .radius = Style::scaledRadiusMd(scale),
-        .onClick = [clearOverrides = ctx.clearOverrides, requestConfirmation = ctx.requestResetConfirmation,
-                    requestRebuild = ctx.requestRebuild, paths = std::move(paths), onConfirmed = std::move(onConfirmed),
-                    pendingConfirmation] mutable {
-          if (!pendingConfirmation) {
-            requestConfirmation(paths);
-            requestRebuild();
-            return;
-          }
+        .onClick = [clearOverrides = ctx.clearOverrides, paths = std::move(paths),
+                    onConfirmed = std::move(onConfirmed)] mutable {
           if (onConfirmed) {
             onConfirmed();
             return;

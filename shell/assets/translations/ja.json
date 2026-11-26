@@ -1001,7 +1001,6 @@
   },
   "settings": {
     "actions": {
-      "confirm-reset": "リセットを確定",
       "reset": "リセット"
     },
     "badges": {

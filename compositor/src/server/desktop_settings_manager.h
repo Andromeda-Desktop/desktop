@@ -35,6 +35,9 @@ namespace andromeda {
 
     void devicesChanged();
     void settingsChanged();
+    // After a reload that moved no value: the file may still set or drop a key (the customized flag), as when a
+    // reset removes a key that held the default.
+    void settingsFileMaybeChanged();
 
     // True while a client waits for capture_chord; the keyboard hands the next non-modifier press to captureChord
     // instead of keybinds and clients.
@@ -91,6 +94,8 @@ namespace andromeda {
     };
     std::vector<PendingSet> m_pendingSets;
     wl_event_source* m_saveIdle = nullptr;
+    // The settings file text behind the last settingsChanged broadcast.
+    std::string m_sentDocument;
   };
 
 } // namespace andromeda

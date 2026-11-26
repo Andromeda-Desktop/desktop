@@ -1000,7 +1000,6 @@
   },
   "settings": {
     "actions": {
-      "confirm-reset": "Confirma Reset",
       "reset": "Resetear"
     },
     "badges": {

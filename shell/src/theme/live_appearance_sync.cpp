@@ -145,7 +145,7 @@ void LiveAppearanceSync::flush() {
     m_layerLanguage = m_language;
     m_control->setInLayer("style", "appearance.language", m_language);
   }
-  // Blur recipe per scheme (glass tokens): a chosen scheme's in the settings, a derived or Focus scheme's in its layer.
+  // Blur recipe per scheme (glass tokens): the user's scheme's in the "style" layer, a Focus scheme's in its layer.
   const auto recipe = [](std::string_view scheme) {
     const bool light = scheme == "light";
     return std::array<std::pair<std::string, std::string>, 3>{{
@@ -167,45 +167,73 @@ void LiveAppearanceSync::flush() {
       m_control->setInLayer("focus", key, value);
     }
   }
-  if (!m_scheme.empty() && m_focusScheme.empty()) {
+  if (m_scheme.empty()) {
+    return; // publish() has not run yet
+  }
+  dropShellSaves(recipe(m_scheme));
+  if (m_focusScheme.empty()) {
     if (m_schemeOrigin == SchemeOrigin::Derived) {
       if (m_scheme != m_layerDerivedScheme) {
         m_layerDerivedScheme = m_scheme;
         m_control->setInLayer("style", "appearance.scheme", m_scheme);
-        for (const auto& [key, value] : recipe(m_scheme)) {
-          m_control->setInLayer("style", key, value);
-        }
       }
     } else {
-      // The layer masks the saved keys, so set them before it goes: the view then never shows a stale saved scheme,
-      // which would count as another client's choice.
+      // The layer masks the saved key, so set it before the layer goes: the view then never shows a stale saved
+      // scheme, which would count as another client's choice.
       const bool masked = !m_layerDerivedScheme.empty();
       if (masked) {
         m_sent.erase("appearance.scheme");
       }
       push("appearance.scheme", m_scheme, masked || m_control->value("appearance.scheme") != m_scheme);
-      for (const auto& [key, value] : recipe(m_scheme)) {
-        if (masked) {
-          m_sent.erase(key);
-        }
-        push(key, value, masked || m_control->value(key) != value);
-      }
       if (masked) {
         m_layerDerivedScheme.clear();
         m_control->setInLayer("style", "appearance.scheme", "");
-        for (const auto& entry : recipe(m_scheme)) {
-          m_control->setInLayer("style", entry.first, "");
-        }
       }
     }
+    // The blur recipe follows the scheme in the "style" layer; a value the user saved is never masked.
+    for (const auto& [key, value] : recipe(m_scheme)) {
+      setStyleLayer(key, m_control->customized(key) ? std::string{} : value);
+    }
   }
-  const bool fromWallpaper = m_accentOrigin == AccentOrigin::Wallpaper;
-  if (const std::string layerAccent = fromWallpaper ? m_wallpaperAccent : std::string{}; layerAccent != m_layerAccent) {
-    m_layerAccent = layerAccent;
-    m_control->setInLayer("style", "appearance.accent", m_layerAccent);
+  // The theme's accent fills in while the user saved none; a wallpaper accent replaces even a saved one.
+  if (m_accentOrigin == AccentOrigin::Wallpaper) {
+    setStyleLayer("appearance.accent", m_wallpaperAccent);
+  } else {
+    setStyleLayer("appearance.accent", m_control->customized("appearance.accent") ? std::string{} : m_accent);
   }
-  if (!fromWallpaper && !m_accent.empty()) {
-    push("appearance.accent", m_accent, m_control->value("appearance.accent").empty());
+}
+
+void LiveAppearanceSync::setStyleLayer(const std::string& key, const std::string& value) {
+  auto [it, inserted] = m_styleLayer.try_emplace(key);
+  if (!inserted && it->second == value) {
+    return;
+  }
+  it->second = value;
+  m_control->setInLayer("style", key, value);
+}
+
+// Earlier shells saved the theme accent and the blur recipe as if the user had chosen them, so Settings marked those
+// rows changed and a reset was written back. Before the first flush no layer of ours masks the saved values: a saved
+// value equal to the one the shell derives is ours, and dropping it changes nothing on screen.
+void LiveAppearanceSync::dropShellSaves(const std::array<std::pair<std::string, std::string>, 3>& recipe) {
+  if (m_droppedShellSaves) {
+    return;
+  }
+  m_droppedShellSaves = true;
+  if (!m_focusScheme.empty()) {
+    return; // the Focus layer masks the saved values
+  }
+  const auto drop = [this](const std::string& key, const std::string& derived) {
+    const std::string saved = m_control->value(key);
+    if (!derived.empty() && m_control->customized(key) && (saved == derived || normalizeColor(saved) == derived)) {
+      m_control->set(key, "");
+    }
+  };
+  for (const auto& [key, value] : recipe) {
+    drop(key, value);
+  }
+  if (m_accentOrigin != AccentOrigin::Wallpaper) {
+    drop("appearance.accent", m_accent);
   }
 }
 

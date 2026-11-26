@@ -2098,7 +2098,6 @@
       "use-unlock": "Unlocking the screen"
     },
     "actions": {
-      "confirm-reset": "Confirm Reset",
       "reset": "Reset",
       "reset-to-default": "Reset to default"
     },

@@ -1054,7 +1054,6 @@
   },
   "settings": {
     "actions": {
-      "confirm-reset": "确认重置",
       "reset": "重置"
     },
     "badges": {

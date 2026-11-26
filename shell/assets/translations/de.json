@@ -894,7 +894,6 @@
   },
   "settings": {
     "actions": {
-      "confirm-reset": "Zurücksetzen bestätigen",
       "reset": "Zurücksetzen"
     },
     "badges": {

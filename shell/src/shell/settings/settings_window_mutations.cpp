@@ -73,7 +73,6 @@ void SettingsWindow::markSettingsWriteSuccess(bool requestRebuild) {
   m_statusMessage.clear();
   m_statusIsError = false;
   m_pendingResetPageScope.clear();
-  m_pendingResetSettingPaths.clear();
   if (requestRebuild) {
     requestSceneRebuild();
   }
@@ -94,7 +93,7 @@ void SettingsWindow::finishSettingsWrite(
     bool rebuildWhenUnchanged
 ) {
   const bool hadStatus = !m_statusMessage.empty();
-  const bool hadPendingReset = !m_pendingResetPageScope.empty() || !m_pendingResetSettingPaths.empty();
+  const bool hadPendingReset = !m_pendingResetPageScope.empty();
   markSettingsWriteSuccess(false);
   if (forceSceneRebuild || hadStatus || hadPendingReset) {
     requestSceneRebuild();
@@ -272,7 +271,6 @@ void SettingsWindow::clearSettingOverrides(std::vector<std::vector<std::string>>
     const bool success = m_config->clearOverrides(paths, &changed);
     m_pendingResetPageScope.clear();
     if (!success) {
-      m_pendingResetSettingPaths.clear();
       markSettingsWriteError(i18n::tr("settings.errors.reset-page"));
       return;
     }

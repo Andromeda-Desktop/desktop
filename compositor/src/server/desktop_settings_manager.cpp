@@ -412,7 +412,14 @@ namespace andromeda {
     }
   }
 
+  void DesktopSettingsManager::settingsFileMaybeChanged() {
+    if (readFile(managedSettingsFile(configRootPath())) != m_sentDocument) {
+      settingsChanged();
+    }
+  }
+
   void DesktopSettingsManager::settingsChanged() {
+    m_sentDocument = readFile(managedSettingsFile(configRootPath()));
     for (wl_resource* resource : m_resources) {
       sendSettings(resource);
       sendKeybinds(resource);

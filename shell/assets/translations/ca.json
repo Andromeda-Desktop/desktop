@@ -878,7 +878,6 @@
   },
   "settings": {
     "actions": {
-      "confirm-reset": "Confirma el restabliment",
       "reset": "Restableix"
     },
     "badges": {

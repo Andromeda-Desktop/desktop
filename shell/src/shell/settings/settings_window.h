@@ -650,7 +650,6 @@ private:
   std::string m_reopenAfterWidgetEditorSection;
   std::string m_statusMessage;
   std::string m_pendingResetPageScope;
-  std::vector<std::vector<std::string>> m_pendingResetSettingPaths;
   bool m_forceEnTranslation = false;
   bool m_statusIsError = false;
   bool m_pendingEncryptedStorageReset = false;

@@ -895,7 +895,6 @@
   },
   "settings": {
     "actions": {
-      "confirm-reset": "אישור איפוס",
       "reset": "איפוס"
     },
     "badges": {

@@ -845,7 +845,6 @@
   },
   "settings": {
     "actions": {
-      "confirm-reset": "確認恢復預設值",
       "reset": "恢復預設值"
     },
     "badges": {
