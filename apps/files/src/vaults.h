@@ -39,7 +39,7 @@ public:
   static int guard(const std::filesystem::path& mount);
 
 private:
-  void save() const;
+  [[nodiscard]] bool save() const;
   [[nodiscard]] std::filesystem::path storePath() const;
 
   std::string m_file;

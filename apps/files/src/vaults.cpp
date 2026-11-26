@@ -1,5 +1,7 @@
 #include "vaults.h"
 
+#include "state_file.h"
+
 #include "app/glib_source.h"
 #include "core/log.h"
 #include "core/poll_loop.h"
@@ -137,15 +139,12 @@ Vaults::Vaults(std::string file) : m_file(std::move(file)) {
 
 fs::path Vaults::storePath() const { return fs::path(g_get_user_data_dir()) / "andromeda" / "files" / m_file; }
 
-void Vaults::save() const {
+bool Vaults::save() const {
   nlohmann::json list = nlohmann::json::array();
   for (const Vault& v : m_vaults) {
     list.push_back({{"name", v.name}, {"cipher", v.cipher.string()}, {"mount", v.mount.string()}});
   }
-  const fs::path file = storePath();
-  std::error_code ec;
-  fs::create_directories(file.parent_path(), ec);
-  std::ofstream(file) << list.dump(2);
+  return writeStateFile(storePath(), list.dump(2));
 }
 
 const Vaults::Vault* Vaults::find(const std::string& name) const {
@@ -200,7 +199,14 @@ void Vaults::create(const std::string& name, const std::string& password, Done d
         }
         kLog.debug("vault created {}", vault.name);
         m_vaults.push_back(vault);
-        save();
+        if (!save()) {
+          // An unlisted vault folder would block a new vault of the same name; the folder holds no files yet.
+          m_vaults.pop_back();
+          std::error_code e;
+          fs::remove_all(vault.cipher, e);
+          done(i18n::tr("files.vaults.create-failed"));
+          return;
+        }
         unlock(vault, password, done);
       });
 }

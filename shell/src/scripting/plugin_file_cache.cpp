@@ -4,13 +4,13 @@
 
 #include "config/config_types.h"
 #include "core/deferred_call.h"
+#include "protocols/async_file_writer.h"
 #include "scripting/plugin_git.h"
 #include "scripting/plugin_id.h"
 #include "scripting/plugin_source_paths.h"
 #include "util/file_utils.h"
 
 #include <filesystem>
-#include <fstream>
 #include <thread>
 
 namespace scripting {
@@ -107,16 +107,8 @@ namespace scripting {
       nameThisThread("dsk-plugin-file");
       const auto result = plugin_git::showFile(repoRoot, repoPath);
       std::string resolvedPath;
-      if (result.ok && !result.out.empty()) {
-        std::error_code ec;
-        std::filesystem::create_directories(std::filesystem::path(cached).parent_path(), ec);
-        if (!ec) {
-          std::ofstream out(cached, std::ios::binary);
-          out.write(result.out.data(), static_cast<std::streamsize>(result.out.size()));
-        }
-        if (!ec && std::filesystem::exists(cached)) {
-          resolvedPath = cached;
-        }
+      if (result.ok && !result.out.empty() && andromeda::writeFileReplacing(cached, result.out)) {
+        resolvedPath = cached;
       }
       const bool missing = !result.ok || result.out.empty();
 

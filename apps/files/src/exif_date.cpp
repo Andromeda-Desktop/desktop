@@ -1,6 +1,7 @@
 #include "exif_date.h"
 
 #include <array>
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -10,8 +11,10 @@
 #include <iterator>
 #include <string>
 #include <string_view>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/xattr.h>
+#include <unistd.h>
 #include <utility>
 
 namespace {
@@ -298,16 +301,38 @@ namespace {
     if (bytes.size() < keep) {
       return false;
     }
+    const std::string original = bytes;
     bytes.insert(keep, reinterpret_cast<const char*>(app1.data()), app1.size());
     struct stat st{};
     if (::stat(file.c_str(), &st) != 0) {
       return false;
     }
     if (st.st_nlink > 1) {
-      // Hard links share the inode: only an in-place write keeps them one file.
-      std::ofstream out(file, std::ios::binary | std::ios::in | std::ios::out);
-      out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-      return static_cast<bool>(out.flush());
+      // Hard links share the inode: only an in-place write keeps them one file. The space is reserved first, so a
+      // full disk fails before any byte changes; a failed write puts the original bytes back.
+      const int fd = ::open(file.c_str(), O_WRONLY | O_CLOEXEC);
+      if (fd < 0) {
+        return false;
+      }
+      const auto writeAt0 = [fd](const std::string& data) {
+        for (std::size_t done = 0; done < data.size();) {
+          const ssize_t n = ::pwrite(fd, data.data() + done, data.size() - done, static_cast<off_t>(done));
+          if (n < 0 && errno == EINTR) {
+            continue;
+          }
+          if (n <= 0) {
+            return false;
+          }
+          done += static_cast<std::size_t>(n);
+        }
+        return ::fsync(fd) == 0;
+      };
+      bool ok = ::posix_fallocate(fd, 0, static_cast<off_t>(bytes.size())) == 0 && writeAt0(bytes);
+      if (!ok && writeAt0(original)) {
+        (void)::ftruncate(fd, static_cast<off_t>(original.size()));
+      }
+      ::close(fd);
+      return ok;
     }
     const std::filesystem::path tmp = file.string() + ".rotate.part";
     {

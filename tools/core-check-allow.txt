@@ -68,7 +68,6 @@ main-io shell/src/config/cli.cpp 1
 main-io shell/src/config/config_overrides.cpp 1
 main-io shell/src/dbus/notification/notification_portal.cpp 1
 main-io shell/src/notification/notification_history_store.cpp 2
-main-io shell/src/scripting/plugin_file_cache.cpp 1
 main-io shell/src/shell/desktop/desktop_icons.cpp 1
 main-io shell/src/shell/profile/avatar_path.cpp 1
 main-io shell/src/shell/settings/settings_window_popups.cpp 2

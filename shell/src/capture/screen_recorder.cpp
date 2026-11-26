@@ -1,5 +1,6 @@
 #include "capture/screen_recorder.h"
 
+#include "protocols/async_file_writer.h"
 #include "capture/gstreamer_api.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -449,6 +450,7 @@ std::string ScreenRecorder::launch(const Source& source, bool withAudio) {
 }
 
 void ScreenRecorder::finish(const std::string& error) {
+  const bool hadPipeline = m_pipeline != nullptr;
   if (m_pipeline != nullptr) {
     gstreamer().gst_element_set_state(m_pipeline, GST_STATE_NULL);
     gstreamer().gst_object_unref(m_gstBus);
@@ -465,7 +467,17 @@ void ScreenRecorder::finish(const std::string& error) {
   if (saved) {
     kLog.info("recording saved to {}", m_path);
     m_notifications.addInternal("Noctalia", "Recording saved", m_path);
-  } else if (!error.empty()) {
+    return;
+  }
+  if (hadPipeline) {
+    // mp4mux writes its index only at end of stream: a stopped pipeline leaves an unplayable file.
+    andromeda::runFileOpAsync([path = m_path] {
+      std::error_code ec;
+      std::filesystem::remove(path, ec);
+      return !ec;
+    });
+  }
+  if (!error.empty()) {
     kLog.warn("recording failed: {}", error);
     m_notifications.addInternal("Noctalia", "Recording failed", error);
   }

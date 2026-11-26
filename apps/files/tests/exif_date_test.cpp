@@ -1,5 +1,7 @@
 #include "exif_date.h"
 
+#include <sys/resource.h>
+#include <csignal>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -212,6 +214,33 @@ int main() {
     expect(bytes.starts_with(app0) && bytes.ends_with(scan) && bytes.size() == app0.size() + 36 + scan.size(),
            "JFIF header and image data stay as they were, one APP1 added");
   }
+  // A hard-linked photo is rewritten in place; when it cannot grow (a full disk, here a file size limit) the rotate
+  // fails and both names keep the original bytes.
+  const std::filesystem::path link = photo.string() + ".link";
+  writeFile(app0 + scan);
+  std::filesystem::remove(link);
+  std::filesystem::create_hard_link(photo, link);
+  {
+    std::signal(SIGXFSZ, SIG_IGN);
+    rlimit old{};
+    ::getrlimit(RLIMIT_FSIZE, &old);
+    rlimit small = old;
+    small.rlim_cur = app0.size() + scan.size() + 8;
+    ::setrlimit(RLIMIT_FSIZE, &small);
+    const bool rotated = rotateJpegClockwise(photo);
+    ::setrlimit(RLIMIT_FSIZE, &old);
+    std::ifstream in(link, std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(in)), {});
+    expect(!rotated && bytes == app0 + scan, "a hard-linked photo that cannot grow keeps its bytes");
+  }
+  expect(rotateJpegClockwise(photo) && orientation() == 6, "a hard-linked photo gains Orientation 6");
+  {
+    std::ifstream in(link, std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(in)), {});
+    expect(std::filesystem::hard_link_count(photo) == 2 && bytes.size() == app0.size() + 36 + scan.size(),
+           "the rotate reaches the other hard link");
+  }
+  std::filesystem::remove(link);
   std::filesystem::remove(photo);
   return g_failures == 0 ? 0 : 1;
 }

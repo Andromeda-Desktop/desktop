@@ -1100,14 +1100,7 @@ namespace greeter::config {
     out << '\n';
     out << formatToml(table);
 
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file.is_open()) {
-      kLog.warn("failed to open '{}' for write", path.string());
-      return false;
-    }
-    const std::string content = out.str();
-    file.write(content.data(), static_cast<std::streamsize>(content.size()));
-    return file.good();
+    return writeFileAtomically(path, out.str());
   }
 
   GreeterSyncFile loadSync(const std::filesystem::path& path) {
