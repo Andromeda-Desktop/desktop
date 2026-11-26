@@ -161,6 +161,7 @@ void FilesProvider::reset() {
   m_answered.reset();
   m_results.clear();
   m_loading = false;
+  m_recentRequest.cancel();
 }
 
 std::vector<LauncherResult> FilesProvider::query(std::string_view text) const { return request(text, false); }
@@ -172,13 +173,13 @@ std::vector<LauncherResult> FilesProvider::request(std::string_view text, bool s
   const Request key{std::string(text), scoped ? std::optional(m_scopeKind) : std::nullopt};
   std::string needle = StringUtils::trim(text);
   std::erase(needle, '\n');
+  m_recentRequest.cancel();
   if (scoped && needle.empty() && m_scopeKind.empty()) {
     m_answered = key.first;
     m_answeredScope = key.second;
     m_requested.reset();
-    m_loading = false;
     m_debounce.stop();
-    m_results = recentFiles();
+    loadRecentFiles();
     return m_results;
   }
   if (needle.size() < kMinQuery && (!scoped || m_scopeKind.empty() || !needle.empty())) {
@@ -211,31 +212,45 @@ std::vector<LauncherResult> FilesProvider::request(std::string_view text, bool s
   return m_results;
 }
 
-std::vector<LauncherResult> FilesProvider::recentFiles() const {
-  const std::string file = (std::filesystem::path(g_get_user_data_dir()) / "recently-used.xbel").string();
-  std::error_code ec;
-  const auto stamp = std::filesystem::last_write_time(file, ec);
-  if (ec) {
-    m_recentPaths.clear();
-  } else if (stamp != m_recentStamp) {
-    m_recentStamp = stamp;
-    m_recentPaths = readRecentPaths(file);
-  }
-  std::vector<LauncherResult> out;
-  for (const std::string& path : m_recentPaths) {
-    if (out.size() >= static_cast<std::size_t>(kScopedLimit)) {
-      break;
-    }
-    const auto status = std::filesystem::status(path, ec);
-    if (ec || !std::filesystem::exists(status)) {
-      continue;
-    }
-    LauncherResult r = fileResult(path, std::filesystem::is_directory(status));
-    r.category = i18n::tr("launcher.pill.recent");
-    out.push_back(std::move(r));
-  }
-  withThumbnails(out);
-  return out;
+void FilesProvider::loadRecentFiles() const {
+  m_loading = true;
+  using Recent = std::vector<std::pair<std::string, bool>>;
+  BlockingPool::instance().run<Recent>(
+      m_alive,
+      [file = (std::filesystem::path(g_get_user_data_dir()) / "recently-used.xbel").string()] {
+        Recent recent;
+        std::error_code ec;
+        if (!std::filesystem::exists(file, ec)) {
+          return recent;
+        }
+        for (const std::string& path : readRecentPaths(file)) {
+          if (recent.size() >= static_cast<std::size_t>(kScopedLimit)) {
+            break;
+          }
+          const auto status = std::filesystem::status(path, ec);
+          if (!ec && std::filesystem::exists(status)) {
+            recent.emplace_back(path, std::filesystem::is_directory(status));
+          }
+        }
+        return recent;
+      },
+      [this, ticket = m_recentRequest.begin()](Recent recent) {
+        if (!m_recentRequest.current(ticket)) {
+          return;
+        }
+        m_results.clear();
+        for (const auto& [path, folder] : recent) {
+          LauncherResult r = fileResult(path, folder);
+          r.category = i18n::tr("launcher.pill.recent");
+          m_results.push_back(std::move(r));
+        }
+        m_loading = false;
+        withThumbnails(m_results);
+        if (m_onResultsChanged) {
+          m_onResultsChanged();
+        }
+      }
+  );
 }
 
 void FilesProvider::send(const Request& request, int limit, const std::string& kind) const {

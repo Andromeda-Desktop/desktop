@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/latest_request.h"
 #include "core/poll_source.h"
 #include "core/timer_manager.h"
 #include "dbus/file_manager1.h"
@@ -70,7 +71,8 @@ protected:
   void doAddPollFds(std::vector<pollfd>& fds) override;
 
 private:
-  [[nodiscard]] std::vector<LauncherResult> recentFiles() const;
+  // Reads recently-used.xbel and checks each path on a worker; the answer applies while its request is current.
+  void loadRecentFiles() const;
   // Sets the freedesktop thumbnail on file rows that have one; unknown paths are looked up on the blocking pool and
   // the rows change when the answer arrives.
   void withThumbnails(std::vector<LauncherResult>& results) const;
@@ -94,8 +96,7 @@ private:
   std::string m_scopeKind;
   mutable std::vector<LauncherResult> m_results;
   // recently-used.xbel paths, newest use first, parsed again only when the file's mtime changes.
-  mutable std::filesystem::file_time_type m_recentStamp{};
-  mutable std::vector<std::string> m_recentPaths;
+  mutable LatestRequest m_recentRequest;
   mutable bool m_loading = false;
   mutable Timer m_debounce;
   mutable FileManager1 m_fileManager;
