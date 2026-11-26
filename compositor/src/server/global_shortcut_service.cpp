@@ -259,6 +259,10 @@ namespace andromeda {
       const ShortcutChord chord{
           .modifiers = bind.modifiers | (bind.useMod ? m_server.modKey() : 0U), .keysym = bind.keysym
       };
+      if (chordTypesText(chord)) {
+        done({.result = BadChord, .holder = {}});
+        return;
+      }
       if (reserved(chord)) {
         done({.result = Reserved, .holder = {}});
         return;

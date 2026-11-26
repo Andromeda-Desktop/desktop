@@ -132,7 +132,8 @@ ANDROMEDA_TEST(revokeAndCloseEndAHeldShortcut) {
 ANDROMEDA_TEST(randomEventSequencesKeepTheShortcutInvariants) {
   const std::vector<std::string> apps{"org.a", "org.b", "org.c"};
   const std::vector<std::string> ids{"x", "y"};
-  const std::vector<ShortcutChord> chords{kCtrlM, kCtrlN, kReserved, chord(0, XKB_KEY_F5), chord(0, XKB_KEY_a)};
+  const std::vector<ShortcutChord> chords{kCtrlM, kCtrlN, kReserved, chord(0, XKB_KEY_F5), chord(0, XKB_KEY_a),
+                                         chord(mod::kShift, XKB_KEY_space)};
 
   for (uint32_t seed = 1; seed <= 40; ++seed) {
     std::mt19937 random(seed);
@@ -244,7 +245,7 @@ ANDROMEDA_TEST(randomEventSequencesKeepTheShortcutInvariants) {
       for (const auto& [key, on] : active) {
         CHECK(!on || registry.live({.session = key.first, .id = key.second}));
       }
-      // I3/I4: live chords are unique, never reserved, and come from a grant or an override.
+      // I3/I4: live chords are unique, never reserved, never type text, and come from a grant or an override.
       std::set<ShortcutChord> seen;
       for (const ShortcutSessionId session : registry.sessions()) {
         for (const auto& s : registry.shortcuts(session)) {
@@ -252,7 +253,7 @@ ANDROMEDA_TEST(randomEventSequencesKeepTheShortcutInvariants) {
             continue;
           }
           CHECK(registry.phase(session) == ShortcutRegistry::Phase::Bound);
-          CHECK(s.chord.has_value() && !reserved(*s.chord));
+          CHECK(s.chord.has_value() && !reserved(*s.chord) && !andromeda::chordTypesText(*s.chord));
           CHECK(seen.insert(*s.chord).second);
           CHECK(s.source == ShortcutSource::Config || s.source == ShortcutSource::Stored);
           if (s.source == ShortcutSource::Stored) {

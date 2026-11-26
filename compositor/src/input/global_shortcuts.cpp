@@ -105,6 +105,12 @@ namespace andromeda {
     return out;
   }
 
+  bool chordTypesText(const ShortcutChord& chord) {
+    const uint32_t codepoint = xkb_keysym_to_utf32(chord.keysym);
+    return (chord.modifiers & (shortcut_mod::kCtrl | shortcut_mod::kAlt | shortcut_mod::kLogo)) == 0
+           && codepoint >= 0x20 && codepoint != 0x7f;
+  }
+
   bool preferredChordAllowed(const ShortcutChord& chord) {
     if ((chord.modifiers & (shortcut_mod::kCtrl | shortcut_mod::kAlt | shortcut_mod::kLogo)) != 0) {
       return true;
@@ -321,7 +327,7 @@ namespace andromeda {
       for (ShortcutState& state : session->states) {
         const ShortcutConflict before = state.conflict;
         if (state.chord && state.conflict == ShortcutConflict::None) {
-          if (m_reserved && m_reserved(*state.chord)) {
+          if (chordTypesText(*state.chord) || (m_reserved && m_reserved(*state.chord))) {
             state.conflict = ShortcutConflict::Reserved;
           } else if (!live.try_emplace(*state.chord, Binding{.session = id, .id = state.id}).second) {
             state.conflict = ShortcutConflict::InUse;

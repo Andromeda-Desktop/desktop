@@ -37,6 +37,8 @@ namespace andromeda {
   [[nodiscard]] std::string describeChord(const ShortcutChord& chord);
   // An app may only suggest chords that cannot steal typing: one with Ctrl, Alt or Super, or a non-typing key.
   [[nodiscard]] bool preferredChordAllowed(const ShortcutChord& chord);
+  // A printable key with no modifier or Shift only types text, so it never binds as a global shortcut.
+  [[nodiscard]] bool chordTypesText(const ShortcutChord& chord);
 
   using ShortcutSessionId = uint64_t;
 
