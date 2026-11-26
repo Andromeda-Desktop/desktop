@@ -5,11 +5,10 @@ main-io compositor/src/output/output.cpp 1
 main-io compositor/src/qos/actuator.cpp 1
 main-io compositor/src/server/server_events_session.cpp 1
 main-io compositor/src/util/private_state_file.cpp 2
-main-io libdesk-ui/src/render/core/shader_program.cpp 2
+main-io libdesk-ui/src/render/core/shader_program.cpp 1
 main-io libdesk-ui/src/render/core/shared_texture_cache.cpp 1
 main-io libdesk-ui/src/render/core/thumbnail_pipeline.cpp 1
 main-io libdesk-ui/src/render/text/cairo_text_renderer.cpp 1
-main-io libdesk-ui/src/ui/files/file_icon.cpp 1
 main-io shell/src/app/application.cpp 1
 main-io shell/src/calendar/calendar_cache.cpp 1
 main-io shell/src/capture/screenshot_service.cpp 1
@@ -17,7 +16,6 @@ main-io shell/src/clipboard/clipboard_service.cpp 3
 main-io shell/src/config/cli.cpp 1
 main-io shell/src/config/config_overrides.cpp 1
 main-io shell/src/dbus/notification/notification_portal.cpp 1
-main-io shell/src/launcher/klipy_provider.cpp 2
 main-io shell/src/net/http_client.cpp 1
 main-io shell/src/notification/notification_history_store.cpp 2
 main-io shell/src/scripting/plugin_file_cache.cpp 1
@@ -27,7 +25,5 @@ main-io shell/src/shell/session/power_overlay.cpp 2
 main-io shell/src/shell/settings/settings_window_popups.cpp 2
 main-io shell/src/shell/settings/settings_window_software_update.cpp 1
 main-io shell/src/system/activity_actions.cpp 2
-main-io shell/src/system/background_warning_state.cpp 1
 main-io shell/src/system/brightness_service.cpp 1
-main-io shell/src/system/default_apps.cpp 1
 main-io shell/src/system/screen_time_service.cpp 1

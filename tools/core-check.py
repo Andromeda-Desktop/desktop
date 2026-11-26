@@ -17,7 +17,7 @@ CPP_DIRS = ("compositor/src/", "shell/src/", "libdesk-ui/src/", "libdesk-app/src
 LINE_COMMENT = re.compile(r"^\s*//.*$", re.M)
 E2E = "tests/e2e/"
 HARNESS = "compositor/tests/harness/"
-SKIP = re.compile(r"(^|/)(tests?|subprojects|build[^/]*|greeter)/|_test\.|^shell/src/greeter/|^greeter/")
+SKIP = re.compile(r"(^|/)(tests?|subprojects|build[^/]*)/|_test\.|^shell/src/greeter/|^greeter/")
 
 # id: (why and owner, path prefixes, suffixes, pattern, owner paths exempt from the rule)
 RULES = {
