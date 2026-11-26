@@ -1,6 +1,7 @@
 #include "files_window.h"
 #include "core/blocking_pool.h"
 #include "i18n/i18n.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 #include "server_url.h"
 #include "app_chooser_sheet.h"
@@ -3082,11 +3083,18 @@ void FilesWindow::galleryAction(std::string_view action, float sceneX, float sce
   if (action == "favourite") {
     toggleStar();
   } else if (action == "rotate") {
-    if (!rotateJpegClockwise(photo)) {
-      showToast(i18n::tr("files.toast.rotate-failed", "name", photo.filename().string()), false);
-      return;
-    }
-    m_app.thumbnails().reload(photo.string());
+    // The rewrite and its fsync block under disk load: they run on the file-op thread.
+    andromeda::runFileOpAsync([photo] { return rotateJpegClockwise(photo); },
+                              [this, alive = std::weak_ptr<bool>(m_alive), photo](bool ok) {
+                                if (alive.expired()) {
+                                  return;
+                                }
+                                if (!ok) {
+                                  showToast(i18n::tr("files.toast.rotate-failed", "name", photo.filename().string()), false);
+                                  return;
+                                }
+                                m_app.thumbnails().reload(photo.string());
+                              });
   } else if (action == "markup") {
     openWith();
   } else if (action == "phone") {
