@@ -58,6 +58,8 @@ namespace settings {
     void resize(float width, float height);
 
     [[nodiscard]] std::optional<ModalId> push(SettingsModalRequest request);
+    // Runs at every push, before the modal opens: an owner cancels work whose result would open a modal over it.
+    void setOnPush(std::function<void()> onPush);
     void rebuildTop();
     void pop();
     [[nodiscard]] bool pop(ModalId id);

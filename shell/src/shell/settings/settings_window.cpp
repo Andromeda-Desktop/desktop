@@ -237,6 +237,7 @@ void SettingsWindow::initialize(
       m_shortcutsInhibitor = m_wayland->inhibitShortcuts(wlSurface());
     }
   });
+  m_modalHost.setOnPush([this] { m_pluginStoreRequest.cancel(); });
   m_modalHost.initialize(
       m_inputDispatcher,
       [this] {
@@ -1075,6 +1076,7 @@ void SettingsWindow::clearStatusMessage() {
 }
 
 void SettingsWindow::clearTransientSettingsState() {
+  m_pluginStoreRequest.cancel();
   m_pendingOpenWidgetInspectorName.clear();
   m_pendingOpenPluginSettingsId.clear();
   m_editingWidgetName.clear();

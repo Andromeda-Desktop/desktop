@@ -2466,6 +2466,7 @@ void SettingsWindow::openPluginStore() {
   };
   // Throttle bookkeeping happens here on the main thread; the git fetch and catalog reads run on the worker.
   auto fetchSources = manager->claimStaleCatalogFetches(pluginsSnapshot);
+  const LatestRequest::Ticket ticket = m_pluginStoreRequest.begin();
   SharedWorker::instance().post<StoreData>(
       std::weak_ptr<void>(m_aliveGuard),
       [fetchSources = std::move(fetchSources), pluginsSnapshot = std::move(pluginsSnapshot)] {
@@ -2501,7 +2502,10 @@ void SettingsWindow::openPluginStore() {
       }
         return StoreData{.catalog = std::move(catalog), .owners = std::move(owners)};
       },
-      [this](StoreData data) mutable {
+      [this, ticket](StoreData data) mutable {
+        if (!m_pluginStoreRequest.current(ticket)) {
+          return;
+        }
         auto catalog = std::move(data.catalog);
         auto owners = std::move(data.owners);
       if (m_wayland == nullptr

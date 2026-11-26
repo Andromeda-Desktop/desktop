@@ -35,6 +35,7 @@
 #include "compositors/output_management.h"
 #include "compositors/settings_control.h"
 #include "wayland/toplevel_surface.h"
+#include "core/latest_request.h"
 
 #include <cstdint>
 #include <functional>
@@ -416,6 +417,8 @@ private:
   // The plugin store sheet is the sheet currently on screen, so plugin events may rebuild
   // the sheet body; any other editor sheet must be left alone.
   bool m_pluginStoreSheetOpen = false;
+  // The store opens only from its latest request; a section change or another modal cancels it.
+  LatestRequest m_pluginStoreRequest;
   // Plugin catalog scroll state outlives both the store sheet and its async file callbacks.
   ScrollViewState m_pluginStoreScrollState;
   scripting::PluginFileCache m_pluginFileCache;

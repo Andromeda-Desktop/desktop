@@ -219,6 +219,7 @@ namespace settings {
   } // namespace
 
   struct SettingsModalHost::Impl {
+    std::function<void()> onPush;
     struct Entry {
       ModalId id = 0;
       ModalEntryNode* node = nullptr;
@@ -308,12 +309,17 @@ namespace settings {
     }
   }
 
+  void SettingsModalHost::setOnPush(std::function<void()> onPush) { m_impl->onPush = std::move(onPush); }
+
   std::optional<SettingsModalHost::ModalId> SettingsModalHost::push(SettingsModalRequest request) {
     if (m_impl->stackRoot == nullptr || m_impl->stackRoot->parent() == nullptr || !request.build) {
       return std::nullopt;
     }
     if (m_impl->input != nullptr) {
       m_impl->input->cancelPointerCapture();
+    }
+    if (m_impl->onPush) {
+      m_impl->onPush();
     }
     auto entry = std::make_unique<ModalEntryNode>(std::move(request));
     auto* raw = entry.get();
