@@ -1,5 +1,6 @@
 #include "shell/lockscreen/lock_notice_groups.h"
 
+#include "notification/notification_display_name.h"
 #include "notification/notification_manager.h"
 
 #include <algorithm>
@@ -16,7 +17,7 @@ std::vector<LockNoticeGroup> groupUnseenNotices(const std::deque<NotificationHis
     const auto it = std::ranges::find(keys, key);
     if (it == keys.end()) {
       keys.push_back(key);
-      groups.push_back({.app = n.appName, .icon = n.icon.value_or(std::string{}), .count = 1, .newest = n.receivedWallClock});
+      groups.push_back({.app = notificationDisplayAppName(n), .icon = n.icon.value_or(std::string{}), .count = 1, .newest = n.receivedWallClock});
       continue;
     }
     LockNoticeGroup& group = groups[static_cast<std::size_t>(it - keys.begin())];

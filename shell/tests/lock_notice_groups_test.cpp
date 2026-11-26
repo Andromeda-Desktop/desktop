@@ -1,3 +1,4 @@
+#include "notification/notification_display_name.h"
 #include "notification/notification_manager.h"
 #include "shell/lockscreen/lock_notice_groups.h"
 #include "tests/test_check.h"
@@ -34,6 +35,12 @@ int main() {
   TEST_CHECK(groups[0].app == "Mail" && groups[0].count == 3);
   TEST_CHECK(groups[0].newest == WallTimePoint{} + std::chrono::minutes(5));
   TEST_CHECK(groups[1].app == "WhatsApp" && groups[1].count == 2);
+
+  // A raw app id shows as the name the banner and the center show.
+  const auto technical = entry("com.example.chat_client", std::nullopt, 1, false);
+  const auto named = groupUnseenNotices({technical});
+  TEST_CHECK(named.size() == 1 && named[0].app == notificationDisplayAppName(technical.notification));
+  TEST_CHECK(named[0].app != "com.example.chat_client");
 
   TEST_CHECK(groupUnseenNotices({}).empty());
   return 0;
