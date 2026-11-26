@@ -56,8 +56,8 @@ namespace andromeda {
       return true;
     }
 
-    // Starts swap-in of every missing run and waits until all pages are in RAM. Reads no client memory, so a client
-    // that truncates its file cannot raise SIGBUS here.
+    // Faults every missing run into RAM: swap-in, and allocation of pages the client never wrote (WILLNEED skips
+    // those, so they never become resident). MADV_POPULATE_READ returns EFAULT, not SIGBUS, for a truncated file.
     bool pageIn(uintptr_t start, size_t length) {
       std::vector<unsigned char> pages;
       const auto deadline = std::chrono::steady_clock::now() + kPageInLimit;
@@ -74,7 +74,9 @@ namespace andromeda {
           while (end < pages.size() && (pages[end] & 1) == 0) {
             ++end;
           }
-          madvise(reinterpret_cast<void*>(start + i * kPage), (end - i) * kPage, MADV_WILLNEED);
+          if (madvise(reinterpret_cast<void*>(start + i * kPage), (end - i) * kPage, MADV_POPULATE_READ) != 0) {
+            return true; // cannot fault it in: the upload behaves as without the barrier
+          }
           i = end;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
