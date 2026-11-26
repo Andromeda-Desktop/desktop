@@ -602,27 +602,39 @@ void DesktopIcons::showProperties(const std::vector<std::filesystem::path>& path
 void DesktopIcons::createNew(bool folder, std::optional<std::pair<float, float>> at) {
   const std::string base = i18n::tr(folder ? "desktop-icons.untitled-folder" : "desktop-icons.untitled-document");
   const std::string ext = folder ? "" : ".txt";
-  std::filesystem::path path = m_dir / (base + ext);
-  for (int n = 2; std::filesystem::exists(path); ++n) {
-    path = m_dir / std::format("{} {}{}", base, n, ext);
-  }
-  std::error_code error;
-  std::filesystem::create_directories(m_dir, error);
-  const bool made = folder ? std::filesystem::create_directory(path, error) : static_cast<bool>(std::ofstream(path));
-  if (!made) {
-    kLog.warn("new {} failed: {}", path.string(), error.message());
-    return;
-  }
-  // As on Windows: the item appears where it was asked for, selected, with its name ready to type.
-  const std::string name = path.filename().string();
-  kLog.debug("desktop new {}", name);
-  if (at.has_value()) {
-    placeAt(name, at->first, at->second);
-  }
-  m_selected = {name};
-  m_renaming = name;
-  m_renameText.reset();
-  requestBuild();
+  // The name search runs on the writer thread too, so a second create queued behind this one sees this file.
+  auto path = std::make_shared<std::filesystem::path>();
+  andromeda::runFileOpAsync(
+      [dir = m_dir, base, ext, folder, path] {
+        *path = dir / (base + ext);
+        for (int n = 2; std::filesystem::exists(*path); ++n) {
+          *path = dir / std::format("{} {}{}", base, n, ext);
+        }
+        std::error_code error;
+        std::filesystem::create_directories(dir, error);
+        const bool made =
+            folder ? std::filesystem::create_directory(*path, error) : static_cast<bool>(std::ofstream(*path));
+        if (!made) {
+          kLog.warn("new {} failed: {}", path->string(), error.message());
+        }
+        return made;
+      },
+      [this, alive = std::weak_ptr<bool>(m_alive), path, at](bool made) {
+        if (alive.expired() || !made) {
+          return;
+        }
+        // As on Windows: the item appears where it was asked for, selected, with its name ready to type.
+        const std::string name = path->filename().string();
+        kLog.debug("desktop new {}", name);
+        if (at.has_value()) {
+          placeAt(name, at->first, at->second);
+        }
+        m_selected = {name};
+        m_renaming = name;
+        m_renameText.reset();
+        requestBuild();
+      }
+  );
 }
 
 void DesktopIcons::addShortcut(const std::filesystem::path& desktopEntry) {

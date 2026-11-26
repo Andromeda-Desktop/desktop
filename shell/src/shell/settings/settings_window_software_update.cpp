@@ -1,5 +1,6 @@
 #include "core/log.h"
 #include "core/process/process.h"
+#include "protocols/async_file_writer.h"
 #include "util/file_utils.h"
 #include "i18n/i18n.h"
 #include "dbus/andromeda/software_update_service.h"
@@ -52,21 +53,28 @@ void SettingsWindow::addSoftwareUpdateContent(float scale) {
           .openGroup = [this](const std::string& g) { openDetail("update:" + g); },
           .setCheckDaily =
               [this, checkOff](bool on) {
-                std::error_code error;
-                bool ok = true;
-                if (on) {
-                  std::filesystem::remove(checkOff, error);
-                  ok = !error;
-                } else {
-                  std::filesystem::create_directories(checkOff.parent_path(), error);
-                  std::ofstream file(checkOff);
-                  ok = static_cast<bool>(file);
-                }
-                if (!ok) {
-                  kLog.warn("check daily: cannot change {}", checkOff.string());
-                  showTransientStatus(i18n::tr("settings.errors.write"), true);
-                }
-                requestContentRebuild();
+                andromeda::runFileOpAsync(
+                    [checkOff, on] {
+                      std::error_code error;
+                      if (on) {
+                        std::filesystem::remove(checkOff, error);
+                        return !error;
+                      }
+                      std::filesystem::create_directories(checkOff.parent_path(), error);
+                      std::ofstream file(checkOff);
+                      return static_cast<bool>(file);
+                    },
+                    [this, alive = std::weak_ptr<void>(m_aliveGuard), checkOff](bool ok) {
+                      if (alive.expired()) {
+                        return;
+                      }
+                      if (!ok) {
+                        kLog.warn("check daily: cannot change {}", checkOff.string());
+                        showTransientStatus(i18n::tr("settings.errors.write"), true);
+                      }
+                      requestContentRebuild();
+                    }
+                );
               },
       }
   );
