@@ -43,6 +43,8 @@ namespace face_auth {
     [[nodiscard]] bool claimed() const noexcept { return m_claimed; }
     [[nodiscard]] std::uint64_t attempt() const noexcept { return m_attempt; }
     [[nodiscard]] int misses() const noexcept { return m_misses; }
+    // gazed said the user has a face enrolled; false until it answers.
+    [[nodiscard]] bool enrolled() const noexcept { return m_enrolled; }
     [[nodiscard]] bool active() const noexcept {
       return m_phase != Phase::Off && m_phase != Phase::Exhausted && m_phase != Phase::Unavailable;
     }
@@ -94,6 +96,7 @@ namespace face_auth {
       if (!current(attempt, Phase::Probing)) {
         return None;
       }
+      m_enrolled = enrolled;
       if (!enrolled) {
         return leave(Phase::Unavailable, true);
       }
@@ -135,6 +138,9 @@ namespace face_auth {
       m_phase = ok ? Phase::Verifying : Phase::Idle;
       return None;
     }
+
+    // A camera-free HasEnrolledFaces answer outside an attempt.
+    void probeReply(bool enrolled) noexcept { m_enrolled = enrolled; }
 
     // A call could not be sent: the attempt waits for user activity.
     void callFailed(std::uint64_t attempt) {
@@ -237,6 +243,7 @@ namespace face_auth {
     std::uint64_t m_daemonAttempt = 0;
     // Mirrors the session sleep, so a lock that starts during sleep waits for wake.
     bool m_asleep = false;
+    bool m_enrolled = false;
   };
 
 } // namespace face_auth

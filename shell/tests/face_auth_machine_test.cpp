@@ -121,6 +121,9 @@ namespace {
     }
 
     void checkAlways() const {
+      if (machine.phase() == Phase::Unavailable) {
+        TEST_CHECK(!machine.enrolled());
+      }
       if (machine.phase() == Phase::Verifying) {
         TEST_CHECK(machine.claimed());
       }

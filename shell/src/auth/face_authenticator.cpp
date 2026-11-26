@@ -172,13 +172,14 @@ void FaceAuthenticator::callAsync(const char* method, std::uint64_t attempt) {
               .onInterface(kGazeInterface)
               .withArguments(m_user)
               .uponReplyInvoke([this, attempt](std::optional<sdbus::Error> e, bool enrolled) {
-                setEnrolled(!e.has_value() && enrolled);
                 if (e.has_value()) {
                   kLog.info("face unlock unavailable: {}", e->what());
                 } else if (!enrolled) {
                   kLog.info("face unlock off: no face enrolled for {}", m_user);
                 }
+                const bool wasAvailable = available();
                 run(m_machine.enrolledReply(attempt, !e.has_value() && enrolled));
+                notifyIfAvailabilityChanged(wasAvailable);
               });
         } else if (name == "Claim") {
           m_gaze->callMethodAsync(method)
@@ -219,8 +220,10 @@ void FaceAuthenticator::callAsync(const char* method, std::uint64_t attempt) {
 }
 
 void FaceAuthenticator::probe() {
+  const bool wasAvailable = available();
   if (!ensureProxy()) {
-    setEnrolled(false);
+    m_machine.probeReply(false);
+    notifyIfAvailabilityChanged(wasAvailable);
     return;
   }
   if (!tryCall("HasEnrolledFaces", [&]() {
@@ -228,19 +231,18 @@ void FaceAuthenticator::probe() {
             .onInterface(kGazeInterface)
             .withArguments(m_user)
             .uponReplyInvoke([this](std::optional<sdbus::Error> e, bool enrolled) {
-              setEnrolled(!e.has_value() && enrolled);
+              const bool wasAvailable = available();
+              m_machine.probeReply(!e.has_value() && enrolled);
+              notifyIfAvailabilityChanged(wasAvailable);
             });
       })) {
-    setEnrolled(false);
+    m_machine.probeReply(false);
+    notifyIfAvailabilityChanged(wasAvailable);
   }
 }
 
-void FaceAuthenticator::setEnrolled(bool enrolled) {
-  if (enrolled == m_enrolled) {
-    return;
-  }
-  m_enrolled = enrolled;
-  if (m_onAvailability) {
+void FaceAuthenticator::notifyIfAvailabilityChanged(bool wasAvailable) {
+  if (available() != wasAvailable && m_onAvailability) {
     m_onAvailability();
   }
 }

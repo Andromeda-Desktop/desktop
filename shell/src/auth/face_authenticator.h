@@ -35,9 +35,7 @@ public:
   // Asks gazed whether the user has a face enrolled; the camera stays off.
   void probe();
   // gazed runs and the user has a face enrolled (false until a probe or a scan answers).
-  [[nodiscard]] bool available() const noexcept {
-    return m_enrolled && m_machine.phase() != face_auth::Phase::Unavailable;
-  }
+  [[nodiscard]] bool available() const noexcept { return m_machine.enrolled(); }
 
   // start() begins a new lock and resets the miss count; resume() re-arms after a wrong password without it.
   void start();
@@ -64,7 +62,7 @@ private:
   void handleVerifyStatus(const std::string& result, bool judged, const std::string& rgb, const std::string& ir);
   void handleDaemonGone();
   void emitStatus(const std::string& message, bool isError);
-  void setEnrolled(bool enrolled);
+  void notifyIfAvailabilityChanged(bool wasAvailable);
 
   SystemBus& m_bus;
   std::string m_user;
@@ -79,5 +77,4 @@ private:
 
   face_auth::Machine m_machine;
   bool m_onRequest = false;
-  bool m_enrolled = false;
 };

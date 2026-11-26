@@ -1809,8 +1809,7 @@ void LockSurface::layoutRyoku(
     status = i18n::tr("lockscreen.ryoku.checking");
   }
   const bool idle = status.empty() || status == i18n::tr("lockscreen.ready");
-  const bool faceOn = m_config == nullptr || m_config->config().lockscreen.face;
-  const std::string idleHint = i18n::tr(faceOn ? "lockscreen.ryoku.look" : "lockscreen.ryoku.type");
+  const std::string idleHint = i18n::tr(m_authExtras.face ? "lockscreen.ryoku.look" : "lockscreen.ryoku.type");
   m_ryoku->setUser(m_user);
   m_ryoku->setHint(idle ? idleHint : status, statusError, !statusError && m_password.empty() && !m_authenticating);
   if (statusError && !m_ryokuShownError) {
