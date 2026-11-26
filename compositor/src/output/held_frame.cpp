@@ -81,7 +81,7 @@ namespace andromeda {
       if (fd < 0) {
         return {-1, 0};
       }
-      drmModeConnector* connector = drmModeGetConnector(fd, wlr_drm_connector_get_id(output));
+      drmModeConnector* connector = drmModeGetConnectorCurrent(fd, wlr_drm_connector_get_id(output));
       if (connector == nullptr) {
         return {fd, 0};
       }
