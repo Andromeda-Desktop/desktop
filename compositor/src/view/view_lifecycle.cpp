@@ -12,6 +12,7 @@
 #include "scene/effect_registry.h"
 #include "scene/ssd_frame.h"
 #include "scene/surface_blur.h"
+#include "scene/update_batch.h"
 #include "server/greeter_mode.h"
 #include "server/ipc.h"
 #include "server/server.h"
@@ -592,6 +593,8 @@ namespace andromeda {
   }
 
   void View::handleUnmap(bool animateClose) {
+    // Closing a window makes a dozen scene changes; each would walk every other window.
+    const SceneUpdateBatch batch(m_server->scene());
     m_server->xdgSessionWindowUnmapping(m_toplevel);
     m_server->seat()->toplevelDrags().unmapped(this);
     if (m_effectSelectionIdle != nullptr) {
@@ -1158,6 +1161,7 @@ namespace andromeda {
   }
 
   void View::roleDestroyed() {
+    const SceneUpdateBatch batch(m_server->scene());
     transitionConfigure(ConfigureEvent::Destroy);
     cancelFadeAnimation();
     cancelPositionAnimation();
