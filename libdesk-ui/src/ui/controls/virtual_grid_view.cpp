@@ -832,9 +832,13 @@ LayoutSize VirtualGridView::doMeasure(Renderer& /*renderer*/, const LayoutConstr
   const float w = constraints.hasExactWidth() ? constraints.maxWidth
       : constraints.hasMaxWidth               ? constraints.maxWidth
                                               : 0.0F;
-  const float h = constraints.hasExactHeight() ? constraints.maxHeight
-      : constraints.hasMaxHeight               ? constraints.maxHeight
-                                               : 0.0F;
+  float h = constraints.hasExactHeight() ? constraints.maxHeight
+      : constraints.hasMaxHeight         ? constraints.maxHeight
+                                         : 0.0F;
+  if (maxHeight() > 0.0F) {
+    h = std::min(h > 0.0F ? h : maxHeight(), maxHeight());
+  }
+  h = std::max(h, minHeight());
   return LayoutSize{.width = w, .height = h};
 }
 
