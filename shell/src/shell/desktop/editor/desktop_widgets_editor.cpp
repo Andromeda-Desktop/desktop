@@ -1,4 +1,5 @@
 #include "shell/desktop/editor/desktop_widgets_editor.h"
+#include "shell/settings/settings_control_factory.h"
 #include "util/parse_number.h"
 
 #include "config/config_service.h"
@@ -275,6 +276,8 @@ DesktopWidgetsEditorSnapshot DesktopWidgetsEditor::close() {
     finishDrag();
   }
   for (auto& surface : m_surfaces) {
+    // A blur commits a focused submit-on-focus-loss field before its scene goes away.
+    surface->inputDispatcher.setFocus(nullptr);
     releaseWallpaperPreview(*surface);
   }
   m_surfaces.clear();
@@ -1316,6 +1319,9 @@ void DesktopWidgetsEditor::rebuildScene(OverlaySurface& surface) {
 
   if (hasSelectedWidget && m_inspectorOpen) {
     buildInspector(surface, *root, *selectedWidgetIt);
+    if (surface.inspector != nullptr) {
+      settings::SettingsControlFactory::bindRowClicks(*surface.inspector);
+    }
   } else {
     surface.inspector = nullptr;
     if (!hasSelectedWidget) {
