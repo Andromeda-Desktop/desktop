@@ -2006,8 +2006,13 @@ static void scene_node_damage_update(struct wlr_scene_node* node, pixman_region3
         }
       }
 
-      scene_update_region(scene, damage);
-      scene_damage_outputs(scene, damage);
+      if (scene->update_batch_depth > 0) {
+        pixman_region32_union(&scene->batch_update, &scene->batch_update, damage);
+        pixman_region32_union(&scene->batch_damage, &scene->batch_damage, damage);
+      } else {
+        scene_update_region(scene, damage);
+        scene_damage_outputs(scene, damage);
+      }
       pixman_region32_fini(damage);
     }
 

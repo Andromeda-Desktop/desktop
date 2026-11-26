@@ -1,4 +1,5 @@
-// wlr_scene_update_batch_begin/end defers the visibility pass and output damage of node moves to one pass. A batched
+// wlr_scene_update_batch_begin/end defers the visibility pass and output damage of node moves and enable toggles to one
+// pass. A batched
 // scene must end every batch with the same output membership (enter/leave, primary output; both follow node
 // visibility, so occlusion counts) as a scene that applied the same moves one by one, and with output damage that
 // covers the unbatched damage.
@@ -174,13 +175,21 @@ ANDROMEDA_TEST(batchedMovesMatchSequentialMoves) {
     const int count = pickCount(rng);
     for (int m = 0; m < count; ++m) {
       const Move move{pickWindow(rng), pickX(rng), pickY(rng)};
-      wlr_scene_node_set_position(&sequential.windows[move.window]->node, move.x, move.y);
+      // A clip that leaves no visible part hides the buffer, so some steps toggle a buffer instead of a move.
+      const bool toggle = move.x % 4 == 0;
       if (m == 0) {
         wlr_scene_update_batch_begin(batched.scene);
         // Nested batches defer to the outermost end.
         wlr_scene_update_batch_begin(batched.scene);
       }
-      wlr_scene_node_set_position(&batched.windows[move.window]->node, move.x, move.y);
+      for (Scene* scene : {&sequential, &batched}) {
+        if (toggle) {
+          wlr_scene_node* node = &scene->buffers[move.window]->node;
+          wlr_scene_node_set_enabled(node, !node->enabled);
+        } else {
+          wlr_scene_node_set_position(&scene->windows[move.window]->node, move.x, move.y);
+        }
+      }
     }
     wlr_scene_update_batch_end(batched.scene);
     wlr_scene_update_batch_end(batched.scene);

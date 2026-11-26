@@ -183,7 +183,7 @@ struct wlr_scene {
     // Layout area where an optimized blur finished re-rendering. Visibility there was computed with nothing culled
     // below the blur (it had to capture those nodes); the next frame recomputes it so they are culled again.
     pixman_region32_t blur_visibility_stale;
-    // wlr_scene_update_batch_begin nesting depth, and the regions its enabled node updates defer to the outermost end.
+    // wlr_scene_update_batch_begin nesting depth, and the regions its node updates defer to the outermost end.
     int update_batch_depth;
     pixman_region32_t batch_update;
     pixman_region32_t batch_damage;
@@ -629,7 +629,7 @@ bool wlr_scene_node_coords(struct wlr_scene_node* node, int* lx, int* ly);
  */
 bool wlr_scene_node_add_update_listener(struct wlr_scene_node* node, struct wl_listener* listener);
 /**
- * Between begin and the matching end, geometry changes of enabled nodes defer
+ * Between begin and the matching end, geometry and enable changes of nodes defer
  * the visibility pass and output damage to one pass at the outermost end, so N
  * moves cost one scene walk instead of N. Node visibility and buffer outputs
  * are stale until then. Calls nest.
