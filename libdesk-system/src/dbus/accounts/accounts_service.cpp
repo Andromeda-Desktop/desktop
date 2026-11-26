@@ -38,16 +38,6 @@ namespace {
   constexpr auto kUserInterface = "org.freedesktop.Accounts.User";
   constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
 
-  template <typename T>
-  T getPropertyOr(sdbus::IProxy& proxy, std::string_view iface, std::string_view propertyName, T fallback) {
-    try {
-      const sdbus::Variant value = proxy.getProperty(propertyName).onInterface(iface);
-      return value.get<T>();
-    } catch (const sdbus::Error&) {
-      return fallback;
-    }
-  }
-
 } // namespace
 
 AccountsService::AccountsService(SystemBus& bus) : m_bus(bus) {
@@ -161,26 +151,48 @@ bool AccountsService::setIconFile(std::string_view filename) {
     return false;
   }
 
+  // Async: accounts-daemon copies and checks the image, which can take seconds on a slow home.
+  const std::weak_ptr<int> alive = m_aliveToken;
+  sdbus::IProxy* proxy = m_userProxy.get();
+  const auto current = [this, alive, proxy] { return !alive.expired() && proxy == m_userProxy.get(); };
   try {
-    m_userProxy->callMethod("SetIconFile").onInterface(kUserInterface).withArguments(std::string(filename));
-    const std::string previousIconFile = m_iconFile;
-    readIconFile();
-    if (m_iconFile == previousIconFile && m_changeCallback) {
-      m_changeCallback();
-    }
+    proxy->callMethodAsync("SetIconFile")
+        .onInterface(kUserInterface)
+        .withArguments(std::string(filename))
+        .uponReplyInvoke([this, proxy, current](std::optional<sdbus::Error> error) {
+          if (!current()) {
+            return;
+          }
+          if (error.has_value()) {
+            kLog.warn("SetIconFile failed: {}", error->getMessage());
+            return;
+          }
+          proxy->getPropertyAsync("IconFile")
+              .onInterface(kUserInterface)
+              .uponReplyInvoke([this, current](std::optional<sdbus::Error> readError, sdbus::Variant value) {
+                if (!current()) {
+                  return;
+                }
+                std::string iconFile;
+                try {
+                  if (!readError.has_value()) {
+                    iconFile = value.get<std::string>();
+                  }
+                } catch (const sdbus::Error&) {
+                }
+                // The same path with new content still changes the avatar.
+                if (iconFile == m_iconFile && m_changeCallback) {
+                  m_changeCallback();
+                } else {
+                  emitChangedIfNeeded(iconFile);
+                }
+              });
+        });
     return true;
   } catch (const sdbus::Error& e) {
     kLog.warn("SetIconFile failed: {}", e.what());
     return false;
   }
-}
-
-void AccountsService::readIconFile() {
-  if (m_userProxy == nullptr) {
-    return;
-  }
-  const auto iconFile = getPropertyOr<std::string>(*m_userProxy, kUserInterface, "IconFile", std::string{});
-  emitChangedIfNeeded(iconFile);
 }
 
 void AccountsService::emitChangedIfNeeded(std::string_view nextIconFile) {

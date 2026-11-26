@@ -39,7 +39,6 @@ public:
 private:
   void findSessionUser();
   void bindUser(const std::string& userPath);
-  void readIconFile();
   void emitChangedIfNeeded(std::string_view nextIconFile);
 
   SystemBus& m_bus;

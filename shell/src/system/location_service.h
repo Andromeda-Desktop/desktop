@@ -3,6 +3,8 @@
 #include "config/config_types.h"
 #include "dbus/name_owner_watch.h"
 
+#include <sdbus-c++/IProxy.h>
+
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -70,6 +72,7 @@ private:
   void requestRefresh();
   void startGeolocate();
   void startGeoclue();
+  void startGeoclueClient(const sdbus::ObjectPath& clientPath);
   void stopGeoclue();
   void onGeoclueLocation(const std::string& path);
   void startAddressGeocode();
@@ -89,6 +92,8 @@ private:
   ConfigService& m_configService;
   HttpClient& m_httpClient;
   SystemBus* m_systemBus = nullptr;
+  std::unique_ptr<sdbus::IProxy> m_geoclueManager; // reset cancels a pending GetClient
+  sdbus::PendingAsyncCall m_geoclueGetClient;
   std::unique_ptr<sdbus::IProxy> m_geoclueClient;
   std::unique_ptr<sdbus::IProxy> m_geoclueLocation;
   NameOwnerWatch m_geoclueOwner;

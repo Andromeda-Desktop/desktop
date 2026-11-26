@@ -218,40 +218,75 @@ void LocationService::requestRefresh() {
 LocationService::~LocationService() { stopGeoclue(); }
 
 void LocationService::startGeoclue() {
-  if (m_geoclueClient != nullptr) {
+  if (m_geoclueClient != nullptr || m_geoclueGetClient.isPending()) {
     return;
   }
+  // Never resets m_geoclueManager: this runs inside its reply callback, and sdbus uses the proxy after the callback.
+  const auto fail = [this](const std::string& what) {
+    kLog.warn("GeoClue unavailable: {}", what);
+    m_geoclueClient.reset();
+    m_requestKind = RequestKind::None;
+    scheduleRetryAfterFailure();
+  };
   try {
-    auto manager = sdbus::createProxy(m_systemBus->connection(), kGeoclueName, kGeoclueManagerPath);
-    sdbus::ObjectPath clientPath;
-    manager->callMethod("GetClient").onInterface(kGeoclueManager).storeResultsTo(clientPath);
-    m_geoclueClient = sdbus::createProxy(m_systemBus->connection(), kGeoclueName, clientPath);
-    m_geoclueClient->setProperty("DesktopId").onInterface(kGeoclueClient).toValue(std::string{kGeoclueDesktopId});
-    m_geoclueClient->setProperty("RequestedAccuracyLevel").onInterface(kGeoclueClient).toValue(kGeoclueAccuracyCity);
-    m_geoclueClient->uponSignal("LocationUpdated")
-        .onInterface(kGeoclueClient)
-        .call([this](const sdbus::ObjectPath& /*old*/, const sdbus::ObjectPath& location) {
-          onGeoclueLocation(location);
-        });
-    m_geoclueClient->callMethodAsync("Start")
-        .onInterface(kGeoclueClient)
-        .uponReplyInvoke([this](std::optional<sdbus::Error> error) {
+    // GetClient may start geoclue through D-Bus activation, which takes seconds: never wait for it here.
+    if (m_geoclueManager == nullptr) {
+      m_geoclueManager = sdbus::createProxy(m_systemBus->connection(), kGeoclueName, kGeoclueManagerPath);
+    }
+    m_geoclueGetClient = m_geoclueManager->callMethodAsync("GetClient")
+        .onInterface(kGeoclueManager)
+        .uponReplyInvoke([this, fail](std::optional<sdbus::Error> error, sdbus::ObjectPath clientPath) {
           if (error.has_value()) {
-            kLog.warn("GeoClue refused to locate: {}", error->what());
-            m_error = i18n::tr("location.errors.ip-geolocation-failed");
-            scheduleRetryAfterFailure();
-            notifyChanged();
+            fail(error->what());
+            return;
+          }
+          try {
+            startGeoclueClient(clientPath);
+          } catch (const sdbus::Error& e) {
+            fail(e.what());
           }
         });
     m_requestKind = RequestKind::Geolocate;
   } catch (const sdbus::Error& e) {
-    kLog.warn("GeoClue unavailable: {}", e.what());
-    m_geoclueClient.reset();
-    scheduleRetryAfterFailure();
+    fail(e.what());
   }
 }
 
+// One connection delivers its messages in order, so geoclue sets DesktopId and the accuracy before Start.
+void LocationService::startGeoclueClient(const sdbus::ObjectPath& clientPath) {
+  m_geoclueClient = sdbus::createProxy(m_systemBus->connection(), kGeoclueName, clientPath);
+  const auto onSetReply = [](std::optional<sdbus::Error> error) {
+    if (error.has_value()) {
+      kLog.warn("configuring the GeoClue client failed: {}", error->what());
+    }
+  };
+  m_geoclueClient->setPropertyAsync("DesktopId")
+      .onInterface(kGeoclueClient)
+      .toValue(std::string{kGeoclueDesktopId})
+      .uponReplyInvoke(onSetReply);
+  m_geoclueClient->setPropertyAsync("RequestedAccuracyLevel")
+      .onInterface(kGeoclueClient)
+      .toValue(kGeoclueAccuracyCity)
+      .uponReplyInvoke(onSetReply);
+  m_geoclueClient->uponSignal("LocationUpdated")
+      .onInterface(kGeoclueClient)
+      .call([this](const sdbus::ObjectPath& /*old*/, const sdbus::ObjectPath& location) {
+        onGeoclueLocation(location);
+      });
+  m_geoclueClient->callMethodAsync("Start")
+      .onInterface(kGeoclueClient)
+      .uponReplyInvoke([this](std::optional<sdbus::Error> error) {
+        if (error.has_value()) {
+          kLog.warn("GeoClue refused to locate: {}", error->what());
+          m_error = i18n::tr("location.errors.ip-geolocation-failed");
+          scheduleRetryAfterFailure();
+          notifyChanged();
+        }
+      });
+}
+
 void LocationService::stopGeoclue() {
+  m_geoclueManager.reset();
   if (m_geoclueClient == nullptr) {
     return;
   }
