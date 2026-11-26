@@ -24,7 +24,10 @@ jobs:
         run: UBUNTU_IMAGE_ONLY=1 tools/ubuntu-build.sh 26.04
       # No render node here: the compositor's software buffers come from /dev/udmabuf (tools/ubuntu-e2e.sh passes it).
       - name: udmabuf
-        run: sudo modprobe udmabuf && sudo chmod 666 /dev/udmabuf
+        run: |
+          # The runner's Azure kernel ships udmabuf only in its extra modules.
+          sudo modprobe udmabuf 2> /dev/null || { sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" > /dev/null && sudo modprobe udmabuf; }
+          sudo chmod 666 /dev/udmabuf
       - name: E2E
         env:
           NAMES: ${{ inputs.names }}
