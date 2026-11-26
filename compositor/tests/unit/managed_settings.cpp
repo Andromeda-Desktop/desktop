@@ -1,8 +1,12 @@
+#include "config/generated_file.h"
+#include "core/async_file_writer.h"
 #include "config/managed_settings.h"
 
 #include "check.h"
 #include "config/store.h"
 
+#include <chrono>
+#include <thread>
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -204,21 +208,25 @@ ANDROMEDA_TEST(appQosRulesReplaceAndRemoveOnlyTheirOwn) {
     std::ofstream out(file);
     out << "[[window_rule]]\nmatch.app_id = \"^foot$\"\nqos = \"never_throttle\"\nopacity = 0.9\n";
   }
-  CHECK(andromeda::saveManagedAppQos(file, "org.mozilla.firefox", "never_throttle"));
-  CHECK(andromeda::saveManagedAppQos(file, "org.mozilla.firefox", "freeze_when_hidden"));
-  CHECK(andromeda::saveManagedAppQos(file, "Signal", "never_throttle"));
-  const auto read = [&file] {
-    std::ifstream in(file);
-    return std::string{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
-  };
+  andromeda::saveManagedAppQos(file, "org.mozilla.firefox", "never_throttle");
+  andromeda::saveManagedAppQos(file, "org.mozilla.firefox", "freeze_when_hidden");
+  andromeda::saveManagedAppQos(file, "Signal", "never_throttle");
+  const auto read = [&file] { return andromeda::readGeneratedFile(file); };
   using Rules = std::vector<std::pair<std::string, std::string>>;
   CHECK(
       andromeda::documentAppQos(read())
       == (Rules{{"org.mozilla.firefox", "freeze_when_hidden"}, {"Signal", "never_throttle"}})
   );
-  CHECK(andromeda::saveManagedAppQos(file, "org.mozilla.firefox", "normal"));
+  andromeda::saveManagedAppQos(file, "org.mozilla.firefox", "normal");
   CHECK(andromeda::documentAppQos(read()) == (Rules{{"Signal", "never_throttle"}}));
   CHECK(read().find("opacity = 0.9") != std::string::npos);
+  for (int i = 0; i < 200 && andromeda::pendingFileText(file); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  CHECK(!andromeda::pendingFileText(file));
+  std::ifstream landed(file);
+  const std::string onDisk{std::istreambuf_iterator<char>(landed), std::istreambuf_iterator<char>()};
+  CHECK(onDisk == read());
   std::filesystem::remove(file);
 }
 

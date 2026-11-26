@@ -4,6 +4,7 @@
 
 #include "config/config.h"
 #include "config/keybind_parse.h"
+#include "config/generated_file.h"
 #include "config/managed_settings.h"
 #include "desktop-unstable-v1-protocol.h"
 #include "output/output.h"
@@ -27,11 +28,6 @@ namespace andromeda {
 
     DesktopSettingsManager* managerFrom(wl_resource* resource) {
       return static_cast<DesktopSettingsManager*>(wl_resource_get_user_data(resource));
-    }
-
-    std::string readFile(const std::filesystem::path& path) {
-      std::ifstream in(path);
-      return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
     }
 
   } // namespace
@@ -207,16 +203,9 @@ namespace andromeda {
       values.emplace_back(set.key, set.value);
     }
     const std::filesystem::path file = managedSettingsFile(configRootPath());
-    if (!saveManagedSettings(file, values)) {
-      const std::string reason = "cannot write " + file.string();
-      for (const PendingSet& set : pending) {
-        if (set.owner != nullptr) {
-          dsk_settings_manager_v1_send_failed(set.owner, set.key.c_str(), reason.c_str());
-        }
-      }
-      return;
-    }
-    // Apply now rather than when the watcher notices the write; its later reload finds nothing changed.
+    saveManagedSettings(file, values);
+    // Apply now from the pending text rather than when the watcher notices the write; its later reload finds nothing
+    // changed.
     m_server.handleConfigReload(reloadConfig());
   }
 
@@ -308,25 +297,20 @@ namespace andromeda {
     }
     // One entry per trigger: drop any spelling of the same chord already saved ("super+q" and "Super+Q").
     const std::filesystem::path file = managedSettingsFile(configRootPath());
-    for (const auto& [savedChord, savedAction] : documentKeybinds(readFile(file))) {
+    for (const auto& [savedChord, savedAction] : documentKeybinds(readGeneratedFile(file))) {
       Keybind saved;
-      if (savedChord != chord && parseChord(savedChord, saved) && sameChord(saved, parsed)
-          && !saveManagedKeybind(file, savedChord, {})) {
-        reject("cannot write " + file.string());
-        return;
+      if (savedChord != chord && parseChord(savedChord, saved) && sameChord(saved, parsed)) {
+        saveManagedKeybind(file, savedChord, {});
       }
     }
-    if (!saveManagedKeybind(file, chord, action)) {
-      reject("cannot write " + file.string());
-      return;
-    }
+    saveManagedKeybind(file, chord, action);
     m_server.handleConfigReload(reloadConfig());
   }
 
   void DesktopSettingsManager::sendKeybinds(wl_resource* resource) const {
     std::vector<Keybind> saved;
     std::vector<Keybind> unbound;
-    for (const auto& [chord, action] : documentKeybinds(readFile(managedSettingsFile(configRootPath())))) {
+    for (const auto& [chord, action] : documentKeybinds(readGeneratedFile(managedSettingsFile(configRootPath())))) {
       Keybind bind;
       if (parseChord(chord, bind)) {
         (action == kUnboundAction ? unbound : saved).push_back(std::move(bind));
@@ -377,7 +361,7 @@ namespace andromeda {
 
   void DesktopSettingsManager::sendSettings(wl_resource* resource) const {
     const std::span<const std::string_view> keys = managedSettingKeys();
-    const std::string document = readFile(managedSettingsFile(configRootPath()));
+    const std::string document = readGeneratedFile(managedSettingsFile(configRootPath()));
     const std::vector<bool> customizedKeys = documentSetsKeys(document, keys);
     for (std::size_t i = 0; i < keys.size(); ++i) {
       const std::string_view key = keys[i];
@@ -413,13 +397,13 @@ namespace andromeda {
   }
 
   void DesktopSettingsManager::settingsFileMaybeChanged() {
-    if (readFile(managedSettingsFile(configRootPath())) != m_sentDocument) {
+    if (readGeneratedFile(managedSettingsFile(configRootPath())) != m_sentDocument) {
       settingsChanged();
     }
   }
 
   void DesktopSettingsManager::settingsChanged() {
-    m_sentDocument = readFile(managedSettingsFile(configRootPath()));
+    m_sentDocument = readGeneratedFile(managedSettingsFile(configRootPath()));
     for (wl_resource* resource : m_resources) {
       sendSettings(resource);
       sendKeybinds(resource);

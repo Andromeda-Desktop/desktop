@@ -267,9 +267,7 @@ namespace andromeda {
       }
       text = formatChord(bind);
     }
-    if (!saveManagedGlobalShortcut(managedSettingsFile(configRootPath()), app, id, text)) {
-      return {.result = WriteFailed, .holder = {}};
-    }
+    saveManagedGlobalShortcut(managedSettingsFile(configRootPath()), app, id, text);
     m_server.handleConfigReload(reloadConfig());
     return {.result = Ok, .holder = {}};
   }

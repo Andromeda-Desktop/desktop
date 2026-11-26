@@ -180,10 +180,8 @@ namespace andromeda {
       return nlohmann::json{{"ok", {{"assigned", false}, {"reason", "reserved"}}}};
     case InUse:
       return nlohmann::json{{"ok", {{"assigned", false}, {"reason", "in_use"}, {"holder", assigned.holder}}}};
-    case WriteFailed:
-      break;
     }
-    return nlohmann::json{{"err", "unable to save the shortcut (the settings file could not be written)"}};
+    std::unreachable();
   }
 
   nlohmann::json IpcCommands::globalShortcutsRevoke(Server& server, std::string_view arg) {

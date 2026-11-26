@@ -35,6 +35,19 @@ namespace andromeda {
         m_wake.notify_one();
       }
 
+      std::optional<std::string> pending(const std::filesystem::path& path) {
+        std::scoped_lock lock(m_mutex);
+        for (const auto& queued : m_queue) {
+          if (queued.first == path) {
+            return queued.second;
+          }
+        }
+        if (m_running && m_running->first == path) {
+          return m_running->second;
+        }
+        return std::nullopt;
+      }
+
       // Destroyed at exit: the stop request lets the queue drain, then the thread ends.
       ~Writer() {
         if (m_thread.joinable()) {
@@ -53,11 +66,12 @@ namespace andromeda {
           if (m_queue.empty()) {
             return;
           }
-          auto [path, text] = std::move(m_queue.front());
+          m_running = std::move(m_queue.front());
           m_queue.pop_front();
           lock.unlock();
-          write(path, text);
+          write(m_running->first, m_running->second);
           lock.lock();
+          m_running.reset();
         }
       }
 
@@ -80,6 +94,8 @@ namespace andromeda {
       std::mutex m_mutex;
       std::condition_variable_any m_wake;
       std::deque<std::pair<std::filesystem::path, std::string>> m_queue;
+      // The write in progress, until its rename lands; only the writer thread sets it, under m_mutex.
+      std::optional<std::pair<std::filesystem::path, std::string>> m_running;
       std::jthread m_thread; // last: joined before the queue goes away
     };
 
@@ -91,5 +107,7 @@ namespace andromeda {
   } // namespace
 
   void writeFileAsync(std::filesystem::path path, std::string text) { writer().post(std::move(path), std::move(text)); }
+
+  std::optional<std::string> pendingFileText(const std::filesystem::path& path) { return writer().pending(path); }
 
 } // namespace andromeda

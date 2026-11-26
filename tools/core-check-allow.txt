@@ -1,6 +1,5 @@
 # core-check allowlist: rule path count. Counts only fall; tools/core-check.py --update after a fix.
 main-io compositor/src/cli/debug.cpp 1
-main-io compositor/src/config/managed_settings.cpp 5
 main-io compositor/src/core/screen_activity_recorder.cpp 1
 main-io compositor/src/output/output.cpp 1
 main-io compositor/src/qos/actuator.cpp 1

@@ -3,9 +3,7 @@
 #include "core/async_file_writer.h"
 
 #include <fstream>
-#include <unordered_map>
 #include <sstream>
-#include <system_error>
 
 namespace andromeda {
 
@@ -25,56 +23,21 @@ namespace andromeda {
     return std::move(out).str();
   }
 
-  bool rewriteGeneratedToml(
-      const std::filesystem::path& file, std::string_view header, const std::function<void(toml::table&)>& edit
-  ) {
-    std::string existing;
+  std::string readGeneratedFile(const std::filesystem::path& file) {
+    if (std::optional<std::string> pending = pendingFileText(file)) {
+      return std::move(*pending);
+    }
+    std::string text;
     if (std::ifstream in(file); in) {
-      existing.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+      text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
-    const std::string document = editGeneratedToml(existing, header, edit);
-    std::filesystem::path temporary = file;
-    temporary += ".tmp";
-    std::error_code error;
-    // A fresh install has no user config dir yet.
-    std::filesystem::create_directories(file.parent_path(), error);
-    {
-      std::ofstream out(temporary, std::ios::trunc);
-      out << document;
-      if (!out.flush()) {
-        return false;
-      }
-    }
-    std::filesystem::rename(temporary, file, error);
-    return !error;
+    return text;
   }
 
   void rewriteGeneratedTomlAsync(
       const std::filesystem::path& file, std::string_view header, const std::function<void(toml::table&)>& edit
   ) {
-    // Per path: the text on disk when we last read it, and the text we last sent to the writer.
-    struct Known {
-      std::string onDisk;
-      std::string written;
-    };
-    static std::unordered_map<std::string, Known> known;
-    std::string disk;
-    if (std::ifstream in(file); in) {
-      disk.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-    }
-    auto [it, fresh] = known.try_emplace(file.string());
-    // The disk still shows what it held before our last write: that write is pending, so build on it. Otherwise the
-    // disk is current (our write landed, or the user edited the file) and is the base.
-    const bool pending = !fresh && disk == it->second.onDisk && disk != it->second.written;
-    const std::string& base = pending ? it->second.written : disk;
-    std::string next = editGeneratedToml(base, header, edit);
-    if (!pending) {
-      it->second.onDisk = std::move(disk);
-    }
-    it->second.written = next;
-    std::error_code error;
-    std::filesystem::create_directories(file.parent_path(), error);
-    writeFileAsync(file, std::move(next));
+    writeFileAsync(file, editGeneratedToml(readGeneratedFile(file), header, edit));
   }
 
   toml::table& generatedTable(toml::table& root, std::initializer_list<std::string_view> path) {

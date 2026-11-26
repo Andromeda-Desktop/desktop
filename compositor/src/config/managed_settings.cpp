@@ -744,14 +744,14 @@ namespace andromeda {
     return editGeneratedToml(existing, kHeader, [&](toml::table& root) { applySetting(root, key, value); });
   }
 
-  bool saveManagedSetting(const std::filesystem::path& file, std::string_view key, const ManagedSettingValue& value) {
-    return rewriteGeneratedToml(file, kHeader, [&](toml::table& root) { applySetting(root, key, value); });
+  void saveManagedSetting(const std::filesystem::path& file, std::string_view key, const ManagedSettingValue& value) {
+    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) { applySetting(root, key, value); });
   }
 
-  bool saveManagedSettings(
+  void saveManagedSettings(
       const std::filesystem::path& file, const std::vector<std::pair<std::string, ManagedSettingValue>>& values
   ) {
-    return rewriteGeneratedToml(file, kHeader, [&](toml::table& root) {
+    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) {
       for (const auto& [key, value] : values) {
         applySetting(root, key, value);
       }
@@ -775,8 +775,8 @@ namespace andromeda {
     return std::filesystem::path(xdg::configHome()) / "andromeda/settings.toml";
   }
 
-  bool saveManagedKeybind(const std::filesystem::path& file, std::string_view chord, std::string_view action) {
-    return rewriteGeneratedToml(file, kHeader, [&](toml::table& root) {
+  void saveManagedKeybind(const std::filesystem::path& file, std::string_view chord, std::string_view action) {
+    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) {
       toml::table& keybinds = generatedTable(root, {"keybinds"});
       if (action.empty()) {
         keybinds.erase(chord);
@@ -789,10 +789,10 @@ namespace andromeda {
     });
   }
 
-  bool saveManagedGlobalShortcut(
+  void saveManagedGlobalShortcut(
       const std::filesystem::path& file, std::string_view app, std::string_view id, std::string_view chord
   ) {
-    return rewriteGeneratedToml(file, kHeader, [&](toml::table& root) {
+    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) {
       generatedTable(root, {"global_shortcuts", app}).insert_or_assign(id, std::string(chord));
     });
   }
@@ -834,8 +834,8 @@ namespace andromeda {
     }
   } // namespace
 
-  bool saveManagedAppQos(const std::filesystem::path& file, std::string_view appId, std::string_view qos) {
-    return rewriteGeneratedToml(file, kHeader, [&](toml::table& root) {
+  void saveManagedAppQos(const std::filesystem::path& file, std::string_view appId, std::string_view qos) {
+    rewriteGeneratedTomlAsync(file, kHeader, [&](toml::table& root) {
       if (root["window_rule"].as_array() == nullptr) {
         root.insert_or_assign("window_rule", toml::array{});
       }

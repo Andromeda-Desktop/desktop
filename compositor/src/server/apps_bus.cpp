@@ -2,6 +2,7 @@
 #include "protocols/bus_names.h"
 
 #include "config/config.h"
+#include "config/generated_file.h"
 #include "config/managed_settings.h"
 #include "config/resolve.h"
 #include "core/log.h"
@@ -335,9 +336,7 @@ namespace andromeda {
       return sd_bus_error_set(error, SD_BUS_ERROR_INVALID_ARGS, "an app id and normal, never_throttle or freeze_when_hidden");
     }
     const std::filesystem::path file = managedSettingsFile(configRootPath());
-    if (!saveManagedAppQos(file, appId, qos)) {
-      return sd_bus_error_setf(error, SD_BUS_ERROR_IO_ERROR, "cannot write %s", file.c_str());
-    }
+    saveManagedAppQos(file, appId, qos);
     if (self->m_reloadConfig) {
       self->m_reloadConfig();
     }
@@ -345,8 +344,7 @@ namespace andromeda {
   }
 
   int AppsBus::onAppRules(sd_bus_message* message, void* /*data*/, sd_bus_error* /*error*/) {
-    std::ifstream in(managedSettingsFile(configRootPath()));
-    const std::string document{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    const std::string document = readGeneratedFile(managedSettingsFile(configRootPath()));
     sd_bus_message* reply = nullptr;
     int r = sd_bus_message_new_method_return(message, &reply);
     r = r < 0 ? r : sd_bus_message_open_container(reply, 'a', "(ss)");

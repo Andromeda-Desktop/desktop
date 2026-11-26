@@ -43,11 +43,11 @@ namespace andromeda {
   // is a system default. It is loaded after config.toml and its includes.
   [[nodiscard]] std::filesystem::path managedSettingsFile(const std::filesystem::path& configRoot);
 
-  // Sets or removes `key` in the generated settings `file`. Returns false on I/O error.
-  bool saveManagedSetting(const std::filesystem::path& file, std::string_view key, const ManagedSettingValue& value);
+  // Sets or removes `key` in the generated settings `file`.
+  void saveManagedSetting(const std::filesystem::path& file, std::string_view key, const ManagedSettingValue& value);
 
-  // Sets or removes every key, in order, in one rewrite of `file`. Returns false on I/O error.
-  bool saveManagedSettings(
+  // Sets or removes every key, in order, in one rewrite of `file`.
+  void saveManagedSettings(
       const std::filesystem::path& file, const std::vector<std::pair<std::string, ManagedSettingValue>>& values
   );
 
@@ -56,11 +56,11 @@ namespace andromeda {
   editManagedSetting(std::string_view existing, std::string_view key, const ManagedSettingValue& value);
 
   // Binds `chord` to `action` in the settings file's [keybinds], or removes the entry when `action` is empty so
-  // config.toml or the built-in set applies again. kUnboundAction ("none") unbinds the chord. Returns false on I/O error.
-  bool saveManagedKeybind(const std::filesystem::path& file, std::string_view chord, std::string_view action);
+  // config.toml or the built-in set applies again. kUnboundAction ("none") unbinds the chord.
+  void saveManagedKeybind(const std::filesystem::path& file, std::string_view chord, std::string_view action);
 
-  // Sets [global_shortcuts."<app>"] <id> in the settings file; an empty chord turns the shortcut off. False on I/O error.
-  bool saveManagedGlobalShortcut(
+  // Sets [global_shortcuts."<app>"] <id> in the settings file; an empty chord turns the shortcut off.
+  void saveManagedGlobalShortcut(
       const std::filesystem::path& file, std::string_view app, std::string_view id, std::string_view chord
   );
 
@@ -69,8 +69,8 @@ namespace andromeda {
   [[nodiscard]] std::vector<std::pair<std::string, std::string>> documentKeybinds(std::string_view document);
 
   // Per-app CPU rules from Settings: a [[window_rule]] in the settings `file` with only match.app_id = "^<id>$" and
-  // `qos`. `qos` "normal" removes the app's rule. Returns false on I/O error.
-  bool saveManagedAppQos(const std::filesystem::path& file, std::string_view appId, std::string_view qos);
+  // `qos`. `qos` "normal" removes the app's rule.
+  void saveManagedAppQos(const std::filesystem::path& file, std::string_view appId, std::string_view qos);
   // The app rules saveManagedAppQos wrote in a settings document: app id to qos text.
   [[nodiscard]] std::vector<std::pair<std::string, std::string>> documentAppQos(std::string_view document);
 

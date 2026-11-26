@@ -1,5 +1,6 @@
 // What a config file holds: the top-level tables in reading order, and reading a merged document into a Config.
 
+#include "config/generated_file.h"
 #include "config/config.h"
 
 #include "config/config_merge.h"
@@ -100,12 +101,12 @@ namespace andromeda {
     // The settings file carries what a settings app changed, so it merges over config.toml and its includes. A missing
     // file is normal; a broken one fails the load like any other config error.
     bool overlayManagedSettings(toml::table& merged, const std::filesystem::path& file) {
-      std::error_code error;
-      if (!std::filesystem::exists(file, error)) {
+      const std::string text = readGeneratedFile(file);
+      if (text.empty()) {
         return true;
       }
       try {
-        toml::table settings = toml::parse_file(file.string());
+        toml::table settings = toml::parse(text, file.string());
         dropKeybindsRespelledBy(merged, settings);
         configmerge::deepMerge(merged, std::move(settings));
         return true;

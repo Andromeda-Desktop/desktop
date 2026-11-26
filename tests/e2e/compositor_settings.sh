@@ -24,10 +24,12 @@ g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-ui/src" -I"$BUILD" -o "$RUNTIME/set
 step() { run "$RUNTIME/settings-set" "$@" | tee -a "$OUT/settings-set.txt"; }
 : > "$OUT/settings-set.txt"
 step appearance.border_width 0
-grep -q '^border_width = 0' "$RUNTIME/settings.toml" || { echo "FAIL: settings.toml lacks border_width = 0" >&2; exit 1; }
+# The compositor applies a set at once and writes settings.toml in the background.
+poll_for 5 grep -q '^border_width = 0' "$RUNTIME/settings.toml" || { echo "FAIL: settings.toml lacks border_width = 0" >&2; exit 1; }
 step layout.gap 20
 step animation.windows_in.style fade
 step layout.mode master
+poll_for 5 grep -q 'master' "$RUNTIME/settings.toml" || { echo "FAIL: settings.toml lacks layout mode master" >&2; exit 1; }
 cp "$RUNTIME/settings.toml" "$OUT/settings.toml"
 
 with_noctalia '
@@ -37,7 +39,7 @@ with_noctalia '
 '
 
 step appearance.border_width "" 6
-grep -q '^border_width' "$RUNTIME/settings.toml" && { echo "FAIL: clearing left border_width in settings.toml" >&2; exit 1; }
+poll_for 5 bash -c "! grep -q '^border_width' '$RUNTIME/settings.toml'" || { echo "FAIL: clearing left border_width in settings.toml" >&2; exit 1; }
 ! grep -q "^FAIL" "$OUT/settings-set.txt" || { echo "FAIL: see $OUT/settings-set.txt" >&2; exit 1; }
 
 # IA v2: window-style opens Appearance, layout and overview open Windows.

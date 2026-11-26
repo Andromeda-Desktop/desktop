@@ -42,7 +42,7 @@ namespace andromeda {
     // Forgets the app's grants (all apps when empty) and unbinds its sessions. False when the store write fails.
     bool revoke(std::string_view app);
     struct Assigned {
-      enum class Result : uint8_t { Ok, BadChord, Reserved, InUse, WriteFailed } result;
+      enum class Result : uint8_t { Ok, BadChord, Reserved, InUse } result;
       std::string holder;  // the app that holds the chord, for InUse
     };
     // Sets one shortcut's chord (keybind syntax, "" turns it off) in the settings file and reloads. Writes nothing

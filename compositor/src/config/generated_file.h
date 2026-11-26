@@ -16,13 +16,12 @@ namespace andromeda {
   [[nodiscard]] std::string
   editGeneratedToml(std::string_view existing, std::string_view header, const std::function<void(toml::table&)>& edit);
 
-  // editGeneratedToml on `file`, written through a temporary file and a rename so a config reload never reads a
-  // partial file. Returns false on any I/O error.
-  bool rewriteGeneratedToml(
-      const std::filesystem::path& file, std::string_view header, const std::function<void(toml::table&)>& edit
-  );
-  // The same edit, written by core/async_file_writer: the main thread never waits on a write. An edit starts from the
-  // file on disk, or from our last document while that write is still pending, so hand edits are kept.
+  // `file` as the next read will find it: the text a pending async write leaves there, else the disk; empty when
+  // missing.
+  [[nodiscard]] std::string readGeneratedFile(const std::filesystem::path& file);
+
+  // editGeneratedToml on readGeneratedFile(file), written by core/async_file_writer: the main thread never waits on
+  // a write. A failed write is logged by the writer.
   void rewriteGeneratedTomlAsync(
       const std::filesystem::path& file, std::string_view header, const std::function<void(toml::table&)>& edit
   );
