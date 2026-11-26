@@ -190,4 +190,97 @@ namespace term {
     return out;
   }
 
+  std::vector<ClosedItem> closedItems(const SessionList& list, std::span<const std::uint64_t> ids, std::uint32_t window,
+                                      const std::optional<std::string>& windowName,
+                                      const std::function<std::string(std::uint64_t)>& cwdOf,
+                                      const std::function<const andromeda::tiling::DwindleTree*(std::uint64_t)>& treeOf) {
+    std::vector<ClosedItem> items;
+    const auto& sessions = list.sessions();
+    const auto closing = [&ids](std::uint64_t id) { return std::ranges::find(ids, id) != ids.end(); };
+    if (std::ranges::all_of(sessions, [&](const SessionInfo& s) { return closing(s.id); })) {
+      if (SavedWindow saved = saveLayout(list, cwdOf, treeOf); !saved.sessions.empty()) {
+        saved.name = windowName;
+        items.emplace_back(std::move(saved));
+      }
+      return items;
+    }
+    using Tree = andromeda::tiling::DwindleTree;
+    for (auto it = sessions.rbegin(); it != sessions.rend(); ++it) {
+      const std::uint64_t id = it->id;
+      if (!closing(id) || it->kind != SessionKind::Shell) {
+        continue;
+      }
+      ClosedSession closed{.id = id, .window = window, .session = {cwdOf(id), it->name}};
+      const auto next = std::find_if(it.base(), sessions.end(), [&](const SessionInfo& s) { return !closing(s.id); });
+      closed.before = next != sessions.end() ? next->id : 0;
+      // A pane beside it in the tree that is there when it comes back: still open, or closed with it and earlier in the
+      // list (the stack brings that one back first).
+      const auto place = [&sessions](std::uint64_t key) { return std::ranges::find(sessions, key, &SessionInfo::id) - sessions.begin(); };
+      const auto back = [&](std::uint64_t key) { return !closing(key) || place(key) < place(id); };
+      const Tree* tree = treeOf(id);
+      const Tree::Node* leaf = tree != nullptr ? tree->find(id) : nullptr;
+      // Up from its leaf: the first subtree beside it with such a pane; the side is taken of that subtree.
+      for (const Tree::Node* child = leaf; child != nullptr && child->parent != nullptr && closed.splitWith == 0; child = child->parent) {
+        const Tree::Node* parent = child->parent;
+        const bool first = parent->left.get() == child;
+        std::vector<const Tree::Node*> todo{first ? parent->right.get() : parent->left.get()};
+        const Tree::Node* other = nullptr;
+        while (!todo.empty() && other == nullptr) {
+          const Tree::Node* node = todo.back();
+          todo.pop_back();
+          if (node == nullptr) continue;
+          if (node->type == Tree::Node::Leaf) {
+            if (back(node->key)) other = node;
+            continue;
+          }
+          todo.push_back(node->right.get());
+          todo.push_back(node->left.get());
+        }
+        if (other == nullptr) continue;
+        const bool across = parent->type == Tree::Node::HSplit ||
+                            (parent->type == Tree::Node::AutoSplit && parent->area.width >= parent->area.height);
+        closed.splitWith = other->key;
+        closed.edge = across ? (first ? andromeda::tiling::EdgeLeft : andromeda::tiling::EdgeRight)
+                             : (first ? andromeda::tiling::EdgeTop : andromeda::tiling::EdgeBottom);
+        closed.shape = tree->shape();
+      }
+      items.emplace_back(std::move(closed));
+    }
+    return items;
+  }
+
+  void renameClosed(ClosedItem& item, std::uint64_t from, std::uint64_t to) {
+    auto* closed = std::get_if<ClosedSession>(&item);
+    if (closed == nullptr) {
+      return;
+    }
+    if (closed->before == from) closed->before = to;
+    if (closed->splitWith == from) closed->splitWith = to;
+    for (auto& node : closed->shape) {
+      if (node.type == andromeda::tiling::DwindleTree::Node::Leaf && node.key == from) node.key = to;
+    }
+  }
+
+  ReopenSteps reopenSteps(const SessionList& list, const ClosedSession& closed, std::uint64_t id) {
+    ReopenSteps steps;
+    if (!closed.session.name.empty()) {
+      steps.events.emplace_back(session_event::Rename{id, closed.session.name});
+    }
+    if (closed.before != 0 && list.find(closed.before) != nullptr) {
+      steps.events.emplace_back(session_event::Move{.id = id, .before = closed.before});
+    }
+    const auto* split = closed.splitWith != 0 ? list.splitOf(closed.splitWith) : nullptr;
+    if (closed.splitWith == 0 || list.find(closed.splitWith) == nullptr || (split != nullptr && split->size() >= kMaxPanes)) {
+      return steps;
+    }
+    ReopenJoin join{.target = closed.splitWith, .edge = closed.edge, .shape = closed.shape};
+    for (auto& node : join.shape) {
+      if (node.type == andromeda::tiling::DwindleTree::Node::Leaf && node.key == closed.id) node.key = id;
+    }
+    steps.events.emplace_back(session_event::Join{.target = closed.splitWith, .joining = id,
+                                                  .before = closed.edge == andromeda::tiling::EdgeLeft || closed.edge == andromeda::tiling::EdgeTop});
+    steps.join = std::move(join);
+    return steps;
+  }
+
 } // namespace term

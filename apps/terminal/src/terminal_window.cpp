@@ -753,72 +753,28 @@ namespace term {
   }
 
   void TerminalWindow::recordClose(const std::vector<std::uint64_t>& ids) {
-    if (!m_closed) {
-      return;
-    }
-    if (std::ranges::all_of(m_sessions.sessions(), [&](const SessionInfo& s) { return std::ranges::contains(ids, s.id); })) {
-      if (SavedWindow saved = layout(); !saved.sessions.empty()) {
-        m_closed(std::move(saved));
-      }
-      return;
-    }
-    const auto& list = m_sessions.sessions();
-    // The last in list order first: the stack reopens the first one first, so each comes back before the next.
-    for (auto it = list.rbegin(); it != list.rend(); ++it) {
-      const std::uint64_t id = it->id;
-      if (!std::ranges::contains(ids, id) || it->kind != SessionKind::Shell) {
-        continue;
-      }
-      ClosedSession closed{.window = m_windowId, .session = {cwdOf(id), it->name}};
-      const auto next = std::find_if(it.base(), list.end(), [&](const SessionInfo& s) { return !std::ranges::contains(ids, s.id); });
-      closed.before = next != list.end() ? next->id : 0;
-      // The pane beside it in the tree, and the side it took of that pane.
-      using Tree = andromeda::tiling::DwindleTree;
-      const Tree* tree = m_split.treeOf(id);
-      const Tree::Node* leaf = tree != nullptr ? tree->find(id) : nullptr;
-      if (const Tree::Node* parent = leaf != nullptr ? leaf->parent : nullptr; parent != nullptr) {
-        const bool first = parent->left.get() == leaf;
-        const Tree::Node* other = first ? parent->right.get() : parent->left.get();
-        while (other != nullptr && other->type != Tree::Node::Leaf) {
-          other = other->left.get();
-        }
-        const bool across = parent->type == Tree::Node::HSplit ||
-                            (parent->type == Tree::Node::AutoSplit && parent->area.width >= parent->area.height);
-        if (other != nullptr && !std::ranges::contains(ids, other->key)) {
-          closed.splitWith = other->key;
-          closed.edge = across ? (first ? andromeda::tiling::EdgeLeft : andromeda::tiling::EdgeRight)
-                               : (first ? andromeda::tiling::EdgeTop : andromeda::tiling::EdgeBottom);
-          closed.shape = tree->shape();
-          for (auto& node : closed.shape) {
-            if (node.type == Tree::Node::Leaf && node.key == id) node.key = 0;
-          }
-        }
-      }
-      m_closed(std::move(closed));
+    for (ClosedItem& item : closedItems(m_sessions, ids, m_windowId, m_name, [this](std::uint64_t id) { return cwdOf(id); },
+                                        [this](std::uint64_t id) { return m_split.treeOf(id); })) {
+      m_closed(std::move(item));
     }
   }
 
-  void TerminalWindow::reopenSession(const ClosedSession& closed) {
+  std::uint64_t TerminalWindow::reopenSession(const ClosedSession& closed) {
     std::error_code error;
     const std::string& cwd = closed.session.cwd;
     const std::uint64_t id = openSession(NewShell{.cwd = std::filesystem::is_directory(cwd, error) ? cwd : ""});
-    if (!closed.session.name.empty()) {
-      apply(session_event::Rename{id, closed.session.name});
-    }
-    if (closed.before != 0 && m_sessions.find(closed.before) != nullptr) {
-      apply(session_event::Move{.id = id, .before = closed.before});
-    }
-    const auto* split = closed.splitWith != 0 ? m_sessions.splitOf(closed.splitWith) : nullptr;
-    if (closed.splitWith != 0 && m_sessions.find(closed.splitWith) != nullptr && (split == nullptr || split->size() < kMaxPanes)) {
-      auto shape = closed.shape;
-      for (auto& node : shape) {
-        if (node.type == andromeda::tiling::DwindleTree::Node::Leaf && node.key == 0) node.key = id;
+    ReopenSteps steps = reopenSteps(m_sessions, closed, id);
+    for (const SessionListEvent& event : steps.events) {
+      // The next sync consumes a pending join: pend it right before its Join.
+      if (steps.join && std::holds_alternative<session_event::Join>(event)) {
+        m_split.pendJoin({.target = steps.join->target, .joining = id, .edge = steps.join->edge, .shape = steps.join->shape});
       }
-      m_split.pendJoin({.target = closed.splitWith, .joining = id, .edge = closed.edge, .shape = std::move(shape)});
-      apply(session_event::Join{.target = closed.splitWith, .joining = id,
-                                .before = closed.edge == andromeda::tiling::EdgeLeft || closed.edge == andromeda::tiling::EdgeTop});
+      apply(event);
+    }
+    if (steps.join) {
       focusGrid();
     }
+    return id;
   }
 
   SavedWindow TerminalWindow::layout() const {

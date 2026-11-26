@@ -101,19 +101,6 @@ namespace term {
   using ChooseSaveFile = std::function<void(const std::string& suggested,
                                             std::function<void(std::optional<std::filesystem::path>)> picked)>;
 
-  // A shell session closed for good, as "Reopen closed" brings it back: its window, folder and name, the list session it
-  // stood before (0: the end) and the pane it was split with, on its side (TileEdge; 0: none). shape: its split's
-  // tree, the closed pane's key 0; it comes back in that place while the split still has the same other panes.
-  struct ClosedSession {
-    std::uint32_t window = 0;
-    SavedSession session;
-    std::uint64_t before = 0;
-    std::uint64_t splitWith = 0;
-    std::uint32_t edge = 0;
-    std::vector<andromeda::tiling::DwindleTree::ShapeNode> shape;
-  };
-  using ClosedItem = std::variant<ClosedSession, SavedWindow>; // a closed window keeps its whole layout
-
   class TerminalWindow {
   public:
     // origins: one session each, in order; the last one is shown. close: closes this window later, outside the
@@ -180,7 +167,8 @@ namespace term {
       m_reopen = std::move(reopen);
       m_anyClosed = std::move(any);
     }
-    void reopenSession(const ClosedSession& closed);
+    // The new session's id.
+    std::uint64_t reopenSession(const ClosedSession& closed);
     [[nodiscard]] const std::optional<std::string>& userName() const noexcept { return m_name; }
     // The app's text zoom (steps added to the size setting), shared by all windows; save keeps it for the next start.
     void setZoomStore(int steps, std::function<void(int)> save) {

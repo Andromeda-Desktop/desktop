@@ -375,7 +375,10 @@ namespace term {
     for (const auto& [app, terminal] : m_windows) {
       if (terminal->windowId() == closed.window) into = app;
     }
-    m_windows.at(into)->reopenSession(closed);
+    const std::uint64_t id = m_windows.at(into)->reopenSession(closed);
+    for (ClosedItem& other : m_closed) {
+      renameClosed(other, closed.id, id);
+    }
     if (into != &from) into->activate(from.activationToken());
     return true;
   }

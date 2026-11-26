@@ -119,6 +119,8 @@ test('agent_host', executable('agent_host_test', 'tests/agent_host_test.cpp', 's
 endif
 test('split_trees', executable('split_trees_test', 'tests/split_trees_test.cpp',
   dependencies: [_core_dep, _desk_app_dep], cpp_args: _warnings))
+test('reopen_closed', executable('reopen_closed_test', 'tests/reopen_closed_test.cpp',
+  dependencies: [_core_dep, _desk_app_dep], cpp_args: _warnings))
 test('theme_palette', executable('theme_palette_test', 'tests/theme_palette_test.cpp',
   dependencies: _desk_app_dep, cpp_args: _warnings))
 test('theme_store', executable('theme_store_test', 'tests/theme_store_test.cpp',
