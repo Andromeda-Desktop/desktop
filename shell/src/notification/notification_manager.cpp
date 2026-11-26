@@ -1068,6 +1068,18 @@ void NotificationManager::endFocus() {
   }
 }
 
+void NotificationManager::onSystemResumed() {
+  const auto& active = m_focus.active();
+  if (!active.has_value() || !active->untilEpochSec.has_value()) {
+    return;
+  }
+  if (m_focus.current(std::time(nullptr)) == nullptr) {
+    endFocus();
+  } else {
+    focusChanged();
+  }
+}
+
 void NotificationManager::restoreFocus(focus::Active active) {
   m_focus.restore(std::move(active));
   (void)m_focus.expire(std::time(nullptr));

@@ -1464,6 +1464,7 @@ void Application::onSessionSleep(bool sleeping) {
   }
   m_weatherService.requestRefresh();
   m_gammaService.reevaluateSchedule();
+  m_notificationManager.onSystemResumed();
   // Auto theme mode schedules with steady_clock timers, which do not advance while
   // suspended. Re-resolve so a day/night boundary crossed during sleep is applied.
   m_themeService.onAutoSchemeChanged();
@@ -2082,6 +2083,12 @@ void Application::applyFocusFilters() {
 void Application::applyRuleDoNotDisturb() {
   const bool hold = m_systemHealthService != nullptr
       && m_systemHealthService->knob("notifications.dnd").value_or(0.0) > 0.0;
+  // Only a hold that starts turns DND on: the knob callback runs for every knob, and a user who turned DND off
+  // during the hold keeps it off until the next one.
+  if (hold == m_ruleDndHeld) {
+    return;
+  }
+  m_ruleDndHeld = hold;
   const auto& active = m_notificationManager.focus().active();
   if (hold && !m_notificationManager.doNotDisturb()) {
     m_notificationManager.setDoNotDisturb(true, "rule");

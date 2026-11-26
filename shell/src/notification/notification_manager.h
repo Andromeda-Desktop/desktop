@@ -206,6 +206,8 @@ public:
   [[nodiscard]] std::vector<std::pair<std::string, int>> heldByApp() const;
   // Runs when a Focus ends with held notifications: the ended Focus and heldByApp() at that moment.
   using FocusEndedCallback = std::function<void(const focus::Focus&, const std::vector<std::pair<std::string, int>>&)>;
+  // The end timer runs on steady_clock, which stops in suspend: end a timed Focus that passed its end, or re-arm.
+  void onSystemResumed();
   void setFocusEndedCallback(FocusEndedCallback callback) { m_focusEndedCallback = std::move(callback); }
   void setFocusChangedCallback(std::function<void()> callback) { m_focus.setChangedCallback(std::move(callback)); }
   void setScreenShared(bool shared) noexcept { m_screenShared = shared; }

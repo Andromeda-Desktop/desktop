@@ -591,6 +591,8 @@ private:
   focus::TriggerState m_focusTriggerState;
   Timer m_focusTriggerTimer;
   FocusFilterConfig m_appliedFocusFilter;
+  // The notifications.dnd rule hold last applied; DND follows only its edges.
+  bool m_ruleDndHeld = false;
   Timer m_speakerOfferTimer;
   Timer m_panelPrewarmTimer;
   Timer m_handoffTimer;
