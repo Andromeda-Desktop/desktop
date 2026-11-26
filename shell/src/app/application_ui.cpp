@@ -1145,10 +1145,10 @@ void Application::initNotificationAndOsd() {
   if (screenSaver() != nullptr) {
     screenSaver()->setChangeCallback([this](std::int64_t locks) {
       m_idleManager.setScreenSaverInhibitLocks(locks);
-      m_pluginIdleWatches.setScreenSaverInhibited(locks > 0);
+      m_pluginIdleWatches.setScreenSaverInhibited(locks > 0 || m_idleInhibitor.enabled());
     });
     m_idleManager.setScreenSaverInhibitLocks(screenSaver()->inhibitLocks());
-    m_pluginIdleWatches.setScreenSaverInhibited(screenSaver()->inhibitLocks() > 0);
+    m_pluginIdleWatches.setScreenSaverInhibited(screenSaver()->inhibitLocks() > 0 || m_idleInhibitor.enabled());
   } else if (!m_screenSaverModule->startError().empty()) {
     kLog.warn("idle inhibit service disabled: {}", m_screenSaverModule->startError());
   }

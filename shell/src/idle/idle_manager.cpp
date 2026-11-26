@@ -74,7 +74,17 @@ void IdleManager::notifyLiveIdleChanged() {
 }
 
 void IdleManager::setScreenSaverInhibitLocks(std::int64_t locks) {
-  const std::int64_t next = std::max<std::int64_t>(0, locks);
+  m_appInhibitLocks = std::max<std::int64_t>(0, locks);
+  applyInhibitLocks();
+}
+
+void IdleManager::setCaffeine(bool on) {
+  m_caffeine = on;
+  applyInhibitLocks();
+}
+
+void IdleManager::applyInhibitLocks() {
+  const std::int64_t next = m_appInhibitLocks + (m_caffeine ? 1 : 0);
   if (inhibitLocks() == next) {
     return;
   }
@@ -214,7 +224,7 @@ void IdleManager::reload(const IdleConfig& config) {
 }
 
 std::int64_t IdleManager::liveIdleSeconds() const noexcept {
-  if (!m_heartbeatCompositorIdle || screenSaverInhibited()) {
+  if (!m_heartbeatCompositorIdle || appInhibited()) {
     return 0;
   }
   const auto elapsed = std::chrono::steady_clock::now() - m_heartbeatIdleSince;
@@ -550,7 +560,7 @@ void IdleManager::handleHeartbeatIdled(void* data, ext_idle_notification_v1* /*n
   self->m_heartbeatCompositorIdle = true;
   // The compositor reports idle only once the heartbeat timeout has already elapsed.
   self->m_heartbeatIdleSince = std::chrono::steady_clock::now() - std::chrono::milliseconds(kHeartbeatTimeoutMs);
-  if (!self->screenSaverInhibited()) {
+  if (!self->appInhibited()) {
     self->notifyLiveIdleChanged();
   }
 }

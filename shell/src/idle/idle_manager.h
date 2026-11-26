@@ -44,11 +44,13 @@ public:
   /// D-Bus screensaver inhibits (e.g. Chrome video playback). Suppresses idle actions while > 0; a
   /// release restarts waiting countdowns once it outlasts a short debounce that absorbs inhibit renewals.
   void setScreenSaverInhibitLocks(std::int64_t locks);
+  /// Caffeine suppresses idle actions like an app inhibit, but leaves liveIdleSeconds counting.
+  void setCaffeine(bool on);
   /// Apply locked timeouts without resuming completed actions or resetting unchanged timers.
   void setSessionLocked(bool locked);
   /// Behaviors with `power = battery` or `ac` run only on that source.
   void setOnBattery(bool onBattery);
-  /// Seconds the compositor has reported session-idle (1s heartbeat notification); 0 when active or inhibited.
+  /// Seconds the compositor has reported session-idle (1s heartbeat notification); 0 when active or an app inhibits.
   /// Derived from elapsed monotonic time, so it stays accurate however rarely it is read.
   [[nodiscard]] std::int64_t liveIdleSeconds() const noexcept;
   static void handleIdled(void* data, ext_idle_notification_v1* notification);
@@ -75,6 +77,9 @@ private:
   [[nodiscard]] std::uint32_t effectiveTimeoutMilliseconds(const IdleBehaviorConfig& config) const;
   /// True while media holds an inhibit, including the debounce that absorbs inhibit renewals.
   [[nodiscard]] bool screenSaverInhibited() const noexcept { return !std::holds_alternative<InhibitReleased>(m_inhibit); }
+  // An app inhibit; Caffeine alone is not one. A pending release still counts, to absorb renewals.
+  [[nodiscard]] bool appInhibited() const noexcept { return screenSaverInhibited() && !(m_caffeine && m_appInhibitLocks == 0); }
+  void applyInhibitLocks();
   void applyScreenSaverInhibitRelease();
   void clearBehaviors();
   void syncHeartbeat();
@@ -136,6 +141,8 @@ private:
   bool m_heartbeatCompositorIdle = false;
   std::chrono::steady_clock::time_point m_heartbeatIdleSince;
   Inhibit m_inhibit;
+  std::int64_t m_appInhibitLocks = 0;
+  bool m_caffeine = false;
   bool m_sessionLocked = false;
   bool m_onBattery = false;
 };

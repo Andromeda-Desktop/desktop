@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <map>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -188,10 +189,12 @@ void ScreenSaverService::registerLogindIdleMonitor(SystemBus* systemBus) {
 void ScreenSaverService::readLogindBlockInhibited() {
   const std::weak_ptr<int> aliveToken = m_aliveToken;
   const std::uint64_t read = ++m_blockInhibitedReads;
-  m_logindProxy->callMethodAsync("ManagerProperties")
+  m_logindProxy->callMethodAsync("ListInhibitors")
       .onInterface(kLoginInterface)
       .uponReplyInvoke([this, aliveToken, read](
-                           std::optional<sdbus::Error> e, const std::map<std::string, sdbus::Variant>& props
+                           std::optional<sdbus::Error> e,
+                           const std::vector<sdbus::Struct<std::string, std::string, std::string, std::string,
+                                                           std::uint32_t, std::uint32_t>>& inhibitors
                        ) {
         // Only the newest read applies, so a late reply cannot undo a newer state.
         if (aliveToken.expired() || read != m_blockInhibitedReads) {
@@ -201,15 +204,16 @@ void ScreenSaverService::readLogindBlockInhibited() {
           kLog.warn("logind idle inhibit read failed: {}", e->what());
           return;
         }
-        if (const auto it = props.find("BlockInhibited"); it != props.end()) {
-          applyLogindBlockInhibited(it->second.get<std::string>());
-        }
+        // This process's own inhibitor (Caffeine) is not an app inhibit; IdleManager gets it directly.
+        const auto self = static_cast<std::uint32_t>(::getpid());
+        applyLogindBlockInhibited(std::ranges::any_of(inhibitors, [self](const auto& inhibitor) {
+          const auto& [what, who, why, mode, uid, pid] = inhibitor;
+          return pid != self && mode == "block" && (":" + what + ":").contains(":idle:");
+        }));
       });
 }
 
-void ScreenSaverService::applyLogindBlockInhibited(const std::string& inhibits) {
-  const std::string tagged = ":" + inhibits + ":";
-  const bool idleBlocked = tagged.contains(":idle:");
+void ScreenSaverService::applyLogindBlockInhibited(bool idleBlocked) {
   if (idleBlocked && !m_logindIdleInhibited) {
     m_logindIdleInhibited = true;
     onInhibitDelta(1);

@@ -45,7 +45,7 @@ private:
   void registerScreenSaver();
   void registerLogindIdleMonitor(SystemBus* systemBus);
   void readLogindBlockInhibited();
-  void applyLogindBlockInhibited(const std::string& inhibits);
+  void applyLogindBlockInhibited(bool idleBlocked);
   std::uint32_t onInhibit(std::string app, std::string reason, const char* sender);
   void onUninhibit(std::uint32_t cookie, const char* sender);
   void onInhibitDelta(std::int64_t delta);

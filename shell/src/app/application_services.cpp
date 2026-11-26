@@ -1257,6 +1257,10 @@ void Application::initWaylandCallbacks() {
   }
   m_idleInhibitor.initialize(m_wayland);
   m_idleInhibitor.setChangeCallback([this, shouldRefreshControlCenter] {
+    m_idleManager.setCaffeine(m_idleInhibitor.enabled());
+    m_pluginIdleWatches.setScreenSaverInhibited(
+        m_idleInhibitor.enabled() || (screenSaver() != nullptr && screenSaver()->inhibitLocks() > 0)
+    );
     if (m_configService.config().osd.kinds.caffeine) {
       m_osdOverlay.show(caffeineOsdContent(m_idleInhibitor.enabled()));
     }
