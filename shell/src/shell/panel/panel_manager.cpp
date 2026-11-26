@@ -377,8 +377,9 @@ namespace {
   }
 
   [[nodiscard]] bool openNearClickEnabledForPanel(const ConfigService* configService, std::string_view panelId) {
-    // Both hang under their status-island button (user, 2026-11-19: the NC opens where the bell is).
-    if (panelId == "tray-drawer" || panelId == "notification-center") {
+    // They hang under (or, at a bottom bar, above) their bar button (user, 2026-11-19: the NC opens where the bell
+    // is; 2026-11-26: the calendar opens at the clock).
+    if (panelId == "tray-drawer" || panelId == "notification-center" || panelId == "calendar") {
       return true;
     }
     if (configService == nullptr) {

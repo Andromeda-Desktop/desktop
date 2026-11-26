@@ -27,7 +27,7 @@ public:
   [[nodiscard]] float measureContentHeight(Renderer& renderer, float contentWidth) override {
     return m_page.measureHeight(renderer, contentWidth);
   }
-  [[nodiscard]] std::string panelScreenPosition() const override { return "top_center"; }
+  [[nodiscard]] std::string panelScreenPosition() const override { return "auto"; }
 
 protected:
   void doLayout(Renderer& renderer, float width, float height) override { m_page.layout(renderer, width, height); }
