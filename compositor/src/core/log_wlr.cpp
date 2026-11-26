@@ -1,7 +1,9 @@
 #include "core/log_wlr.h"
 
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/crash_capture.h"
+#include "protocols/tmpfs.h"
 
 #include <algorithm>
 #include <array>
@@ -21,6 +23,17 @@ namespace log_platform {
   }
 
 } // namespace log_platform
+
+namespace andromeda::file_writer_platform {
+
+  void writerThreadStarted() {
+    pthread_setname_np(pthread_self(), "andro-filewrite");
+    crash::installThreadStack();
+  }
+
+  bool inMemory(const std::filesystem::path& path) { return onTmpfs(path); }
+
+} // namespace andromeda::file_writer_platform
 
 void wlrLogHandler(enum wlr_log_importance importance, const char* fmt, va_list args) {
   // wlroots only applies the wlr_log_init verbosity in its default stderr logger; a custom callback receives every

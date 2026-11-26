@@ -66,4 +66,12 @@ namespace andromeda {
   // must see its own write reads this before the disk.
   [[nodiscard]] std::optional<std::string> pendingFileText(const std::filesystem::path& path);
 
+  // Defined by each binary's platform layer (libdesk-ui core/sys, the compositor's core/log_wlr.cpp).
+  namespace file_writer_platform {
+    // Runs first on the writer thread: name it, give it the crash handler's stack.
+    void writerThreadStarted();
+    // The nearest existing directory of `path` is in memory (tmpfs): its writes never wait on a disk.
+    [[nodiscard]] bool inMemory(const std::filesystem::path& path);
+  } // namespace file_writer_platform
+
 } // namespace andromeda

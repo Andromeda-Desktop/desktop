@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
@@ -37,6 +38,8 @@ namespace sys {
 
   // The crash reporter: Linux writes its own report (protocols/crash_capture.h); macOS leaves it to ReportCrash.
   void installCrashThreadStack();
+  // The nearest existing directory of `path` is on a memory file system (tmpfs).
+  [[nodiscard]] bool inMemoryFilesystem(const std::filesystem::path& path);
   void recordCrashBreadcrumb(char level, const char* section, std::string_view message) noexcept;
 
   struct ZoneInfo {

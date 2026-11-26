@@ -75,6 +75,9 @@ namespace sys {
 
   void installCrashThreadStack() {}
 
+  // macOS has no tmpfs by default; a RAM disk is rare enough to count as a disk.
+  bool inMemoryFilesystem(const std::filesystem::path&) { return false; }
+
   void recordCrashBreadcrumb(char /*level*/, const char* /*section*/, std::string_view /*message*/) noexcept {}
 
   // Apple's libc++ has no time-zone database; GLib reads the system one.

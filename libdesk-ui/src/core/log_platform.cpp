@@ -1,4 +1,5 @@
 #include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "core/sys/sys.h"
 
 namespace log_platform {
@@ -14,3 +15,14 @@ namespace log_platform {
   }
 
 } // namespace log_platform
+
+namespace andromeda::file_writer_platform {
+
+  void writerThreadStarted() {
+    sys::installCrashThreadStack();
+    sys::setCurrentThreadName("andro-filewrite");
+  }
+
+  bool inMemory(const std::filesystem::path& path) { return sys::inMemoryFilesystem(path); }
+
+} // namespace andromeda::file_writer_platform

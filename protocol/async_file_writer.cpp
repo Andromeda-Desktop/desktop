@@ -1,5 +1,4 @@
 #include "async_file_writer.h"
-#include "crash_capture.h"
 #include "log.h"
 
 #include <algorithm>
@@ -12,11 +11,8 @@
 #include <format>
 #include <random>
 #include <sys/file.h>
-#include <linux/magic.h>
 #include <sys/stat.h>
-#include <sys/statfs.h>
 #include <mutex>
-#include <pthread.h>
 #include <set>
 #include <stop_token>
 #include <thread>
@@ -160,8 +156,7 @@ namespace andromeda {
 
     private:
       void run(const std::stop_token& stop) {
-        pthread_setname_np(pthread_self(), "andro-filewrite");
-        andromeda::crash::installThreadStack();
+        file_writer_platform::writerThreadStarted();
         std::unique_lock lock(m_mutex);
         while (true) {
           m_wake.wait(lock, stop, [this] { return !m_queue.empty(); });
@@ -267,14 +262,7 @@ namespace andromeda {
     if (!t_loopRunning) {
       return;
     }
-    // tmpfs ($XDG_RUNTIME_DIR, /dev/shm) is memory: its writes never wait on a disk.
-    // The nearest existing directory: the owner may create the rest.
-    std::filesystem::path dir = path.parent_path();
-    struct statfs fs{};
-    while (::statfs(dir.c_str(), &fs) != 0 && dir.has_relative_path()) {
-      dir = dir.parent_path();
-    }
-    if (fs.f_type == TMPFS_MAGIC) {
+    if (file_writer_platform::inMemory(path)) {
       return;
     }
     const std::string& text = path.native();

@@ -1,6 +1,7 @@
 #include "core/sys/sys.h"
 
 #include "protocols/crash_capture.h"
+#include "protocols/tmpfs.h"
 #include "protocols/heap.h"
 #include "protocols/xdg_dirs.h"
 
@@ -100,6 +101,8 @@ namespace sys {
   }
 
   void installCrashThreadStack() { andromeda::crash::installThreadStack(); }
+
+  bool inMemoryFilesystem(const std::filesystem::path& path) { return andromeda::onTmpfs(path); }
 
   void recordCrashBreadcrumb(char level, const char* section, std::string_view message) noexcept {
     andromeda::crash::record(level, section, message);
