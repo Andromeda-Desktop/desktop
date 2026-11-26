@@ -5,6 +5,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "preview_service.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 #include "render/core/texture_manager.h"
 #include "i18n/i18n.h"
@@ -790,9 +791,7 @@ namespace preview {
       return;
     }
     const std::string cacheHome = xdg::cacheHome();
-    const std::filesystem::path dir =
-        std::filesystem::path(cacheHome.empty() ? "/tmp/.cache" : cacheHome) / "andromeda" / "peaks";
-    const auto file = dir / std::format("{:016x}", std::hash<std::string>{}(key));
+    const auto file = std::filesystem::path(cacheHome.empty() ? "/tmp/.cache" : cacheHome) / "andromeda" / "peaks" / std::format("{:016x}", std::hash<std::string>{}(key));
     if (std::FILE* in = std::fopen(file.c_str(), "rb"); in != nullptr) {
       std::vector<std::uint8_t> bytes(kPeakCount);
       const bool whole = std::fread(bytes.data(), 1, bytes.size(), in) == bytes.size();
@@ -810,7 +809,7 @@ namespace preview {
     m_loop.addSource(m_peaksHelper.get());
     m_peaksHelper->request(
         {.op = op::Peaks, .a = static_cast<std::uint32_t>(kPeakCount)},
-        [this, generation = m_generation, key, dir, file](const HelperReply& reply) {
+        [this, generation = m_generation, key, file](const HelperReply& reply) {
           if (generation != m_generation) {
             return;
           }
@@ -828,12 +827,7 @@ namespace preview {
           const auto bytes = reply.data->bytes();
           m_peaks.assign(bytes.begin(), bytes.begin() + kPeakCount);
           memory[key] = m_peaks;
-          std::error_code ec;
-          std::filesystem::create_directories(dir, ec);
-          if (std::FILE* out = std::fopen(file.c_str(), "wb"); out != nullptr) {
-            std::fwrite(m_peaks.data(), 1, m_peaks.size(), out);
-            std::fclose(out);
-          }
+          andromeda::writeFileAsync(file, std::string(m_peaks.begin(), m_peaks.end()));
           kLog.info("waveform {} bars", m_peaks.size());
           invalidate();
         }
