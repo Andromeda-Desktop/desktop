@@ -306,9 +306,12 @@ void main() {
     base = mix(base, texture2D(source_tex, uv), source_mix);
   }
   // The bezel bends what the glass shows: the blurred backdrop, or the sharp one for glass with no blur.
+#if SOURCE != SOURCE_TEXTURE_EXTERNAL
+  // lens_sample takes a sampler2D; the lens bends only glass backdrops, which are never external textures.
   if (lens_weight > 0.0) {
     base = mix(base, lens_sample(tex, lens_uv, lens_bend), lens_weight);
   }
+#endif
   vec4 color = convert_color(base);
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
   // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
