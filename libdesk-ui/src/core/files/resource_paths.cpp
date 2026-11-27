@@ -107,9 +107,12 @@ namespace paths {
     const std::filesystem::path datadir(NOCTALIA_INSTALL_DATADIR);
     const std::filesystem::path installed =
         (datadir.is_absolute() ? datadir : std::filesystem::path(NOCTALIA_INSTALL_PREFIX) / datadir) / "andromeda" / relative;
+    // An app built on the static libdesk (Link's window) keeps its catalogs beside the executable, as it keeps assets.
     if (const std::filesystem::path exe = sys::executablePath(); !exe.empty() && !std::filesystem::exists(installed, ec)) {
-      if (const auto bundled = exe.parent_path().parent_path() / "Resources" / relative; std::filesystem::exists(bundled, ec)) {
-        return i18n::catalogDir(sourceDir, bundled);
+      for (const auto& bundled : {exe.parent_path() / relative, exe.parent_path().parent_path() / "Resources" / relative}) {
+        if (std::filesystem::exists(bundled, ec)) {
+          return i18n::catalogDir(sourceDir, bundled);
+        }
       }
     }
     return i18n::catalogDir(sourceDir, installed);
