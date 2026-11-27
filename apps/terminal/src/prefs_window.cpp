@@ -1064,8 +1064,20 @@ namespace term {
     const float gap = Tokens::spaceP12 * s;
     const float tileW = std::floor((width - gap) / 2.0F);
     const float tileH = std::round(tileW * Tokens::componentTerminalWindowTileAspect);
-    const float inset = Tokens::spaceP12 * s;
+    const float inset = Tokens::spaceP8 * s;
     const WindowMaterial current = m_store.settings().material;
+    const Color& ground = colorForRole(ColorRole::SolidThin);
+    const auto wall = [&](ColorRole role) { return lerpColor(colorForRole(role), ground, 0.35F); };
+    const std::array<GradientStop, 4> wallpaper{GradientStop{0.0F, wall(ColorRole::TermBlue)},
+                                                GradientStop{0.45F, wall(ColorRole::TermMagenta)},
+                                                GradientStop{0.75F, wall(ColorRole::TermYellow)},
+                                                GradientStop{1.0F, wall(ColorRole::TermCyan)}};
+    const float tint = Style::glassMaterial(glass::Kind::Sheet).tint;
+    const float r = Style::scaledRadiusSm(s);
+    const float bar = std::max(2.0F, std::round(Tokens::spaceP4 * s * 0.75F));
+    const auto stroke = [&](float w, float alpha) {
+      return ui::column({.fill = colorSpecFromRole(ColorRole::Label3, alpha), .radius = bar / 2.0F, .width = w, .height = bar});
+    };
     auto grid = ui::column({.gap = gap, .width = width});
     std::unique_ptr<Flex> row;
     for (const WindowMaterial material : kMaterials) {
@@ -1076,26 +1088,36 @@ namespace term {
       const bool on = material == current;
       const float innerW = tileW - inset * 2.0F;
       const float sideW = std::round(innerW * Tokens::componentTerminalWindowTileSidebar);
-      const float r = Style::scaledRadiusSm(s);
+      const float pad = Tokens::spaceP4 * s;
       auto window = ui::row({.width = innerW, .height = tileH - inset * 2.0F});
-      const float tint = Style::glassMaterial(glass::Kind::Sheet).tint;
-      auto side = ui::column({.fill = colorSpecFromRole(ColorRole::SolidThin, glassSidebar(material) ? tint : 1.0F),
+      auto side = ui::column({.align = FlexAlign::Start,
+                              .gap = pad,
+                              .padding = pad,
+                              .fill = colorSpecFromRole(ColorRole::SolidThin, glassSidebar(material) ? tint : 1.0F),
                               .fillHeight = true,
                               .width = sideW});
       side->setRadii(Radii{r, 0.0F, 0.0F, r});
-      auto main = ui::column({.fill = colorSpecFromRole(ColorRole::SolidRegular, glassContent(material) ? tint : 1.0F),
+      side->addChild(stroke(sideW - pad * 2.0F, 1.0F));
+      side->addChild(stroke((sideW - pad * 2.0F) * 0.6F, 0.6F));
+      auto main = ui::column({.align = FlexAlign::Start,
+                              .gap = pad,
+                              .padding = pad,
+                              .fill = colorSpecFromRole(ColorRole::SolidRegular, glassContent(material) ? tint : 1.0F),
                               .fillHeight = true,
                               .flexGrow = 1.0F});
       main->setRadii(Radii{0.0F, r, r, 0.0F});
+      const float mainW = innerW - sideW - pad * 2.0F;
+      main->addChild(stroke(mainW * 0.7F, 1.0F));
+      main->addChild(stroke(mainW * 0.45F, 0.6F));
       window->addChild(std::move(side));
       window->addChild(std::move(main));
       auto swatch = ui::column({.align = FlexAlign::Start,
                                 .padding = inset,
-                                .fill = colorSpecFromRole(ColorRole::Accent),
                                 .radius = Style::scaledRadiusSm(s),
                                 .width = tileW,
                                 .height = tileH},
                                std::move(window));
+      swatch->setFillGradient(GradientDirection::Horizontal, wallpaper);
       row->addChild(tile(std::move(swatch), name, on, s, tileW, tileH, true,
                          [this, material](const InputArea::PointerData&) {
                            change([material](Settings& x) { x.material = material; });
