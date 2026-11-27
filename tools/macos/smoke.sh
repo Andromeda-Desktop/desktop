@@ -50,4 +50,11 @@ wait_for 10 has_output "$(first_session)" || fail "the restarted app lost the se
 screencapture -x "$out/restarted.png" || true
 kill "$pid"
 wait "$pid" || true
+
+# A Finder double-click goes through LaunchServices: no tty, cwd /, launchd's environment.
+wait_for 10 sh -c '! "$1" ctl ls' _ "$exe" || fail "the app did not quit"
+open --stdout "$out/terminal-3.log" --stderr "$out/terminal-3.log" "$app"
+wait_for 30 first_session || fail "no session after a LaunchServices start"
+screencapture -x "$out/launchservices.png" || true
+osascript -e 'tell application "Andromeda Terminal" to quit' || pkill -x andromeda-terminal || true
 echo "smoke: ok"
