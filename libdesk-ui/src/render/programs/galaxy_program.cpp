@@ -307,19 +307,20 @@ GalaxyProgram::Layers* GalaxyProgram::layersFor(const void* key, int width, int 
   return &*it;
 }
 
-void GalaxyProgram::drawPoints(GLuint buffer, GLsizei n, float alpha) {
+void GalaxyProgram::drawPoints(GLuint buffer, GLsizei n, float alpha, int step) {
   glBindBuffer(GL_ARRAY_BUFFER, buffer);
+  const GLsizei stride = kStrideBytes * step;
   const auto p = static_cast<GLuint>(m_pu.p);
   const auto c = static_cast<GLuint>(m_pu.c);
   const auto s = static_cast<GLuint>(m_pu.s);
-  glVertexAttribPointer(p, 3, GL_FLOAT, GL_FALSE, kStrideBytes, nullptr);
-  glVertexAttribPointer(c, 4, GL_FLOAT, GL_FALSE, kStrideBytes, reinterpret_cast<const void*>(3 * sizeof(float)));
-  glVertexAttribPointer(s, 1, GL_FLOAT, GL_FALSE, kStrideBytes, reinterpret_cast<const void*>(7 * sizeof(float)));
+  glVertexAttribPointer(p, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
+  glVertexAttribPointer(c, 4, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const void*>(3 * sizeof(float)));
+  glVertexAttribPointer(s, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const void*>(7 * sizeof(float)));
   glEnableVertexAttribArray(p);
   glEnableVertexAttribArray(c);
   glEnableVertexAttribArray(s);
-  glUniform1f(m_pu.alpha, alpha);
-  glDrawArrays(GL_POINTS, 0, n);
+  glUniform1f(m_pu.alpha, alpha * static_cast<float>(step));
+  glDrawArrays(GL_POINTS, 0, n / step);
   glDisableVertexAttribArray(p);
   glDisableVertexAttribArray(c);
   glDisableVertexAttribArray(s);
@@ -345,6 +346,10 @@ void GalaxyProgram::renderLayers(Layers& layers, const GalaxyDraw& d) {
   const float k = h / std::tan(kFov / 2.0F) / 2.0F;
   const float dpr = std::min(d.scale, 2.0F);
 
+  // While the camera moves, every second point at twice the alpha: the same light on average, half the fill.
+  const int step = d.moving ? 2 : 1;
+  const GLsizei stride = kStrideBytes * step;
+
   // Layer 0: the far sky and the field stars, additive.
   glBindFramebuffer(GL_FRAMEBUFFER, layers.fbo[0]);
   glViewport(0, 0, layers.width, layers.height);
@@ -360,8 +365,8 @@ void GalaxyProgram::renderLayers(Layers& layers, const GalaxyDraw& d) {
   glBindBuffer(GL_ARRAY_BUFFER, m_buffers.field);
   const auto fp = static_cast<GLuint>(m_fu.p);
   const auto fc = static_cast<GLuint>(m_fu.c);
-  glVertexAttribPointer(fp, 3, GL_FLOAT, GL_FALSE, kStrideBytes, nullptr);
-  glVertexAttribPointer(fc, 4, GL_FLOAT, GL_FALSE, kStrideBytes, reinterpret_cast<const void*>(3 * sizeof(float)));
+  glVertexAttribPointer(fp, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
+  glVertexAttribPointer(fc, 4, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const void*>(3 * sizeof(float)));
   glEnableVertexAttribArray(fp);
   glEnableVertexAttribArray(fc);
   // Four octaves, 4x apart, cross-fade with zoom so the field looks the same at every distance.
@@ -370,8 +375,8 @@ void GalaxyProgram::renderLayers(Layers& layers, const GalaxyDraw& d) {
   for (int j = 0; j < 4; ++j) {
     const float x = static_cast<float>(j) + 1.0F - (octave - base);
     glUniform1f(m_fu.size, std::pow(4.0F, base + static_cast<float>(j)) * 1.5F);
-    glUniform1f(m_fu.alpha, std::pow(std::sin(std::numbers::pi_v<float> * x / 4.0F), 2.0F));
-    glDrawArrays(GL_POINTS, 0, m_buffers.fieldCount);
+    glUniform1f(m_fu.alpha, std::pow(std::sin(std::numbers::pi_v<float> * x / 4.0F), 2.0F) * static_cast<float>(step));
+    glDrawArrays(GL_POINTS, 0, m_buffers.fieldCount / step);
   }
   glDisableVertexAttribArray(fp);
   glDisableVertexAttribArray(fc);
@@ -381,16 +386,16 @@ void GalaxyProgram::renderLayers(Layers& layers, const GalaxyDraw& d) {
   glUniform1f(m_pu.k, k);
   glUniform1f(m_pu.dpr, dpr);
   glUniform1f(m_pu.gain, m_gain);
-  drawPoints(m_buffers.sky, m_buffers.skyCount, 1.0F);
+  drawPoints(m_buffers.sky, m_buffers.skyCount, 1.0F, step);
 
   // Layer 1: the galaxy's light (alpha kept 0), then its dust: dims the light and records coverage in alpha.
   glBindFramebuffer(GL_FRAMEBUFFER, layers.fbo[1]);
   glClear(GL_COLOR_BUFFER_BIT);
   glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
-  drawPoints(m_buffers.light, m_buffers.lightCount, d.dim);
+  drawPoints(m_buffers.light, m_buffers.lightCount, d.dim, step);
   glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
   glBlendFuncSeparate(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-  drawPoints(m_buffers.dust, m_buffers.dustCount, d.dim);
+  drawPoints(m_buffers.dust, m_buffers.dustCount, d.dim, step);
 
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFbo));
@@ -403,6 +408,7 @@ void GalaxyProgram::renderLayers(Layers& layers, const GalaxyDraw& d) {
   layers.pointsId = d.points->id;
   layers.camera = d.camera;
   layers.dim = d.dim;
+  layers.sparse = d.moving;
 }
 
 void GalaxyProgram::draw(const GalaxyDraw& d) {
@@ -417,7 +423,8 @@ void GalaxyProgram::draw(const GalaxyDraw& d) {
   if (layers == nullptr) {
     return;
   }
-  if (layers->pointsId != d.points->id || layers->camera != d.camera || layers->dim != d.dim) {
+  if (layers->pointsId != d.points->id || layers->camera != d.camera || layers->dim != d.dim
+      || layers->sparse != d.moving) {
     renderLayers(*layers, d);
   }
 

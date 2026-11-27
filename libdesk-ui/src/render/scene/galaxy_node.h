@@ -9,7 +9,7 @@
 #include <optional>
 
 // The phone's galaxy over the node rect (Link). The backend caches the rendered points: a change of points, camera,
-// dim or size re-renders them; life and the sky only re-composite.
+// dim, moving or size re-renders them; life and the sky only re-composite.
 class GalaxyNode final : public Node {
 public:
   GalaxyNode() : Node(NodeType::Galaxy) {}
@@ -24,12 +24,15 @@ public:
   void setDim(float dim) { assign(m_dim, dim); }
   void setLightSky(const std::optional<GalaxyLightSky>& sky) { assign(m_lightSky, sky); }
   void setLife(const GalaxyLife& life) { assign(m_life, life); }
+  // True while a drag, zoom or morph changes the camera each frame; false again redraws the points in full.
+  void setMoving(bool moving) { assign(m_moving, moving); }
 
   [[nodiscard]] const std::shared_ptr<const GalaxyPoints>& points() const noexcept { return m_points; }
   [[nodiscard]] const GalaxyCamera& camera() const noexcept { return m_camera; }
   [[nodiscard]] float dim() const noexcept { return m_dim; }
   [[nodiscard]] const std::optional<GalaxyLightSky>& lightSky() const noexcept { return m_lightSky; }
   [[nodiscard]] const GalaxyLife& life() const noexcept { return m_life; }
+  [[nodiscard]] bool moving() const noexcept { return m_moving; }
 
   // Where a galaxy point shows in node coordinates now (with the life turn); empty behind the eye.
   [[nodiscard]] std::optional<std::array<float, 2>> project(const std::array<float, 3>& point) const {
@@ -49,4 +52,5 @@ private:
   float m_dim = 1.0F;
   std::optional<GalaxyLightSky> m_lightSky;
   GalaxyLife m_life;
+  bool m_moving = false;
 };

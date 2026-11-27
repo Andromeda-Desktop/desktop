@@ -6,7 +6,9 @@
 #include "render/scene/node.h"
 #include "tests/test_check.h"
 
+#include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 
 #include <algorithm>
 #include <array>
@@ -63,7 +65,13 @@ int main() {
   target.resize(kWidth, kHeight);
 
   const auto built = std::chrono::steady_clock::now();
-  auto points = std::make_shared<const GalaxyPoints>(buildGalaxy(GalaxyShape{}));
+  GalaxyShape shape;
+  // GALAXY_STARS=<n> benches another star count; knots scale with it as in GalaxyModel.kt.
+  if (const char* stars = std::getenv("GALAXY_STARS")) {
+    shape.stars = std::max(std::atoi(stars), 1000);
+    shape.h2 = 700 * shape.stars / 90000;
+  }
+  auto points = std::make_shared<const GalaxyPoints>(buildGalaxy(shape));
   std::println("model: {:.1f} ms, {} light, {} dust points", ms(std::chrono::steady_clock::now() - built),
               points->light.size() / GalaxyPoints::kStride, points->dust.size() / GalaxyPoints::kStride);
 
@@ -93,6 +101,23 @@ int main() {
   TEST_CHECK(c[0] > c[2]);
   TEST_CHECK(luma(at(pixels, 4, kHeight - 4)) < 40);
 
+  // A moving camera draws half the points at twice the alpha: about the same light. The still after it is the full
+  // render again, not the cached half-density one.
+  const std::vector<std::uint8_t> still = pixels;
+  const auto meanLuma = [&] {
+    double sum = 0;
+    for (std::size_t i = 0; i < pixels.size(); i += 4) sum += luma(&pixels[i]);
+    return sum / static_cast<double>(pixels.size() / 4);
+  };
+  const double stillLuma = meanLuma();
+  galaxy->setMoving(true);
+  render("dark-moving");
+  TEST_CHECK(pixels != still);
+  TEST_CHECK(std::abs(meanLuma() - stillLuma) < stillLuma * 0.1);
+  galaxy->setMoving(false);
+  render("dark-still");
+  TEST_CHECK(pixels == still);
+
   // Life turns the cached galaxy about its core: the core stays, an arm point moves to where project() says.
   const std::array<float, 3> arm = {0.6F, 0.0F, 0.0F};
   const auto before = galaxy->project(arm);
@@ -110,26 +135,51 @@ int main() {
   TEST_CHECK(luma(at(pixels, 4, kHeight - 4)) > 200);
   TEST_CHECK(luma(at(pixels, (*core)[0], (*core)[1])) < luma(at(pixels, 4, kHeight - 4)));
 
-  // GALAXY_BENCH=<frames>: wall ms of render + glFinish (an upper bound on GPU time) for life (composite of the cached
-  // layers) and drag (a new camera each frame: the full point pass).
+  // GALAXY_BENCH=<frames>: wall ms (render + glFinish) and GPU ms (timestamps) for life (composite of the cached
+  // layers) and drag (a new moving camera each frame: the half-density point pass).
   if (const char* bench = std::getenv("GALAXY_BENCH")) {
     const int frames = std::max(std::atoi(bench), 1);
     galaxy->setLightSky(std::nullopt);
+    const auto counter = reinterpret_cast<PFNGLQUERYCOUNTEREXTPROC>(eglGetProcAddress("glQueryCounterEXT"));
+    const auto result =
+        reinterpret_cast<PFNGLGETQUERYOBJECTUI64VEXTPROC>(eglGetProcAddress("glGetQueryObjectui64vEXT"));
+    const auto gen = reinterpret_cast<PFNGLGENQUERIESEXTPROC>(eglGetProcAddress("glGenQueriesEXT"));
+    std::array<GLuint, 2> query{};
+    if (gen != nullptr) gen(2, query.data());
     const auto run = [&](const char* name, const auto& step) {
-      std::vector<double> times;
+      std::vector<double> wall;
+      std::vector<double> gpu;
       for (int i = 0; i < frames; ++i) {
         step(i);
         const auto start = std::chrono::steady_clock::now();
+        if (counter != nullptr) counter(query[0], GL_TIMESTAMP_EXT);
         TEST_CHECK(context.renderScene(target, &root));
+        if (counter != nullptr) counter(query[1], GL_TIMESTAMP_EXT);
         glFinish();
-        times.push_back(ms(std::chrono::steady_clock::now() - start));
+        wall.push_back(ms(std::chrono::steady_clock::now() - start));
+        if (counter != nullptr && result != nullptr) {
+          GLuint64 a = 0;
+          GLuint64 b = 0;
+          result(query[0], GL_QUERY_RESULT_EXT, &a);
+          result(query[1], GL_QUERY_RESULT_EXT, &b);
+          gpu.push_back(static_cast<double>(b - a) / 1e6);
+          if (std::getenv("GALAXY_BENCH_TRACE") != nullptr) std::println("trace {} {} {:.2f}", name, i, gpu.back());
+        }
       }
-      std::ranges::sort(times);
-      std::println("bench {}: p50 {:.2f} ms, p99 {:.2f} ms, max {:.2f} ms ({} frames)", name, times[times.size() / 2],
-                   times[times.size() * 99 / 100], times.back(), frames);
+      for (auto* times : {&wall, &gpu}) {
+        if (times->empty()) continue;
+        std::ranges::sort(*times);
+        std::println("bench {} {}: p50 {:.2f} ms, p99 {:.2f} ms, max {:.2f} ms ({} frames)", name,
+                     times == &wall ? "wall" : "gpu", (*times)[times->size() / 2], (*times)[times->size() * 99 / 100],
+                     times->back(), frames);
+      }
     };
-    run("life", [&](int i) { galaxy->setLife({.angle = 0.05F * i / 60.0F, .glow = 1.0F + 0.11F * (i % 240) / 240.0F}); });
+    run("life", [&](int i) {
+      galaxy->setLife({.angle = 0.05F * static_cast<float>(i) / 60.0F,
+                       .glow = 1.0F + 0.11F * static_cast<float>(i % 240) / 240.0F});
+    });
     GalaxyCamera camera;
+    galaxy->setMoving(true);
     run("drag", [&](int i) {
       camera.yaw = 0.55F + 0.01F * i;
       galaxy->setCamera(camera);

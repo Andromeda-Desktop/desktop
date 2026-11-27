@@ -48,6 +48,7 @@ private:
     std::uint64_t pointsId = 0;
     GalaxyCamera camera;
     float dim = -1.0F;
+    bool sparse = false;  // drawn at the moving camera's half density
     std::uint64_t lastUse = 0;
   };
 
@@ -56,7 +57,7 @@ private:
   Layers* layersFor(const void* key, int width, int height);
   bool createLayers(Layers& layers);
   void renderLayers(Layers& layers, const GalaxyDraw& draw);
-  void drawPoints(GLuint buffer, GLsizei count, float alpha);
+  void drawPoints(GLuint buffer, GLsizei count, float alpha, int step);
   void releaseLayers(Layers& layers);
   void releaseBuffers();
 
