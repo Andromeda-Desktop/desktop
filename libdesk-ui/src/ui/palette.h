@@ -235,6 +235,8 @@ void setPalette(const Palette& p);
 [[nodiscard]] std::string iconColorSchemeStylesheet(const Palette& colors);
 
 [[nodiscard]] Palette tokenPalette(bool light) noexcept;
+// Increase contrast: secondary text reads as primary text and strokes are opaque.
+void applyHighContrast(Palette& p) noexcept;
 
 // Snapshot accessor safe to call from non-main threads (e.g. plugin script workers).
 [[nodiscard]] Color colorForRoleSnapshot(ColorRole role);

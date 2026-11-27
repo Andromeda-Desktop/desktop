@@ -3,10 +3,13 @@
 #include "core/log.h"
 #include "dbus/session_bus.h"
 
+#include <chrono>
 #include <map>
 #include <sdbus-c++/sdbus-c++.h>
 #include <string>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -17,27 +20,55 @@ namespace {
   const sdbus::ObjectPath kObjectPath{"/org/freedesktop/portal/desktop"};
   constexpr auto kInterface = "org.freedesktop.impl.portal.Settings";
   constexpr auto kAppearance = "org.freedesktop.appearance";
-  constexpr auto kColorScheme = "color-scheme";
-  constexpr auto kAccentColor = "accent-color";
-  constexpr auto kContrast = "contrast";
-  constexpr auto kReducedMotion = "reduced-motion";
   constexpr auto kAndromeda = "org.andromeda.appearance";
-  constexpr auto kUiScale = "ui-scale";
-  constexpr auto kGlass = "glass";
-  constexpr auto kFrost = "frost";
-  constexpr auto kLiquid = "liquid";
-  constexpr auto kReduceTransparency = "reduce-transparency";
-  constexpr auto kCompositorBlur = "compositor-blur";
-  constexpr auto kGlassStyle = "glass-style";
-  constexpr auto kEdgeReflection = "edge-reflection";
-  constexpr auto kLiquidTint = "liquid-tint";
-  constexpr auto kLiquidBlur = "liquid-blur";
-  constexpr auto kTextScale = "text-scale";
-  constexpr auto kCornerRadiusScale = "corner-radius-scale";
-  constexpr auto kLanguage = "language";
   constexpr auto kWmPreferences = "org.gnome.desktop.wm.preferences";
-  constexpr auto kButtonLayout = "button-layout";
+  constexpr auto kTheme = "theme";
   constexpr std::uint32_t kVersion = 2;
+
+  using Values = SettingsPortal::Values;
+  using Value = std::variant<std::uint32_t, double, std::string, std::array<double, 3>>;
+
+  struct Setting {
+    const char* ns;
+    const char* key;
+    Value (*get)(const Values&);
+  };
+
+  constexpr Setting kSettings[] = {
+      {kAppearance, "color-scheme", [](const Values& v) -> Value { return v.colorScheme; }},
+      {kAppearance, "accent-color", [](const Values& v) -> Value { return v.accent; }},
+      {kAppearance, "contrast", [](const Values& v) -> Value { return v.contrast; }},
+      {kAppearance, "reduced-motion", [](const Values& v) -> Value { return v.reducedMotion; }},
+      {kAndromeda, "ui-scale", [](const Values& v) -> Value { return v.uiScale; }},
+      {kAndromeda, "text-scale", [](const Values& v) -> Value { return v.textScale; }},
+      {kAndromeda, "corner-radius-scale", [](const Values& v) -> Value { return v.cornerRadiusScale; }},
+      {kAndromeda, "glass", [](const Values& v) -> Value { return v.glass; }},
+      {kAndromeda, "frost", [](const Values& v) -> Value { return v.frost; }},
+      {kAndromeda, "liquid", [](const Values& v) -> Value { return v.liquid; }},
+      {kAndromeda, "reduce-transparency", [](const Values& v) -> Value { return v.reduceTransparency; }},
+      {kAndromeda, "compositor-blur", [](const Values& v) -> Value { return v.compositorBlur; }},
+      {kAndromeda, "glass-style", [](const Values& v) -> Value { return v.glassStyle; }},
+      {kAndromeda, "edge-reflection", [](const Values& v) -> Value { return v.edgeReflection; }},
+      {kAndromeda, "liquid-tint", [](const Values& v) -> Value { return v.liquidTint; }},
+      {kAndromeda, "liquid-blur", [](const Values& v) -> Value { return v.liquidBlur; }},
+      {kAndromeda, "language", [](const Values& v) -> Value { return v.language; }},
+      {kWmPreferences, "button-layout", [](const Values& v) -> Value { return v.buttonLayout; }},
+  };
+
+  static_assert(std::size(kSettings) <= 32, "SettingsPortal keeps one bit per key in a std::uint32_t");
+
+  sdbus::Variant toVariant(const Value& value) {
+    return std::visit(
+        [](const auto& v) {
+          if constexpr (std::is_same_v<std::decay_t<decltype(v)>, std::array<double, 3>>) {
+            return sdbus::Variant{sdbus::Struct<double, double, double>{v[0], v[1], v[2]}};
+          } else {
+            return sdbus::Variant{v};
+          }
+        },
+        value
+    );
+  }
 
   // A namespace pattern matches exactly, or as a prefix when it ends in '*'; no patterns means every namespace.
   bool wanted(const std::vector<std::string>& patterns, const std::string& ns) {
@@ -54,7 +85,11 @@ namespace {
 
 } // namespace
 
-SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
+SettingsPortal::SettingsPortal(SessionBus& bus)
+    : m_bus(bus),
+      m_instance(static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()
+      )) {
   m_object = sdbus::createObject(m_bus.connection(), kObjectPath);
   m_object
       ->addVTable(
@@ -63,29 +98,13 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
               .withOutputParamNames("value")
               .implementedAs([this](const std::vector<std::string>& namespaces) {
                 std::map<std::string, std::map<std::string, sdbus::Variant>> all;
-                if (wanted(namespaces, kAppearance)) {
-                  all[kAppearance][kColorScheme] = sdbus::Variant{m_colorScheme};
-                  all[kAppearance][kAccentColor] = accentVariant();
-                  all[kAppearance][kContrast] = sdbus::Variant{m_contrast};
-                  all[kAppearance][kReducedMotion] = sdbus::Variant{m_reducedMotion};
+                for (const Setting& s : kSettings) {
+                  if (wanted(namespaces, s.ns)) {
+                    all[s.ns][s.key] = toVariant(s.get(m_published));
+                  }
                 }
                 if (wanted(namespaces, kAndromeda)) {
-                  all[kAndromeda][kUiScale] = sdbus::Variant{m_uiScale};
-                  all[kAndromeda][kTextScale] = sdbus::Variant{m_textScale};
-                  all[kAndromeda][kCornerRadiusScale] = sdbus::Variant{m_cornerRadiusScale};
-                  all[kAndromeda][kGlass] = sdbus::Variant{m_glass};
-                  all[kAndromeda][kFrost] = sdbus::Variant{m_frost};
-                  all[kAndromeda][kLiquid] = sdbus::Variant{m_liquid};
-                  all[kAndromeda][kReduceTransparency] = sdbus::Variant{m_reduceTransparency};
-                  all[kAndromeda][kCompositorBlur] = sdbus::Variant{m_compositorBlur};
-                  all[kAndromeda][kGlassStyle] = sdbus::Variant{m_glassStyle};
-                  all[kAndromeda][kEdgeReflection] = sdbus::Variant{m_edgeReflection};
-                  all[kAndromeda][kLiquidTint] = sdbus::Variant{m_liquidTint};
-                  all[kAndromeda][kLiquidBlur] = sdbus::Variant{m_liquidBlur};
-                  all[kAndromeda][kLanguage] = sdbus::Variant{m_language};
-                }
-                if (wanted(namespaces, kWmPreferences)) {
-                  all[kWmPreferences][kButtonLayout] = sdbus::Variant{m_buttonLayout};
+                  all[kAndromeda][kTheme] = themeVariant();
                 }
                 return all;
               }),
@@ -93,59 +112,13 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
               .withInputParamNames("namespace", "key")
               .withOutputParamNames("value")
               .implementedAs([this](const std::string& ns, const std::string& key) {
-                if (ns == kAppearance && key == kColorScheme) {
-                  return sdbus::Variant{m_colorScheme};
+                if (ns == kAndromeda && key == kTheme) {
+                  return themeVariant();
                 }
-                if (ns == kAppearance && key == kAccentColor) {
-                  return accentVariant();
-                }
-                if (ns == kAppearance && key == kContrast) {
-                  return sdbus::Variant{m_contrast};
-                }
-                if (ns == kAppearance && key == kReducedMotion) {
-                  return sdbus::Variant{m_reducedMotion};
-                }
-                if (ns == kAndromeda && key == kUiScale) {
-                  return sdbus::Variant{m_uiScale};
-                }
-                if (ns == kAndromeda && key == kTextScale) {
-                  return sdbus::Variant{m_textScale};
-                }
-                if (ns == kAndromeda && key == kCornerRadiusScale) {
-                  return sdbus::Variant{m_cornerRadiusScale};
-                }
-                if (ns == kAndromeda && key == kGlass) {
-                  return sdbus::Variant{m_glass};
-                }
-                if (ns == kAndromeda && key == kFrost) {
-                  return sdbus::Variant{m_frost};
-                }
-                if (ns == kAndromeda && key == kLiquid) {
-                  return sdbus::Variant{m_liquid};
-                }
-                if (ns == kAndromeda && key == kReduceTransparency) {
-                  return sdbus::Variant{m_reduceTransparency};
-                }
-                if (ns == kAndromeda && key == kCompositorBlur) {
-                  return sdbus::Variant{m_compositorBlur};
-                }
-                if (ns == kAndromeda && key == kGlassStyle) {
-                  return sdbus::Variant{m_glassStyle};
-                }
-                if (ns == kAndromeda && key == kEdgeReflection) {
-                  return sdbus::Variant{m_edgeReflection};
-                }
-                if (ns == kAndromeda && key == kLiquidTint) {
-                  return sdbus::Variant{m_liquidTint};
-                }
-                if (ns == kAndromeda && key == kLiquidBlur) {
-                  return sdbus::Variant{m_liquidBlur};
-                }
-                if (ns == kAndromeda && key == kLanguage) {
-                  return sdbus::Variant{m_language};
-                }
-                if (ns == kWmPreferences && key == kButtonLayout) {
-                  return sdbus::Variant{m_buttonLayout};
+                for (const Setting& s : kSettings) {
+                  if (ns == s.ns && key == s.key) {
+                    return toVariant(s.get(m_published));
+                  }
                 }
                 throw sdbus::Error(
                     sdbus::Error::Name{"org.freedesktop.portal.Error.NotFound"}, "Requested setting not found"
@@ -168,121 +141,104 @@ SettingsPortal::~SettingsPortal() {
   }
 }
 
-void SettingsPortal::setDark(bool dark) {
-  const std::uint32_t scheme = dark ? 1 : 2;
-  if (scheme == m_colorScheme) {
-    return;
+void SettingsPortal::stage(std::string_view key) {
+  for (std::size_t i = 0; i < std::size(kSettings); ++i) {
+    if (key == kSettings[i].key) {
+      m_stagedKeys |= 1U << i;
+    }
   }
-  m_colorScheme = scheme;
-  emitChanged(kAppearance, kColorScheme, sdbus::Variant{scheme});
+}
+
+void SettingsPortal::setDark(bool dark) {
+  m_staged.colorScheme = dark ? 1 : 2;
+  stage("color-scheme");
 }
 
 void SettingsPortal::setAccent(double r, double g, double b) {
-  const std::array<double, 3> accent{r, g, b};
-  if (accent == m_accent) {
-    return;
-  }
-  m_accent = accent;
-  emitChanged(kAppearance, kAccentColor, accentVariant());
+  m_staged.accent = {r, g, b};
+  stage("accent-color");
 }
 
 void SettingsPortal::setHighContrast(bool high) {
-  const std::uint32_t contrast = high ? 1 : 0;
-  if (contrast == m_contrast) {
-    return;
-  }
-  m_contrast = contrast;
-  emitChanged(kAppearance, kContrast, sdbus::Variant{contrast});
+  m_staged.contrast = high ? 1 : 0;
+  stage("contrast");
 }
 
 void SettingsPortal::setReducedMotion(bool reduce) {
-  const std::uint32_t reduced = reduce ? 1 : 0;
-  if (reduced == m_reducedMotion) {
-    return;
-  }
-  m_reducedMotion = reduced;
-  emitChanged(kAppearance, kReducedMotion, sdbus::Variant{reduced});
+  m_staged.reducedMotion = reduce ? 1 : 0;
+  stage("reduced-motion");
 }
 
 void SettingsPortal::setLanguage(const std::string& language) {
-  if (language == m_language) {
-    return;
-  }
-  m_language = language;
-  emitChanged(kAndromeda, kLanguage, sdbus::Variant{m_language});
+  m_staged.language = language;
+  stage("language");
 }
 
 void SettingsPortal::setButtonsLeft(bool left) {
-  std::string layout = left ? "close,minimize,maximize:" : ":minimize,maximize,close";
-  if (layout == m_buttonLayout) {
-    return;
-  }
-  m_buttonLayout = std::move(layout);
-  emitChanged(kWmPreferences, kButtonLayout, sdbus::Variant{m_buttonLayout});
+  m_staged.buttonLayout = left ? "close,minimize,maximize:" : ":minimize,maximize,close";
+  stage("button-layout");
 }
 
 void SettingsPortal::setScales(double uiScale, double textScale, double cornerRadiusScale) {
-  if (uiScale != m_uiScale) {
-    m_uiScale = uiScale;
-    emitChanged(kAndromeda, kUiScale, sdbus::Variant{uiScale});
-  }
-  if (textScale != m_textScale) {
-    m_textScale = textScale;
-    emitChanged(kAndromeda, kTextScale, sdbus::Variant{textScale});
-  }
-  if (cornerRadiusScale != m_cornerRadiusScale) {
-    m_cornerRadiusScale = cornerRadiusScale;
-    emitChanged(kAndromeda, kCornerRadiusScale, sdbus::Variant{cornerRadiusScale});
+  m_staged.uiScale = uiScale;
+  m_staged.textScale = textScale;
+  m_staged.cornerRadiusScale = cornerRadiusScale;
+  for (const char* key : {"ui-scale", "text-scale", "corner-radius-scale"}) {
+    stage(key);
   }
 }
 
 void SettingsPortal::setGlass(double glass, double frost, double liquid, bool reduceTransparency, bool compositorBlur) {
-  if (glass != m_glass) {
-    m_glass = glass;
-    emitChanged(kAndromeda, kGlass, sdbus::Variant{glass});
-  }
-  if (frost != m_frost) {
-    m_frost = frost;
-    emitChanged(kAndromeda, kFrost, sdbus::Variant{frost});
-  }
-  if (liquid != m_liquid) {
-    m_liquid = liquid;
-    emitChanged(kAndromeda, kLiquid, sdbus::Variant{liquid});
-  }
-  const std::uint32_t reduce = reduceTransparency ? 1 : 0;
-  if (reduce != m_reduceTransparency) {
-    m_reduceTransparency = reduce;
-    emitChanged(kAndromeda, kReduceTransparency, sdbus::Variant{reduce});
-  }
-  const std::uint32_t blur = compositorBlur ? 1 : 0;
-  if (blur != m_compositorBlur) {
-    m_compositorBlur = blur;
-    emitChanged(kAndromeda, kCompositorBlur, sdbus::Variant{blur});
+  m_staged.glass = glass;
+  m_staged.frost = frost;
+  m_staged.liquid = liquid;
+  m_staged.reduceTransparency = reduceTransparency ? 1 : 0;
+  m_staged.compositorBlur = compositorBlur ? 1 : 0;
+  for (const char* key : {"glass", "frost", "liquid", "reduce-transparency", "compositor-blur"}) {
+    stage(key);
   }
 }
 
 void SettingsPortal::setGlassStyle(std::uint32_t style, bool edgeReflection, double liquidTint, double liquidBlur) {
-  if (style != m_glassStyle) {
-    m_glassStyle = style;
-    emitChanged(kAndromeda, kGlassStyle, sdbus::Variant{style});
-  }
-  const std::uint32_t edge = edgeReflection ? 1 : 0;
-  if (edge != m_edgeReflection) {
-    m_edgeReflection = edge;
-    emitChanged(kAndromeda, kEdgeReflection, sdbus::Variant{edge});
-  }
-  if (liquidTint != m_liquidTint) {
-    m_liquidTint = liquidTint;
-    emitChanged(kAndromeda, kLiquidTint, sdbus::Variant{liquidTint});
-  }
-  if (liquidBlur != m_liquidBlur) {
-    m_liquidBlur = liquidBlur;
-    emitChanged(kAndromeda, kLiquidBlur, sdbus::Variant{liquidBlur});
+  m_staged.glassStyle = style;
+  m_staged.edgeReflection = edgeReflection ? 1 : 0;
+  m_staged.liquidTint = liquidTint;
+  m_staged.liquidBlur = liquidBlur;
+  for (const char* key : {"glass-style", "edge-reflection", "liquid-tint", "liquid-blur"}) {
+    stage(key);
   }
 }
 
-sdbus::Variant SettingsPortal::accentVariant() const {
-  return sdbus::Variant{sdbus::Struct<double, double, double>{m_accent[0], m_accent[1], m_accent[2]}};
+void SettingsPortal::publish() {
+  if (m_staged == m_published && m_stagedKeys == m_publishedKeys) {
+    return;
+  }
+  const Values previous = std::exchange(m_published, m_staged);
+  m_publishedKeys = m_stagedKeys;
+  ++m_generation;
+  for (const Setting& s : kSettings) {
+    if (s.get(previous) != s.get(m_published)) {
+      emitChanged(s.ns, s.key, toVariant(s.get(m_published)));
+    }
+  }
+  emitChanged(kAndromeda, kTheme, themeVariant());
+}
+
+sdbus::Variant SettingsPortal::themeVariant() const {
+  std::map<std::string, std::map<std::string, sdbus::Variant>> byNamespace;
+  for (std::size_t i = 0; i < std::size(kSettings); ++i) {
+    const Setting& s = kSettings[i];
+    if ((m_publishedKeys & (1U << i)) != 0 && std::string_view(s.ns) != kWmPreferences) {
+      byNamespace[s.ns][s.key] = toVariant(s.get(m_published));
+    }
+  }
+  std::map<std::string, sdbus::Variant> theme;
+  theme["instance"] = sdbus::Variant{m_instance};
+  theme["generation"] = sdbus::Variant{m_generation};
+  for (auto& [ns, values] : byNamespace) {
+    theme[ns] = sdbus::Variant{std::move(values)};
+  }
+  return sdbus::Variant{std::move(theme)};
 }
 
 void SettingsPortal::emitChanged(const char* ns, const char* key, const sdbus::Variant& value) {

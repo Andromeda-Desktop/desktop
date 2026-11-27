@@ -11,6 +11,7 @@
 #include <sdbus-c++/sdbus-c++.h>
 
 #include <algorithm>
+#include <map>
 
 namespace {
   constexpr Logger kLog("appearance");
@@ -21,6 +22,7 @@ namespace {
   constexpr auto kBackendSettings = "org.freedesktop.impl.portal.Settings";
   constexpr auto kNamespace = "org.freedesktop.appearance";
   constexpr auto kAndromeda = "org.andromeda.appearance";
+  constexpr auto kTheme = "theme";
   constexpr auto kPowerMonitor = "org.freedesktop.portal.PowerProfileMonitor";
   constexpr auto kPowerSaverProperty = "power-saver-enabled";
   constexpr std::uint32_t kPreferLight = 2; // color-scheme: 0 no preference, 1 dark, 2 light
@@ -35,16 +37,16 @@ namespace {
 } // namespace
 
 Appearance::Appearance(SessionBus& bus, std::function<void()> changed) : m_bus(bus), m_changed(std::move(changed)) {
-  const auto onChanged = [this](const std::string& ns, const std::string& key, const sdbus::Variant& raw) {
-    if (take(ns, key, unwrap(raw))) {
-      apply();
-    }
+  const auto onChanged = [this](bool backend) {
+    return [this, backend](const std::string& ns, const std::string& key, const sdbus::Variant& raw) {
+      onSettingChanged(backend, ns, key, unwrap(raw));
+    };
   };
   try {
     m_portal = sdbus::createProxy(m_bus.connection(), kPortal, kPath);
-    m_portal->uponSignal("SettingChanged").onInterface(kPortalSettings).call(onChanged);
+    m_portal->uponSignal("SettingChanged").onInterface(kPortalSettings).call(onChanged(false));
     m_backend = sdbus::createProxy(m_bus.connection(), kBackend, kPath);
-    m_backend->uponSignal("SettingChanged").onInterface(kBackendSettings).call(onChanged);
+    m_backend->uponSignal("SettingChanged").onInterface(kBackendSettings).call(onChanged(true));
     m_power = sdbus::createProxy(m_bus.connection(), kPortal, kPath);
     m_power->uponSignal("PropertiesChanged")
         .onInterface("org.freedesktop.DBus.Properties")
@@ -76,8 +78,34 @@ Appearance::~Appearance() = default;
 
 void Appearance::read(bool backend) {
   sdbus::IProxy* proxy = backend ? m_backend.get() : m_portal.get();
+  proxy->callMethodAsync("Read")
+      .onInterface(backend ? kBackendSettings : kPortalSettings)
+      .withArguments(std::string(kAndromeda), std::string(kTheme))
+      .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), backend](
+                           std::optional<sdbus::Error> error, sdbus::Variant raw) {
+        if (alive.expired()) {
+          return;
+        }
+        if (!error.has_value()) {
+          takeTable(backend, unwrap(std::move(raw)));
+        } else if (error->getName() == "org.freedesktop.portal.Error.NotFound") {
+          // A shell without the table: follow the single keys.
+          m_source = Keys{};
+          readKeys(backend);
+        } else if (!backend) {
+          // No portal frontend (a bare session, the E2E bus): ask the shell's backend once.
+          read(true);
+        } else if (std::holds_alternative<Waiting>(m_source)) {
+          // No shell yet: follow whatever it sends when it starts.
+          m_source = Keys{};
+        }
+      });
+}
+
+void Appearance::readKeys(bool backend) {
+  sdbus::IProxy* proxy = backend ? m_backend.get() : m_portal.get();
   const std::pair<const char*, const char*> keys[] = {
-      {kNamespace, "color-scheme"}, {kNamespace, "accent-color"}, {kNamespace, "reduced-motion"},
+      {kNamespace, "color-scheme"}, {kNamespace, "accent-color"}, {kNamespace, "reduced-motion"}, {kNamespace, "contrast"},
       {kAndromeda, "ui-scale"},     {kAndromeda, "text-scale"},     {kAndromeda, "corner-radius-scale"}, {kAndromeda, "glass"},
       {kAndromeda, "frost"},        {kAndromeda, "liquid"},       {kAndromeda, "reduce-transparency"}, {kAndromeda, "compositor-blur"},
       {kAndromeda, "glass-style"},  {kAndromeda, "edge-reflection"}, {kAndromeda, "liquid-tint"},     {kAndromeda, "liquid-blur"},
@@ -87,23 +115,57 @@ void Appearance::read(bool backend) {
     proxy->callMethodAsync("Read")
         .onInterface(backend ? kBackendSettings : kPortalSettings)
         .withArguments(std::string(ns), std::string(key))
-        .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), backend, ns = std::string(ns), key = std::string(key)](
+        .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), ns = std::string(ns), key = std::string(key)](
                              std::optional<sdbus::Error> error, sdbus::Variant raw) {
-          if (alive.expired()) {
-            return;
-          }
-          if (error.has_value()) {
-            // No portal frontend (a bare session, the E2E bus): ask the shell's backend once.
-            if (!backend && key == "color-scheme" && error->getName() != "org.freedesktop.portal.Error.NotFound") {
-              read(true);
-            }
-            return;
-          }
-          if (take(ns, key, unwrap(std::move(raw)))) {
+          if (!alive.expired() && !error.has_value() && std::holds_alternative<Keys>(m_source)
+              && take(ns, key, unwrap(std::move(raw)))) {
             apply();
           }
         });
   }
+}
+
+void Appearance::onSettingChanged(bool backend, const std::string& ns, const std::string& key, const sdbus::Variant& value) {
+  if (ns == kAndromeda && key == kTheme) {
+    takeTable(backend, value);
+  } else if (std::holds_alternative<Keys>(m_source) && take(ns, key, value)) {
+    apply();
+  }
+}
+
+void Appearance::takeTable(bool backend, const sdbus::Variant& value) {
+  using Map = std::map<std::string, sdbus::Variant>;
+  if (!value.containsValueOfType<Map>()) {
+    return;
+  }
+  const Map table = value.get<Map>();
+  const auto instance = table.find("instance");
+  const auto generation = table.find("generation");
+  if (instance == table.end() || generation == table.end() || !instance->second.containsValueOfType<std::uint64_t>()
+      || !generation->second.containsValueOfType<std::uint64_t>()) {
+    return;
+  }
+  const Table next{
+      .backend = backend,
+      .instance = instance->second.get<std::uint64_t>(),
+      .generation = generation->second.get<std::uint64_t>(),
+  };
+  if (const auto* last = std::get_if<Table>(&m_source);
+      last != nullptr
+      && (last->backend != backend || (last->instance == next.instance && last->generation >= next.generation))) {
+    return;
+  }
+  for (const char* ns : {kNamespace, kAndromeda}) {
+    const auto values = table.find(ns);
+    if (values == table.end() || !values->second.containsValueOfType<Map>()) {
+      continue;
+    }
+    for (const auto& [key, v] : values->second.get<Map>()) {
+      (void)take(ns, key, unwrap(v));
+    }
+  }
+  m_source = next;
+  apply();
 }
 
 bool Appearance::take(const std::string& ns, const std::string& key, const sdbus::Variant& value) {
@@ -180,6 +242,8 @@ bool Appearance::take(const std::string& ns, const std::string& key, const sdbus
     m_accent[2] = b;
   } else if (key == "reduced-motion" && value.containsValueOfType<std::uint32_t>()) {
     m_reducedMotion = value.get<std::uint32_t>() == 1;
+  } else if (key == "contrast" && value.containsValueOfType<std::uint32_t>()) {
+    m_highContrast = value.get<std::uint32_t>() == 1;
   } else {
     return false;
   }
@@ -191,6 +255,9 @@ void Appearance::apply() {
     Palette p = tokenPalette(light);
     if (m_hasAccent) {
       p.accent = rgba(static_cast<float>(m_accent[0]), static_cast<float>(m_accent[1]), static_cast<float>(m_accent[2]), 1.0F);
+    }
+    if (m_highContrast) {
+      applyHighContrast(p);
     }
     return p;
   };
@@ -204,7 +271,7 @@ void Appearance::apply() {
   i18n::Service::instance().setLanguage(m_language);
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
   const Applied now{
-      m_light,   m_hasAccent, m_reducedMotion, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
+      m_light,   m_hasAccent, m_reducedMotion, m_highContrast, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
       m_uiScale, m_textScale, m_cornerRadiusScale, m_glass, m_compositorBlur, m_language
   };
   if (now == m_applied) {

@@ -59,7 +59,7 @@ namespace noctalia::theme {
 
   namespace {
 
-    // Applies the compositor accent; high contrast makes secondary text read as primary text and strokes opaque.
+    // Applies the compositor accent and high contrast.
     void applyLivePalette(::Palette& palette, std::string_view accent, bool highContrast) {
       ::Color color;
       if (!accent.empty() && tryParseHexColor(accent, color)) {
@@ -68,8 +68,7 @@ namespace noctalia::theme {
         palette.accentText = accentTextOn(color, palette.solidRegular);
       }
       if (highContrast) {
-        palette.label2 = palette.label1;
-        palette.stroke.a = 1.0F;
+        applyHighContrast(palette);
       }
     }
 

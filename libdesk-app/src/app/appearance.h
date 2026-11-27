@@ -3,9 +3,11 @@
 #include "protocols/glass_material.h"
 
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <variant>
 
 class SessionBus;
 namespace sdbus {
@@ -13,11 +15,11 @@ namespace sdbus {
   class Variant;
 }
 
-// Follows the desktop's light/dark choice, accent and reduced motion for an app process: org.freedesktop.appearance
-// color-scheme, accent-color and reduced-motion from the Settings portal (the public frontend, else the Andromeda shell
-// backend directly), and battery saver from the PowerProfileMonitor portal. Applies them to the libdesk-ui palette and
-// MotionService. Also org.andromeda.appearance ui-scale and text-scale for the windows and text. `changed` runs
-// after each change so windows rebuild.
+// Follows the desktop's appearance for an app process from the Settings portal (the public frontend, else the Andromeda
+// shell backend directly): the shell's org.andromeda.appearance `theme` table, one apply per generation, or, from a
+// shell without it, the single org.freedesktop.appearance and org.andromeda.appearance keys. Battery saver comes from
+// the PowerProfileMonitor portal. Applies them to the libdesk-ui palette, Style and MotionService. `changed` runs after
+// each change so windows rebuild.
 class Appearance {
 public:
   Appearance(SessionBus& bus, std::function<void()> changed);
@@ -32,9 +34,22 @@ public:
 
 private:
   void read(bool backend);
+  void readKeys(bool backend);
+  void onSettingChanged(bool backend, const std::string& ns, const std::string& key, const sdbus::Variant& value);
+  // Takes a `theme` table and applies it, unless another proxy delivered it or it is not newer than the applied one.
+  void takeTable(bool backend, const sdbus::Variant& value);
   // Stores one setting; false for a namespace, key or type this class does not follow.
   bool take(const std::string& ns, const std::string& key, const sdbus::Variant& value);
   void apply();
+
+  struct Waiting {};
+  struct Keys {};
+  struct Table {
+    bool backend = false;
+    std::uint64_t instance = 0;
+    std::uint64_t generation = 0;
+  };
+  std::variant<Waiting, Keys, Table> m_source;
 
   SessionBus& m_bus;
   std::function<void()> m_changed;
@@ -44,6 +59,7 @@ private:
   bool m_light = false;
   bool m_hasAccent = false;
   bool m_reducedMotion = false;
+  bool m_highContrast = false;
   bool m_powerSaver = false;
   double m_accent[3] = {0.0, 0.0, 0.0};
   double m_uiScale = 1.0;
@@ -57,6 +73,7 @@ private:
     bool light = false;
     bool hasAccent = false;
     bool reducedMotion = false;
+    bool highContrast = false;
     bool powerSaver = false;
     std::array<double, 3> accent{};
     double uiScale = 1.0;

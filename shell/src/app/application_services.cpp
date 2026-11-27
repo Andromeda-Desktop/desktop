@@ -953,6 +953,9 @@ void Application::initStyleThemeAndWayland() {
     }
     if (m_settingsPortal != nullptr) {
       m_settingsPortal->setDark(resolvedMode != "light");
+      const Color accent = m_themeService.toolkitColors().accent;
+      m_settingsPortal->setAccent(accent.r, accent.g, accent.b);
+      m_settingsPortal->publish();
     }
     if (colorsChanged) {
       m_hookManager.fire(HookKind::ColorsChanged);
@@ -986,12 +989,13 @@ void Application::initStyleThemeAndWayland() {
   m_themeService.apply();
   if (m_settingsPortal != nullptr) {
     m_settingsPortal->setDark(!m_themeService.isLightMode());
-    const Color accent = colorForRole(ColorRole::Accent, 1.0F);
+    const Color accent = m_themeService.toolkitColors().accent;
     m_settingsPortal->setAccent(accent.r, accent.g, accent.b);
     const auto publishAppSettings = [this] {
       const auto& config = m_configService.config();
       m_settingsPortal->setScales(config.accessibility.uiScale, config.accessibility.textScale, config.shell.cornerRadiusScale);
       m_settingsPortal->setLanguage(config.shell.lang);
+      m_settingsPortal->publish();
     };
     publishAppSettings();
     m_configService.addReloadCallback(publishAppSettings);

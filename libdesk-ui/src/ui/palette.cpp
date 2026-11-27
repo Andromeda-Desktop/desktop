@@ -366,6 +366,11 @@ Palette lerpPalette(const Palette& a, const Palette& b, float t) {
   };
 }
 
+void applyHighContrast(Palette& p) noexcept {
+  p.label2 = p.label1;
+  p.stroke.a = 1.0F;
+}
+
 Palette tokenPalette(bool light) noexcept {
   const auto& s = light ? Tokens::schemeLight : Tokens::schemeDark;
   return Palette{

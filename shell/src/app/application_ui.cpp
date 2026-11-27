@@ -1580,7 +1580,7 @@ void Application::initWidgetControllersAndCallbacks() {
     applyLiveMotion(appearance);
     m_themeService.setLiveAppearance(appearance.accent, appearance.increaseContrast);
     if (m_settingsPortal != nullptr) {
-      const Color accent = colorForRole(ColorRole::Accent, 1.0F);
+      const Color accent = m_themeService.toolkitColors().accent;
       m_settingsPortal->setAccent(accent.r, accent.g, accent.b);
       m_settingsPortal->setHighContrast(appearance.increaseContrast);
       m_settingsPortal->setReducedMotion(appearance.reduceMotion);
@@ -1588,6 +1588,7 @@ void Application::initWidgetControllersAndCallbacks() {
       m_settingsPortal->setGlass(g.tint, g.frost, g.lens, g.reduceTransparency, appearance.blurEnabled);
       m_settingsPortal->setGlassStyle(static_cast<std::uint32_t>(g.style), g.edgeReflection, g.liquidTint, g.liquidBlur);
       m_settingsPortal->setButtonsLeft(appearance.titleBarButtonsLeft);
+      m_settingsPortal->publish();
     }
     syncToolkitTheme();
     // Bar and dock re-apply their material fills on this signal; the other glass surfaces re-read them on reload.
