@@ -755,6 +755,10 @@ void CocoaToplevel::updateState() {
   // A popup takes key focus from its window, which stays active as on Wayland.
   next.activated = m_window.isKeyWindow || NSApp.keyWindow.parentWindow == m_window;
   next.suspended = m_window.isMiniaturized || (m_window.occlusionState & NSWindowOcclusionStateVisible) == 0;
+  // As the compositor's dsk presence on Wayland: a window nobody sees runs no animation, scene or frame tick.
+  setPresence(m_window.isMiniaturized ? SurfacePresence::Hidden
+              : next.suspended       ? SurfacePresence::Occluded
+                                     : SurfacePresence::Shown);
   if (next == m_state) {
     return;
   }

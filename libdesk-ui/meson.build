@@ -49,6 +49,7 @@ _loop_sources = files(
   'src/core/log_platform.cpp',
   'src/core/poll_loop.cpp',
   'src/core/poll_schedule.cpp',
+  'src/core/shown_timer.cpp',
   'src/core/timer_manager.cpp',
 )
 # '.' adds the source root and the build root, where the generated headers land.

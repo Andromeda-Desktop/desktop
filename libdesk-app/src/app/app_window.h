@@ -1,7 +1,7 @@
 #pragma once
 
 #include "app/app_popover.h"
-#include "app/shown_timer.h"
+#include "core/shown_timer.h"
 #include "ui/controls/context_menu.h"
 #include "ui/palette.h"
 

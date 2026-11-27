@@ -1658,7 +1658,7 @@ namespace term {
       m_host.requestFrame(); // frame() applies the rows
     }
     if (running && printing && !m_contextTick.active()) {
-      m_contextTick.startRepeating(std::chrono::seconds(1), [this] { syncContext(); });
+      m_contextTick.startRepeating(*m_host.shownTimers, std::chrono::seconds(1), [this] { syncContext(); });
     } else if (!running || !printing) {
       m_contextTick.stop();
     }

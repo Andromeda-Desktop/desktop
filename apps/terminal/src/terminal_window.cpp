@@ -606,6 +606,7 @@ namespace term {
               }
             },
         .textBacking = [this] { return m_window.sceneTextBacking(); },
+        .shownTimers = &m_window.shownTimers(),
         .settings = viewSettings(),
         .theme = resolveTheme(m_settings.settings().theme, m_settings.themes())};
   }

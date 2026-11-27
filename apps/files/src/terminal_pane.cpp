@@ -92,6 +92,7 @@ bool TerminalPane::addSplit(const fs::path& dir, std::size_t at) {
             }
           },
       .textBacking = [this] { return m_window.sceneTextBacking(); },
+      .shownTimers = &m_window.shownTimers(),
   });
   const std::string shell = shellPath();
   const term::ShellLaunch launch = term::shellLaunch(shell, term::shellIntegrationDir(), [](const char* name) {

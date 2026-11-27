@@ -2,6 +2,7 @@
 
 #include "content_view.h"
 #include "context_row.h"
+#include "core/shown_timer.h"
 #include "core/timer_manager.h"
 #include "pty_session.h"
 #include "session_list.h"
@@ -130,6 +131,8 @@ namespace term {
       std::function<void(std::size_t total, std::optional<std::size_t> current, FindError error)> findChanged;
       // The alpha of the backing behind text over a theme scene (AppWindow::sceneTextBacking); null = none.
       std::function<float()> textBacking;
+      // The window's shown gate (AppWindow::shownTimers): the 1 Hz context tick waits while nobody sees the window.
+      ShownTimers* shownTimers = nullptr;
       Settings settings;
       ThemeSpec theme = Theme::System;
     };
@@ -437,7 +440,7 @@ namespace term {
     std::unique_ptr<ContextRow> m_context;
     ContextRow::Inks m_bandInks; // from the theme palette, set with the grid colours
     Renderer* m_renderer = nullptr; // the window renderer from build(); stable for the surface lifetime
-    Timer m_contextTick; // 1 Hz, only while a shown prompt's command runs
+    ShownTimer m_contextTick; // 1 Hz, only while a shown prompt's command runs
     std::optional<ContextKey> m_contextKey; // what the shown pills were placed for
     std::vector<std::uint16_t> m_contextRows; // viewport rows of the prompts in view at that time
     // Steady and Expired: the cursor shows and no timer runs; Expired = blinking timed out, a key restarts it.

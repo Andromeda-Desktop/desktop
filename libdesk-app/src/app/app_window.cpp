@@ -37,6 +37,7 @@
 #include "ui/controls/label.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "protocols/xdg_dirs.h"
 #include "core/input/cursor_shape.h"
 
 #include <algorithm>
@@ -45,6 +46,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <format>
+#include <filesystem>
+#include <fstream>
 #include "core/input/input_codes.h"
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon.h>
@@ -626,6 +629,9 @@ bool AppWindow::open() {
   m_surface->setUpdateCallback([] {});
   m_surface->setPresenceChangedCallback([this](SurfacePresence presence) {
     m_shownTimers.setShown(presence == SurfacePresence::Shown);
+    if (presence == SurfacePresence::Shown) {
+      wakeScene(); // ends at once when its awake time ran out while hidden
+    }
   });
 
   const ToplevelSurfaceConfig cfg{
@@ -888,7 +894,8 @@ void AppWindow::setShortcutsInhibited(bool inhibited) {
 }
 
 void AppWindow::wakeScene() {
-  if (m_sceneNode != nullptr && m_activated && !m_sceneHeld && !m_sceneTicking) {
+  if (m_sceneNode != nullptr && m_activated && !m_sceneHeld && !m_sceneTicking && m_surface != nullptr
+      && m_surface->ticks()) {
     m_sceneTicking = true;
     m_sceneStepped = std::chrono::steady_clock::now(); // resume where the motion stopped
     m_sceneTimer.start(kSceneStep, [this] { sceneTick(); });
@@ -897,7 +904,8 @@ void AppWindow::wakeScene() {
 
 void AppWindow::sceneTick() {
   const auto now = std::chrono::steady_clock::now();
-  if (m_sceneNode == nullptr || !m_activated || m_sceneHeld || now >= m_sceneAwakeUntil) {
+  if (m_sceneNode == nullptr || !m_activated || m_sceneHeld || now >= m_sceneAwakeUntil || m_surface == nullptr
+      || !m_surface->ticks()) {
     m_sceneTicking = false; // no new step until wakeScene
     return;
   }
@@ -1018,6 +1026,82 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
   m_sceneLayer->requestRedraw();
 }
 
+namespace {
+  // Bump when the measurement changes (sample times, signals, contrast rule): older cached tints then miss.
+  constexpr std::uint64_t kSceneTintVersion = 1;
+
+  // FNV-1a over everything measureScene reads, stable across runs and builds.
+  std::uint64_t sceneTintKey(const AppWindow::Scene& scene) {
+    std::uint64_t h = 1469598103934665603ULL;
+    const auto mix = [&h](const void* data, std::size_t size) {
+      for (std::size_t i = 0; i < size; ++i) {
+        h = (h ^ static_cast<const unsigned char*>(data)[i]) * 1099511628211ULL;
+      }
+    };
+    const auto mixColor = [&mix](const Color& c) {
+      for (const float v : {c.r, c.g, c.b, c.a}) {
+        mix(&v, sizeof v);
+      }
+    };
+    mix(&kSceneTintVersion, sizeof kSceneTintVersion);
+    const std::size_t kind = scene.backdrop.index();
+    mix(&kind, sizeof kind);
+    if (const auto* shader = std::get_if<AppWindow::Scene::Shader>(&scene.backdrop)) {
+      mix(shader->source.data(), shader->source.size());
+    } else {
+      const auto& picture = std::get<AppWindow::Scene::Picture>(scene.backdrop);
+      mix(picture.path.data(), picture.path.size());
+      mix(&picture.stamp, sizeof picture.stamp);
+    }
+    for (const Color& c : {scene.surface, scene.text, scene.accent}) {
+      mixColor(c);
+    }
+    for (const Color& c : scene.inks) {
+      mixColor(c);
+    }
+    const unsigned char dark = scene.dark ? 1 : 0;
+    mix(&dark, 1);
+    mix(&scene.tint, sizeof scene.tint);
+    return h;
+  }
+
+  // The measured tint of each theme survives the process, so a start renders no samples (8 offscreen renders and
+  // read-backs on the first-frame path). Empty when there is no cache directory.
+  std::filesystem::path sceneTintPath(const AppWindow::Scene& scene) {
+    const std::string cache = xdg::cacheHome();
+    if (cache.empty()) {
+      return {};
+    }
+    return std::filesystem::path(cache) / "andromeda" / "scene-tint" / std::format("{:016x}", sceneTintKey(scene));
+  }
+
+  std::optional<float> loadSceneTint(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    float tint = -1.0F;
+    if (path.empty() || !(in >> tint) || !(tint >= 0.0F && tint <= 1.0F)) {
+      return std::nullopt;
+    }
+    return tint;
+  }
+
+  void saveSceneTint(const std::filesystem::path& path, float tint) {
+    if (path.empty()) {
+      return;
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    const std::filesystem::path partial = path.string() + ".part";
+    {
+      std::ofstream out(partial, std::ios::trunc);
+      out << std::format("{:.6f}\n", tint);
+      if (!out) {
+        return;
+      }
+    }
+    std::filesystem::rename(partial, path, ec);
+  }
+} // namespace
+
 void AppWindow::measureScene() {
   // Every window of the app shows the same theme: one measurement each.
   static std::vector<std::pair<Scene, float>> measured;
@@ -1026,7 +1110,22 @@ void AppWindow::measureScene() {
     m_sceneTextTint = it->second;
     return;
   }
+  const auto remember = [this] {
+    m_sceneMeasured = m_scene;
+    constexpr std::size_t kKept = 8; // themes switched in one session
+    if (measured.size() == kKept) {
+      measured.erase(measured.begin());
+    }
+    measured.emplace_back(*m_scene, m_sceneTextTint);
+  };
   const auto start = std::chrono::steady_clock::now();
+  const std::filesystem::path cachePath = sceneTintPath(*m_scene);
+  if (const std::optional<float> cached = loadSceneTint(cachePath)) {
+    m_sceneTextTint = *cached;
+    remember();
+    kLog.debug("scene text tint {:.2f} from the cache", m_sceneTextTint);
+    return;
+  }
   std::vector<Color> backdrop;
   const auto* picture = std::get_if<Scene::Picture>(&m_scene->backdrop);
   if (picture != nullptr) {
@@ -1085,12 +1184,10 @@ void AppWindow::measureScene() {
   // An empty shader sample means GL is not up: the next build measures again, opaque until then. A picture that does
   // not load stays opaque.
   if (!backdrop.empty() || picture != nullptr) {
-    m_sceneMeasured = m_scene;
-    constexpr std::size_t kKept = 8; // themes switched in one session
-    if (measured.size() == kKept) {
-      measured.erase(measured.begin());
-    }
-    measured.emplace_back(*m_scene, m_sceneTextTint);
+    remember();
+  }
+  if (!backdrop.empty()) {
+    saveSceneTint(cachePath, m_sceneTextTint);
   }
   kLog.debug("scene text tint {:.2f} from {} samples in {:.1f} ms", m_sceneTextTint,
              backdrop.size(), std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
