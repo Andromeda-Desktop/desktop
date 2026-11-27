@@ -96,7 +96,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
           PUBLISH: "false"
-        run: mkdir new && cp artifacts/*/*.pkg.tar.zst new/ && tools/repo-publish.sh arch repo new
+        run: mkdir new && for f in artifacts/*/*.pkg.tar.zst; do cp -f "$f" new/; done && tools/repo-publish.sh arch repo new
 
   gate-apt:
     needs: [plan, apps, core-arch, core-ubuntu, core-debian]
@@ -117,7 +117,7 @@ jobs:
           PUBLISH: "false"
         run: |
           sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
-          mkdir new && cp artifacts/*/*.deb new/ && tools/repo-publish.sh apt "${{ matrix.release }}" new
+          mkdir new && for f in artifacts/*/*.deb; do cp -f "$f" new/; done && tools/repo-publish.sh apt "${{ matrix.release }}" new
 
   # Tags and the tag releases, all at the planned commit; the workflow token's tag pushes start no other run.
   tags:
@@ -170,7 +170,7 @@ jobs:
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
         run: |
           git config --global --add safe.directory '*'
-          mkdir new && cp artifacts/*/*.pkg.tar.zst new/ && tools/repo-publish.sh arch repo new
+          mkdir new && for f in artifacts/*/*.pkg.tar.zst; do cp -f "$f" new/; done && tools/repo-publish.sh arch repo new
 
   index-apt:
     needs: [plan, tags]
@@ -191,7 +191,7 @@ jobs:
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
         run: |
           sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
-          mkdir new && cp artifacts/*/*.deb new/ && tools/repo-publish.sh apt "${{ matrix.release }}" new
+          mkdir new && for f in artifacts/*/*.deb; do cp -f "$f" new/; done && tools/repo-publish.sh apt "${{ matrix.release }}" new
 
   symbols:
     needs: [plan, index-arch]
