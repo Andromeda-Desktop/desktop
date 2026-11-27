@@ -523,6 +523,7 @@ void CocoaSurface::destroyView() {
   m_display.unregisterSurface(this);
   [m_link invalidate];
   m_link = nil;
+  clearBlurRegion();
   [m_view detach];
   [m_view removeFromSuperview];
   m_view = nil;
@@ -555,6 +556,44 @@ void CocoaSurface::setOpaque(bool opaque) {
   if (m_layer != nil) {
     m_layer.opaque = opaque;
   }
+}
+
+void CocoaSurface::setBlurRegion(const std::vector<InputRect>& rects) {
+  if (m_view == nil || rects.empty()) {
+    clearBlurRegion();
+    return;
+  }
+  if (m_blur == nil) {
+    m_blur = [[NSVisualEffectView alloc] initWithFrame:m_view.frame];
+    m_blur.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+    m_blur.material = NSVisualEffectMaterialUnderWindowBackground;
+    m_blur.state = NSVisualEffectStateActive;
+  }
+  const std::vector<InputRect> region = rects;
+  m_blur.maskImage = [NSImage imageWithSize:m_view.bounds.size
+                                    flipped:YES
+                             drawingHandler:^BOOL(NSRect /*dst*/) {
+                               [NSColor.blackColor set];
+                               for (const InputRect& r : region) {
+                                 NSRectFill(NSMakeRect(r.x, r.y, r.width, r.height));
+                               }
+                               return YES;
+                             }];
+  syncBlur();
+}
+
+void CocoaSurface::clearBlurRegion() {
+  [m_blur removeFromSuperview];
+  m_blur = nil;
+}
+
+void CocoaSurface::syncBlur() {
+  if (m_blur == nil || m_view.superview == nil) {
+    return;
+  }
+  m_blur.frame = m_view.frame;
+  m_blur.autoresizingMask = m_view.autoresizingMask;
+  [m_view.superview addSubview:m_blur positioned:NSWindowBelow relativeTo:m_view];
 }
 
 bool CocoaSurface::acceptsPoint(NSPoint local) const {
@@ -961,6 +1000,7 @@ void CocoaSubsurface::applyStacking() {
   [m_view.superview addSubview:m_view
                     positioned:m_config.stacking == SubsurfaceStacking::BelowParent ? NSWindowBelow : NSWindowAbove
                     relativeTo:m_parent->view()];
+  syncBlur();
 }
 
 void CocoaSubsurface::setPosition(std::int32_t x, std::int32_t y) {
@@ -968,6 +1008,7 @@ void CocoaSubsurface::setPosition(std::int32_t x, std::int32_t y) {
   m_config.y = y;
   if (m_view != nil) {
     m_view.frame = frame();
+    syncBlur();
   }
 }
 
@@ -978,6 +1019,7 @@ void CocoaSubsurface::resize(std::uint32_t width, std::uint32_t height) {
     return;
   }
   m_view.frame = frame();
+  syncBlur();
   if (isRunning() && (width != this->width() || height != this->height())) {
     onConfigure(width, height);
   }

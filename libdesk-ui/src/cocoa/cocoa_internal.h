@@ -160,9 +160,9 @@ public:
 
   void setInputRegion(const std::vector<InputRect>& rects) override { m_inputRegion = rects; }
   void setOpaqueRegion(const std::vector<InputRect>& /*rects*/) override {}
-  void setBlurRegion(const std::vector<InputRect>& /*rects*/) override {}
+  void setBlurRegion(const std::vector<InputRect>& rects) override;
   void setOpaque(bool opaque) override;
-  void clearBlurRegion() override {}
+  void clearBlurRegion() override;
 
   [[nodiscard]] CocoaDisplay& display() const noexcept { return m_display; }
   [[nodiscard]] AndromedaSurfaceView* view() const noexcept { return m_view; }
@@ -184,6 +184,8 @@ protected:
   // Adds the view to `superview` at `frame` (logical px), with its layer, display link and render target.
   void createView(NSView* superview, NSRect frame);
   void destroyView();
+  // Keeps the blur view under the surface view, at its frame; call after the view moves or restacks.
+  void syncBlur();
   // Seeds the buffer scale from the screen before the first configure.
   void seedScale(NSScreen* screen);
 
@@ -200,6 +202,8 @@ protected:
   AndromedaSurfaceView* m_view = nil;
   CAMetalLayer* m_layer = nil;
   CADisplayLink* m_link = nil;
+  // The window-server blur behind the blur region, masked to it; nil while the region is empty.
+  NSVisualEffectView* m_blur = nil;
 
 private:
   std::optional<std::vector<InputRect>> m_inputRegion;
