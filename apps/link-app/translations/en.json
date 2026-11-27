@@ -269,6 +269,8 @@
     "mic-stop": "Stop microphone",
     "sound-start": "Play phone sound here",
     "sound-stop": "Stop phone sound",
+    "camera-start": "Use as webcam",
+    "camera-stop": "Stop webcam",
     "no-phone": "No phone yet",
     "not-running": "Link is not running",
     "pair-another": "Pair Another Phone…",

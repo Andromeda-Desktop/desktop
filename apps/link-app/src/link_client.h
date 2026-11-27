@@ -146,6 +146,8 @@ namespace linkapp {
     enum class PhoneAudio : std::uint8_t { Mic, Sound };
     // Starts or stops the phone's microphone as the default source, or its sound on the default sink.
     void setPhoneAudio(const std::string& deviceId, PhoneAudio audio, bool on);
+    // Starts the phone's front camera as a webcam (link-session serves it as a camera node), or stops it.
+    void setPhoneCamera(const std::string& deviceId, bool on);
     void dial(const std::string& deviceId, const std::string& number);
     void setDnd(const std::string& deviceId, bool on);
     // The window's last system command until it succeeds.

@@ -65,11 +65,14 @@ props = {
         "transport": GLib.Variant("s", "wifi" if connected else ""),
         "connected": GLib.Variant("b", connected),
         "last_seen": GLib.Variant("x", now_ms // 1000 - 12 * 60),
-        "battery": GLib.Variant("i", 74)}} | ({"p2": {
+        "battery": GLib.Variant("i", 74)} | ({  # KEYS=1: every phone card key, the webcam on.
+            "mic": GLib.Variant("s", "ready"), "sound": GLib.Variant("s", "ready"),
+            "camera": GLib.Variant("s", "on")} if os.environ.get("KEYS") else {})} | ({"p2": {
         "connected": GLib.Variant("b", False),
         "last_seen": GLib.Variant("x", now_ms // 1000 - 3 * 3600)}} if MODE == "two" else {})),
     "DeviceStatus": GLib.Variant("a{s(ubsi)}", {"p1": (74, False, "wifi", -1)} if connected else {}),
     "DeviceControls": GLib.Variant("a{s(isii)}", {"p1": (50, "normal", 0, 0)} if connected else {}),
+    "DeviceToggles": GLib.Variant("a{s(iii)}", {"p1": (1, 1, 0)} if os.environ.get("KEYS") else {}),
     "Paused": GLib.Variant("as", []),
     # ART=path gives the player a cover.
     "PhonePlayers": GLib.Variant("a{s(sssssbttixas)}", {"p1": (

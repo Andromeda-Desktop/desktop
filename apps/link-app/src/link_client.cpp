@@ -261,6 +261,7 @@ namespace linkapp {
               phone.battery = value<std::int32_t>(it->second, "battery", -1);
               phone.mic = value<std::string>(it->second, "mic", "");
               phone.sound = value<std::string>(it->second, "sound", "");
+              phone.camera = value<std::string>(it->second, "camera", "");
             }
             if (const auto it = status.find(phone.id); it != status.end()) {
               phone.battery = static_cast<int>(it->second.get<0>());
@@ -1235,6 +1236,18 @@ namespace linkapp {
         .uponReplyInvoke([method](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("{}: {}", method, error->getMessage());
         });
+  }
+
+  void LinkClient::setPhoneCamera(const std::string& deviceId, bool on) {
+    auto call = m_proxy->callMethodAsync(on ? "StartCamera" : "StopCamera").onInterface(kInterface);
+    const auto reply = [on](std::optional<sdbus::Error> error) {
+      if (error) kLog.warn("{}: {}", on ? "StartCamera" : "StopCamera", error->getMessage());
+    };
+    if (on) {
+      call.withArguments(deviceId, true).uponReplyInvoke(reply);
+    } else {
+      call.withArguments(deviceId).uponReplyInvoke(reply);
+    }
   }
 
   void LinkClient::dial(const std::string& deviceId, const std::string& number) {
