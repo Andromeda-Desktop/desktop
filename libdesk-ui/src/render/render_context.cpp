@@ -1258,7 +1258,7 @@ void RenderContext::drawNodeSelf(
   case NodeType::Galaxy: {
     const auto* galaxy = static_cast<const GalaxyNode*>(node);
     m_backend->drawGalaxy(GalaxyDraw{
-        .key = galaxy,
+        .key = galaxy->cacheOwner(),
         .points = galaxy->points(),
         .camera = galaxy->camera(),
         .dim = galaxy->dim(),

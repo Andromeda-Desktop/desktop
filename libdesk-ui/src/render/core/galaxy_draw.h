@@ -11,7 +11,7 @@
 // the points only when points, camera, dim, moving or the rect's pixel size change; life and the sky only re-run
 // the composite pass.
 struct GalaxyDraw {
-  const void* key = nullptr;  // the cache owner (the node); one cache per owner
+  const void* key = nullptr;  // GalaxyNode::cacheOwner(); one cache per owner
   std::shared_ptr<const GalaxyPoints> points;
   GalaxyCamera camera;
   float dim = 1.0F;  // alpha of the galaxy's own points (the far sky stays)

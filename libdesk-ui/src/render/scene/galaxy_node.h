@@ -26,6 +26,10 @@ public:
   void setLife(const GalaxyLife& life) { assign(m_life, life); }
   // True while a drag, zoom or morph changes the camera each frame; false again redraws the points in full.
   void setMoving(bool moving) { assign(m_moving, moving); }
+  // The render cache belongs to this owner, so a node rebuilt for the same view keeps the rendered points. The owner
+  // outlives every node it is set on; nullptr = the node itself.
+  void setCacheOwner(const void* owner) { m_cacheOwner = owner; }
+  [[nodiscard]] const void* cacheOwner() const noexcept { return m_cacheOwner != nullptr ? m_cacheOwner : this; }
 
   [[nodiscard]] const std::shared_ptr<const GalaxyPoints>& points() const noexcept { return m_points; }
   [[nodiscard]] const GalaxyCamera& camera() const noexcept { return m_camera; }
@@ -53,4 +57,5 @@ private:
   std::optional<GalaxyLightSky> m_lightSky;
   GalaxyLife m_life;
   bool m_moving = false;
+  const void* m_cacheOwner = nullptr;
 };
