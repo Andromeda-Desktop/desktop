@@ -12,6 +12,9 @@ ZIG_VER=0.17.1
 ZIG_SHA=3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$ROOT/libdesk-term/libghostty-vt
+# Our changes to the pinned source, applied in name order; their hash is part of the build stamp.
+PATCHES=("$ROOT"/libdesk-term/libghostty-patches/*.patch)
+PATCH_SUM=$(cat "${PATCHES[@]}" | sha256sum | cut -c1-12)
 PREFIX=$OUT/prefix
 STAMP=$OUT/.version
 TARGET=()
@@ -20,7 +23,7 @@ if [[ ${1:-} == macos ]]; then
   STAMP=$OUT/.version-macos
   TARGET=(-Dtarget=aarch64-macos)
 fi
-[[ -f $PREFIX/lib/pkgconfig/libghostty-vt.pc && -f $PREFIX/LICENSE && $(cat "$STAMP" 2>/dev/null) == "$VER $FEATURES" ]] && exit 0
+[[ -f $PREFIX/lib/pkgconfig/libghostty-vt.pc && -f $PREFIX/LICENSE && $(cat "$STAMP" 2>/dev/null) == "$VER $FEATURES $PATCH_SUM" ]] && exit 0
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 URL=https://release.files.ghostty.org/libghostty-vt/$VER
 curl -fsSL -o "$WORK/src.tar.gz" "$URL/libghostty-vt-$VER.tar.gz"
@@ -36,8 +39,9 @@ if [[ $(zig version 2>/dev/null) != 0.17.* ]]; then
   ZIG=$WORK/zig-x86_64-linux-$ZIG_VER/zig
 fi
 cd "$WORK/libghostty-vt-$VER"
+for p in "${PATCHES[@]}"; do patch -p1 --quiet < "$p"; done
 rm -rf "$PREFIX"
 ZIG_GLOBAL_CACHE_DIR=$WORK/cache "$ZIG" build --prefix "$PREFIX" --system "$WORK/libghostty-vt-$VER-deps" -Doptimize=ReleaseFast -Dcpu=baseline -Dvt-features=$FEATURES "${TARGET[@]}"
 sed -i "s|^prefix=.*|prefix=$PREFIX|" "$PREFIX"/lib/pkgconfig/*.pc
 cp LICENSE "$PREFIX/"
-echo "$VER $FEATURES" > "$STAMP"
+echo "$VER $FEATURES $PATCH_SUM" > "$STAMP"

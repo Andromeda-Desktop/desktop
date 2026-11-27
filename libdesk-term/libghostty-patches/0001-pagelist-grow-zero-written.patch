@@ -1,0 +1,70 @@
+diff --git a/src/terminal/PageList.zig b/src/terminal/PageList.zig
+index 3474ae2..4223be8 100644
+--- a/src/terminal/PageList.zig
++++ b/src/terminal/PageList.zig
+@@ -4208,6 +4208,40 @@ pub fn setMaxLines(self: *PageList, max: ?usize) void {
+ /// adhere to max_size and max_lines.
+ ///
+ /// This returns the newly allocated page node if there is one.
++/// Zero a resident page's memory for reuse, writing only bytes that can be
++/// non-zero: the row and metadata areas in full, and in each used row the
++/// cells up to its last non-zero cell. Rows past `used_rows` and their cells
++/// are zero, as grow's fast path requires. A full memset costs a whole page of stores per
++/// recycled page; a flood of short lines leaves most cells zero.
++fn zeroWritten(
++    memory: []align(std.heap.page_size_min) u8,
++    l: Page.Layout,
++    used_rows: usize,
++) void {
++    assert(memory.len == l.total_size);
++    @memset(memory[l.cells_start + l.cells_size ..], 0);
++    const cols: usize = l.capacity.cols;
++    const rows: [*]const Row = @ptrCast(@alignCast(memory.ptr + l.rows_start));
++    for (rows[0..used_rows]) |r| {
++        // A blank row has only zero cells (Page.verifyIntegrity checks it).
++        if (r.blank) continue;
++        // Scrolling swaps rows' cell blocks, so each row names its own.
++        const row: []u64 = @as([*]u64, @ptrCast(r.cells.ptr(memory)))[0..cols];
++        // Forward, so the page streams through memory in order.
++        var end: usize = 0;
++        var x: usize = 0;
++        while (x + 8 <= cols) : (x += 8) {
++            const chunk: @Vector(8, u64) = row[x..][0..8].*;
++            if (@reduce(.Or, chunk) != 0) end = x + 8;
++        }
++        while (x < cols) : (x += 1) {
++            if (row[x] != 0) end = x + 1;
++        }
++        @memset(row[0..end], 0);
++    }
++    @memset(memory[0..l.cells_start], 0);
++}
++
+ pub fn grow(self: *PageList) Allocator.Error!?*List.Node {
+     defer self.assertIntegrity();
+ 
+@@ -4328,12 +4362,22 @@ pub fn grow(self: *PageList) Allocator.Error!?*List.Node {
+         // does when it recycles a page. Only the old layout's bytes can
+         // be dirty, since every path that gives up a pool item zeroes
+         // the bytes it used.
+-        const old_memory = first.restore(.discard).memory;
++        const was_compressed = first.isCompressed();
++        const old_page = first.restore(.discard);
++        const old_memory = old_page.memory;
+         assert(old_memory.len <= std_size);
+         assert(layout.total_size <= std_size);
+         const item: *align(std.heap.page_size_min) [std_size]u8 =
+             @ptrCast(@alignCast(old_memory.ptr));
+-        @memset(old_memory, 0);
++        if (!was_compressed) {
++            zeroWritten(old_memory, Page.layout(old_page.capacity), old_page.size.rows);
++        } else if (comptime builtin.target.os.tag != .linux) {
++            // Linux decommits with MADV_DONTNEED, which reads back as zero.
++            @memset(old_memory, 0);
++        }
++        if (comptime build_options.slow_runtime_safety) {
++            assert(std.mem.allEqual(u8, old_memory, 0));
++        }
+         if (comptime build_options.slow_runtime_safety) {
+             // Check that the rest of the item is zero. verifyIntegrity
+             // can't catch stale bytes because they look like page data.
