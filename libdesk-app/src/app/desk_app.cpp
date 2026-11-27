@@ -118,10 +118,15 @@ namespace {
     }
     return args;
   }
+
+  // forwardToRunning and start both need it; an app may call either first.
+  void initLogLevelOnce() {
+    [[maybe_unused]] static const bool done = (initLogLevelFromEnvironment(), true);
+  }
 } // namespace
 
 std::optional<int> DeskApp::forwardToRunning(const std::string& appId, int argc, char* argv[]) {
-  initLogLevelFromEnvironment();
+  initLogLevelOnce();
   const LaunchArgs args = parseLaunchArgs(argc, argv);
   if (args.serviceStart) {
     return std::nullopt;
@@ -187,7 +192,7 @@ std::filesystem::path DeskApp::fontWarmupDir() {
 }
 
 std::optional<int> DeskApp::start(int argc, char* argv[]) {
-  initLogLevelFromEnvironment();
+  initLogLevelOnce();
   auto [uris, serviceStart, startAction] = parseLaunchArgs(argc, argv);
   i18n::Service::instance().setLanguage({});
 
