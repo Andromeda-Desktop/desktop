@@ -1045,17 +1045,22 @@ void CairoTextRenderer::rasterizeLayout(
       }
     }
   } wipeTight{tight, wipe};
+  // A blurred raster blurs the whole layout once: per-tile blurs would cut the halo at tile seams and
+  // normalise each tile to its own peak.
+  const bool blurWhole = blurPx > 0;
   if (wipe) {
-    int maxTileH = 0;
-    for (const auto& tilePlan : plan) {
-      maxTileH = std::max(maxTileH, tilePlan.heightPx);
+    int reserveH = pxHeight;
+    if (!blurWhole) {
+      reserveH = 0;
+      for (const auto& tilePlan : plan) {
+        reserveH = std::max(reserveH, tilePlan.heightPx);
+      }
     }
-    tight.reserve(static_cast<std::size_t>(tightRowBytes) * static_cast<std::size_t>(maxTileH));
+    tight.reserve(static_cast<std::size_t>(tightRowBytes) * static_cast<std::size_t>(reserveH));
   }
 
-  for (const auto& tilePlan : plan) {
+  const auto rasterTile = [&](const TilePlan& tilePlan, unsigned char* out) {
     const int tileH = tilePlan.heightPx;
-
     const cairo_format_t fmt = tinted ? CAIRO_FORMAT_A8 : CAIRO_FORMAT_ARGB32;
     cairo_surface_t* surface = cairo_image_surface_create(fmt, pxWidth, tileH);
     cairo_t* cr = cairo_create(surface);
@@ -1113,27 +1118,19 @@ void CairoTextRenderer::rasterizeLayout(
     }
 
     // Repack tightly because the backend upload path expects contiguous rows.
-    tight.resize(static_cast<std::size_t>(tightRowBytes) * static_cast<std::size_t>(tileH));
     for (int y = 0; y < tileH; ++y) {
-      std::memcpy(tight.data() + y * tightRowBytes, data + y * stride, static_cast<std::size_t>(tightRowBytes));
+      std::memcpy(out + y * tightRowBytes, data + y * stride, static_cast<std::size_t>(tightRowBytes));
     }
     if (wipe) {
       util::secureWipe(data, static_cast<std::size_t>(stride) * static_cast<std::size_t>(tileH));
     }
     cairo_surface_destroy(surface);
-    if (blurPx > 0) {
-      blurAlpha(tight, pxWidth, tileH, blurPx, wipe);
-    }
+  };
 
-    if (m_textureManager == nullptr) {
-      entry.tiles.clear();
-      entry.bytes = 0;
-      entry.metrics = metricsFromLayout(contentScale, layout);
-      return;
-    }
-
+  const auto uploadTile = [&](const TilePlan& tilePlan, const unsigned char* pixels) {
+    const int tileH = tilePlan.heightPx;
     TextureHandle texture = m_textureManager->loadFromPixels(
-        tight.data(), pxWidth, tileH, tinted ? TextureDataFormat::Alpha : TextureDataFormat::Rgba, TextureFilter::Linear
+        pixels, pxWidth, tileH, tinted ? TextureDataFormat::Alpha : TextureDataFormat::Rgba, TextureFilter::Linear
     );
     if (texture.id == 0) {
       for (auto& tile : entry.tiles) {
@@ -1141,16 +1138,40 @@ void CairoTextRenderer::rasterizeLayout(
       }
       entry.tiles.clear();
       entry.bytes = 0;
-      entry.metrics = metricsFromLayout(contentScale, layout);
-      return;
+      return false;
     }
-
     Tile tile;
     tile.texture = texture;
     tile.pixelHeight = tileH;
     tile.pixelYOffset = tilePlan.yTopPx;
     entry.tiles.push_back(tile);
     entry.bytes += static_cast<std::size_t>(tightRowBytes) * static_cast<std::size_t>(tileH);
+    return true;
+  };
+
+  const auto rowsAt = [&](const TilePlan& tilePlan) {
+    return tight.data() + static_cast<std::size_t>(tilePlan.yTopPx) * static_cast<std::size_t>(tightRowBytes);
+  };
+  if (blurWhole) {
+    tight.assign(static_cast<std::size_t>(tightRowBytes) * static_cast<std::size_t>(pxHeight), 0);
+    for (const auto& tilePlan : plan) {
+      rasterTile(tilePlan, rowsAt(tilePlan));
+    }
+    blurAlpha(tight, pxWidth, pxHeight, blurPx, wipe);
+  }
+  for (const auto& tilePlan : plan) {
+    if (!blurWhole) {
+      tight.resize(static_cast<std::size_t>(tightRowBytes) * static_cast<std::size_t>(tilePlan.heightPx));
+      rasterTile(tilePlan, tight.data());
+    }
+    if (m_textureManager == nullptr) {
+      entry.tiles.clear();
+      entry.bytes = 0;
+      break;
+    }
+    if (!uploadTile(tilePlan, blurWhole ? rowsAt(tilePlan) : tight.data())) {
+      break;
+    }
   }
 
   entry.metrics = metricsFromLayout(contentScale, layout);
