@@ -246,7 +246,7 @@ package_andromeda() {
   # Everything the desktop offers works out of the box; the power policy changes kernel defaults, so it stays opt-in.
   depends=(andromeda-compositor-git andromeda-shell-git xdg-desktop-portal-andromeda-git
     andromeda-greeter-git andromeda-preview-git andromeda-files-git andromeda-player-git andromeda-viewer-git
-    andromeda-terminal-git andromeda-link andromeda-link-app gnome-keyring scrcpy android-tools gst-plugin-va gst-libav libpulse pipewire-pulse sqlite
+    andromeda-terminal-git andromeda-link andromeda-link-window gnome-keyring scrcpy android-tools gst-plugin-va gst-libav libpulse pipewire-pulse sqlite
     poppler-glib glycin sdbus-cpp mpv ffmpeg)
   optdepends=('andromeda-power-git: laptop power saving (PCIe ASPM, runtime PM, USB autosuspend); can upset some devices')
   backup=(etc/mpv/mpv.conf)
