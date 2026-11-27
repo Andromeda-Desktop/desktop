@@ -29,6 +29,8 @@ namespace {
   constexpr Logger kLog("surface");
   constexpr float kSlowSurfaceOperationDebugMs = 50.0F;
   constexpr float kSlowSurfaceOperationWarnMs = 1000.0F;
+  // A frame closer than this to the last presented one asks for a frame callback, which paces it to the output.
+  constexpr auto kFramePacingWindow = std::chrono::milliseconds(17);
 
   std::uint32_t scaledExtent(std::uint32_t logical, float scale) noexcept {
     if (logical == 0) {
@@ -1058,8 +1060,11 @@ void Surface::render() {
     return;
   }
 
+  const auto now = std::chrono::steady_clock::now();
   const bool callbackInFlight = frameCallbackPending();
-  requestFrame();
+  if (callbackInFlight || needsFrameCallback(now)) {
+    requestFrame();
+  }
   FrameStatsSink* stats = frameStats(true);
   if (stats != nullptr) {
     stats->beginFrame(m_animationManager != nullptr && m_animationManager->hasActive());
@@ -1090,6 +1095,9 @@ void Surface::render() {
     stats->addCpu(renderMs);
     stats->endFrame();
   }
+  if (presented) {
+    m_lastPresentAt = now;
+  }
   if (presented && !m_presentedOnce) {
     m_presentedOnce = true;
     m_firstFrameHold = FirstFrameHold::Done;
@@ -1118,6 +1126,14 @@ void Surface::render() {
   if (m_renderTarget.takeStaleSizeSwap()) {
     requestRedraw();
   }
+}
+
+bool Surface::needsFrameCallback(std::chrono::steady_clock::time_point now) const {
+  // The callback paces the next frame, holds frames of an unseen surface and drives ticks. A lone update after a
+  // quiet gap (a spinner, a caret blink, a clock) needs none: its done event would only wake the loop again.
+  return !ticks() || m_nextFrameCallbackShouldTick || m_frameTickPending || wantsFrameDone()
+      || (m_animationManager != nullptr && m_animationManager->hasActive())
+      || (m_lastPresentAt.has_value() && now - *m_lastPresentAt < kFramePacingWindow);
 }
 
 void Surface::requestFrame() {

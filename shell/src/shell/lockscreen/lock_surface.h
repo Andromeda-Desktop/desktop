@@ -153,6 +153,7 @@ public:
 protected:
   void render() override;
   void onFrameCallbackDone() override;
+  [[nodiscard]] bool wantsFrameDone() const override;
 
 private:
   struct ForecastColumn {

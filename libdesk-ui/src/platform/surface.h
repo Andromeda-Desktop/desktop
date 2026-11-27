@@ -215,6 +215,8 @@ protected:
   virtual void render();
   [[nodiscard]] bool holdFirstFrame();
   virtual void onFrameCallbackDone();
+  // True while onFrameCallbackDone must run after the next frame, so that frame asks for a callback.
+  [[nodiscard]] virtual bool wantsFrameDone() const { return false; }
   virtual void onScaleChanged();
 
   // The platform delivers a frame callback; `callbackMs` is its timestamp in 32-bit milliseconds.
@@ -229,6 +231,7 @@ protected:
   void setPreferredScaleNumerator(std::uint32_t numerator);
   [[nodiscard]] std::uint32_t preferredScaleNumerator() const noexcept { return m_preferredScaleNumerator; }
   void requestFrame();
+  [[nodiscard]] bool needsFrameCallback(std::chrono::steady_clock::time_point now) const;
   // Stops frame work and drops the render target; the platform then destroys the native surface.
   void releaseRenderState();
   void trace(std::string_view event) const;
@@ -278,6 +281,7 @@ private:
   std::chrono::steady_clock::time_point m_firstFrameDeadline;
   Timer m_firstFrameTimer;
   std::optional<std::chrono::steady_clock::time_point> m_lastFrameAt;
+  std::optional<std::chrono::steady_clock::time_point> m_lastPresentAt;
   bool m_updateRequested = false;
   bool m_layoutRequested = false;
   bool m_redrawRequested = false;

@@ -2748,6 +2748,11 @@ void LockSurface::handleSleepFrameDone(void* data, wl_callback* callback, std::u
   }
 }
 
+bool LockSurface::wantsFrameDone() const {
+  return m_transitionPhase == TransitionPhase::Cover || m_transitionPhase == TransitionPhase::FinalPrime
+      || m_transitionPhase == TransitionPhase::ExitEndpoint;
+}
+
 void LockSurface::onFrameCallbackDone() {
   if (m_transitionPhase == TransitionPhase::Cover) {
     m_transitionPhase = TransitionPhase::FinalPrime;
