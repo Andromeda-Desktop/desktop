@@ -90,6 +90,39 @@ desk_app_dep = declare_dependency(
   include_directories: _inc,
 )
 
+if get_option('devel') and is_wayland and not meson.is_subproject()
+  # An installed, static libdesk for apps outside this tree (Link's window): pkg-config --static andromeda-desk.
+  _ui_sp_dev = subproject('libdesk-ui')
+  _dev_lib = static_library('andromeda-desk',
+    link_whole: [desk_app_lib, subproject('libdesk-system').get_variable('desk_system_lib'),
+      _ui_sp_dev.get_variable('desk_ui_lib')],
+    install: true,
+    install_tag: 'devel',
+  )
+  _inc_dir = get_option('includedir') / 'andromeda-desk'
+  _assets_dir = get_option('datadir') / 'andromeda-desk' / 'assets'
+  import('pkgconfig').generate(
+    name: 'andromeda-desk',
+    description: 'Andromeda libdesk app frame, UI toolkit and session services (static)',
+    version: meson.project_version(),
+    libraries: _dev_lib,
+    libraries_private: ['-ldl', '-pthread'],
+    subdirs: 'andromeda-desk',
+    extra_cflags: _ui_sp_dev.get_variable('_tokens_runtime'),
+    variables: {'assetsdir': '${prefix}' / _assets_dir},
+  )
+  meson.add_install_script('tools/install-headers.sh', _inc_dir,
+    meson.current_source_dir() / 'src', meson.current_source_dir() / 'subprojects/libdesk-ui/src',
+    meson.current_source_dir() / 'subprojects/libdesk-system/src', '--protocols',
+    meson.current_source_dir() / 'subprojects/libdesk-ui/protocols',
+    meson.current_source_dir() / 'subprojects/libdesk-system/protocols', '--generated',
+    _ui_sp_dev.get_variable('_protocol_headers'),
+    install_tag: 'devel',
+  )
+  install_subdir(meson.current_source_dir() / '../shell/assets', install_dir: _assets_dir, strip_directory: true,
+    exclude_files: ['andromeda-wallpaper.png', 'noctalia-wallpaper.png'], install_tag: 'devel')
+endif
+
 if not is_wayland or (meson.is_subproject() and not get_option('shared_app_lib'))
   subdir_done()
 endif
