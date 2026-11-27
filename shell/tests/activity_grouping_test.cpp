@@ -6,7 +6,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <string>
+#include <utility>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
@@ -79,9 +81,14 @@ int main() {
 
   ActivityService service(root.string(), 4);
   service.setUnits(units);
-  service.setWindowUnits({{"app-zen\\x2dbrowser@a.service", "zen-browser"}, {"app-andromeda-1835-17.scope", "foot"},
-                          {"app-andromeda-launch\\x2dfirst.sh-46.scope", "dev.andromeda.Terminal"},
-                          {launcher, "launcher-app"}});
+  std::map<std::string, std::string> windowUnits{
+      {"app-zen\\x2dbrowser@a.service", "zen-browser"}, {"app-andromeda-1835-17.scope", "foot"},
+      {"app-andromeda-launch\\x2dfirst.sh-46.scope", "dev.andromeda.Terminal"}};
+  // In a container the test's parent runs in no unit: the leftover then keeps its own row.
+  if (!launcher.empty()) {
+    windowUnits.emplace(launcher, "launcher-app");
+  }
+  service.setWindowUnits(std::move(windowUnits));
   const auto t0 = std::chrono::steady_clock::now();
   service.sample(t0);
 
@@ -90,7 +97,7 @@ int main() {
   const ActivityRow* terminal = row(service, "dev.andromeda.Terminal");
   TEST_CHECK(terminal != nullptr && terminal->hasWindow && terminal->units.size() == 2 && terminal->memoryBytes == 20 * mb);
   TEST_CHECK(row(service, "launch-first.sh") == nullptr);
-  TEST_CHECK(row(service, "app-andromeda-leftover-9.scope") == nullptr);
+  TEST_CHECK(launcher.empty() || row(service, "app-andromeda-leftover-9.scope") == nullptr);
   TEST_CHECK(launcher.empty() || row(service, "launcher-app")->units.front() == "app-andromeda-leftover-9.scope");
   const ActivityRow* zen = row(service, "zen-browser");
   TEST_CHECK(zen != nullptr && zen->units.size() == 2 && zen->hasWindow && zen->memoryBytes == 20 * mb);

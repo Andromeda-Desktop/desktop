@@ -320,7 +320,7 @@ namespace {
     ::close(b[1]);
     // Each source sits on the other's target number: dup2 in list order would send both lines into one pipe.
     auto child = process::spawn({
-        .argv = {"/bin/sh", "-c", "printf A >&51; printf \"$X\" >&50"},
+        .argv = {"/bin/bash", "-c", "printf A >&51; printf \"$X\" >&50"}, // dash takes only fds 0-9
         .fds = {{50, 51}, {51, 50}},
         .inheritEnv = false,
         .env = {{.name = "X", .value = "B"}},

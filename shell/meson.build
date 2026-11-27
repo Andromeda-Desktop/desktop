@@ -1472,7 +1472,9 @@ if build_tests
         meson.project_source_root() / 'tests' / 'settings_rows_generated' / 'hand_written_allowed.tsv',
       ]
     endif
-    test(test_name, test_exe, args: test_args, depends: test_name == 'math_provider' ? [noctalia_calc_module] : [])
+    # render_occlusion: 12800 GPU renders with readback; ~40 s on a debug build, more on llvmpipe.
+    test(test_name, test_exe, args: test_args, depends: test_name == 'math_provider' ? [noctalia_calc_module] : [],
+      timeout: test_name == 'render_occlusion' ? 240 : 30)
   endforeach
 
   askpass_client_test_exe = executable('askpass_client_test',

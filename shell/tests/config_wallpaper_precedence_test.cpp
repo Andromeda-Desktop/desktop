@@ -1,5 +1,6 @@
 #include "config/config_service.h"
 #include "config/config_types.h"
+#include "async_file_wait.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -45,7 +46,7 @@ namespace {
     expect(config.getDefaultWallpaperPath() == "/tmp/from-config.png", "path was not read from config.toml");
 
     expect(config.setOverride({"accessibility", "ui_scale"}, 1.25), "setOverride failed");
-    expect(std::filesystem::exists(sidecar), "setOverride did not create overrides.toml");
+    expect(waitFileWritten(sidecar) && std::filesystem::exists(sidecar), "setOverride did not create overrides.toml");
 
     expect(
         config.getDefaultWallpaperPath() == "/tmp/from-config.png",
@@ -157,6 +158,7 @@ namespace {
         std::nullopt, "/tmp/explicit.png", config.wallpaperFavorite("/tmp/explicit.png"), {}
     );
     expect(config.config().theme.mode == ThemeMode::Light, "favorite theme_mode was not applied");
+    expect(waitFileWritten(root / "state" / "andromeda" / "shell" / "overrides.toml"), "overrides.toml write did not finish");
 
     ::unsetenv("ANDROMEDA_CONFIG_HOME");
     ::unsetenv("ANDROMEDA_STATE_HOME");

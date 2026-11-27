@@ -14,7 +14,8 @@
 extern char** environ;
 
 // A bus peer that busCaller sees as the Flatpak app `appId`: `python3 -I -c script args...` in bwrap with a
-// /.flatpak-info. Exits the test with 77 (meson skip) when bwrap is not installed.
+// /.flatpak-info. Exits the test with 77 (meson skip) when bwrap is not installed or cannot build a sandbox here
+// (an unprivileged container).
 class SandboxedPeer {
 public:
   SandboxedPeer(const std::string& appId, const char* script, const std::vector<std::string>& args = {})
@@ -23,7 +24,18 @@ public:
     std::vector<const char*> argv{"bwrap", "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin",
                                   "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib", "/lib64", "--proc", "/proc",
                                   "--dev", "/dev", "--bind", "/tmp", "/tmp", "--ro-bind", m_info.c_str(),
-                                  "/.flatpak-info", "--", "python3", "-I", "-c", script};
+                                  "/.flatpak-info", "--"};
+    std::vector<const char*> probe = argv;
+    probe.insert(probe.end(), {"true", nullptr});
+    pid_t probePid = 0;
+    int probeStatus = 0;
+    if (::posix_spawnp(&probePid, "bwrap", nullptr, nullptr, const_cast<char**>(probe.data()), environ) != 0
+        || ::waitpid(probePid, &probeStatus, 0) != probePid || !WIFEXITED(probeStatus) || WEXITSTATUS(probeStatus) != 0) {
+      std::remove(m_info.c_str());
+      std::fprintf(stderr, "bwrap cannot build a sandbox here: skipped\n");
+      std::exit(77);
+    }
+    argv.insert(argv.end(), {"python3", "-I", "-c", script});
     for (const std::string& arg : args) {
       argv.push_back(arg.c_str());
     }

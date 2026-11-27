@@ -434,8 +434,8 @@ namespace {
 
     std::optional<bool> resetResult;
     harness.keys().resetAfterEncryptedDataCleared([&resetResult](bool success) { resetResult = success; });
-    ok = dispatchCompletion(store) && ok;
-    ok = dispatchCompletion(store) && ok;
+    // One wake can carry both store completions, or none of them: wait for the result itself.
+    ok = expect(runDeferredUntil([&resetResult] { return resetResult.has_value(); }), "recovery did not finish") && ok;
     ok = expect(resetResult == true, "Secret Service recovery did not complete successfully") && ok;
     ok = expect(
              settledState(clipboard) == ClipboardPersistenceState::Ready,

@@ -1,4 +1,4 @@
-// Control center toggle tiles show their service's state and a click changes that service.
+// Control center toggle tiles show their service's state; a click on an enabled tile changes that service.
 #include "idle/idle_inhibitor.h"
 #include "notification/notification_manager.h"
 #include "shell/control_center/shortcut_registry.h"
@@ -26,6 +26,11 @@ namespace {
       TEST_CHECK(tile->currentIcon() == (on ? tile->iconOn() : tile->iconOff()));
     }
 
+    if (!tile->enabled()) {
+      tile->onClick();
+      TEST_CHECK(serviceOn() && tile->active());
+      return;
+    }
     tile->onClick();
     TEST_CHECK(!serviceOn() && !tile->active());
     tile->onClick();
@@ -45,7 +50,9 @@ int main() {
       [&notifications](bool on) { notifications.setDoNotDisturb(on); }
   );
 
+  // No Wayland or logind backend: the tile shows the state but a click holds nothing, as the caffeine IPC.
   IdleInhibitor inhibitor;
+  TEST_CHECK(!ShortcutRegistry::create("caffeine", ShortcutServices{.idleInhibitor = &inhibitor})->enabled());
   checkToggleTile(
       "caffeine", ShortcutServices{.idleInhibitor = &inhibitor}, [&inhibitor] { return inhibitor.enabled(); },
       [&inhibitor](bool on) { inhibitor.setEnabled(on); }
