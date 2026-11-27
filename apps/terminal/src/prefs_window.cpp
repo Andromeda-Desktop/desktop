@@ -32,7 +32,7 @@
 namespace term {
 
   namespace {
-    std::string_view materialName(WindowMaterial material) {
+    std::string materialName(WindowMaterial material) {
     switch (material) {
     case WindowMaterial::Solid: return i18n::tr("terminal.prefs.material-solid");
     case WindowMaterial::Glass: return i18n::tr("terminal.prefs.material-glass");
@@ -1072,7 +1072,7 @@ namespace term {
       if (!row) {
         row = ui::row({.gap = gap, .width = width});
       }
-      const std::string_view name = materialName(material);
+      const std::string name = materialName(material);
       const bool on = material == current;
       const float innerW = tileW - inset * 2.0F;
       const float sideW = std::round(innerW * Tokens::componentTerminalWindowTileSidebar);
