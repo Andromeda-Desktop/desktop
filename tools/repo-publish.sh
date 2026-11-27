@@ -94,11 +94,15 @@ acquire() {
   # 45 min of waits: longer than the 30 min after which a lock is stale (a cancelled run never unlocks), so a waiter
   # takes a dead lock instead of giving up just before it may.
   for _ in $(seq 180); do
-    if gh api "repos/$repo/git/refs" -f ref="refs/$lock" -f sha="$lock_sha" > /dev/null 2>&1; then
+    if err=$(gh api "repos/$repo/git/refs" -f ref="refs/$lock" -f sha="$lock_sha" 2>&1 > /dev/null); then
       trap unlock EXIT
       return 0
     fi
-    held=$(gh api "repos/$repo/git/ref/$lock" -q .object.sha 2> /dev/null) || continue
+    if ! held=$(gh api "repos/$repo/git/ref/$lock" -q .object.sha 2> /dev/null); then
+      echo "repo-publish: cannot take or read $lock: $err" >&2
+      sleep 15
+      continue
+    fi
     born=$(gh api "repos/$repo/git/commits/$held" -q .committer.date)
     if (($(date +%s) - $(date -d "$born" +%s) > 1800)); then
       echo "repo-publish: taking the stale lock $lock from $born" >&2
