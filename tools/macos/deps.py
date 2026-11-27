@@ -16,7 +16,7 @@ import tempfile
 import urllib.request
 
 ROOTS = ["glib", "cairo", "pango", "harfbuzz", "freetype", "fontconfig", "fribidi", "librsvg", "libxkbcommon",
-         "webp", "jpeg-xl", "md4c", "nlohmann-json", "tomlplusplus"]
+         "webp", "jpeg-xl", "md4c", "nlohmann-json", "tomlplusplus", "qrencode"]
 # Floating-point std::from_chars needs macOS 26 libc++; the bottles match the target.
 TAG = "arm64_tahoe"
 TARGET = "arm64-apple-macos26"

@@ -24,6 +24,8 @@ struct DropTarget {
 struct DragOffer {
   std::vector<std::string> mimeTypes;
   std::function<std::string(const std::string& mime)> data; // bytes for one offered type
+  // Used instead of data when set: the bytes come later through reply; a reply never called gives the target none.
+  std::function<void(const std::string& mime, std::function<void(const std::string&)> reply)> dataLater;
   std::uint32_t actions = DropCopy | DropMove;
   Surface* icon = nullptr; // the drag image (Display::createDragIcon), its top left at the pointer; the caller owns it
   // The action the target took and whether it dropped; called once.

@@ -1481,6 +1481,7 @@ bool WaylandConnection::startDrag(const Surface& origin, DragOffer source) {
   return dnd != nullptr && dnd->startDrag(wlSurfaceOf(origin), m_seatHandler.lastPressSerial(),
                                           {.mimeTypes = std::move(source.mimeTypes),
                                            .data = std::move(source.data),
+                                           .dataLater = std::move(source.dataLater),
                                            .actions = source.actions,
                                            .icon = source.icon != nullptr ? wlSurfaceOf(*source.icon) : nullptr,
                                            .finished = std::move(source.finished)});
