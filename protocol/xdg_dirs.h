@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cstdlib>
-#include <pwd.h>
 #include <string>
 #include <string_view>
+#ifndef _WIN32
+#include <pwd.h>
 #include <unistd.h>
+#endif
 #include <vector>
 
 // XDG Base Directory Specification 0.8: the one reader of HOME and the XDG_* directory variables. An unset, empty
@@ -37,13 +39,17 @@ namespace xdg {
 
   } // namespace detail
 
-  // $HOME, else the passwd entry; empty when neither is absolute.
+  // $HOME, else the passwd entry; empty when neither is absolute (starts with /), so always empty on Windows.
   [[nodiscard]] inline std::string home() {
     if (std::string dir = detail::fromEnv("HOME"); !dir.empty()) {
       return dir;
     }
+#ifdef _WIN32
+    return {};
+#else
     const passwd* entry = getpwuid(getuid());
     return entry != nullptr && detail::absolute(entry->pw_dir) ? std::string(entry->pw_dir) : std::string();
+#endif
   }
 
   namespace detail {

@@ -2,12 +2,7 @@
 #include "core/sys/sys.h"
 #include "protocols/async_file_writer.h"
 
-#include <array>
-#include <cerrno>
-#include <cstdint>
-#include <fcntl.h>
 #include <mutex>
-#include <unistd.h>
 
 namespace {
 
@@ -21,44 +16,9 @@ namespace {
     return *mutex;
   }
 
-  std::array<int, 2>& wakePipe() {
-    static std::array<int, 2> fds{-1, -1};
-    return fds;
-  }
-
-  bool ensureWakePipe() {
-    auto& fds = wakePipe();
-    if (fds[0] >= 0 && fds[1] >= 0) {
-      return true;
-    }
-
-    int pipeFds[2] = {-1, -1};
-    if (!sys::pipeCloexec(pipeFds)) {
-      return false;
-    }
-    for (const int fd : pipeFds) {
-      ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL) | O_NONBLOCK);
-    }
-    fds = {pipeFds[0], pipeFds[1]};
-    return true;
-  }
-
-  void wakeMainLoop() {
-    std::scoped_lock lock(deferredMutex());
-    if (!ensureWakePipe()) {
-      return;
-    }
-    constexpr std::uint8_t byte = 1;
-    const int fd = wakePipe()[1];
-    for (;;) {
-      const ssize_t n = ::write(fd, &byte, sizeof(byte));
-      if (n >= 0 || errno == EAGAIN || errno == EWOULDBLOCK) {
-        return;
-      }
-      if (errno != EINTR) {
-        return;
-      }
-    }
+  const sys::WakeFd& wake() {
+    static const auto* wake = new sys::WakeFd;
+    return *wake;
   }
 
 } // namespace
@@ -73,7 +33,7 @@ void DeferredCall::callLater(std::function<void()> fn) {
     std::scoped_lock lock(deferredMutex());
     queue().push_back(std::move(fn));
   }
-  wakeMainLoop();
+  (void)wake().signal();
 }
 
 std::vector<std::function<void()>> DeferredCall::takePending() {
@@ -83,28 +43,6 @@ std::vector<std::function<void()>> DeferredCall::takePending() {
   return pending;
 }
 
-void DeferredCall::drainWakeFd() {
-  const int fd = wakeFd();
-  if (fd < 0) {
-    return;
-  }
+void DeferredCall::drainWakeFd() { wake().drain(); }
 
-  std::array<std::uint8_t, 64> bytes{};
-  for (;;) {
-    const ssize_t n = ::read(fd, bytes.data(), bytes.size());
-    if (n > 0) {
-      continue;
-    }
-    if (n == 0 || errno == EAGAIN || errno == EWOULDBLOCK) {
-      return;
-    }
-    if (errno != EINTR) {
-      return;
-    }
-  }
-}
-
-int DeferredCall::wakeFd() {
-  std::scoped_lock lock(deferredMutex());
-  return ensureWakePipe() ? wakePipe()[0] : -1;
-}
+int DeferredCall::wakeFd() { return wake().pollFd(); }

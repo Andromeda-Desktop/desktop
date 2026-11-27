@@ -3,6 +3,7 @@
 #include "platform/drop_target.h"
 #include "platform/input_events.h"
 #include "platform/output_id.h"
+#include "core/sys/poll.h"
 
 #include <chrono>
 #include <cstddef>
@@ -10,7 +11,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <poll.h>
 #include <string>
 #include <vector>
 
@@ -54,7 +54,7 @@ public:
   [[nodiscard]] virtual PumpResult finishPoll(short revents) = 0;
   virtual void cancelPoll() = 0;
   // poll(2) semantics. A window system whose events do not arrive on a fd (Cocoa) dispatches them while it waits.
-  virtual int wait(pollfd* fds, nfds_t count, int timeoutMs) { return ::poll(fds, count, timeoutMs); }
+  virtual int wait(pollfd* fds, nfds_t count, int timeoutMs) { return sys::pollFds(fds, count, timeoutMs); }
   // -1: no key repeat pending.
   [[nodiscard]] virtual int repeatPollTimeoutMs() const = 0;
   virtual void repeatTick() = 0;

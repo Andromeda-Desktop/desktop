@@ -1,4 +1,5 @@
 #include "log.h"
+#include "os.h"
 #include "xdg_dirs.h"
 
 #include <algorithm>
@@ -11,17 +12,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
-#include <csignal>
-#include <fcntl.h>
 #include <filesystem>
 #include <mutex>
-#include <poll.h>
-#include <pthread.h>
 #include <string>
 #include <system_error>
 #include <thread>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <utility>
 
 namespace {
@@ -176,12 +171,7 @@ namespace {
   // The sd-daemon level prefix when stderr is the journal stream ($JOURNAL_STREAM is its "dev:inode"), so journald
   // stores the line's real priority instead of 6.
   const char* journalLevelPrefix(LogLevel level) {
-    static const bool toJournal = [] {
-      const char* stream = std::getenv("JOURNAL_STREAM");
-      struct stat st{};
-      return stream != nullptr && fstat(STDERR_FILENO, &st) == 0
-          && std::format("{}:{}", st.st_dev, st.st_ino) == stream;
-    }();
+    static const bool toJournal = andromeda::os::stderrIsJournal();
     if (!toJournal) {
       return "";
     }
@@ -272,7 +262,7 @@ namespace {
       return;
     }
 
-    gLogFile = std::fopen(gLogPath.c_str(), "a");
+    gLogFile = andromeda::os::openAppend(gLogPath);
     gLogSizeBytes = gLogFile == nullptr ? 0 : currentLogFileSizeUnlocked();
     gBufferedFileLogLines = 0;
     gLastFileFlushAt = std::chrono::steady_clock::now();
@@ -298,17 +288,16 @@ namespace {
     if (line.empty()) {
       return;
     }
-    pollfd fd{.fd = STDERR_FILENO, .events = POLLOUT, .revents = 0};
-    if (::poll(&fd, 1, 0) != 1 || (fd.revents & POLLOUT) == 0) {
+    if (!andromeda::os::stderrWritable()) {
       ++gSkippedConsoleLines;
       return;
     }
     if (gSkippedConsoleLines > 0) {
       const std::string note = std::format("[log] {} console lines skipped: stderr was full\n", gSkippedConsoleLines);
       gSkippedConsoleLines = 0;
-      (void)!::write(STDERR_FILENO, note.data(), note.size());
+      andromeda::os::writeStderr(note);
     }
-    (void)!::write(STDERR_FILENO, line.data(), line.size());
+    andromeda::os::writeStderr(line);
   }
 
   // Runs on the writer thread, or in place in a forked child.
@@ -392,12 +381,7 @@ namespace {
     if (!gWriterRunning) {
       // The first line can come before main blocks SIGINT/SIGTERM for its signalfd; a writer that inherits them
       // unblocked would take the signal's default action and kill the process.
-      sigset_t all;
-      sigset_t previous;
-      sigfillset(&all);
-      pthread_sigmask(SIG_BLOCK, &all, &previous);
-      gWriter = std::thread(writerMain);
-      pthread_sigmask(SIG_SETMASK, &previous, nullptr);
+      gWriter = andromeda::os::startThreadSignalsBlocked(writerMain);
       gWriterRunning = true;
       // Joins before static destruction: a joinable std::thread destructor terminates the process.
       static const bool registered = std::atexit(stopWriter) == 0;
@@ -438,33 +422,7 @@ namespace {
     gFileEnabled.store(false, std::memory_order_relaxed);
   }
 
-  [[maybe_unused]] const bool gForkHandlers = pthread_atfork(prepareFork, afterForkParent, afterForkChild) == 0;
-
-  void redirectStdioIfTty(const std::filesystem::path& dir) {
-    const bool stdoutIsTty = isatty(STDOUT_FILENO) != 0;
-    const bool stderrIsTty = isatty(STDERR_FILENO) != 0;
-    if (!stdoutIsTty && !stderrIsTty) {
-      return;
-    }
-    int fd = -1;
-    if (!dir.empty()) {
-      fd = ::open((dir / "andromeda-stderr.log").c_str(), O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0644);
-    }
-    if (fd < 0) {
-      fd = ::open("/dev/null", O_WRONLY | O_CLOEXEC);
-    }
-    if (fd < 0) {
-      return;
-    }
-    // dup2 clears O_CLOEXEC on the target, so spawned children inherit the redirect instead of the TTY.
-    if (stdoutIsTty) {
-      (void)::dup2(fd, STDOUT_FILENO);
-    }
-    if (stderrIsTty) {
-      (void)::dup2(fd, STDERR_FILENO);
-    }
-    ::close(fd);
-  }
+  [[maybe_unused]] const bool gForkHandlers = (andromeda::os::atFork(prepareFork, afterForkParent, afterForkChild), true);
 
   void emit(LogLevel level, const char* section, std::string_view msg, const std::tm& tm, const std::timespec& ts,
             LogLevel minLevel, bool console) {
@@ -543,7 +501,7 @@ void initLogFile(std::string_view name, TtyStdio stdio) {
   }
   const bool haveDir = !logPath.empty() && !ec;
   if (stdio == TtyStdio::Redirect) {
-    redirectStdioIfTty(haveDir ? logPath.parent_path() : std::filesystem::path());
+    andromeda::os::redirectStdioIfTty(haveDir ? logPath.parent_path() : std::filesystem::path());
   }
   if (!haveDir) {
     return;
@@ -583,8 +541,7 @@ namespace detail {
   void logMessage(LogLevel level, const char* section, std::string_view msg) {
     std::timespec ts{};
     std::timespec_get(&ts, TIME_UTC);
-    std::tm tm{};
-    localtime_r(&ts.tv_sec, &tm);
+    const std::tm tm = andromeda::os::localTime(ts.tv_sec);
 
     struct Repeats {
       LogLevel level;

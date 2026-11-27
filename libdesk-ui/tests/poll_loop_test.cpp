@@ -1,6 +1,8 @@
 #include "core/deferred_call.h"
 #include "core/fd_watch.h"
 #include "core/poll_loop.h"
+#include "core/sys/poll.h"
+#include "core/sys/sys.h"
 #include "core/timer_manager.h"
 
 #include <chrono>
@@ -9,11 +11,10 @@
 #include <memory>
 #include <random>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 // Model test: random sequences of work queued from callbacks through the real PollLoop::run(): deferred calls (also
-// from other threads), timers (also cancelled), fd wakes through an FdWatch that is destroyed in its own callback and
+// from other threads), timers (also cancelled), wakes through an FdWatch that is destroyed in its own callback and
 // recreated a deferred call later, and quit from a callback. Each job must run exactly once unless its timer was cancelled, and none after quit.
 namespace {
   int g_failures = 0;
@@ -24,32 +25,19 @@ namespace {
     }
   }
 
-  struct Pipe {
-    int rd = -1;
-    int wr = -1;
+  struct Wake {
+    sys::WakeFd fd;
     std::vector<std::function<void()>> waiting;
     std::unique_ptr<FdWatch> watch;
     bool dropWatch = false;
 
-    Pipe() {
-      int fds[2];
-      if (::pipe(fds) == 0) {
-        rd = fds[0];
-        wr = fds[1];
-      }
-    }
-    ~Pipe() {
-      watch.reset();
-      ::close(rd);
-      ::close(wr);
-    }
+    ~Wake() { watch.reset(); }
     void attach(PollLoop& loop) {
-      watch = std::make_unique<FdWatch>(loop, rd, POLLIN, [this, &loop](short revents) {
+      watch = std::make_unique<FdWatch>(loop, fd.pollFd(), POLLIN, [this, &loop](short revents) {
         if ((revents & POLLIN) == 0) {
           return;
         }
-        char buf[256];
-        (void)::read(rd, buf, sizeof(buf));
+        fd.drain();
         auto jobs = std::move(waiting);
         waiting.clear();
         for (auto& job : jobs) {
@@ -64,16 +52,15 @@ namespace {
     }
     void push(std::function<void()> job) {
       waiting.push_back(std::move(job));
-      const char byte = 1;
-      (void)::write(wr, &byte, 1);
+      (void)fd.signal();
     }
   };
 
   void runSeed(unsigned seed) {
     std::mt19937 rng(seed);
     PollLoop loop;
-    Pipe pipe;
-    pipe.attach(loop);
+    Wake wake;
+    wake.attach(loop);
 
     struct Job {
       int runs = 0;
@@ -138,11 +125,11 @@ namespace {
         break;
       }
       case 4:
-        pipe.push(makeJob());
+        wake.push(makeJob());
         break;
       default:
-        pipe.dropWatch = true;
-        pipe.push(makeJob());
+        wake.dropWatch = true;
+        wake.push(makeJob());
         break;
       }
     };
@@ -170,7 +157,6 @@ namespace {
 } // namespace
 
 int main() {
-  alarm(60);
   for (unsigned seed = 1; seed <= 200; ++seed) {
     runSeed(seed);
   }
@@ -180,9 +166,9 @@ int main() {
 
   // A worker loop runs only its own sources, and a quit stops the rest of its pass.
   {
-    int a[2];
-    int b[2];
-    check(pipe(a) == 0 && pipe(b) == 0 && write(a[1], "x", 1) == 1 && write(b[1], "x", 1) == 1, "pipe setup", 0);
+    const sys::WakeFd a;
+    const sys::WakeFd b;
+    check(a.valid() && b.valid() && a.signal() && b.signal(), "wake setup", 0);
     bool deferredRan = false;
     bool timerRan = false;
     bool secondRan = false;
@@ -190,8 +176,8 @@ int main() {
     Timer timer;
     timer.start(std::chrono::milliseconds(0), [&] { timerRan = true; });
     PollLoop worker(PollLoop::Kind::Worker);
-    const FdWatch first(worker, a[0], POLLIN, [&](short) { worker.quit(5); });
-    const FdWatch second(worker, b[0], POLLIN, [&](short) { secondRan = true; });
+    const FdWatch first(worker, a.pollFd(), POLLIN, [&](short) { worker.quit(5); });
+    const FdWatch second(worker, b.pollFd(), POLLIN, [&](short) { secondRan = true; });
     check(worker.run() == 5, "worker loop did not return its quit code", 0);
     check(!deferredRan && !timerRan, "a worker loop ran main-thread deferred calls or timers", 0);
     check(!secondRan, "a source ran after quit in the same pass", 0);
@@ -199,9 +185,20 @@ int main() {
     DeferredCall::callLater([&] { main.quit(); });
     main.run();
     check(deferredRan, "the main loop did not run the deferred call", 0);
-    for (const int fd : {a[0], a[1], b[0], b[1]}) {
-      close(fd);
+  }
+  // As poll(2) on every OS: a closed entry reports POLLNVAL and a signaled one beside it still reports POLLIN.
+  {
+    const sys::WakeFd live;
+    int closed = -1;
+    {
+      const sys::WakeFd gone;
+      closed = gone.pollFd();
     }
+    check(live.valid() && live.signal(), "wake setup", 0);
+    pollfd fds[2] = {{closed, POLLIN, 0}, {live.pollFd(), POLLIN, 0}};
+    const int ready = sys::pollFds(fds, 2, 0);
+    check(ready == 2 && fds[0].revents == POLLNVAL && fds[1].revents == POLLIN,
+          "a closed entry failed the wait or hid a signaled one", 0);
   }
   std::printf("poll_loop: %s\n", g_failures == 0 ? "ok" : "FAILED");
   return g_failures == 0 ? 0 : 1;

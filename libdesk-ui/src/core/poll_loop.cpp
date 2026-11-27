@@ -96,7 +96,7 @@ int PollLoop::run() {
   while (runDeferred()) {
     fds.clear();
     const int timeoutMs = prepare(fds);
-    if (::poll(fds.data(), fds.size(), timeoutMs) < 0) {
+    if (sys::pollFds(fds.data(), fds.size(), timeoutMs) < 0) {
       if (errno == EINTR) {
         continue;
       }

@@ -2,5 +2,5 @@ option('install_toolkit_themes', type: 'boolean', value: false,
   description: 'Install the GTK, Qt, KDE and fcitx5 theme files; only one package (the shell) may own them')
 option('dev_tokens', type: 'boolean', value: true,
   description: 'Make design tokens writable for live reload (ANDROMEDA_DEV_TOKENS); off keeps them constexpr')
-option('platform', type: 'combo', choices: ['wayland', 'macos'], value: 'wayland',
-  description: 'Window system backend; macos builds only the portable sources until the Cocoa backend lands')
+option('platform', type: 'combo', choices: ['wayland', 'macos', 'win32'], value: 'wayland',
+  description: 'Window system backend; win32 builds only the event loop core')

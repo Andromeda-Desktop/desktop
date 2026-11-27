@@ -147,6 +147,22 @@ macos-check:
     tools/macos/link-check.sh apps/terminal/build-macos andromeda-terminal libdesk-term/libghostty-vt/prefix-macos/lib/libghostty-vt.dylib
     for crate in ptyd agentd; do cargo check -q --locked --target aarch64-apple-darwin --tests --manifest-path apps/terminal/$crate/Cargo.toml --target-dir /var/tmp/andromeda-macos-cargo; done
 
+# Cross-builds the libdesk-ui event loop core and its tests for x86_64 Windows (llvm-mingw): fails when portable loop code
+# calls a POSIX-only API. The tests run on Windows CI (.github/workflows/check-windows.yml).
+win-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cross=$HOME/.cache/andromeda-win/cross.ini
+    tools/win/deps.sh
+    dir=/var/tmp/andromeda-win32/libdesk-ui
+    # A new toolchain pin writes a new cross file, which only a fresh setup picks up.
+    if ! cmp -s "$cross" $dir/cross.ini.used; then
+      rm -rf $dir
+      tools/build.sh meson setup $dir libdesk-ui --cross-file "$cross" -Dplatform=win32
+      cp "$cross" $dir/cross.ini.used
+    fi
+    tools/build.sh ninja -C $dir
+
 # Cross-builds "Andromeda Terminal.app" for arm64 macOS into /var/tmp/andromeda-macos (OUT overrides).
 macos-terminal:
     tools/macos/terminal.sh

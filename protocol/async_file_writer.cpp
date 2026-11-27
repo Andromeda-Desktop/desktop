@@ -1,22 +1,18 @@
 #include "async_file_writer.h"
 #include "log.h"
+#include "os.h"
 
 #include <algorithm>
 #include <atomic>
-#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
-#include <fcntl.h>
 #include <format>
 #include <random>
-#include <sys/file.h>
-#include <sys/stat.h>
 #include <mutex>
 #include <set>
 #include <stop_token>
 #include <thread>
-#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -40,12 +36,18 @@ namespace andromeda {
     // An unlocked temporary this old has no writer: the writer locks it right after it creates it.
     constexpr auto kDeadTemporaryAge = std::chrono::seconds(10);
 
-    // Removes `<name>.andro-*.tmp` files no writer holds (a crash between write and rename). The flock test also
+    // UTF-8 on every OS; path::string() narrows through the Windows ANSI code page.
+    std::string utf8(const std::filesystem::path& path) {
+      const std::u8string text = path.u8string();
+      return {text.begin(), text.end()};
+    }
+
+    // Removes `<name>.andro-*.tmp` files no writer holds (a crash between write and rename). The held test also
     // holds for writers in another PID namespace or on another host sharing the home directory.
     void sweepDeadTemporaries(const std::filesystem::path& dir) {
       std::error_code error;
       for (const auto& entry : std::filesystem::directory_iterator(dir, error)) {
-        const std::string name = entry.path().filename().string();
+        const std::string name = utf8(entry.path().filename());
         if (!name.ends_with(kTempSuffix) || name.find(kTempTag) == std::string::npos) {
           continue;
         }
@@ -54,14 +56,7 @@ namespace andromeda {
         if (ignored || std::filesystem::file_time_type::clock::now() - written < kDeadTemporaryAge) {
           continue;
         }
-        const int fd = ::open(entry.path().c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
-        if (fd < 0) {
-          continue;
-        }
-        if (::flock(fd, LOCK_EX | LOCK_NB) == 0) {
-          std::filesystem::remove(entry.path(), ignored);
-        }
-        ::close(fd);
+        os::removeIfUnheld(entry.path());
       }
     }
 
@@ -69,7 +64,7 @@ namespace andromeda {
     const std::string& temporaryTag() {
       static const auto* tag = new std::string([] {
         std::random_device random;
-        return std::format("{}{}-{:08x}{:08x}", kTempTag, ::getpid(), random(), random());
+        return std::format("{}{}-{:08x}{:08x}", kTempTag, os::processId(), random(), random());
       }());
       return *tag;
     }
@@ -79,25 +74,14 @@ namespace andromeda {
       if (dir.empty() || std::filesystem::is_directory(dir, error)) {
         return true;
       }
+      // A missing root (an absent drive or share) is its own parent.
+      if (dir == dir.parent_path()) {
+        return false;
+      }
       if (!makeDirectories(dir.parent_path(), mode)) {
         return false;
       }
-      return ::mkdir(dir.c_str(), mode) == 0 || errno == EEXIST;
-    }
-
-    bool writeAll(int fd, std::string_view text) {
-      std::size_t done = 0;
-      while (done < text.size()) {
-        const ssize_t n = ::write(fd, text.data() + done, text.size() - done);
-        if (n < 0 && errno == EINTR) {
-          continue;
-        }
-        if (n <= 0) {
-          return false;
-        }
-        done += static_cast<std::size_t>(n);
-      }
-      return true;
+      return os::makeDirectory(dir, mode);
     }
 
     class Writer {
@@ -173,7 +157,7 @@ namespace andromeda {
             ok = m_running->write ? m_running->write(m_running->path, m_running->text)
                                   : writeFileReplacing(m_running->path, m_running->text);
             if (!ok) {
-              kLog.warn("cannot write {}", m_running->path.string());
+              kLog.warn("cannot write {}", utf8(m_running->path));
             }
           }
           lock.lock();
@@ -223,31 +207,14 @@ namespace andromeda {
     if (const std::scoped_lock lock(*sweptMutex); swept->insert(dir).second) {
       sweepDeadTemporaries(dir);
     }
-    const std::filesystem::path temporary = path.string() + temporaryTag() + std::string(kTempSuffix);
-    const int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, fileMode);
-    if (fd < 0) {
-      return false;
-    }
-    // Held until close: the sweep in another process leaves a locked temporary alone.
-    ::flock(fd, LOCK_EX);
-    // rename is atomic: a crash mid-write keeps the previous file.
-    const bool ok = std::ranges::all_of(parts, [fd](std::string_view part) { return writeAll(fd, part); }) &&
-                    ::rename(temporary.c_str(), path.c_str()) == 0;
-    if (!ok) {
-      ::unlink(temporary.c_str());
-    }
-    ::close(fd);
-    return ok;
+    std::filesystem::path temporary = path;
+    temporary += temporaryTag();
+    temporary += kTempSuffix;
+    return os::writeAndReplace(temporary, path, parts, fileMode);
   }
 
   bool writeKernelAttribute(const std::filesystem::path& path, std::string_view value) {
-    const int fd = ::open(path.c_str(), O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
-    if (fd < 0) {
-      return false;
-    }
-    const bool ok = writeAll(fd, value);
-    ::close(fd);
-    return ok;
+    return os::writeExisting(path, value);
   }
 
   namespace {
@@ -265,12 +232,11 @@ namespace andromeda {
     if (file_writer_platform::inMemory(path)) {
       return;
     }
-    const std::string& text = path.native();
     g_blockingLoopWrites.fetch_add(1, std::memory_order_relaxed);
     static auto* logged = new std::set<std::filesystem::path>;
     static auto* loggedMutex = new std::mutex;
     if (const std::scoped_lock lock(*loggedMutex); logged->insert(path).second) {
-      kLog.warn("blocking write on the main loop: {}", text);
+      kLog.warn("blocking write on the main loop: {}", utf8(path));
     }
   }
 

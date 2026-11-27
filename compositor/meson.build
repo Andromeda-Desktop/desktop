@@ -1045,6 +1045,7 @@ core_sources = files(
   'src/core/fdlimit.cpp',
   'src/core/log_wlr.cpp',
   'protocols/log.cpp',
+  'protocols/os_posix.cpp',
   'src/config/config.cpp',
   'src/config/fields.cpp',
   'src/config/fields_animation.cpp',

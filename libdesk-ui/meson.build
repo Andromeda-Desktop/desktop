@@ -24,7 +24,9 @@ if is_libcxx
 endif
 if get_option('buildtype') != 'release'
   if is_libcxx
-    add_project_arguments('-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE', language: 'cpp')
+    # Meson sets its own libc++ hardening mode first.
+    add_project_arguments('-U_LIBCPP_HARDENING_MODE', '-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE',
+                          language: 'cpp')
   else
     add_project_arguments('-D_GLIBCXX_ASSERTIONS', language: 'cpp')
   endif
@@ -34,6 +36,44 @@ if get_option('buildtype') == 'release'
 endif
 
 is_wayland = get_option('platform') == 'wayland'
+is_macos = get_option('platform') == 'macos'
+is_win32 = get_option('platform') == 'win32'
+
+_warning_args = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
+# The event loop core (DeferredCall, timers, PollLoop) and the log and file writer it needs: every platform.
+_loop_sources = files(
+  'protocols/async_file_writer.cpp',
+  'protocols/log.cpp',
+  'src/core/deferred_call.cpp',
+  'src/core/fd_watch.cpp',
+  'src/core/log_platform.cpp',
+  'src/core/poll_loop.cpp',
+  'src/core/poll_schedule.cpp',
+  'src/core/timer_manager.cpp',
+)
+# '.' adds the source root and the build root, where the generated headers land.
+_desk_ui_inc = [
+  include_directories('src'),
+  include_directories('.'),
+  include_directories('third_party/wuffs', is_system: true),
+]
+
+# Windows builds only the event loop core and its tests.
+if is_win32
+  add_project_arguments('-DWIN32_LEAN_AND_MEAN', '-DNOMINMAX', '-D_WIN32_WINNT=0x0A00', language: 'cpp')
+  desk_ui_lib = static_library('desk_ui',
+    sources: _loop_sources + files('protocols/os_windows.cpp', 'src/core/sys/sys_windows.cpp'),
+    include_directories: _desk_ui_inc,
+    cpp_args: _warning_args,
+  )
+  desk_ui_dep = declare_dependency(link_with: desk_ui_lib, include_directories: _desk_ui_inc,
+    compile_args: _tokens_runtime)
+  if not meson.is_subproject()
+    test('poll_schedule', executable('poll_schedule_test', 'tests/poll_schedule_test.cpp', dependencies: desk_ui_dep))
+    test('poll_loop', executable('poll_loop_test', 'tests/poll_loop_test.cpp', dependencies: desk_ui_dep))
+  endif
+  subdir_done()
+endif
 
 if is_wayland
   egl_dep = dependency('egl', required: false)
@@ -47,7 +87,7 @@ if is_wayland
   if not gles2_dep.found()
     gles2_dep = dependency('epoxy')
   endif
-else
+elif is_macos
   egl_dep = dependency('egl')
   gles2_dep = dependency('glesv2')
 endif
@@ -104,7 +144,7 @@ endforeach
 configure_file(output: 'lazy-sonames.txt', command: ['printf', '%s\\n'] + _lazy_sonames, capture: true)
 if is_wayland
   _system_deps += [dependency('wayland-client'), dependency('wayland-egl'), dependency('sdbus-c++')]
-else
+elif is_macos
   add_languages('objcpp', native: false)
   _system_deps += dependency('appleframeworks', modules: ['AppKit', 'QuartzCore'])
 endif
@@ -191,9 +231,8 @@ if get_option('install_toolkit_themes')
 endif
 
 # ── Library ───────────────────────────────────────────────────────────────────
-_desk_ui_sources = files(
+_desk_ui_sources = _loop_sources + files(
   'src/core/blocking_pool.cpp',
-  'src/core/deferred_call.cpp',
   'src/core/freedesktop_key_file.cpp',
   'src/core/files/directory_scanner.cpp',
   'src/core/files/file_info.cpp',
@@ -204,15 +243,8 @@ _desk_ui_sources = files(
   'src/core/files/resource_paths.cpp',
   'src/core/input/keybind_matcher.cpp',
   'src/core/input/key_chord.cpp',
-  'src/core/log_platform.cpp',
-  'protocols/async_file_writer.cpp',
-  'protocols/log.cpp',
   'src/core/memory_pressure_poll_source.cpp',
-  'src/core/fd_watch.cpp',
-  'src/core/poll_loop.cpp',
-  'src/core/poll_schedule.cpp',
   'src/core/process/process_fds.cpp',
-  'src/core/timer_manager.cpp',
   'src/core/ui_phase.cpp',
   'src/i18n/i18n_service.cpp',
   'src/i18n/language_tag.cpp',
@@ -368,12 +400,16 @@ _desk_ui_sources = files(
 )
 
 # The OS layer: one implementation per OS behind a shared header.
-_sys_sources = host_machine.system() == 'darwin' \
-  ? files('src/core/sys/sys_macos.cpp', 'src/core/files/directory_watcher_macos.cpp',
-      'src/core/freedesktop_thumbnails_none.cpp', 'src/a11y/a11y_roots_none.cpp') \
-  : files('src/core/sys/sys_linux.cpp', 'src/core/files/directory_watcher.cpp', 'src/core/freedesktop_thumbnails.cpp',
-      'src/a11y/atspi_bridge.cpp', 'src/ui/app_icon.cpp')
-_sys_sources += files('src/core/sys/sys_posix.cpp')
+if host_machine.system() == 'darwin'
+  _sys_sources = files('src/core/sys/sys_macos.cpp', 'src/core/files/directory_watcher_macos.cpp',
+      'src/core/freedesktop_thumbnails_none.cpp', 'src/a11y/a11y_roots_none.cpp')
+elif host_machine.system() == 'linux'
+  _sys_sources = files('src/core/sys/sys_linux.cpp', 'src/core/files/directory_watcher.cpp',
+      'src/core/freedesktop_thumbnails.cpp', 'src/a11y/atspi_bridge.cpp', 'src/ui/app_icon.cpp')
+else
+  error('no OS layer for ' + host_machine.system())
+endif
+_sys_sources += files('src/core/sys/sys_posix.cpp', 'protocols/os_posix.cpp')
 
 # The Wayland backend, and code that still calls Linux-only APIs: `just macos-check` builds everything else.
 _wayland_sources = files(
@@ -402,20 +438,12 @@ _cocoa_sources = files(
   'src/cocoa/cocoa_surface.mm',
 )
 
-# '.' adds the source root and the build root, where the generated headers land.
-_desk_ui_inc = [
-  include_directories('src'),
-  include_directories('.'),
-  include_directories('third_party/wuffs', is_system: true),
-]
-
 desk_ui_lib = static_library('desk_ui',
   sources: _desk_ui_sources + _sys_sources + (is_wayland ? _wayland_sources : _cocoa_sources) + _protocol_sources
     + _protocol_headers,
   dependencies: _system_deps,
   include_directories: _desk_ui_inc,
-  cpp_args: [
-    '-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow',
+  cpp_args: _warning_args + [
     # paths::assetsRoot() looks for the installed noctalia asset bundle (fonts, translations).
     '-DNOCTALIA_INSTALL_PREFIX="' + get_option('prefix') + '"',
     '-DNOCTALIA_INSTALL_DATADIR="' + get_option('datadir') + '"',

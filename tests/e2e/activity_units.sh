@@ -14,7 +14,7 @@ BIN=$OUT/activity-units
 g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-system/src" -I"$ROOT/libdesk-ui/src" -I"$ROOT/libdesk-ui" -o "$BIN" \
   "$(dirname "$0")/activity_units.cpp" "$ROOT/libdesk-system/src/dbus/systemd/systemd_units_service.cpp" \
   "$ROOT/libdesk-system/src/dbus/systemd/systemd_unit_name.cpp" "$ROOT/libdesk-system/src/dbus/session_bus.cpp" \
-  "$ROOT/protocol/log.cpp" "$ROOT/tests/e2e/log_platform_none.cpp" -lsdbus-c++
+  "$ROOT/protocol/log.cpp" "$ROOT/protocol/os_posix.cpp" "$ROOT/tests/e2e/log_platform_none.cpp" -lsdbus-c++
 
 MOCK="$ROOT/tests/e2e/mock_systemd1.py"
 dbus-run-session -- bash -c '

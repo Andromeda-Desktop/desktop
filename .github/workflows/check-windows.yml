@@ -1,0 +1,41 @@
+name: check-windows
+
+# Builds the libdesk-ui event loop core natively on Windows (MSYS2 CLANG64: clang, libc++, UCRT) and runs its tests.
+# `just win-check` cross-builds the same target on Linux with llvm-mingw.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "ci/**"]
+    paths:
+      - libdesk-ui/**
+      - protocol/**
+      - tools/win/**
+      - .github/workflows/check-windows.yml
+
+jobs:
+  libdesk-loop:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      # libdesk-ui/protocols holds symlinks into protocol/. Git for Windows turns symlinks off by default; they need
+      # SeCreateSymbolicLinkPrivilege, which the runner's administrator account has (gitforwindows.org/symbolic-links).
+      - run: git config --global core.symlinks true
+        shell: pwsh
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2.34.0
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-meson
+            mingw-w64-clang-x86_64-ninja
+      - name: Build
+        run: |
+          meson setup build libdesk-ui -Dplatform=win32
+          ninja -C build
+      - name: Test
+        run: meson test -C build --print-errorlogs poll_schedule poll_loop

@@ -5,7 +5,6 @@
 
 #include <optional>
 #include <vector>
-#include <poll.h>
 
 // The event loop of a process without its own (shell MainLoop, compositor wl_event_loop): DeferredCall and
 // TimerManager, then the added sources, through one PollSchedule. A windowless process calls run(); a loop with its

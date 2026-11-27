@@ -1,4 +1,5 @@
 #include "core/sys/sys.h"
+#include "core/sys/poll.h"
 
 #include <cerrno>
 #include <csignal>
@@ -11,6 +12,8 @@
 #include <iterator>
 
 namespace sys {
+
+  int pollFds(pollfd* fds, nfds_t count, int timeoutMs) { return ::poll(fds, count, timeoutMs); }
 
   void resetChildSignals() {
     struct sigaction action{};

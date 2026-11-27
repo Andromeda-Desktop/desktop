@@ -9,14 +9,17 @@
 #include <string>
 #include <vector>
 #include <string_view>
+#ifndef _WIN32
 #include <spawn.h>
+#endif
 
 struct msghdr;
 struct stat;
 struct winsize;
 
 // The OS layer: portable code reaches Linux- or macOS-only calls only through these (sys_linux.cpp, sys_macos.cpp;
-// sys_posix.cpp holds the calls both share).
+// sys_posix.cpp holds the calls both share). sys_windows.cpp defines only the calls the Windows build uses; a
+// missing one fails at link.
 namespace sys {
 
   // Names the calling thread; Linux keeps the first 15 bytes.
@@ -92,8 +95,10 @@ namespace sys {
   // Between fork and exec: every signal back to SIG_DFL and an empty mask, so the parent's ignored (SIGPIPE) and
   // blocked signals never reach the program. Async-signal-safe.
   void resetChildSignals();
+#ifndef _WIN32
   // The same through posix_spawn attributes; keeps the flags already set on attr.
   void resetChildSignals(posix_spawnattr_t* attr);
+#endif
   // Once at process start: a write to a closed pipe or socket fails with EPIPE instead of ending the process.
   void ignoreSigpipe();
   // The user's private directory for sockets: XDG_RUNTIME_DIR on Linux (empty when unset), the per-user temp dir
@@ -105,7 +110,8 @@ namespace sys {
   // Calls fn for every process of session sid except its leader.
   void forEachSessionProcess(int sid, const std::function<void(int pid)>& fn);
 
-  // Wakes a poll loop from any thread: an eventfd on Linux, a pipe elsewhere. Both ends are nonblocking.
+  // Wakes a poll loop from any thread: an eventfd on Linux, a manual-reset event on Windows, a pipe elsewhere. Both
+  // ends are nonblocking.
   class WakeFd {
   public:
     WakeFd();

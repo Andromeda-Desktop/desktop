@@ -1,7 +1,8 @@
 #pragma once
 
+#include "core/sys/poll.h"
+
 #include <memory>
-#include <poll.h>
 #include <vector>
 
 class PollSource {
