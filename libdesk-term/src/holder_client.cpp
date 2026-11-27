@@ -307,7 +307,7 @@ bool sendAll(int fd, std::span<const std::uint8_t> bytes) {
 }
 
 long receive(int fd, std::vector<std::uint8_t>& buf, std::vector<int>& fds, bool nonblocking) {
-  std::uint8_t chunk[64 * 1024];
+  std::uint8_t chunk[kReceiveChunk];
   iovec iov{chunk, sizeof chunk};
   alignas(cmsghdr) char control[CMSG_SPACE(sizeof(int))];
   msghdr msg{};

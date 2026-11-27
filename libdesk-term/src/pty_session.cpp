@@ -363,8 +363,9 @@ void PtySession::ioLoopHeld(const HeldSession& held) {
     if (pfds[1].revents & POLLOUT || pfds[2].revents & POLLIN) flushOutbound();
     if (full || !(pfds[0].revents & (POLLIN | POLLHUP | POLLERR))) continue;
     long n;
+    // A short read found the socket empty; level-triggered poll reports bytes that arrive after it.
     while ((n = holder::receive(held.socket, m_sockBuf, fds, true)) > 0) {
-      if (m_sockBuf.size() >= kReadChunk) break;
+      if (m_sockBuf.size() >= kReadChunk || static_cast<std::size_t>(n) < holder::kReceiveChunk) break;
     }
     for (int fd : fds) ::close(fd);
     fds.clear();

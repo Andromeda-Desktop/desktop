@@ -114,6 +114,8 @@ bool sendAll(int fd, std::span<const std::uint8_t> bytes);
 
 // Reads into `buf` and appends a received SCM_RIGHTS fd to `fds`. Returns bytes read, 0 at EOF, -1 on error
 // (errno set; EAGAIN when `nonblocking` and nothing is ready).
+// Bytes one receive() call asks for; fewer back means the socket had no more at that time.
+inline constexpr std::size_t kReceiveChunk = 64 * 1024;
 long receive(int fd, std::vector<std::uint8_t>& buf, std::vector<int>& fds, bool nonblocking);
 
 // Blocks until one message arrives (up to the socket's receive timeout). Takes the pty fd of Spawned and
