@@ -1479,6 +1479,10 @@ namespace linkapp {
         const bool cameraOn = phone.camera != "ready";
         settings.push_back(round("camera", i18n::tr(cameraOn ? "link.phone-card.camera-stop" : "link.phone-card.camera-start"),
                                  cameraOn, [this, id, cameraOn] { m_client->setPhoneCamera(id, !cameraOn); }));
+        if (phone.camera == "on") {
+          settings.push_back(round("camera-rotate", i18n::tr("link.phone-card.camera-switch"), false,
+                                   [this, id] { m_client->switchPhoneCamera(id); }));
+        }
       }
       for (std::size_t first = 0; first < settings.size(); first += 5) {
         auto row = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::SpaceBetween, .paddingV = Tokens::spaceP4 * s});

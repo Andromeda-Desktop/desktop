@@ -271,6 +271,7 @@
     "sound-stop": "Stop phone sound",
     "camera-start": "Use as webcam",
     "camera-stop": "Stop webcam",
+    "camera-switch": "Switch camera",
     "no-phone": "No phone yet",
     "not-running": "Link is not running",
     "pair-another": "Pair Another Phone…",

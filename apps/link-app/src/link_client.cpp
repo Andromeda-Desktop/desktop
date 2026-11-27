@@ -1250,6 +1250,13 @@ namespace linkapp {
     }
   }
 
+  void LinkClient::switchPhoneCamera(const std::string& deviceId) {
+    m_proxy->callMethodAsync("SwitchCamera").onInterface(kInterface).withArguments(deviceId)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("SwitchCamera: {}", error->getMessage());
+        });
+  }
+
   void LinkClient::dial(const std::string& deviceId, const std::string& number) {
     m_proxy->callMethodAsync("Dial").onInterface(kInterface).withArguments(deviceId, number)
         .uponReplyInvoke([](std::optional<sdbus::Error> error) {
