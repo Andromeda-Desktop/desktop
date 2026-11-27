@@ -718,6 +718,9 @@ preview = 200.0 # long edge of an image preview (terminal link hover)
 [component.search_highlight]
 hold_ms = 1200  # a row a search opened keeps its highlight this long, then fades out (spring.fade_out)
 
+[component.taskbar]
+stack_plate_radius = 6.0  # the stacked plate behind a grouped app, on a 24 px icon (board desktop-layouts v2)
+
 [component.toast]
 height = 40.0
 bottom = 96.0       # gap from the output bottom

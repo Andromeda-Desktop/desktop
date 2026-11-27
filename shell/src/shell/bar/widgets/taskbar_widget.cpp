@@ -1557,7 +1557,7 @@ void TaskbarWidget::buildTaskButtons(Renderer& renderer) {
       const float unit = iconSize / 24.0F;
       auto plate = ui::box({
           .fill = colorSpecFromRole(ColorRole::Fill3),
-          .radius = std::round(6.0F * unit),
+          .radius = std::round(Style::scaledRadius(Tokens::componentTaskbarStackPlateRadius, unit)),
           .width = iconSize,
           .height = iconSize,
       });

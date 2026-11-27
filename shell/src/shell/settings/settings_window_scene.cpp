@@ -909,7 +909,7 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
           [this](Flex& row) {
             const ColorSpec fill = row.fill();
             m_animations.animateTimer(
-                0.0F, 1.0F, static_cast<float>(Tokens::componentSearchHighlightHoldMs), Easing::EaseOutQuad,
+                0.0F, 1.0F, static_cast<float>(Tokens::componentSearchHighlightHoldMs), Easing::Linear,
                 [](float) {},
                 [this, &row, fill] {
                   m_animations.animateSpring(
