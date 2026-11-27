@@ -38,7 +38,7 @@ status=0
 # Pass the host GPU and its render group; with no render node (GitHub runners) the compositor renders with llvmpipe
 # into buffers from /dev/udmabuf (its only allocator without a DRM device).
 gpu=(-e WLR_RENDERER_FORCE_SOFTWARE=1)
-[[ ! -e /dev/udmabuf ]] || gpu+=(--device /dev/udmabuf)
+[[ ! -e /dev/udmabuf ]] || gpu+=(--device /dev/udmabuf --group-add "$(stat -c %g /dev/udmabuf)")
 [[ -e /dev/dri/renderD128 ]] && gpu=(--device /dev/dri --group-add "$(stat -c %g /dev/dri/renderD128)")
 # quickshare and link_mirror unshare a user and net namespace; the default seccomp profile refuses it.
 docker run --rm --security-opt seccomp=unconfined --user "$(id -u):$(id -g)" "${gpu[@]}" -e HOME=/tmp --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT/src:/src" -w /src \

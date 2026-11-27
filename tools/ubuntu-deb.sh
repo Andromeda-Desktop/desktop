@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# Usage: [DEB_VERSION=x.y.z] [ANDROMEDA_APP=libdesk] tools/ubuntu-deb.sh [--clean] [ubuntu-version | debian-suite]
+# Usage: [DEB_VERSION=x.y.z] [ANDROMEDA_APP=libdesk] tools/ubuntu-deb.sh [--clean | --trim-cache] [ubuntu-version | debian-suite]
+# --trim-cache only trims the CI ccache to 1.5G and gives the caches back to the user: a CI step runs it under always(),
+# so a cancelled build saves no untrimmed cache.
 # Builds the Ubuntu or Debian (a suite name, e.g. testing) .deb packages (debian/) from the working tree in a container, then installs them with apt to
 # prove their dependencies resolve. Incremental: the copied tree, the meson build dirs and the cargo target dir stay
 # in the output dir, so a rerun compiles only what changed. --clean builds from nothing (CI, releases).
 # Output in ~/.cache/andromeda-ubuntu/deb-<version>/ (tmpfs /tmp is too small): the debs, build.log, install.log.
 set -euo pipefail
 CLEAN=0
+TRIM=0
 if [[ ${1:-} == --clean ]]; then
   CLEAN=1
+  shift
+elif [[ ${1:-} == --trim-cache ]]; then
+  TRIM=1
   shift
 fi
 VERSION=${1:-26.04}
@@ -19,9 +25,19 @@ IMAGE=andromeda-deb:${BASE/:/-}
 CCACHE=$(dirname "$OUT")/ccache-deb-$VERSION
 # In CI the repo's caches share 10 GiB: no limit while building (a trim mid-build would drop entries this build has
 # not reached yet), then a trim to 1.5G after it, least recently used first.
-[[ -z ${CI:-} ]] || { mkdir -p "$CCACHE" && echo 'max_size = 0' > "$CCACHE/ccache.conf"; }
+[[ -z ${CI:-} ]] || ((TRIM)) || { mkdir -p "$CCACHE" && echo 'max_size = 0' > "$CCACHE/ccache.conf"; }
 # Crate downloads persist across runs, so a build needs the network only for new crates.
 CARGO_CACHE=$(dirname "$OUT")/cargo-deb-$VERSION
+trim_cache() {
+  [[ -z ${CI:-} ]] || ! docker image inspect "$IMAGE" > /dev/null 2>&1 \
+    || docker run --rm -v "$CCACHE:/ccache" -e CCACHE_DIR=/ccache "$IMAGE" ccache --max-size=1.5G --cleanup > /dev/null
+  mkdir -p "$OUT" "$CCACHE" "$CARGO_CACHE"
+  docker run --rm -v "$OUT:/o" -v "$CCACHE:/ccache" -v "$CARGO_CACHE:/cargo" "$BASE" chown -R "$(id -u):$(id -g)" /o /ccache /cargo
+}
+if ((TRIM)); then
+  trim_cache
+  exit 0
+fi
 mkdir -p "$CARGO_CACHE"
 mkdir -p "$OUT" "$CCACHE"
 # The container writes as root: clear through it.
@@ -108,8 +124,7 @@ docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v 
   fi
   apt-get install -y -qq $debs 2>&1 | tee /o/install.log || exit 12
 ' || status=$?
-[[ -z ${CI:-} ]] || docker run --rm -v "$CCACHE:/ccache" -e CCACHE_DIR=/ccache "$IMAGE" ccache --max-size=1.5G --cleanup > /dev/null
-docker run --rm -v "$OUT:/o" -v "$CCACHE:/ccache" -v "$CARGO_CACHE:/cargo" "$BASE" chown -R "$(id -u):$(id -g)" /o /ccache /cargo
+trim_cache
 case $status in
   0) echo "PASS: $(ls "$OUT"/*.deb | wc -l) debs built and installed" ;;
   11) echo "FAIL build: $(tail -n 3 "$OUT/build.log")" ;;

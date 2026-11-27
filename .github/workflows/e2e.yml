@@ -26,7 +26,7 @@ jobs:
       - name: udmabuf
         run: |
           # The runner's Azure kernel ships udmabuf only in its extra modules.
-          sudo modprobe udmabuf 2> /dev/null || { sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" > /dev/null && sudo modprobe udmabuf; }
+          sudo modprobe udmabuf 2> /dev/null || { sudo apt-get -o Acquire::Retries=5 update -qq && sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" > /dev/null && sudo modprobe udmabuf; }
           sudo chmod 666 /dev/udmabuf
       - name: E2E
         env:

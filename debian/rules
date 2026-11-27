@@ -15,10 +15,11 @@ override_dh_auto_install:
 
 # The update helper runs the apt commit that configures this package: a restart of it, or a start of recover while
 # the journal exists, waits on the commit that waits on the postinst. The helper is D-Bus activated and idles out.
-# An app release (ANDROMEDA_APP) leaves andromeda-system empty: dh_installsystemd fails on a named unit it lacks.
+# An app release (ANDROMEDA_APP) or a unit release without system leaves andromeda-system empty: dh_installsystemd
+# fails on a named unit it lacks. Any other build must ship the units.
 override_dh_installsystemd:
 	dh_installsystemd -Nandromeda-system
-	if [ -e debian/andromeda-system/usr/lib/systemd/system/andromeda-system.service ]; then \
+	if [ -z "$$ANDROMEDA_APP" ] && { [ -z "$$ANDROMEDA_ONLY" ] || case " $$ANDROMEDA_ONLY " in *" system "*) true ;; *) false ;; esac; }; then \
 	  dh_installsystemd -pandromeda-system andromeda-system.service andromeda-update-tonight.timer && \
 	  dh_installsystemd -pandromeda-system --no-start --no-stop-on-upgrade andromeda-update-helper.service andromeda-update-recover.service andromeda-update-tonight.service; \
 	fi

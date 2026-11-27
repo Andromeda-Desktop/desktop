@@ -44,8 +44,7 @@ jobs:
       - name: xwayland-satellite
         if: ${{ !inputs.prebuilt }}
         run: tools/deb-xwayland-satellite.sh ${{ matrix.base }}
-      # Restore only: a tag run's save stays with its tag, which no later run reads, yet fills the 10 GiB. check-ubuntu
-      # saves this cache on main with every push.
+      # Only a run on main saves: a tag run's save stays with its tag, which no later run reads, yet fills the 10 GiB.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: ${{ !inputs.prebuilt }}
         with:
@@ -55,10 +54,12 @@ jobs:
       - name: Packages
         if: ${{ !inputs.prebuilt }}
         run: ANDROMEDA_CORE=1 DEB_VERSION=${TAG#v} tools/ubuntu-deb.sh --clean ${{ matrix.base }}
-      # Saved here too, not only by check-ubuntu: pushes to main cancel check-ubuntu runs before they save. ubuntu-deb.sh
-      # trims it to 1.5G in CI.
+      # Saved here too, not only by check-ubuntu: pushes to main cancel check-ubuntu runs before they save.
+      - name: Trim ccache
+        if: always() && !inputs.prebuilt && github.ref == 'refs/heads/main'
+        run: tools/ubuntu-deb.sh --trim-cache ${{ matrix.base }}
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: always() && !inputs.prebuilt
+        if: always() && !inputs.prebuilt && github.ref == 'refs/heads/main'
         with:
           path: ~/.cache/andromeda-ubuntu/ccache-deb-${{ matrix.base }}
           key: ccache-deb-${{ matrix.base }}-${{ github.run_id }}
