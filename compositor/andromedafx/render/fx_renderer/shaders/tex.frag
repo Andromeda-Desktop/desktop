@@ -210,13 +210,12 @@ vec2 rounded_rect_normal_at(
 );
 vec2 body_normal_at(vec2 point, vec2 size, vec2 position, float tl, float tr, float bl, float br);
 float liquid_band(vec2 size, float liquid, float scale);
-float lens_sag(float t);
 float lens_shift(float t);
 float lens_magnify();
 vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend);
-float rim_edge(float d, float scale);
+float lens_cover(float t, float lens, bool whole);
+float glass_specular(float shine, float d, float band, float scale, vec2 normal, float near);
 float pointer_near(vec2 p, vec3 light);
-float rim_facing(vec2 normal, float near);
 float smooth_union(float a, float b, float k);
 
 float liquid_distance(vec2 point) {
@@ -279,26 +278,22 @@ void main() {
     if (d > -band || whole) {
       vec2 normal = liquid_normal(p);
       float t = clamp(1.0 + d / band, 0.0, 1.0);
-      float sag = lens_sag(t);
       // Refraction through the bezel: the backdrop is sampled from further inside.
       float shift = lens_shift(t) * band;
       uv -= normal * (shift * liquid) * liquid_texel;
       // Lens: the sharp backdrop magnified toward the centre; it fades into the blur over the band.
-      lens_bend = normal * (shift * 0.6 * lens) * liquid_texel;
+      lens_bend = normal * (shift * lens) * liquid_texel;
       if (whole) {
         // Small glass magnifies its whole surface toward the centre, the rim bending hardest.
         lens_bend += (p - (liquid_position + 0.5 * liquid_size)) * (lens_magnify() * lens) * liquid_texel;
       }
       lens_uv = uv - lens_bend;
-      lens_weight = lens * 0.85 * (whole ? mix(0.6, 1.0, sag) : sag);
+      lens_weight = lens_cover(t, lens, whole);
       // Specular: a reflection, not an outline: a bright line on the outermost pixels over a soft inner glow
-      // (rim_edge), lit from the top-left key light and the pointer (rim_facing); the coverage mask cuts it outside.
+      // (glass_specular), lit from the key lights and the pointer; the coverage mask cuts it outside.
       // The pointer light also bleeds softly into the band, so it reads as light on glass, not a thicker line.
       float near = pointer_near(p, light);
-      float edge = rim_edge(d, liquid_scale);
-      float facing = rim_facing(normal, near);
-      float glow = clamp(1.0 + 2.0 * d / band, 0.0, 1.0);
-      specular = shine * (0.08 * (1.0 + 4.0 * near) * glow * glow + 0.45 * edge) * facing;
+      specular = glass_specular(shine, d, band, liquid_scale, normal, near);
     }
   }
   vec4 base = sample_texture(uv);

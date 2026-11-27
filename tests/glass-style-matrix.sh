@@ -33,6 +33,12 @@ WALLDIR=$RUNTIME/walls
 mkdir -p "$WALLDIR"
 magick -size 1280x720 gradient:'#f4f1ea-#d9d2c6' -fill '#ffffff' -draw 'circle 900,200 900,420' -blur 0x30 "$WALLDIR/light.png"
 cp "$ROOT/shell/assets/andromeda-wallpaper.png" "$WALLDIR/dark.png"
+# Warm beige with sharp diagonal light bands and a lavender corner: the bands show how the bezel bends an edge.
+magick -size 1920x1080 gradient:'#d8c8b8-#8a7a72' \
+  \( -size 2400x2400 radial-gradient:'#7a6e8c-none' -geometry +700+0 \) -composite \
+  -stroke '#00000040' -strokewidth 60 -draw 'line 1060,-40 -100,1120' -draw 'line 2070,-80 720,1420' -blur 0x18 \
+  -stroke '#fbf6ef' -strokewidth 34 -draw 'line 1060,-60 -100,1100' -draw 'line 2050,-100 700,1400' -blur 0x1.5 \
+  "$WALLDIR/bands.png"
 magick -size 1280x720 -seed 7 plasma:'#ff3b6b-#2b7bff' -blur 0x8 -modulate 100,160 "$WALLDIR/colour.png"
 magick -size 48x48 xc:'#e0306a' -fill '#2b6bff' -draw 'rectangle 0,0 23,23 rectangle 24,24 47,47' -write mpr:t +delete -size 1920x1080 tile:mpr:t "$WALLDIR/grid.png"
 magick -size 1920x1080 xc:'#f7f7f5' "$WALLDIR/white.png"

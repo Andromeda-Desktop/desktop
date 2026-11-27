@@ -69,14 +69,21 @@ float liquid_band(vec2 size, float liquid, float scale) {
 float lens_sag(float t) { return 1.0 - sqrt(1.0 - t * t); }
 
 // Physical refraction: the inward shift, in band units, of a vertical view ray bent by Snell's law (TOKEN_LENS_IOR)
-// through a convex squircle bezel of height (1 - t^4)^(1/4) bands resting on the backdrop. 0 in the flat interior,
-// about 0.44 near the edge, falling to 0 at the edge where the glass is thin.
+// through a convex squircle bezel of height (1 - t^4)^(1/4) bands on a slab TOKEN_LENS_DEPTH bands thick. 0 in the flat
+// interior, rising to about 1.1 x (TOKEN_LENS_DEPTH + 0.1) at the edge, so a line through the rim bends along the edge.
 float lens_shift(float t) {
   float t2 = t * t;
   float h = sqrt(sqrt(max(1.0 - t2 * t2, 1e-4)));
   vec2 n = normalize(vec2(t2 * t / (h * h * h), 1.0));
   vec2 r = refract(vec2(0.0, -1.0), n, 1.0 / TOKEN_LENS_IOR);
-  return h * -r.x / max(-r.y, 1e-3);
+  return (TOKEN_LENS_DEPTH + h) * -r.x / max(-r.y, 1e-3);
+}
+
+// How much of the sharp lens image covers the blur at band position t (lens = the Lens strength): the whole bezel
+// shows it at full lens; small glass that is lens across its whole surface keeps the blur in its centre.
+float lens_cover(float t, float lens, bool whole) {
+  float cover = min(1.6 * lens, 1.0);
+  return cover * (whole ? mix(0.6, 1.0, lens_sag(t)) : smoothstep(0.0, 0.8, t));
 }
 
 // Whole-surface magnification of small glass at full lens (main() cannot see the token defines, appended after it).
@@ -108,19 +115,26 @@ float pointer_near(vec2 p, vec3 light) {
 }
 
 // The specular rim: a TOKEN_LENS_RIM_WIDTH logical px line at the clip edge (1) over a soft glow that eases to 0
-// TOKEN_LENS_RIM_FALLOFF px inside it (0.35 at the edge); d = signed distance, px.
+// TOKEN_LENS_RIM_FALLOFF px inside it (0.5 at the edge); d = signed distance, px.
 float rim_edge(float d, float scale) {
   float line = clamp(1.0 + (d + 0.5) / (TOKEN_LENS_RIM_WIDTH * scale), 0.0, 1.0);
   float glow = smoothstep(0.0, 1.0, 1.0 + (d + 0.5) / (TOKEN_LENS_RIM_FALLOFF * scale));
-  return max(line, 0.35 * glow);
+  return max(line, 0.5 * glow);
 }
 
-// How much a rim pixel at p (outward normal) faces the fixed top-left key light, y-down, plus the pointer light
-// (near = pointer_near): the whole top and left edges lit (0.5 there, 1 at the corner), the far edges at a third.
+// How much a rim pixel at p (outward normal) faces the key lights, y-down, plus the pointer light (near =
+// pointer_near): the top-left key and a weaker bottom-right fill, so opposite corners shine and the side edges stay dim.
 float rim_facing(vec2 normal, float near) {
   float l = dot(normal, vec2(-0.70710678));
   // Capped so the pointer glint brightens the line without burning a straight edge to white.
-  return min(0.15 + pow(max(l, 0.0), 2.0) + 0.35 * pow(max(-l, 0.0), 2.0) + TOKEN_LENS_RIM_POINTER_BOOST * near, 1.2);
+  return min(0.1 + pow(max(l, 0.0), 2.0) + 0.75 * pow(max(-l, 0.0), 2.0) + TOKEN_LENS_RIM_POINTER_BOOST * near, 1.2);
+}
+
+// The specular light of a bezel pixel at signed distance d (px) in a band `band` px wide: the rim (rim_edge) over a
+// glow that fills the outer half of the band, lit by rim_facing.
+float glass_specular(float shine, float d, float band, float scale, vec2 normal, float near) {
+  float glow = clamp(1.0 + 2.0 * d / band, 0.0, 1.0);
+  return shine * (0.08 * (1.0 + 4.0 * near) * glow * glow + 0.45 * rim_edge(d, scale)) * rim_facing(normal, near);
 }
 
 #ifdef CORNER_FLARES
