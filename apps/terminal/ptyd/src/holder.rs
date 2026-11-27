@@ -66,6 +66,9 @@ const READ_CHUNK: usize = 64 << 10;
 const COALESCE_TARGET: usize = 1 << 10;
 /// A shorter rest saves less than the poll round it costs.
 const COALESCE_MIN: Duration = Duration::from_micros(20);
+/// A read this long after the previous one starts no rest: a lone write (a prompt, a spinner frame) then costs no
+/// timer wake, and a burst that follows rests from its second read.
+const COALESCE_QUIET: Duration = Duration::from_millis(5);
 const RELAUNCH_LIMIT: usize = 3;
 const RELAUNCH_WINDOW: Duration = Duration::from_secs(60);
 /// Shortest gap between two foreground-process checks of one session.
@@ -218,8 +221,11 @@ impl MarkParser {
 }
 
 /// The rest that lets the next read gather about COALESCE_TARGET bytes at the rate of this read,
-/// which brought `n` bytes `since` the previous one; None when the writer is fast.
+/// which brought `n` bytes `since` the previous one; None when the writer is fast or was quiet.
 fn coalesce_rest(n: usize, since: Duration, max: Duration) -> Option<Duration> {
+    if since >= COALESCE_QUIET {
+        return None;
+    }
     let rest = since
         .mul_f64(COALESCE_TARGET as f64 / n.max(1) as f64)
         .min(max);
