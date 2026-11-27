@@ -81,7 +81,7 @@ float lens_shift(float t) {
 
 // How much of the sharp lens image covers the blur at band position t (lens = the Lens strength): only the outer
 // part of the bezel, so labels inside the glass keep the blur behind them.
-float lens_cover(float t, float lens) { return min(1.6 * lens, 1.0) * smoothstep(0.55, 0.9, t); }
+float lens_cover(float t, float lens) { return min(1.6 * lens, 1.0) * smoothstep(0.45, 1.0, t); }
 
 // Whole-surface magnification of small glass at full lens (main() cannot see the token defines, appended after it).
 float lens_magnify() { return TOKEN_LENS_MAGNIFY; }

@@ -216,12 +216,13 @@ void main() {
       float t = clamp(1.0 + d / band, 0.0, 1.0);
       float shift = lens_shift(t) * band;
       texcoord -= normal * (shift * liquid) * liquid_texel;
+      // The sharp layer takes the blur's bend, so the two meet without a step; lens_bend sets the colour fringe.
+      lens_uv = texcoord;
       lens_bend = normal * (shift * lens) * liquid_texel;
       if (whole) {
         // Small glass magnifies its whole surface toward the centre, the rim bending hardest.
-        lens_bend += (p - (liquid_position + 0.5 * liquid_size)) * (lens_magnify() * lens) * liquid_texel;
+        lens_uv -= (p - (liquid_position + 0.5 * liquid_size)) * (lens_magnify() * lens) * liquid_texel;
       }
-      lens_uv = texcoord - lens_bend;
       lens_weight = lens_cover(t, lens);
       // The pointer light also bleeds softly into the band, so it reads as light on glass, not a thicker line.
       float near = pointer_near(p, light);
@@ -271,8 +272,8 @@ void main() {
   if (lens_weight > 0.0) {
     color = mix(color, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
-  // The tint thins where the sharp bezel shows (tex.frag).
-  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a * (1.0 - 0.6 * lens_weight));
+  // The sharp bezel carries no tint (tex.frag).
+  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a * (1.0 - lens_weight));
   // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
   color.rgb += specular * (color.a - color.rgb);
 #endif

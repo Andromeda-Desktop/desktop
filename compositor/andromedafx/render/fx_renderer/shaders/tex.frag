@@ -281,13 +281,13 @@ void main() {
       // Refraction through the bezel: the backdrop is sampled from further inside.
       float shift = lens_shift(t) * band;
       uv -= normal * (shift * liquid) * liquid_texel;
-      // Lens: the sharp backdrop magnified toward the centre; it fades into the blur over the band.
+      // The sharp layer takes the blur's bend, so the two meet without a step; lens_bend sets the colour fringe.
+      lens_uv = uv;
       lens_bend = normal * (shift * lens) * liquid_texel;
       if (whole) {
         // Small glass magnifies its whole surface toward the centre, the rim bending hardest.
-        lens_bend += (p - (liquid_position + 0.5 * liquid_size)) * (lens_magnify() * lens) * liquid_texel;
+        lens_uv -= (p - (liquid_position + 0.5 * liquid_size)) * (lens_magnify() * lens) * liquid_texel;
       }
-      lens_uv = uv - lens_bend;
       lens_weight = lens_cover(t, lens);
       // Specular: a reflection, not an outline: a bright line on the outermost pixels over a soft inner glow
       // (glass_specular), lit from the key lights and the pointer; the coverage mask cuts it outside.
@@ -305,8 +305,8 @@ void main() {
     base = mix(base, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
   vec4 color = convert_color(base);
-  // The tint thins where the sharp bezel shows, so the bend stays visible; labels sit inside it, over the full tint.
-  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a * (1.0 - 0.6 * lens_weight));
+  // The sharp bezel carries no tint, so the bend and its light stay clear; labels sit inside it, over the full tint.
+  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a * (1.0 - lens_weight));
   // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
   color.rgb += specular * (color.a - color.rgb);
 #else
