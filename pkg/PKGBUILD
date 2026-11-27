@@ -35,7 +35,7 @@ pkgrel=1
 arch=(x86_64)
 license=(GPL-3.0-or-later MIT)
 # The debug packages hold every binary's symbols, several times the desktop's size: only a release build
-# (ANDROMEDA_SYMBOLS=1) makes them, for crash reports; they stay out of the package repository.
+# (ANDROMEDA_SYMBOLS=1) makes them, from the binaries it ships; tools/symbols-pack.sh keeps them out of the repository.
 if [[ -n ${ANDROMEDA_SYMBOLS:-} ]]; then options=(debug); else options=(!debug); fi
 makedepends=(git meson ninja wayland-protocols xorg-xwayland poppler-glib libcups nlohmann-json stb
   wlroots0.20 wayland libinput libei libxkbcommon libdrm pixman mesa cairo pango lcms2 jemalloc tomlplusplus
@@ -76,9 +76,8 @@ build() {
   CFLAGS="${CFLAGS//-march=native/-march=x86-64 -mtune=generic}" CXXFLAGS="${CXXFLAGS//-march=native/-march=x86-64 -mtune=generic}"
   CFLAGS="${CFLAGS//-O3/-O2}" CXXFLAGS="${CXXFLAGS//-O3/-O2}"
   RUSTFLAGS="${RUSTFLAGS//-C target-cpu=native/}"
-  # Rust debug info changes the generated code: every build compiles it, so the symbols build's binaries match the
-  # release; strip drops it from the packages.
-  [[ -n ${ANDROMEDA_SYMBOLS:-} ]] || RUSTFLAGS+=" ${DEBUG_RUSTFLAGS:--C debuginfo=2}"
+  # Cargo's release profile strips debug info that RUSTFLAGS asks for (system's strip = true, the default otherwise).
+  [[ -z ${ANDROMEDA_SYMBOLS:-} ]] || export CARGO_PROFILE_RELEASE_DEBUG=2 CARGO_PROFILE_RELEASE_STRIP=none
   # Incremental: build dirs stay in srcdir between runs. default_options apply only on the first configure, so a
   # change to any meson file or wrap starts the build dirs over.
   local stamp

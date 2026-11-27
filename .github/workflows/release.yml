@@ -1,6 +1,6 @@
 # The release pipeline: libdesk with its apps and the core, from one commit of main, in stages. Nothing is uploaded and
 # no tag is pushed until every build passed and one dry merge per repository index shows no new unmet dependency.
-#   plan -> build (apps: Arch, Ubuntu, Debian, macOS; core: Arch, Ubuntu, Debian) -> gate -> tags -> indexes -> symbols
+#   plan -> build (apps: Arch, Ubuntu, Debian, macOS; core: Arch, Ubuntu, Debian) -> gate -> tags -> indexes
 # Start: `just release` (dispatch on main), or push any tag release-* (it relays the dispatch to main, whose caches
 # later releases can read). publish off is a dry run: builds and gate only; the packages stay as workflow artifacts.
 # The per-unit workflows keep their own tags for a single-unit release; tags this run pushes start none of them.
@@ -192,13 +192,3 @@ jobs:
         run: |
           sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
           tools/collect-artifacts.sh new artifacts/*/*.deb && tools/repo-publish.sh apt "${{ matrix.release }}" new
-
-  symbols:
-    needs: [plan, index-arch]
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run release-symbols.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="v${{ needs.plan.outputs.core }}"

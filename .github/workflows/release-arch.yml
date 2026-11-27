@@ -73,7 +73,7 @@ jobs:
         working-directory: pkg
         run: >
           sudo -u builder env HOME=/home/builder CARGO_HOME=/home/builder/.cargo ANDROMEDA_SOURCE="file://$GITHUB_WORKSPACE"
-          ANDROMEDA_CORE=1 ANDROMEDA_ONLY="$ONLY" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ANDROMEDA_VERSION="${TAG#v}"
+          ANDROMEDA_CORE=1 ANDROMEDA_SYMBOLS=1 ANDROMEDA_ONLY="$ONLY" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ANDROMEDA_VERSION="${TAG#v}"
           makepkg --syncdeps --noconfirm --force
       # The repo's caches share 10 GiB: trim to 2G, least recently used first, so this build's entries stay.
       - name: Trim ccache
@@ -95,9 +95,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
           PUBLISH: ${{ inputs.pipeline && 'false' || 'true' }}
+          PREBUILT: ${{ inputs.prebuilt }}
         run: |
+          # The symbols tar rides in the core artifact to the tag's release; the repository takes only *.pkg.tar.zst.
+          [[ $PREBUILT == true ]] || tools/symbols-pack.sh "$TAG" pkg core
           # The apps release on their own tags: a core build would put its version on their packages.
-          mkdir core
+          mkdir -p core
           for package in pkg/*.pkg.tar.zst; do
             [[ $(basename "$package") =~ ^andromeda-(files|player|viewer|terminal|libdesk)-git- ]] || cp "$package" core/
           done

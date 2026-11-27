@@ -63,7 +63,7 @@ jobs:
         working-directory: pkg
         run: >
           sudo -u builder env HOME=/home/builder CARGO_HOME=/home/builder/.cargo ANDROMEDA_SOURCE="file://$GITHUB_WORKSPACE"
-          ANDROMEDA_CORE=1 ANDROMEDA_ONLY="$ANDROMEDA_ONLY" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
+          ANDROMEDA_CORE=1 ANDROMEDA_SYMBOLS=1 ANDROMEDA_ONLY="$ANDROMEDA_ONLY" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
           ANDROMEDA_VERSION="$ANDROMEDA_VERSION" makepkg --syncdeps --noconfirm --force
       - name: Release
         env:
@@ -71,7 +71,7 @@ jobs:
         run: |
           gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false \
             || gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null
-          mkdir out
+          tools/symbols-pack.sh "$TAG" pkg out
           for package in pkg/*.pkg.tar.zst; do name=$(basename "$package"); cp "$package" "out/${name//:/.}"; done
           gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber out/*
       - name: Repository
