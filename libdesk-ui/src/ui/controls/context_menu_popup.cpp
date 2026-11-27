@@ -186,6 +186,7 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
 
     self->m_sceneRoot = std::make_unique<Node>();
     self->m_sceneRoot->setPaletteTone(self->m_tone);
+    self->m_sceneRoot->setContentShadow(self->m_shellLayer && glassContentShadow());
     self->m_sceneRoot->setAnimationManager(&self->m_animations);
     self->m_sceneRoot->setSize(fw, fh);
     self->m_sceneRoot->setTransformOrigin(self->m_originX, self->m_originY);

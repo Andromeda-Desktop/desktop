@@ -731,6 +731,7 @@ void TooltipManager::buildScene(const TooltipContent& content, float w, float h,
   // Shell tooltips take the one island glass; app tooltips keep the tooltip material.
   const bool shellLayer = m_activeParent == nullptr || m_activeParent->isShellLayer();
   m_sceneRoot->setPaletteTone(shellLayer ? glassTone(glass::Kind::Shape) : PaletteTone::Scheme);
+  m_sceneRoot->setContentShadow(shellLayer && glassContentShadow());
   m_sceneRoot->setSize(w, h);
   m_sceneRoot->setOpacity(opacity);
   m_sceneRoot->setHitTestVisible(false);

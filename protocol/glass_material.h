@@ -36,6 +36,9 @@ namespace glass {
   // The least alpha at full density that keeps label_1, and label_2 at kLegibleInk2, at 4.5:1 over a white (dark
   // glass, tint #0b0b0f) or black (light glass) backdrop, blended in sRGB like the compositor: {light glass, dark glass}.
   extern const float kLegibleAlpha[2];
+  // The same floor for glass whose content draws the content shadow (contentShadow, Settings::contentShadow): the
+  // shadow darkens the backdrop around each glyph, so the glass dims less.
+  extern const float kShadowedLegibleAlpha[2];
   // Ink alpha label_2 (4.5:1) and label_3 (3:1, dim by design) reach at full density over kLegibleAlpha glass:
   // {light glass (dark ink), dark glass (light ink)}. Secondary ink rises to these with the surface's density.
   extern const float kLegibleInk2[2];
@@ -71,7 +74,7 @@ namespace glass {
 
   // Material::dense: the fraction of the gap to opaque every tint closes at full density; the style's overlay, raised
   // so the style's lowest Shape tint reaches kLegibleAlpha. It stays below 1, so the slider order holds. Tooltips close half.
-  [[nodiscard]] float denseLift(Kind kind, Style style, bool lightGlass) noexcept;
+  [[nodiscard]] float denseLift(Kind kind, Style style, bool lightGlass, bool shadowed) noexcept;
 
   // Shell glass follows the scheme; Clear is dark glass with white content in both schemes (docs/design/deviations.md
   // "Clear glass tone"). App windows keep the scheme (Style::glassMaterial with PaletteTone::Scheme).
@@ -79,6 +82,14 @@ namespace glass {
     (void)kind;
     return style == Style::Clear ? Tone::Dark : Tone::Scheme;
   }
+
+  // Content on Clear and Liquid shell glass draws a soft shadow in the tone opposite its ink: kContentShadowAlpha x the
+  // ink alpha, blurred by kContentShadowBlur x its font size. Frosted and Tinted glass carry their content alone.
+  [[nodiscard]] constexpr bool contentShadow(Style style) noexcept {
+    return style == Style::Clear || style == Style::Liquid;
+  }
+  extern const float kContentShadowAlpha;
+  extern const float kContentShadowBlur;
 
   // The Glass settings (appearance.glass_style and the sliders of each style). Each style keeps its own tint and blur.
   struct Settings {
@@ -96,6 +107,9 @@ namespace glass {
     // Liquid Lens (appearance.liquid): 0 Subtle, 0.5 the design values, 1 Strong.
     float lens = 0.5F;
     bool reduceTransparency = false;
+    // The surface's content draws the content shadow when the style has one: shell glass only (Style::islandGlass,
+    // Style::popoverMaterial).
+    bool contentShadow = false;
 
     [[nodiscard]] float activeTint() const noexcept;
     [[nodiscard]] float activeFrost() const noexcept;

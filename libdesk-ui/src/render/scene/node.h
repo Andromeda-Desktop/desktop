@@ -193,6 +193,10 @@ public:
   // inherits the parent's lift, a root without one has 0. A change re-resolves the subtree's colours.
   void setInkLift(std::optional<float> lift);
   [[nodiscard]] float inkLift() const noexcept;
+  // Whether labels and glyphs draw the shell glass content shadow (glassContentShadow); nullopt inherits the parent's,
+  // a root without one draws none. A change re-resolves the subtree's colours.
+  void setContentShadow(std::optional<bool> on);
+  [[nodiscard]] bool contentShadow() const noexcept;
   [[nodiscard]] bool excludeSubtreeFromTabOrder() const noexcept { return m_excludeSubtreeFromTabOrder; }
 
   virtual Node* addChild(std::unique_ptr<Node> child);
@@ -333,6 +337,11 @@ private:
   std::optional<PaletteTone> m_paletteTone;
   std::optional<PaletteToneFade> m_paletteToneFade;
   std::optional<float> m_inkLift;
+  std::optional<bool> m_contentShadow;
+  // The inherited tone and content shadow this subtree last resolved with while detached (the defaults, or the values
+  // at removeChild); attachChild re-resolves when the new parent's differ.
+  PaletteTone m_detachedTone{};
+  bool m_detachedShadow = false;
 
   void propagatePaintDirty();
   void propagateLayoutDirty();
@@ -340,6 +349,8 @@ private:
   void attachChild(Node* child);
   void notifyPaletteTone();
   void notifyInkLift();
+  // Re-resolves the colours of this node and of each descendant that inherits a changed tone or content shadow.
+  void notifyInherited(bool tone, bool shadow);
 };
 
 // Paints an existing retained subtree a second time at this node's transform.

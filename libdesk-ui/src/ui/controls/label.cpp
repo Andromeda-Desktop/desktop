@@ -99,6 +99,7 @@ void Label::setFontSize(float size) {
   }
   m_textNode->setFontSize(size);
   m_measureCached = false;
+  applyPalette();
 }
 
 void Label::setFontFamily(std::string family) {
@@ -145,9 +146,14 @@ void Label::setColor(const ColorSpec& color) {
 void Label::setColor(const Color& color) { setColor(fixedColorSpec(color)); }
 
 void Label::applyPalette() {
-  m_textNode->setColor(resolveColorSpec(m_color, this));
+  const Color ink = resolveColorSpec(m_color, this);
+  m_textNode->setColor(ink);
   if (m_shadowColor.has_value()) {
     m_textNode->setShadow(resolveColorSpec(*m_shadowColor, this), m_shadowOffsetX, m_shadowOffsetY);
+  } else if (contentShadow()) {
+    m_textNode->setShadow(contentShadowColor(ink), 0.0F, 0.0F, glass::kContentShadowBlur * m_textNode->fontSize());
+  } else {
+    m_textNode->clearShadow();
   }
 }
 
@@ -256,7 +262,7 @@ void Label::setShadow(const Color& color, float offsetX, float offsetY) {
 
 void Label::clearShadow() {
   m_shadowColor.reset();
-  m_textNode->clearShadow();
+  applyPalette();
 }
 
 void Label::setAutoScroll(bool enabled) {

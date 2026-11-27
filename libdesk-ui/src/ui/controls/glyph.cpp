@@ -42,6 +42,7 @@ void Glyph::setGlyphSize(float size) {
   m_logicalFontSize = size;
   m_glyphNode->setFontSize(size);
   m_measureCached = false;
+  applyPalette();
 }
 
 void Glyph::setColor(const ColorSpec& color) {
@@ -64,13 +65,18 @@ void Glyph::setShadow(const Color& color, float offsetX, float offsetY) {
 
 void Glyph::clearShadow() {
   m_shadowColor.reset();
-  m_glyphNode->clearShadow();
+  applyPalette();
 }
 
 void Glyph::applyPalette() {
-  m_glyphNode->setColor(resolveColorSpec(m_color, this));
+  const Color ink = resolveColorSpec(m_color, this);
+  m_glyphNode->setColor(ink);
   if (m_shadowColor.has_value()) {
     m_glyphNode->setShadow(resolveColorSpec(*m_shadowColor, this), m_shadowOffsetX, m_shadowOffsetY);
+  } else if (contentShadow()) {
+    m_glyphNode->setShadow(contentShadowColor(ink), 0.0F, 0.0F, glass::kContentShadowBlur * m_glyphNode->fontSize());
+  } else {
+    m_glyphNode->clearShadow();
   }
 }
 

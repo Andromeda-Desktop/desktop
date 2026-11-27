@@ -206,6 +206,10 @@ extern Palette palette;
 [[nodiscard]] const Color& colorForRole(ColorRole role, const Palette& p) noexcept;
 // The tone of `kind` at the current glass slider (glass::tone).
 [[nodiscard]] PaletteTone glassTone(glass::Kind kind) noexcept;
+// True when content on shell glass draws a soft shadow at the current glass settings (glass::contentShadow).
+[[nodiscard]] bool glassContentShadow() noexcept;
+// The shadow content with `ink` draws on shell glass (glass::kContentShadowAlpha).
+[[nodiscard]] Color contentShadowColor(const Color& ink) noexcept;
 // The palettes of PaletteTone::Dark and ::Light. Set them before setPalette(), which re-resolves every control.
 void setDarkPalette(const Palette& p);
 void setLightPalette(const Palette& p);
