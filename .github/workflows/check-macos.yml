@@ -21,6 +21,8 @@ on:
       - libdesk-term/**
       - tools/macos/**
       - tools/build-libghostty.sh
+      - system/crates/andromeda-app-updater/**
+      - system/Cargo.lock
       - .github/workflows/check-macos.yml
 
 jobs:

@@ -1,8 +1,9 @@
 //! andromeda-app-updater: the macOS self-update helper inside Terminal.app and Link.app (Contents/MacOS).
 //!
-//! `check <manifest-url>` finishes or cleans up an earlier swap, then stages a newer signed release beside the app and
-//! prints `ready <version>`, or prints `none`. `swap <pid>` waits for the app to exit, moves the ready release in and
-//! starts the app again. Errors go to stderr with exit status 1.
+//! `check <manifest-url>` finishes or cleans up an earlier swap, then stages a newer signed release beside the app
+//! and prints `ready <version>`, or prints `none`. `swap <pid> [reopen]` waits for the app to exit, moves the ready
+//! release in, restarts the bundle's launchd agents (Link) and, with `reopen`, starts the app again. Errors go to
+//! stderr with exit status 1.
 
 use andromeda_app_updater::manifest::{Manifest, compare_versions};
 use andromeda_app_updater::swap::{self, Disk, Paths};
@@ -43,8 +44,10 @@ fn run() -> Result<()> {
             println!("{line}");
             Ok(())
         }
-        ["swap", pid] => swap_and_reopen(&paths, pid.parse().context("pid is not a number")?),
-        _ => bail!("usage: andromeda-app-updater check <manifest-url> | swap <pid>"),
+        ["swap", pid, rest @ ..] if rest.is_empty() || rest == ["reopen"] => {
+            swap_after_exit(&paths, pid.parse().context("pid is not a number")?, !rest.is_empty())
+        }
+        _ => bail!("usage: andromeda-app-updater check <manifest-url> | swap <pid> [reopen]"),
     }
 }
 
@@ -128,7 +131,7 @@ fn stage(agent: &ureq::Agent, paths: &Paths, stage_dir: &Path, manifest: &Manife
     result.and(cleanup)
 }
 
-fn swap_and_reopen(paths: &Paths, pid: i32) -> Result<()> {
+fn swap_after_exit(paths: &Paths, pid: i32, reopen: bool) -> Result<()> {
     let pid = Pid::from_raw(pid).context("pid must be positive")?;
     let start = Instant::now();
     while test_kill_process(pid).is_ok() {
@@ -137,10 +140,24 @@ fn swap_and_reopen(paths: &Paths, pid: i32) -> Result<()> {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    let swapped = swap::recover(paths, version_of).and_then(|_| swap::swap(paths, version_of));
+    let swapped = swap::recover(paths, version_of)
+        .and_then(|_| swap::swap(paths, version_of))
+        .and_then(|()| reload_agents(&paths.app));
+    if !reopen {
+        return swapped;
+    }
     // The user asked for a restart: the app starts again with whichever release the disk holds.
     let reopened = run_tool(Command::new("open").arg(&paths.app));
     swapped.and(reopened)
+}
+
+/// Link's launchd agents run binaries from the bundle; its install-agents.sh restarts them from the new release.
+fn reload_agents(app: &Path) -> Result<()> {
+    let script = app.join("Contents/Resources/install-agents.sh");
+    if !script.try_exists().with_context(|| format!("cannot read {}", script.display()))? {
+        return Ok(());
+    }
+    run_tool(Command::new(&script).arg(app))
 }
 
 fn version_of(app: &Path) -> Result<String> {
@@ -170,15 +187,18 @@ fn run_tool(cmd: &mut Command) -> Result<()> {
 
 fn remove_dir(path: &Path) -> Result<()> {
     match fs::remove_dir_all(path) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e).with_context(|| format!("cannot remove {}", path.display())),
+        Err(e) if e.kind() != io::ErrorKind::NotFound => {
+            Err(e).with_context(|| format!("cannot remove {}", path.display()))
+        }
         _ => Ok(()),
     }
 }
 
 fn remove_file(path: &Path) -> Result<()> {
     match fs::remove_file(path) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e).with_context(|| format!("cannot remove {}", path.display())),
+        Err(e) if e.kind() != io::ErrorKind::NotFound => {
+            Err(e).with_context(|| format!("cannot remove {}", path.display()))
+        }
         _ => Ok(()),
     }
 }
-

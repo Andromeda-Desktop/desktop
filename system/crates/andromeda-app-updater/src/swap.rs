@@ -95,14 +95,18 @@ fn exists(path: &Path) -> Result<bool> {
 
 fn remove_file(path: &Path) -> Result<()> {
     match fs::remove_file(path) {
-        Err(e) if e.kind() != ErrorKind::NotFound => Err(e).with_context(|| format!("cannot remove {}", path.display())),
+        Err(e) if e.kind() != ErrorKind::NotFound => {
+            Err(e).with_context(|| format!("cannot remove {}", path.display()))
+        }
         _ => Ok(()),
     }
 }
 
 fn remove_dir(path: &Path) -> Result<()> {
     match fs::remove_dir_all(path) {
-        Err(e) if e.kind() != ErrorKind::NotFound => Err(e).with_context(|| format!("cannot remove {}", path.display())),
+        Err(e) if e.kind() != ErrorKind::NotFound => {
+            Err(e).with_context(|| format!("cannot remove {}", path.display()))
+        }
         _ => Ok(()),
     }
 }
@@ -176,7 +180,10 @@ mod tests {
                     (0..crash_after).for_each(|i| step(&f.p, i).unwrap());
                     let what = format!("{staged:?}, crash after {crash_after} steps, {recover_runs} recover runs");
                     let at_crash = release(&f.p.app);
-                    assert!(at_crash.as_deref() == Some(OLD) || at_crash.as_deref() == Some(NEW), "{what}: app is {at_crash:?}");
+                    assert!(
+                        at_crash.as_deref() == Some(OLD) || at_crash.as_deref() == Some(NEW),
+                        "{what}: app is {at_crash:?}"
+                    );
                     let mut end = Disk::Idle;
                     for _ in 0..recover_runs {
                         end = recover(&f.p, version_of).unwrap();

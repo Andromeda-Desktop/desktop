@@ -19,7 +19,9 @@ impl Manifest {
         if !manifest.url.starts_with("https://") {
             bail!("manifest url is not https: {}", manifest.url);
         }
-        if manifest.sha256.len() != 64 || !manifest.sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+        if manifest.sha256.len() != 64
+            || !manifest.sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
             bail!("manifest sha256 is not 64 lower-case hex digits");
         }
         Ok(manifest)

@@ -14,13 +14,15 @@ tools/build-libghostty.sh macos
 [ -d apps/terminal/build-macos ] || meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos --buildtype=release
 tools/build.sh ninja -C apps/terminal/build-macos andromeda-terminal
 
-export MACOSX_DEPLOYMENT_TARGET=26.0
-export CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=clang
+export MACOSX_DEPLOYMENT_TARGET=26.0 SDKROOT=$sdk
+export CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=clang CC_aarch64_apple_darwin=clang CFLAGS_aarch64_apple_darwin="-isysroot $sdk"
 export CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS="-C link-arg=-target -C link-arg=arm64-apple-macos26 -C link-arg=-isysroot -C link-arg=$sdk -C link-arg=-fuse-ld=lld"
 for crate in ptyd agentd; do
   cargo build -q --release --locked --target aarch64-apple-darwin --manifest-path apps/terminal/$crate/Cargo.toml \
     --target-dir /var/tmp/andromeda-macos-cargo
 done
+cargo build -q --release --locked --target aarch64-apple-darwin --manifest-path system/Cargo.toml -p andromeda-app-updater \
+  --target-dir /var/tmp/andromeda-macos-cargo
 
 app="$out/Andromeda Terminal.app"
 rm -rf "$app"
@@ -28,7 +30,7 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks" "$app/Contents/Resourc
 macos=$app/Contents/MacOS
 res=$app/Contents/Resources
 cp apps/terminal/build-macos/andromeda-terminal "$macos/"
-cp /var/tmp/andromeda-macos-cargo/aarch64-apple-darwin/release/andromeda-{ptyd,agentd} "$macos/"
+cp /var/tmp/andromeda-macos-cargo/aarch64-apple-darwin/release/andromeda-{ptyd,agentd,app-updater} "$macos/"
 
 tools/macos/bundle-libdesk.sh "$app" "$ghostty_lib" "$macos/andromeda-terminal" "$macos/andromeda-ptyd" "$macos/andromeda-agentd"
 
