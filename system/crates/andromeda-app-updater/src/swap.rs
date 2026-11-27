@@ -1,19 +1,18 @@
-//! Replaces an app bundle with a staged one so that, after a crash or power loss at any point, the bundle on disk is
-//! one whole release: the old one or the new one. Every step is one rename or an idempotent removal on one volume;
-//! `recover` reads which step the disk reached from what exists and finishes or rolls back.
+//! Replaces an app bundle with a staged one so that, after a crash or power loss at any point, the app path holds
+//! one whole release: the old one or the new one. The new release moves in with one atomic exchange of two
+//! directory entries; `recover` reads which step the disk reached and finishes or cleans up.
 
 use anyhow::{Context, Result, bail};
+use rustix::fs::{CWD, RenameFlags, renameat_with};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-/// Where each bundle lives. `staged` and `ready` sit in the update cache, on the app's volume.
+/// Where each bundle lives. The stage directory must sit on the app's volume: the exchange cannot cross volumes.
 #[derive(Debug, Clone)]
 pub struct Paths {
     pub app: PathBuf,
-    /// The running release while the new one moves in: `<app>.old`.
-    pub old: PathBuf,
-    /// The unpacked, verified new bundle.
+    /// The unpacked, verified new bundle; after the exchange, the old one.
     pub staged: PathBuf,
     /// Written after `staged` passed every check; holds its version. Without it `staged` is not trusted.
     pub ready: PathBuf,
@@ -22,34 +21,28 @@ pub struct Paths {
 impl Paths {
     pub fn new(app: &Path, stage_dir: &Path) -> Result<Self> {
         let name = app.file_name().context("app path has no file name")?;
-        let mut old = app.as_os_str().to_owned();
-        old.push(".old");
-        Ok(Self { app: app.to_owned(), old: old.into(), staged: stage_dir.join(name), ready: stage_dir.join("ready") })
+        Ok(Self { app: app.to_owned(), staged: stage_dir.join(name), ready: stage_dir.join("ready") })
     }
 }
 
-/// What the disk shows, derived only from which paths exist.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What the disk shows, derived from which paths exist and which release the app path holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Disk {
     /// The release runs; nothing usable is staged.
     Idle,
-    /// A verified release waits in the cache.
-    Ready,
-    /// The running release moved aside; the new one has not moved in.
-    MidSwap { ready: bool },
-    /// The new release is in place; the old one still waits for removal.
+    /// A verified release waits in the stage directory.
+    Ready(String),
+    /// The new release is in place; the old one waits in the stage directory for removal.
     Swapped,
 }
 
-pub fn disk(p: &Paths) -> Result<Disk> {
-    let ready = exists(&p.ready)? && exists(&p.staged)?;
-    Ok(match (exists(&p.app)?, exists(&p.old)?) {
-        (true, false) if ready => Disk::Ready,
-        (true, false) => Disk::Idle,
-        (false, true) => Disk::MidSwap { ready },
-        (true, true) => Disk::Swapped,
-        (false, false) => bail!("neither {} nor {} exists", p.app.display(), p.old.display()),
-    })
+/// `version_of` reads the release a bundle holds (its `CFBundleShortVersionString`).
+pub fn disk(p: &Paths, version_of: impl Fn(&Path) -> Result<String>) -> Result<Disk> {
+    if !exists(&p.ready)? || !exists(&p.staged)? {
+        return Ok(Disk::Idle);
+    }
+    let marked = fs::read_to_string(&p.ready).with_context(|| format!("cannot read {}", p.ready.display()))?;
+    Ok(if version_of(&p.app)? == marked { Disk::Swapped } else { Disk::Ready(marked) })
 }
 
 /// Marks `staged` as verified. Atomic: the marker appears whole or not at all.
@@ -60,52 +53,44 @@ pub fn mark_ready(p: &Paths, version: &str) -> Result<()> {
 }
 
 /// The swap steps, in order. A crash between any two leaves a disk that `recover` repairs.
-pub const STEPS: usize = 4;
+pub const STEPS: usize = 3;
 
 pub fn step(p: &Paths, index: usize) -> Result<()> {
     match index {
-        0 => rename(&p.app, &p.old),
-        1 => rename(&p.staged, &p.app),
-        2 => remove_file(&p.ready),
-        3 => remove_dir(&p.old),
+        0 => renameat_with(CWD, &p.staged, CWD, &p.app, RenameFlags::EXCHANGE)
+            .with_context(|| format!("cannot exchange {} with {}", p.staged.display(), p.app.display())),
+        1 => remove_file(&p.ready),
+        2 => remove_dir(&p.staged),
         _ => bail!("no swap step {index}"),
     }
 }
 
-/// Moves the ready release into place. The app must not run.
-pub fn swap(p: &Paths) -> Result<()> {
-    if disk(p)? != Disk::Ready {
+/// Moves the ready release into place. The app must not run. A failed exchange changes nothing.
+pub fn swap(p: &Paths, version_of: impl Fn(&Path) -> Result<String>) -> Result<()> {
+    if !matches!(disk(p, version_of)?, Disk::Ready(_)) {
         bail!("nothing verified is staged");
     }
     (0..STEPS).try_for_each(|i| step(p, i))
 }
 
-/// Brings the disk back to Idle or Ready from any state a crash leaves, finishing a swap whose new release is
-/// verified and rolling back one whose is not. Safe to run again after a crash inside it.
-pub fn recover(p: &Paths) -> Result<Disk> {
-    match disk(p)? {
-        Disk::Ready => {}
-        Disk::Idle => {
-            remove_file(&p.ready)?;
-            remove_dir(&p.staged)?;
-        }
-        Disk::MidSwap { ready: true } => (1..STEPS).try_for_each(|i| step(p, i))?,
-        Disk::MidSwap { ready: false } => {
-            rename(&p.old, &p.app)?;
-            remove_file(&p.ready)?;
-            remove_dir(&p.staged)?;
-        }
-        Disk::Swapped => (2..STEPS).try_for_each(|i| step(p, i))?,
+/// Brings the disk back to Idle or Ready from any state a crash leaves. Safe to run again after a crash inside it.
+pub fn recover(p: &Paths, version_of: impl Fn(&Path) -> Result<String> + Copy) -> Result<Disk> {
+    match disk(p, version_of)? {
+        Disk::Ready(_) => {}
+        Disk::Swapped => (1..STEPS).try_for_each(|i| step(p, i))?,
+        Disk::Idle => discard(p)?,
     }
-    disk(p)
+    disk(p, version_of)
+}
+
+/// Drops a staged release that is no longer newer than the app. Call only from Ready.
+pub fn discard(p: &Paths) -> Result<()> {
+    remove_file(&p.ready)?;
+    remove_dir(&p.staged)
 }
 
 fn exists(path: &Path) -> Result<bool> {
     path.try_exists().with_context(|| format!("cannot read {}", path.display()))
-}
-
-fn rename(from: &Path, to: &Path) -> Result<()> {
-    fs::rename(from, to).with_context(|| format!("cannot move {} to {}", from.display(), to.display()))
 }
 
 fn remove_file(path: &Path) -> Result<()> {
@@ -147,6 +132,10 @@ mod tests {
         (a == b).then_some(a)
     }
 
+    fn version_of(dir: &Path) -> Result<String> {
+        Ok(fs::read_to_string(dir.join("Contents/version"))?)
+    }
+
     /// `staged`: none, half unpacked (no marker), or verified.
     #[derive(Clone, Copy, Debug)]
     enum Staged {
@@ -158,10 +147,9 @@ mod tests {
     fn fixture(staged: Staged) -> Fixture {
         let root = tempfile::tempdir().unwrap();
         let apps = root.path().join("Applications");
-        let cache = root.path().join("cache");
-        fs::create_dir_all(&apps).unwrap();
-        fs::create_dir_all(&cache).unwrap();
-        let p = Paths::new(&apps.join("Andromeda Terminal.app"), &cache).unwrap();
+        let stage = apps.join(".Andromeda Terminal.app.update");
+        fs::create_dir_all(&stage).unwrap();
+        let p = Paths::new(&apps.join("Andromeda Terminal.app"), &stage).unwrap();
         bundle(&p.app, OLD);
         match staged {
             Staged::None => {}
@@ -175,7 +163,8 @@ mod tests {
     }
 
     /// Every reachable disk: a crash after k swap steps (the swap only starts from Ready), or any staging state
-    /// without a swap; then recovery, itself cut after each of its own steps and run again.
+    /// without a swap; then recovery, itself cut short by running it once or twice. At every crash point the app
+    /// path holds one whole release, so the app can start and run `recover`.
     #[test]
     fn every_crash_point_leaves_one_whole_release_and_recovery_settles() {
         let mut cases = 0;
@@ -185,23 +174,25 @@ mod tests {
                 for recover_runs in 1..=2 {
                     let f = fixture(staged);
                     (0..crash_after).for_each(|i| step(&f.p, i).unwrap());
-                    let swapped_in = crash_after >= 2;
+                    let what = format!("{staged:?}, crash after {crash_after} steps, {recover_runs} recover runs");
+                    let at_crash = release(&f.p.app);
+                    assert!(at_crash.as_deref() == Some(OLD) || at_crash.as_deref() == Some(NEW), "{what}: app is {at_crash:?}");
                     let mut end = Disk::Idle;
                     for _ in 0..recover_runs {
-                        end = recover(&f.p).unwrap();
+                        end = recover(&f.p, version_of).unwrap();
                     }
                     cases += 1;
-                    let what = format!("{staged:?}, crash after {crash_after} steps, {recover_runs} recover runs");
                     let shown = release(&f.p.app);
-                    assert!(shown.as_deref() == Some(OLD) || shown.as_deref() == Some(NEW), "{what}: app is {shown:?}");
-                    assert!(!f.p.old.exists(), "{what}: the old bundle stayed");
                     match staged {
-                        // A verified release that began to move in always ends in place.
-                        Staged::Verified if crash_after >= 1 || swapped_in => {
+                        Staged::Verified if crash_after >= 1 => {
                             assert_eq!(shown.as_deref(), Some(NEW), "{what}");
                             assert_eq!(end, Disk::Idle, "{what}");
+                            assert!(!f.p.staged.exists() && !f.p.ready.exists(), "{what}: the old bundle stayed");
                         }
-                        Staged::Verified => assert_eq!(end, Disk::Ready, "{what}"),
+                        Staged::Verified => {
+                            assert_eq!(shown.as_deref(), Some(OLD), "{what}");
+                            assert_eq!(end, Disk::Ready(NEW.to_owned()), "{what}");
+                        }
                         Staged::None | Staged::Partial => {
                             assert_eq!(shown.as_deref(), Some(OLD), "{what}");
                             assert_eq!(end, Disk::Idle, "{what}");
@@ -214,31 +205,19 @@ mod tests {
         assert_eq!(cases, 2 * (STEPS + 1) + 2 * 2);
     }
 
-    /// Power loss after the old bundle moved aside but before the marker existed cannot happen through `swap`
-    /// (it needs Ready), but a marker lost to a disk error must roll back, never move an unverified bundle in.
-    #[test]
-    fn a_mid_swap_without_the_marker_rolls_back() {
-        let f = fixture(Staged::Verified);
-        step(&f.p, 0).unwrap();
-        fs::remove_file(&f.p.ready).unwrap();
-        assert_eq!(disk(&f.p).unwrap(), Disk::MidSwap { ready: false });
-        assert_eq!(recover(&f.p).unwrap(), Disk::Idle);
-        assert_eq!(release(&f.p.app).as_deref(), Some(OLD));
-    }
-
     #[test]
     fn swap_refuses_an_unverified_stage() {
         let f = fixture(Staged::Partial);
-        assert!(swap(&f.p).is_err());
+        assert!(swap(&f.p, version_of).is_err());
         assert_eq!(release(&f.p.app).as_deref(), Some(OLD));
     }
 
     #[test]
     fn a_full_swap_installs_the_new_release_and_cleans_up() {
         let f = fixture(Staged::Verified);
-        swap(&f.p).unwrap();
+        swap(&f.p, version_of).unwrap();
         assert_eq!(release(&f.p.app).as_deref(), Some(NEW));
-        assert_eq!(disk(&f.p).unwrap(), Disk::Idle);
-        assert!(!f.p.ready.exists() && !f.p.staged.exists() && !f.p.old.exists());
+        assert_eq!(disk(&f.p, version_of).unwrap(), Disk::Idle);
+        assert!(!f.p.ready.exists() && !f.p.staged.exists());
     }
 }

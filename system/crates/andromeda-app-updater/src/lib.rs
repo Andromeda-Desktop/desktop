@@ -2,3 +2,4 @@
 
 pub mod manifest;
 pub mod swap;
+pub mod verify;
