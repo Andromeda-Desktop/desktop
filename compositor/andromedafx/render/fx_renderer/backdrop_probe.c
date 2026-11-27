@@ -377,8 +377,9 @@ bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, struct fx_backdrop_
   if (pixels != NULL) {
     // Rec.709 weights apply to linear light; on encoded bytes they underrate saturated colours (pink reads as dark).
     double sum = 0.0;
-    double darkest = 1.0;
-    double brightest = 0.0;
+    // The two lowest and two highest samples: the reported extremes drop the single most extreme one.
+    double low[2] = {1.0, 1.0};
+    double high[2] = {0.0, 0.0};
     for (int i = 0; i < kProbeWidth * kProbeHeight; i++) {
       const GLubyte* p = &pixels[i * 4];
       double rgb[3];
@@ -388,12 +389,22 @@ bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, struct fx_backdrop_
       }
       const double y = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
       sum += y;
-      darkest = fmin(darkest, y);
-      brightest = fmax(brightest, y);
+      if (y < low[0]) {
+        low[1] = low[0];
+        low[0] = y;
+      } else if (y < low[1]) {
+        low[1] = y;
+      }
+      if (y > high[0]) {
+        high[1] = high[0];
+        high[0] = y;
+      } else if (y > high[1]) {
+        high[1] = y;
+      }
     }
     luminance->mean = (float)pow(sum / (kProbeWidth * kProbeHeight), 1.0 / 2.2);
-    luminance->darkest = (float)pow(darkest, 1.0 / 2.2);
-    luminance->brightest = (float)pow(brightest, 1.0 / 2.2);
+    luminance->darkest = (float)pow(low[1], 1.0 / 2.2);
+    luminance->brightest = (float)pow(high[1], 1.0 / 2.2);
     done = true;
     glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
   }

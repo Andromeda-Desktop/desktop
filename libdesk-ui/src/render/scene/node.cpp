@@ -441,11 +441,10 @@ void Node::attachChild(Node* child) {
   if (m_popupContext != nullptr && child->m_popupContext == nullptr) {
     child->setPopupContext(m_popupContext);
   }
-  // Controls resolve colours before they are attached; a subtree that lands under another tone or content shadow
-  // resolves again.
-  child->notifyInherited(
-      child->paletteTone() != child->m_detachedTone, child->contentShadow() != child->m_detachedShadow
-  );
+  // Controls resolve colours before they are attached; a subtree that lands under another tone resolves again.
+  if (child->paletteTone() != child->m_detachedTone) {
+    child->notifyPaletteTone();
+  }
 }
 
 void Node::setPaletteTone(std::optional<PaletteTone> tone) {
@@ -526,7 +525,17 @@ PaletteTone Node::paletteTone() const noexcept {
   return PaletteTone::Scheme;
 }
 
-void Node::notifyPaletteTone() { notifyInherited(true, false); }
+void Node::notifyPaletteTone() {
+  if (m_parent == nullptr) {
+    m_detachedTone = paletteTone();
+  }
+  onPaletteToneChanged();
+  for (auto& child : m_children) {
+    if (!child->m_paletteTone.has_value()) {
+      child->notifyPaletteTone();
+    }
+  }
+}
 
 void Node::setInkLift(std::optional<float> lift) {
   if (m_inkLift == lift) {
@@ -552,40 +561,6 @@ void Node::notifyInkLift() {
     if (!child->m_inkLift.has_value()) {
       child->notifyInkLift();
     }
-  }
-}
-
-void Node::setContentShadow(std::optional<bool> on) {
-  if (m_contentShadow == on) {
-    return;
-  }
-  m_contentShadow = on;
-  notifyInherited(false, true);
-  markPaintDirty();
-}
-
-bool Node::contentShadow() const noexcept {
-  for (const Node* node = this; node != nullptr; node = node->m_parent) {
-    if (node->m_contentShadow.has_value()) {
-      return *node->m_contentShadow;
-    }
-  }
-  return false;
-}
-
-void Node::notifyInherited(bool tone, bool shadow) {
-  if (!tone && !shadow) {
-    return;
-  }
-  if (m_parent == nullptr) {
-    m_detachedTone = paletteTone();
-    m_detachedShadow = contentShadow();
-  }
-  onPaletteToneChanged();
-  for (auto& child : m_children) {
-    child->notifyInherited(
-        tone && !child->m_paletteTone.has_value(), shadow && !child->m_contentShadow.has_value()
-    );
   }
 }
 
@@ -638,7 +613,6 @@ std::unique_ptr<Node> Node::removeChild(Node* child) {
   m_children.erase(it);
   m_paintOrderValid = false;
   removed->m_detachedTone = removed->paletteTone();
-  removed->m_detachedShadow = removed->contentShadow();
   removed->m_parent = nullptr;
   markLayoutDirty();
   return removed;

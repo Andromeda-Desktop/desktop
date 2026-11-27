@@ -12,7 +12,8 @@ struct wlr_renderer;
  */
 struct fx_backdrop_probe;
 
-/** Luminances of one sample grid, 0 to 1, display-encoded: the mean and the darkest and brightest sample. */
+/** Luminances of one sample grid, 0 to 1, display-encoded: the mean, and the second darkest and second brightest
+ * sample, so one small spot (an eighth of the region) does not set the extremes. */
 struct fx_backdrop_luminance {
   float mean;
   float darkest;

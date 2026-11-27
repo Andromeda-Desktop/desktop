@@ -4,9 +4,8 @@ namespace glass {
 
   namespace {
   // Over a low-contrast backdrop each style's glass moves at least this fraction of its gap to opaque, in its own
-  // colour, by Style: {light glass, dark glass}. Liquid takes only what legibility needs, so it stays see-through; Clear's
-  // thinner tint needs 0.62 over white for label_2 at 4.5:1 with the content shadow (glass-style-matrix, white wall).
-  constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.0F, 0.0F}, {0.0F, 0.62F}, {0.3F, 0.45F}};
+  // colour, by Style: {light glass, dark glass}. A light step only: each style keeps its slider's look over any backdrop.
+  constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.15F, 0.25F}, {0.25F, 0.25F}, {0.3F, 0.45F}};
   // Clarity 0 blurs at full size, 1 not at all: Frosted stops at 0.7 (a 30 % blur); Liquid spans 0.85 (Soft) to 0.45
   // (Strong): every Liquid surface keeps a real blur, like Apple's Regular glass.
   constexpr float kLiquidClarity[2] = {0.85F, 0.45F};
@@ -21,12 +20,8 @@ namespace glass {
   constexpr float kAdaptLuminance[2] = {0.2F, 0.75F};
   } // namespace
 
-  const float kLegibleAlpha[2] = {0.60F, 0.64F};
-  const float kShadowedLegibleAlpha[2] = {0.58F, 0.63F};
   const float kLegibleInk2[2] = {0.80F, 0.86F};
   const float kLegibleInk3[2] = {0.62F, 0.60F};
-  const float kContentShadowAlpha = 1.0F;
-  const float kContentShadowBlur = 0.4F;
   const float kLiquidLift = 1.05F;
   const float kMergeReach = 24.0F;
   const float kPointerLightReach = 128.0F;
@@ -36,13 +31,8 @@ namespace glass {
   const float kLiquidTint[2] = {0.10F, 0.16F};
   const float kAdaptDeadband = 0.04F;
 
-  float denseLift(Kind kind, Style style, bool lightGlass, bool shadowed) noexcept {
-    const int tone = lightGlass ? 0 : 1;
-    const float legible = shadowed && contentShadow(style) ? kShadowedLegibleAlpha[tone] : kLegibleAlpha[tone];
-    const float lowest = style == Style::Clear || (style == Style::Liquid && kind == Kind::Shape) ? kClearTint
-        : style == Style::Tinted                                                              ? kTintedTint[tone]
-                                                                                              : kLowestTint[tone];
-    const float lift = std::max(kDenseOverlay[static_cast<int>(style)][tone], (legible - lowest) / (1.0F - lowest));
+  float denseLift(Kind kind, Style style, bool lightGlass) noexcept {
+    const float lift = kDenseOverlay[static_cast<int>(style)][lightGlass ? 0 : 1];
     return kind == Kind::Tooltip ? 0.5F * lift : lift;
   }
 
@@ -99,7 +89,7 @@ namespace glass {
       const float level = std::lerp(0.1F, 1.0F, std::clamp(settings.lens, 0.0F, 1.0F));
       return {
           .tint = tint, .level = level, .rim = settings.edgeReflection ? at(settings.lens, 0.4F, 1.0F, 1.0F) : 0.0F, .lens = level, .clarity = clarity,
-          .blurStrength = blurStrength(clarity), .dense = denseLift(kind, settings.style, light && settings.style != Style::Clear, settings.contentShadow)
+          .blurStrength = blurStrength(clarity), .dense = denseLift(kind, settings.style, light && settings.style != Style::Clear)
       };
     }
     // Sheets blur a step less than shapes at the middle and match them at both ends.
@@ -107,7 +97,7 @@ namespace glass {
     const float clarity = 0.7F * (shape ? at(frost, 1.0F, 0.5F, 0.0F) : at(frost, 1.0F, 0.25F, 0.0F));
     return {
         .tint = tint, .level = 0.0F, .rim = settings.edgeReflection ? kFrostedRim : 0.0F, .lens = 0.0F, .clarity = clarity,
-        .blurStrength = blurStrength(clarity), .dense = denseLift(kind, settings.style, light && settings.style != Style::Clear, settings.contentShadow)
+        .blurStrength = blurStrength(clarity), .dense = denseLift(kind, settings.style, light && settings.style != Style::Clear)
     };
   }
 

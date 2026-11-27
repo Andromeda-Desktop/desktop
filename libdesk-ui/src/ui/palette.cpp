@@ -204,13 +204,6 @@ PaletteTone glassTone(glass::Kind kind) noexcept {
   return glass::tone(kind, Style::glassStyle()) == glass::Tone::Dark ? PaletteTone::Dark : PaletteTone::Scheme;
 }
 
-bool glassContentShadow() noexcept { return glass::contentShadow(Style::glassStyle()) && !Style::reduceTransparency(); }
-
-Color contentShadowColor(const Color& ink) noexcept {
-  const float shade = ink.r + ink.g + ink.b > 1.5F ? 0.0F : 1.0F;
-  return Color{shade, shade, shade, glass::kContentShadowAlpha * ink.a};
-}
-
 const Color& colorForRole(ColorRole role, const Node* node) noexcept {
   return roleIn(node != nullptr ? paletteForTone(node->paletteTone()) : palette, role);
 }

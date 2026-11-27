@@ -101,21 +101,10 @@ namespace Style {
     return glass::material(kind, g_glass, lightTone(tone));
   }
 
-  namespace {
-    // Shell glass: its roots draw the content shadow (glassContentShadow), so it takes the shadowed legibility floor.
-    glass::Settings shellGlass() noexcept {
-      glass::Settings settings = g_glass;
-      settings.contentShadow = true;
-      return settings;
-    }
-  } // namespace
-
-  glass::Material islandGlass() noexcept {
-    return glass::material(glass::Kind::Shape, shellGlass(), lightTone(glassTone(glass::Kind::Shape)));
-  }
+  glass::Material islandGlass() noexcept { return glassMaterial(glass::Kind::Shape); }
 
   glass::Material popoverMaterial() noexcept {
-    return glass::popover(shellGlass(), lightTone(glassTone(glass::Kind::Shape)));
+    return glass::popover(g_glass, lightTone(glassTone(glass::Kind::Shape)));
   }
 
   float windowGlassTint() noexcept {
