@@ -6,6 +6,7 @@
 #include "config/keybind_parse.h"
 #include "config/generated_file.h"
 #include "config/managed_settings.h"
+#include "config/store.h"
 #include "desktop-unstable-v1-protocol.h"
 #include "output/output.h"
 #include "server/server.h"
@@ -384,7 +385,7 @@ namespace andromeda {
     for (std::size_t i = 0; i < keys.size(); ++i) {
       const std::string_view key = keys[i];
       const std::string keyText(key);
-      const std::string value = managedSettingValue(config(), key);
+      const std::string value = managedSettingValue(configStore().resolved(), key);
       const uint32_t customized = customizedKeys[i] ? 1U : 0U;
       dsk_settings_manager_v1_send_setting(resource, keyText.c_str(), value.c_str(), customized);
     }
@@ -408,7 +409,7 @@ namespace andromeda {
     if (wl_resource_get_version(resource) >= 2) {
       for (const std::string_view key : volatileSettingKeys()) {
         const std::string keyText(key);
-        const std::string value = managedSettingValue(config(), key);
+        const std::string value = managedSettingValue(configStore().resolved(), key);
         dsk_settings_manager_v1_send_setting(resource, keyText.c_str(), value.c_str(), 0U);
       }
     }

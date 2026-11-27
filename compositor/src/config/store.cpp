@@ -274,6 +274,7 @@ namespace andromeda {
 
   ConfigReloadResult
   ConfigStore::commit(Config&& config, toml::table&& effective, std::filesystem::path rootPath, bool fileMissing) {
+    m_resolved = config;
     applyLiveAppearance(config);
     applyAnimationSpeed(config.animation);
     // Computed before the move, and only after the first load: everything is new

@@ -39,6 +39,9 @@ namespace andromeda {
     applyOverrides(toml::table overrides, bool rejectNewDiagnostics, std::string& errors);
 
     [[nodiscard]] const Config& config() const { return m_config; }
+    // What the file, overrides and settings layers set, before the accessibility layer (applyLiveAppearance) and
+    // animation.speed resolve config(). Settings read back these values.
+    [[nodiscard]] const Config& resolved() const { return m_resolved; }
     // Values set by `andromeda config set`. Every load lays them over the file and its includes; `load` starts without.
     [[nodiscard]] const toml::table& overrides() const { return m_overrides; }
     // The document the active configuration was read from: file, includes, and overrides merged.
@@ -91,6 +94,7 @@ namespace andromeda {
     };
     static FileStamp stamp(const std::filesystem::path& path);
 
+    Config m_resolved;
     Config m_config;
     toml::table m_overrides;
     toml::table m_effective;

@@ -4812,6 +4812,29 @@ close = "#FFFF00FF"
   CHECK(!colors.textUnfocused.has_value());
 }
 
+// The accessibility layer resolves the running config; Settings still reads back what the user set.
+ANDROMEDA_TEST(accessibilityLayerChangesTheRunningConfigButNotTheUsersValues) {
+  const TempConfig file;
+  file.write(R"(
+[appearance]
+reduce_motion = true
+reduce_transparency = true
+
+[appearance.blur]
+enabled = true
+
+[animation.windows_move]
+enabled = true
+)");
+  auto& store = andromeda::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(!store.config().animation.windowsMove.enabled);
+  CHECK(!store.config().appearance.blur.enabled);
+  CHECK_EQ(andromeda::managedSettingValue(store.resolved(), "animation.windows_move.enabled"), std::string("true"));
+  CHECK_EQ(andromeda::managedSettingValue(store.resolved(), "appearance.blur.enabled"), std::string("true"));
+}
+
 ANDROMEDA_TEST(titleBarInvalidValuesAreClaimedAndDiagnosed) {
   const TempConfig file;
   file.write(R"(
