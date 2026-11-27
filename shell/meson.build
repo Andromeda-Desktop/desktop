@@ -1465,9 +1465,9 @@ if build_tests
     test_args = []
     if test_name == 'desktop_entry_localization' or test_name == 'emoji_provider'
       test_args = [meson.project_source_root() / 'assets']
-    elif test_name == 'i18n_supported_languages'
     elif test_name == 'theme_package'
       test_args = [meson.project_source_root() / 'protocols' / 'theme-vocabulary.toml']
+    elif test_name == 'i18n_supported_languages'
       test_args = [meson.project_source_root() / 'assets' / 'translations']
     elif test_name == 'settings_rows_generated'
       test_args = [
