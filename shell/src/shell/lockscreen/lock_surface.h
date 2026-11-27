@@ -156,6 +156,23 @@ protected:
   [[nodiscard]] bool wantsFrameDone() const override;
 
 private:
+  struct AndromedaScene {
+    AuthColumn column;
+    bool shownError = false;
+  };
+  struct RyokuScene {
+    // The dial sweeps smoothly, then steps once a second.
+    struct Sweep {
+      AnimationManager::Id animation;
+    };
+    struct Stepping {
+      Timer clock;
+    };
+    RyokuAuthScene scene;
+    std::variant<Sweep, Stepping> dial;
+    bool shownError = false;
+  };
+
   struct ForecastColumn {
     Flex* column = nullptr;
     Label* day = nullptr;
@@ -197,8 +214,10 @@ private:
   void rebuildSessionButtons();
   void ensureLayoutChipInPasswordRow();
   [[nodiscard]] std::vector<SessionPanelActionConfig> resolveSessionActions() const;
-  void layoutRyoku(Renderer& renderer, float sw, float sh, const lockscreen_login_box::LoginBoxStyle& style);
-  void layoutAndromeda(Renderer& renderer, float sw, float sh);
+  void layoutRyoku(
+      RyokuScene& ryoku, Renderer& renderer, float sw, float sh, const lockscreen_login_box::LoginBoxStyle& style
+  );
+  void layoutAndromeda(AndromedaScene& andromeda, Renderer& renderer, float sw, float sh);
   void wakeGlance();
   // Pointer press on the session button or its menu; true when the chrome took the press.
   bool handleChromePress(float x, float y);
@@ -206,8 +225,8 @@ private:
   void requestPower(int index);
   void runPower(int index, bool skipInhibitors);
   void startAndromedaClock();
-  void startRyokuLive();
-  void startRyokuIdleClock();
+  void startRyokuSweep();
+  void startRyokuStepping(RyokuScene& ryoku);
   [[nodiscard]] lockscreen_login_box::LoginBoxStyle resolveLoginStyle() const;
   [[nodiscard]] bool isLoginBoxEnabled() const;
   [[nodiscard]] std::string resolveStatusText(const lockscreen_login_box::LoginBoxStyle& style, bool& isError) const;
@@ -280,13 +299,9 @@ private:
   Input* m_passwordField = nullptr;
   Button* m_passwordRevealButton = nullptr;
   Button* m_loginButton = nullptr;
-  std::unique_ptr<RyokuAuthScene> m_ryoku;
+  // lockscreen.theme at construction picks the scene; it stays for the surface's life.
+  std::variant<AndromedaScene, RyokuScene> m_scene;
   ClockGlassSync m_clockGlass;
-  Timer m_ryokuClock;
-  AnimationManager::Id m_ryokuLive = 0;
-  bool m_ryokuShownError = false;
-  std::unique_ptr<AuthColumn> m_auth;
-  bool m_authShownError = false;
   // Minimal layout: the island shows after the first pointer move of this lock.
   bool m_pointerMoved = false;
   AuthExtras m_authExtras;

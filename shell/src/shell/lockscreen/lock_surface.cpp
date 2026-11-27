@@ -606,13 +606,12 @@ LockSurface::LockSurface(WaylandConnection& connection, ConfigService* config) :
 
   if (m_config != nullptr && m_config->config().lockscreen.theme == "ryoku") {
     (void)text::registerFontFile(paths::assetPath("fonts/Outfit-Black.ttf"));
-    m_ryoku = std::make_unique<RyokuAuthScene>();
-    m_ryoku->build(m_root, m_animations);
-    startRyokuLive();
+    m_scene.emplace<RyokuScene>().scene.build(m_root, m_animations);
+    startRyokuSweep();
   } else {
-    m_auth = std::make_unique<AuthColumn>();
-    m_auth->build(m_root, m_animations);
-    m_cards.build(m_auth->glanceLayer());
+    auto& column = std::get<AndromedaScene>(m_scene).column;
+    column.build(m_root, m_animations);
+    m_cards.build(column.glanceLayer());
     m_callCard.build(m_root);
     m_chrome.build(m_root);
     m_alert.build(m_root);
@@ -623,33 +622,30 @@ LockSurface::LockSurface(WaylandConnection& connection, ConfigService* config) :
 
 // The dial sweeps smoothly for 20 s after the lock appears or any input, then steps once a second: a lock screen left
 // on the desk draws one frame a second instead of sixty.
-void LockSurface::startRyokuLive() {
-  if (m_ryoku == nullptr) {
+void LockSurface::startRyokuSweep() {
+  auto* ryoku = std::get_if<RyokuScene>(&m_scene);
+  if (ryoku == nullptr) {
     return;
   }
-  m_ryokuClock.stop();
-  if (m_ryokuLive != 0) {
-    m_animations.cancel(m_ryokuLive);
+  if (const auto* sweep = std::get_if<RyokuScene::Sweep>(&ryoku->dial)) {
+    m_animations.cancel(sweep->animation);
   }
-  // Timer: continuous loop that drives the Ryoku scene clock.
-  m_ryokuLive = m_animations.animateTimer(
+  auto& sweep = ryoku->dial.emplace<RyokuScene::Sweep>();
+  sweep.animation = m_animations.animateTimer(
       0.0F, 1.0F, 20000.0F, Easing::Linear,
-      [this](float /*progress*/) {
-        if (m_ryoku->tick(true)) {
+      [this, ryoku](float /*progress*/) {
+        if (ryoku->scene.tick(true)) {
           requestLayout();
         }
       },
-      [this]() {
-        m_ryokuLive = 0;
-        startRyokuIdleClock();
-      },
+      [this, ryoku]() { startRyokuStepping(*ryoku); },
       this
   );
 }
 
-void LockSurface::startRyokuIdleClock() {
-  const auto step = [this]() {
-    if (m_ryoku->tick(false)) {
+void LockSurface::startRyokuStepping(RyokuScene& ryoku) {
+  const auto step = [this, &ryoku]() {
+    if (ryoku.scene.tick(false)) {
       requestLayout();
     } else {
       requestRedraw();
@@ -657,9 +653,10 @@ void LockSurface::startRyokuIdleClock() {
   };
   const auto sinceEpoch = std::chrono::system_clock::now().time_since_epoch();
   const auto intoSecond = std::chrono::duration_cast<std::chrono::milliseconds>(sinceEpoch).count() % 1000;
-  m_ryokuClock.start(std::chrono::milliseconds(1000 - intoSecond), [this, step]() {
+  auto& clock = ryoku.dial.emplace<RyokuScene::Stepping>().clock;
+  clock.start(std::chrono::milliseconds(1000 - intoSecond), [&clock, step]() {
     step();
-    m_ryokuClock.startRepeating(std::chrono::seconds(1), step);
+    clock.startRepeating(std::chrono::seconds(1), step);
   });
 }
 
@@ -767,8 +764,8 @@ void LockSurface::setLockedState(bool locked) {
   setPower(PowerIdle{});
   if (m_locked) {
     m_pointerMoved = false;
-    if (m_auth != nullptr) {
-      m_auth->setSheetOpen(false, true);
+    if (auto* andromeda = std::get_if<AndromedaScene>(&m_scene)) {
+      andromeda->column.setSheetOpen(false, true);
     }
     // Never carry a revealed password across lock cycles.
     if (m_passwordField != nullptr) {
@@ -905,7 +902,7 @@ void LockSurface::configureTransition(
   m_transitionProgress = 1.0F;
   m_enterTransitionRequested = false;
 
-  if (m_ryoku != nullptr
+  if (std::holds_alternative<RyokuScene>(m_scene)
       || !transition.has_value()
       || m_blackout
       || !m_desktopCapture.has_value()
@@ -938,9 +935,9 @@ void LockSurface::startExitTransition() {
     return;
   }
 
-  if (m_ryoku != nullptr && !m_blackout) {
+  if (auto* ryoku = std::get_if<RyokuScene>(&m_scene); ryoku != nullptr && !m_blackout) {
     m_transitionPhase = TransitionPhase::Exiting;
-    m_ryoku->playGranted([this]() {
+    ryoku->scene.playGranted([this]() {
       m_transitionPhase = TransitionPhase::ExitComplete;
       notifyTransitionStateChanged();
     });
@@ -1080,9 +1077,7 @@ void LockSurface::clearPasswordSelection() {
 }
 
 void LockSurface::onPointerEvent(const PointerEvent& event) {
-  if (m_ryoku != nullptr && m_ryokuLive == 0) {
-    startRyokuLive();
-  }
+  startRyokuSweep();
   if (m_blackout) {
     return;
   }
@@ -1126,11 +1121,12 @@ void LockSurface::onPointerEvent(const PointerEvent& event) {
       }
       break;
     }
-    if (m_locked && pressed && m_auth != nullptr && handleChromePress(x, y)) {
+    auto* andromeda = std::get_if<AndromedaScene>(&m_scene);
+    if (m_locked && pressed && andromeda != nullptr && handleChromePress(x, y)) {
       requestLayout();
       break;
     }
-    if (m_locked && pressed && m_auth != nullptr && m_onFaceRequest && m_auth->faceHit(x, y)) {
+    if (m_locked && pressed && andromeda != nullptr && m_onFaceRequest && andromeda->column.faceHit(x, y)) {
       m_onFaceRequest();
       focusPasswordField();
       requestLayout();
@@ -1146,7 +1142,7 @@ void LockSurface::onPointerEvent(const PointerEvent& event) {
     }
     if (m_locked && pressed) {
       wakeGlance();
-      if (m_auth != nullptr && m_mpris != nullptr && m_cards.data().media.has_value()) {
+      if (andromeda != nullptr && m_mpris != nullptr && m_cards.data().media.has_value()) {
         const std::string& bus = m_cards.data().media->busName;
         switch (m_cards.hitTest(x, y)) {
         case LockCards::Control::Previous:
@@ -1199,9 +1195,7 @@ void LockSurface::onThemeChanged() {
 }
 
 void LockSurface::onKeyboardEvent(const KeyboardEvent& event) {
-  if (m_ryoku != nullptr && m_ryokuLive == 0) {
-    startRyokuLive();
-  }
+  startRyokuSweep();
   if (m_blackout) {
     return;
   }
@@ -1448,7 +1442,7 @@ void LockSurface::layoutScene(std::uint32_t width, std::uint32_t height) {
   applyWallpaperTexture();
   // Ryoku paints an opaque scene over the background, so a blur behind it is never seen.
   const bool compositorBlur =
-      m_ryoku == nullptr && !m_ownWallpaper && m_blurIntensity > 0.0F && m_connection.hasBackgroundEffectBlur();
+      !std::holds_alternative<RyokuScene>(m_scene) && !m_ownWallpaper && m_blurIntensity > 0.0F && m_connection.hasBackgroundEffectBlur();
   syncBlurRegion(compositorBlur, width, height);
 
   m_backgroundLayer->setVisible(true);
@@ -1782,13 +1776,13 @@ void LockSurface::layoutScene(std::uint32_t width, std::uint32_t height) {
       m_authPanel->arrange(renderer, LayoutRect{authX, authY, authW, authH});
     }
   }
-  if (m_ryoku != nullptr) {
-    layoutRyoku(renderer, sw, sh, loginStyle);
-  } else if (m_auth != nullptr) {
-    layoutAndromeda(renderer, sw, sh);
+  if (auto* ryoku = std::get_if<RyokuScene>(&m_scene)) {
+    layoutRyoku(*ryoku, renderer, sw, sh, loginStyle);
+  } else {
+    layoutAndromeda(std::get<AndromedaScene>(m_scene), renderer, sw, sh);
   }
   // Andromeda shows the phone in its cards; the corner row stays for Ryoku.
-  m_phoneRow.layout(renderer, sw, sh, m_locked && m_auth == nullptr);
+  m_phoneRow.layout(renderer, sw, sh, m_locked && std::holds_alternative<RyokuScene>(m_scene));
   layoutTransitionCover();
   syncTransitionCover();
 }
@@ -1796,7 +1790,7 @@ void LockSurface::layoutScene(std::uint32_t width, std::uint32_t height) {
 // Ryoku replaces the chrome: the stock layers hide and the login panel stays laid out but draws nothing, so the
 // password field keeps focus and input while Ryoku's column shows the mask.
 void LockSurface::layoutRyoku(
-    Renderer& renderer, float sw, float sh, const lockscreen_login_box::LoginBoxStyle& style
+    RyokuScene& ryoku, Renderer& renderer, float sw, float sh, const lockscreen_login_box::LoginBoxStyle& style
 ) {
   m_backgroundLayer->setVisible(false);
   m_widgetLayer->setVisible(false);
@@ -1813,13 +1807,13 @@ void LockSurface::layoutRyoku(
   }
   const bool idle = status.empty() || status == i18n::tr("lockscreen.ready");
   const std::string idleHint = i18n::tr(m_authExtras.face ? "lockscreen.ryoku.look" : "lockscreen.ryoku.type");
-  m_ryoku->setUser(m_user);
-  m_ryoku->setHint(idle ? idleHint : status, statusError, !statusError && m_password.empty() && !m_authenticating);
-  if (statusError && !m_ryokuShownError) {
-    m_ryoku->playRejected();
+  ryoku.scene.setUser(m_user);
+  ryoku.scene.setHint(idle ? idleHint : status, statusError, !statusError && m_password.empty() && !m_authenticating);
+  if (statusError && !ryoku.shownError) {
+    ryoku.scene.playRejected();
   }
-  m_ryokuShownError = statusError;
-  m_ryoku->setPasswordLength(m_password.size());
+  ryoku.shownError = statusError;
+  ryoku.scene.setPasswordLength(m_password.size());
 
   std::vector<RyokuAuthScene::Action> actions;
   if (m_sessionActions != nullptr) {
@@ -1829,13 +1823,13 @@ void LockSurface::layoutRyoku(
       actions.push_back({label, [this, cfg]() { m_sessionActions->invoke(cfg); }});
     }
   }
-  m_ryoku->setActions(std::move(actions));
-  m_ryoku->layout(renderer, sw, sh);
+  ryoku.scene.setActions(std::move(actions));
+  ryoku.scene.layout(renderer, sw, sh);
 }
 
 // Andromeda keeps the real password field laid out but invisible (as Ryoku does), so it keeps focus and input,
 // and draws rulebook 9.15's auth column instead of the old login panel.
-void LockSurface::layoutAndromeda(Renderer& renderer, float sw, float sh) {
+void LockSurface::layoutAndromeda(AndromedaScene& andromeda, Renderer& renderer, float sw, float sh) {
   m_loginPanel->setOpacity(0.0F);
   m_passwordField->setCaretShown(false);
   // Lock widgets show only in the Free layout ("custom"); the editor keeps them off the auth area.
@@ -1893,8 +1887,8 @@ void LockSurface::layoutAndromeda(Renderer& renderer, float sw, float sh) {
       state.reasonBody = i18n::tr("lockscreen.phone-lock.body");
     }
   }
-  const bool shake = visible && m_error && m_authExtras.rejected && !m_authShownError;
-  m_authShownError = m_error;
+  const bool shake = visible && m_error && m_authExtras.rejected && !andromeda.shownError;
+  andromeda.shownError = m_error;
   const float scale = m_config != nullptr ? m_config->config().accessibility.uiScale : 1.0F;
   LockCards::Data cards;
   if (visible) {
@@ -1950,9 +1944,9 @@ void LockSurface::layoutAndromeda(Renderer& renderer, float sw, float sh) {
   input.clockLines = std::max<int>(1, static_cast<int>(state.clockLines.size()));
   m_cards.fillPlacementInput(input);
   const AuthPlacement place = placeAuth(input);
-  m_auth->setState(std::move(state));
-  m_auth->layout(renderer, place, sw, scale);
-  m_clockGlass.sync(m_connection, *this, m_auth->clockGlassMask(renderer));
+  andromeda.column.setState(std::move(state));
+  andromeda.column.layout(renderer, place, sw, scale);
+  m_clockGlass.sync(m_connection, *this, andromeda.column.clockGlassMask(renderer));
   m_cards.layout(renderer, place, scale);
   m_callCard.setState(std::move(call));
   m_callCard.layout(renderer, place.columnCx, place.cardBottom, scale);
@@ -1994,7 +1988,7 @@ void LockSurface::layoutAndromeda(Renderer& renderer, float sw, float sh) {
   m_chrome.setState(std::move(chrome));
   m_chrome.layout(renderer, sw, sh, scale);
   if (shake) {
-    m_auth->playRejected();
+    andromeda.column.playRejected();
   }
 }
 
@@ -2097,17 +2091,18 @@ bool LockSurface::setPower(PowerState next) {
 // Glance: any key, click or pointer move Grows the auth sheet; it Returns after 10 s idle with an empty field. A
 // layout, not a redraw: the clock glass mask drops while the sheet is open.
 void LockSurface::wakeGlance() {
-  if (m_auth == nullptr || m_ryoku != nullptr || !m_locked || m_config == nullptr
+  auto* andromeda = std::get_if<AndromedaScene>(&m_scene);
+  if (andromeda == nullptr || !m_locked || m_config == nullptr
       || authLayoutFromName(m_config->config().lockscreen.layout) != AuthLayout::Glance) {
     return;
   }
-  if (!m_auth->sheetOpen()) {
-    m_auth->setSheetOpen(true);
+  if (!andromeda->column.sheetOpen()) {
+    andromeda->column.setSheetOpen(true);
     requestLayout();
   }
-  m_glanceIdle.start(std::chrono::seconds(10), [this] {
-    if (m_password.empty() && !m_authenticating && m_auth != nullptr) {
-      m_auth->setSheetOpen(false);
+  m_glanceIdle.start(std::chrono::seconds(10), [this, &column = andromeda->column] {
+    if (m_password.empty() && !m_authenticating) {
+      column.setSheetOpen(false);
       requestLayout();
     }
   });
