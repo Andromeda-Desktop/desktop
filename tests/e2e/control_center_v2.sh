@@ -44,7 +44,9 @@ PY
   poll_for 5 grep -q "keyboard: bound" "$OUT/noctalia.log" || fail "the shell did not bind the held keyboard"
   "$NOCTALIA" msg theme-mode-set light > /dev/null
   poll_for 5 theme_is light || fail "theme did not become light"
-  grim "$OUT/last.png"; cp "$OUT/last.png" "$OUT/closed.png"
+  # The closed reference must show the wallpaper, which uploads after the keyboard binds.
+  poll_for 5 grep -q "uploaded .*wallpaper" "$OUT/noctalia.log" || fail "the wallpaper did not load"
+  stable_grim "$OUT/last.png"; cp "$OUT/last.png" "$OUT/closed.png"
   "$NOCTALIA" msg panel-open control-center quick > /dev/null
   poll_for 5 panel_changed || fail "the sheet did not open"
   settle
