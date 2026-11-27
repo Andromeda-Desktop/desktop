@@ -1,5 +1,6 @@
 #include "cocoa/cocoa_internal.h"
 
+#import <CoreServices/CoreServices.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include "core/deferred_call.h"
@@ -154,11 +155,23 @@ std::optional<std::string> cocoaReadPasteboard(NSPasteboard* pasteboard, NSStrin
 @end
 
 @implementation AndromedaAppDelegate
+// A logout, restart or shutdown names its reason in the quit event; Cmd+Q and the Dock's Quit do not. NSTerminateLater
+// is no way out: AppKit then runs a modal run loop inside terminate:, under which the app's own loop cannot end.
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender {
-  if (g_display != nullptr) {
-    g_display->requestQuit();
+  const NSAppleEventDescriptor* event = NSAppleEventManager.sharedAppleEventManager.currentAppleEvent;
+  const bool system = [event attributeDescriptorForKeyword:kAEQuitReason] != nil;
+  if (g_display == nullptr) {
+    return NSTerminateNow;
   }
-  return NSTerminateCancel;
+  return g_display->requestQuit(system ? Display::Quit::Now : Display::Quit::Loop) ? NSTerminateNow : NSTerminateCancel;
+}
+
+- (BOOL)applicationShouldHandleReopen:(NSApplication*)sender hasVisibleWindows:(BOOL)visible {
+  if (!visible && g_display != nullptr) {
+    g_display->reopen();
+    return NO;
+  }
+  return YES;
 }
 @end
 
@@ -677,7 +690,19 @@ std::unique_ptr<TextInputService> CocoaDisplay::createTextInputService() {
   return std::make_unique<CocoaTextInputService>();
 }
 
-void CocoaDisplay::requestQuit() {
+void CocoaDisplay::reopen() {
+  if (m_reopen) {
+    m_reopen();
+    wake();
+  }
+}
+
+bool CocoaDisplay::requestQuit(Quit how) {
+  if (m_quit) {
+    m_quit(how);
+    wake();
+    return how == Quit::Now;
+  }
   std::vector<CocoaToplevel*> toplevels;
   for (CocoaSurface* surface : m_surfaces) {
     if (auto* toplevel = dynamic_cast<CocoaToplevel*>(surface); toplevel != nullptr) {
@@ -690,4 +715,5 @@ void CocoaDisplay::requestQuit() {
     }
   }
   wake();
+  return how == Quit::Now;
 }

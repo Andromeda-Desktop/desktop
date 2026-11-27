@@ -92,6 +92,16 @@ public:
   // The end of a scroll gesture on axis (0 vertical, 1 horizontal); surface is null when no Surface owns it.
   virtual void setAxisStopCallback(std::function<void(Surface* surface, std::uint32_t axis)> callback) = 0;
   virtual void setKeyboardEventCallback(std::function<void(const KeyboardEvent&)> callback) = 0;
+  // The user opened the app again while it runs (macOS: a Dock click or a Finder open with no visible window).
+  // Wayland has no such event: a second start reaches the app through its single instance.
+  virtual void setReopenCallback(std::function<void()> /*reopen*/) {}
+  // How the app must end when the system asks it to quit (macOS: Cmd+Q, the Dock's Quit, a logout).
+  enum class Quit : std::uint8_t {
+    Loop, // end through the event loop, as a signal does
+    Now,  // the process exits when the callback returns (logout, restart, shutdown): save what must survive
+  };
+  // Unset: every Toplevel gets a close request.
+  virtual void setQuitCallback(std::function<void(Quit)> /*quit*/) {}
 
   // Runs after each clipboard change, ours included. Also starts listening to the primary selection.
   virtual void setClipboardChangedCallback(std::function<void()> changed) = 0;

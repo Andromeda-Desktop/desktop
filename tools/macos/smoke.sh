@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs on a Mac: checks the bundle signature, starts the app, runs a command in its shell through `ctl`,
-# kills the app and checks that the restarted app reattaches the session that ptyd kept. Logs and screenshots go to OUT.
+# kills the app and checks that the restarted app reattaches the session that ptyd kept, then that a hidden app reopens
+# with a window and that Quit ends it. Logs and screenshots go to OUT.
 # Usage: tools/macos/smoke.sh [APP] [OUT]
 set -euo pipefail
 app=${1:-/var/tmp/andromeda-macos/Andromeda Terminal.app}
@@ -56,5 +57,16 @@ wait_for 10 sh -c '! "$1" ctl ls' _ "$exe" || fail "the app did not quit"
 open --stdout "$out/terminal-3.log" --stderr "$out/terminal-3.log" "$app"
 wait_for 30 first_session || fail "no session after a LaunchServices start"
 screencapture -x "$out/launchservices.png" || true
-osascript -e 'tell application "Andromeda Terminal" to quit' || pkill -x andromeda-terminal || true
+
+# The last window closes and the app stays hidden; opening it again (Finder, Dock) must show a window.
+"$exe" ctl close "$(first_session)"
+wait_for 10 sh -c '! "$1" ctl ls | jq -e ".[0]"' _ "$exe" || fail "the session did not close"
+pgrep -x andromeda-terminal > /dev/null || fail "the app quit with its last window; expected hidden"
+open "$app"
+wait_for 30 first_session || fail "no window after reopening the hidden app"
+
+# Quit (Cmd+Q, the Dock's Quit) ends the process, not only its windows. The app ends through its own loop and
+# answers AppKit with a cancel, so osascript reports "User canceled" (-128).
+osascript -e 'tell application "Andromeda Terminal" to quit' 2> /dev/null || true
+wait_for 10 sh -c '! pgrep -x andromeda-terminal' || fail "Quit left the app running"
 echo "smoke: ok"

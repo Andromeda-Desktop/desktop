@@ -247,6 +247,14 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   m_services->processPendingEvents();
   addStandardCommands();
   m_loop.display().setPointerEventCallback([this](const PointerEvent& event) { routePointer(event); });
+  m_loop.display().setReopenCallback([this] { activate(""); });
+  m_loop.display().setQuitCallback([this](Display::Quit how) {
+    if (how == Display::Quit::Now) {
+      m_state.flush();
+    } else {
+      quit(0);
+    }
+  });
   m_loop.display().setPinchEventCallback([this](const PinchEvent& event) {
     if (AppWindow* window = windowFor(event.surface)) {
       window->onPinchEvent(event);

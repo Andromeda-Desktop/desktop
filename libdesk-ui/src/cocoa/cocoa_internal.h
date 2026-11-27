@@ -121,12 +121,17 @@ public:
   void checkClipboard();
   // The left press a later startDrag begins from: AppKit starts a drag session from its mouse-down event.
   void setDragPress(NSEvent* event) { m_dragPress = event; }
-  // Every Toplevel gets a close request; each may refuse it.
-  void requestQuit();
+  void setReopenCallback(std::function<void()> reopen) override { m_reopen = std::move(reopen); }
+  void setQuitCallback(std::function<void(Quit)> quit) override { m_quit = std::move(quit); }
+  void reopen();
+  // The quit callback, else every Toplevel gets a close request; each may refuse it. True: the process may exit now.
+  [[nodiscard]] bool requestQuit(Quit how);
   [[nodiscard]] static OutputId outputOf(NSScreen* screen);
   [[nodiscard]] static NSScreen* screenOf(OutputId output);
 
 private:
+  std::function<void()> m_reopen;
+  std::function<void(Quit)> m_quit;
   std::unordered_set<CocoaSurface*> m_surfaces;
   std::function<void(const PointerEvent&)> m_pointerCallback;
   std::function<void(const PinchEvent&)> m_pinchCallback;
