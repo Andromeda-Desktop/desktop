@@ -1,15 +1,18 @@
-# A tag libdesk-v* builds the libdesk release unit and adds
+# A tag libdesk-v* (or one app's tag, below) builds that release unit and adds
 # its packages to the repositories the desktop releases serve: the pacman and Ubuntu apt repository of the rolling
 # release `repo` (Latest, so releases/latest/download) and the Debian apt repository (releases/download/debian). The app's
 # own release holds its Arch packages and is never marked latest. The tag is <app>-vYYYY.M.N from tools/unit-version.sh <app> next.
-# libdesk-v* releases libdesk, Files, Terminal, Player, Viewer and Link app together (appd modules on libdesk shared); the preview releases with the core.
+# libdesk-v* releases libdesk, Files, Terminal, Player and Viewer together (appd modules on libdesk shared); the preview
+# releases with the core. files-v*, terminal-v*, player-v* or viewer-v* releases that app alone: it depends on the libdesk
+# ABI (tools/libdesk-abi.sh), so the served libdesk must have the commit's ABI (tools/app-release-gate.sh). Terminal's macOS app holds
+# its own libdesk: with a changed ABI a terminal-v* tag ships the macOS app only.
 # A v* release with the app package split must exist first: andromeda 0.2.8 and older own the app files.
 # Dry run: run by hand with publish off; the packages stay as workflow artifacts.
 name: release-apps
 
 on:
   push:
-    tags: ["libdesk-v*"]
+    tags: ["libdesk-v*", "files-v*", "terminal-v*", "player-v*", "viewer-v*"]
   workflow_dispatch:
     inputs:
       tag: { description: "App tag (files-v0.1.0); it must exist unless ref is set", required: true }
@@ -43,20 +46,32 @@ jobs:
       app: ${{ steps.version.outputs.app }}
       version: ${{ steps.version.outputs.version }}
       units: ${{ steps.version.outputs.units }}
+      linux: ${{ steps.version.outputs.linux }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ env.REF }}
       - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           # The tag holds the computed version (tools/unit-version.sh next); packages and binaries take it from here.
           app=${TAG%%-v*} version=${TAG#*-v}
           [[ $version =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]] || { echo "::error::$TAG is not <app>-vYYYY.M.N"; exit 1; }
-          # The appd module apps link libdesk shared and pin its exact version: they release with libdesk, from one
-          # commit, with one version (tools/unit-version.sh libdesk next), in one repository upload.
+          # The appd module apps link libdesk shared and depend on its ABI: one app alone needs the newest libdesk
+          # each repository serves to provide this commit's ABI.
+          linux=true
           case $app in
-            files|terminal|player|viewer) echo "::error::$app releases with libdesk: push libdesk-v$(tools/unit-version.sh libdesk next)"; exit 1 ;;
+            files|terminal|player|viewer)
+              units=$app
+              if ! why=$(tools/app-release-gate.sh HEAD); then
+                fix="push libdesk-v$(tools/unit-version.sh libdesk next)"
+                [[ $app == terminal ]] || { echo "::error::$why: $fix"; exit 1; }
+                echo "::warning::$why: this release ships the macOS app only; for Linux, $fix"
+                linux=false
+              fi
+              ;;
             libdesk) units="libdesk files terminal player viewer" ;;
             *) units=$app ;;
           esac
@@ -75,11 +90,12 @@ jobs:
           echo "app=$app" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "units=$units" >> "$GITHUB_OUTPUT"
+          echo "linux=$linux" >> "$GITHUB_OUTPUT"
 
   # The terminal also ships as a macOS app, built and smoke-tested on a Mac.
   macos:
     needs: version
-    if: needs.version.outputs.app == 'libdesk'
+    if: needs.version.outputs.app == 'libdesk' || needs.version.outputs.app == 'terminal'
     uses: ./.github/workflows/check-macos.yml
     permissions:
       contents: write
@@ -91,6 +107,7 @@ jobs:
 
   arch:
     needs: [version]
+    if: needs.version.outputs.linux == 'true'
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     env:
@@ -147,6 +164,7 @@ jobs:
 
   deb:
     needs: [version]
+    if: needs.version.outputs.linux == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

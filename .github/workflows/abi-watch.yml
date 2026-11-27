@@ -43,10 +43,8 @@ jobs:
             pacman -Sp --noconfirm "andromeda/$pkg" > /dev/null 2> err.log && continue
             echo "::warning::$pkg: $(grep -m1 -i 'unable to satisfy\|error' err.log)"
             case $pkg in
-              andromeda-files-git) units+=(files) ;;
-              andromeda-player-git) units+=(player) ;;
-              andromeda-viewer-git) units+=(viewer) ;;
-              andromeda-terminal-git) units+=(terminal) ;;
+              # A soname bump reaches libdesk and its apps alike: the joint release rebuilds them on one ABI.
+              andromeda-libdesk-git|andromeda-files-git|andromeda-player-git|andromeda-viewer-git|andromeda-terminal-git) units+=(libdesk) ;;
               andromeda-link*) ;; # built in the link repo
               *) units+=(core) ;;
             esac

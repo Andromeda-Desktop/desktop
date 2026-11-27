@@ -22,8 +22,8 @@ arch-meson() {
 source "$root/pkg/PKGBUILD"
 cd "$srcdir"
 
-# ANDROMEDA_APP=libdesk|player|viewer (app release CI): build and stage only that release unit (PKGBUILD's
-# _app_units; libdesk is libdesk with Files and Terminal). dpkg-buildpackage still writes every package of
+# ANDROMEDA_APP=libdesk|files|terminal|player|viewer (app release CI): build and stage only that release unit
+# (PKGBUILD's _app_units; libdesk is libdesk with every app). dpkg-buildpackage still writes every package of
 # debian/control; the other debs stay empty and unpublished.
 # ANDROMEDA_CORE=1 (core release CI): no apps; they release on their own tags. Their debs stay empty and unpublished.
 apps=(files viewer player terminal)
@@ -34,7 +34,7 @@ app_dirs=()
 case ${1:-} in
   build)
     # Ubuntu has no zig 0.17: the script fetches the pinned one.
-    [[ -n ${ANDROMEDA_APP:-} && $ANDROMEDA_APP != libdesk || -n ${ANDROMEDA_CORE:-} ]] || desktop/tools/build-libghostty.sh
+    [[ -n ${ANDROMEDA_CORE:-} ]] || ! _needs_libghostty || desktop/tools/build-libghostty.sh
     if [[ -n ${ANDROMEDA_APP:-} ]]; then
       for dir in "${app_dirs[@]}"; do
         arch-meson "desktop/apps/$dir" "build-$dir" -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false

@@ -80,16 +80,18 @@ Breaks: andromeda (<= 0.2.8)
 Description: Andromeda Quick Look
  Previews, thumbnailers and the sandboxed media helper used by Files and Viewer.
 
-# The shared libdesk of the apps that load as modules, and andromeda-appd; same source build, so the same version.
+# The shared libdesk of the apps that load as modules, and andromeda-appd. Each app depends on the ABI it was built
+# against (tools/libdesk-abi.sh), so an app releases alone while the published libdesk has its ABI.
 Package: andromeda-libdesk
 Architecture: amd64
 Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}
+Provides: andromeda-libdesk-abi-${libdesk:Abi}
 Description: Andromeda libdesk
  The shared app toolkit and the app zygote (andromeda-appd).
 
 Package: andromeda-files
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-libdesk (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-libdesk-abi-${libdesk:Abi},
  andromeda-preview, xdg-utils
 Suggests: gocryptfs, gvfs-backends, exfatprogs, dosfstools, ntfs-3g
 Replaces: andromeda (<= 0.2.8)
@@ -99,7 +101,7 @@ Description: Andromeda Files
 
 Package: andromeda-player
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, mpv, ffmpeg
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-libdesk-abi-${libdesk:Abi}, mpv, ffmpeg
 Replaces: andromeda (<= 0.2.8)
 Breaks: andromeda (<= 0.2.8)
 Description: Andromeda Player
@@ -107,7 +109,7 @@ Description: Andromeda Player
 
 Package: andromeda-viewer
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-preview, glycin-loaders
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-libdesk-abi-${libdesk:Abi}, andromeda-preview, glycin-loaders
 Replaces: andromeda (<= 0.2.8)
 Breaks: andromeda (<= 0.2.8)
 Description: Andromeda Viewer
@@ -115,6 +117,6 @@ Description: Andromeda Viewer
 
 Package: andromeda-terminal
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-libdesk (= ${binary:Version})
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-libdesk-abi-${libdesk:Abi}
 Description: Andromeda Terminal
  Terminal emulator on libghostty-vt.

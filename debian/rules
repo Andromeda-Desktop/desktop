@@ -28,3 +28,7 @@ override_dh_installsystemd:
 override_dh_shlibdeps:
 	dh_shlibdeps -l$(CURDIR)/debian/andromeda-libdesk/usr/lib/andromeda:$(CURDIR)/debian/andromeda-files/usr/lib/andromeda:$(CURDIR)/debian/andromeda-terminal/usr/lib/andromeda
 	debian/lazy-depends.sh
+
+# libdesk provides its ABI and each app depends on it (debian/control).
+override_dh_gencontrol:
+	abi=$$(tools/libdesk-abi.sh .) && dh_gencontrol -- -Vlibdesk:Abi=$$abi

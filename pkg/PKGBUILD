@@ -2,17 +2,19 @@ pkgbase=desktop-git
 pkgname=(andromeda andromeda-compositor-git andromeda-shell-git xdg-desktop-portal-andromeda-git
   andromeda-power-git andromeda-greeter-git andromeda-system-git andromeda-greetd andromeda-preview-git
   andromeda-files-git andromeda-player-git andromeda-viewer-git andromeda-terminal-git andromeda-libdesk-git)
-# ANDROMEDA_APP=libdesk|player|viewer (app release CI) builds only that release unit. libdesk is libdesk with
-# Files and Terminal, which link it shared and release with it; the preview releases with the core.
+# ANDROMEDA_APP=libdesk|files|terminal|player|viewer (app release CI) builds only that release unit. libdesk is libdesk
+# with every app that links it; one app alone depends on the libdesk ABI already published. The preview releases with
+# the core.
 _app_units=()
 if [[ -n ${ANDROMEDA_APP:-} ]]; then
   case $ANDROMEDA_APP in
     libdesk) _app_units=(files terminal player viewer)
       pkgname=(andromeda-libdesk-git andromeda-files-git andromeda-terminal-git andromeda-player-git andromeda-viewer-git) ;;
-    files|terminal|player|viewer) echo "$ANDROMEDA_APP releases with libdesk: ANDROMEDA_APP=libdesk" >&2; exit 1 ;;
     *) _app_units=("$ANDROMEDA_APP") pkgname=(andromeda-$ANDROMEDA_APP-git) ;;
   esac
 fi
+# libghostty-vt has no Arch package: libdesk-term (Terminal, the Files pane) links the pinned build statically.
+_needs_libghostty() { [[ -z ${ANDROMEDA_APP:-} || " ${_app_units[*]} " == *" files "* || " ${_app_units[*]} " == *" terminal "* ]]; }
 # ANDROMEDA_CORE=1 (core release CI): no app packages; the apps release on their own tags (release-apps).
 if [[ -n ${ANDROMEDA_CORE:-} ]]; then
   for _app in files player viewer terminal libdesk; do pkgname=(${pkgname[@]/andromeda-$_app-git}); done
@@ -55,8 +57,7 @@ pkgver() {
 }
 
 prepare() {
-  # libghostty-vt has no Arch package: libdesk-term (Terminal, the Files pane) links the pinned build statically.
-  [[ -n ${ANDROMEDA_APP:-} && $ANDROMEDA_APP != libdesk ]] || desktop/tools/build-libghostty.sh
+  ! _needs_libghostty || desktop/tools/build-libghostty.sh
   [[ -z ${ANDROMEDA_APP:-} ]] || return 0
   cargo fetch --locked --manifest-path desktop/system/Cargo.toml
   cargo fetch --locked --manifest-path desktop/andromeda-preview/helper/Cargo.toml
@@ -287,8 +288,7 @@ package_andromeda-preview-git() {
 _libdesk_abi=unknown
 for _tree in "${srcdir:-/nonexistent}/desktop" "${startdir:-/nonexistent}/src/desktop" "${startdir:-/nonexistent}/.."; do
   [[ -d $_tree/libdesk-app ]] || continue
-  _libdesk_abi=$(cd "$_tree" && { find libdesk-*/src -name '*.h' -print0 | sort -z | xargs -0 sha256sum;
-    sha256sum protocol/design-tokens.toml; } | sha256sum | cut -c1-16)
+  _libdesk_abi=$("$_tree/tools/libdesk-abi.sh" "$_tree") || _libdesk_abi=unknown
   break
 done
 _check_libdesk_abi() { [[ $_libdesk_abi != unknown ]] || { echo "libdesk ABI unknown: no desktop tree beside the PKGBUILD" >&2; return 1; }; }

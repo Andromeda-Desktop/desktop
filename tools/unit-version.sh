@@ -12,8 +12,8 @@ prefix=$([[ $unit == core ]] && echo v || echo "$unit-v")
 # The core's packages release alone too (release-<unit>.yml); they share the core's counter, so each release sorts above
 # every core and unit release before it (pacman and apt compare the numbers, never the tag names).
 core_units="compositor shell portal greeter preview system greetd power"
-# libdesk and its appd module apps release together from one commit with one version (release-apps.yml, tag
-# libdesk-v*): the apps link libdesk shared and pin its exact version.
+# libdesk and its appd module apps share one counter: they release together (tag libdesk-v*), or one app alone
+# (<app>-v*) against the libdesk ABI already published (tools/libdesk-abi.sh).
 libdesk_group="libdesk files terminal player viewer"
 if [[ " $libdesk_group " == *" $unit "* ]]; then
   unit=libdesk prefix=libdesk-v
@@ -39,11 +39,13 @@ if [[ -n ${ANDROMEDA_VERSION:-} ]]; then
   exit 0
 fi
 # Only date versions count: the older hand-picked tags (v0.2.x, terminal-v0.1.x) sort below them.
-# Before the first libdesk-v tag, the group's newest Files or Terminal tag stands for it.
+# The group shares one counter and an app also releases alone: the newest tag of any group member stands for each.
 match=("--match" "$prefix[0-9][0-9][0-9][0-9].*")
-[[ $unit != libdesk ]] || match+=("--match" "files-v[0-9][0-9][0-9][0-9].*" "--match" "terminal-v[0-9][0-9][0-9][0-9].*")
+if [[ $unit == libdesk ]]; then
+  for u in $libdesk_group; do match+=("--match" "$u-v[0-9][0-9][0-9][0-9].*"); done
+fi
 if tag=$(git describe --tags --abbrev=0 "${match[@]}" 2> /dev/null); then
-  tag=${tag#"$prefix"} tag=${tag#files-v} tag=${tag#terminal-v}
+  tag=${tag#"$prefix"} tag=${tag##*-v}
   echo "$tag.r$(git rev-list --count HEAD)"
 elif count=$(git rev-list --count HEAD 2> /dev/null); then
   echo "0.r$count"
