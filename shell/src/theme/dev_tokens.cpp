@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "design_tokens.h"
 #include "theme/builtin_palettes.h"
+#include "ui/token_slots.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -10,7 +11,6 @@
 #include <optional>
 #include <string_view>
 #include "protocols/toml.h"
-#include <unordered_map>
 #include <variant>
 
 #ifdef TOKENS_RUNTIME
@@ -101,22 +101,6 @@ namespace noctalia::theme::dev_tokens {
       return first ? std::nullopt : std::optional<double>(total);
     }
 
-    std::optional<std::uint32_t> parseColor(const std::string& s) {
-      if (s.size() != 9 || s[0] != '#') {
-        return std::nullopt;
-      }
-      std::uint32_t v = 0;
-      for (std::size_t i = 1; i < s.size(); ++i) {
-        const char c = s[i];
-        const int d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
-        if (d < 0) {
-          return std::nullopt;
-        }
-        v = (v << 4) | static_cast<std::uint32_t>(d);
-      }
-      return v;
-    }
-
   } // namespace
 
   // Runs on the main loop, which is the only thread that reads Tokens:: except the template worker; that worker
@@ -132,117 +116,29 @@ namespace noctalia::theme::dev_tokens {
     std::map<std::string, Value> raw;
     flatten(root, "", raw);
 
-    std::unordered_map<std::string, const Tokens::Slot*> slots;
-    for (const auto& slot : Tokens::slots()) {
-      slots[std::string(slot.path)] = &slot;
-    }
-
-    struct Pending {
-      const Tokens::Slot* slot;
-      Value value;
-    };
-    std::vector<Pending> pending;
+    desk::tokens::SlotValues values;
     for (const auto& [key, value] : raw) {
-      const auto it = slots.find(key);
-      if (it == slots.end()) {
-        error = "unknown key " + key;
-        return false;
-      }
-      const Tokens::Slot* slot = it->second;
-      Value v = value;
-      if (const auto* s = std::get_if<std::string>(&v); s != nullptr && s->starts_with("=")) {
+      if (const auto* s = std::get_if<std::string>(&value); s != nullptr && s->starts_with("=")) {
         const auto n = evaluate(raw, *s, 0);
         if (!n) {
           error = key + ": bad or circular expression";
           return false;
         }
-        v = *n;
-      }
-      const auto isNumber = std::holds_alternative<double>(v) || std::holds_alternative<std::int64_t>(v);
-      const double number = std::holds_alternative<double>(v) ? std::get<double>(v) : static_cast<double>(std::get_if<std::int64_t>(&v) != nullptr ? *std::get_if<std::int64_t>(&v) : 0);
-      bool ok = false;
-      switch (slot->kind) {
-      case 'f':
-        ok = isNumber;
-        break;
-      case 'i':
-        ok = std::holds_alternative<std::int64_t>(v) || (isNumber && number == static_cast<std::int64_t>(number));
-        break;
-      case 'b':
-        ok = std::holds_alternative<bool>(v);
-        break;
-      case 'c':
-        if (const auto* s = std::get_if<std::string>(&v)) {
-          if (const auto c = parseColor(*s)) {
-            v = static_cast<std::int64_t>(*c);
-            ok = true;
-          }
-        }
-        break;
-      case 's':
-        ok = std::holds_alternative<std::string>(v);
-        break;
-      default:
-        break;
-      }
-      if (!ok) {
-        error = key + ": wrong value type";
-        return false;
-      }
-      pending.push_back({slot, std::move(v)});
-    }
-
-    // Every slot starts from its built-in value, so a key deleted from the file reverts.
-    for (const auto& slot : Tokens::slots()) {
-      void* ptr = slot.ptr;
-      switch (slot.kind) {
-      case 'f':
-        *static_cast<float*>(ptr) = static_cast<float>(slot.number);
-        break;
-      case 'i':
-        *static_cast<int*>(ptr) = static_cast<int>(slot.number);
-        break;
-      case 'b':
-        *static_cast<bool*>(ptr) = slot.number != 0.0;
-        break;
-      case 'c':
-        *static_cast<std::uint32_t*>(ptr) = static_cast<std::uint32_t>(slot.number);
-        break;
-      case 's':
-        *static_cast<std::string_view*>(ptr) = slot.text;
-        break;
-      default:
-        break;
+        values[key] = *n;
+      } else if (const auto* i = std::get_if<std::int64_t>(&value)) {
+        values[key] = static_cast<double>(*i);
+      } else if (const auto* d = std::get_if<double>(&value)) {
+        values[key] = *d;
+      } else if (const auto* b = std::get_if<bool>(&value)) {
+        values[key] = *b;
+      } else {
+        values[key] = std::get<std::string>(value);
       }
     }
-    static std::unordered_map<std::string_view, std::string> strings; // string_view values point here, one per slot
-    for (auto& p : pending) {
-      void* ptr = p.slot->ptr;
-      switch (p.slot->kind) {
-      case 'f': {
-        const auto* d = std::get_if<double>(&p.value);
-        *static_cast<float*>(ptr) = d != nullptr ? static_cast<float>(*d) : static_cast<float>(std::get<std::int64_t>(p.value));
-        break;
-      }
-      case 'i': {
-        const auto* d = std::get_if<double>(&p.value);
-        *static_cast<int*>(ptr) = d != nullptr ? static_cast<int>(*d) : static_cast<int>(std::get<std::int64_t>(p.value));
-        break;
-      }
-      case 'b':
-        *static_cast<bool*>(ptr) = std::get<bool>(p.value);
-        break;
-      case 'c':
-        *static_cast<std::uint32_t*>(ptr) = static_cast<std::uint32_t>(std::get<std::int64_t>(p.value));
-        break;
-      case 's':
-        *static_cast<std::string_view*>(ptr) = strings[p.slot->path] = std::get<std::string>(p.value);
-        break;
-      default:
-        break;
-      }
+    if (auto applied = desk::tokens::applySlotValues(values); !applied) {
+      error = applied.error();
+      return false;
     }
-    Tokens::refreshEntries();
     refreshBuiltinPalettes();
     return true;
   }

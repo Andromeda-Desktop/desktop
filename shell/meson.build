@@ -1203,6 +1203,7 @@ if build_tests
   _cpp_test_names = [
     'async_file_writer',
     'theme_package',
+    'token_slots',
     'crash_records',
     'damage_region',
     'key_chord_names',

@@ -79,14 +79,6 @@ range = [0, 40]
 tokens = ["component.dock.radius"]
 since = 1
 
-# Blur cost is the engine's: a theme picks a tier, never passes or radius (blur.tier is added in
-# TASK step 0.2; tiers are measured in step 1.6).
-[key."glass.blur"]
-type = "enum"
-values = ["none", "low", "medium", "high"]
-tokens = ["blur.tier"]
-since = 1
-
 [key."glass.saturation_dark"]
 type = "number"
 range = [0.5, 2.0]

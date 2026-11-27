@@ -222,9 +222,9 @@ _protocol_headers += custom_target('tabler-glyphs-header',
 )
 
 _protocol_headers += custom_target('design-tokens-header',
-  input: ['protocols/gen-design-tokens.py', 'protocols/design-tokens.toml'],
+  input: ['protocols/gen-design-tokens.py', 'protocols/design-tokens.toml', 'protocols/theme-vocabulary.toml'],
   output: 'design_tokens.h',
-  command: [find_program('python3'), '@INPUT0@', '@INPUT1@', '@OUTPUT@'],
+  command: [find_program('python3'), '@INPUT0@', '@INPUT1@', '@INPUT2@', '@OUTPUT@'],
 )
 
 if get_option('install_toolkit_themes')
@@ -395,6 +395,7 @@ _desk_ui_sources = _loop_sources + files(
   'src/ui/split_layout.cpp',
   'src/ui/split_pane_focus.cpp',
   'src/ui/style.cpp',
+  'src/ui/token_slots.cpp',
   'src/ui/surface_shadow.cpp',
   'src/ui/visuals/audio_visualizer.cpp',
   'src/ui/visuals/fancy_audio_visualizer.cpp',

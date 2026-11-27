@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Usage: gen-design-tokens.py TOKENS.toml OUT... -- each OUT by extension: .h namespace Tokens (see the header of
-TOKENS.toml), .css custom properties for the design reference (docs/design/reference.html), .glsl #defines of the
+"""Usage: gen-design-tokens.py TOKENS.toml [VOCABULARY.toml] OUT... -- VOCABULARY (protocol/theme-vocabulary.toml)
+makes the tokens a theme sets, and every token derived from them, writable in every build; each OUT by extension:
+.h namespace Tokens (see the header of TOKENS.toml), .css custom properties for the design reference (docs/design/reference.html), .glsl #defines of the
 radius tokens for compositor shaders, *-gtk3-light.css / *-gtk3-dark.css / *-gtk4-light.css / *-gtk4-dark.css GTK
 colors for one scheme (the shell's runtime file imports one and overrides the accent), *-qt-light.conf /
 *-qt-dark.conf qtct palettes (.colors also accepted), */fcitx5-light/theme.conf and */fcitx5-dark/theme.conf fcitx5 classic-ui themes (with
 panel.svg and highlight.svg beside them), *-kde-light.colors / *-kde-dark.colors KDE color schemes, .kt
 object Tok for the Link Android app (package from the path after kotlin/)."""
+import copy
 import math
 import re
 import sys
@@ -49,6 +51,47 @@ def evaluate(tokens, expr, where, seen):
     return float(total)
 
 
+def refs_of(expr):
+    m = EXPR.fullmatch(expr.strip())
+    return [("+", m.group(1))] + re.findall(r"([-+])\s*([a-z0-9_.]+)", m.group(2))
+
+
+def leaves(node, path):
+    if isinstance(node, dict):
+        return [leaf for k, v in node.items() for leaf in leaves(v, path + (k,))]
+    return [".".join(path)]
+
+
+def themable_paths(raw, vocabulary):
+    """Leaf paths a theme writes (vocabulary tokens, colour roles) plus every token whose expression reads one."""
+    base = set()
+    for name, key in vocabulary.get("key", {}).items():
+        for token in key["tokens"]:
+            try:
+                base.update(leaves(lookup(raw, token), tuple(token.split("."))))
+            except KeyError:
+                sys.exit(f"theme vocabulary {name}: no token {token}")
+    for scheme in raw.get("scheme", {}):
+        for role in vocabulary.get("roles", []):
+            if role not in raw["scheme"][scheme]:
+                sys.exit(f"theme vocabulary role {role}: no token scheme.{scheme}.{role}")
+            base.add(f"scheme.{scheme}.{role}")
+    exprs = {p: lookup(raw, p) for p in leaves(raw, ()) if isinstance(lookup(raw, p), str) and lookup(raw, p).startswith("=")}
+    themable = set(base)
+    while True:
+        grown = {p for p, e in exprs.items() if p not in themable and any(r in themable for _, r in refs_of(e))}
+        if not grown:
+            return themable, exprs
+        themable |= grown
+
+
+def slot_expr(path, exprs, themable, tokens):
+    """The expression of a themable derived token over slots; other references are baked as numbers."""
+    if path not in exprs:
+        return ""
+    return " ".join(f"{sign}{ref if ref in themable else repr(float(lookup(tokens, ref)))}" for sign, ref in refs_of(exprs[path]))
+
+
 def camel(parts):
     words = [w for p in parts for w in p.split("_")]
     return words[0] + "".join(w[:1].upper() + w[1:] for w in words[1:])
@@ -84,7 +127,7 @@ def is_struct_group(table):
 KIND = {"bool": "b", "int": "i", "float": "f", "std::uint32_t": "c", "std::string_view": "s"}
 
 
-def emit(table, path, out, slots, refresh):
+def emit(table, path, out, slots, refresh, themable):
     for key, value in table.items():
         sub = path + (key,)
         if isinstance(value, dict) and is_struct_group(value):
@@ -95,21 +138,24 @@ def emit(table, path, out, slots, refresh):
             out += [f"    {kind} {field};" for field, kind in fields]
             out.append("  };")
             for child, values in value.items():
+                paths = [".".join(sub + (child, k)) for k in values]
+                const = "" if any(p in themable for p in paths) else "TOKENS_CONST "
                 literals = ", ".join(scalar(sub + (child, k), v)[1] for k, v in values.items())
-                out.append(f"  inline TOKENS_CONST {name} {camel(sub + (child,))}{{{literals}}};")
+                out.append(f"  inline {const}{name} {camel(sub + (child,))}{{{literals}}};")
                 for k, v in values.items():
                     slots.append((".".join(sub + (child, k)), KIND[scalar((), v)[0]], f"&{camel(sub + (child,))}.{camel((k,))}", v))
                 if all(isinstance(v, str) and COLOR.fullmatch(v) for v in values.values()):
                     pairs = ", ".join(f'{{"{k}", {scalar((), v)[1]}}}' for k, v in values.items())
-                    out.append(f"  inline TOKENS_CONST std::array<std::pair<std::string_view, std::uint32_t>, {len(values)}> "
+                    out.append(f"  inline {const}std::array<std::pair<std::string_view, std::uint32_t>, {len(values)}> "
                                f"{camel(sub + (child, 'entries'))}{{{{{pairs}}}}};")
                     live = ", ".join(f'{{"{k}", {camel(sub + (child,))}.{camel((k,))}}}' for k in values)
-                    refresh.append(f"    {camel(sub + (child, 'entries'))} = {{{{{live}}}}};")
+                    refresh.append((not const, f"    {camel(sub + (child, 'entries'))} = {{{{{live}}}}};"))
         elif isinstance(value, dict):
-            emit(value, sub, out, slots, refresh)
+            emit(value, sub, out, slots, refresh, themable)
         else:
             kind, literal = scalar(sub, value)
-            out.append(f"  inline TOKENS_CONST {kind} {camel(sub)} = {literal};")
+            const = "" if ".".join(sub) in themable else "TOKENS_CONST "
+            out.append(f"  inline {const}{kind} {camel(sub)} = {literal};")
             slots.append((".".join(sub), KIND[kind], f"&{camel(sub)}", value))
 
 
@@ -424,6 +470,13 @@ def emit_fcitx5(tokens, out_path, scheme):
 def main(src, *out_paths):
     with open(src, "rb") as f:
         tokens = tomllib.load(f)
+    vocabulary = {}
+    if out_paths and out_paths[0].endswith(".toml"):
+        with open(out_paths[0], "rb") as f:
+            vocabulary = tomllib.load(f)
+        out_paths = out_paths[1:]
+    raw = copy.deepcopy(tokens)
+    themable, exprs = themable_paths(raw, vocabulary)
     resolve(tokens)
     for path in out_paths:
         if m := re.search(r"-kde-(light|dark)\.colors$|Andromeda(Light|Dark)\.colors$", path):
@@ -441,31 +494,49 @@ def main(src, *out_paths):
         elif path.endswith(".kt"):
             emit_kotlin(tokens, path)
         else:
-            emit_header(tokens, path)
+            emit_header(tokens, path, themable, exprs)
 
 
-def emit_header(tokens, out_path):
+def emit_header(tokens, out_path, themable, exprs):
     out = ["// Generated from protocol/design-tokens.toml by protocol/gen-design-tokens.py. Do not edit.", "#pragma once",
            "", "#include <array>", "#include <cstdint>", "#include <string_view>", "#include <utility>", "",
-           "// TOKENS_RUNTIME: values are writable (live reload, see slots()); otherwise constexpr.",
+           "// TOKENS_RUNTIME (dev): every value is writable (live reload). Otherwise only themable values are writable",
+           "// (the theme vocabulary and the tokens derived from it) and the rest is constexpr. slots() lists the writable ones.",
            "#ifdef TOKENS_RUNTIME", "#define TOKENS_CONST", "#else", "#define TOKENS_CONST constexpr", "#endif", "",
-           "// A float derived from tokens that re-reads them on every use: constexpr without TOKENS_RUNTIME.",
-           "#ifdef TOKENS_RUNTIME",
+           "// A float derived from tokens that re-reads them on every use, so it follows a theme switch.",
            "namespace Tokens { template <class F> struct Live { F fn; operator float() const { return fn(); } }; }",
            "#define TOKENS_LIVE(name, expr) const auto name = ::Tokens::Live{[] { return static_cast<float>(expr); }}",
-           "#else", "#define TOKENS_LIVE(name, expr) constexpr float name = (expr)",
-           "#endif", "",
+           "",
            "namespace Tokens {", ""]
     slots, refresh = [], []
-    emit(tokens, (), out, slots, refresh)
-    out += ["", "#ifdef TOKENS_RUNTIME", "  struct Slot {", "    std::string_view path;",
+    emit(tokens, (), out, slots, refresh, themable)
+    ordered, done = [], set()
+    pending = [s for s in slots if s[0] in themable]
+    while pending:
+        ready = [s for s in pending if all(r not in themable or r in done for _, r in (refs_of(exprs[s[0]]) if s[0] in exprs else []))]
+        if not ready:
+            sys.exit("circular theme token expressions: " + ", ".join(s[0] for s in pending))
+        ordered += ready
+        done |= {s[0] for s in ready}
+        pending = [s for s in pending if s[0] not in done]
+    row = lambda p, k, ptr, v: (f'      Slot{{"{p}", \'{k}\', {ptr}, {default_number(v)}, {default_text(v)}, '
+                                f'"{slot_expr(p, exprs, themable, tokens) if p in themable else ""}"}},')
+    # Without a vocabulary nothing is themable and the table exists only in dev builds.
+    gate = [] if ordered else ["#ifdef TOKENS_RUNTIME"]
+    out += ["", *gate, "  struct Slot {", "    std::string_view path;",
             "    char kind;  // b bool, i int, f float, c packed color, s string_view", "    void* ptr;",
-            "    double number;  // built-in value of a b, i, f or c slot", "    std::string_view text;  // built-in value of an s slot", "  };",
-            f"  inline const std::array<Slot, {len(slots)}>& slots() {{",
-            f"    static const std::array<Slot, {len(slots)}> table{{{{"]
-    out += [f'        {{"{p}", \'{k}\', {ptr}, {default_number(v)}, {default_text(v)}}},' for p, k, ptr, v in slots]
-    out += ["    }};", "    return table;", "  }", "  inline void refreshEntries() {", *refresh, "  }", "#endif", "",
-            "} // namespace Tokens", ""]
+            "    double number;  // built-in value of a b, i, f or c slot", "    std::string_view text;  // built-in value of an s slot",
+            "    std::string_view expr;  // derived themable slot: \"+a.b -4.0\" over earlier slots and numbers; else empty",
+            "  };",
+            "  // Themable slots first, each derived one after the slots its expression reads.",
+            "  inline const auto& slots() {",
+            "    static const auto table = std::to_array<Slot>({"]
+    out += [row(*s) for s in ordered]
+    out += ["#ifdef TOKENS_RUNTIME"] + [row(*s) for s in slots if s[0] not in themable] + ["#endif"]
+    out += ["    });", "    return table;", "  }", "  inline void refreshEntries() {"]
+    out += [line for writable, line in refresh if writable]
+    out += ["#ifdef TOKENS_RUNTIME"] + [line for writable, line in refresh if not writable] + ["#endif"]
+    out += ["  }", *(["#endif"] if gate else []), "", "} // namespace Tokens", ""]
     with open(out_path, "w") as f:
         f.write("\n".join(out))
 
