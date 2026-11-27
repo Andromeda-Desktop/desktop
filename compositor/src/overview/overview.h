@@ -120,6 +120,8 @@ namespace andromeda {
     void onFocusChanged();
     // Rebind cached selections after renderer replacement without advancing policy.
     void refreshEffectBindings();
+    // After a reload that moved only looks (colours, glass, corners, shadow shape) and refreshed the live chrome.
+    void refreshLook();
     // Coalesce card geometry refreshes from view resize animation ticks. Views
     // advance before overlays, so the overview consumes the latest presented
     // size once per frame regardless of how many views resized together.

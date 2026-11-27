@@ -594,7 +594,7 @@ bool ShellWaylandConnection::bindExtensionGlobal(
 
   if (interfaceName == "dsk_settings_manager_v1") {
     m_desktopSettingsGlobalName = name;
-    m_desktopSettingsGlobalVersion = std::min(version, 2U);
+    m_desktopSettingsGlobalVersion = std::min(version, 3U);
     return true;
   }
 

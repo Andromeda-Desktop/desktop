@@ -361,6 +361,9 @@ namespace andromeda {
         m_overview->forceClose();
       }
       applyConfig(result.effects);
+      if (result.effects.overview == ConfigEffects::Overview::Look) {
+        m_overview->refreshLook();
+      }
       if (m_desktopSettingsManager != nullptr) {
         m_desktopSettingsManager->settingsChanged();
       }

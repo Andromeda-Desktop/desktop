@@ -236,9 +236,33 @@ ANDROMEDA_TEST(borderColorChangesAreColorChangesThatRefreshChrome) {
 
   const ConfigEffects effects = ConfigEffects::between(before, after);
   CHECK(effects.viewChrome);
-  CHECK(effects.overviewPresentation);
+  CHECK(effects.overview == ConfigEffects::Overview::Look);
+  CHECK(!effects.invalidatesOverview());
   CHECK(!effects.workspaceLayout);
   CHECK(!effects.sceneBlur);
+}
+
+ANDROMEDA_TEST(themeLooksKeepTheOverviewAndLayoutFieldsCloseIt) {
+  const Config before;
+  Config theme;
+  theme.appearance.scheme = andromeda::ColorScheme::Light;
+  theme.appearance.accent = std::array<float, 4>{0.95F, 0.78F, 0.47F, 1.0F};
+  theme.appearance.glassStyle = andromeda::GlassStyle::Liquid;
+  theme.appearance.cornerRadius += 4;
+  theme.appearance.blur.saturation += 0.2;
+  theme.appearance.shadow.softness += 8;
+  theme.colors.overview.backgroundTint[3] += 0.1F;
+  const ConfigEffects themeEffects = ConfigEffects::between(before, theme);
+  CHECK(themeEffects.overview == ConfigEffects::Overview::Look);
+  CHECK(!themeEffects.invalidatesOverview());
+
+  // One layout field beside the looks: the open overview laid out with the old ui scale.
+  Config scaled = theme;
+  scaled.appearance.uiScale = 1.25;
+  CHECK(ConfigEffects::between(before, scaled).invalidatesOverview());
+  Config unblurred = theme;
+  unblurred.appearance.blur.enabled = false;
+  CHECK(ConfigEffects::between(before, unblurred).invalidatesOverview());
 }
 
 ANDROMEDA_TEST(listSectionsAreCompared) {
@@ -372,7 +396,7 @@ ANDROMEDA_TEST(firstLoadInvalidatesEveryRuntimeConsumer) {
   CHECK(effects.layerEffects);
   CHECK(effects.animation);
   CHECK(effects.input);
-  CHECK(effects.overviewPresentation);
+  CHECK(effects.overview == ConfigEffects::Overview::Close);
   CHECK(effects.dialogAttachment);
 }
 
@@ -409,7 +433,7 @@ ANDROMEDA_TEST(anyColorChangeRefreshesEveryColorConsumer) {
   after.colors.textPrimary[0] -= 0.1F;
 
   const ConfigEffects effects = ConfigEffects::between(before, after);
-  CHECK_EQ(effects.summary(), std::string("view chrome, overview presentation"));
+  CHECK_EQ(effects.summary(), std::string("view chrome, overview look"));
   CHECK(!effects.outputState);
   CHECK(!effects.workspaceLayout);
   CHECK(!effects.sceneBlur);
@@ -658,7 +682,7 @@ ANDROMEDA_TEST(outputScrollingDefaultOnlyRefreshesWorkspaceLayout) {
   CHECK(!effects.layerEffects);
   CHECK(!effects.animation);
   CHECK(!effects.input);
-  CHECK(!effects.overviewPresentation);
+  CHECK(effects.overview == ConfigEffects::Overview::None);
   CHECK(effects.invalidatesOverview());
   CHECK_EQ(effects.summary(), std::string("workspace layout"));
 }
@@ -762,7 +786,7 @@ ANDROMEDA_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   CHECK(ruleEffects.tearingPolicy);
   CHECK(ruleEffects.viewChrome);
   CHECK(!ruleEffects.outputState);
-  CHECK_EQ(ruleEffects.summary(), std::string("tearing policy, view chrome"));
+  CHECK_EQ(ruleEffects.summary(), std::string("tearing policy, view chrome, overview close"));
 
   Config vetoedByRule = before;
   game.allowTearing = false;
@@ -983,9 +1007,9 @@ ANDROMEDA_TEST(overviewInvalidationExcludesIrrelevantRuntimeEffects) {
   Config overviewChanged;
   overviewChanged.overview.zoom += 0.1;
   const ConfigEffects overviewEffects = ConfigEffects::between(before, overviewChanged);
-  CHECK(overviewEffects.overviewPresentation);
+  CHECK(overviewEffects.overview == ConfigEffects::Overview::Close);
   CHECK(overviewEffects.invalidatesOverview());
-  CHECK_EQ(overviewEffects.summary(), std::string("overview presentation"));
+  CHECK_EQ(overviewEffects.summary(), std::string("overview close"));
 
   Config generalChanged;
   generalChanged.general.autostart.emplace_back("true");
@@ -1003,7 +1027,7 @@ ANDROMEDA_TEST(overviewInvalidationExcludesIrrelevantRuntimeEffects) {
   hotCornerChanged.hotCorners.corners[0].enabled = true;
   const ConfigEffects hotCornerEffects = ConfigEffects::between(before, hotCornerChanged);
   CHECK(hotCornerEffects.input);
-  CHECK(!hotCornerEffects.overviewPresentation);
+  CHECK(hotCornerEffects.overview == ConfigEffects::Overview::None);
   CHECK(!hotCornerEffects.invalidatesOverview());
   CHECK(ConfigChange::between(before, hotCornerChanged).hotCorners);
 }

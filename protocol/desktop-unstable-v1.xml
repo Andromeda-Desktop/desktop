@@ -108,7 +108,7 @@
       <arg name="reason" type="string"/>
     </event>
   </interface>
-  <interface name="dsk_settings_manager_v1" version="2">
+  <interface name="dsk_settings_manager_v1" version="3">
     <description summary="compositor settings and input devices">
       Every compositor setting a settings app may change: input, appearance,
       animation, layout, workspaces, overview, and focus. Settings are named by
@@ -190,6 +190,22 @@
       <arg name="layer" type="string"/>
     </request>
 
+    <request name="commit" since="3">
+      <description summary="apply the requests sent since the last commit">
+        From version 3, set, set_in_layer and clear_layer wait for commit;
+        before version 3 each one applies on its own. Commit applies every
+        request this object sent since its last commit as one change: one
+        reload, and subscribers see every value of it in one batch of setting
+        events and done. A request that failed is not part of it. Answered by
+        applied with the same generation, after the setting events and done
+        that carry the change; a commit that changes nothing gets applied
+        alone. When the compositor's config files do not load, failed with an
+        empty key comes instead of applied, and the change applies with the
+        next reload that succeeds.
+      </description>
+      <arg name="generation" type="uint" summary="the client's id for this change, echoed by applied"/>
+    </request>
+
     <event name="device_added">
       <description summary="an input device is connected">
         Sent for every connected device on bind and whenever one connects.
@@ -250,6 +266,16 @@
     <event name="failed">
       <arg name="key" type="string"/>
       <arg name="reason" type="string"/>
+    </event>
+
+    <event name="applied" since="3">
+      <description summary="a commit is in effect">
+        Every value of the commit with this generation is in effect. The
+        setting events that carry them came before this event. A later failed
+        for one of its keys means the settings file could not be written: that
+        key is back at the file's value.
+      </description>
+      <arg name="generation" type="uint"/>
     </event>
   </interface>
 

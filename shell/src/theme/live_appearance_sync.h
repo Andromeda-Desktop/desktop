@@ -82,6 +82,7 @@ public:
 private:
   void onSettingsChanged();
   void flush();
+  void sendLayers();
   void push(const std::string& key, const std::string& value, bool differs);
   void setStyleLayer(const std::string& key, const std::string& value);
   void dropShellSaves(const std::array<std::pair<std::string, std::string>, 3>& recipe);

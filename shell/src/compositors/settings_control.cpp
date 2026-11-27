@@ -71,6 +71,9 @@ struct SettingsControlListeners {
     }
   }
 
+  // The setting events before it already carried the commit's values.
+  static void applied(void* /*data*/, dsk_settings_manager_v1* /*manager*/, uint32_t /*generation*/) {}
+
   static constexpr dsk_settings_manager_v1_listener kManager = {
       .device_added = deviceAdded,
       .device_removed = deviceRemoved,
@@ -80,6 +83,7 @@ struct SettingsControlListeners {
       .chord_captured = chordCaptured,
       .done = done,
       .failed = failed,
+      .applied = applied,
   };
 };
 
@@ -117,6 +121,7 @@ void SettingsControl::set(const std::string& key, const std::string& value) {
   if (m_manager != nullptr) {
     m_lastFailure.clear();
     dsk_settings_manager_v1_set(m_manager, key.c_str(), value.c_str());
+    requestSent();
   }
 }
 
@@ -124,12 +129,33 @@ void SettingsControl::setInLayer(const std::string& layer, const std::string& ke
   if (m_manager != nullptr && m_version >= 2) {
     m_lastFailure.clear();
     dsk_settings_manager_v1_set_in_layer(m_manager, layer.c_str(), key.c_str(), value.c_str());
+    requestSent();
   }
 }
 
 void SettingsControl::clearLayer(const std::string& layer) {
   if (m_manager != nullptr && m_version >= 2) {
     dsk_settings_manager_v1_clear_layer(m_manager, layer.c_str());
+    requestSent();
+  }
+}
+
+void SettingsControl::requestSent() {
+  if (m_version < 3) {
+    return; // each request applies on its own
+  }
+  if (m_batch == Batch::None) {
+    dsk_settings_manager_v1_commit(m_manager, ++m_generation);
+  } else {
+    m_batch = Batch::OpenWithRequests;
+  }
+}
+
+void SettingsControl::commitBatch(const std::function<void()>& requests) {
+  m_batch = Batch::Open;
+  requests();
+  if (std::exchange(m_batch, Batch::None) == Batch::OpenWithRequests) {
+    dsk_settings_manager_v1_commit(m_manager, ++m_generation);
   }
 }
 

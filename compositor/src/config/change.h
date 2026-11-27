@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 
+#include <cstdint>
 #include <string>
 
 namespace andromeda {
@@ -83,7 +84,8 @@ namespace andromeda {
     bool layerEffects = false;
     bool animation = false;
     bool input = false;
-    bool overviewPresentation = false;
+    // What an open overview does: re-read a new look in place, or close because its presentation is stale.
+    enum class Overview : std::uint8_t { None, Look, Close } overview = Overview::None;
     bool effects = false;
     // Whether a modal dialog attaches to its parent: the global switch or a rule that may opt one out.
     bool dialogAttachment = false;
@@ -99,13 +101,13 @@ namespace andromeda {
           || layerEffects
           || animation
           || input
-          || overviewPresentation
+          || overview != Overview::None
           || effects
           || dialogAttachment;
     }
 
     [[nodiscard]] bool invalidatesOverview() const {
-      return outputState || workspaceInventory || workspaceLayout || viewChrome || overviewPresentation;
+      return outputState || workspaceInventory || workspaceLayout || overview == Overview::Close;
     }
 
     [[nodiscard]] std::string summary() const;

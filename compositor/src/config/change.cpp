@@ -181,6 +181,36 @@ namespace andromeda {
       }
     }
 
+    // Equal but for the fields a theme sets: scheme, accent, glass, blur recipe, shadow shape, corners, edges. Every
+    // other field (ui scale, language, title and tab bars, blur on or off) changes what an open overview laid out.
+    bool sameAppearanceLayout(const Config::Appearance& before, const Config::Appearance& after) {
+      Config::Appearance look = before;
+      look.scheme = after.scheme;
+      look.accent = after.accent;
+      look.glass = after.glass;
+      look.frost = after.frost;
+      look.glassStyle = after.glassStyle;
+      look.edgeReflection = after.edgeReflection;
+      look.liquidTint = after.liquidTint;
+      look.liquidBlur = after.liquidBlur;
+      look.liquid = after.liquid;
+      look.reduceTransparency = after.reduceTransparency;
+      look.increaseContrast = after.increaseContrast;
+      look.windowEdge = after.windowEdge;
+      look.cornerRadius = after.cornerRadius;
+      look.cornerScale = after.cornerScale;
+      look.blur.passes = after.blur.passes;
+      look.blur.radius = after.blur.radius;
+      look.blur.noise = after.blur.noise;
+      look.blur.brightness = after.blur.brightness;
+      look.blur.contrast = after.blur.contrast;
+      look.blur.saturation = after.blur.saturation;
+      look.shadow.softness = after.shadow.softness;
+      look.shadow.offsetX = after.shadow.offsetX;
+      look.shadow.offsetY = after.shadow.offsetY;
+      return look == after;
+    }
+
   } // namespace
 
   std::vector<std::string> configuredEffectActionRoots(const Config& config) {
@@ -231,6 +261,15 @@ namespace andromeda {
         || !sameAnimationEffects(before.animation, after.animation)
         || (before.windowRules != after.windowRules
             && (selectsEffect(before.windowRules) || selectsEffect(after.windowRules)));
+    const bool viewChrome =
+        before.appearance != after.appearance || before.colors != after.colors || before.windowRules != after.windowRules
+        || focusDim;
+    // A theme moves only colours and appearance looks: cards and chrome re-read them in layout, so the overview stays.
+    const bool lookOnly =
+        sameAppearanceLayout(before.appearance, after.appearance) && before.windowRules == after.windowRules && !focusDim;
+    const Overview overview = before.overview != after.overview || (viewChrome && !lookOnly) ? Overview::Close
+        : viewChrome                                                                         ? Overview::Look
+                                                                                             : Overview::None;
     return {
         .outputState = outputState,
         .tearingPolicy = tearingPolicy,
@@ -246,14 +285,11 @@ namespace andromeda {
         .sceneBlur = sceneBlur,
         // [colors] owns the border, backdrop, insert-hint, and shadow colors, so
         // any color edit refreshes window chrome.
-        .viewChrome = before.appearance != after.appearance
-            || before.colors != after.colors
-            || before.windowRules != after.windowRules
-            || focusDim,
+        .viewChrome = viewChrome,
         .layerEffects = sceneBlur || before.layerRules != after.layerRules,
         .animation = before.animation != after.animation,
         .input = before.input != after.input || before.hotCorners != after.hotCorners,
-        .overviewPresentation = before.overview != after.overview || before.colors != after.colors,
+        .overview = overview,
         .effects = effectsChanged,
         .dialogAttachment = before.general.attachModalDialogs != after.general.attachModalDialogs
             || (before.windowRules != after.windowRules
@@ -273,7 +309,7 @@ namespace andromeda {
         .layerEffects = true,
         .animation = true,
         .input = true,
-        .overviewPresentation = true,
+        .overview = Overview::Close,
         .effects = true,
         .dialogAttachment = true,
     };
@@ -387,7 +423,8 @@ namespace andromeda {
     add(animation, "animation state");
     add(layerEffects, "layer effects");
     add(input, "input");
-    add(overviewPresentation, "overview presentation");
+    add(overview == Overview::Look, "overview look");
+    add(overview == Overview::Close, "overview close");
     add(effects, "effects");
     add(dialogAttachment, "dialog attachment");
     return out;

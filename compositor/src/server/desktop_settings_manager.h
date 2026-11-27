@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config/managed_settings.h"
+#include "server/settings_commits.h"
 
 #include <cstdint>
 #include <list>
@@ -46,13 +47,6 @@ namespace andromeda {
     void captureChord(uint32_t keysym, uint32_t modifiers);
 
   private:
-    // Values a client holds above the user's settings; dropped with the client. Kept in order of first use.
-    struct Layer {
-      wl_resource* owner = nullptr;
-      std::string name;
-      std::vector<std::pair<std::string, ManagedSettingValue>> values;
-    };
-
     // The scanner also declares a wl_interface variable of this name, so the struct needs its elaborated form.
     static const struct dsk_settings_manager_v1_interface kImplementation;
 
@@ -65,14 +59,12 @@ namespace andromeda {
         wl_client* client, wl_resource* resource, const char* layer, const char* key, const char* value
     );
     static void handleClearLayer(wl_client* client, wl_resource* resource, const char* layer);
+    static void handleCommit(wl_client* client, wl_resource* resource, uint32_t generation);
     static void handleDestroy(wl_client* client, wl_resource* resource);
     static void handleResourceDestroyed(wl_resource* resource);
 
     void set(wl_resource* resource, std::string_view key, std::string_view value);
     void setInLayer(wl_resource* resource, std::string_view layer, std::string_view key, std::string_view value);
-    void applyLayers();
-    void savePendingSets();
-    void dropLayers(wl_resource* owner, const std::string* name);
     void bindChord(wl_resource* resource, std::string_view chord, std::string_view action);
     void sendSettings(wl_resource* resource) const;
     void sendKeybinds(wl_resource* resource) const;
@@ -83,18 +75,16 @@ namespace andromeda {
     std::vector<wl_resource*> m_resources;
     std::vector<InputDeviceInfo> m_devices;
     wl_resource* m_captureResource = nullptr;
-    std::vector<Layer> m_layers;
     std::vector<std::pair<std::string, ManagedSettingValue>> m_appliedOverlay;
+
+    // A version 3 object's requests wait for its commit; an older object's apply on their own.
+    void accept(wl_resource* resource, SettingsCommits::Request request);
+    void scheduleApply();
+    void applyCommitted();
+    SettingsCommits m_commits;
     wl_event_source* m_applyIdle = nullptr;
-    // Saved settings wait for the end of the event-loop turn: the requests a client sends together become one file
-    // write and one reload. The owner is null once its resource is gone.
-    struct PendingSet {
-      wl_resource* owner;
-      std::string key;
-      ManagedSettingValue value;
-    };
-    std::vector<PendingSet> m_pendingSets;
-    wl_event_source* m_saveIdle = nullptr;
+    // Counts settingsChanged broadcasts, so a commit that the reload already broadcast is not sent twice.
+    uint64_t m_broadcasts = 0;
     // Who hears `failed` when a save in flight cannot write: a destroyed resource's owner turns null.
     struct SaveWaiter {
       wl_resource* owner;

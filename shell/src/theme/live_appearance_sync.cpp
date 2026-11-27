@@ -129,10 +129,15 @@ void LiveAppearanceSync::setLanguage(std::string_view language) {
   flush();
 }
 
+// One commit per flush: a theme's values reach the compositor as one change.
 void LiveAppearanceSync::flush() {
   if (m_control == nullptr || !m_control->ready()) {
     return;
   }
+  m_control->commitBatch([this] { sendLayers(); });
+}
+
+void LiveAppearanceSync::sendLayers() {
   if (!m_cornerScale.empty() && m_cornerScale != m_layerCornerScale) {
     m_layerCornerScale = m_cornerScale;
     m_control->setInLayer("style", "appearance.corner_scale", m_cornerScale);

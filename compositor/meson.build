@@ -995,6 +995,7 @@ pure_sources = files(
   'src/view/drag_physics.cpp',
   'src/xwayland/xsettings.cpp',
   'src/server/client_trust.cpp',
+  'src/server/settings_commits.cpp',
 )
 
 andromeda_pure_deps = [

@@ -104,6 +104,7 @@ unit_tests = [
   ['deferred-unfullscreen', ['unit/deferred_unfullscreen.cpp'], []],
   ['config-section', ['unit/config_section.cpp'], []],
   ['config-change', ['unit/config_change.cpp'], []],
+  ['settings-commits', ['unit/settings_commits.cpp'], []],
   ['config-schema', ['unit/config_schema.cpp'], [andromeda_core_dep]],
   [
     'config-load',

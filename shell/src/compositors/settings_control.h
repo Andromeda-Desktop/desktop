@@ -56,6 +56,7 @@ public:
   // Reason the compositor gave for the last rejected `set`, empty when none.
   [[nodiscard]] const std::string& lastFailure() const noexcept { return m_lastFailure; }
 
+  // set, setInLayer and clearLayer each apply on their own, or together when called inside commitBatch.
   // Empty value clears the setting back to its device or built-in default.
   void set(const std::string& key, const std::string& value);
 
@@ -63,6 +64,8 @@ public:
   // version 2 compositor and do nothing on version 1. An empty value removes the key from the layer.
   void setInLayer(const std::string& layer, const std::string& key, const std::string& value);
   void clearLayer(const std::string& layer);
+  // The requests `requests` sends apply as one change: one compositor reload, one batch for subscribers (version 3).
+  void commitBatch(const std::function<void()>& requests);
 
   [[nodiscard]] const std::vector<CompositorKeybind>& keybinds() const noexcept { return m_keybinds; }
   [[nodiscard]] const std::vector<CompositorAction>& actions() const noexcept { return m_actions; }
@@ -76,6 +79,10 @@ public:
 private:
   friend struct SettingsControlListeners;
 
+  enum class Batch : std::uint8_t { None, Open, OpenWithRequests };
+  // After a request: commits it alone, or marks the open batch as holding one.
+  void requestSent();
+
   dsk_settings_manager_v1* m_manager = nullptr;
   std::vector<InputDevice> m_devices;
   std::unordered_map<std::string, CompositorSetting> m_settings;
@@ -84,6 +91,8 @@ private:
   std::function<void(std::string)> m_onCaptured;
   std::string m_lastFailure;
   bool m_keybindBatch = false;
+  Batch m_batch = Batch::None;
+  std::uint32_t m_generation = 0;
   std::uint32_t m_version = 0;
   bool m_ready = false;
   ChangeCallback m_onChange;

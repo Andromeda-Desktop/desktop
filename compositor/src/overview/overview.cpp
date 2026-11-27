@@ -1129,6 +1129,13 @@ namespace andromeda {
     }
   }
 
+  // Layout re-reads every look: colours, radius, shadow and glass, and the card chrome copies through syncPreview.
+  void Overview::refreshLook() {
+    if (m_active) {
+      applyProgress();
+    }
+  }
+
   void Overview::syncCardEffects() {
     for (const auto& state : m_outputs) {
       for (const auto& card : state->cards) {

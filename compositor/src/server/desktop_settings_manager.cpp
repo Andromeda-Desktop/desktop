@@ -24,7 +24,8 @@ namespace andromeda {
 
   namespace {
 
-    constexpr uint32_t kVersion = 2;
+    constexpr uint32_t kVersion = 3;
+    constexpr int kCommitVersion = 3;
 
     DesktopSettingsManager* managerFrom(wl_resource* resource) {
       return static_cast<DesktopSettingsManager*>(wl_resource_get_user_data(resource));
@@ -40,9 +41,6 @@ namespace andromeda {
   DesktopSettingsManager::~DesktopSettingsManager() {
     if (m_applyIdle != nullptr) {
       wl_event_source_remove(m_applyIdle);
-    }
-    if (m_saveIdle != nullptr) {
-      wl_event_source_remove(m_saveIdle);
     }
     for (wl_resource* resource : m_resources) {
       wl_resource_set_user_data(resource, nullptr);
@@ -101,8 +99,14 @@ namespace andromeda {
 
   void DesktopSettingsManager::handleClearLayer(wl_client*, wl_resource* resource, const char* layer) {
     if (DesktopSettingsManager* self = managerFrom(resource)) {
-      const std::string name(layer);
-      self->dropLayers(resource, &name);
+      self->accept(resource, SettingsCommits::ClearLayerRequest{.layer = layer});
+    }
+  }
+
+  void DesktopSettingsManager::handleCommit(wl_client*, wl_resource* resource, uint32_t generation) {
+    if (DesktopSettingsManager* self = managerFrom(resource)) {
+      self->m_commits.commit(resource, generation);
+      self->scheduleApply();
     }
   }
 
@@ -140,11 +144,8 @@ namespace andromeda {
   void DesktopSettingsManager::handleResourceDestroyed(wl_resource* resource) {
     if (DesktopSettingsManager* self = managerFrom(resource)) {
       std::erase(self->m_resources, resource);
-      self->dropLayers(resource, nullptr);
-      for (PendingSet& pending : self->m_pendingSets) {
-        if (pending.owner == resource) {
-          pending.owner = nullptr;
-        }
+      if (self->m_commits.drop(resource)) {
+        self->scheduleApply();
       }
       for (std::vector<SaveWaiter>& waiters : self->m_saving) {
         for (SaveWaiter& waiter : waiters) {
@@ -173,52 +174,11 @@ namespace andromeda {
       reject(std::format("{} mirrors the shell setting; change the shell's scale instead", key));
       return;
     }
-    if (isVolatileSetting(key)) {
-      if (wl_resource_get_version(resource) < 2) {
-        reject(std::format("{} needs version 2 of the protocol", key));
-        return;
-      }
-      setVolatileSetting(key, *parsed.value);
-      settingsChanged();
+    if (isVolatileSetting(key) && wl_resource_get_version(resource) < 2) {
+      reject(std::format("{} needs version 2 of the protocol", key));
       return;
     }
-    if (const std::optional<int64_t> index = workspaceLayoutIndex(key)) {
-      // A session override from the overview chip or workspace-set-layout would mask the saved choice.
-      for (const auto& output : m_server.outputs()) {
-        WorkspaceGroup* group = output->workspaceGroup();
-        if (Workspace* workspace = group != nullptr ? group->workspaceAt(static_cast<size_t>(*index - 1)) : nullptr) {
-          workspace->clearLayoutModeOverride();
-        }
-      }
-    }
-    m_pendingSets.push_back({.owner = resource, .key = keyText, .value = *parsed.value});
-    if (m_saveIdle == nullptr) {
-      m_saveIdle = wl_event_loop_add_idle(
-          wl_display_get_event_loop(m_server.display()),
-          [](void* data) { static_cast<DesktopSettingsManager*>(data)->savePendingSets(); }, this
-      );
-    }
-  }
-
-  void DesktopSettingsManager::savePendingSets() {
-    m_saveIdle = nullptr;
-    std::vector<PendingSet> pending = std::move(m_pendingSets);
-    m_pendingSets.clear();
-    std::vector<std::pair<std::string, ManagedSettingValue>> values;
-    values.reserve(pending.size());
-    for (const PendingSet& set : pending) {
-      values.emplace_back(set.key, set.value);
-    }
-    const std::filesystem::path file = managedSettingsFile(configRootPath());
-    std::vector<SaveWaiter> waiters;
-    waiters.reserve(pending.size());
-    for (PendingSet& set : pending) {
-      waiters.push_back({set.owner, std::move(set.key)});
-    }
-    saveManagedSettings(file, values, saveDone(std::move(waiters), file));
-    // Apply now from the pending text rather than when the watcher notices the write; its later reload finds nothing
-    // changed.
-    m_server.handleConfigReload(reloadConfig());
+    accept(resource, SettingsCommits::SetRequest{.key = keyText, .value = *parsed.value});
   }
 
   void DesktopSettingsManager::setInLayer(
@@ -241,56 +201,84 @@ namespace andromeda {
       reject(parsed.error);
       return;
     }
-    const bool unset = std::holds_alternative<std::monostate>(*parsed.value);
-    auto it = std::ranges::find_if(m_layers, [&](const Layer& l) { return l.owner == resource && l.name == layer; });
-    if (it == m_layers.end()) {
-      if (unset) {
-        return;
-      }
-      it = m_layers.insert(m_layers.end(), Layer{.owner = resource, .name = std::string(layer), .values = {}});
-    }
-    std::erase_if(it->values, [&](const auto& entry) { return entry.first == key; });
-    if (!unset) {
-      it->values.emplace_back(keyText, *parsed.value);
-    }
-    if (it->values.empty()) {
-      m_layers.erase(it);
-    }
-    applyLayers();
+    accept(resource, SettingsCommits::LayerRequest{.layer = std::string(layer), .key = keyText, .value = *parsed.value});
   }
 
-  void DesktopSettingsManager::dropLayers(wl_resource* owner, const std::string* name) {
-    const auto removed = std::erase_if(m_layers, [&](const Layer& l) {
-      return l.owner == owner && (name == nullptr || l.name == *name);
-    });
-    if (removed != 0) {
-      applyLayers();
+  void DesktopSettingsManager::accept(wl_resource* resource, SettingsCommits::Request request) {
+    if (wl_resource_get_version(resource) >= kCommitVersion) {
+      m_commits.queue(resource, std::move(request));
+      return;
     }
+    m_commits.apply(resource, std::move(request));
+    scheduleApply();
   }
 
-  // One reload per event-loop turn, and none when the layers add up to the overlay already applied.
-  void DesktopSettingsManager::applyLayers() {
+  void DesktopSettingsManager::scheduleApply() {
     if (m_applyIdle != nullptr) {
       return;
     }
     m_applyIdle = wl_event_loop_add_idle(
         wl_display_get_event_loop(m_server.display()),
-        [](void* data) {
-          auto* self = static_cast<DesktopSettingsManager*>(data);
-          self->m_applyIdle = nullptr;
-          std::vector<std::pair<std::string, ManagedSettingValue>> flat;
-          for (const Layer& layer : self->m_layers) {
-            flat.insert(flat.end(), layer.values.begin(), layer.values.end());
-          }
-          if (flat == self->m_appliedOverlay) {
-            return;
-          }
-          setManagedRuntimeOverlay(flat);
-          self->m_appliedOverlay = std::move(flat);
-          self->m_server.handleConfigReload(reloadConfig());
-        },
-        this
+        [](void* data) { static_cast<DesktopSettingsManager*>(data)->applyCommitted(); }, this
     );
+  }
+
+  // One file write and one reload for everything committed this turn; none when nothing moved.
+  void DesktopSettingsManager::applyCommitted() {
+    m_applyIdle = nullptr;
+    SettingsCommits::Turn turn = m_commits.take();
+    bool volatileChanged = false;
+    std::vector<std::pair<std::string, ManagedSettingValue>> values;
+    std::vector<SaveWaiter> waiters;
+    for (SettingsCommits::Set& set : turn.sets) {
+      if (isVolatileSetting(set.key)) {
+        setVolatileSetting(set.key, set.value);
+        volatileChanged = true;
+        continue;
+      }
+      if (const std::optional<int64_t> index = workspaceLayoutIndex(set.key)) {
+        // A session override from the overview chip or workspace-set-layout would mask the saved choice.
+        for (const auto& output : m_server.outputs()) {
+          WorkspaceGroup* group = output->workspaceGroup();
+          if (Workspace* workspace = group != nullptr ? group->workspaceAt(static_cast<size_t>(*index - 1)) : nullptr) {
+            workspace->clearLayoutModeOverride();
+          }
+        }
+      }
+      values.emplace_back(set.key, std::move(set.value));
+      waiters.push_back({static_cast<wl_resource*>(set.owner), std::move(set.key)});
+    }
+    bool reload = false;
+    if (!values.empty()) {
+      // The reload below reads the pending text, not the file the write has not reached yet.
+      const std::filesystem::path file = managedSettingsFile(configRootPath());
+      saveManagedSettings(file, values, saveDone(std::move(waiters), file));
+      reload = true;
+    }
+    std::vector<std::pair<std::string, ManagedSettingValue>> flat = m_commits.overlay();
+    if (flat != m_appliedOverlay) {
+      setManagedRuntimeOverlay(flat);
+      m_appliedOverlay = std::move(flat);
+      reload = true;
+    }
+    const uint64_t broadcasts = m_broadcasts;
+    bool inEffect = true;
+    if (reload) {
+      const ConfigReloadResult result = reloadConfig();
+      m_server.handleConfigReload(result);
+      inEffect = result.success;
+    }
+    if (volatileChanged && m_broadcasts == broadcasts) {
+      settingsChanged();
+    }
+    for (const auto& [owner, generation] : turn.applied) {
+      auto* resource = static_cast<wl_resource*>(owner);
+      if (inEffect) {
+        dsk_settings_manager_v1_send_applied(resource, generation);
+      } else {
+        dsk_settings_manager_v1_send_failed(resource, "", "the config files do not load; the change applies with the next reload that does");
+      }
+    }
   }
 
   void DesktopSettingsManager::bindChord(wl_resource* resource, std::string_view chord, std::string_view action) {
@@ -433,6 +421,7 @@ namespace andromeda {
   }
 
   void DesktopSettingsManager::settingsChanged() {
+    ++m_broadcasts;
     m_sentDocument = readGeneratedFile(managedSettingsFile(configRootPath()));
     for (wl_resource* resource : m_resources) {
       sendSettings(resource);
@@ -470,6 +459,7 @@ namespace andromeda {
       .cancel_capture = DesktopSettingsManager::handleCancelCapture,
       .set_in_layer = DesktopSettingsManager::handleSetInLayer,
       .clear_layer = DesktopSettingsManager::handleClearLayer,
+      .commit = DesktopSettingsManager::handleCommit,
   };
 
 } // namespace andromeda

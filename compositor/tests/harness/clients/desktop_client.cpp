@@ -7,7 +7,11 @@
 //   desktop-client settings-state            print "KEY=VALUE" per managed setting, with " customized" when the
 //                                            settings file holds it
 //   desktop-client settings-set KEY VALUE    exit 1 and print the reason if the compositor rejects it
-//   desktop-client settings-watch            print every "KEY=VALUE" event, as settings-state does, until killed
+//   desktop-client settings-watch            print every "KEY=VALUE" event, as settings-state does, and "done" after
+//                                            each batch, until killed
+//   desktop-client settings-commit GEN REQ.. bind version 3 and send each REQ ("KEY=VALUE" sets, "LAYER/KEY=VALUE"
+//                                            sets in a layer), print "pending", then after a stdin line commit GEN and
+//                                            print "applied GEN"; hold the connection until stdin closes
 //   desktop-client layer-hold LAYER KEY VALUE  set KEY in LAYER, print "ready", then hold the connection until killed
 //                                            (DESKTOP_CLIENT_SETTINGS_VERSION=1 binds the v1 protocol;
 //                                            DESKTOP_CLIENT_LAYER_REPEAT=1 sends the request again after a stdin line and prints "repeated")
@@ -31,6 +35,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <optional>
 #include <poll.h>
 #include <print>
 #include <string>
@@ -46,6 +51,8 @@ namespace {
     dsk_settings_manager_v1* input = nullptr;
     dsk_shell_v1* shell = nullptr;
     bool inputDone = false;
+    bool printDone = false;
+    std::optional<uint32_t> applied;
     bool printInput = false;
     bool printKeybinds = false;
     bool done = false;
@@ -93,7 +100,17 @@ namespace {
     std::println("chord {}", chord[0] != '\0' ? chord : "-");
     std::fflush(stdout);
   }
-  void onInputDone(void* data, dsk_settings_manager_v1*) { static_cast<State*>(data)->inputDone = true; }
+  void onInputDone(void* data, dsk_settings_manager_v1*) {
+    auto* state = static_cast<State*>(data);
+    state->inputDone = true;
+    if (state->printDone) {
+      std::println("done");
+      std::fflush(stdout);
+    }
+  }
+  void onApplied(void* data, dsk_settings_manager_v1*, uint32_t generation) {
+    static_cast<State*>(data)->applied = generation;
+  }
   void onInputFailed(void* data, dsk_settings_manager_v1*, const char*, const char* reason) {
     static_cast<State*>(data)->failure = reason;
   }
@@ -106,6 +123,7 @@ namespace {
       .chord_captured = onChordCaptured,
       .done = onInputDone,
       .failed = onInputFailed,
+      .applied = onApplied,
   };
 
   void onShellAction(void*, dsk_shell_v1*, const char* command) {
@@ -173,9 +191,11 @@ namespace {
       .restarted = onShellRestarted,
   };
 
+  uint32_t gSettingsVersion = 2;
+
   uint32_t settingsVersion() {
     const char* forced = std::getenv("DESKTOP_CLIENT_SETTINGS_VERSION");
-    return forced != nullptr ? static_cast<uint32_t>(std::atoi(forced)) : 2U;
+    return forced != nullptr ? static_cast<uint32_t>(std::atoi(forced)) : gSettingsVersion;
   }
 
   void global(void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
@@ -210,6 +230,7 @@ int main(int argc, char** argv) {
       || command == "settings-set"
       || command == "layer-hold"
       || command == "settings-watch"
+      || command == "settings-commit"
       || command == "keybinds-state"
       || command == "keybind-set"
       || command == "chord-capture";
@@ -222,6 +243,7 @@ int main(int argc, char** argv) {
       && !(command == "settings-set" && argc == 4)
       && !(command == "layer-hold" && argc == 5)
       && !(command == "settings-watch" && argc == 2)
+      && !(command == "settings-commit" && argc >= 4)
       && !(command == "keybinds-state" && argc == 2)
       && !(command == "keybind-set" && argc == 4)
       && !(command == "chord-capture" && argc == 2)
@@ -243,6 +265,10 @@ int main(int argc, char** argv) {
   state.printProperties = command == "properties-state";
   state.printInput = command == "settings-state" || command == "settings-watch";
   state.printKeybinds = command == "keybinds-state";
+  state.printDone = command == "settings-watch";
+  if (command == "settings-commit") {
+    gSettingsVersion = 3;
+  }
   wl_registry* registry = wl_display_get_registry(display);
   wl_registry_add_listener(registry, &kRegistry, &state);
   wl_display_roundtrip(display);
@@ -337,6 +363,42 @@ int main(int argc, char** argv) {
     if (command == "settings-watch") {
       while (wl_display_dispatch(display) >= 0) {
       }
+    } else if (command == "settings-commit") {
+      state.printInput = false;
+      for (int i = 3; i < argc; ++i) {
+        const std::string_view request = argv[i];
+        const size_t equals = request.find('=');
+        if (equals == std::string_view::npos) {
+          std::println(stderr, "desktop-client: settings-commit request '{}' has no '='", request);
+          return 2;
+        }
+        const size_t slash = request.find('/');
+        const std::string value(request.substr(equals + 1));
+        if (slash != std::string_view::npos && slash < equals) {
+          const std::string layer(request.substr(0, slash));
+          const std::string key(request.substr(slash + 1, equals - slash - 1));
+          dsk_settings_manager_v1_set_in_layer(state.input, layer.c_str(), key.c_str(), value.c_str());
+        } else {
+          const std::string key(request.substr(0, equals));
+          dsk_settings_manager_v1_set(state.input, key.c_str(), value.c_str());
+        }
+      }
+      wl_display_roundtrip(display);
+      if (!state.failure.empty()) {
+        std::println("failed {}", state.failure);
+        return 1;
+      }
+      std::println("pending");
+      std::fflush(stdout);
+      std::string line;
+      std::getline(std::cin, line);
+      const auto generation = static_cast<uint32_t>(std::strtoul(argv[2], nullptr, 10));
+      dsk_settings_manager_v1_commit(state.input, generation);
+      while (state.applied != generation && wl_display_dispatch(display) >= 0) {
+      }
+      std::println("applied {}", generation);
+      std::fflush(stdout);
+      std::getline(std::cin, line);
     } else if (command == "settings-set") {
       state.printInput = false;
       dsk_settings_manager_v1_set(state.input, argv[2], argv[3]);

@@ -557,9 +557,11 @@ namespace desktop_layout {
       return false;
     }
     if (compositor != nullptr) {
-      for (const auto& [key, value] : compositorWrites) {
-        compositor->set(key, value);
-      }
+      compositor->commitBatch([&] {
+        for (const auto& [key, value] : compositorWrites) {
+          compositor->set(key, value);
+        }
+      });
     }
     return true;
   }
