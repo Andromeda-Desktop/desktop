@@ -29,11 +29,14 @@ namespace glass {
   const float kLowestTint[2] = {0.20F, 0.30F};
   const float kTintedTint[2] = {0.34F, 0.56F};
   const float kClearTint = 0.04F;
+  const float kLiquidTint[2] = {0.10F, 0.16F};
   const float kAdaptDeadband = 0.04F;
 
   float denseLift(Kind kind, Style style, bool lightGlass) noexcept {
     const int tone = lightGlass ? 0 : 1;
-    const float lowest = style == Style::Clear ? kClearTint : style == Style::Tinted ? kTintedTint[tone] : kLowestTint[tone];
+    const float lowest = style == Style::Clear || (style == Style::Liquid && kind == Kind::Shape) ? kClearTint
+        : style == Style::Tinted                                                              ? kTintedTint[tone]
+                                                                                              : kLowestTint[tone];
     const float lift = std::max(kDenseOverlay[static_cast<int>(style)][tone], (kLegibleAlpha[tone] - lowest) / (1.0F - lowest));
     return kind == Kind::Tooltip ? 0.5F * lift : lift;
   }
@@ -66,7 +69,11 @@ namespace glass {
     float tint = 0.0F;
     switch (kind) {
     case Kind::Shape:
-      tint = light ? curve(kLowestTint[0], kTintedTint[0], 0.84F) : curve(kLowestTint[1], kTintedTint[1], 0.70F);
+      if (settings.style == Style::Liquid) {
+        tint = light ? curve(kClearTint, kLiquidTint[0], 0.84F) : curve(kClearTint, kLiquidTint[1], 0.70F);
+      } else {
+        tint = light ? curve(kLowestTint[0], kTintedTint[0], 0.84F) : curve(kLowestTint[1], kTintedTint[1], 0.70F);
+      }
       break;
     case Kind::Sheet:
     case Kind::Menu:

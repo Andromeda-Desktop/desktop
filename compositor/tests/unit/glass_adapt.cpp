@@ -11,9 +11,10 @@ ANDROMEDA_TEST(densityKeepsSliderOrderAndLegibilityFloor) {
       for (const bool light : {true, false}) {
         const float dense = glass::denseLift(kind, style, light);
         const int tone = light ? 0 : 1;
-        const float lowest = style == glass::Style::Clear ? glass::kClearTint
-            : style == glass::Style::Tinted                ? glass::kTintedTint[tone]
-                                                           : glass::kLowestTint[tone];
+        const bool liquidShape = style == glass::Style::Liquid && kind == glass::Kind::Shape;
+        const float lowest = style == glass::Style::Clear || liquidShape ? glass::kClearTint
+            : style == glass::Style::Tinted                              ? glass::kTintedTint[tone]
+                                                                         : glass::kLowestTint[tone];
         for (int d = 0; d <= kSteps; ++d) {
           const float density = static_cast<float>(d) / kSteps;
           float previous = -1.0F;

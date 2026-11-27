@@ -63,6 +63,9 @@ namespace glass {
   // Shape tints at the lowest and the middle Tint slider position: {light glass, dark glass}.
   extern const float kLowestTint[2];
   extern const float kTintedTint[2];
+  // Liquid shape tint at the middle Tint slider position (the lowest is kClearTint): the backdrop stays visible, and
+  // the density path (adaptDensity) lifts it to kLegibleAlpha over a backdrop that would hide the content.
+  extern const float kLiquidTint[2];
   // The tint alpha of Clear glass: enough to carry a tint colour, so the compositor can dim through the density.
   extern const float kClearTint;
 
