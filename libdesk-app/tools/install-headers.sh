@@ -8,7 +8,7 @@ for a in "$@"; do
     --protocols|--generated) mode=${a#--}; continue ;;
   esac
   case $mode in
-    src) (cd "$a" && find . -name '*.h' -print0 | xargs -0 -I{} install -Dm644 {} "$inc/{}") ;;
+    src) (cd "$a" && find -L . -name '*.h' -print0 | xargs -0 -I{} install -Dm644 {} "$inc/{}") ;;
     protocols) find -L "$a" -maxdepth 1 -name '*.h' -exec install -Dm644 -t "$inc/protocols" {} + ;;
     generated) [[ $a == *.h ]] && install -Dm644 -t "$inc" "$a" ;;
   esac
