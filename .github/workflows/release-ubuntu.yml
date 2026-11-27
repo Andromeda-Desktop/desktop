@@ -55,6 +55,13 @@ jobs:
       - name: Packages
         if: ${{ !inputs.prebuilt }}
         run: ANDROMEDA_CORE=1 DEB_VERSION=${TAG#v} tools/ubuntu-deb.sh --clean ${{ matrix.base }}
+      # Saved here too, not only by check-ubuntu: pushes to main cancel check-ubuntu runs before they save. ubuntu-deb.sh
+      # trims it to 1.5G in CI.
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: always() && !inputs.prebuilt
+        with:
+          path: ~/.cache/andromeda-ubuntu/ccache-deb-${{ matrix.base }}
+          key: ccache-deb-${{ matrix.base }}-${{ github.run_id }}
       # A local build (DEB_VERSION=<tag without v> tools/ubuntu-deb.sh) uploads its debs to the release first; this
       # only signs the repository.
       - name: Prebuilt debs
