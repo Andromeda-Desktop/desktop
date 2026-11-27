@@ -119,6 +119,8 @@ public:
   void keyboard(const KeyboardEvent& event, Surface* surface);
   void keyboardFocus(Surface* surface, bool focused);
   void checkClipboard();
+  // The left press a later startDrag begins from: AppKit starts a drag session from its mouse-down event.
+  void setDragPress(NSEvent* event) { m_dragPress = event; }
   // Every Toplevel gets a close request; each may refuse it.
   void requestQuit();
   [[nodiscard]] static OutputId outputOf(NSScreen* screen);
@@ -140,6 +142,7 @@ private:
   double m_pointerY = 0.0;
   std::uint32_t m_serial = 0;
   NSInteger m_clipboardChangeCount = -1;
+  NSEvent* m_dragPress = nil;
   int m_kqueue = -1;
   CFFileDescriptorRef m_kqueueSource = nullptr;
   CFRunLoopSourceRef m_kqueueRunLoopSource = nullptr;

@@ -26,7 +26,7 @@ fi
 # shellcheck disable=SC2086
 if clang++ -target arm64-apple-macos26 -isysroot "$sdk" -fuse-ld=lld "${mains[@]}" \
     -Wl,-all_load -Wl,--error-limit=0 "${archives[@]}" ${extra[@]+"${extra[@]}"} \
-    -L"$deps/lib" $(pkg-config --libs $mac_deps) -framework AppKit -framework QuartzCore -framework UserNotifications -lc++experimental -o "$work/link-check" > "$work/link.log" 2>&1; then
+    -L"$deps/lib" $(pkg-config --libs $mac_deps) -framework AppKit -framework QuartzCore -framework UniformTypeIdentifiers -framework UserNotifications -lc++experimental -o "$work/link-check" > "$work/link.log" 2>&1; then
   echo "macos link: ok"
   exit 0
 fi

@@ -103,7 +103,7 @@ if get_option('devel') and not meson.is_subproject()
     _dev_protocols += meson.current_source_dir() / 'subprojects/libdesk-system/protocols'
     _dev_private = ['-ldl', '-pthread']
   else
-    _dev_private = [] # meson adds the AppKit, QuartzCore and UserNotifications frameworks of the dependencies
+    _dev_private = [] # meson adds the frameworks of the dependencies
   endif
   _dev_lib = static_library('andromeda-desk',
     link_whole: _dev_whole,

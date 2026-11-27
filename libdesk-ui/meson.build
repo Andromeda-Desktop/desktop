@@ -146,7 +146,7 @@ if is_wayland
   _system_deps += [dependency('wayland-client'), dependency('wayland-egl'), dependency('sdbus-c++')]
 elif is_macos
   add_languages('objcpp', native: false)
-  _system_deps += dependency('appleframeworks', modules: ['AppKit', 'QuartzCore'])
+  _system_deps += dependency('appleframeworks', modules: ['AppKit', 'QuartzCore', 'UniformTypeIdentifiers'])
 endif
 _system_deps += [egl_dep, gles2_dep]
 

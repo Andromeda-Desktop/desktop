@@ -336,6 +336,9 @@ namespace {
   [self sendPointer:PointerEvent::Type::Motion event:event];
 }
 - (void)mouseDown:(NSEvent*)event {
+  if (_owner != nullptr) {
+    _owner->display().setDragPress(event);
+  }
   [self sendButton:event pressed:true];
 }
 - (void)mouseUp:(NSEvent*)event {

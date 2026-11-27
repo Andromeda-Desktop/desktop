@@ -1,5 +1,7 @@
 #include "cocoa/cocoa_internal.h"
 
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+
 #include "core/deferred_call.h"
 #include "protocols/uri.h"
 #include "core/input/cursor_shape.h"
@@ -8,6 +10,7 @@
 #include "core/sys/sys.h"
 #include "platform/text_input_service.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <sys/event.h>
 #include <unistd.h>
@@ -556,8 +559,115 @@ void CocoaDisplay::clearDropTarget(const Surface& surface) {
   }
 }
 
-// No NSDraggingSession source yet: a drag stays inside its window.
-bool CocoaDisplay::startDrag(const Surface& /*origin*/, DragOffer /*source*/) { return false; }
+// One drag out of this app. It writes the promised file when the target asks, possibly after the drag ended; its
+// promise provider owns it through userInfo, as the provider's delegate is weak.
+@interface AndromedaDragSource : NSObject <NSDraggingSource, NSFilePromiseProviderDelegate>
+- (instancetype)initWithOffer:(DragOffer)offer display:(CocoaDisplay*)display;
+@end
+
+namespace {
+
+// The first file URL of a text/uri-list; nil when it has none.
+NSURL* firstFileUrl(const std::string& list) {
+  NSString* text = [[NSString alloc] initWithBytes:list.data() length:list.size() encoding:NSUTF8StringEncoding];
+  for (NSString* line in [text componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
+    NSURL* url = line.length > 0 && ![line hasPrefix:@"#"] ? [NSURL URLWithString:line] : nil;
+    if (url.isFileURL) {
+      return url;
+    }
+  }
+  return nil;
+}
+
+} // namespace
+
+@implementation AndromedaDragSource {
+  DragOffer _offer;
+  CocoaDisplay* _display;
+}
+
+- (instancetype)initWithOffer:(DragOffer)offer display:(CocoaDisplay*)display {
+  self = [super init];
+  if (self != nil) {
+    _offer = std::move(offer);
+    _display = display;
+  }
+  return self;
+}
+
+- (NSDragOperation)draggingSession:(NSDraggingSession*)session
+    sourceOperationMaskForDraggingContext:(NSDraggingContext)context {
+  NSDragOperation mask = NSDragOperationNone;
+  if ((_offer.actions & DropCopy) != 0) {
+    mask |= NSDragOperationCopy;
+  }
+  if ((_offer.actions & DropMove) != 0) {
+    mask |= NSDragOperationMove;
+  }
+  return mask;
+}
+
+- (void)draggingSession:(NSDraggingSession*)session endedAtPoint:(NSPoint)point operation:(NSDragOperation)operation {
+  const std::uint32_t action = (operation & NSDragOperationMove) != 0   ? DropMove
+                               : (operation & NSDragOperationCopy) != 0 ? DropCopy
+                                                                        : DropNone;
+  if (_offer.finished) {
+    _offer.finished(action, operation != NSDragOperationNone);
+  }
+  _display->wake();
+}
+
+- (NSString*)filePromiseProvider:(NSFilePromiseProvider*)provider fileNameForType:(NSString*)fileType {
+  return [NSString stringWithUTF8String:_offer.fileName.c_str()];
+}
+
+- (NSOperationQueue*)operationQueueForFilePromiseProvider:(NSFilePromiseProvider*)provider {
+  return NSOperationQueue.mainQueue;
+}
+
+- (void)filePromiseProvider:(NSFilePromiseProvider*)provider
+          writePromiseToURL:(NSURL*)destination
+          completionHandler:(void (^)(NSError*))done {
+  _offer.dataLater(std::string(uri::kUriListMime), [destination, done](const std::string& list) {
+    NSError* error = nil;
+    NSURL* file = firstFileUrl(list);
+    if (file == nil) {
+      error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadUnknownError userInfo:nil];
+    } else {
+      [NSFileManager.defaultManager copyItemAtURL:file toURL:destination error:&error];
+    }
+    done(error);
+  });
+  _display->wake();
+}
+
+@end
+
+// macOS drags a file promise only: a file the app writes when the target asks (DragOffer::dataLater with a URI list
+// and fileName). Other offers return false and stay inside the app.
+bool CocoaDisplay::startDrag(const Surface& origin, DragOffer source) {
+  const auto* cocoa = dynamic_cast<const CocoaSurface*>(&origin);
+  const bool promise = source.dataLater && !source.fileName.empty()
+                       && std::ranges::find(source.mimeTypes, std::string(uri::kUriListMime)) != source.mimeTypes.end();
+  if (!promise || cocoa == nullptr || cocoa->view() == nil || m_dragPress == nil
+      || m_dragPress.window != cocoa->view().window) {
+    return false;
+  }
+  @autoreleasepool {
+    AndromedaSurfaceView* view = cocoa->view();
+    NSString* name = [NSString stringWithUTF8String:source.fileName.c_str()];
+    UTType* type = [UTType typeWithFilenameExtension:name.pathExtension] ?: UTTypeData;
+    auto* drag = [[AndromedaDragSource alloc] initWithOffer:std::move(source) display:this];
+    auto* provider = [[NSFilePromiseProvider alloc] initWithFileType:type.identifier delegate:drag];
+    provider.userInfo = drag;
+    auto* item = [[NSDraggingItem alloc] initWithPasteboardWriter:provider];
+    constexpr CGFloat kIcon = 48.0;
+    const NSPoint at = [view convertPoint:m_dragPress.locationInWindow fromView:nil];
+    [item setDraggingFrame:NSMakeRect(at.x - kIcon / 2, at.y - kIcon / 2, kIcon, kIcon)
+                  contents:[NSWorkspace.sharedWorkspace iconForContentType:type]];
+    return [view beginDraggingSessionWithItems:@[ item ] event:m_dragPress source:drag] != nil;
+  }
+}
 
 std::unique_ptr<Surface> CocoaDisplay::createDragIcon(std::uint32_t /*width*/, std::uint32_t /*height*/, std::int32_t /*bufferScale*/) {
   return nullptr;
