@@ -462,6 +462,7 @@ bool link_tex_program(
   shader->effects.clip_radius.bottom_right = glGetUniformLocation(prog, "clip_radius_bottom_right");
   shader->effects.liquid = glGetUniformLocation(prog, "liquid");
   shader->effects.rim = glGetUniformLocation(prog, "rim");
+  shader->effects.vibrancy = glGetUniformLocation(prog, "vibrancy");
   shader->effects.lens = glGetUniformLocation(prog, "lens");
   shader->effects.lens_tex = glGetUniformLocation(prog, "lens_tex");
   shader->effects.liquid_texel = glGetUniformLocation(prog, "liquid_texel");
@@ -614,6 +615,7 @@ bool link_blur2_composite_program(
 
   shader->glass.liquid = glGetUniformLocation(prog, "liquid");
   shader->glass.rim = glGetUniformLocation(prog, "rim");
+  shader->glass.vibrancy = glGetUniformLocation(prog, "vibrancy");
   shader->glass.lens = glGetUniformLocation(prog, "lens");
   shader->glass.lens_tex = glGetUniformLocation(prog, "lens_tex");
   shader->glass.tint_mix = glGetUniformLocation(prog, "tint_mix");

@@ -177,6 +177,8 @@ struct wlr_scene {
     bool highlight_transparent_region;
 
     struct blur_data blur_data;
+    // Refracting glass (liquid > 0): {saturation gain, dim}, see fx_render_texture_options.vibrancy.
+    float glass_vibrancy[2];
     // Bumped on every node update; keys the optimized blur's consumer cache.
     uint64_t update_serial;
     struct wl_list blur_sources; // optimized_blur_source.link
@@ -688,6 +690,9 @@ void wlr_scene_set_background_color(struct wlr_scene* scene, const float color[4
 void wlr_scene_set_blur_data(
     struct wlr_scene* scene, int num_passes, int radius, float noise, float brightness, float contrast, float saturation
 );
+
+// Sets the vibrancy every refracting glass node (liquid > 0) draws with: saturation gain and dim, 0 = none.
+void wlr_scene_set_glass_vibrancy(struct wlr_scene* scene, float saturation_gain, float dim);
 
 // Sets the global blur num_passes parameter
 void wlr_scene_set_blur_num_passes(struct wlr_scene* scene, int num_passes);

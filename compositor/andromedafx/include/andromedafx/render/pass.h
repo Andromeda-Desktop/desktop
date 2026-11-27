@@ -163,6 +163,8 @@ struct fx_render_texture_options {
   float rim;
   // Lens strength, 0 to 1: the sharp backdrop shows through the rim band (needs lens_texture).
   float lens;
+  // Glass body look before the tint: {saturation gain, dim}; 0 = none. Saturation 1 + gain, brightness 1 - dim.
+  float vibrancy[2];
   // Backdrop pre-mix toward the tint colour: rgb, a = amount 0 to 1 (glass density over a same-tone backdrop).
   float tint_mix[4];
   // Sharp backdrop for the liquid lens, same size and orientation as texture; NULL = no lens.
@@ -249,6 +251,7 @@ struct fx_render_blur_pass_options {
   float liquid; // 0 to 1, see fx_render_texture_options.liquid
   float rim;    // 0 to 1, see fx_render_texture_options.rim
   float lens;   // 0 to 1, see fx_render_texture_options.lens
+  float vibrancy[2]; // see fx_render_texture_options.vibrancy
   float tint_mix[4]; // see fx_render_texture_options.tint_mix
   struct wlr_box liquid_box;
   float liquid_frac[4]; // see fx_render_texture_options.liquid_frac

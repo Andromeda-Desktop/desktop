@@ -1679,9 +1679,10 @@ namespace andromeda {
     const bool clear = config().appearance.glassStyle == GlassStyle::Liquid || config().appearance.glassStyle == GlassStyle::Clear;
     wlr_scene_set_blur_data(
         m_scene, blur.passes, blur.radius, clear ? 0.0F : static_cast<float>(blur.noise),
-        clear ? glass::kLiquidLift : static_cast<float>(blur.brightness), clear ? 1.0F : static_cast<float>(blur.contrast),
+        clear ? 1.0F : static_cast<float>(blur.brightness), clear ? 1.0F : static_cast<float>(blur.contrast),
         static_cast<float>(blur.saturation)
     );
+    wlr_scene_set_glass_vibrancy(m_scene, glass::kVibrancy[0], glass::kVibrancy[1]);
   }
 
   void Server::updateColorPreferences() {

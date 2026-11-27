@@ -63,6 +63,8 @@ uniform float clip_radius_bottom_right;
 uniform float liquid;
 // Specular rim alone (0 = off) for frosted shapes: the rim draws at max(liquid, rim), refraction only with liquid.
 uniform float rim;
+// Glass body: {saturation gain, dim} of the backdrop before the tint; 0 = none.
+uniform vec2 vibrancy;
 // Lens (0 = off): the sharp backdrop, displaced by the glass thickness, shows through the rim band over the blur.
 uniform float lens;
 uniform sampler2D lens_tex;
@@ -214,6 +216,8 @@ float lens_shift(float t);
 float lens_magnify();
 vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend);
 float lens_cover(float t, float lens);
+vec3 glass_vibrancy(vec4 c, vec2 v);
+float glass_shade(float on, float d, float scale, vec2 normal);
 float glass_specular(float shine, float d, float band, float scale, vec2 normal, float near);
 float pointer_near(vec2 p, vec3 light);
 float smooth_union(float a, float b, float k);
@@ -263,6 +267,7 @@ void main() {
   vec2 uv = v_texcoord;
 #if EFFECTS
   float specular = 0.0;
+  float shade = 0.0;
   float lens_weight = 0.0;
   vec2 lens_uv = uv;
   vec2 lens_bend = vec2(0.0);
@@ -294,6 +299,7 @@ void main() {
       // The pointer light also bleeds softly into the band, so it reads as light on glass, not a thicker line.
       float near = pointer_near(p, light);
       specular = glass_specular(shine, d, band, liquid_scale, normal, near);
+      shade = glass_shade(liquid > 0.0 ? 1.0 : 0.0, d, liquid_scale, normal);
     }
   }
   vec4 base = sample_texture(uv);
@@ -305,7 +311,9 @@ void main() {
     base = mix(base, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
   vec4 color = convert_color(base);
+  color.rgb = glass_vibrancy(color, vibrancy);
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
+  color.rgb *= 1.0 - shade;
   // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
   color.rgb += specular * (color.a - color.rgb);
 #else

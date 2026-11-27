@@ -1015,8 +1015,8 @@ black, the light value over white, interpolated by the measured mean luminance.<
 </tr>
 <tr>
 <td>E2</td>
-<td>9 / 24 / 10 %, 15 %</td>
-<td>1 / 6 / 5 %, 10 %</td>
+<td>6 / 32 / 7 %, 15 %</td>
+<td>1 / 6 / 3 %, 10 %</td>
 <td>float plane</td>
 </tr>
 <tr>
@@ -3046,7 +3046,7 @@ that asks for more input ("Rename..."). Numbers as digits; percent without a spa
 </ul>
 <h3 id="ch-D-clear-glass-tone-2026-11-18">Clear glass tone (2026-11-18)</h3>
 <ul>
-<li>Shell glass follows the scheme (concept C, user 2026-11-18; replaces the 2026-11-11 dark-glass rule). Clear glass is dark with white content in both schemes: it is almost transparent, so its ink follows the wallpaper, not the scheme (Apple's Clear does the same). Over a bright backdrop the density path dims it so white text keeps &gt;= 4.5:1.</li>
+<li>Shell glass follows the scheme (concept C, user 2026-11-18; replaces the 2026-11-11 dark-glass rule). Clear glass is dark with white content in both schemes: it is almost transparent, so its ink follows the wallpaper, not the scheme (Apple's Clear does the same). Over a bright backdrop it dims only by its overlay (kDenseOverlay 0.25), like Apple's Clear: the wallpaper keeps its colour and white text may fall below 4.5:1 there (user 2026-11-28). Its content draws no shadow.</li>
 </ul>
 <h3 id="ch-D-lock-screen-own-image-blur-2026-11-11">Lock screen own image blur (2026-11-11)</h3>
 <ul>
@@ -3107,7 +3107,7 @@ that asks for more input ("Rename..."). Numbers as digits; percent without a spa
 <li>2026-11-19 notification center (user): it hangs under the bell, its trailing edge on the status island's end (as the tray drawer), not centred under the clock island as in proto flow.html #surface=nc.</li>
 <li>2026-11-19 bar (concept-c.html:147-150): the default lanes now follow the mockup: date and time in the centre island, status island tray, Wi-Fi, Bluetooth, battery, bell | Control Center; no volume, clock or app name in the side islands.</li>
 <li>2026-11-19 window switcher (proto surfaces.js setSurf('switcher'), .s-switch): the product carousel switcher stays (TASK-shell-build "Keep: product carousel window switcher (no change)", user plan 11-18); the proto strip of window shots is not built.</li>
-<li>2026-11-19 glass density (proto styles.css --dense: Frosted light 0, Liquid light 0): over a low-contrast backdrop every style closes at least the gap that lifts its lowest tint to kLegibleAlpha (.54 light, .67 dark glass), so text keeps 4.5:1; light Frosted and Liquid therefore densify (.43) where the mockup adds nothing. Other styles take the mockup --dense (protocol/glass_material.h kDenseOverlay).</li>
+<li>Glass density (2026-11-28, user; replaces the 2026-11-19 legibility floor): over a backdrop of the content's tone every style adds only its light overlay (protocol/glass_material.cpp kDenseOverlay), so Frosted, Tinted, Liquid and Clear keep their slider's look; text may fall below 4.5:1 there (rulebook 4.2). The density reads the second brightest or darkest of the 4x2 backdrop samples, so one small spot does not set it.</li>
 <li>2026-11-19 launcher tab row (user): Emoji and Clipboard modes keep the Clipboard | Emoji | GIFs | Stickers | Symbols tab row under the search field; the proto has none. The user keeps it.</li>
 <li>2026-11-19 stepper (rulebook 9.6 "two icon buttons small (24) in one capsule track, divider 1 x 12"): Settings steppers keep an editable value field between the two buttons, because their values (ms, px, %) need typed input; both dividers are 1 x 12 (component.stepper.divider).</li>
 <li>2026-11-19 overview current-workspace ring (handoff.yaml:13 says 3 px accent; overview.css .ov-ws.cur renders 2 px ink, .hot 3 px accent): the render wins; the shown workspace's card has a 2 px text-primary ring, the accent ring is for a drag target.</li>

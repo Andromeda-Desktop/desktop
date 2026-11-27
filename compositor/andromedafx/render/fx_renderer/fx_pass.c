@@ -2378,6 +2378,7 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     uniform_corner_radii_set(&shader->effects.clip_radius, &clipped_region_corners);
     glUniform1f(shader->effects.liquid, fx_options->liquid);
     glUniform1f(shader->effects.rim, fx_options->rim);
+    glUniform2f(shader->effects.vibrancy, fx_options->vibrancy[0], fx_options->vibrancy[1]);
     const bool liquid_shape = !wlr_box_empty(&fx_options->liquid_box);
     const struct wlr_box liquid_box = liquid_shape ? fx_options->liquid_box : *clip_box;
     const float* lfrac = liquid_shape ? fx_options->liquid_frac : (const float[4]){0.0f, 0.0f, 0.0f, 0.0f};
@@ -3471,6 +3472,7 @@ static void render_blur_composite(
   if (glass) {
     glUniform1f(shader->glass.liquid, fx_options->liquid);
     glUniform1f(shader->glass.rim, fx_options->rim);
+    glUniform2f(shader->glass.vibrancy, fx_options->vibrancy[0], fx_options->vibrancy[1]);
     const bool liquid_shape = !wlr_box_empty(&fx_options->liquid_box);
     const struct wlr_box liquid_box = liquid_shape ? fx_options->liquid_box : *clip_box;
     const float* lfrac = liquid_shape ? fx_options->liquid_frac : (const float[4]){0.0f, 0.0f, 0.0f, 0.0f};
@@ -3773,6 +3775,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     tex_options->liquid = fx_options->liquid;
     tex_options->rim = fx_options->rim;
     tex_options->lens = fx_options->lens;
+    memcpy(tex_options->vibrancy, fx_options->vibrancy, sizeof(tex_options->vibrancy));
     memcpy(tex_options->tint_mix, fx_options->tint_mix, sizeof(tex_options->tint_mix));
     tex_options->liquid_box = fx_options->liquid_box;
     memcpy(tex_options->liquid_frac, fx_options->liquid_frac, sizeof(tex_options->liquid_frac));

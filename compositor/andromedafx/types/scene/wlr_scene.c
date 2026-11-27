@@ -3135,6 +3135,15 @@ void wlr_scene_set_blur_data(
   scene_node_update(&scene->tree.node, NULL);
 }
 
+void wlr_scene_set_glass_vibrancy(struct wlr_scene* scene, float saturation_gain, float dim) {
+  if (scene->glass_vibrancy[0] == saturation_gain && scene->glass_vibrancy[1] == dim) {
+    return;
+  }
+  scene->glass_vibrancy[0] = saturation_gain;
+  scene->glass_vibrancy[1] = dim;
+  scene_node_update(&scene->tree.node, NULL);
+}
+
 void wlr_scene_set_blur_num_passes(struct wlr_scene* scene, int num_passes) {
   struct blur_data* buff_data = &scene->blur_data;
   if (buff_data->num_passes == num_passes) {
@@ -4787,6 +4796,8 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .liquid = blur->liquid,
         .rim = blur->rim,
         .lens = blur->lens,
+        .vibrancy = {blur->liquid > 0.0f ? scene->glass_vibrancy[0] : 0.0f,
+                     blur->liquid > 0.0f ? scene->glass_vibrancy[1] : 0.0f},
         .tint_mix = {blur->tint_mix[0], blur->tint_mix[1], blur->tint_mix[2], blur->tint_mix[3]},
         .liquid_box =
             wlr_box_empty(&blur->liquid_box)

@@ -81,6 +81,12 @@ float lens_shift(float t) {
 
 // How much of the sharp lens image covers the blur at band position t (lens = the Lens strength): only the outer
 // part of the bezel, so labels inside the glass keep the blur behind them.
+// Premultiplied c seen through a glass body: saturated by 1 + v.x and darkened by 1 - v.y; v = 0 returns c.rgb.
+vec3 glass_vibrancy(vec4 c, vec2 v) {
+  float luma = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+  return clamp(mix(vec3(luma), c.rgb, 1.0 + v.x) * (1.0 - v.y), 0.0, c.a);
+}
+
 float lens_cover(float t, float lens) { return min(1.6 * lens, 1.0) * smoothstep(0.45, 1.0, t); }
 
 // Whole-surface magnification of small glass at full lens (main() cannot see the token defines, appended after it).
@@ -127,11 +133,20 @@ float rim_facing(vec2 normal, float near) {
   return min(0.1 + pow(max(l, 0.0), 2.0) + 0.75 * pow(max(-l, 0.0), 2.0) + TOKEN_LENS_RIM_POINTER_BOOST * near, 1.2);
 }
 
+// How much the rim line of refracting glass (on = 1) darkens a bezel pixel: TOKEN_LENS_RIM_SHADE where no key light
+// faces the edge, none where one does; the pointer light is left out, so its glint stays bright.
+float glass_shade(float on, float d, float scale, vec2 normal) {
+  float line = clamp(1.0 + (d + 0.5) / (TOKEN_LENS_RIM_WIDTH * scale), 0.0, 1.0);
+  float l = dot(normal, vec2(-0.70710678));
+  float lit = pow(max(l, 0.0), 2.0) + 0.75 * pow(max(-l, 0.0), 2.0);
+  return on * TOKEN_LENS_RIM_SHADE * line * (1.0 - min(lit, 1.0));
+}
+
 // The specular light of a bezel pixel at signed distance d (px) in a band `band` px wide: the rim (rim_edge) over a
 // glow that fills the outer half of the band, lit by rim_facing.
 float glass_specular(float shine, float d, float band, float scale, vec2 normal, float near) {
   float glow = clamp(1.0 + 2.0 * d / band, 0.0, 1.0);
-  return shine * (0.08 * (1.0 + 4.0 * near) * glow * glow + 0.45 * rim_edge(d, scale)) * rim_facing(normal, near);
+  return shine * (0.08 * (1.0 + 4.0 * near) * glow * glow + 0.6 * rim_edge(d, scale)) * rim_facing(normal, near);
 }
 
 #ifdef CORNER_FLARES

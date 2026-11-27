@@ -41,8 +41,9 @@ namespace glass {
   // The palette a kind's glass and content take. Dark: dark glass with white content in both schemes.
   enum class Tone : std::uint8_t { Scheme, Dark };
 
-  // Liquid's blur recipe lifts the backdrop by this brightness factor (no frost dimming, no grain).
-  extern const float kLiquidLift;
+  // Liquid and Clear glass (refraction > 0) shows the backdrop as a glass body: {saturation gain, dim}, the backdrop
+  // saturated by 1 + gain and darkened by 1 - dim before the tint.
+  extern const float kVibrancy[2];
   // Glass shapes of one surface with the same material join by a smooth union within this many logical px, so shapes
   // that move together merge and split like one liquid (gaps under about half of it bridge).
   extern const float kMergeReach;

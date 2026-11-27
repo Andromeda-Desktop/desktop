@@ -179,6 +179,7 @@ struct tex_shader {
     struct shader_corner_radii clip_radius;
     GLint liquid;
     GLint rim;
+    GLint vibrancy;
     GLint lens;
     GLint lens_tex;
     GLint liquid_texel;
@@ -289,6 +290,7 @@ struct blur2_composite_shader {
   struct {
     GLint liquid;
     GLint rim;
+    GLint vibrancy;
     GLint lens;
     GLint lens_tex;
     GLint tint_mix;
