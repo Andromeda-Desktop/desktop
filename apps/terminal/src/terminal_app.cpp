@@ -246,9 +246,6 @@ namespace term {
   // One Preferences window per app: a second Ctrl+, raises it.
   void TerminalApp::chooseSaveFile(AppWindow& window, const std::string& suggested,
                                    std::function<void(std::optional<std::filesystem::path>)> picked) {
-    if (bus() == nullptr) {
-      return;
-    }
     if (m_chooser == nullptr) {
       m_chooser = std::make_unique<desk::FileChooser>(bus());
     }
@@ -285,9 +282,6 @@ namespace term {
                   },
               .importPackage =
                   [this] {
-                    if (bus() == nullptr) {
-                      return;
-                    }
                     if (m_chooser == nullptr) {
                       m_chooser = std::make_unique<desk::FileChooser>(bus());
                     }
