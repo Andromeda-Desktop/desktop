@@ -76,6 +76,8 @@ namespace term {
   }
   // The alpha of the grid background: 0 over a theme scene, the Sheet glass tint on glass content, else 1.
   [[nodiscard]] float backgroundAlpha(const Settings& settings, const ThemeSpec& theme);
+  // The plane a session's content lies on: the theme's view colour at backgroundAlpha.
+  [[nodiscard]] ColorSpec contentSurface(const Settings& settings, const ThemeSpec& theme);
   // The grid font family list: the user's font, else the theme's, then the mono token.
   [[nodiscard]] std::string gridFont(const Settings& settings, const ThemeSpec& theme);
 

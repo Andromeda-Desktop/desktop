@@ -342,14 +342,16 @@ namespace term {
     return Style::glassTint(glass::Kind::Sheet, Tokens::componentTerminalGlassAlpha);
   }
 
-  float TerminalView::backgroundAlpha() const { return term::backgroundAlpha(m_settings, m_theme); }
-
-  ColorSpec TerminalView::surface() const {
-    // From the current scheme, not m_background: the window reads this before build() refreshes the palette.
-    Color color = themePalette(m_theme).view;
-    color.a = backgroundAlpha();
+  ColorSpec contentSurface(const Settings& settings, const ThemeSpec& theme) {
+    Color color = themePalette(theme).view;
+    color.a = backgroundAlpha(settings, theme);
     return fixedColorSpec(color);
   }
+
+  float TerminalView::backgroundAlpha() const { return term::backgroundAlpha(m_settings, m_theme); }
+
+  // From the current scheme, not m_background: the window reads this before build() refreshes the palette.
+  ColorSpec TerminalView::surface() const { return contentSurface(m_settings, m_theme); }
 
   void TerminalView::setGridFont() {
     const std::string family = gridFont(m_settings, m_theme);

@@ -66,7 +66,9 @@ namespace term {
     bool key(const KeyboardEvent& event) override;
     void setWindowActive(bool /*active*/) override {}
     [[nodiscard]] InputArea* focusArea() const noexcept override;
-    [[nodiscard]] ColorSpec surface() const override { return colorSpecFromRole(ColorRole::View); }
+    [[nodiscard]] ColorSpec surface() const override { return m_surface; }
+    // The plane the terminal sessions lie on (term::contentSurface), so both kinds of session read as one window.
+    void setSurface(const ColorSpec& surface);
 
   private:
     [[nodiscard]] std::size_t itemCount() const override;
@@ -127,6 +129,7 @@ namespace term {
     agent::Host& m_host;
     std::uint64_t m_key;
     float m_scale = 1.0F;
+    ColorSpec m_surface = colorSpecFromRole(ColorRole::View);
     float m_lastWidth = 0.0F; // the width of the item being built
     Flex* m_root = nullptr;
     Flex* m_composer = nullptr;

@@ -1421,6 +1421,13 @@ namespace term {
     return outer;
   }
 
+  void AgentView::setSurface(const ColorSpec& surface) {
+    m_surface = surface;
+    if (m_root != nullptr) {
+      m_root->setFill(surface);
+    }
+  }
+
   std::unique_ptr<Node> AgentView::build(Renderer& /*renderer*/, float uiScale, float /*deviceScale*/, float width,
                                          float height) {
     m_scale = uiScale;
@@ -1429,7 +1436,7 @@ namespace term {
     root->setDirection(FlexDirection::Vertical);
     root->setAlign(FlexAlign::Stretch);
     root->setSize(width, height);
-    root->setFill(colorSpecFromRole(ColorRole::View));
+    root->setFill(m_surface);
     m_root = root.get();
     root->addChild(ui::virtualListView({.out = &m_log, .contentScale = s, .adapter = this, .flexGrow = 1.0F}));
     m_log->scrollView().setStickToBottom(true);
@@ -1504,7 +1511,7 @@ namespace term {
     // The log fades out under the title band: the band has no edge of its own, it is the same plane.
     auto fade = std::make_unique<RectNode>();
     fade->setParticipatesInLayout(false);
-    const Color plane = resolveColorSpec(colorSpecFromRole(ColorRole::View), root.get());
+    const Color plane = resolveColorSpec(m_surface, root.get());
     const Color clear{plane.r, plane.g, plane.b, 0.0F};
     fade->setStyle(RoundedRectStyle{.fill = plane,
                                     .border = clearColor(),

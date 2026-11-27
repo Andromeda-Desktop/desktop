@@ -618,6 +618,8 @@ namespace term {
       terminal->applySettings(settings, resolveTheme(settings.theme, m_settings.themes()));
     } else if (AgentView* agent = moved.view->agent(); agent != nullptr) {
       agent->setOpenUri([this](const std::string& uri) { openUri(uri); });
+      const Settings settings = viewSettings();
+      agent->setSurface(contentSurface(settings, resolveTheme(settings.theme, m_settings.themes())));
     }
     if (moved.secret) {
       m_secretSessions.insert(id);
@@ -707,6 +709,8 @@ namespace term {
       }
       auto agentView = std::make_unique<AgentView>(host, key);
       agentView->setOpenUri([this](const std::string& uri) { openUri(uri); });
+      const Settings settings = viewSettings();
+      agentView->setSurface(contentSurface(settings, resolveTheme(settings.theme, m_settings.themes())));
       m_views.push_back({id, std::move(agentView)});
       apply(session_event::Open{id, SessionKind::Agent, std::string(agent::info(fresh->kind).name), shownPath(cwd)});
       return id;
@@ -1107,9 +1111,12 @@ namespace term {
 
   void TerminalWindow::applyViewSettings() {
     const Settings settings = viewSettings();
+    const ThemeSpec theme = resolveTheme(settings.theme, m_settings.themes());
     for (Session& session : m_views) {
       if (auto* terminal = dynamic_cast<TerminalView*>(session.view.get())) {
-        terminal->applySettings(settings, resolveTheme(settings.theme, m_settings.themes()));
+        terminal->applySettings(settings, theme);
+      } else if (AgentView* agent = session.view->agent(); agent != nullptr) {
+        agent->setSurface(contentSurface(settings, theme));
       }
     }
   }
