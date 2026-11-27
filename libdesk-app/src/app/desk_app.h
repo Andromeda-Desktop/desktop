@@ -90,6 +90,10 @@ public:
   [[nodiscard]] StateStore& state() noexcept { return m_state; }
   // Null when the session bus is not reachable.
   [[nodiscard]] SessionBus* bus() noexcept { return m_services != nullptr ? m_services->bus() : nullptr; }
+  // Shows the files (absolute paths), selected, in the desktop's file manager.
+  void showInFolder(const std::vector<std::string>& paths) {
+    if (m_services != nullptr) m_services->showInFolder(paths);
+  }
 
   // A new window that the app owns; it is destroyed after its close, and the app quits after the last one.
   AppWindow& addWindow(AppWindow::Config config);

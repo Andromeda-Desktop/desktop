@@ -36,6 +36,8 @@ public:
   [[nodiscard]] virtual bool holdMotion() const = 0;
   // Null when the platform has no session bus or it is not reachable.
   [[nodiscard]] virtual SessionBus* bus() = 0;
+  // Shows the files (absolute paths), selected, in the desktop's file manager.
+  virtual void showInFolder(const std::vector<std::string>& paths) = 0;
 };
 
 // singleInstance false: claim() always takes the launch.

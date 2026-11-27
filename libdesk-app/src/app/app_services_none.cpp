@@ -1,5 +1,7 @@
 #include "app/app_services.h"
 
+void showInFinder(const std::vector<std::string>& paths); // show_in_finder_macos.mm
+
 namespace {
   // No session services: every launch runs alone, with the default appearance.
   class NoServices final : public AppServices {
@@ -13,6 +15,7 @@ namespace {
     [[nodiscard]] float textScale() const override { return 1.0F; }
     [[nodiscard]] bool holdMotion() const override { return false; }
     [[nodiscard]] SessionBus* bus() override { return nullptr; }
+    void showInFolder(const std::vector<std::string>& paths) override { showInFinder(paths); }
   };
 } // namespace
 

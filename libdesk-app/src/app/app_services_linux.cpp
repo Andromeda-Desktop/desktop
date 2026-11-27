@@ -10,7 +10,10 @@
 #include "dbus/session_bus.h"
 #include "dbus/session_bus_poll_source.h"
 
+#include <cctype>
 #include <dlfcn.h>
+#include <format>
+#include <sdbus-c++/sdbus-c++.h>
 
 namespace {
   constexpr Logger kLog("app");
@@ -72,11 +75,36 @@ namespace {
     [[nodiscard]] bool holdMotion() const override { return m_appearance->holdMotion(); }
     [[nodiscard]] SessionBus* bus() override { return m_bus.get(); }
 
+    void showInFolder(const std::vector<std::string>& paths) override {
+      if (m_bus == nullptr) return;
+      std::vector<std::string> uris;
+      for (const std::string& path : paths) {
+        std::string uri = "file://";
+        for (const unsigned char c : path) {
+          if (std::isalnum(c) != 0 || c == '/' || c == '-' || c == '_' || c == '.' || c == '~') {
+            uri += static_cast<char>(c);
+          } else {
+            uri += std::format("%{:02X}", c);
+          }
+        }
+        uris.push_back(std::move(uri));
+      }
+      if (m_fileManager == nullptr) {
+        m_fileManager = sdbus::createProxy(m_bus->connection(), sdbus::ServiceName{"org.freedesktop.FileManager1"},
+                                           sdbus::ObjectPath{"/org/freedesktop/FileManager1"});
+      }
+      m_fileManager->callMethodAsync("ShowItems").onInterface("org.freedesktop.FileManager1").withArguments(uris, std::string())
+          .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+            if (error) kLog.warn("ShowItems: {}", error->getMessage());
+          });
+    }
+
   private:
     std::string m_name;
     Callbacks m_callbacks;
     std::unique_ptr<SessionBus> m_bus;
     std::unique_ptr<SessionBusPollSource> m_busSource;
+    std::unique_ptr<sdbus::IProxy> m_fileManager;
     std::unique_ptr<Appearance> m_appearance; // after the bus: it uses it
     std::unique_ptr<AtspiPollSource> m_atspi;
     std::unique_ptr<SingleInstance> m_instance;

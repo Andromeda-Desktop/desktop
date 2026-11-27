@@ -58,7 +58,8 @@ if is_wayland
   )
 else
   add_languages('objcpp', native: false)
-  _platform_sources = files('src/app/app_notifier_macos.mm', 'src/app/app_notifier_macos_app.cpp', 'src/app/app_services_none.cpp', 'src/app/file_chooser_macos.mm')
+  _platform_sources = files('src/app/app_notifier_macos.mm', 'src/app/app_notifier_macos_app.cpp', 'src/app/app_services_none.cpp', 'src/app/file_chooser_macos.mm',
+    'src/app/show_in_finder_macos.mm')
   _deps += dependency('appleframeworks', modules: ['AppKit', 'UserNotifications'])
 endif
 
@@ -102,7 +103,7 @@ if get_option('devel') and not meson.is_subproject()
     _dev_protocols += meson.current_source_dir() / 'subprojects/libdesk-system/protocols'
     _dev_private = ['-ldl', '-pthread']
   else
-    _dev_private = ['-Wl,-framework,AppKit', '-Wl,-framework,QuartzCore', '-Wl,-framework,UserNotifications']
+    _dev_private = [] # meson adds the AppKit, QuartzCore and UserNotifications frameworks of the dependencies
   endif
   _dev_lib = static_library('andromeda-desk',
     link_whole: _dev_whole,
