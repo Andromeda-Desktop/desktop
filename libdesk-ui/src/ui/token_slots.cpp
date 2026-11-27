@@ -6,9 +6,12 @@
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <optional>
+#include <ranges>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace desk::tokens {
 
@@ -29,9 +32,10 @@ namespace desk::tokens {
       const auto* text = std::get_if<std::string>(&value);
       switch (slot.kind) {
       case 'f':
-        return number != nullptr;
+        return number != nullptr && std::isfinite(*number);
       case 'i':
-        return number != nullptr && std::trunc(*number) == *number;
+        return number != nullptr && std::trunc(*number) == *number && *number >= std::numeric_limits<int>::min() &&
+               *number <= std::numeric_limits<int>::max();
       case 'b':
         return std::holds_alternative<bool>(value);
       case 'c':
@@ -105,16 +109,30 @@ namespace desk::tokens {
     }
 
     static std::unordered_map<std::string_view, std::string> strings; // s slots point into these
+    // A derived slot whose sources all keep their built-in values keeps its built-in value exactly (float rounding).
+    std::unordered_set<std::string_view> changed;
+    const auto readsChanged = [&](std::string_view expr) {
+      for (const auto term : std::views::split(expr, ' ')) {
+        if (changed.contains(std::string_view(term).substr(1))) {
+          return true;
+        }
+      }
+      return false;
+    };
     for (const auto& slot : Tokens::slots()) {
       const auto given = values.find(slot.path);
       if (given == values.end()) {
         if (slot.kind == 's') {
           *static_cast<std::string_view*>(slot.ptr) = slot.text;
+        } else if (!slot.expr.empty() && readsChanged(slot.expr)) {
+          writeNumber(slot, evaluate(slot.expr, byPath));
+          changed.insert(slot.path);
         } else {
-          writeNumber(slot, slot.expr.empty() ? slot.number : evaluate(slot.expr, byPath));
+          writeNumber(slot, slot.number);
         }
         continue;
       }
+      changed.insert(slot.path);
       const SlotValue& value = given->second;
       if (slot.kind == 's') {
         *static_cast<std::string_view*>(slot.ptr) = strings[slot.path] = std::get<std::string>(value);

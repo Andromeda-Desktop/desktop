@@ -51,8 +51,10 @@ def evaluate(tokens, expr, where, seen):
     return float(total)
 
 
-def refs_of(expr):
+def refs_of(expr, where=""):
     m = EXPR.fullmatch(expr.strip())
+    if not m:
+        sys.exit(f"{where}: bad or circular expression {expr!r}")
     return [("+", m.group(1))] + re.findall(r"([-+])\s*([a-z0-9_.]+)", m.group(2))
 
 
@@ -79,7 +81,7 @@ def themable_paths(raw, vocabulary):
     exprs = {p: lookup(raw, p) for p in leaves(raw, ()) if isinstance(lookup(raw, p), str) and lookup(raw, p).startswith("=")}
     themable = set(base)
     while True:
-        grown = {p for p, e in exprs.items() if p not in themable and any(r in themable for _, r in refs_of(e))}
+        grown = {p for p, e in exprs.items() if p not in themable and any(r in themable for _, r in refs_of(e, p))}
         if not grown:
             return themable, exprs
         themable |= grown

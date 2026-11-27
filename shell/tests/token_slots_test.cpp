@@ -2,6 +2,7 @@
 #include "ui/token_slots.h"
 
 #include <algorithm>
+#include <limits>
 #include <print>
 #include <string>
 
@@ -49,8 +50,17 @@ namespace {
     expect(!applySlotValues({{"component.sheet.radius", 30.0}, {"zz.unknown", 1.0}}), "an unknown token is refused");
     expect(!applySlotValues({{"component.sheet.radius", 30.0}, {"scheme.dark.accent", std::string("#fff")}}),
            "a short colour is refused");
-    expect(!applySlotValues({{"component.sheet.radius", 30.0}, {"component.launcher.columns", 2.5}}),
-           "a fraction for an int token is refused");
+    // Release builds have no themable int slot; dev builds have many.
+    const auto& slots = Tokens::slots();
+    if (const auto* integer = std::ranges::find(slots, 'i', &Tokens::Slot::kind); integer != slots.end()) {
+      const std::string path(integer->path);
+      for (const double bad : {2.5, 1e12}) {
+        const auto refused = applySlotValues({{"component.sheet.radius", 30.0}, {path, bad}});
+        expect(!refused && refused.error().find("wrong value type") != std::string::npos, "a bad int is refused");
+      }
+    }
+    const auto infinite = applySlotValues({{"component.sheet.radius", std::numeric_limits<double>::infinity()}});
+    expect(!infinite && infinite.error().find("wrong value type") != std::string::npos, "an infinite float is refused");
     expect(Tokens::componentSheetRadius == 21.0F, "a refused set leaves every token as it was");
   }
 
