@@ -4,6 +4,7 @@
 #include "app/app_lifecycle.h"
 #include "app/app_loop.h"
 #include "app/app_services.h"
+#include "app/app_updater.h"
 #include "app/app_window.h"
 #include "app/command_table.h"
 #include "app/state_store.h"
@@ -32,6 +33,8 @@ public:
     bool singleInstance = true; // false: every launch runs alone and claims no D-Bus name (a per-request helper)
     // false: no GL context for texture caches (loop().gl()); saves a Mesa context (~1 MB) and its thread.
     bool sharedGl = true;
+    // The self-update manifest URL (macOS bundles with the update helper); empty: no update checks.
+    std::string updateManifest;
   };
 
   explicit DeskApp(Info info);
@@ -137,6 +140,8 @@ private:
   void routeKey(const KeyboardEvent& event);
   [[nodiscard]] AppWindow* windowFor(const Surface* surface) const;
   void reapClosed();
+  // Puts the Restart row in the window's header while a verified update waits.
+  void showUpdate(AppWindow& window);
   void onLifecycle(LifecycleEvent event);
   void releaseLease();
   // Reopens every window on the compositor that took over the socket; false when none did.
@@ -160,6 +165,7 @@ private:
   StateStore m_state;
   CommandTable m_commands;
   std::vector<std::unique_ptr<AppWindow>> m_windows;
+  std::unique_ptr<AppUpdater> m_updater; // after m_loop: its timer and pipe watch leave the loop first
   Timer m_serviceQuit; // a D-Bus activation start whose request never came
   Lifecycle m_lifecycle = Lifecycle::Active;
   Timer m_hiddenQuit;

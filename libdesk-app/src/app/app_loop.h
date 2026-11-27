@@ -41,6 +41,8 @@ public:
   // The caller keeps ownership; remove a source before it is destroyed.
   void addSource(PollSource* source);
   void removeSource(PollSource* source);
+  // For an FdWatch, which joins and leaves the loop itself.
+  [[nodiscard]] PollLoop& pollLoop() noexcept { return m_loop; }
 
   // Runs on a compositor hangup inside run(): true when the app reconnected, false to end run() with 0.
   void setDisconnectHandler(std::function<bool()> handler) { m_onDisconnect = std::move(handler); }

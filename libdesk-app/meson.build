@@ -48,6 +48,7 @@ if is_wayland
   _platform_sources = files(
     'src/app/app_notifier_dbus.cpp',
     'src/app/app_services_linux.cpp',
+    'src/app/app_updater_none.cpp',
     'src/app/appearance.cpp',
     'src/app/file_chooser.cpp',
     'src/app/single_instance.cpp',
@@ -58,7 +59,7 @@ if is_wayland
   )
 else
   add_languages('objcpp', native: false)
-  _platform_sources = files('src/app/app_notifier_macos.mm', 'src/app/app_notifier_macos_app.cpp', 'src/app/app_services_none.cpp', 'src/app/file_chooser_macos.mm',
+  _platform_sources = files('src/app/app_notifier_macos.mm', 'src/app/app_notifier_macos_app.cpp', 'src/app/app_services_none.cpp', 'src/app/app_updater_macos.cpp', 'src/app/file_chooser_macos.mm',
     'src/app/show_in_finder_macos.mm')
   _deps += dependency('appleframeworks', modules: ['AppKit', 'UserNotifications'])
 endif
@@ -184,7 +185,7 @@ executable('desk-app-sample', 'examples/sample_app.cpp',
 )
 
 _dbus_run_session = find_program('dbus-run-session')
-foreach _t : ['app_lifecycle', 'shown_timer', 'file_watcher', 'notice_keys', 'command_table', 'state_store', 'file_model', 'type_ahead', 'thumbnail_pipeline', 'batch_rename', 'file_model_bench', 'thumbnail_service', 'glib_source']
+foreach _t : ['app_lifecycle', 'app_update', 'shown_timer', 'file_watcher', 'notice_keys', 'command_table', 'state_store', 'file_model', 'type_ahead', 'thumbnail_pipeline', 'batch_rename', 'file_model_bench', 'thumbnail_service', 'glib_source']
   test(_t, executable(_t + '_test', 'tests/' + _t + '_test.cpp', dependencies: desk_app_dep, cpp_args: _warnings))
 endforeach
 # The zygote's g_thread_new interposer restarts Pango's worker in each child; the executable must export it.

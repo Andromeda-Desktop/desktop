@@ -253,6 +253,10 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
       cap->addChild(std::move(parts.trail));
     }
     if (r.y == 0.0F && r.x + r.width == right) {
+      // Split cards are narrow: the caption takes the icon-only fold.
+      if (auto update = m_window.buildUpdateButton(true)) {
+        cap->addChild(std::move(update));
+      }
       auto buttons = m_window.buildWindowButtons();
       card.buttons = buttons.get();
       cap->addChild(std::move(buttons));

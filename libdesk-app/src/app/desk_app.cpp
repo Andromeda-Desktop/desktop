@@ -165,6 +165,9 @@ int DeskApp::run(int argc, char* argv[]) {
   }
   if (!exit) {
     exit = m_loop.run();
+    if (m_updater != nullptr) {
+      m_updater->quit();
+    }
     shutdown();
   }
   beginProcessExit();
@@ -250,6 +253,10 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   m_loop.display().setReopenCallback([this] { activate(""); });
   m_loop.display().setQuitCallback([this](Display::Quit how) {
     if (how == Display::Quit::Now) {
+      // The process ends inside this call (logout): a ready update still installs after the exit.
+      if (m_updater != nullptr) {
+        m_updater->quit();
+      }
       m_state.flush();
     } else {
       quit(0);
@@ -268,6 +275,11 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   m_loop.display().setKeyboardEventCallback([this](const KeyboardEvent& event) { routeKey(event); });
 
   startup();
+  m_updater = makeAppUpdater(m_loop, m_info.updateManifest, [this](const std::string& /*version*/) {
+    for (const auto& w : m_windows) {
+      showUpdate(*w);
+    }
+  });
   const char* token = std::getenv("XDG_ACTIVATION_TOKEN");
   const std::string launchToken = token != nullptr ? token : "";
   unsetenv("XDG_ACTIVATION_TOKEN");
@@ -318,7 +330,23 @@ AppWindow& DeskApp::addWindow(AppWindow::Config config) {
     window.setUiScale(m_services->uiScale());
     window.setSceneHeld(m_services->holdMotion());
   }
+  showUpdate(window);
   return window;
+}
+
+void DeskApp::showUpdate(AppWindow& window) {
+  std::optional<std::string> version = m_updater != nullptr ? m_updater->readyVersion() : std::nullopt;
+  if (!version) {
+    return;
+  }
+  window.setUpdateReady(std::move(*version), [this] {
+    DeferredCall::callLaterIfAlive(m_self, [this] {
+      // As app.quit: a window that refuses asks its user first; Restart again after that.
+      if (std::ranges::all_of(m_windows, [](const auto& w) { return w->closeAllowed(); }) && m_updater->restart()) {
+        quit(0);
+      }
+    });
+  });
 }
 
 void DeskApp::closeWindow(AppWindow& window) {

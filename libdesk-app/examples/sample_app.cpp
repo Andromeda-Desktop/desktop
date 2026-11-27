@@ -1,10 +1,12 @@
 // desk-app-sample: the smallest libdesk-app app. One window with a counter kept in the app state, so a kill and
 // a relaunch show the restored window size, maximized state and count (tests/e2e/app_state_restore.sh).
+// DESK_SAMPLE_UPDATE=<version> shows the header's Restart to Update button for a screenshot.
 #include "app/desk_app.h"
 #include "ui/builders.h"
 #include "ui/controls/flex.h"
 #include "ui/palette.h"
 
+#include <cstdlib>
 #include <format>
 
 namespace {
@@ -15,7 +17,11 @@ namespace {
 
   protected:
     AppWindow& createWindow() override {
-      AppWindow& window = addWindow({.width = 720, .height = 480});
+      const char* update = std::getenv("DESK_SAMPLE_UPDATE");
+      AppWindow& window = addWindow({.width = 720, .height = 480, .moreMenu = update != nullptr});
+      if (update != nullptr) {
+        window.setUpdateReady(update, [] {});
+      }
       window.setContentBuilder([this, &window](Renderer& /*renderer*/, float /*width*/, float /*height*/) {
         const int clicks = state().get<int>("/sample/clicks", 0);
         auto content = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = 12.0F, .flexGrow = 1.0F});

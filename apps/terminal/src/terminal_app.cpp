@@ -29,7 +29,11 @@ namespace term {
   } // namespace
 
   TerminalApp::TerminalApp()
-      : DeskApp({.id = kAppId, .name = "Terminal", .sharedGl = false}),
+      : DeskApp({.id = kAppId,
+                 .name = "Terminal",
+                 .sharedGl = false,
+                 .updateManifest = "https://github.com/Andromeda-Desktop/desktop/releases/latest/download/"
+                                   "Andromeda-Terminal-macos-arm64.json"}),
         m_workspaces([this] { workspacesChanged(); }),
         m_windowWorkspaces({.put = [this](const std::string& name, const std::string& root) {
                               return m_workspaces.put({.name = name, .root = root}, [this](std::uint32_t req, std::optional<std::uint64_t> id) {

@@ -105,6 +105,10 @@ namespace {
     float accessoryMin = 0.0F; // the accessory's own minimum; fit() lowers it so the row never overflows
     float titleMin = 0.0F;     // the title keeps this much (or its natural width) before the accessory folds more
     std::function<AppWindow::HeaderAccessoryWidths(Renderer&)> accessoryWidths;
+    // The Restart to Update button and its icon-only fold; fit() shows the fold once the title and the accessory
+    // floor no longer fit beside the labelled one.
+    Node* update = nullptr;
+    Node* updateFolded = nullptr;
 
   protected:
     void doLayout(Renderer& renderer) override {
@@ -166,6 +170,9 @@ namespace {
         if (!child->visible() || !child->participatesInLayout()) {
           continue;
         }
+        if (child.get() == update || child.get() == updateFolded) {
+          continue;
+        }
         ++shown;
         if (child.get() == titleRow) {
           used += titleRow->paddingLeft();
@@ -175,15 +182,26 @@ namespace {
           used += child->measure(renderer, {}).width;
         }
       }
+      const bool fitUpdate = update != nullptr && update->participatesInLayout();
+      if (fitUpdate) {
+        ++shown;
+      }
       used += gap() * static_cast<float>(std::max(0, shown - 1));
+      title->setMaxWidth(0.0F);
+      const float natural = static_cast<Node*>(title)->measure(renderer, {}).width;
+      const AppWindow::HeaderAccessoryWidths widths =
+          flex != nullptr && accessoryWidths ? accessoryWidths(renderer) : AppWindow::HeaderAccessoryWidths{};
+      if (fitUpdate) {
+        const float wide = update->measure(renderer, {}).width;
+        const bool fold = w - used - wide < std::min(natural, titleMin) + widths.floor;
+        update->setVisible(!fold);
+        updateFolded->setVisible(fold);
+        used += fold ? updateFolded->measure(renderer, {}).width : wide;
+      }
       // Narrow windows: the accessory gives up room down to nothing before the title drops under its minimum, and
       // the window buttons never leave the row.
       float allowed = 0.0F;
       if (flex != nullptr) {
-        title->setMaxWidth(0.0F);
-        const float natural = static_cast<Node*>(title)->measure(renderer, {}).width;
-        const AppWindow::HeaderAccessoryWidths widths =
-            accessoryWidths ? accessoryWidths(renderer) : AppWindow::HeaderAccessoryWidths{};
         const float room = w - used - natural;
         const float spare = w - used - std::min(natural, titleMin);
         if (room >= std::max(widths.keep, accessoryMin)) {
@@ -1360,6 +1378,43 @@ std::unique_ptr<Node> AppWindow::buildSidebarToggle() {
   });
 }
 
+void AppWindow::setUpdateReady(std::string version, std::function<void()> onRestart) {
+  m_updateVersion = std::move(version);
+  m_onUpdateRestart = std::move(onRestart);
+  requestRebuild();
+}
+
+std::unique_ptr<Node> AppWindow::buildUpdateButton(bool folded) {
+  if (!m_updateVersion) {
+    return nullptr;
+  }
+  const float s = m_uiScale;
+  const float side = Tokens::sizeControlS * s;
+  // Small secondary button (rulebook 9.5): fill_2, hover and pressed fill_3; the accent_text glyph stays legible.
+  const Button::ButtonStateColors idle{.bg = colorSpecFromRole(ColorRole::Fill2),
+                                       .border = colorSpecFromRole(ColorRole::Stroke),
+                                       .label = colorSpecFromRole(ColorRole::Label1)};
+  const Button::ButtonStateColors lit{.bg = colorSpecFromRole(ColorRole::Fill3), .border = clearColorSpec(),
+                                      .label = idle.label};
+  const Button::ButtonPalette colors{.borderWidth = Style::borderWidth, .normal = idle, .hover = lit, .pressed = lit,
+                                      .disabled = idle};
+  auto button = ui::button({
+      .text = folded ? std::nullopt : std::optional(i18n::tr("desk.window.update-restart")),
+      .glyph = std::string("circle-arrow-down"),
+      .fontSize = Tokens::typeFootnote.size * s,
+      .glyphSize = Tokens::sizeSymbolInline * s,
+      .controlHeight = side,
+      .customPalette = colors,
+      .tooltip = i18n::tr("desk.window.update-ready", "version", *m_updateVersion),
+      .paddingH = folded ? 0.0F : Tokens::spaceP8 * s,
+      .radius = Tokens::radiusR8 * s,
+      .width = folded ? std::optional(side) : std::nullopt,
+      .onClick = [this] { m_onUpdateRestart(); },
+  });
+  button->setGlyphColor(colorSpecFromRole(ColorRole::AccentText));
+  return button;
+}
+
 std::unique_ptr<Node> AppWindow::buildWindowButtons() {
   const float s = m_uiScale;
   auto buttons = ui::row({.align = FlexAlign::Center, .gap = kWindowButtonGap * s, .paddingH = (kWindowButtonInset - kNavInset) * s});
@@ -1522,6 +1577,12 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
   } else {
     header->addChild(ui::row({.flexGrow = 1.0F}));
   }
+  m_updateButtons[0] = m_updateButtons[1] = nullptr;
+  if (auto update = buildUpdateButton(false)) {
+    header->update = m_updateButtons[0] = header->addChild(std::move(update));
+    header->updateFolded = m_updateButtons[1] = header->addChild(buildUpdateButton(true));
+    header->updateFolded->setVisible(false);
+  }
   m_moreButton = nullptr;
   if (m_config.moreMenu) {
     const ColorSpec clear = clearColorSpec();
@@ -1589,6 +1650,15 @@ void AppWindow::applyHeaderSearchMode() {
     if (node != nullptr) {
       node->setVisible(!m_headerSearch);
       node->setParticipatesInLayout(!m_headerSearch);
+    }
+  }
+  // Out of the row while searching; fit() picks the labelled button or the fold again after it.
+  for (Node* node : m_updateButtons) {
+    if (node != nullptr) {
+      node->setParticipatesInLayout(!m_headerSearch);
+      if (m_headerSearch) {
+        node->setVisible(false);
+      }
     }
   }
   applyCaption();

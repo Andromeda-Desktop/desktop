@@ -317,6 +317,11 @@ void Button::setGlyphSize(float size) {
   m_glyph->setGlyphSize(size);
 }
 
+void Button::setGlyphColor(ColorSpec color) {
+  m_glyphColor = color;
+  applyColors(m_displayedBg, m_displayedBorder, m_displayedLabel);
+}
+
 void Button::setControlHeight(float height) {
   const float pinned = std::max(1.0F, height);
   setMinHeight(pinned);
@@ -679,7 +684,7 @@ void Button::applyColors(const Color& bg, const Color& border, const Color& labe
     m_label->setColor(label);
   }
   if (m_glyph != nullptr) {
-    m_glyph->setColor(label);
+    m_glyph->setColor(m_glyphColor && m_enabled ? resolveColorSpec(*m_glyphColor, this) : label);
   }
   for (const auto& child : children()) {
     if (child.get() == m_label || child.get() == m_glyph || child.get() == m_badge || child.get() == m_checkBadge

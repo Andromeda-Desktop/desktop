@@ -7987,6 +7987,8 @@
       "quit": "Quit",
       "session-menu": "Session menu",
       "sidebar": "Sidebar",
+      "update-ready": "Version {version} is ready.",
+      "update-restart": "Restart to Update",
       "zoom": "Zoom"
     },
     "menu": {

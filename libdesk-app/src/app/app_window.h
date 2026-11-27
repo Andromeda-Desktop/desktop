@@ -231,6 +231,11 @@ public:
   // The sidebar button (config sidebarToggle); nullptr when the window has none.
   [[nodiscard]] std::unique_ptr<Node> buildSidebarToggle();
   [[nodiscard]] std::unique_ptr<Node> buildHeaderAccessory() { return m_headerAccessory ? m_headerAccessory() : nullptr; }
+  // A verified update waits: the header (and the top-right split caption) shows Restart to Update; onRestart runs on
+  // click. Rebuilds the window.
+  void setUpdateReady(std::string version, std::function<void()> onRestart);
+  // The Restart to Update button, or its 24 px icon-only fold; nullptr while no update waits.
+  [[nodiscard]] std::unique_ptr<Node> buildUpdateButton(bool folded);
   // An interactive move from a pointer press with this serial.
   void beginMove(std::uint32_t serial);
   // The edit menu of a text field in this window; false when the field is not in it.
@@ -323,6 +328,9 @@ private:
   ContentBuilder m_builder;
   SidebarBuilder m_sidebarBuilder;
   std::function<std::unique_ptr<Node>()> m_headerAccessory;
+  std::optional<std::string> m_updateVersion; // the verified update that waits for Restart
+  Node* m_updateButtons[2] = {nullptr, nullptr}; // the header's labelled button and its fold
+  std::function<void()> m_onUpdateRestart;
   std::function<HeaderAccessoryWidths(Renderer&)> m_headerAccessoryWidths;
   std::function<bool(const KeyboardEvent&)> m_keyHandler;
   std::function<bool(const KeyboardEvent&)> m_firstKeyHandler;

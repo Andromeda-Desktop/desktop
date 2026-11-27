@@ -60,6 +60,8 @@ public:
   void setGlyphTrailing(bool trailing);
   void setFontSize(float size);
   void setGlyphSize(float size);
+  // The glyph's colour while enabled; without one it takes the label colour.
+  void setGlyphColor(ColorSpec color);
   // Pin the button to an exact height (e.g. Style::controlHeight) instead of the content-derived
   // default, so it can sit on the same size tier as the Select/Input controls beside it.
   void setControlHeight(float height);
@@ -141,6 +143,7 @@ private:
   void ensureBadge();
 
   Glyph* m_glyph = nullptr;
+  std::optional<ColorSpec> m_glyphColor;
   bool m_glyphTrailing = false;
   Label* m_label = nullptr;
   Flex* m_badge = nullptr;
