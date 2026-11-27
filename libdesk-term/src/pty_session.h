@@ -10,7 +10,6 @@
 #include <ghostty/vt.h>
 
 #include <atomic>
-#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -41,10 +40,11 @@ struct SpawnOptions {
   std::uint16_t cellHeightPx = 16;
 };
 
-// One shell or program on a PTY. A reader thread drains the PTY into a bounded queue while a parser
-// thread feeds the terminal, so the program keeps writing during a parse; the UI thread reads terminal state through withTerminal() once per frame.
-// The pty lives in andromeda-ptyd when it is reachable, so the program outlives a crash of this process; the reader
-// then reads the holder socket, and keys and window size still go straight to a dup of the pty master.
+// One shell or program on a PTY. One IO thread reads the PTY and feeds the terminal, so each output burst wakes one
+// thread; the kernel pty buffer or the holder buffers output during a parse. The UI thread reads terminal state through
+// withTerminal() once per frame.
+// The pty lives in andromeda-ptyd when it is reachable, so the program outlives a crash of this process; the IO
+// thread then reads the holder socket, and keys and window size still go straight to a dup of the pty master.
 class PtySession {
 public:
   // Called on the IO thread when new state is ready, at most once until takeWake().
@@ -124,11 +124,13 @@ private:
   bool spawnLocal(const SpawnOptions& options);
   void start();
   void ioLoop();
-  void ioLoopHeld(const HeldSession& held);
-  void parseLoop();
+  // Returns at EOF with the holder's wait status (held), or nullopt (local).
+  std::optional<int> readHeld(const HeldSession& held);
+  std::optional<int> readLocal(const LocalChild& local);
+  void parse(std::span<const std::uint8_t> output);
+  void finish(std::optional<int> heldStatus);
   // False when the terminal cannot be encoded yet (inside an escape sequence longer than kContinuationBytes).
   bool sendSnapshot(const HeldSession& held);
-  void endInput(std::optional<int> heldStatus);
   void signalWake();
   void flushOutbound();
   void queueOutbound(std::span<const std::uint8_t> bytes);
@@ -156,7 +158,7 @@ private:
   std::atomic<bool> m_bellPending{false};
   GhosttyTerminal m_terminal = nullptr;
   std::mutex m_termMutex;
-  // UI threads waiting for m_termMutex; the parser lets them in before it locks again (std::mutex is not fair).
+  // UI threads waiting for m_termMutex; the IO thread lets them in before it locks again (std::mutex is not fair).
   std::atomic<int> m_uiWaiting{0};
   struct UiLock {
     explicit UiLock(PtySession& s) {
@@ -177,33 +179,26 @@ private:
   // Local: the pty master. Held: a dup of the holder's master, for writes and TIOCSWINSZ only.
   int m_master = -1;
   sys::WakeFd m_ioWake;
-  // Holder socket bytes not yet decoded; the reader thread's after start().
+  // Holder socket bytes not yet decoded; the IO thread's after start().
   std::vector<std::uint8_t> m_sockBuf;
-  // Output offsets: received by the reader thread, parsed by the parser thread.
+  // Output offsets, IO thread after start().
   std::uint64_t m_received = 0;
   std::uint64_t m_parsed = 0;
+  // Attach: the holder's output after its snapshot, parsed first.
+  std::vector<std::uint8_t> m_tail;
   // Output before this offset is a replay after attach: the program got the terminal's replies to it already.
   std::uint64_t m_replayEnd = 0;
   Osc99Scanner m_osc99;
-  OscFrame m_userVar{"1337;SetUserVar=", 1024}; // parse thread; git_branch=<base64> from the shell integration
-  SixelFilter m_sixel;                 // parse thread
-  std::vector<std::uint8_t> m_unsixeled; // parse thread: one chunk after m_sixel
-  ImageFilter m_image;                 // parse thread
-  std::vector<std::uint8_t> m_unimaged; // parse thread: one chunk after m_sixel and m_image
-  TextSizeFilter m_textSize;           // parse thread
-  std::vector<std::uint8_t> m_filtered; // parse thread: one chunk after all three filters
+  OscFrame m_userVar{"1337;SetUserVar=", 1024}; // IO thread; git_branch=<base64> from the shell integration
+  SixelFilter m_sixel;                 // IO thread
+  std::vector<std::uint8_t> m_unsixeled; // IO thread: one chunk after m_sixel
+  ImageFilter m_image;                 // IO thread
+  std::vector<std::uint8_t> m_unimaged; // IO thread: one chunk after m_sixel and m_image
+  TextSizeFilter m_textSize;           // IO thread
+  std::vector<std::uint8_t> m_filtered; // IO thread: one chunk after all three filters
   std::atomic<std::uint64_t> m_grid{0}; // cols, rows, cell width, cell height: 16 bits each, from the last resize
   std::mutex m_sockMutex;
   std::thread m_io;
-  std::thread m_parser;
-
-  // PTY bytes the reader queued for the parser; m_inEof once the PTY closed.
-  std::mutex m_inMutex;
-  std::condition_variable m_inReady;
-  std::vector<std::uint8_t> m_inbound;
-  bool m_inEof = false;
-  // Held: the wait status the holder reported, set with m_inEof.
-  std::optional<int> m_heldStatus;
 
   std::mutex m_outMutex;
   std::vector<std::uint8_t> m_outbound;
@@ -214,7 +209,7 @@ private:
   std::atomic<bool> m_renderHeld{false};
   std::atomic<bool> m_stopping{false};
   std::atomic<bool> m_snapshotWanted{false};
-  bool m_snapshotRetry = false; // parser thread: a wanted snapshot failed; try again after the next output
+  bool m_snapshotRetry = false; // IO thread: a wanted snapshot failed; try again after the next output
   std::atomic<std::uint64_t> m_bytesRead{0};
   std::atomic<std::uint64_t> m_savedOffset{0};
 };

@@ -42,7 +42,6 @@ namespace {
 // Bytes the parser feeds the terminal per lock; bounds how long the UI waits for the lock.
 constexpr std::size_t kReadChunk = 64 * 1024;
 // The reader stops reading at this backlog, so the kernel blocks the program and Ctrl+C output is not far behind.
-constexpr std::size_t kInboundMax = 128 * 1024;
 // History limit, as the Ghostty app; the library default keeps a single page.
 constexpr std::size_t kScrollbackBytes = 10'000'000;
 // An unfinished escape sequence up to this size survives a holder snapshot.
@@ -91,13 +90,7 @@ PtySession::PtySession(WakeFn wake, MarkFn onMark, BellFn onBell, SecretFn onSec
 PtySession::~PtySession() {
   m_stopping = true;
   m_ioWake.signal();
-  {
-    // Under the queue lock, so the parser cannot test m_stopping and then miss this notify.
-    std::lock_guard lock(m_inMutex);
-  }
-  m_inReady.notify_all();
   if (m_io.joinable()) m_io.join();
-  if (m_parser.joinable()) m_parser.join();
   if (auto* local = std::get_if<LocalChild>(&m_link)) {
     if (m_state.load() == SessionState::Running) {
       // Closing the master hangs up the whole foreground job: a shell that traps SIGHUP still waits for it.
@@ -252,9 +245,9 @@ bool PtySession::attach(std::uint64_t id, std::uint16_t cols, std::uint16_t rows
     ::close(sock);
     return false;
   }
-  m_inbound = std::move(attached->tail);
+  m_tail = std::move(attached->tail);
   m_parsed = attached->offset;
-  m_received = attached->offset + m_inbound.size();
+  m_received = attached->offset + m_tail.size();
   m_replayEnd = m_received;
   m_master = fd;
   m_link = HeldSession{sock, id, holder::holderVersion() >= 2};
@@ -278,7 +271,6 @@ void PtySession::start() {
   }
   apply(SessionEvent::Spawned);
   m_io = std::thread([this] { ioLoop(); });
-  m_parser = std::thread([this] { parseLoop(); });
 }
 
 void PtySession::write(std::span<const std::uint8_t> bytes) {
@@ -328,16 +320,7 @@ void PtySession::flushOutbound() {
   m_outbound.erase(m_outbound.begin(), m_outbound.begin() + static_cast<std::ptrdiff_t>(done));
 }
 
-void PtySession::endInput(std::optional<int> heldStatus) {
-  {
-    std::lock_guard lock(m_inMutex);
-    m_heldStatus = heldStatus;
-    m_inEof = true;
-  }
-  m_inReady.notify_one();
-}
-
-void PtySession::ioLoopHeld(const HeldSession& held) {
+std::optional<int> PtySession::readHeld(const HeldSession& held) {
   std::vector<int> fds;
   for (;;) {
     bool wantOut;
@@ -345,23 +328,18 @@ void PtySession::ioLoopHeld(const HeldSession& held) {
       std::lock_guard lock(m_outMutex);
       wantOut = !m_outbound.empty() && m_master >= 0;
     }
-    bool full;
-    {
-      std::lock_guard lock(m_inMutex);
-      full = m_inbound.size() >= kInboundMax;
-    }
-    // A full queue leaves the socket unread; the holder then stops reading the pty, so the program blocks.
-    pollfd pfds[3] = {{full ? -1 : held.socket, POLLIN, 0}, {wantOut ? m_master : -1, POLLOUT, 0}, {m_ioWake.pollFd(), POLLIN, 0}};
+    // The socket stays unread during a parse; the holder buffers the output.
+    pollfd pfds[3] = {{held.socket, POLLIN, 0}, {wantOut ? m_master : -1, POLLOUT, 0}, {m_ioWake.pollFd(), POLLIN, 0}};
     if (::poll(pfds, 3, -1) < 0) {
       if (errno == EINTR) continue;
-      return endInput(kHolderLostStatus << 8);
+      return kHolderLostStatus << 8;
     }
     if (pfds[2].revents & POLLIN) {
       m_ioWake.drain();
-      if (m_stopping) return;
+      if (m_stopping) return std::nullopt;
     }
     if (pfds[1].revents & POLLOUT || pfds[2].revents & POLLIN) flushOutbound();
-    if (full || !(pfds[0].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+    if (!(pfds[0].revents & (POLLIN | POLLHUP | POLLERR))) continue;
     long n;
     // A short read found the socket empty; level-triggered poll reports bytes that arrive after it.
     while ((n = holder::receive(held.socket, m_sockBuf, fds, true)) > 0) {
@@ -394,19 +372,13 @@ void PtySession::ioLoopHeld(const HeldSession& held) {
       }
     }
     m_sockBuf.erase(m_sockBuf.begin(), m_sockBuf.begin() + static_cast<std::ptrdiff_t>(used));
-    {
-      std::lock_guard lock(m_inMutex);
-      m_inbound.insert(m_inbound.end(), output.begin(), output.end());
-    }
-    m_inReady.notify_one();
-    if (exited) return endInput(exited);
-    if (broken) return endInput(kHolderLostStatus << 8);
+    parse(output);
+    if (exited) return exited;
+    if (broken) return kHolderLostStatus << 8;
   }
 }
 
-void PtySession::ioLoop() {
-  if (const auto* held = std::get_if<HeldSession>(&m_link)) return ioLoopHeld(*held);
-  const int exitFd = std::get<LocalChild>(m_link).exitFd;
+std::optional<int> PtySession::readLocal(const LocalChild& local) {
   std::vector<std::uint8_t> buf(kReadChunk);
   for (;;) {
     bool wantOut;
@@ -414,22 +386,16 @@ void PtySession::ioLoop() {
       std::lock_guard lock(m_outMutex);
       wantOut = !m_outbound.empty();
     }
-    bool full;
-    {
-      std::lock_guard lock(m_inMutex);
-      full = m_inbound.size() >= kInboundMax;
-    }
-    // A full queue leaves the master out of the poll (it would report POLLHUP at once); the parser's wake
-    // resumes reading.
-    const short events = static_cast<short>((full ? 0 : POLLIN) | (wantOut ? POLLOUT : 0));
-    pollfd fds[3] = {{events != 0 ? m_master : -1, events, 0}, {m_ioWake.pollFd(), POLLIN, 0}, {exitFd, POLLIN, 0}};
+    // The master stays unread during a parse; the kernel pty buffer holds the output, then the program blocks.
+    const short events = static_cast<short>(POLLIN | (wantOut ? POLLOUT : 0));
+    pollfd fds[3] = {{m_master, events, 0}, {m_ioWake.pollFd(), POLLIN, 0}, {local.exitFd, POLLIN, 0}};
     if (::poll(fds, 3, -1) < 0) {
       if (errno == EINTR) continue;
-      break;
+      return std::nullopt;
     }
     if (fds[1].revents & POLLIN) {
       m_ioWake.drain();
-      if (m_stopping) return;
+      if (m_stopping) return std::nullopt;
     }
     if (fds[0].revents & POLLOUT || fds[1].revents & POLLIN) flushOutbound();
     if (fds[2].revents & (POLLIN | POLLHUP)) {
@@ -440,29 +406,23 @@ void PtySession::ioLoop() {
       ssize_t n = 0;
       while (queued > 0 && (n = ::read(m_master, buf.data(), buf.size())) > 0) {
         queued -= static_cast<int>(n);
-        std::lock_guard lock(m_inMutex);
-        m_inbound.insert(m_inbound.end(), buf.begin(), buf.begin() + n);
+        parse({buf.data(), static_cast<std::size_t>(n)});
       }
-      m_inReady.notify_one();
-      return endInput(std::nullopt);
+      return std::nullopt;
     }
-    if (full || !(fds[0].revents & (POLLIN | POLLHUP | POLLERR))) continue;
-    // A PTY read returns at most 4 KiB: drain up to a chunk, so a flood takes one queue lock per chunk.
+    if (!(fds[0].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+    // A PTY read returns at most 4 KiB: drain up to a chunk, so a flood parses in large batches.
     std::size_t got = 0;
     ssize_t n = 0;
     while (got < buf.size() && (n = ::read(m_master, buf.data() + got, buf.size() - got)) > 0) {
       got += static_cast<std::size_t>(n);
     }
     if (got > 0) {
-      {
-        std::lock_guard lock(m_inMutex);
-        m_inbound.insert(m_inbound.end(), buf.begin(), buf.begin() + static_cast<std::ptrdiff_t>(got));
-      }
-      m_inReady.notify_one();
+      parse({buf.data(), got});
       continue;
     }
     if (n < 0 && (errno == EAGAIN || errno == EINTR)) continue;
-    return endInput(std::nullopt);
+    return std::nullopt;
   }
 }
 
@@ -483,91 +443,91 @@ bool PtySession::sendSnapshot(const HeldSession& held) {
   return true;
 }
 
-void PtySession::parseLoop() {
-  std::vector<std::uint8_t> work;
-  for (;;) {
-    bool wasFull;
+void PtySession::parse(std::span<const std::uint8_t> output) {
+  for (std::size_t at = 0, len = 0; at < output.size(); at += len) {
+    len = std::min(kReadChunk, output.size() - at);
+    if (m_parsed < m_replayEnd) len = std::min<std::size_t>(len, m_replayEnd - m_parsed);
+    for (int waiting; (waiting = m_uiWaiting.load()) > 0;) m_uiWaiting.wait(waiting);
+    const std::span<const std::uint8_t> chunk{output.data() + at, len};
+    const bool plain = m_sixel.idle() && m_image.idle() && m_textSize.idle() && m_osc99.idle() && m_userVar.idle()
+                       && plainChunk(chunk);
+    if (!plain) {
+      m_unsixeled.clear();
+      m_sixel.feed(chunk, m_unsixeled);
+      const std::uint64_t g = m_grid.load();
+      m_unimaged.clear();
+      m_image.feed(m_unsixeled, m_unimaged,
+                   {static_cast<int>(g & 0xffff), static_cast<int>(g >> 16 & 0xffff), static_cast<int>(g >> 32 & 0xffff),
+                    static_cast<int>(g >> 48)});
+      m_filtered.clear();
+      m_textSize.feed(m_unimaged, m_filtered);
+    }
     {
-      std::unique_lock lock(m_inMutex);
-      m_inReady.wait(lock, [this] { return m_stopping || m_inEof || !m_inbound.empty() || m_snapshotWanted; });
-      if (m_stopping) return;
-      if (m_inbound.empty() && m_inEof) break;
-      wasFull = m_inbound.size() >= kInboundMax;
-      work.clear();
-      work.swap(m_inbound);
-    }
-    if (wasFull) {
-      m_ioWake.signal();
-    }
-    for (std::size_t at = 0, len = 0; at < work.size(); at += len) {
-      len = std::min(kReadChunk, work.size() - at);
-      if (m_parsed < m_replayEnd) len = std::min<std::size_t>(len, m_replayEnd - m_parsed);
-      for (int waiting; (waiting = m_uiWaiting.load()) > 0;) m_uiWaiting.wait(waiting);
-      const std::span<const std::uint8_t> chunk{work.data() + at, len};
-      const bool plain = m_sixel.idle() && m_image.idle() && m_textSize.idle() && m_osc99.idle() && m_userVar.idle()
-                         && plainChunk(chunk);
-      if (!plain) {
-        m_unsixeled.clear();
-        m_sixel.feed(chunk, m_unsixeled);
-        const std::uint64_t g = m_grid.load();
-        m_unimaged.clear();
-        m_image.feed(m_unsixeled, m_unimaged,
-                     {static_cast<int>(g & 0xffff), static_cast<int>(g >> 16 & 0xffff), static_cast<int>(g >> 32 & 0xffff),
-                      static_cast<int>(g >> 48)});
-        m_filtered.clear();
-        m_textSize.feed(m_unimaged, m_filtered);
+      std::lock_guard lock(m_termMutex);
+      if (plain) {
+        ghostty_terminal_vt_write(m_terminal, chunk.data(), chunk.size());
+      } else {
+        ghostty_terminal_vt_write(m_terminal, m_filtered.data(), m_filtered.size());
       }
-      {
-        std::lock_guard lock(m_termMutex);
-        if (plain) {
-          ghostty_terminal_vt_write(m_terminal, chunk.data(), chunk.size());
-        } else {
-          ghostty_terminal_vt_write(m_terminal, m_filtered.data(), m_filtered.size());
+    }
+    if (!plain && !replaying()) {
+      m_osc99.feed(chunk, [this](Osc99Scanner::Event e) {
+        if (auto* show = std::get_if<Osc99Scanner::Show>(&e); show != nullptr && m_effects.notify) {
+          m_effects.notify(std::move(show->notice));
+        } else if (auto* close = std::get_if<Osc99Scanner::Close>(&e); close != nullptr && m_effects.closeNotice) {
+          m_effects.closeNotice(std::move(close->key));
+        } else if (const auto* query = std::get_if<Osc99Scanner::Query>(&e)) {
+          const std::string reply = Osc99Scanner::queryReply(query->key);
+          queueOutbound({reinterpret_cast<const std::uint8_t*>(reply.data()), reply.size()});
         }
-      }
-      if (!plain && !replaying()) {
-        m_osc99.feed(chunk, [this](Osc99Scanner::Event e) {
-          if (auto* show = std::get_if<Osc99Scanner::Show>(&e); show != nullptr && m_effects.notify) {
-            m_effects.notify(std::move(show->notice));
-          } else if (auto* close = std::get_if<Osc99Scanner::Close>(&e); close != nullptr && m_effects.closeNotice) {
-            m_effects.closeNotice(std::move(close->key));
-          } else if (const auto* query = std::get_if<Osc99Scanner::Query>(&e)) {
-            const std::string reply = Osc99Scanner::queryReply(query->key);
-            queueOutbound({reinterpret_cast<const std::uint8_t*>(reply.data()), reply.size()});
-          }
-        });
-      }
-      if (!plain) m_userVar.feed(chunk, [this](std::string_view payload) {
-        constexpr std::string_view kBranch = "git_branch=";
-        if (!payload.starts_with(kBranch)) return;
-        std::lock_guard lock(m_termMutex);
-        m_commands.onBranch(base64Decode(payload.substr(kBranch.size())));
       });
-      m_bytesRead += len;
-      m_parsed += len;
-      flushOutbound();
-      if (!m_renderHeld.load()) signalWake();
     }
-    // A prompt turns echo off before it prints, so a check per output batch sees it without a timer.
-    if (termios mode{}; m_onSecret && m_master >= 0 && ::tcgetattr(m_master, &mode) == 0) {
-      const bool secret = (mode.c_lflag & ICANON) != 0 && (mode.c_lflag & ECHO) == 0;
-      if (secret != m_secret) {
-        m_secret = secret;
-        m_onSecret(secret);
-      }
-    }
-    if (const auto* held = std::get_if<HeldSession>(&m_link);
-        held && (m_snapshotWanted.exchange(false) || m_snapshotRetry)) {
-      m_snapshotRetry = !sendSnapshot(*held);
+    if (!plain) m_userVar.feed(chunk, [this](std::string_view payload) {
+      constexpr std::string_view kBranch = "git_branch=";
+      if (!payload.starts_with(kBranch)) return;
+      std::lock_guard lock(m_termMutex);
+      m_commands.onBranch(base64Decode(payload.substr(kBranch.size())));
+    });
+    m_bytesRead += len;
+    m_parsed += len;
+    flushOutbound();
+    if (!m_renderHeld.load()) signalWake();
+  }
+  // A prompt turns echo off before it prints, so a check per output batch sees it without a timer.
+  if (termios mode{}; m_onSecret && m_master >= 0 && ::tcgetattr(m_master, &mode) == 0) {
+    const bool secret = (mode.c_lflag & ICANON) != 0 && (mode.c_lflag & ECHO) == 0;
+    if (secret != m_secret) {
+      m_secret = secret;
+      m_onSecret(secret);
     }
   }
+  if (const auto* held = std::get_if<HeldSession>(&m_link);
+      held && (m_snapshotWanted.exchange(false) || m_snapshotRetry)) {
+    m_snapshotRetry = !sendSnapshot(*held);
+  }
+}
+
+void PtySession::ioLoop() {
+  if (!m_tail.empty()) {
+    parse(m_tail);
+    m_tail = {};
+  }
+  std::optional<int> heldStatus;
+  if (const auto* held = std::get_if<HeldSession>(&m_link)) {
+    heldStatus = readHeld(*held);
+  } else {
+    readLocal(std::get<LocalChild>(m_link));
+  }
+  if (!m_stopping) finish(heldStatus);
+}
+
+void PtySession::finish(std::optional<int> heldStatus) {
   if (const auto* local = std::get_if<LocalChild>(&m_link)) {
     int status = 0;
     ::waitpid(local->pid, &status, 0);
     m_exitStatus = exitCode(status);
   } else {
-    std::lock_guard lock(m_inMutex);
-    m_exitStatus = exitCode(m_heldStatus.value_or(kHolderLostStatus << 8));
+    m_exitStatus = exitCode(heldStatus.value_or(kHolderLostStatus << 8));
   }
   apply(SessionEvent::ChildExited);
   signalWake();
