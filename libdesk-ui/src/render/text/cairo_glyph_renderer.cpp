@@ -1,6 +1,7 @@
 #include "render/text/cairo_glyph_renderer.h"
 
 #include "render/backend/render_backend.h"
+#include "render/core/box_blur.h"
 #include "render/core/texture_manager.h"
 
 #include <cairo-ft.h>
@@ -70,7 +71,7 @@ namespace {
 } // namespace
 
 bool CairoGlyphRenderer::CacheKey::operator==(const CacheKey& other) const noexcept {
-  return codepoint == other.codepoint && sizeQ == other.sizeQ && scaleQ == other.scaleQ;
+  return codepoint == other.codepoint && sizeQ == other.sizeQ && scaleQ == other.scaleQ && blurPx == other.blurPx;
 }
 
 std::size_t CairoGlyphRenderer::CacheKeyHash::operator()(const CacheKey& k) const noexcept {
@@ -78,6 +79,7 @@ std::size_t CairoGlyphRenderer::CacheKeyHash::operator()(const CacheKey& k) cons
   hashCombine(seed, std::hash<char32_t>{}(k.codepoint));
   hashCombine(seed, std::hash<std::uint32_t>{}(k.sizeQ));
   hashCombine(seed, std::hash<std::uint16_t>{}(k.scaleQ));
+  hashCombine(seed, std::hash<std::uint16_t>{}(k.blurPx));
   return seed;
 }
 
@@ -178,11 +180,12 @@ CairoGlyphRenderer::measureGlyph(float contentScale, char32_t codepoint, float f
 }
 
 CairoGlyphRenderer::CacheEntry*
-CairoGlyphRenderer::lookupOrRasterize(float contentScale, char32_t codepoint, float fontSize) {
+CairoGlyphRenderer::lookupOrRasterize(float contentScale, char32_t codepoint, float fontSize, int blurPx) {
   CacheKey key;
   key.codepoint = codepoint;
   key.sizeQ = quantizeSize(fontSize);
   key.scaleQ = quantizeScale(contentScale);
+  key.blurPx = static_cast<std::uint16_t>(blurPx);
 
   if (CacheEntry* hit = m_cache.find(key)) {
     return hit;
@@ -213,8 +216,8 @@ CairoGlyphRenderer::lookupOrRasterize(float contentScale, char32_t codepoint, fl
   cairo_scaled_font_glyph_extents(scaledFont, &glyph, 1, &extents);
 
   // Surface size: ceil the ink rect and add a 1px margin to protect antialiased
-  // edges from clipping.
-  const int pad = 1;
+  // edges from clipping, plus the blur's reach.
+  const int pad = 1 + blurReach(blurPx);
   const int pxWidth = std::max(1, static_cast<int>(std::ceil(extents.width)) + pad * 2);
   const int pxHeight = std::max(1, static_cast<int>(std::ceil(extents.height)) + pad * 2);
 
@@ -260,6 +263,7 @@ CairoGlyphRenderer::lookupOrRasterize(float contentScale, char32_t codepoint, fl
   }
   cairo_surface_destroy(surface);
   cairo_scaled_font_destroy(scaledFont);
+  blurAlpha(tight, pxWidth, pxHeight, blurPx);
 
   if (m_textureManager == nullptr) {
     return nullptr;
@@ -283,7 +287,7 @@ void CairoGlyphRenderer::evictUnusedBefore(std::chrono::steady_clock::time_point
 
 void CairoGlyphRenderer::drawGlyph(
     float contentScale, float surfaceWidth, float surfaceHeight, float x, float baselineY, char32_t codepoint,
-    float fontSize, const Color& color, const Mat3& transform
+    float fontSize, const Color& color, const Mat3& transform, float blur
 ) {
   if (m_face == nullptr || m_backend == nullptr || codepoint == 0) {
     return;
@@ -293,7 +297,8 @@ void CairoGlyphRenderer::drawGlyph(
   // animated scale re-rasters at most a few times.
   const float nodeScale = std::sqrt(std::abs(transform.m[0] * transform.m[4] - transform.m[1] * transform.m[3]));
   const float rasterScale = contentScale * std::max(1.0F, std::ceil(nodeScale * 4.0F - 0.01F) / 4.0F);
-  CacheEntry* entry = lookupOrRasterize(rasterScale, codepoint, fontSize);
+  const int blurPx = blur > 0.0F ? std::max(1, static_cast<int>(std::lround(blur * rasterScale))) : 0;
+  CacheEntry* entry = lookupOrRasterize(rasterScale, codepoint, fontSize, blurPx);
   if (entry == nullptr || entry->texture.id == 0) {
     return;
   }

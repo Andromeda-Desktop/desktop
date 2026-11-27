@@ -58,9 +58,10 @@ public:
 
   [[nodiscard]] TextMetrics measureGlyph(float contentScale, char32_t codepoint, float fontSize);
 
+  // `blur` > 0 draws the glyph's coverage blurred by that radius (logical px), as a soft shadow.
   void drawGlyph(
       float contentScale, float surfaceWidth, float surfaceHeight, float x, float baselineY, char32_t codepoint,
-      float fontSize, const Color& color, const Mat3& transform
+      float fontSize, const Color& color, const Mat3& transform, float blur = 0.0F
   );
 
 private:
@@ -68,6 +69,7 @@ private:
     char32_t codepoint = 0;
     std::uint32_t sizeQ = 0;
     std::uint16_t scaleQ = 0;
+    std::uint16_t blurPx = 0; // blur radius in raster px; 0 = sharp
 
     bool operator==(const CacheKey& other) const noexcept;
   };
@@ -87,7 +89,7 @@ private:
     std::size_t bytes = 0;
   };
 
-  CacheEntry* lookupOrRasterize(float contentScale, char32_t codepoint, float fontSize);
+  CacheEntry* lookupOrRasterize(float contentScale, char32_t codepoint, float fontSize, int blurPx);
 
   FT_Library m_ftLibrary = nullptr;
   FT_Face m_face = nullptr;

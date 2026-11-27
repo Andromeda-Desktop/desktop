@@ -43,6 +43,10 @@
 
 namespace {
 
+  // Logical px a shadow blurred by `blur` reaches past its offset copy: blurReach(round(blur x scale)) / scale stays
+  // within 1.5 x blur + 3 at every scale >= 1.
+  float shadowReach(float blur) noexcept { return blur > 0.0F ? 1.5F * blur + 3.0F : 0.0F; }
+
   constexpr Logger kLog("render");
   constexpr float kSlowRenderOperationDebugMs = 50.0F;
   constexpr float kSlowRenderOperationWarnMs = 1000.0F;
@@ -188,7 +192,7 @@ namespace {
         right = std::max(right, corner.x);
         bottom = std::max(bottom, corner.y);
       }
-      pad += std::max(std::abs(text->shadowOffsetX()), std::abs(text->shadowOffsetY()));
+      pad += std::max(std::abs(text->shadowOffsetX()), std::abs(text->shadowOffsetY())) + shadowReach(text->shadowBlur());
     } else if (node->type() == NodeType::Rect) {
       // Same overhang as the rect quad (RectProgram::draw: border + softness + 2 px).
       const auto& style = static_cast<const RectNode*>(node)->style();
@@ -204,7 +208,7 @@ namespace {
         right = std::max(right, corner.x);
         bottom = std::max(bottom, corner.y);
       }
-      pad += std::max(std::abs(glyph->shadowOffsetX()), std::abs(glyph->shadowOffsetY()));
+      pad += std::max(std::abs(glyph->shadowOffsetX()), std::abs(glyph->shadowOffsetY())) + shadowReach(glyph->shadowBlur());
     }
     // The pads above are local units; a scaled or rotated node moves its overhang up to its largest axis scale.
     const Vec2 o = world.transformPoint(0.0F, 0.0F);
@@ -1008,7 +1012,8 @@ void RenderContext::drawNodeSelf(
         const Mat3 shadowTransform = worldTransform * Mat3::translation(text->shadowOffsetX(), text->shadowOffsetY());
         m_textRenderer.draw(
             renderScale, sw, sh, 0.0F, 0.0F, text->text(), text->fontSize(), shadowColor, shadowTransform, font,
-            text->maxWidth(), text->maxLines(), text->textAlign(), text->ellipsize(), text->useMarkup()
+            text->maxWidth(), text->maxLines(), text->textAlign(), text->ellipsize(), text->useMarkup(),
+            text->shadowBlur()
         );
       }
       auto color = text->color();
@@ -1063,7 +1068,8 @@ void RenderContext::drawNodeSelf(
         shadowColor.a *= effectiveOpacity;
         const Mat3 shadowTransform = worldTransform * Mat3::translation(icon->shadowOffsetX(), icon->shadowOffsetY());
         m_glyphRenderer.drawGlyph(
-            renderScale, sw, sh, 0.0F, 0.0F, icon->codepoint(), icon->fontSize(), shadowColor, shadowTransform
+            renderScale, sw, sh, 0.0F, 0.0F, icon->codepoint(), icon->fontSize(), shadowColor, shadowTransform,
+            icon->shadowBlur()
         );
       }
       auto color = icon->color();

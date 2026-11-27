@@ -39,12 +39,15 @@ public:
   [[nodiscard]] const Color& shadowColor() const noexcept { return m_shadowColor; }
   [[nodiscard]] float shadowOffsetX() const noexcept { return m_shadowOffsetX; }
   [[nodiscard]] float shadowOffsetY() const noexcept { return m_shadowOffsetY; }
+  // Blur radius of the shadow in logical px; 0 = a sharp copy.
+  [[nodiscard]] float shadowBlur() const noexcept { return m_shadowBlur; }
 
-  void setShadow(const Color& color, float offsetX, float offsetY) {
+  void setShadow(const Color& color, float offsetX, float offsetY, float blur = 0.0F) {
     m_hasShadow = true;
     m_shadowColor = color;
     m_shadowOffsetX = offsetX;
     m_shadowOffsetY = offsetY;
+    m_shadowBlur = blur;
     markPaintDirty();
   }
 
@@ -64,4 +67,5 @@ private:
   Color m_shadowColor;
   float m_shadowOffsetX = 0.0F;
   float m_shadowOffsetY = 0.0F;
+  float m_shadowBlur = 0.0F;
 };

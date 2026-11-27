@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "protocols/async_file_writer.h"
 #include "render/backend/render_backend.h"
+#include "render/core/box_blur.h"
 #include "render/core/texture_manager.h"
 #include "render/text/font_registry.h"
 #include "render/text/font_weight_catalog.h"
@@ -221,6 +222,7 @@ bool CairoTextRenderer::CacheKey::operator==(const CacheKey& other) const noexce
       && align == other.align
       && ellipsize == other.ellipsize
       && colorRgba == other.colorRgba
+      && blurBits == other.blurBits
       && useMarkup == other.useMarkup
       && text == other.text
       && font == other.font;
@@ -237,6 +239,7 @@ std::size_t CairoTextRenderer::CacheKeyHash::operator()(const CacheKey& k) const
   hashCombine(seed, std::hash<std::uint8_t>{}(static_cast<std::uint8_t>(k.align)));
   hashCombine(seed, std::hash<std::uint8_t>{}(static_cast<std::uint8_t>(k.ellipsize)));
   hashCombine(seed, std::hash<std::uint32_t>{}(k.colorRgba));
+  hashCombine(seed, std::hash<std::uint32_t>{}(k.blurBits));
   hashCombine(seed, std::hash<bool>{}(k.useMarkup));
   return seed;
 }
@@ -880,7 +883,7 @@ void CairoTextRenderer::measureCharSpans(
 
 void CairoTextRenderer::rasterizeLayout(
     float contentScale, PangoLayout* layout, const Color& color, bool tinted, float strokePx, const TextFont& font,
-    CacheEntry& entry, bool atlas
+    CacheEntry& entry, bool atlas, int blurPx
 ) {
   entry.ink = tinted ? CacheEntry::Ink::Coverage : CacheEntry::Ink::Rgba;
   // Pixel-sized surface: ceil the logical rect up.
@@ -898,14 +901,18 @@ void CairoTextRenderer::rasterizeLayout(
   const int blockLeftPx = logicalLayout.x / PANGO_SCALE;
 
   // Expand surface when ink extends beyond logical bounds (e.g. Nerd Font icons).
-  const int extraLeftPx = (std::max(0, logicalLayout.x - inkLayout.x) + PANGO_SCALE - 1) / PANGO_SCALE;
+  // A blurred raster also leaves room for the blur's reach on every side.
+  const int blurPad = blurReach(blurPx);
+  const int extraLeftPx = (std::max(0, logicalLayout.x - inkLayout.x) + PANGO_SCALE - 1) / PANGO_SCALE + blurPad;
   const int extraRightPx =
       (std::max(0, (inkLayout.x + inkLayout.width) - (logicalLayout.x + logicalLayout.width)) + PANGO_SCALE - 1)
-      / PANGO_SCALE;
-  const int extraTopPx = (std::max(0, logicalLayout.y - inkLayout.y) + PANGO_SCALE - 1) / PANGO_SCALE;
+          / PANGO_SCALE
+      + blurPad;
+  const int extraTopPx = (std::max(0, logicalLayout.y - inkLayout.y) + PANGO_SCALE - 1) / PANGO_SCALE + blurPad;
   const int extraBottomPx =
       (std::max(0, (inkLayout.y + inkLayout.height) - (logicalLayout.y + logicalLayout.height)) + PANGO_SCALE - 1)
-      / PANGO_SCALE;
+          / PANGO_SCALE
+      + blurPad;
   pxWidth += extraLeftPx + extraRightPx;
   pxHeight += extraTopPx + extraBottomPx;
   entry.inkOffsetX = static_cast<float>(extraLeftPx);
@@ -1114,6 +1121,9 @@ void CairoTextRenderer::rasterizeLayout(
       util::secureWipe(data, static_cast<std::size_t>(stride) * static_cast<std::size_t>(tileH));
     }
     cairo_surface_destroy(surface);
+    if (blurPx > 0) {
+      blurAlpha(tight, pxWidth, tileH, blurPx, wipe);
+    }
 
     if (m_textureManager == nullptr) {
       entry.tiles.clear();
@@ -1289,8 +1299,10 @@ CairoTextRenderer::rasterizeAlpha(float contentScale, std::string_view text, flo
 
 CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
     float contentScale, std::string_view text, float fontSize, const TextFont& font, float maxWidth, int maxLines,
-    TextAlign align, const Color& color, TextEllipsize ellipsize, bool useMarkup
+    TextAlign align, const Color& color, TextEllipsize ellipsize, bool useMarkup, float blur
 ) {
+  // A blurred entry is the text's coverage only (colour glyphs too): a shadow takes one tint.
+  const int blurPx = blur > 0.0F ? std::max(1, static_cast<int>(std::lround(blur * contentScale))) : 0;
   // Tinted (A8 coverage) entries are color-independent — the shader applies
   // u_tint at draw time, so one cache entry serves every color. RGBA entries
   // (mixed content with COLR emoji) bake non-emoji ink color into the Cairo
@@ -1300,13 +1312,16 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   if (!m_caching) {
     PangoLayout* layout =
         buildLayout(contentScale, text, fontSize, font, maxWidth * contentScale, maxLines, align, ellipsize, useMarkup);
-    const bool tinted = font.gradientFrom == 0 && font.gradientTo == 0 && layoutInk(layout) == LayoutInk::Plain;
+    const bool tinted =
+        blurPx > 0 || (font.gradientFrom == 0 && font.gradientTo == 0 && layoutInk(layout) == LayoutInk::Plain);
     Color rasterColor = color;
     if (!tinted) {
       rasterColor.a = 1.0F;
     }
     CacheEntry& entry = m_transient.emplace_back();
-    rasterizeLayout(contentScale, layout, rasterColor, tinted, font.stroke * fontSize * contentScale, font, entry);
+    rasterizeLayout(
+        contentScale, layout, rasterColor, tinted, font.stroke * fontSize * contentScale, font, entry, false, blurPx
+    );
     g_object_unref(layout);
     return &entry;
   }
@@ -1320,6 +1335,7 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   key.align = align;
   key.ellipsize = ellipsize;
   key.useMarkup = useMarkup;
+  key.blurBits = static_cast<std::uint32_t>(blurPx);
   if (CacheEntry* hit = m_cache.find(key)) {
     if ((hit->ink != CacheEntry::Ink::Atlas && hit->ink != CacheEntry::Ink::ColorAtlas)
         || hit->atlasGeneration == atlasOf(*hit).generation()) {
@@ -1348,7 +1364,9 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
     layout =
         buildLayout(contentScale, text, fontSize, font, maxWidth * contentScale, maxLines, align, ellipsize, useMarkup);
   }
-  const LayoutInk ink = font.gradientFrom == 0 && font.gradientTo == 0 ? layoutInk(layout) : LayoutInk::Mixed;
+  const LayoutInk ink = blurPx > 0                                          ? LayoutInk::Plain
+                        : font.gradientFrom == 0 && font.gradientTo == 0 ? layoutInk(layout)
+                                                                         : LayoutInk::Mixed;
   const bool tinted = ink == LayoutInk::Plain;
   // Colour glyphs ignore the ink colour, so one entry serves every colour.
   if (ink != LayoutInk::Mixed) {
@@ -1360,10 +1378,10 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   }
   CacheEntry entry{};
   // Large text gains little from the atlas, and its glyphs would crowd the page.
-  const bool atlas = ink != LayoutInk::Mixed && font.stroke == 0.0F && !useMarkup && m_textureManager != nullptr
-                     && fontSize * contentScale <= kAtlasMaxPx;
+  const bool atlas = ink != LayoutInk::Mixed && blurPx == 0 && font.stroke == 0.0F && !useMarkup
+                     && m_textureManager != nullptr && fontSize * contentScale <= kAtlasMaxPx;
   rasterizeLayout(
-      contentScale, layout, rasterColor, tinted, font.stroke * fontSize * contentScale, font, entry, atlas
+      contentScale, layout, rasterColor, tinted, font.stroke * fontSize * contentScale, font, entry, atlas, blurPx
   );
   g_object_unref(layout);
 
@@ -1382,7 +1400,7 @@ void CairoTextRenderer::evictUnusedBefore(std::chrono::steady_clock::time_point 
 void CairoTextRenderer::draw(
     float contentScale, float surfaceWidth, float surfaceHeight, float x, float baselineY, std::string_view text,
     float fontSize, const Color& color, const Mat3& transform, const TextFont& font, float maxWidth, int maxLines,
-    TextAlign align, TextEllipsize ellipsize, bool useMarkup
+    TextAlign align, TextEllipsize ellipsize, bool useMarkup, float blur
 ) {
   fontSize *= m_textScale;
   maybeSyncFontConfig();
@@ -1391,7 +1409,7 @@ void CairoTextRenderer::draw(
   }
 
   CacheEntry* entry =
-      lookupOrRasterize(contentScale, text, fontSize, font, maxWidth, maxLines, align, color, ellipsize, useMarkup);
+      lookupOrRasterize(contentScale, text, fontSize, font, maxWidth, maxLines, align, color, ellipsize, useMarkup, blur);
   const bool atlasInk = entry != nullptr && (entry->ink == CacheEntry::Ink::Atlas || entry->ink == CacheEntry::Ink::ColorAtlas);
   if (entry == nullptr || (entry->tiles.empty() && !atlasInk)) {
     return;

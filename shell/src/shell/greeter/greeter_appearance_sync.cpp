@@ -12,6 +12,7 @@
 #include "ipc/ipc_service.h"
 #include "render/core/color.h"
 #include "render/core/image_encoder.h"
+#include "render/core/box_blur.h"
 #include "render/core/image_file_loader.h"
 #include "shell/lockscreen/lock_screen.h"
 #include "shell/session/session_action_meta.h"

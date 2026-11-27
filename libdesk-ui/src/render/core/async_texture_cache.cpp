@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "render/backend/render_backend.h"
+#include "render/core/box_blur.h"
 #include "render/core/image_file_loader.h"
 #include "render/core/image_source_log.h"
 #include "render/core/texture_manager.h"

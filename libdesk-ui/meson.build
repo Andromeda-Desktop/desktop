@@ -264,6 +264,7 @@ _desk_ui_sources = _loop_sources + files(
   'src/render/core/image_decoder.cpp',
   'src/render/core/image_encoder.cpp',
   'src/render/core/icon_color_scheme.cpp',
+  'src/render/core/box_blur.cpp',
   'src/render/core/image_file_loader.cpp',
   'src/render/core/image_orientation.cpp',
   'src/render/core/shader_program.cpp',

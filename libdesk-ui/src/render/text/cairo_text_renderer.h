@@ -122,11 +122,12 @@ public:
   [[nodiscard]] TextAlphaRaster
   rasterizeAlpha(float contentScale, std::string_view text, float fontSize, const TextFont& font);
 
+  // `blur` > 0 draws the text's coverage blurred by that radius (logical px), as a soft shadow.
   void draw(
       float contentScale, float surfaceWidth, float surfaceHeight, float x, float baselineY, std::string_view text,
       float fontSize, const Color& color, const Mat3& transform, const TextFont& font = {}, float maxWidth = 0.0F,
       int maxLines = 0, TextAlign align = TextAlign::Start, TextEllipsize ellipsize = TextEllipsize::End,
-      bool useMarkup = false
+      bool useMarkup = false, float blur = 0.0F
   );
 
 private:
@@ -137,6 +138,7 @@ private:
     std::uint32_t colorRgba = 0;    // packed r<<24|g<<16|b<<8|a
     std::uint32_t maxWidthBits = 0; // exact normalized maxWidth bits; 0 = no limit
     std::uint32_t scaleBits = 0;    // exact normalized contentScale bits
+    std::uint32_t blurBits = 0;     // blur radius in raster px; 0 = sharp
     std::uint16_t maxLines = 0;     // 0 = no explicit limit (use '\n'-count fallback)
     TextAlign align = TextAlign::Start;
     TextEllipsize ellipsize = TextEllipsize::End;
@@ -227,10 +229,10 @@ private:
   // When `tinted` is true, rasterizes as CAIRO_FORMAT_A8 and uploads alpha
   // coverage so the color is applied via u_tint at draw time. When false,
   // rasterizes as CAIRO_FORMAT_ARGB32 with `color` baked in (for COLR emoji
-  // content).
+  // content). `blurPx` > 0 pads the surface by the blur reach and blurs the coverage (tinted only).
   void rasterizeLayout(
       float contentScale, PangoLayout* layout, const Color& color, bool tinted, float strokePx, const TextFont& font,
-      CacheEntry& entry, bool atlas = false
+      CacheEntry& entry, bool atlas = false, int blurPx = 0
   );
   // Fills entry with quads into `atlas`; false when a glyph cannot come from it (no Cairo font, unknown glyph).
   bool buildAtlasQuads(TextGlyphAtlas& atlas, PangoLayout* layout, int originXPx, int extraTopPx, CacheEntry& entry);
@@ -242,7 +244,8 @@ private:
 
   CacheEntry* lookupOrRasterize(
       float contentScale, std::string_view text, float fontSize, const TextFont& font, float maxWidth, int maxLines,
-      TextAlign align, const Color& color, TextEllipsize ellipsize = TextEllipsize::End, bool useMarkup = false
+      TextAlign align, const Color& color, TextEllipsize ellipsize = TextEllipsize::End, bool useMarkup = false,
+      float blur = 0.0F
   );
   void releaseEntry(CacheKey& key, CacheEntry& entry, bool unload) noexcept;
   // The layout measure() shaped for `key`, now owned by the caller; nullptr when none is kept.
