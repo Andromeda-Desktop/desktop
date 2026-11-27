@@ -147,7 +147,7 @@ float liquid_band(vec2 size, float liquid, float scale);
 float lens_shift(float t);
 float lens_magnify();
 vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend);
-float lens_cover(float t, float lens, bool whole);
+float lens_cover(float t, float lens);
 float glass_specular(float shine, float d, float band, float scale, vec2 normal, float near);
 float pointer_near(vec2 p, vec3 light);
 float smooth_union(float a, float b, float k);
@@ -222,7 +222,7 @@ void main() {
         lens_bend += (p - (liquid_position + 0.5 * liquid_size)) * (lens_magnify() * lens) * liquid_texel;
       }
       lens_uv = texcoord - lens_bend;
-      lens_weight = lens_cover(t, lens, whole);
+      lens_weight = lens_cover(t, lens);
       // The pointer light also bleeds softly into the band, so it reads as light on glass, not a thicker line.
       float near = pointer_near(p, light);
       specular = glass_specular(shine, d, band, liquid_scale, normal, near);
@@ -267,11 +267,12 @@ void main() {
     color = clamp(color, 0.0, 1.0);
   }
 #if GLASS
-  // The bezel bends the blurred backdrop (this pass's half-size input), never sharp detail.
+  // The outer bezel shows the sharp backdrop copy (full size), bent, over the blur.
   if (lens_weight > 0.0) {
-    color = mix(color, lens_sample(tex, lens_uv / 2.0, lens_bend / 2.0), lens_weight);
+    color = mix(color, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
-  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
+  // The tint thins where the sharp bezel shows (tex.frag).
+  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a * (1.0 - 0.6 * lens_weight));
   // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
   color.rgb += specular * (color.a - color.rgb);
 #endif

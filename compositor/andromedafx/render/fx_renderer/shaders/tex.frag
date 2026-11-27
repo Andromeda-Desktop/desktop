@@ -213,7 +213,7 @@ float liquid_band(vec2 size, float liquid, float scale);
 float lens_shift(float t);
 float lens_magnify();
 vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend);
-float lens_cover(float t, float lens, bool whole);
+float lens_cover(float t, float lens);
 float glass_specular(float shine, float d, float band, float scale, vec2 normal, float near);
 float pointer_near(vec2 p, vec3 light);
 float smooth_union(float a, float b, float k);
@@ -288,7 +288,7 @@ void main() {
         lens_bend += (p - (liquid_position + 0.5 * liquid_size)) * (lens_magnify() * lens) * liquid_texel;
       }
       lens_uv = uv - lens_bend;
-      lens_weight = lens_cover(t, lens, whole);
+      lens_weight = lens_cover(t, lens);
       // Specular: a reflection, not an outline: a bright line on the outermost pixels over a soft inner glow
       // (glass_specular), lit from the key lights and the pointer; the coverage mask cuts it outside.
       // The pointer light also bleeds softly into the band, so it reads as light on glass, not a thicker line.
@@ -300,15 +300,13 @@ void main() {
   if (source_mix > 0.0) {
     base = mix(base, texture2D(source_tex, uv), source_mix);
   }
-  // The bezel bends what the glass shows: the blurred backdrop, or the sharp one for glass with no blur.
-#if SOURCE != SOURCE_TEXTURE_EXTERNAL
-  // lens_sample takes a sampler2D; the lens bends only glass backdrops, which are never external textures.
+  // The outer bezel shows the sharp backdrop copy, bent, over the blur.
   if (lens_weight > 0.0) {
-    base = mix(base, lens_sample(tex, lens_uv, lens_bend), lens_weight);
+    base = mix(base, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
-#endif
   vec4 color = convert_color(base);
-  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
+  // The tint thins where the sharp bezel shows, so the bend stays visible; labels sit inside it, over the full tint.
+  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a * (1.0 - 0.6 * lens_weight));
   // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
   color.rgb += specular * (color.a - color.rgb);
 #else

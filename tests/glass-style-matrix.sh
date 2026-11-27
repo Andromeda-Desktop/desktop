@@ -3,7 +3,8 @@
 # behind the glass. Inside a Wayland session it runs nested in a window (that session's GPU and vsync); without one
 # (over SSH on the test laptop) it runs headless at MODE on this machine's GPU.
 # Usage: tests/glass-style-matrix.sh. Env: OUT, SECONDS_PER (default 4), MODE (headless, default 1920x1080@60), WALLS,
-# CONFIGS, SURFACES (space lists), SCHEME (dark|light), FOOT (0: no scrolling text window, the wallpaper shows).
+# CONFIGS, SURFACES (space lists), SCHEME (dark|light), FOOT (0: no scrolling text window, the wallpaper shows),
+# PHOTO (an image file, the wall named photo).
 # Surfaces: desktop launcher cc settings toast menu (the desktop context menu). $OUT/index.html shows every shot.
 # Report: $OUT/report.txt, one row per cell: frames, GPU p50/p99 ms (frame log col 4), CPU record p50/p99 ms (col 12),
 # GPU execution p50/p99 ms (col 13), mean blur kpx (col 6), compositor and shell CPU %. Shots: $OUT/<wall>/<config>-<surface>.png.
@@ -39,6 +40,7 @@ magick -size 1920x1080 gradient:'#d8c8b8-#8a7a72' \
   -stroke '#00000040' -strokewidth 60 -draw 'line 1060,-40 -100,1120' -draw 'line 2070,-80 720,1420' -blur 0x18 \
   -stroke '#fbf6ef' -strokewidth 34 -draw 'line 1060,-60 -100,1100' -draw 'line 2050,-100 700,1400' -blur 0x1.5 \
   "$WALLDIR/bands.png"
+[[ -z ${PHOTO:-} ]] || magick "$PHOTO" -resize 1920x1080^ -gravity center -extent 1920x1080 "$WALLDIR/photo.png"
 magick -size 1280x720 -seed 7 plasma:'#ff3b6b-#2b7bff' -blur 0x8 -modulate 100,160 "$WALLDIR/colour.png"
 magick -size 48x48 xc:'#e0306a' -fill '#2b6bff' -draw 'rectangle 0,0 23,23 rectangle 24,24 47,47' -write mpr:t +delete -size 1920x1080 tile:mpr:t "$WALLDIR/grid.png"
 magick -size 1920x1080 xc:'#f7f7f5' "$WALLDIR/white.png"
