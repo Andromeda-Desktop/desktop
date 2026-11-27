@@ -8,6 +8,9 @@
 #include "render/core/startup_metrics.h"
 
 #include <EGL/eglext.h>
+#ifdef __APPLE__
+#include <EGL/eglext_angle.h>
+#endif
 #include <GLES2/gl2.h>
 #include <chrono>
 #include <dlfcn.h>
@@ -200,7 +203,25 @@ void GlSharedContext::initialize(const Display& display, bool createSharedContex
 void GlSharedContext::initialize(EGLNativeDisplayType display, bool createSharedContext) {
   const auto initStart = std::chrono::steady_clock::now();
   (void)dlerror();
+#ifdef __APPLE__
+  // ANGLE's default on macOS is its OpenGL backend, which presents nothing on macOS 27; Metal draws. A Mac whose
+  // Metal ANGLE cannot use (a VM without a GPU) keeps the default.
+  const auto getPlatformDisplay =
+      reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
+  const EGLint metal[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE};
+  m_display = getPlatformDisplay != nullptr
+      ? getPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE, reinterpret_cast<void*>(display), metal)
+      : EGL_NO_DISPLAY;
+  if (m_display != EGL_NO_DISPLAY && eglInitialize(m_display, nullptr, nullptr) != EGL_TRUE) {
+    kLog.warn("ANGLE has no Metal display (EGL error 0x{:04x}); using its default", eglGetError());
+    m_display = EGL_NO_DISPLAY;
+  }
+  if (m_display == EGL_NO_DISPLAY) {
+    m_display = eglGetDisplay(display);
+  }
+#else
   m_display = eglGetDisplay(display);
+#endif
   if (m_display == EGL_NO_DISPLAY) {
     const char* loaderError = dlerror();
     const std::string loaderDetail = loaderError != nullptr ? loaderError : "";
