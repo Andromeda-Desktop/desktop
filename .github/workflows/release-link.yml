@@ -54,7 +54,8 @@ jobs:
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
           TAG: ${{ needs.check.outputs.tag }}
         run: |
-          gh release download "$TAG" -R Andromeda-Desktop/link -p 'andromeda-link-[0-9]*-x86_64.pkg.tar.zst' -D pkg
+          gh release download "$TAG" -R Andromeda-Desktop/link -p 'andromeda-link-[0-9]*-x86_64.pkg.tar.zst' \
+            -p 'andromeda-link-window-[0-9]*-x86_64.pkg.tar.zst' -D pkg
           tools/repo-publish.sh arch repo pkg
 
   apt:
@@ -76,5 +77,7 @@ jobs:
           TAG: ${{ needs.check.outputs.tag }}
         run: |
           sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
-          gh release download "$TAG" -R Andromeda-Desktop/link -p 'andromeda-link_*_amd64.deb' -D debs
+          # The window deb is built per base: Ubuntu 26.04 for repo, Debian testing for debian.
+          gh release download "$TAG" -R Andromeda-Desktop/link -p 'andromeda-link_*_amd64.deb' \
+            -p "andromeda-link-window-${{ matrix.target == 'repo' && 'ubuntu' || 'debian' }}_*_amd64.deb" -D debs
           tools/repo-publish.sh apt ${{ matrix.target }} debs

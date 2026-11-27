@@ -14,7 +14,7 @@ prefix=$([[ $unit == core ]] && echo v || echo "$unit-v")
 core_units="compositor shell portal greeter preview system greetd power"
 # libdesk and its appd module apps release together from one commit with one version (release-apps.yml, tag
 # libdesk-v*): the apps link libdesk shared and pin its exact version.
-libdesk_group="libdesk files terminal player viewer link-app"
+libdesk_group="libdesk files terminal player viewer"
 if [[ " $libdesk_group " == *" $unit "* ]]; then
   unit=libdesk prefix=libdesk-v
 fi

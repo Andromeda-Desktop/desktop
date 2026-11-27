@@ -11,7 +11,7 @@ set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/link-app}
 source "$(dirname "$0")/lib.sh"
 LINK_BIN=${LINK_BIN:-$ROOT/link/target/debug}
-LINK_APP=${LINK_APP:-$ROOT/apps/link-app/build/andromeda-link-app}
+LINK_APP=${LINK_APP:-$ROOT/link/target/window/window/andromeda-link-app}
 boot_headless 1
 rm -f "$OUT"/*.png "$OUT/steps.txt" "$OUT/phone.log" "$OUT/hold.jsonl" "$OUT/app.log"
 

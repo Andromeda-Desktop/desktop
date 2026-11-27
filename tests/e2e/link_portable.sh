@@ -20,7 +20,7 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=${OUT:-$(pwd)/artifacts/link-portable-$COMPOSITOR}
 BIN=${LINK_BIN:-$ROOT/link/target/debug}
 E2E=$ROOT/tests/e2e
-LINK_APP=${LINK_APP:-$ROOT/apps/link-app/build/andromeda-link-app}
+LINK_APP=${LINK_APP:-$ROOT/link/target/window/window/andromeda-link-app}
 
 if [[ ${1:-} != inner ]]; then
   case $COMPOSITOR in
@@ -173,7 +173,7 @@ PORT=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['port'])"
 # The app is Wayland only: on x11 the run has no app window and no app-*.png.
 app() {
   [[ $GDK == wayland ]] || return 0
-  [[ -x $LINK_APP ]] || fail "no $LINK_APP; build apps/link-app or set LINK_APP"
+  [[ -x $LINK_APP ]] || fail "no $LINK_APP; run `just window` in link/ or set LINK_APP"
   "$LINK_APP" >> "$OUT/app.log" 2>&1 &
   APP=$!
   sleep 3 # real time: the window maps and the app connects to the service

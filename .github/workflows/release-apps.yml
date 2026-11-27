@@ -56,14 +56,14 @@ jobs:
           # The appd module apps link libdesk shared and pin its exact version: they release with libdesk, from one
           # commit, with one version (tools/unit-version.sh libdesk next), in one repository upload.
           case $app in
-            files|terminal|player|viewer|link-app) echo "::error::$app releases with libdesk: push libdesk-v$(tools/unit-version.sh libdesk next)"; exit 1 ;;
-            libdesk) units="libdesk files terminal player viewer link-app" ;;
+            files|terminal|player|viewer) echo "::error::$app releases with libdesk: push libdesk-v$(tools/unit-version.sh libdesk next)"; exit 1 ;;
+            libdesk) units="libdesk files terminal player viewer" ;;
             *) units=$app ;;
           esac
           # The release pages of the module apps carry their own tags at the same commit; a tag pushed with the
           # workflow token starts no other run.
           if [[ $app == libdesk && $PUBLISH == true ]]; then
-            for unit in files terminal player viewer link-app; do
+            for unit in files terminal player viewer; do
               tag=$unit-v$version
               if ! git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
                 git tag "$tag" HEAD
@@ -161,13 +161,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.REF }}
-      # Link-app needs Link's latest andromeda-link, which may not be in the index yet: it is installed and published
-      # with the app.
-      - name: Link
-        if: needs.version.outputs.app == 'libdesk'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release download -R Andromeda-Desktop/link -p 'andromeda-link_*_amd64.deb' -D "$HOME/.cache/andromeda-ubuntu/link-${{ matrix.base }}"
       # Ubuntu's ccache (saved on main by check-ubuntu); Debian testing has none (cache space goes to Arch and Ubuntu).
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: matrix.base == '26.04'
@@ -191,7 +184,6 @@ jobs:
           out=$HOME/.cache/andromeda-ubuntu/deb-$BASE
           # The debs of the other packages are empty in an app build.
           for unit in $UNITS; do cp "$out/andromeda-${unit}_"*.deb debs/; done
-          [[ " $UNITS " != *" link-app "* ]] || cp "$HOME/.cache/andromeda-ubuntu/link-$BASE"/andromeda-link_*.deb debs/
           tools/repo-publish.sh apt "$target" debs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

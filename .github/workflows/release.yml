@@ -137,12 +137,12 @@ jobs:
         run: |
           # One tag per push: GitHub drops the push event of more than 3 tags at once.
           for tag in "libdesk-v$LIBDESK" files-v$LIBDESK terminal-v$LIBDESK player-v$LIBDESK viewer-v$LIBDESK \
-            link-app-v$LIBDESK "v$CORE"; do
+            "v$CORE"; do
             git tag "$tag" HEAD && git push origin "refs/tags/$tag"
           done
       - name: Tag releases
         run: |
-          for unit in libdesk files terminal player viewer link-app; do
+          for unit in libdesk files terminal player viewer; do
             tools/release-publish.sh "$unit-v$LIBDESK" "$unit" "$LIBDESK" artifacts/arch/andromeda-"$unit"-git-*.pkg.tar.zst
           done
           zip=Andromeda-Terminal-$LIBDESK-macos-arm64.zip

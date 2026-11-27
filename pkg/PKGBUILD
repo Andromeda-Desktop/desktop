@@ -1,23 +1,21 @@
 pkgbase=desktop-git
 pkgname=(andromeda andromeda-compositor-git andromeda-shell-git xdg-desktop-portal-andromeda-git
   andromeda-power-git andromeda-greeter-git andromeda-system-git andromeda-greetd andromeda-preview-git
-  andromeda-files-git andromeda-player-git andromeda-viewer-git andromeda-terminal-git andromeda-link-app-git
-  andromeda-libdesk-git)
-# ANDROMEDA_APP=libdesk|player|viewer|link-app (app release CI) builds only that release unit. libdesk is libdesk with
+  andromeda-files-git andromeda-player-git andromeda-viewer-git andromeda-terminal-git andromeda-libdesk-git)
+# ANDROMEDA_APP=libdesk|player|viewer (app release CI) builds only that release unit. libdesk is libdesk with
 # Files and Terminal, which link it shared and release with it; the preview releases with the core.
 _app_units=()
 if [[ -n ${ANDROMEDA_APP:-} ]]; then
   case $ANDROMEDA_APP in
-    libdesk) _app_units=(files terminal player viewer link-app)
-      pkgname=(andromeda-libdesk-git andromeda-files-git andromeda-terminal-git andromeda-player-git andromeda-viewer-git
-        andromeda-link-app-git) ;;
-    files|terminal|player|viewer|link-app) echo "$ANDROMEDA_APP releases with libdesk: ANDROMEDA_APP=libdesk" >&2; exit 1 ;;
+    libdesk) _app_units=(files terminal player viewer)
+      pkgname=(andromeda-libdesk-git andromeda-files-git andromeda-terminal-git andromeda-player-git andromeda-viewer-git) ;;
+    files|terminal|player|viewer) echo "$ANDROMEDA_APP releases with libdesk: ANDROMEDA_APP=libdesk" >&2; exit 1 ;;
     *) _app_units=("$ANDROMEDA_APP") pkgname=(andromeda-$ANDROMEDA_APP-git) ;;
   esac
 fi
 # ANDROMEDA_CORE=1 (core release CI): no app packages; the apps release on their own tags (release-apps).
 if [[ -n ${ANDROMEDA_CORE:-} ]]; then
-  for _app in files player viewer terminal link-app libdesk; do pkgname=(${pkgname[@]/andromeda-$_app-git}); done
+  for _app in files player viewer terminal libdesk; do pkgname=(${pkgname[@]/andromeda-$_app-git}); done
 fi
 # ANDROMEDA_ONLY="compositor shell" (a unit release, or a test install of changed parts): builds and packages only
 # those units.
@@ -28,7 +26,7 @@ if [[ -n ${ANDROMEDA_ONLY:-} ]]; then
   pkgname=()
   for _part in $ANDROMEDA_ONLY; do pkgname+=("${_unit_pkg[$_part]:?unknown unit $_part}"); done
 fi
-_apps=(files viewer player terminal link-app)
+_apps=(files viewer player terminal)
 [[ -z ${ANDROMEDA_CORE:-} ]] || _apps=()
 # Epoch keeps the monorepo revision newer than the per-fork versions it replaces.
 epoch=1
@@ -249,7 +247,7 @@ package_andromeda() {
   # Everything the desktop offers works out of the box; the power policy changes kernel defaults, so it stays opt-in.
   depends=(andromeda-compositor-git andromeda-shell-git xdg-desktop-portal-andromeda-git
     andromeda-greeter-git andromeda-preview-git andromeda-files-git andromeda-player-git andromeda-viewer-git
-    andromeda-terminal-git andromeda-link andromeda-link-app-git gnome-keyring scrcpy android-tools gst-plugin-va gst-libav libpulse pipewire-pulse sqlite
+    andromeda-terminal-git andromeda-link andromeda-link-app gnome-keyring scrcpy android-tools gst-plugin-va gst-libav libpulse pipewire-pulse sqlite
     poppler-glib glycin sdbus-cpp mpv ffmpeg)
   optdepends=('andromeda-power-git: laptop power saving (PCIe ASPM, runtime PM, USB autosuspend); can upset some devices')
   backup=(etc/mpv/mpv.conf)
@@ -335,14 +333,6 @@ package_andromeda-player-git() {
   pkgdesc='Andromeda Player: media player and library'
   depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" mpv ffmpeg)
   meson install --no-rebuild -C build-player --destdir "$pkgdir" --skip-subprojects
-  _pin_depends
-}
-
-package_andromeda-link-app-git() {
-  _check_libdesk_abi || return 1
-  pkgdesc='Andromeda Link: the paired phone on the desktop'
-  depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" andromeda-link ffmpeg qrencode md4c fribidi)
-  meson install --no-rebuild -C build-link-app --destdir "$pkgdir" --skip-subprojects
   _pin_depends
 }
 

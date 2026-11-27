@@ -81,8 +81,6 @@ DOCKER
 # Packages from our apt repo that the distro lacks (tools/deb-xwayland-satellite.sh).
 mkdir -p "$OUT/extra"
 cp "$(dirname "$OUT")/xwayland-satellite-$VERSION"/*.deb "$OUT/extra/" 2> /dev/null || true
-# Link's latest debs (release-apps puts them beside OUT for link-app, which needs that andromeda-link).
-[[ ${ANDROMEDA_APP:-} != libdesk ]] || cp "$(dirname "$OUT")/link-$VERSION"/andromeda-link_*.deb "$OUT/extra/" 2> /dev/null || true
 # ANDROMEDA_ONLY="shell" (a unit release): only those units' debs stay, are installed and get published; the PKGBUILD
 # names them, a deb being its package name without -git.
 ONLY_DEBS=
@@ -110,17 +108,16 @@ docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v 
     for deb in /o/*.deb; do name=$(basename "$deb"); case " $ONLY_DEBS " in *" ${name%%_*} "*) ;; *) rm "$deb" ;; esac; done
   fi
   # andromeda-link comes from the Link release, not this source; install every other package. An app build installs
-  # only its release unit: the other debs are empty. What the unit needs from the core or Link (andromeda-preview,
-  # andromeda-link) comes from the published apt repo of this base.
+  # only its release unit: the other debs are empty. What the unit needs from the core (andromeda-preview) comes from
+  # the published apt repo of this base.
   [ -z "$ANDROMEDA_APP" ] || echo "deb [signed-by=/o/src/andromeda-release.asc] $LINK_REPO ./" > /etc/apt/sources.list.d/andromeda.list
   apt-get -o Acquire::Retries=5 update
   if [ -n "$ANDROMEDA_APP" ]; then
     debs=$(ls /o/andromeda-"$ANDROMEDA_APP"_*.deb 2> /dev/null)
-    [ "$ANDROMEDA_APP" != libdesk ] || debs="$debs $(ls /o/andromeda-files_*.deb /o/andromeda-terminal_*.deb /o/andromeda-player_*.deb /o/andromeda-viewer_*.deb /o/andromeda-link-app_*.deb)"
-    [ "$ANDROMEDA_APP" != libdesk ] || debs="$debs $(ls /o/extra/andromeda-link_*.deb 2> /dev/null)"
+    [ "$ANDROMEDA_APP" != libdesk ] || debs="$debs $(ls /o/andromeda-files_*.deb /o/andromeda-terminal_*.deb /o/andromeda-player_*.deb /o/andromeda-viewer_*.deb)"
   else
     debs=$(ls /o/*.deb /o/extra/*.deb 2> /dev/null | grep -v "/andromeda_\|/andromeda-dbgsym_")
-    [ -z "$ANDROMEDA_CORE" ] || debs=$(echo "$debs" | grep -v "/andromeda-\(files\|player\|viewer\|terminal\|link-app\|libdesk\)_")
+    [ -z "$ANDROMEDA_CORE" ] || debs=$(echo "$debs" | grep -v "/andromeda-\(files\|player\|viewer\|terminal\|libdesk\)_")
   fi
   apt-get install -y -qq $debs 2>&1 | tee /o/install.log || exit 12
 ' || status=$?

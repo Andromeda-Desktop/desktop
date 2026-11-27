@@ -49,7 +49,7 @@ MODULES = {
     "files": (REPO / "apps" / "files" / "src", REPO / "apps" / "files" / "translations" / "en.json"),
     "viewer": (REPO / "apps" / "viewer" / "src", REPO / "apps" / "viewer" / "translations" / "en.json"),
     "player": (REPO / "apps" / "player" / "src", REPO / "apps" / "player" / "translations" / "en.json"),
-    "link": (REPO / "apps" / "link-app" / "src", REPO / "apps" / "link-app" / "translations" / "en.json"),
+    "link": (REPO / "link" / "window" / "src", REPO / "link" / "window" / "translations" / "en.json"),
     "terminal": (REPO / "apps" / "terminal" / "src", REPO / "apps" / "terminal" / "translations" / "en.json"),
     "preview": (REPO / "andromeda-preview" / "src", REPO / "andromeda-preview" / "translations" / "en.json"),
     "compositor": (REPO / "compositor" / "src", REPO / "compositor" / "translations" / "en.json"),

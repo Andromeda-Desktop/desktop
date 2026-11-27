@@ -1174,11 +1174,11 @@ notes = "Entry is a directory. Own meson tree (apps/viewer/meson.build)."
 [[feature]]
 name = "apps: Link"
 keywords = ["link app", "phone app", "phone card", "mirror", "pairing", "messages", "calls", "photos"]
-module = "link-app"
-entry = ["apps/link-app/src", "apps/link-app/meson.build"]
-test = "apps/link-app/build/link_model_test"
-build = "link-app"
-notes = "Link1 D-Bus client on libdesk-app (binary andromeda-link-app); fake daemon apps/link-app/tests/fake_link1.py."
+module = "link"
+entry = ["link/window/src", "link/window/meson.build"]
+test = "link/target/window/window/link_model_test"
+build = "link"
+notes = "Link1 D-Bus client on the static libdesk (binary andromeda-link-app), in the link repo: cd link && just window; fake daemon link/window/tests/fake_link1.py. Link's v* tag releases it (andromeda-link-window)."
 
 [[feature]]
 name = "apps: Terminal"

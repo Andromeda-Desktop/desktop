@@ -22,11 +22,11 @@ arch-meson() {
 source "$root/pkg/PKGBUILD"
 cd "$srcdir"
 
-# ANDROMEDA_APP=libdesk|player|viewer|link-app (app release CI): build and stage only that release unit (PKGBUILD's
+# ANDROMEDA_APP=libdesk|player|viewer (app release CI): build and stage only that release unit (PKGBUILD's
 # _app_units; libdesk is libdesk with Files and Terminal). dpkg-buildpackage still writes every package of
 # debian/control; the other debs stay empty and unpublished.
 # ANDROMEDA_CORE=1 (core release CI): no apps; they release on their own tags. Their debs stay empty and unpublished.
-apps=(files viewer player terminal link-app)
+apps=(files viewer player terminal)
 [[ -z ${ANDROMEDA_CORE:-} ]] || apps=()
 app_dirs=()
 [[ -z ${ANDROMEDA_APP:-} ]] || app_dirs=("${_app_units[@]}")
@@ -91,13 +91,12 @@ case ${1:-} in
       [andromeda-viewer-git]=andromeda-viewer
       [andromeda-terminal-git]=andromeda-terminal
       [andromeda-libdesk-git]=andromeda-libdesk
-      [andromeda-link-app-git]=andromeda-link-app
     )
     if [[ -n ${ANDROMEDA_APP:-} ]]; then
       declare -A debs=()
       for fn in "${pkgname[@]}"; do debs[$fn]=${fn%-git}; done
     fi
-    [[ -z ${ANDROMEDA_CORE:-} ]] || unset 'debs[andromeda-files-git]' 'debs[andromeda-player-git]' 'debs[andromeda-viewer-git]' 'debs[andromeda-terminal-git]' 'debs[andromeda-link-app-git]' 'debs[andromeda-libdesk-git]'
+    [[ -z ${ANDROMEDA_CORE:-} ]] || unset 'debs[andromeda-files-git]' 'debs[andromeda-player-git]' 'debs[andromeda-viewer-git]' 'debs[andromeda-terminal-git]' 'debs[andromeda-libdesk-git]'
     if [[ -n ${ANDROMEDA_ONLY:-} ]]; then
       declare -A wanted=()
       for fn in "${pkgname[@]}"; do wanted[$fn]=${debs[$fn]}; done

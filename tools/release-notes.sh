@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prints the install notes at the top of an app release; GitHub appends the generated change list below them.
-# Usage: tools/release-notes.sh APP VERSION     (APP: files, player, viewer, terminal, link-app)
+# Usage: tools/release-notes.sh APP VERSION     (APP: files, player, viewer, terminal)
 set -euo pipefail
 app=$1 version=$2
 releases=https://github.com/${GITHUB_REPOSITORY:-Andromeda-Desktop/desktop}/releases

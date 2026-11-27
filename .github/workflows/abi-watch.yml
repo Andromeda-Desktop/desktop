@@ -47,7 +47,6 @@ jobs:
               andromeda-player-git) units+=(player) ;;
               andromeda-viewer-git) units+=(viewer) ;;
               andromeda-terminal-git) units+=(terminal) ;;
-              andromeda-link-app-git) units+=(link-app) ;;
               andromeda-link*) ;; # built in the link repo
               *) units+=(core) ;;
             esac

@@ -53,7 +53,7 @@ jobs:
           for deb in "$out"/deb-testing/*.deb "$out"/xwayland-satellite-testing/*.deb "$RUNNER_TEMP"/link/*.deb; do
             name=$(basename "$deb")
             # Core release: the apps publish on their own tags (release-apps).
-            [[ ! $name =~ ^andromeda-(files|player|viewer|terminal|link-app|libdesk)_ ]] || continue
+            [[ ! $name =~ ^andromeda-(files|player|viewer|terminal|libdesk)_ ]] || continue
             cp "$deb" "apt/${name//:/.}"
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
