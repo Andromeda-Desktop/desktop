@@ -77,15 +77,14 @@ namespace andromeda {
       std::array<float, 4> background, backgroundUnfocused, text, textUnfocused;
     };
 
-    // Untouched title-bar colours follow the light or dark scheme (header, label_1, inactive label_3); a theme template or
-    // the user's own colours win.
+    // Each colour the config leaves unset follows the light or dark scheme (header, label_1, inactive label_3).
     Palette palette() {
       const auto& colors = config().colors.titleBar;
-      if (!(colors == std::remove_cvref_t<decltype(colors)>{})) {
-        return {colors.background, colors.backgroundUnfocused, colors.text, colors.textUnfocused};
-      }
       const auto& s = scheme();
-      return {rgba(s.header), rgba(s.header), rgba(s.label1), rgba(s.label3)};
+      return {
+          colors.background.value_or(rgba(s.header)), colors.backgroundUnfocused.value_or(rgba(s.header)),
+          colors.text.value_or(rgba(s.label1)), colors.textUnfocused.value_or(rgba(s.label3))
+      };
     }
 
     // A button glyph drawn into `px` device pixels: Windows lines fill the box, macOS marks sit inside the light.

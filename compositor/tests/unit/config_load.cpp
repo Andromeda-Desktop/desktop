@@ -4787,12 +4787,29 @@ maximize = "#00FFFFFF"
   CHECK_EQ(bar.buttonPosition, andromeda::TitleBarButtonSide::Left);
   CHECK_EQ(bar.buttonCornerRadius, 4);
   const auto& colors = store.config().colors.titleBar;
-  CHECK_EQ(colors.background[0], 1.0F);
-  CHECK_EQ(colors.backgroundUnfocused[1], 1.0F);
-  CHECK_EQ(colors.text[2], 1.0F);
-  CHECK_EQ(colors.textUnfocused[0], 1.0F);
+  CHECK_EQ(colors.background.value()[0], 1.0F);
+  CHECK_EQ(colors.backgroundUnfocused.value()[1], 1.0F);
+  CHECK_EQ(colors.text.value()[2], 1.0F);
+  CHECK_EQ(colors.textUnfocused.value()[0], 1.0F);
   CHECK_EQ(colors.close[1], 1.0F);
   CHECK_EQ(colors.maximize[2], 1.0F);
+}
+
+ANDROMEDA_TEST(titleBarButtonColourLeavesTheSchemeColoursFollowingTheScheme) {
+  const TempConfig file;
+  file.write(R"(
+[colors.title_bar]
+close = "#FFFF00FF"
+)");
+  auto& store = andromeda::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  const auto& colors = store.config().colors.titleBar;
+  CHECK_EQ(colors.close[1], 1.0F);
+  CHECK(!colors.background.has_value());
+  CHECK(!colors.backgroundUnfocused.has_value());
+  CHECK(!colors.text.has_value());
+  CHECK(!colors.textUnfocused.has_value());
 }
 
 ANDROMEDA_TEST(titleBarInvalidValuesAreClaimedAndDiagnosed) {

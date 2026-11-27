@@ -715,10 +715,11 @@ namespace andromeda {
     // diagnostics banner and the quit confirmation.
     struct Colors {
       struct TitleBar {
-        std::array<float, 4> background{0.1607843F, 0.1607843F, 0.2F, 1.0F};
-        std::array<float, 4> backgroundUnfocused{0.1019608F, 0.1019608F, 0.1215686F, 1.0F};
-        std::array<float, 4> text{0.9098039F, 0.9098039F, 0.9176471F, 1.0F};
-        std::array<float, 4> textUnfocused{0.5411765F, 0.5411765F, 0.5725490F, 1.0F};
+        // Unset: the scheme's header, label_1 and label_3, so the bar follows light and dark.
+        std::optional<std::array<float, 4>> background;
+        std::optional<std::array<float, 4>> backgroundUnfocused;
+        std::optional<std::array<float, 4>> text;
+        std::optional<std::array<float, 4>> textUnfocused;
         std::array<float, 4> close{1.0F, 0.4196078F, 0.4196078F, 1.0F};
         std::array<float, 4> maximize{0.4784314F, 0.6392157F, 1.0F, 1.0F};
         std::array<float, 4> minimize{1.0F, 0.8196078F, 0.4F, 1.0F};
