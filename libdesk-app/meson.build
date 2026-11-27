@@ -90,12 +90,22 @@ desk_app_dep = declare_dependency(
   include_directories: _inc,
 )
 
-if get_option('devel') and is_wayland and not meson.is_subproject()
+if get_option('devel') and not meson.is_subproject()
   # An installed, static libdesk for apps outside this tree (Link's window): pkg-config --static andromeda-desk.
   _ui_sp_dev = subproject('libdesk-ui')
+  _dev_whole = [desk_app_lib, _ui_sp_dev.get_variable('desk_ui_lib')]
+  _dev_src = [meson.current_source_dir() / 'src', meson.current_source_dir() / 'subprojects/libdesk-ui/src']
+  _dev_protocols = [meson.current_source_dir() / 'subprojects/libdesk-ui/protocols']
+  if is_wayland
+    _dev_whole += subproject('libdesk-system').get_variable('desk_system_lib')
+    _dev_src += meson.current_source_dir() / 'subprojects/libdesk-system/src'
+    _dev_protocols += meson.current_source_dir() / 'subprojects/libdesk-system/protocols'
+    _dev_private = ['-ldl', '-pthread']
+  else
+    _dev_private = ['-Wl,-framework,AppKit', '-Wl,-framework,QuartzCore', '-Wl,-framework,UserNotifications']
+  endif
   _dev_lib = static_library('andromeda-desk',
-    link_whole: [desk_app_lib, subproject('libdesk-system').get_variable('desk_system_lib'),
-      _ui_sp_dev.get_variable('desk_ui_lib')],
+    link_whole: _dev_whole,
     install: true,
     install_tag: 'devel',
   )
@@ -106,17 +116,13 @@ if get_option('devel') and is_wayland and not meson.is_subproject()
     description: 'Andromeda libdesk app frame, UI toolkit and session services (static)',
     version: meson.project_version(),
     libraries: _dev_lib,
-    libraries_private: ['-ldl', '-pthread'],
+    libraries_private: _dev_private,
     subdirs: 'andromeda-desk',
     extra_cflags: _ui_sp_dev.get_variable('_tokens_runtime'),
     variables: {'assetsdir': '${prefix}' / _assets_dir},
   )
-  meson.add_install_script('tools/install-headers.sh', _inc_dir,
-    meson.current_source_dir() / 'src', meson.current_source_dir() / 'subprojects/libdesk-ui/src',
-    meson.current_source_dir() / 'subprojects/libdesk-system/src', '--protocols',
-    meson.current_source_dir() / 'subprojects/libdesk-ui/protocols',
-    meson.current_source_dir() / 'subprojects/libdesk-system/protocols', '--generated',
-    _ui_sp_dev.get_variable('_protocol_headers'),
+  meson.add_install_script('tools/install-headers.sh', _inc_dir, _dev_src, '--protocols', _dev_protocols,
+    '--generated', _ui_sp_dev.get_variable('_protocol_headers'),
     install_tag: 'devel',
   )
   install_subdir(meson.current_source_dir() / '../shell/assets', install_dir: _assets_dir, strip_directory: true,
