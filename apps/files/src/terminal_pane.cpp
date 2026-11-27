@@ -165,7 +165,7 @@ void TerminalPane::requestFrame() {
         split.view->frame();
       }
     }
-  });
+  }, Surface::FrameTicks::OnRequest);
   surface->setScaleChangedCallback([this](float scale) {
     for (Split& split : m_splits) {
       split.view->setDeviceScale(scale);

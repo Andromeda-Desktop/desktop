@@ -363,7 +363,10 @@ void Surface::setPrepareFrameCallback(PrepareFrameCallback callback) { m_prepare
 
 void Surface::setUpdateCallback(UpdateCallback callback) { m_updateCallback = std::move(callback); }
 
-void Surface::setFrameTickCallback(FrameTickCallback callback) { m_frameTickCallback = std::move(callback); }
+void Surface::setFrameTickCallback(FrameTickCallback callback, FrameTicks ticks) {
+  m_frameTickCallback = std::move(callback);
+  m_frameTicks = ticks;
+}
 
 void Surface::setScaleChangedCallback(ScaleChangedCallback callback) { m_scaleChangedCallback = std::move(callback); }
 
@@ -971,7 +974,7 @@ void Surface::requestLayout() {
 
 void Surface::requestRedraw() {
   recordSurfaceProfileEvent(*this, SurfaceProfileEvent::RequestRedraw);
-  if (m_frameTickCallback != nullptr) {
+  if (m_frameTickCallback != nullptr && m_frameTicks == FrameTicks::EveryRedraw) {
     m_nextFrameCallbackShouldTick = true;
   }
   m_redrawRequested = true;

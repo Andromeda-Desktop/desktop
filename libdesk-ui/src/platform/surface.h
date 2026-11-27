@@ -81,6 +81,9 @@ public:
   using PrepareFrameCallback = std::function<void(bool needsUpdate, bool needsLayout)>;
   using UpdateCallback = std::function<void()>;
   using FrameTickCallback = std::function<void(float deltaMs)>;
+  // EveryRedraw: each redraw asks for a tick on the next frame callback, so a tick that redraws keeps ticking.
+  // OnRequest: ticks run only after requestFrameTick(); a lone redraw then asks for no frame callback.
+  enum class FrameTicks : std::uint8_t { EveryRedraw, OnRequest };
   using ScaleChangedCallback = std::function<void(float scale)>;
   using PresenceChangedCallback = std::function<void(SurfacePresence presence)>;
 
@@ -102,7 +105,7 @@ public:
   void setConfigureCallback(ConfigureCallback callback);
   void setPrepareFrameCallback(PrepareFrameCallback callback);
   void setUpdateCallback(UpdateCallback callback);
-  void setFrameTickCallback(FrameTickCallback callback);
+  void setFrameTickCallback(FrameTickCallback callback, FrameTicks ticks = FrameTicks::EveryRedraw);
   void setScaleChangedCallback(ScaleChangedCallback callback);
   // The one visibility fact for content that only matters on screen (animations, polls, previews).
   [[nodiscard]] SurfacePresence presence() const noexcept { return m_presence; }
@@ -269,6 +272,7 @@ private:
   PrepareFrameCallback m_prepareFrameCallback;
   UpdateCallback m_updateCallback;
   FrameTickCallback m_frameTickCallback;
+  FrameTicks m_frameTicks = FrameTicks::EveryRedraw;
   ScaleChangedCallback m_scaleChangedCallback;
   PresenceChangedCallback m_presenceChangedCallback;
   SurfacePresence m_presence = SurfacePresence::Shown;

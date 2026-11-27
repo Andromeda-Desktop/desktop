@@ -3073,7 +3073,7 @@ namespace term {
         for (std::size_t i = 0; i < m_views.size(); ++i) {
           m_views[i].view->frame();
         }
-      });
+      }, Surface::FrameTicks::OnRequest);
       surface->setScaleChangedCallback([this](float scale) {
         for (Session& session : m_views) {
           session.view->setDeviceScale(scale);
