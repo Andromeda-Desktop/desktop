@@ -40,7 +40,7 @@ jobs:
         with: { version: 0.17.1 }
       - name: Tools
         run: |
-          brew install meson ninja llvm lld pkgconf librsvg jq ncurses coreutils gnu-sed
+          brew install meson ninja llvm lld pkgconf librsvg jq ncurses coreutils gnu-sed gnupg
           # The scripts call GNU sed and sha256sum, and the LLVM Mach-O tools by their Linux names. Compiling stays
           # with Apple clang: brew clang brings its own libc++ headers.
           mkdir -p /tmp/llvm-tools
@@ -63,6 +63,8 @@ jobs:
         run: tools/macos/terminal.sh
       - name: Smoke
         run: tools/macos/smoke.sh
+      - name: Update proof
+        run: tools/macos/update-proof.sh
       - name: Pack
         if: always()
         run: |
@@ -88,6 +90,5 @@ jobs:
           cp "$zip" /var/tmp/Andromeda-Terminal-macos-arm64.zip
           gh release upload repo -R "$GITHUB_REPOSITORY" --clobber /var/tmp/Andromeda-Terminal-macos-arm64.zip
           # The self-update manifest names the tag's zip: a later release cannot change the bytes it points to.
-          brew install gnupg
           tools/mac-manifest.sh repo "$zip" "${{ inputs.version }}" \
             "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$zip")" Andromeda-Terminal-macos-arm64

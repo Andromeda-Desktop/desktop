@@ -16,7 +16,8 @@ impl Manifest {
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let manifest: Self = serde_json::from_slice(bytes).context("manifest is not valid JSON")?;
         parse_version(&manifest.version)?;
-        if !manifest.url.starts_with("https://") {
+        let loopback = cfg!(feature = "proof") && manifest.url.starts_with("http://127.0.0.1:");
+        if !manifest.url.starts_with("https://") && !loopback {
             bail!("manifest url is not https: {}", manifest.url);
         }
         if manifest.sha256.len() != 64

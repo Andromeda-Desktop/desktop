@@ -15,6 +15,10 @@ pgp = { version = "0.21", default-features = false }
 sha2 = "0.10"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 
+[features]
+# tools/macos/update-proof.sh only: trusts the key file in ANDROMEDA_UPDATER_PROOF_KEY and http://127.0.0.1 URLs.
+proof = []
+
 [lints]
 workspace = true
 

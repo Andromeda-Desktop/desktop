@@ -7,7 +7,7 @@
 
 use andromeda_app_updater::manifest::{Manifest, compare_versions};
 use andromeda_app_updater::swap::{self, Disk, Paths};
-use andromeda_app_updater::verify::{RELEASE_KEY, check_sha256, signed_manifest};
+use andromeda_app_updater::verify::{check_sha256, signed_manifest};
 use anyhow::{Context, Result, bail};
 use rustix::fs::{FlockOperation, flock};
 use rustix::process::{Pid, test_kill_process};
@@ -98,7 +98,19 @@ fn fetch_manifest(agent: &ureq::Agent, url: &str) -> Result<Manifest> {
             .read_to_vec()
             .with_context(|| url.to_owned())
     };
-    signed_manifest(&get(url)?, &get(&format!("{url}.sig"))?, RELEASE_KEY)
+    signed_manifest(&get(url)?, &get(&format!("{url}.sig"))?, &trusted_key()?)
+}
+
+#[cfg(not(feature = "proof"))]
+#[allow(clippy::unnecessary_wraps)] // one signature with the proof build, which reads a file
+fn trusted_key() -> Result<String> {
+    Ok(andromeda_app_updater::verify::RELEASE_KEY.to_owned())
+}
+
+#[cfg(feature = "proof")]
+fn trusted_key() -> Result<String> {
+    let path = std::env::var_os("ANDROMEDA_UPDATER_PROOF_KEY").context("ANDROMEDA_UPDATER_PROOF_KEY is not set")?;
+    fs::read_to_string(path).context("cannot read the proof key")
 }
 
 /// Downloads, checks and unpacks the release, then marks it ready. Any failure leaves no marker.
