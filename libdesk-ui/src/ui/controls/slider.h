@@ -1,10 +1,12 @@
 #pragma once
 
 #include "ui/controls/flex.h"
+#include "ui/palette.h"
 #include "ui/signal.h"
 #include "ui/style.h"
 
 #include <functional>
+#include <optional>
 
 class InputArea;
 class RectNode;
@@ -24,6 +26,8 @@ public:
   void setFilled(bool filled);
   // Corner radius of the track and fill (px); 0 = half the track height (pill).
   void setTrackRadius(float radius);
+  // Fill and track roles in place of the accent and stroke (filled: of the glass level, and the level has no edge).
+  void setColors(ColorRole fill, ColorRole track);
   void setWheelAdjustEnabled(bool enabled);
   void setOnValueChanged(std::function<void(double)> callback);
   void setOnDragEnd(std::function<void()> callback);
@@ -65,6 +69,11 @@ private:
   bool m_enabled = true;
   bool m_wheelAdjustEnabled = false;
   bool m_filled = false;
+  struct Colors {
+    ColorRole fill;
+    ColorRole track;
+  };
+  std::optional<Colors> m_colors;
   float m_trackRadius = 0.0F;
   float m_trackHeight = Style::sliderTrackHeight;
   float m_thumbSizePx = Style::sliderThumbSize;

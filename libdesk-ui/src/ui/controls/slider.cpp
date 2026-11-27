@@ -254,6 +254,11 @@ void Slider::setTrackRadius(float radius) {
   applyVisualState();
 }
 
+void Slider::setColors(ColorRole fill, ColorRole track) {
+  m_colors = Colors{.fill = fill, .track = track};
+  applyVisualState();
+}
+
 void Slider::setWheelAdjustEnabled(bool enabled) { m_wheelAdjustEnabled = enabled; }
 
 void Slider::setOnValueChanged(std::function<void(double)> callback) { m_onValueChanged = std::move(callback); }
@@ -356,6 +361,11 @@ void Slider::applyVisualState() {
     fillColor.a *= m_enabled ? 1.0F : 0.45F;
     m_thumb->setVisible(false);
   }
+  if (m_colors) {
+    const float alpha = m_enabled ? 1.0F : 0.45F;
+    fillColor = resolved(this, m_colors->fill, alpha);
+    trackColor = resolved(this, m_colors->track, alpha);
+  }
   const float trackH = m_filled ? m_track->height() : m_trackHeight;
 
   const float radius = m_trackRadius > 0.0F ? std::min(m_trackRadius, trackH * 0.5F) : trackH * 0.5F;
@@ -366,7 +376,7 @@ void Slider::applyVisualState() {
   if (m_filled) {
     // No edge on an empty level: a 0-wide fill would draw a stray hairline.
     fillStyle.border = resolved(this, ColorRole::SliderEdge, m_enabled ? 1.0F : 0.45F);
-    fillStyle.borderWidth = normalizedValue() > 0.0F ? Style::borderWidth : 0.0F;
+    fillStyle.borderWidth = !m_colors && normalizedValue() > 0.0F ? Style::borderWidth : 0.0F;
   }
   m_fill->setStyle(fillStyle);
 
