@@ -5,6 +5,7 @@
 # Close the window or press Ctrl+C to end it; rerun after a compositor rebuild.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+source "$ROOT/tests/headless.sh"
 ANDROMEDA=${ANDROMEDA:-$ROOT/compositor/build-live/andromeda}
 NOCTALIA=${NOCTALIA:-$ROOT/shell/build-f7/andromeda-shell}
 PARENT=${WAYLAND_DISPLAY:?run this inside a Wayland session}
@@ -26,10 +27,9 @@ done
 # The user's compositor config without its autostart (the shell starts below).
 sed -e '/^autostart *=/d' ~/.config/andromeda/config.toml > "$RUNTIME/andromeda.toml"
 
-env -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY="$PARENT" WLR_BACKENDS=wayland \
-  "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" --trust-binary "$ROOT/" --trust-binary /usr/bin/ > "$RUNTIME/andromeda.log" 2>&1 &
-for _ in $(seq 100); do [[ -S $RUNTIME/wayland-0 ]] && break; sleep 0.05; done
-[[ -S $RUNTIME/wayland-0 ]] || { echo "andromeda did not start:" >&2; tail -n 20 "$RUNTIME/andromeda.log" >&2; exit 1; }
+headless_compositor "$RUNTIME" 1 "$RUNTIME/andromeda.toml" -uDBUS_SESSION_BUS_ADDRESS WAYLAND_DISPLAY="$PARENT" \
+  WLR_BACKENDS=wayland > "$RUNTIME/andromeda.log" 2>&1 &
+wait_compositor $! "$RUNTIME/wayland-0" 5 || { echo "andromeda did not start:" >&2; tail -n 20 "$RUNTIME/andromeda.log" >&2; exit 1; }
 
 env -u DISPLAY -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME HOME="$H" \
   XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY=wayland-0 ANDROMEDA_SOCKET="$RUNTIME/andromeda-wayland-0.sock" \
