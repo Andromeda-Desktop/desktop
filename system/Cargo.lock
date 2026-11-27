@@ -76,6 +76,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "andromeda-app-updater"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "andromeda-dsp"
 version = "0.1.0"
 
