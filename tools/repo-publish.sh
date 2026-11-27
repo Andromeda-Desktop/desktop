@@ -10,6 +10,7 @@ set -euo pipefail
 kind=$1 release=$2 src=$(realpath "$3")
 repo=${GITHUB_REPOSITORY:?}
 out=$PWD/repo-out
+here=$(dirname "$(realpath "$0")")
 
 echo "$RELEASE_GPG_KEY" | gpg --batch --import 2> /dev/null
 key=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
@@ -24,6 +25,11 @@ merge_arch() {
     gpg --batch --yes --detach-sign --no-armor -u "$key" "$out/${name//:/.}"
   done
   repo-add --sign --key "$key" "$out/andromeda.db.tar.gz" "$out"/*.pkg.tar.zst
+  while read -r name file; do
+    repo-remove --sign --key "$key" "$out/andromeda.db.tar.gz" "$name"
+    rm -f "$out/$file" "$out/$file.sig"
+    echo "$file" >> "$out.dropped"
+  done < <(replaced "$out/andromeda.db.tar.gz")
   rm -f "$out"/*.old "$out"/*.old.sig
   # Release assets cannot be symlinks.
   for link in andromeda.db andromeda.db.sig andromeda.files andromeda.files.sig; do
@@ -50,7 +56,13 @@ merge_apt() {
         if (file in size && size[file] == bytes && !(file in seen)) { seen[file]; print } }' ours Packages.old > Packages.kept
     # --multiversion keeps the older entries; apt installs the highest version.
     { cat Packages.kept; echo; dpkg-scanpackages --multiversion . /dev/null; } | cat -s > Packages
-    rm Packages.old Packages.kept ours
+    replaced Packages > gone
+    awk -v RS= -v ORS='\n\n' -v names="$(awk '{ print $1 }' gone)" \
+      'BEGIN { split(names, n, "\n"); for (i in n) gone[n[i]] } { split($0, f, "\n"); if (!(substr(f[1], 10) in gone)) print }' \
+      Packages > Packages.left
+    mv Packages.left Packages
+    awk '{ print $2 }' gone | tee -a "$out.dropped" | xargs -r rm -f
+    rm Packages.old Packages.kept ours gone
     gzip -kf9 Packages
     apt-ftparchive release . > Release
     gpg --batch --yes --clearsign -u "$key" -o InRelease Release
@@ -58,8 +70,15 @@ merge_apt() {
   )
 }
 
-# The names the index must list after the upload: this run's packages.
+# Entries another entry replaces outright ("<name> <file>"): the merge takes them out of the index.
+replaced() { "$here/repo-check.py" "$kind" "$1" --replaced; }
+
+# The names the index must list after the upload: this run's packages, less those a listed package replaces.
 names() {
+  touch "$out.dropped"
+  _names | grep -vxFf "$out.dropped" || true
+}
+_names() {
   if [[ $kind == arch ]]; then
     for p in "$src"/*.pkg.tar.zst; do b=$(basename "$p"); echo "${b//:/.}"; done
   else
@@ -122,7 +141,7 @@ index_file() { if [[ $kind == arch ]]; then echo andromeda.db.tar.gz; else echo 
 unmet() { [[ ! -f $1 ]] || "$(dirname "$0")/repo-check.py" "$kind" "$1" 2> /dev/null || true; }
 
 for attempt in 1 2 3; do
-  rm -rf "$out" "$out.base"
+  rm -rf "$out" "$out.base" "$out.dropped"
   mkdir -p "$out" "$out.base"
   gh release download "$release" -R "$repo" -D "$out.base" -p "$(index_file)" 2> /dev/null || true
   "merge_$kind"

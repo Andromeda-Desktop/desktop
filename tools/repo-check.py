@@ -4,7 +4,10 @@ the others: each dependency on a package or virtual name that the index provides
 Dependencies on names the index does not provide are left to the distro, except our own (andromeda*).
   tools/repo-check.py arch andromeda.db.tar.gz
   tools/repo-check.py apt Packages
-Exit 1 lists every unmet dependency."""
+Exit 1 lists every unmet dependency.
+  tools/repo-check.py arch|apt INDEX --replaced
+prints "<name> <file>" for each entry that another entry replaces outright (arch: replaces; apt: Replaces and
+Conflicts), without a version: the index must not list it."""
 
 import re
 import subprocess
@@ -67,7 +70,7 @@ def satisfies(kind, have, op, want):
 
 
 def arch_packages(path):
-    """name -> (version, depends, provides, conflicts); depends etc. as (name, op, version)."""
+    """(name, version, depends, provides, conflicts, replaces, file); depends etc. as (name, op, version)."""
     packages = []
     with tarfile.open(path) as db:
         for member in db.getmembers():
@@ -83,7 +86,8 @@ def arch_packages(path):
             split = lambda s: re.match(r"([^<>=]+)(?:(<=|>=|=|<|>)(.+))?$", s).groups()
             packages.append((fields["NAME"][0], fields["VERSION"][0], [split(d) for d in fields.get("DEPENDS", [])],
                              [split(p) for p in fields.get("PROVIDES", [])],
-                             [split(c) for c in fields.get("CONFLICTS", []) + fields.get("BREAKS", [])]))
+                             [split(c) for c in fields.get("CONFLICTS", []) + fields.get("BREAKS", [])],
+                             [split(r) for r in fields.get("REPLACES", [])], fields["FILENAME"][0]))
     return packages
 
 
@@ -103,14 +107,23 @@ def apt_packages(path):
             continue
         packages.append((fields["Package"], fields["Version"], relations(fields.get("Depends", "") + "," +
                          fields.get("Pre-Depends", "")), relations(fields.get("Provides", "")),
-                         relations(fields.get("Breaks", "") + "," + fields.get("Conflicts", ""))))
+                         relations(fields.get("Breaks", "") + "," + fields.get("Conflicts", "")),
+                         [r for r in relations(fields.get("Replaces", "")) if r in relations(fields.get("Conflicts", ""))],
+                         fields.get("Filename", "")))
     return packages
 
 
 def main():
     kind, path = sys.argv[1], sys.argv[2]
+    packages = arch_packages(path) if kind == "arch" else apt_packages(path)
+    if sys.argv[3:] == ["--replaced"]:
+        gone = {r for p in packages for r, op, _ in p[5] if not op and r != p[0]}
+        for p in packages:
+            if p[0] in gone:
+                print(p[0], p[6])
+        return
     newest = {}
-    for package in arch_packages(path) if kind == "arch" else apt_packages(path):
+    for package in packages:
         # A debug symbol package pins its exact package; a missing newer one only means no symbols.
         if package[0].endswith("-dbgsym"):
             continue
@@ -118,12 +131,12 @@ def main():
             newest[package[0]] = package
     # name -> versions that provide it among the newest packages (None: provided without a version).
     provided = {}
-    for name, version, _, provides, _ in newest.values():
+    for name, version, _, provides, *_ in newest.values():
         provided.setdefault(name, []).append(version)
         for p, _, v in provides:
             provided.setdefault(p, []).append(v)
     problems = []
-    for name, version, depends, _, conflicts in sorted(newest.values()):
+    for name, version, depends, _, conflicts, *_ in sorted(newest.values()):
         for dep, op, want in depends:
             # A name the index does not provide is the distro's, unless it is one of ours (andromeda*).
             if dep not in provided and "andromeda" not in dep:
