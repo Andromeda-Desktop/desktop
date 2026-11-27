@@ -212,9 +212,9 @@ namespace sys {
   }
 
   void WakeFd::drain() const {
+    // A non-semaphore eventfd read returns the whole count and resets it to zero.
     std::uint64_t ignored = 0;
-    while (::read(m_read, &ignored, sizeof(ignored)) > 0) {
-    }
+    (void)::read(m_read, &ignored, sizeof(ignored));
   }
 
   int socketCloexec(int domain, int type) { return ::socket(domain, type | SOCK_CLOEXEC, 0); }
