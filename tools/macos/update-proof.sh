@@ -81,9 +81,11 @@ if out=$(check bad); then fail "a tampered zip was accepted: $out"; fi
 [ ! -e "$stage/ready" ] || fail "a tampered zip left a ready marker"
 
 manifest good next.zip
-sed 's/1\.0\.1/1.0.2/' "$srv/good.json" > "$srv/edited.json"
+# One added space: still valid JSON that would stage, so only the signature check refuses it.
+{ cat "$srv/good.json"; printf ' '; } > "$srv/edited.json"
 cp "$srv/good.json.sig" "$srv/edited.json.sig"
 if out=$(check edited); then fail "a manifest changed after signing was accepted: $out"; fi
+[ ! -e "$stage/ready" ] || fail "an edited manifest left a ready marker"
 [ "$(version "$app")" = 1.0.0 ] || fail "a refused update changed the app"
 
 out=$(check good)

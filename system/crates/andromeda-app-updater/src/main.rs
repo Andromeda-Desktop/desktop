@@ -19,6 +19,8 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 const TIMEOUT: Duration = Duration::from_secs(60);
+/// The zip may take minutes on a slow link: only a stalled read ends it.
+const STALL: Duration = Duration::from_secs(60);
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 const MAX_ZIP_BYTES: u64 = 512 * 1024 * 1024;
 const EXIT_WAIT: Duration = Duration::from_secs(30);
@@ -82,7 +84,13 @@ fn check(paths: &Paths, stage_dir: &Path, url: &str) -> Result<String> {
     if compare_versions(&manifest.version, &current)? != Ordering::Greater {
         return Ok("none".to_owned());
     }
-    stage(&agent, paths, stage_dir, &manifest)?;
+    let zip_agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_connect(Some(TIMEOUT))
+        .timeout_recv_response(Some(TIMEOUT))
+        .timeout_per_read(Some(STALL))
+        .build()
+        .into();
+    stage(&zip_agent, paths, stage_dir, &manifest)?;
     Ok(format!("ready {}", manifest.version))
 }
 
@@ -125,8 +133,7 @@ fn stage(agent: &ureq::Agent, paths: &Paths, stage_dir: &Path, manifest: &Manife
         check_sha256(File::open(&zip)?, &manifest.sha256)?;
         remove_dir(&unpack)?;
         run_tool(Command::new("ditto").arg("-x").arg("-k").arg(&zip).arg(&unpack))?;
-        let name = paths.app.file_name().context("app path has no file name")?;
-        let new = unpack.join(name);
+        let new = single_app(&unpack)?;
         let version = plist_value(&new, "CFBundleShortVersionString")?;
         if version != manifest.version {
             bail!("the download holds release {version}, the manifest names {}", manifest.version);
@@ -137,30 +144,62 @@ fn stage(agent: &ureq::Agent, paths: &Paths, stage_dir: &Path, manifest: &Manife
         run_tool(Command::new("codesign").args(["--verify", "--deep", "--strict"]).arg(&new))?;
         remove_dir(&paths.staged)?;
         fs::rename(&new, &paths.staged).context("cannot move the new release into the stage")?;
+        swap::sync_tree(&paths.staged)?;
         swap::mark_ready(paths, &manifest.version)
     })();
     let cleanup = remove_dir(&unpack).and(remove_file(&zip));
     result.and(cleanup)
 }
 
+/// The one bundle a release zip holds, whatever name the installed copy has.
+fn single_app(dir: &Path) -> Result<PathBuf> {
+    let mut apps = Vec::new();
+    for entry in fs::read_dir(dir).with_context(|| format!("cannot read {}", dir.display()))? {
+        let path = entry?.path();
+        if path.extension().is_some_and(|e| e == "app") {
+            apps.push(path);
+        }
+    }
+    match <[PathBuf; 1]>::try_from(apps) {
+        Ok([app]) => Ok(app),
+        Err(apps) => bail!("the download holds {} app bundles, not one", apps.len()),
+    }
+}
+
 fn swap_after_exit(paths: &Paths, pid: i32, reopen: bool) -> Result<()> {
     let pid = Pid::from_raw(pid).context("pid must be positive")?;
     let start = Instant::now();
-    while test_kill_process(pid).is_ok() {
+    // Only ESRCH means gone: EPERM is a live process this helper may not signal.
+    loop {
+        match test_kill_process(pid) {
+            Err(rustix::io::Errno::SRCH) => break,
+            Ok(()) | Err(rustix::io::Errno::PERM) => {}
+            Err(e) => bail!("cannot watch the app (pid {pid:?}): {e}"),
+        }
         if start.elapsed() > EXIT_WAIT {
             bail!("the app (pid {pid:?}) did not exit");
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    let swapped = swap::recover(paths, version_of)
-        .and_then(|_| swap::swap(paths, version_of))
-        .and_then(|()| reload_agents(&paths.app));
+    let swapped = install_ready(paths);
     if !reopen {
         return swapped;
     }
     // The user asked for a restart: the app starts again with whichever release the disk holds.
     let reopened = run_tool(Command::new("open").arg(&paths.app));
     swapped.and(reopened)
+}
+
+/// Swaps in the staged release only while it is newer than the app: the user may have installed a newer one by hand.
+fn install_ready(paths: &Paths) -> Result<()> {
+    match swap::recover(paths, version_of)? {
+        Disk::Ready(staged) if compare_versions(&staged, &version_of(&paths.app)?)? == Ordering::Greater => {
+            swap::swap(paths, version_of)?;
+            reload_agents(&paths.app)
+        }
+        Disk::Ready(_) => swap::discard(paths),
+        Disk::Idle | Disk::Swapped => bail!("nothing verified is staged"),
+    }
 }
 
 /// Link's launchd agents run binaries from the bundle; its install-agents.sh restarts them from the new release.

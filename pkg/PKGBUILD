@@ -116,7 +116,7 @@ build() {
   [[ -n ${ANDROMEDA_ONLY:-} ]] || meson compile -C build-indexer
   for app in "${_apps[@]}"; do meson compile -C build-$app; done
   [[ -n ${ANDROMEDA_ONLY:-} ]] || echo "$stamp" > meson.stamp
-  _want system && CFLAGS="${CFLAGS//-flto=auto/}" CXXFLAGS="${CXXFLAGS//-flto=auto/}" cargo build --frozen --release --manifest-path desktop/system/Cargo.toml
+  _want system && CFLAGS="${CFLAGS//-flto=auto/}" CXXFLAGS="${CXXFLAGS//-flto=auto/}" cargo build --frozen --release --manifest-path desktop/system/Cargo.toml --workspace --exclude andromeda-app-updater
   _want greetd && cargo build --frozen --release --manifest-path greetd/Cargo.toml -p greetd
   return 0
 }

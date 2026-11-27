@@ -61,7 +61,7 @@ case ${1:-} in
     for app in "${apps[@]}"; do meson compile -C build-$app; done
     if want system; then
       cargo build --locked --release --manifest-path desktop/system/Cargo.toml --workspace \
-        --exclude andromeda-update --exclude andromeda-update-helper
+        --exclude andromeda-update --exclude andromeda-update-helper --exclude andromeda-app-updater
       cargo build --locked --release --manifest-path desktop/system/Cargo.toml -p andromeda-update \
         -p andromeda-update-helper --no-default-features --features apt
     fi

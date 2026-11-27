@@ -13,7 +13,10 @@ repo=${GITHUB_REPOSITORY:?}
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 
-if gh release download "$release" -R "$repo" -p "$name.json" -D "$out/old" 2> /dev/null; then
+# A manifest that exists but does not download stops the script: it may name a newer version.
+assets=$(gh release view "$release" -R "$repo" --json assets -q '.assets[].name')
+if grep -qx "$name.json" <<< "$assets"; then
+  gh release download "$release" -R "$repo" -p "$name.json" -D "$out/old"
   old=$(jq -r .version "$out/old/$name.json")
   if [[ $old != "$version" && $(printf '%s\n%s\n' "$old" "$version" | sort -V | tail -1) == "$old" ]]; then
     echo "mac-manifest: $name.json names $old, newer than $version; kept"
@@ -27,6 +30,8 @@ sha=$(sha256sum "$zip" | cut -d' ' -f1)
 jq -cn --arg v "$version" --arg u "$url" --arg s "$sha" '{version: $v, url: $u, sha256: $s}' > "$out/$name.json"
 gpg --batch --yes --detach-sign --no-armor -u "$key" -o "$out/$name.json.sig" "$out/$name.json"
 gpg --batch --verify "$out/$name.json.sig" "$out/$name.json" 2> /dev/null
-# The signature goes first: a client that reads the new manifest with the old signature refuses it and retries later.
-gh release upload "$release" -R "$repo" --clobber "$out/$name.json.sig" "$out/$name.json"
+# Two uploads, the signature first: between them a client reads the old manifest with the new signature, refuses
+# it and retries at its next check.
+gh release upload "$release" -R "$repo" --clobber "$out/$name.json.sig"
+gh release upload "$release" -R "$repo" --clobber "$out/$name.json"
 echo "mac-manifest: $name.json -> $version ($sha)"

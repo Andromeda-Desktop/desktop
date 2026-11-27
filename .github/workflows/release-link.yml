@@ -58,11 +58,10 @@ jobs:
             -p 'andromeda-link-window-[0-9]*-x86_64.pkg.tar.zst' -D pkg
           tools/repo-publish.sh arch repo pkg
 
-  # The self-update manifest of Andromeda Link.app; it names the zip in Link's own release. Tags before the Mac
-  # build have no zip: then there is nothing to sign.
+  # The self-update manifest of Andromeda Link.app; it names the zip in Link's own release. It runs every hour, not
+  # only when the packages are due, so a failed run is retried. Tags before the Mac build have no zip.
   macos:
     needs: [check]
-    if: needs.check.outputs.due == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,13 +73,24 @@ jobs:
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
           TAG: ${{ needs.check.outputs.tag }}
         run: |
-          zip=Andromeda-Link-macos-arm64.zip
-          if ! gh release download "$TAG" -R Andromeda-Desktop/link -p "$zip" -D mac; then
+          zip=Andromeda-Link-macos-arm64.zip name=Andromeda-Link-macos-arm64
+          # Each asset list is read first: a failed read stops the job (bash -e), it never counts as "no asset".
+          link_assets=$(gh release view "$TAG" -R Andromeda-Desktop/link --json assets -q '.assets[].name')
+          repo_assets=$(gh release view repo -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')
+          if ! grep -qx "$zip" <<< "$link_assets"; then
             echo "Link $TAG has no $zip"
             exit 0
           fi
+          if grep -qx "$name.json" <<< "$repo_assets"; then
+            have=$(gh release download repo -R "$GITHUB_REPOSITORY" -p "$name.json" -O - | jq -r .version)
+            if [ "$have" = "${TAG#v}" ]; then
+              echo "$name.json already names ${TAG#v}"
+              exit 0
+            fi
+          fi
+          gh release download "$TAG" -R Andromeda-Desktop/link -p "$zip" -D mac
           tools/mac-manifest.sh repo "mac/$zip" "${TAG#v}" \
-            "https://github.com/Andromeda-Desktop/link/releases/download/$TAG/$zip" Andromeda-Link-macos-arm64
+            "https://github.com/Andromeda-Desktop/link/releases/download/$TAG/$zip" "$name"
 
   apt:
     needs: [check]

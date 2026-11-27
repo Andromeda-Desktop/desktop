@@ -1,10 +1,11 @@
 //! Replaces an app bundle with a staged one so that, after a crash or power loss at any point, the app path holds
-//! one whole release: the old one or the new one. The new release moves in with one atomic exchange of two
-//! directory entries; `recover` reads which step the disk reached and finishes or cleans up.
+//! one whole release: the old one or the new one. The staged bundle and its marker reach stable storage before the
+//! marker exists; the new release moves in with one atomic exchange of two directory entries; `recover` reads which
+//! step the disk reached and finishes or cleans up.
 
 use anyhow::{Context, Result, bail};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
-use std::fs;
+use std::fs::{self, File};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
@@ -45,11 +46,40 @@ pub fn disk(p: &Paths, version_of: impl Fn(&Path) -> Result<String>) -> Result<D
     Ok(if version_of(&p.app)? == marked { Disk::Swapped } else { Disk::Ready(marked) })
 }
 
-/// Marks `staged` as verified. Atomic: the marker appears whole or not at all.
+/// Marks `staged` as verified. Atomic and durable: the marker appears whole or not at all, and only on disk.
+/// Call after `sync_tree(staged)`.
 pub fn mark_ready(p: &Paths, version: &str) -> Result<()> {
     let tmp = p.ready.with_extension("tmp");
     fs::write(&tmp, version).with_context(|| format!("cannot write {}", tmp.display()))?;
-    fs::rename(&tmp, &p.ready).with_context(|| format!("cannot write {}", p.ready.display()))
+    sync(&tmp)?;
+    fs::rename(&tmp, &p.ready).with_context(|| format!("cannot write {}", p.ready.display()))?;
+    sync_parent(&p.ready)
+}
+
+/// Flushes every file and directory under `root` to stable storage.
+pub fn sync_tree(root: &Path) -> Result<()> {
+    let kind = fs::symlink_metadata(root).with_context(|| format!("cannot read {}", root.display()))?.file_type();
+    if kind.is_dir() {
+        for entry in fs::read_dir(root).with_context(|| format!("cannot read {}", root.display()))? {
+            sync_tree(&entry?.path())?;
+        }
+    }
+    // A symlink lives in its directory's entry, which the directory's own sync covers.
+    if kind.is_symlink() { Ok(()) } else { sync(root) }
+}
+
+/// fsync on macOS leaves data in the drive's cache; `F_FULLFSYNC` flushes it (Apple fcntl(2)).
+fn sync(path: &Path) -> Result<()> {
+    let file = File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
+    #[cfg(target_os = "macos")]
+    let synced = rustix::fs::fcntl_fullfsync(&file);
+    #[cfg(not(target_os = "macos"))]
+    let synced = rustix::fs::fsync(&file);
+    synced.with_context(|| format!("cannot flush {}", path.display()))
+}
+
+fn sync_parent(path: &Path) -> Result<()> {
+    sync(path.parent().with_context(|| format!("{} has no parent", path.display()))?)
 }
 
 /// The swap steps, in order. A crash between any two leaves a disk that `recover` repairs.
@@ -57,8 +87,12 @@ pub const STEPS: usize = 3;
 
 pub fn step(p: &Paths, index: usize) -> Result<()> {
     match index {
-        0 => renameat_with(CWD, &p.staged, CWD, &p.app, RenameFlags::EXCHANGE)
-            .with_context(|| format!("cannot exchange {} with {}", p.staged.display(), p.app.display())),
+        0 => {
+            renameat_with(CWD, &p.staged, CWD, &p.app, RenameFlags::EXCHANGE)
+                .with_context(|| format!("cannot exchange {} with {}", p.staged.display(), p.app.display()))?;
+            sync_parent(&p.app)?;
+            sync_parent(&p.staged)
+        }
         1 => remove_file(&p.ready),
         2 => remove_dir(&p.staged),
         _ => bail!("no swap step {index}"),
