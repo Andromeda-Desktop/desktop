@@ -37,7 +37,8 @@ def render(key, title, body):
     return f'<section class="doc" id="{sid}"><h2>{html.escape(title)}</h2>\n{body_html}\n</section>', subs
 
 
-rb = (here / "rulebook.md").read_text()
+rb = (here / "rulebook.md").read_text().split("\nChapters live in", 1)[0] + "\n\n" + "".join(
+    p.read_text() for p in sorted((here / "rulebook").glob("*.md")))
 dv = (here / "deviations.md").read_text()
 chs = chapters(rb, lambda t: t.split(".", 1)[0].strip())
 dv_body = dv.split("\n", 1)[1]

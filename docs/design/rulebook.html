@@ -135,7 +135,7 @@ body { font-optical-sizing: none; font-variation-settings: "opsz" 14; }
 .sheet { width: 360px; border-radius: 28px; padding: 12px; display: grid; grid-template-columns: 164px 164px; gap: 8px; }
 .tile { height: 56px; border-radius: 16px; padding: 12px; display: flex; align-items: center; gap: 12px; background: var(--f1); min-width: 0; }
 .tile:hover { background: var(--f2); }
-.ri { width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; background: var(--f2); color: var(--l1); flex: none; }
+.ri { width: 32px; height: 32px; border-radius: 16px; display: grid; place-items: center; background: var(--f2); color: var(--l1); flex: none; }
 .on > .ri, .ri.on { background: var(--acc); color: #fff; }
 .tt { min-width: 0; } .tt > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .span2 { grid-column: span 2; }
@@ -392,11 +392,6 @@ canvas.plot { width: 100%; height: 120px; display: block; }
 <a href="#ch-15" data-ch="15"><i>15</i>Review checklist</a>
 <div class="grp">Map</div>
 <a href="#ch-D" data-ch="D"><i></i>Deviations from the rulebook</a>
-<a class="sub" href="#ch-D-0-size-of-the-problem" data-ch="D">0. Size of the problem</a>
-<a class="sub" href="#ch-D-1-tokens-protocol-design-tokens-toml" data-ch="D">1. Tokens (protocol/design-tokens.toml)</a>
-<a class="sub" href="#ch-D-2-shared-style-libdesk-ui-src-ui-style-h" data-ch="D">2. Shared style (libdesk-ui/src/ui/style.h)</a>
-<a class="sub" href="#ch-D-3-surfaces" data-ch="D">3. Surfaces</a>
-<a class="sub" href="#ch-D-4-migration-order-proposal" data-ch="D">4. Migration order (proposal)</a>
 <a class="sub" href="#ch-D-files-v2-2026-11-07" data-ch="D">Files v2 (2026-11-07)</a>
 <a class="sub" href="#ch-D-bar-islands-2026-11-10" data-ch="D">Bar islands (2026-11-10)</a>
 <a class="sub" href="#ch-D-clear-glass-tone-2026-11-18" data-ch="D">Clear glass tone (2026-11-18)</a>
@@ -512,6 +507,8 @@ when the two differ, this book wins and the TOML is fixed.</p>
 <li><code>corner_radius_scale</code> multiplies every radius except capsules and circles; concentric radii are recomputed after
   the multiply (R7), never scaled separately.</li>
 <li>A new component first gets an anatomy table here. Code follows the table.</li>
+<li>Themes are user packages in a themes folder (anchors, background, scene, reactions), validated and made through
+  the CLI. They override design tokens only; toolkit templates get no user override.</li>
 </ul>
 </section>
 <section class="doc" id="ch-1"><h2>1. Principles</h2>
@@ -983,6 +980,13 @@ raises label_2 to 4.5:1 and label_3 to 3:1 ink (glass::kLegibleInk2/3) on that s
 secondary labels: dark label_2 needs tint .94 over white, and dark label_3 never reaches 3:1. Over a calm wallpaper
 nothing changes. Reduce transparency replaces every
 material with its solid fallback (light #f2f2f6 / #f8f8fa, dark #222226 / #28282c).</p>
+<p>Bare text: a bar with no surface (macOS preset) puts its ink on the wallpaper over a top scrim, 56 px from the
+screen edge: black 32 % -&gt; 12 % at half -&gt; 0 behind white ink, white 45 % -&gt; 15 % -&gt; 0 behind label_1 ink. The
+compositor samples the backdrop under the bar; the ink flips at glass::kAdaptLuminance with glass::kAdaptDeadband
+hysteresis, and the scrim follows the ink. No per-item shadow. Ink meets 4.5:1 over the scrimmed backdrop.</p>
+<p>One material: every glass piece (bar islands, dock, control center capsules, round drops, footer buttons) uses the
+same milky tint plus one density layer. Only the backdrop luminance under a piece sets its density; piece size or
+type never changes tint or tone (user, 2026-11-18).</p>
 <h3 id="ch-5-5-4-elevation">5.4 Elevation</h3>
 <p>Two shadows per level: a key shadow (y offset = 3/8 of blur) and a contact shadow. Shadow colour: light
 rgb(20,20,40), dark black. On layer shapes (islands, dock, sheets) opacity follows the backdrop, not the glass scheme: the dark value over
@@ -1224,11 +1228,11 @@ white 18 %. Inside the lens, text goes to label_1 and weight 600; the symbol tak
 </tr>
 <tr>
 <td>close</td>
-<td>0.28</td>
+<td>0.24</td>
 <td>0</td>
-<td>504</td>
+<td>685</td>
 <td>1.00</td>
-<td>330 ms</td>
+<td>280 ms</td>
 <td>0</td>
 <td>a surface returns to its source, dismissals</td>
 </tr>
@@ -1745,6 +1749,19 @@ row says so.</p>
 <li><strong>Tiling:</strong> 8 between windows and between a window and the screen, bar or dock. Maximize keeps the 8 gaps and the
   radius; fullscreen removes both.</li>
 <li><strong>Window content:</strong> page padding 24; content column max 640 for forms and Settings pages; beside a sidebar it starts one page padding right of the sidebar and spare width stays at the far end (user, 2026-11-19: a centred column left an empty band at the sidebar); without a sidebar it is centred; group gap 24.</li>
+<li><strong>Document apps</strong> (Viewer, Terminal, Files) share one chrome: glass window, sidebar (w 240) on the glass, content
+  in a card r 16 inset 8 under one 40 caption. The chrome above the content is one band; no title bar repeats the
+  document name (user, 2026-11-16).</li>
+<li><strong>Sidebars never collapse for good:</strong> each has a toggle in the caption (F9) and a key that reopens it into its main
+  task (Ctrl+F opens the Viewer sidebar with focus in search).</li>
+<li><strong>Content that appears on input</strong> (search results, filters) takes an existing slot and never pushes siblings: in a
+  sidebar it becomes one more choice of the list switch; everything above the switch keeps its position.</li>
+<li><strong>Pane commands:</strong> a command surface that acts on one pane (Terminal palette, Ctrl+Shift+P) docks to the bottom of
+  that pane: a 40 line (r 8, inset 8), results card above it (r 12, p 4, rows 32 r 8, lens on the current row), list
+  read upward; only that pane dims. A pane narrower than 400 docks the line to the window bottom at full width.</li>
+<li><strong>Settings More options:</strong> rare rows sit in named clusters with an in-page index (Changed filter, changed dot,
+  scroll tracking). Opening More shows only that view. At window width &gt;= 1400: main sidebar + More; below it the
+  main sidebar hides and the More index takes its place, with a back link on top.</li>
 </ul>
 </section>
 <section class="doc" id="ch-9"><h2>9. Components</h2>
@@ -1773,6 +1790,10 @@ row says so.</p>
 <tr>
 <td>right island</td>
 <td>symbol end 8, status symbols 16 with g 8; group to clock g 12 (R3); clock headline, tabular, text end 12</td>
+</tr>
+<tr>
+<td>ends</td>
+<td>the left island starts with a launcher button; the right island ends with a Control Center button; a status symbol (Wi-Fi, Bluetooth) opens its own detail page (user, 2026-11-18)</td>
 </tr>
 <tr>
 <td>center rest</td>
@@ -1834,7 +1855,7 @@ row says so.</p>
 </tr>
 <tr>
 <td>slider pill</td>
-<td>full width x 48, r 16 (R7); track <code>slider_track</code> (black 6 % light, white 10 % dark), no edge; level <code>slider_fill</code> (smoked glass #141418 10 % light, user 2026-11-19: a white level vanishes over white glass; white 24 % dark) from the start edge, no knob; symbol 16 at inset 16 (R5 in a 48 rect: (48 - 16) / 2) in <code>on_slider_fill</code> (label_1 light, white 92 % dark); value footnote at inset 16 from the end: label_2 on the track, <code>on_slider_fill</code> where the fill passes under it</td>
+<td>full width x 48, capsule (r 24, concept C; follows no corner scale); track <code>slider_track</code> (black 6 % light, white 10 % dark), no edge; level <code>slider_fill</code> (smoked glass #141418 10 % light, user 2026-11-19: a white level vanishes over white glass; white 24 % dark) from the start edge, no knob; symbol 16 at inset 16 (R5 in a 48 rect: (48 - 16) / 2) in <code>on_slider_fill</code> (label_1 light, white 92 % dark); value footnote at inset 16 from the end: label_2 on the track, <code>on_slider_fill</code> where the fill passes under it</td>
 </tr>
 <tr>
 <td>media card</td>
@@ -2077,7 +2098,7 @@ matches the primary action. Values (fields, pop-ups) are rounded rectangles r 8.
 </tr>
 <tr>
 <td>icon grid (launcher)</td>
-<td>cell 96 x 112: icon 64 at 8 from the top, label footnote 2 lines centred, 8 below the icon; g 8; current cell = lens r 12 (R7 in the launcher: 28 - 16)</td>
+<td>cell 96 x 112: icon 64 at 8 from the top, label footnote 1 line centred, end ellipsis, 8 below the icon; g 4; current cell (keyboard or pointer, one highlight) lifts its icon: scale 1.05 on spring.snap and a label_1 12 % halo of 16 (component.launcher.hover_*), no lens box; keyboard focus adds the accent ring; pin glyph only on the current cell (R7 in the launcher: 28 - 16)</td>
 </tr>
 <tr>
 <td>thumbnail grid</td>
@@ -2317,7 +2338,10 @@ matches the primary action. Values (fields, pop-ups) are rounded rectangles r 8.
 </table>
 <h3 id="ch-9-9-14-launcher">9.14 Launcher</h3>
 <p>A Spotlight-style capsule (user 2026-11-03; direction A in <code>.agent/DESIGN.md</code>). Super+Space opens the field
-only; typing Grows it down into results.</p>
+only; typing Grows it down into results.
+The launcher is separate glass pieces: the field capsule, round mode buttons beside it and the results panel under
+it; never merge them into one surface (user, 2026-11-19). The pill and grow rows below predate this rule
+(deviations.md).</p>
 <table>
 <thead>
 <tr>
@@ -2344,7 +2368,7 @@ only; typing Grows it down into results.</p>
 </tr>
 <tr>
 <td>apps</td>
-<td>the query "apps" or the dock launcher button shows the grid under the field: 6 columns x 4 rows of 96 x 112 cells, g 8 (§9.7); pages Slide (P12) with page dots below (§9.3)</td>
+<td>the query "apps" or the dock launcher button shows the grid under the field: 6 columns x 3 rows of 96 x 112 cells, g 4 (§9.7); pages Slide (P12) with page dots below (§9.3)</td>
 </tr>
 </tbody>
 </table>
@@ -2620,7 +2644,11 @@ listed in <code>deviations.md</code>). Values are at scale 1 on a 1280 x 800 out
 countdown ticks without motion. Reduce motion: the sheet and the shake become fades.</p>
 <h3 id="ch-9-9-16-control-center">9.16 Control center</h3>
 <p>One thick-glass sheet that Grows out of the right island (P5). The layout of 9.3 stays; this section adds pages,
-detail pages, editing and every state. Mockup: <code>.agent/mockups/cc-v2-final.html</code>.</p>
+detail pages, editing and every state. Mockup: <code>.agent/mockups/cc-v2-final.html</code>.
+No dim or blur layer over the desktop: it stays sharp, as on macOS; each piece keeps text &gt;= 4.5:1 with its own
+density layer. Wi-Fi and Bluetooth share one row. Round toggles get no status sentence: the fill shows on or off,
+the name shows on hover. A detail page Grows from its tile at the tile radius; no circle-to-card morph (user,
+2026-11-18).</p>
 <table>
 <thead>
 <tr>
@@ -3000,355 +3028,11 @@ that asks for more input ("Rename..."). Numbers as digits; percent without a spa
 </ol>
 </section>
 <section class="doc" id="ch-D"><h2>Deviations from the rulebook</h2>
-<p>Measured against <code>docs/design/rulebook.md</code>. Sources: <code>protocol/design-tokens.toml</code>, <code>libdesk-ui/src/ui/style.h</code>,
-<code>shell/src/shell/*</code>. Migration fixes the token file first; most surfaces then follow without code changes.</p>
-<h3 id="ch-D-0-size-of-the-problem">0. Size of the problem</h3>
+<p>Each entry: a surface that differs from <code>docs/design/rulebook.md</code>, and why. Literal and duration debt lives in
+<code>design_lint_baseline.txt</code> (the M5 lint). The 11-02 migration audit: .agent/archive/deviations-audit-2026-11-02.md.</p>
 <ul>
-<li>Hard-coded size literals (<code>&lt;n&gt;F</code>) in <code>shell/src/shell</code>: about 5,300. About 240 are off the 4 grid (not a multiple
-  of 4, between 2 and 400). Worst: lockscreen 51, bar 43, desktop 43, control_center 33, settings 27, live_activity 26.</li>
-<li>Duration and easing animations (<code>animFast/Normal/Slow</code>, <code>Easing::</code>, <code>EaseIn/Out</code>): 211 uses in 59 files. Rule 7.1.1
-  allows springs only. Most: bar 18, lockscreen 11, control_center 10, notification 5, panel 4.</li>
-<li>Rule 2.2 R1-R9 has no code form yet: nothing stops a new literal. Migration adds a check (step M5 below).</li>
+<li>2026-11-27 launcher (§9.14): the pill and grow rows describe one growing surface; the live launcher and the 11-19 rule use separate pieces (field capsule, mode buttons, results panel). Update the table from the live launcher.</li>
 </ul>
-<h3 id="ch-D-1-tokens-protocol-design-tokens-toml">1. Tokens (<code>protocol/design-tokens.toml</code>)</h3>
-<table>
-<thead>
-<tr>
-<th>Group</th>
-<th>Now</th>
-<th>Rulebook</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>radius</td>
-<td>xs 6, sm 10, md 14, lg 20, xl 28</td>
-<td>4, 8, 12, 16, 20, 24, 28 (on the 4 grid, so R7 lands on the scale)</td>
-</tr>
-<tr>
-<td>space</td>
-<td>4-24</td>
-<td>add 2 (inside controls), 32, 40, 48, 64</td>
-</tr>
-<tr>
-<td>type mini</td>
-<td>11 / 500 / 1.25 (13.75 line)</td>
-<td>caption 11 / 16 / 500</td>
-</tr>
-<tr>
-<td>type caption</td>
-<td>11.5 / 500 / 1.25</td>
-<td>footnote 12 / 16 / 400 (500 on glass)</td>
-</tr>
-<tr>
-<td>type body</td>
-<td>13 / 500 / 1.3 (16.9 line)</td>
-<td>body 13 / 16 / 400 (500 on glass); paragraphs 13 / 20</td>
-</tr>
-<tr>
-<td>type title</td>
-<td>13.5 / 600 / 1.25</td>
-<td>headline 13 / 16 / 600</td>
-</tr>
-<tr>
-<td>type large</td>
-<td>15 / 600 / 1.2</td>
-<td>title-3 15 / 20 / 600</td>
-</tr>
-<tr>
-<td>type header</td>
-<td>20 / 600 / 1.2</td>
-<td>title-1 22 / 28 / 600; add title-2 17 / 24, large 28 / 32, display 34 / 40, hero 80 / 80</td>
-</tr>
-<tr>
-<td>tracking</td>
-<td>none</td>
-<td>Inter dynamic metrics formula</td>
-</tr>
-<tr>
-<td>label_2 / label_3</td>
-<td>58 % / 36 %</td>
-<td>62 % / 38 % (label_2 4.9:1 on the light plane)</td>
-</tr>
-<tr>
-<td>fill_1 light</td>
-<td>white 62 % (used as card)</td>
-<td>black 4 % (fill ladder)</td>
-</tr>
-<tr>
-<td>fill_2 / fill_3 light</td>
-<td>black 5 % / 9 %</td>
-<td>black 8 % / 12 %</td>
-</tr>
-<tr>
-<td>fill_1..3 dark</td>
-<td>white 10 / 5 / 12 % (not a ladder)</td>
-<td>white 6 / 10 / 16 %</td>
-</tr>
-<tr>
-<td>accent</td>
-<td>#2f6bff / #4a80ff</td>
-<td>accent #5147e5 / #6159f5, accent_text #5147e5 / #8c85ff</td>
-</tr>
-<tr>
-<td>danger</td>
-<td>#ff3b30 (3.6:1 on white) / #ff453a (white text 2.8:1)</td>
-<td>danger fill #d93025 in both schemes (white 4.8:1); danger_text #d93025 / #ff6b5e</td>
-</tr>
-<tr>
-<td>warning, success</td>
-<td>missing</td>
-<td>#b45309 / #f5a524, #1a7f37 / #3fb950</td>
-</tr>
-<tr>
-<td>separator</td>
-<td>black 12 % / white 10 %</td>
-<td>8 % / 8 %</td>
-</tr>
-<tr>
-<td>edge (light)</td>
-<td>white 55 %</td>
-<td>white 75 %</td>
-</tr>
-<tr>
-<td>lens</td>
-<td>missing</td>
-<td>white 92 % + E1 / white 14 % + inner edge</td>
-</tr>
-<tr>
-<td>elevation</td>
-<td>e1 (8 / y 2 / 0.9), e2 (48 / y 18)</td>
-<td>E1 lens, E2 float 6/16 + 1/4, E3 over 12/32 + 2/8, E4 window 24/64 + 2/8</td>
-</tr>
-<tr>
-<td>motion durations</td>
-<td>fast 120, normal 200, slow 320</td>
-<td>removed: springs only</td>
-</tr>
-<tr>
-<td>springs</td>
-<td>standard 900/1.0, snappy 1400/1.0, bouncy 700/0.8, open 380/0.65, close 500/1.0, island_expand 200/0.6, island_collapse 380/0.85, page 700/0.9, press 1500/1.0, release 800/0.6, effects 1600, effects_fast 3800</td>
-<td>snap 584/0.80, trail 342/0.80, move 322/0.90, open 224/0.78, close 504/1.0, morph 187/0.72, collapse 386/0.90, page 386/0.95, press 2742/1.0, release 386/0.65, fade 1542/1.0, fade_out 3948/1.0</td>
-</tr>
-</tbody>
-</table>
-<h3 id="ch-D-2-shared-style-libdesk-ui-src-ui-style-h">2. Shared style (<code>libdesk-ui/src/ui/style.h</code>)</h3>
-<table>
-<thead>
-<tr>
-<th>Value</th>
-<th>Now</th>
-<th>Rulebook</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>radius aliases</td>
-<td>radiusSm..Xl point one step off (radiusXl = token lg 20)</td>
-<td>names = scale values; no aliases</td>
-</tr>
-<tr>
-<td>barThicknessDefault</td>
-<td>34</td>
-<td>32</td>
-</tr>
-<tr>
-<td>controlHeightSm / controlHeight / controlHeightLg</td>
-<td>32 / 38 / 44</td>
-<td>24 / 32 / 40 (+ 48 touch)</td>
-</tr>
-<tr>
-<td>barCapsulePadding</td>
-<td>6</td>
-<td>R5: 8 symbol end, 12 text end</td>
-</tr>
-<tr>
-<td>toggle</td>
-<td>3 sizes, thumb 14/18/22, inset 2/3/4</td>
-<td>one toggle 40 x 24, knob 20, inset 2</td>
-</tr>
-<tr>
-<td>slider</td>
-<td>track 8, thumb 18</td>
-<td>track 4, knob 20, hit 24</td>
-</tr>
-<tr>
-<td>scrollbar</td>
-<td>6 / hover 12, slop 6</td>
-<td>4 / hover 8, inset 2</td>
-</tr>
-<tr>
-<td>menuAutoMaxWidth</td>
-<td>420</td>
-<td>320</td>
-</tr>
-<tr>
-<td>dragStartThreshold</td>
-<td>6</td>
-<td>8 (gesture slop)</td>
-</tr>
-<tr>
-<td>focusRingWidth</td>
-<td>2</td>
-<td>2 + 2 gap, concentric (no gap today)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="ch-D-3-surfaces">3. Surfaces</h3>
-<p>Status: <strong>N</strong> = new component (token-driven), deviations listed; <strong>O</strong> = old widget language, no anatomy from the
-rulebook yet, full restyle.</p>
-<table>
-<thead>
-<tr>
-<th>Surface</th>
-<th>Status</th>
-<th>Deviations</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Bar islands</td>
-<td>N</td>
-<td>height 34 -&gt; 32; padding 16 -&gt; R5 (12 text, 8 symbol); gap 12 -&gt; 8 in a group, 12 between; logo 18 -&gt; 16; workspace dots (7, active 20 x 7 r4, gap 5) -&gt; lens cells 24 capsule with P1 travel; bell unread dot sits inside the symbol box (top right), no §9.4 overhang: bar slots clip to widget bounds</td>
-</tr>
-<tr>
-<td>Center island rest</td>
-<td>N</td>
-<td>160 x 34 -&gt; 160 x 32</td>
-</tr>
-<tr>
-<td>Live activity</td>
-<td>N</td>
-<td>h 52 -&gt; 56, r 26 -&gt; 28, lead and buttons 36 -&gt; 40, w -&gt; 360; dark tint in both schemes -&gt; thick glass per scheme; progress 150 x 6 -&gt; 4 high, full width</td>
-</tr>
-<tr>
-<td>Banner / media / OSD in the island</td>
-<td>N</td>
-<td>sizes per rulebook 9.2 (banner 360 x 88 r 24, media art 48 r 12, OSD 240 x 40); faces must cross with scale 0.92 + blur 8 (7.4); elevation E2 -&gt; E3 on the morph spring (built in the uncommitted morph lane)</td>
-</tr>
-<tr>
-<td>Control center sheet</td>
-<td>N</td>
-<td>tile 55 -&gt; 56; 2-row connectivity card -&gt; two tiles; round icon 30 -&gt; 32, icon-text gap 8 -&gt; 12 (R4); tile fill white 62 % -&gt; fill_1 ladder; slider 40 -&gt; 48, icon inset 14 -&gt; 16, track fill_1 -&gt; fill_2; media 64 -&gt; 72 (p 8, art 56 r 8); phone actions gap 6 -&gt; 8; page dots per 9.3</td>
-</tr>
-<tr>
-<td>Sheet motion</td>
-<td>N</td>
-<td>needs P5 exactly: content fade gated at 35 % of travel, 16 ms stagger, tint regular -&gt; thick and E2 -&gt; E3 on the same spring; island shows its open state (stays visible)</td>
-</tr>
-<tr>
-<td>Dock</td>
-<td>N</td>
-<td>margin 12 -&gt; 8 (R8); padding 10 -&gt; 8; radius 30 -&gt; 24; gap 10 -&gt; 8; icon 54 -&gt; 48; running bar 14 x 3 -&gt; dot 4 (open, not focused apps); focused app -&gt; lens 56 r 20, no dot; badge 18 -&gt; 16, padding 5 -&gt; 4; separator -&gt; 1 x 32 centred</td>
-</tr>
-<tr>
-<td>Settings window (S0, uncommitted)</td>
-<td>O-&gt;N</td>
-<td>sidebar row 30 -&gt; 32; search 30 -&gt; 32; title bar 52 -&gt; 48 (app header); selection -&gt; the lens (one style function exists: <code>settings_selection_style.h</code>); grouped cards r 12 p 4, rows 40 / 56 r 8; page padding 24, column 640</td>
-</tr>
-<tr>
-<td>Launcher</td>
-<td>O</td>
-<td>list + tabs -&gt; rulebook 9.14: sheet 648, p 16, search 40 r 12, 6 x 4 grid of 96 x 112 cells, lens r 12, typed results as 48 rows; P19 Grow from the dock launcher button</td>
-</tr>
-<tr>
-<td>Notification popup</td>
-<td>O</td>
-<td>-&gt; banner (9.2) out of the center island (P8, P9)</td>
-</tr>
-<tr>
-<td>Notification center</td>
-<td>O</td>
-<td>CC tab with sidebar -&gt; sheet from the center island (9.11), app groups</td>
-</tr>
-<tr>
-<td>OSD</td>
-<td>O</td>
-<td>separate popup -&gt; center island morph (9.2, P7)</td>
-</tr>
-<tr>
-<td>Toasts</td>
-<td>O</td>
-<td>-&gt; center island for system feedback; in-app toast 40 capsule (9.11)</td>
-</tr>
-<tr>
-<td>Tooltips</td>
-<td>N</td>
-<td>h 24 r 8 p 4/8 thick glass, 600 ms delay, warm show (9.11); key/value rows at 16 pitch (8 + 16 n); E3 shadow missing: the compositor draws none for xdg popups</td>
-</tr>
-<tr>
-<td>Menus (tray, context)</td>
-<td>O</td>
-<td>-&gt; menu 9.9 (r 12, p 4, item 28 r 8, lens current item, P10 Grow from anchor)</td>
-</tr>
-<tr>
-<td>Session menu</td>
-<td>O</td>
-<td>old tiles; no rulebook anatomy yet: needs /ui-design within the rulebook</td>
-</tr>
-<tr>
-<td>Lock screen</td>
-<td>O</td>
-<td>51 off-grid literals -&gt; rulebook 9.15 (hero clock at 1/4 height, capsule centre at 3/4, password capsule 240 x 40, status island); motion P20. The Ryoku theme stays outside the rulebook on purpose (user 2026-11-03)</td>
-</tr>
-<tr>
-<td>Lock screen editor</td>
-<td>N</td>
-<td>vs .agent/mockups/lockscreen.html section 2: Free has a bottom toolbar of add chips (the mock shows no add control); a selected Free widget has one handle (bottom right, resize), not the mock's two; vs section 3 (Wallpaper tab): the tile grid shows 2 rows and scrolls by rows (the mock shows 1 row; a wallpaper folder does not fit in one)</td>
-</tr>
-<tr>
-<td>Window switcher</td>
-<td>O</td>
-<td>own size set (500 / 380 / 280 / 220 cards, scales 0.9 / 0.95), now tokens in component.switcher: no rulebook anatomy yet</td>
-</tr>
-<tr>
-<td>Overview</td>
-<td>O</td>
-<td>motion P18 (gesture-driven page spring); layout not specified</td>
-</tr>
-<tr>
-<td>Polkit / app dialogs</td>
-<td>O</td>
-<td>-&gt; alert / dialog (9.10), P11</td>
-</tr>
-<tr>
-<td>Desktop widgets</td>
-<td>O</td>
-<td>43 off-grid literals; no anatomy yet</td>
-</tr>
-<tr>
-<td>Setup wizard, wallpaper picker</td>
-<td>O</td>
-<td>follow 9.7 grids and 9.10; no dedicated anatomy</td>
-</tr>
-<tr>
-<td>Window decorations (compositor SSD)</td>
-<td>O</td>
-<td>-&gt; 9.12: r 20, title bar 40, buttons 24 at inset 8, E4 / E3</td>
-</tr>
-<tr>
-<td>GTK / Qt themes (emitters)</td>
-<td>N</td>
-<td>radius, accent, fills and separator values follow section 1 once the TOML changes</td>
-</tr>
-</tbody>
-</table>
-<h3 id="ch-D-4-migration-order-proposal">4. Migration order (proposal)</h3>
-<ul>
-<li><strong>M1 tokens.</strong> Rewrite <code>protocol/design-tokens.toml</code> to the rulebook: scales, type with tracking, colour roles
-  with fill ladder and lens, E1-E4, the 12 springs. <code>style.h</code> aliases become scale names. Generated CSS, GTK, Qt
-  and fcitx5 follow. Golden tests update.</li>
-<li><strong>M2 motion core.</strong> Shell animation API: springs only (<code>animate(prop, target, Spring::Open)</code>), progress gates,
-  stagger helper, retarget with velocity, reduced-motion mapping (7.8). Remove duration APIs from shell surfaces.</li>
-<li><strong>M3 new components to spec.</strong> Bar islands, center island, sheet, dock to sections 9.1-9.4; side-by-side capture
-  with <code>rulebook.html#still</code> crops at scale 1 and 1.5, light and dark.</li>
-<li><strong>M4 old surfaces.</strong> In this order: menus and tooltips (shared widgets), notifications + OSD (into the island),
-  launcher, Settings S1 styling, dialogs, lock screen, switcher / overview / session (each needs an anatomy table
-  first).</li>
-<li><strong>M5 guard.</strong> A lint in the shell build: no float size literal outside the token header and a short allow list;
-  no duration animation outside continuous loops.</li>
-</ul>
-<p>Open decisions for the user are listed in <code>.agent/NEXT.md</code> ("Rulebook").</p>
 <h3 id="ch-D-files-v2-2026-11-07">Files v2 (2026-11-07)</h3>
 <ul>
 <li>File names truncate in the middle so the extension stays visible (rulebook: end ellipsis). Finder and Explorer do the same.</li>
@@ -3462,6 +3146,14 @@ rulebook yet, full restyle.</p>
 <li>2026-11-20 CC glass tile hover: fill_1, not fill_2 (rulebook P3 one step; a glass tile rests clear, and fill_2 read as a milky wash, user).</li>
 <li>Link Android home (2026-11-20): a third Controls switch row "Ring" (on while the desktop rings). The approved concept-c.html has no Ring, but Ring is a shipped feature and the desktop reports it as a state, so it is a switch row like Do not disturb.</li>
 <li>Link Android Remote (2026-11-20): the Keys sheet's arrow, Esc, Tab and Enter keys are r16, not the mockup's 14 (R7 nested radius: sheet r28 - padding 12). The presenter has no Start key: the mockup has none; the user starts the show on the desktop. The how-to line is on_accent at full alpha, not 85 %.</li>
+<li>Link Android Device (2026-11-20): the identity glyph symbol is 24, not 28 (no 28 symbol token); the Notifications sub-row shows no "All except N" value (the desktop sends no per-app count).</li>
+<li>Link Android Settings (2026-11-20): the code-only rows (low-importance apps, full content while locked, log access method, log access, screenshots, clear synced clips, export log) live on an Advanced sub-page in the same card vocabulary; it has no mockup of its own. The keep-open live-notification preview is gone.</li>
+<li>Link Android Pairing (2026-11-20): the scan page has a back key, not the gear (Pairing is always opened from Home or Settings); the corner marks are r12, not 14 (no 14 radius token); the orb inner disc is hero_glyph (80) wide, not the gradient's 68; the failure card title is one fixed "Pairing did not work" over the failure text (failures carry one sentence).</li>
+<li>Link Android Setup (2026-11-20): titles have no desktop name (setup also runs with no desktop paired); the hero symbol is 40, not 36; "Not now" moves to the next page (Done on the last); a granted page shows Next or Done in place of Allow access; some pages have 0 or 1 check points where the facts are fewer.</li>
+<li>Link Android Home and Viewer (2026-11-22): a tap on the Volume slider's speaker mutes or unmutes the desktop (crossed speaker while muted); concept-c has no mute, but mute is a shipped feature with no other path. The viewer's More sheet has a Touchpad / Direct touch segmented control (user); in Touchpad mode the picture works as the pad. The picked viewer mockup has neither.</li>
+<li>2026-11-20 dock Trash: a full-colour glass mesh bin asset (shell/assets/dock/trash*.svg), not §9.4's 38 px ink glyph (user picked it over the glyph; the theme's user-trash read as cheap).</li>
+<li>Link desktop Pair (2026-11-21): no "Pair over Bluetooth" button. Every pairing window also advertises over Bluetooth LE, and a typed code finds it, so the button would do nothing; the help text says Bluetooth is enough without a shared network.</li>
+<li>Link desktop Messages (2026-11-21): the label under the last sent text is "Delivered", not "Read". SMS has no read receipt and an app other than the default SMS app cannot read RCS state; the SMS delivery report is the only true signal.</li>
 </ul>
 </section>
 </main>
