@@ -1,0 +1,120 @@
+# Theme vocabulary v1: every value key a theme can set (docs/theme-format.md section 2.1).
+# Internal tokens (design-tokens.toml) stay private; a theme reaches them only through these keys.
+# Each [key."<name>"]: type (color, length, number, font, spring, enum), tokens it sets (all to the same value; a
+# spring sets <token>.stiffness and <token>.damping), range for numbers, values for enums, since (vocabulary version).
+# A renamed key keeps its old name in `aliases` for one contract major.
+# Colour roles: [values.dark] / [values.light] keys from `roles`; each sets scheme.<scheme>.<role>.
+
+version = 1
+
+roles = [
+  "label_1", "label_2", "label_3", "fill_1", "fill_2", "fill_3", "separator", "stroke", "edge",
+  "tint_thin", "tint_regular", "tint_thick", "solid_thin", "solid_regular", "solid_thick",
+  "accent", "accent_text", "on_accent", "danger", "danger_text", "warning", "success",
+  "scrim", "shadow", "window", "view", "card", "header", "popover", "sidebar",
+]
+
+[key."corner.window"]
+type = "length"
+range = [0, 32]
+tokens = ["component.window.radius"]
+since = 1
+
+[key."corner.card"]
+type = "length"
+range = [0, 32]
+tokens = ["component.window.card_radius", "component.list.card_radius"]
+since = 1
+
+[key."corner.control"]
+type = "length"
+range = [0, 20]
+tokens = ["component.button.radius", "component.field.radius", "component.tooltip.radius",
+          "component.sidebar.row_radius"]
+since = 1
+
+[key."corner.sheet"]
+type = "length"
+range = [0, 40]
+tokens = ["component.sheet.radius", "component.dialog.radius"]
+since = 1
+
+[key."corner.menu"]
+type = "length"
+range = [0, 32]
+tokens = ["component.menu.radius"]
+since = 1
+
+[key."corner.popover"]
+type = "length"
+range = [0, 32]
+tokens = ["component.popover.radius"]
+since = 1
+
+[key."font.ui"]
+type = "font"
+tokens = ["font.family"]
+since = 1
+
+[key."font.mono"]
+type = "font"
+tokens = ["font.mono"]
+since = 1
+
+[key."island.height"]
+type = "length"
+range = [24, 48]
+tokens = ["component.island.height"]
+since = 1
+
+[key."dock.icon"]
+type = "length"
+range = [24, 80]
+tokens = ["component.dock.icon"]
+since = 1
+
+[key."dock.corner"]
+type = "length"
+range = [0, 40]
+tokens = ["component.dock.radius"]
+since = 1
+
+# Blur cost is the engine's: a theme picks a tier, never passes or radius (blur.tier is added in
+# TASK step 0.2; tiers are measured in step 1.6).
+[key."glass.blur"]
+type = "enum"
+values = ["none", "low", "medium", "high"]
+tokens = ["blur.tier"]
+since = 1
+
+[key."glass.saturation_dark"]
+type = "number"
+range = [0.5, 2.0]
+tokens = ["blur.saturation"]
+since = 1
+
+[key."glass.saturation_light"]
+type = "number"
+range = [0.5, 2.0]
+tokens = ["blur_light.saturation"]
+since = 1
+
+[key."spring.open"]
+type = "spring"
+tokens = ["spring.open"]
+since = 1
+
+[key."spring.close"]
+type = "spring"
+tokens = ["spring.close"]
+since = 1
+
+[key."spring.move"]
+type = "spring"
+tokens = ["spring.move"]
+since = 1
+
+[key."spring.page"]
+type = "spring"
+tokens = ["spring.page"]
+since = 1

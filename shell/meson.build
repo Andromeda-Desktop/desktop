@@ -913,6 +913,7 @@ _noctalia_source_paths = [
   'src/theme/fixed_palette.cpp',
   'src/theme/toolkit_theme_files.cpp',
   'src/theme/live_appearance_sync.cpp',
+  'src/theme/theme_package.cpp',
   'src/theme/theme_service.cpp',
   'src/cli/completions.cpp',
   'src/cli/parse.cpp',
@@ -1201,6 +1202,7 @@ if build_tests
 
   _cpp_test_names = [
     'async_file_writer',
+    'theme_package',
     'crash_records',
     'damage_region',
     'key_chord_names',
@@ -1464,6 +1466,8 @@ if build_tests
     if test_name == 'desktop_entry_localization' or test_name == 'emoji_provider'
       test_args = [meson.project_source_root() / 'assets']
     elif test_name == 'i18n_supported_languages'
+    elif test_name == 'theme_package'
+      test_args = [meson.project_source_root() / 'protocols' / 'theme-vocabulary.toml']
       test_args = [meson.project_source_root() / 'assets' / 'translations']
     elif test_name == 'settings_rows_generated'
       test_args = [
