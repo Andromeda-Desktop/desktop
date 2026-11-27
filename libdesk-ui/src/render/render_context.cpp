@@ -24,6 +24,8 @@
 #include "render/scene/screen_corner_node.h"
 #include "render/scene/spinner_node.h"
 #include "render/scene/shader_scene_node.h"
+#include "render/core/galaxy_draw.h"
+#include "render/scene/galaxy_node.h"
 #include "render/scene/terminal_grid_node.h"
 #include "render/scene/text_node.h"
 #include "render/scene/wallpaper_node.h"
@@ -1251,6 +1253,25 @@ void RenderContext::drawNodeSelf(
           .transform = worldTransform,
       });
     }
+    break;
+  }
+  case NodeType::Galaxy: {
+    const auto* galaxy = static_cast<const GalaxyNode*>(node);
+    m_backend->drawGalaxy(GalaxyDraw{
+        .key = galaxy,
+        .points = galaxy->points(),
+        .camera = galaxy->camera(),
+        .dim = galaxy->dim(),
+        .lightSky = galaxy->lightSky(),
+        .life = galaxy->life(),
+        .surfaceWidth = sw,
+        .surfaceHeight = sh,
+        .quadWidth = node->width(),
+        .quadHeight = node->height(),
+        .scale = renderScale,
+        .opacity = effectiveOpacity,
+        .transform = worldTransform,
+    });
     break;
   }
   case NodeType::RenderProxy:

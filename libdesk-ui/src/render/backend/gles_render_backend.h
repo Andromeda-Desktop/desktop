@@ -16,6 +16,7 @@
 #include "render/programs/rect_program.h"
 #include "render/programs/screen_corner_program.h"
 #include "render/programs/spinner_program.h"
+#include "render/programs/galaxy_program.h"
 #include "render/programs/texture_shader_program.h"
 #include "render/programs/wallpaper_mask_program.h"
 #include "render/programs/wallpaper_program.h"
@@ -113,6 +114,7 @@ public:
   void drawWallpaper(const WallpaperDrawParams& params) override;
   void drawWallpaperMask(const WallpaperMaskDrawParams& params) override;
   void drawTextureShader(const TextureShaderDraw& draw) override;
+  void drawGalaxy(const GalaxyDraw& draw) override;
   void drawFullscreenTexture(TextureId texture, bool flipY) override;
   void drawFullscreenTint(Color color) override;
   void drawFramebufferBlur(
@@ -177,6 +179,7 @@ private:
   WallpaperProgram m_wallpaperProgram;
   WallpaperMaskProgram m_wallpaperMaskProgram;
   TextureShaderProgram m_textureShaderProgram;
+  GalaxyProgram m_galaxyProgram;
   BlurProgram m_blurProgram;
   ShaderProgram m_fullscreenTextureProgram;
   ShaderProgram m_fullscreenTintProgram;

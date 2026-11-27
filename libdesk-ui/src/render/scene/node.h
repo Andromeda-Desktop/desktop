@@ -34,6 +34,7 @@ enum class NodeType : std::uint8_t {
   ShaderScene,
   Wallpaper,
   TextureShader,
+  Galaxy,
   RenderProxy,
 };
 

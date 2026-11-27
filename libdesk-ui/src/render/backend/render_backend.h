@@ -15,6 +15,8 @@
 #include <memory>
 #include <span>
 
+struct GalaxyDraw;
+
 class GlSharedContext;
 class RenderTarget;
 class TextureManager;
@@ -224,6 +226,7 @@ public:
   virtual void drawWallpaper(const WallpaperDrawParams& params) = 0;
   virtual void drawWallpaperMask(const WallpaperMaskDrawParams& params) = 0;
   virtual void drawTextureShader(const TextureShaderDraw& draw) = 0;
+  virtual void drawGalaxy(const GalaxyDraw& draw) = 0;
   virtual void drawFullscreenTexture(TextureId texture, bool flipY) = 0;
   virtual void drawFullscreenTint(Color color) = 0;
   virtual void drawFramebufferBlur(

@@ -1103,6 +1103,22 @@ void GlesRenderBackend::drawTextureShader(const TextureShaderDraw& draw) {
   m_textureShaderProgram.draw(draw);
 }
 
+void GlesRenderBackend::drawGalaxy(const GalaxyDraw& draw) {
+  flushBatches();
+  gpuMark(GpuSplitTimer::kOtherDraw);
+  if (!m_galaxyProgram.hasFormats()) {
+    m_galaxyProgram.setFormats({
+        .es3 = glesMajorVersion() >= 3,
+        .colorBufferHalfFloat = hasGlExtension("GL_EXT_color_buffer_half_float"),
+        .colorBufferFloat = hasGlExtension("GL_EXT_color_buffer_float"),
+        .textureHalfFloat = hasGlExtension("GL_OES_texture_half_float"),
+        .textureHalfFloatLinear = hasGlExtension("GL_OES_texture_half_float_linear"),
+    });
+  }
+  setBlendMode(RenderBlendMode::PremultipliedAlpha);
+  m_galaxyProgram.draw(draw);
+}
+
 void GlesRenderBackend::drawFullscreenTexture(TextureId texture, bool flipY) {
   flushBatches();
   gpuMark(GpuSplitTimer::kFullscreen);
@@ -1178,6 +1194,7 @@ void GlesRenderBackend::destroyGpuObjects() {
   m_wallpaperProgram.destroy();
   m_wallpaperMaskProgram.destroy();
   m_textureShaderProgram.destroy();
+  m_galaxyProgram.destroy();
   m_blurProgram.destroy();
   m_fullscreenTextureProgram.destroy();
   m_fullscreenTintProgram.destroy();
@@ -1202,6 +1219,7 @@ void GlesRenderBackend::abandonGpuObjects() noexcept {
   m_wallpaperProgram.abandon();
   m_wallpaperMaskProgram.abandon();
   m_textureShaderProgram.abandon();
+  m_galaxyProgram.abandon();
   m_blurProgram.abandon();
   m_fullscreenTextureProgram.abandon();
   m_fullscreenTintProgram.abandon();
