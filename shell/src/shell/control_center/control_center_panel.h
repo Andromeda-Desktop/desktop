@@ -11,7 +11,9 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 class BluetoothAgent;
@@ -150,6 +152,7 @@ private:
   void resetTabContainerTransforms();
   void startTabTransition(TabId from, TabId to);
   void finishTabTransition();
+  void stopTabTransition();
   void applyTabTransitionLayout();
   [[nodiscard]] int visibleTabOrdinal(TabId tab) const;
   [[nodiscard]] bool isTabFeatureAvailable(TabId tab) const;
@@ -173,17 +176,21 @@ private:
   std::array<Flex*, kTabCount> m_tabHeaderActions{};
   TabId m_activeTab = TabId::Quick;
   // §7.4: the tile title flies into the detail header; the overlay carries it while the real title waits.
-  struct TitleMove {
+  struct TitleIdle {};
+  // The overlay sits on the tile title until the header has its place after the next layout.
+  struct TitleWaiting {
     Label* overlay = nullptr;
     float fromX = 0.0F;
     float fromY = 0.0F;
     float fromSize = 0.0F;
     float fromLine = 0.0F;
-    bool pending = false;
     int waitedFrames = 0;
+  };
+  struct TitleFlying {
+    Label* overlay = nullptr;
     AnimationManager::Id animation = 0;
   };
-  TitleMove m_titleMove;
+  std::variant<TitleIdle, TitleWaiting, TitleFlying> m_titleMove;
   void beginTitleMove(Label& source);
   void runTitleMove();
   void endTitleMove();
@@ -193,13 +200,16 @@ private:
   DependencyService* m_dependencies = nullptr;
   bool m_mprisRefreshScheduled = false;
   std::chrono::steady_clock::time_point m_lastMprisRefreshAt;
-  AnimationManager::Id m_tabTransitionAnimId = 0;
-  TabId m_tabTransitionOutgoing = TabId::Quick;
-  float m_tabTransitionProgress = 1.0F;
-  int m_tabTransitionDirection = 1;
-  // Quick to a detail page or back: parallax (P12 deeper level) instead of a side-by-side slide.
-  bool m_tabTransitionDeeper = false;
-  bool m_tabTransitionActive = false;
+  struct TabTransition {
+    TabId outgoing = TabId::Quick;
+    int direction = 1;
+    // Quick to a detail page or back: parallax (P12 deeper level) instead of a side-by-side slide.
+    bool deeper = false;
+    float progress = 0.0F;
+    AnimationManager::Id animation = 0;
+  };
+  // Set while the outgoing and the active tab body move; stopTabTransition is the only way back to unset.
+  std::optional<TabTransition> m_tabTransition;
   bool m_firstOpenAfterCreate = false;
   bool m_openedOnDetail = false;
   // Back from a detail page: the sheet collapses into its tile before the quick page shows (proto closeDetail).

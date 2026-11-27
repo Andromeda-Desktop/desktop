@@ -309,8 +309,8 @@ void ControlCenterPanel::doLayout(Renderer& renderer, float width, float height)
     m_tabs[idx]->layout(renderer, bodyWidth, bodyContentHeight);
   };
 
-  if (m_tabTransitionActive) {
-    layoutTab(m_tabTransitionOutgoing);
+  if (m_tabTransition.has_value()) {
+    layoutTab(m_tabTransition->outgoing);
   }
   layoutTab(m_activeTab);
 }
@@ -391,9 +391,7 @@ void ControlCenterPanel::finishDetailExit(const Node* tile) {
   }
   m_activeTab = TabId::Quick;
   updateTabChrome(TabId::Quick);
-  m_tabTransitionActive = false;
-  applyTabContainerVisibility(TabId::Quick);
-  resetTabContainerTransforms();
+  finishTabTransition();
   PanelManager::instance().returnToPiecesAround(*tile);
   PanelManager::instance().refresh();
   scheduleMprisRefreshFor(TabId::Quick);
@@ -429,15 +427,8 @@ void ControlCenterPanel::onClose() {
   if (m_detailExit == DetailExit::Collapsing) {
     finishDetailExit(nullptr);
   }
-  if (m_titleMove.animation != 0 && m_animations != nullptr) {
-    m_animations->cancel(m_titleMove.animation);
-  }
-  m_titleMove = {};
-  if (m_tabTransitionAnimId != 0 && m_animations != nullptr) {
-    m_animations->cancel(m_tabTransitionAnimId);
-    m_tabTransitionAnimId = 0;
-  }
-  m_tabTransitionActive = false;
+  endTitleMove();
+  stopTabTransition();
   m_activeTab = TabId::Quick;
   for (auto& tab : m_tabs) {
     tab->setActive(false);
@@ -526,12 +517,12 @@ void ControlCenterPanel::layoutTabContainers(float bodyWidth, float bodyHeight) 
     float opacity = 1.0F;
     int z = 0;
     const auto tabId = static_cast<TabId>(i);
-    if (m_tabTransitionActive && travel > 0.0F) {
-      const auto direction = static_cast<float>(m_tabTransitionDirection);
-      const float p = m_tabTransitionProgress;
-      const bool outgoing = tabId == m_tabTransitionOutgoing;
+    if (m_tabTransition.has_value() && travel > 0.0F) {
+      const auto direction = static_cast<float>(m_tabTransition->direction);
+      const float p = m_tabTransition->progress;
+      const bool outgoing = tabId == m_tabTransition->outgoing;
       const bool incoming = tabId == m_activeTab;
-      if (m_tabTransitionDeeper) {
+      if (m_tabTransition->deeper) {
         // The detail page is the upper layer; the sheet is glass, so the lower page fades out under it.
         const bool forward = direction > 0.0F;
         const bool upper = forward ? incoming : outgoing;
@@ -553,7 +544,7 @@ void ControlCenterPanel::layoutTabContainers(float bodyWidth, float bodyHeight) 
 
     container->setPosition(offsetX, 0.0F);
     container->setOpacity(opacity);
-    if (m_tabTransitionActive) {
+    if (m_tabTransition.has_value()) {
       container->setZIndex(z);
     } else {
       container->setZIndex(0);
@@ -600,14 +591,15 @@ void ControlCenterPanel::startTabTransition(TabId from, TabId to) {
     return;
   }
 
-  m_tabTransitionActive = true;
-  m_tabTransitionOutgoing = from;
-  m_tabTransitionProgress = 0.0F;
-
+  stopTabTransition();
   const int fromOrdinal = visibleTabOrdinal(from);
   const int toOrdinal = visibleTabOrdinal(to);
-  m_tabTransitionDeeper = (from == TabId::Quick && isDetailTab(to)) || (isDetailTab(from) && to == TabId::Quick);
-  m_tabTransitionDirection = m_tabTransitionDeeper ? (isDetailTab(to) ? 1 : -1) : (toOrdinal >= fromOrdinal ? 1 : -1);
+  const bool deeper = (from == TabId::Quick && isDetailTab(to)) || (isDetailTab(from) && to == TabId::Quick);
+  m_tabTransition = TabTransition{
+      .outgoing = from,
+      .direction = deeper ? (isDetailTab(to) ? 1 : -1) : (toOrdinal >= fromOrdinal ? 1 : -1),
+      .deeper = deeper,
+  };
 
   for (const auto& meta : kTabs) {
     const std::size_t idx = tabIndex(meta.id);
@@ -623,15 +615,14 @@ void ControlCenterPanel::startTabTransition(TabId from, TabId to) {
   PanelManager::instance().requestRedraw();
   PanelManager::instance().requestFrameTick();
 
-  m_tabTransitionAnimId = m_animations->animateSpring(
+  m_tabTransition->animation = m_animations->animateSpring(
       0.0F, 1.0F, Style::spring(Tokens::springPage),
       [this](float progress) {
-        m_tabTransitionProgress = progress;
+        m_tabTransition->progress = progress;
         applyTabTransitionLayout();
         PanelManager::instance().requestRedraw();
       },
       [this] {
-        m_tabTransitionAnimId = 0;
         finishTabTransition();
         PanelManager::instance().requestLayout();
         PanelManager::instance().requestRedraw();
@@ -641,9 +632,16 @@ void ControlCenterPanel::startTabTransition(TabId from, TabId to) {
 }
 
 void ControlCenterPanel::finishTabTransition() {
-  m_tabTransitionActive = false;
+  stopTabTransition();
   resetTabContainerTransforms();
   applyTabContainerVisibility(m_activeTab);
+}
+
+void ControlCenterPanel::stopTabTransition() {
+  if (m_tabTransition.has_value() && m_animations != nullptr) {
+    m_animations->cancel(m_tabTransition->animation);
+  }
+  m_tabTransition.reset();
 }
 
 void ControlCenterPanel::selectTab(TabId tab, bool animated) {
@@ -664,9 +662,7 @@ void ControlCenterPanel::selectTab(TabId tab, bool animated) {
     return;
   }
 
-  if (m_tabTransitionAnimId != 0 && m_animations != nullptr) {
-    m_animations->cancel(m_tabTransitionAnimId);
-    m_tabTransitionAnimId = 0;
+  if (m_tabTransition.has_value()) {
     finishTabTransition();
   }
 
@@ -697,7 +693,6 @@ void ControlCenterPanel::selectTab(TabId tab, bool animated) {
   if (tabChanged && animated && morphSource == nullptr && !backToPieces && m_animations != nullptr && m_tabBodies != nullptr) {
     startTabTransition(previousTab, tab);
   } else {
-    m_tabTransitionActive = false;
     applyTabContainerVisibility(tab);
     resetTabContainerTransforms();
   }
@@ -706,6 +701,7 @@ void ControlCenterPanel::selectTab(TabId tab, bool animated) {
 }
 
 void ControlCenterPanel::beginTitleMove(Label& source) {
+  endTitleMove();
   if (m_rootLayout == nullptr || m_contentTitle == nullptr || source.text().empty()) {
     return;
   }
@@ -725,21 +721,20 @@ void ControlCenterPanel::beginTitleMove(Label& source) {
   overlay->setColor(colorSpecFromRole(ColorRole::Label1));
   overlay->setZIndex(100);
   overlay->setPosition(sx - rx, sy - ry);
-  m_titleMove = TitleMove{
+  m_titleMove = TitleWaiting{
       .overlay = static_cast<Label*>(m_rootLayout->addChild(std::move(overlay))),
       .fromX = sx - rx,
       .fromY = sy - ry,
       .fromSize = Tokens::typeHeadline.size * m_contentScale,
       .fromLine = Tokens::typeHeadline.line * m_contentScale,
-      .pending = true,
   };
   m_contentTitle->setOpacity(0.0F);
 }
 
 // The header has its place after the next layout: fly the overlay there, then hand over to the real title.
 void ControlCenterPanel::runTitleMove() {
-  if (!m_titleMove.pending || m_titleMove.overlay == nullptr || m_contentTitle == nullptr || m_rootLayout == nullptr
-      || m_animations == nullptr) {
+  auto* waiting = std::get_if<TitleWaiting>(&m_titleMove);
+  if (waiting == nullptr || m_contentTitle == nullptr || m_rootLayout == nullptr || m_animations == nullptr) {
     return;
   }
   float tx = 0.0F;
@@ -750,44 +745,44 @@ void ControlCenterPanel::runTitleMove() {
   Node::absolutePosition(m_rootLayout, rx, ry);
   if (m_contentTitle->width() <= 0.0F) {
     constexpr int kMaxWaitFrames = 30;
-    if (++m_titleMove.waitedFrames > kMaxWaitFrames) {
+    if (++waiting->waitedFrames > kMaxWaitFrames) {
       endTitleMove();
     }
     return;
   }
-  m_titleMove.pending = false;
   const float toX = tx - rx;
   const float toY = ty - ry;
   const float toSize = Tokens::typeTitle3.size * m_contentScale;
   const float toLine = Tokens::typeTitle3.line * m_contentScale;
-  const TitleMove start = m_titleMove;
-  m_titleMove.animation = m_animations->animateSpring(
+  const TitleWaiting start = *waiting;
+  auto& flying = m_titleMove.emplace<TitleFlying>(TitleFlying{.overlay = start.overlay});
+  flying.animation = m_animations->animateSpring(
       0.0F, 1.0F, Style::spring(Tokens::springMove),
-      [this, start, toX, toY, toSize, toLine](float p) {
-        if (m_titleMove.overlay == nullptr) {
-          return;
-        }
-        m_titleMove.overlay->setPosition(start.fromX + (toX - start.fromX) * p, start.fromY + (toY - start.fromY) * p);
-        m_titleMove.overlay->setFontSize(start.fromSize + (toSize - start.fromSize) * p);
-        m_titleMove.overlay->setLineHeight(start.fromLine + (toLine - start.fromLine) * p);
+      [start, toX, toY, toSize, toLine](float p) {
+        start.overlay->setPosition(start.fromX + (toX - start.fromX) * p, start.fromY + (toY - start.fromY) * p);
+        start.overlay->setFontSize(start.fromSize + (toSize - start.fromSize) * p);
+        start.overlay->setLineHeight(start.fromLine + (toLine - start.fromLine) * p);
         PanelManager::instance().requestRedraw();
       },
-      [this] {
-        m_titleMove.animation = 0;
-        endTitleMove();
-      },
+      [this] { endTitleMove(); },
       m_rootLayout, 0.0F, Unit::Progress
   );
 }
 
 void ControlCenterPanel::endTitleMove() {
-  if (m_titleMove.animation != 0 && m_animations != nullptr) {
-    m_animations->cancel(m_titleMove.animation);
+  Label* overlay = nullptr;
+  if (const auto* waiting = std::get_if<TitleWaiting>(&m_titleMove)) {
+    overlay = waiting->overlay;
+  } else if (const auto* flying = std::get_if<TitleFlying>(&m_titleMove)) {
+    overlay = flying->overlay;
+    if (m_animations != nullptr) {
+      m_animations->cancel(flying->animation);
+    }
   }
-  if (m_titleMove.overlay != nullptr && m_rootLayout != nullptr) {
-    m_rootLayout->removeChild(m_titleMove.overlay);
+  if (overlay != nullptr && m_rootLayout != nullptr) {
+    m_rootLayout->removeChild(overlay);
   }
-  m_titleMove = {};
+  m_titleMove = TitleIdle{};
   if (m_contentTitle != nullptr) {
     m_contentTitle->setOpacity(1.0F);
   }
