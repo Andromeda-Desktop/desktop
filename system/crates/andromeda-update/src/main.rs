@@ -1,6 +1,7 @@
 //! andromeda-update: software update checks for the Settings page (docs/system.md §1, U1). Session bus,
 //! `org.andromeda.Update1`, D-Bus activated; no root. Installs are the root helper's job (U2).
 
+mod db_watch;
 mod flatpak;
 mod fwupd;
 #[cfg(feature = "apt")]
@@ -34,12 +35,17 @@ fn main() -> Result<()> {
 async fn serve(shutdown: andromeda_rt::Shutdown) -> Result<()> {
     let cache = xdg("XDG_CACHE_HOME", ".cache")?.join("andromeda/update");
     let state = xdg("XDG_STATE_HOME", ".local/state")?.join("andromeda/update");
-    let _conn = zbus::connection::Builder::session()
+    let conn = zbus::connection::Builder::session()
         .serve_at(service::PATH, service::Update::new(cache, state))
         .name(NAME)
         .build()
         .await?;
     log::info!("serving {NAME}");
+    tokio::spawn(async move {
+        if let Err(e) = db_watch::run(conn, packages::WATCH).await {
+            log::warn!("package database watch: {e}");
+        }
+    });
     shutdown.cancelled().await;
     Ok(())
 }

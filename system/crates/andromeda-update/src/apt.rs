@@ -100,6 +100,12 @@ async fn apt_get(db: &Path, args: &[&str]) -> Result<std::process::Output> {
     apt("apt-get", db, args).await
 }
 
+/// The installed packages (dpkg status) and the system's package lists.
+pub const WATCH: &[crate::db_watch::Watch] = &[
+    crate::db_watch::Watch { dir: "/var/lib/dpkg", names: &["status"], suffix: "" },
+    crate::db_watch::Watch { dir: "/var/lib/apt/lists", names: &[], suffix: "_Packages" },
+];
+
 /// Lists upgrades after a refresh of the private lists in `db`, and the held-back packages (size 0).
 pub async fn check(db: &Path) -> Result<(Vec<Update>, Vec<Update>)> {
     tokio::fs::create_dir_all(db.join("lists/partial")).await?;

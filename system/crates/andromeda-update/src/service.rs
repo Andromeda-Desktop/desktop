@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use zbus::object_server::{InterfaceRef, SignalEmitter};
 use zbus::{Connection, interface};
@@ -29,6 +29,8 @@ struct State {
     /// A news fetch succeeded since start; until then the System group stays blocked.
     news_known: bool,
     last_check: i64,
+    /// When the running or the last check began: a package database change before it is in its result.
+    started: Option<Instant>,
     run: Run,
     errors: Vec<String>,
 }
@@ -51,6 +53,7 @@ impl CheckGuard {
             return None;
         }
         s.run = Run::Checking { scheduled };
+        s.started = Some(Instant::now());
         Some(Self(Some(state.clone())))
     }
 
@@ -126,6 +129,32 @@ impl Update {
         this.errors_changed(emitter).await.logged("emit errors_changed");
         this.last_check_changed(emitter).await.logged("emit last_check_changed");
         this.checking_changed(emitter).await.logged("emit checking_changed");
+    }
+
+    /// A package database change at `changed` (`db_watch`): starts a check unless one began after it. False while a
+    /// check that began before it still runs; the caller asks again later. Skipped on a metered network, as the
+    /// scheduled check.
+    pub async fn check_after_change(&self, conn: &Connection, changed: Instant) -> bool {
+        {
+            let state = self.lock();
+            if state.started.is_some_and(|started| started >= changed) {
+                return true;
+            }
+            if state.run != Run::Idle {
+                return false;
+            }
+        }
+        if metered().await {
+            log::info!("package database changed; check skipped: metered network");
+            return true;
+        }
+        let Some(guard) = CheckGuard::begin(&self.state, false) else { return false };
+        log::info!("package database changed: checking again");
+        if let Ok(iface) = conn.object_server().interface::<_, Self>(PATH).await {
+            self.checking_changed(iface.signal_emitter()).await.logged("emit checking_changed");
+        }
+        self.spawn_check(conn.clone(), guard);
+        true
     }
 
     /// A panicking check has already reset `run` through its guard; this tells clients so.

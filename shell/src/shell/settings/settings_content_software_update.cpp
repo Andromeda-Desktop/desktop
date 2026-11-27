@@ -218,14 +218,17 @@ namespace settings {
             return u.group == "system" && (u.name == "linux" || u.name.starts_with("linux-") || u.name == "mesa");
           });
           hero.status = kernel ? i18n::tr("settings.update.restart-after") : lastCheckText(service.lastCheck());
+          // A listed update can be stale (an install or a sync outside Settings): Check stays beside the actions.
+          auto buttons = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * scale});
+          buttons->addChild(rows::plainButton(i18n::tr("settings.update.check"), ButtonVariant::Default, scale,
+                                              actions.check));
           // The news gate blocks only the System group, but Update Now runs System; wait for "I have read".
           if (service.tonight()) {
             hero.status = i18n::tr("settings.update.tonight-scheduled");
-            hero.action = rows::plainButton(i18n::tr("settings.update.tonight-cancel"), ButtonVariant::Default, scale,
-                                            [schedule = actions.scheduleTonight] { schedule(false); });
+            buttons->addChild(rows::plainButton(i18n::tr("settings.update.tonight-cancel"), ButtonVariant::Default,
+                                                scale, [schedule = actions.scheduleTonight] { schedule(false); }));
           } else if (service.canInstall()) {
             const bool blocked = service.newsBlocksSystem();
-            auto buttons = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * scale});
             if (!blocked) {
               buttons->addChild(rows::plainButton(i18n::tr("settings.update.tonight"), ButtonVariant::Default, scale,
                                                   [schedule = actions.scheduleTonight] { schedule(true); }));
@@ -234,7 +237,6 @@ namespace settings {
                                          actions.upgrade);
             static_cast<Button*>(now.get())->setEnabled(!blocked);
             buttons->addChild(std::move(now));
-            hero.action = std::move(buttons);
             if (blocked) {
               hero.status = i18n::tr("settings.update.news-first", "distro", distroName());
             }
@@ -242,6 +244,7 @@ namespace settings {
               hero.status = i18n::tr("settings.update.needs-system");
             }
           }
+          hero.action = std::move(buttons);
         }
         break;
       }

@@ -48,6 +48,12 @@ pub fn parse_sizes(text: &str) -> HashMap<String, (u64, String)> {
         .collect()
 }
 
+/// The installed packages (one directory each) and the system's sync databases.
+pub const WATCH: &[crate::db_watch::Watch] = &[
+    crate::db_watch::Watch { dir: "/var/lib/pacman/local", names: &[], suffix: "" },
+    crate::db_watch::Watch { dir: "/var/lib/pacman/sync", names: &[], suffix: ".db" },
+];
+
 /// Lists upgrades with `checkupdates` (pacman-contrib), which syncs a private copy of the databases in `db`.
 pub async fn check(db: &Path) -> Result<(Vec<Update>, Vec<Update>)> {
     tokio::fs::create_dir_all(db).await?;

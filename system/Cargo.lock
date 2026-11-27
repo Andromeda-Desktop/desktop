@@ -171,6 +171,7 @@ dependencies = [
  "chrono",
  "log",
  "quick-xml",
+ "rustix",
  "tokio",
  "ureq",
  "zbus",
