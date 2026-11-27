@@ -260,6 +260,7 @@ float ContextMenuControl::preferredWidth(
   float maxRowWidth = 0.0F;
   const bool symbols = hasSymbolColumn(entries);
   const bool dots = hasDotColumn(entries);
+  reserveToggleSpace = reserveToggleSpace || std::ranges::any_of(entries, hasToggle);
   for (const ContextMenuControlEntry& entry : entries) {
     if (!entry.dots.empty()) {
       maxRowWidth = std::max(maxRowWidth, static_cast<float>(entry.dots.size()) * kDotCell * scale);
@@ -269,7 +270,7 @@ float ContextMenuControl::preferredWidth(
       continue;
     }
     const float toggleSlot = symbols ? symbolSlot(scale)
-                             : (reserveToggleSpace || hasToggle(entry)) ? kToggleSlot * scale
+                             : reserveToggleSpace ? kToggleSlot * scale
                                                                         : 0.0F;
     const FontWeight weight = entry.header ? FontWeight::Bold : FontWeight::Normal;
     const float textWidth = std::ceil(std::max(
@@ -350,6 +351,8 @@ void ContextMenuControl::rebuildRows(Renderer& renderer) {
   m_rows.reserve(visibleItems);
   const bool symbols = hasSymbolColumn(m_entries);
   const bool dots = hasDotColumn(m_entries);
+  // One toggle in the menu gives every row its slot, so the labels share one edge.
+  const bool toggles = m_reserveToggleSpace || std::ranges::any_of(m_entries, hasToggle);
 
   for (std::size_t i = 0; i < visibleItems; ++i) {
     const ContextMenuControlEntry& entry = m_entries[i];
@@ -430,7 +433,7 @@ void ContextMenuControl::rebuildRows(Renderer& renderer) {
       );
 
       const float toggleSlot = symbols                                    ? symbolSlot(scale)
-                               : (m_reserveToggleSpace || hasToggle(entry)) ? kToggleSlot * scale
+                               : toggles ? kToggleSlot * scale
                                                                             : 0.0F;
       const float indent = entryIndent(entry, scale);
       const std::string_view toggleGlyph = toggleGlyphName(entry);
