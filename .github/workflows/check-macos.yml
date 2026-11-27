@@ -59,6 +59,24 @@ jobs:
         run: tools/macos/terminal.sh
       - name: Smoke
         run: tools/macos/smoke.sh
+      - name: Metal probe
+        if: always()
+        continue-on-error: true
+        run: |
+          out=/var/tmp/andromeda-macos/smoke
+          app="/var/tmp/andromeda-macos/Andromeda Terminal.app"
+          exe="$app/Contents/MacOS/andromeda-terminal"
+          system_profiler SPDisplaysDataType | tee "$out/displays.txt"
+          printf 'import Metal\nprint("metal device:", MTLCreateSystemDefaultDevice()?.name ?? "none")\n' > /tmp/m.swift
+          swift /tmp/m.swift | tee "$out/metal.txt" || true
+          pkill -x andromeda-terminal || true
+          pkill -x andromeda-ptyd || true
+          ANGLE_DEFAULT_PLATFORM=metal "$exe" > "$out/terminal-metal.log" 2>&1 &
+          for i in $(seq 60); do grep -q 'first frame at' "$out/terminal-metal.log" && break; sleep 1; done
+          sleep 2
+          screencapture -x "$out/metal.png" || true
+          grep -E 'vendor|first frame|ERR|error' "$out/terminal-metal.log" || true
+          pkill -x andromeda-terminal || true
       - name: Pack
         if: always()
         run: |
