@@ -272,8 +272,7 @@ void main() {
   if (lens_weight > 0.0) {
     color = mix(color, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
-  // The sharp bezel carries no tint (tex.frag).
-  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a * (1.0 - lens_weight));
+  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
   // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
   color.rgb += specular * (color.a - color.rgb);
 #endif

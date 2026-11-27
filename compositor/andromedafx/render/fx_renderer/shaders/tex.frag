@@ -305,8 +305,7 @@ void main() {
     base = mix(base, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
   vec4 color = convert_color(base);
-  // The sharp bezel carries no tint, so the bend and its light stay clear; labels sit inside it, over the full tint.
-  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a * (1.0 - lens_weight));
+  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
   // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
   color.rgb += specular * (color.a - color.rgb);
 #else
