@@ -99,6 +99,8 @@ jobs:
     uses: ./.github/workflows/check-macos.yml
     permissions:
       contents: write
+    secrets:
+      RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
     with:
       ref: ${{ inputs.ref || inputs.tag || github.ref_name }}
       version: ${{ needs.version.outputs.version }}

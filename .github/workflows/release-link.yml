@@ -58,6 +58,30 @@ jobs:
             -p 'andromeda-link-window-[0-9]*-x86_64.pkg.tar.zst' -D pkg
           tools/repo-publish.sh arch repo pkg
 
+  # The self-update manifest of Andromeda Link.app; it names the zip in Link's own release. Tags before the Mac
+  # build have no zip: then there is nothing to sign.
+  macos:
+    needs: [check]
+    if: needs.check.outputs.due == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: tools
+      - name: Manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          zip=Andromeda-Link-macos-arm64.zip
+          if ! gh release download "$TAG" -R Andromeda-Desktop/link -p "$zip" -D mac; then
+            echo "Link $TAG has no $zip"
+            exit 0
+          fi
+          tools/mac-manifest.sh repo "mac/$zip" "${TAG#v}" \
+            "https://github.com/Andromeda-Desktop/link/releases/download/$TAG/$zip" Andromeda-Link-macos-arm64
+
   apt:
     needs: [check]
     if: needs.check.outputs.due == 'true'

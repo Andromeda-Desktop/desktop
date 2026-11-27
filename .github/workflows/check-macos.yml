@@ -9,6 +9,8 @@ on:
       ref: { type: string, required: true }
       version: { description: "Release version YYYY.M.N", type: string, required: true }
       tag: { description: "Release to upload the app to; empty: no upload", type: string, required: false, default: "" }
+    secrets:
+      RELEASE_GPG_KEY: { required: false }
   workflow_dispatch:
   push:
     branches: [main, "ci/**"]
@@ -74,6 +76,7 @@ jobs:
         if: inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
           TAG: ${{ inputs.tag }}
         run: |
           zip="/var/tmp/Andromeda-Terminal-${{ inputs.version }}-macos-arm64.zip"
@@ -82,3 +85,7 @@ jobs:
           # The Latest release (repo) serves a fixed link to the newest Mac build: releases/latest/download/<name>.
           cp "$zip" /var/tmp/Andromeda-Terminal-macos-arm64.zip
           gh release upload repo -R "$GITHUB_REPOSITORY" --clobber /var/tmp/Andromeda-Terminal-macos-arm64.zip
+          # The self-update manifest names the tag's zip: a later release cannot change the bytes it points to.
+          brew install gnupg
+          tools/mac-manifest.sh repo "$zip" "${{ inputs.version }}" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$zip")" Andromeda-Terminal-macos-arm64
