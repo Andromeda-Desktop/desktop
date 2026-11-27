@@ -1801,6 +1801,7 @@ void LockSurface::layoutRyoku(
   m_backgroundLayer->setVisible(false);
   m_widgetLayer->setVisible(false);
   m_loginPanel->setOpacity(0.0F);
+  m_passwordField->setCaretShown(false);
   if (m_authPanel != nullptr) {
     m_authPanel->setVisible(false);
   }
@@ -1836,6 +1837,7 @@ void LockSurface::layoutRyoku(
 // and draws rulebook 9.15's auth column instead of the old login panel.
 void LockSurface::layoutAndromeda(Renderer& renderer, float sw, float sh) {
   m_loginPanel->setOpacity(0.0F);
+  m_passwordField->setCaretShown(false);
   // Lock widgets show only in the Free layout ("custom"); the editor keeps them off the auth area.
   m_widgetLayer->setVisible(m_config != nullptr && m_config->config().lockscreen.layout == "custom");
   // Dim = black at tint_intensity (rulebook 9.15), raised until white text on the image's bright areas reaches 4.5:1.

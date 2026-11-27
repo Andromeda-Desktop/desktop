@@ -2123,7 +2123,7 @@ LayoutSize Input::doMeasure(Renderer& renderer, const LayoutConstraints& constra
 
 void Input::updateCursorVisibility() {
   const bool focused = m_inputArea != nullptr && m_inputArea->focused();
-  m_cursor->setVisible(focused);
+  m_cursor->setVisible(focused && m_caretShown);
   // The blink changes opacity only: a visibility change would lay out the whole window on every blink.
   m_cursor->setOpacity(m_cursorBlinkVisible ? 1.0F : 0.0F);
 }
@@ -2132,14 +2132,31 @@ void Input::revealCursor() {
   m_cursorBlinkVisible = true;
   updateCursorVisibility();
   markPaintDirty();
-  if (m_inputArea != nullptr && m_inputArea->focused()) {
+  if (m_caretShown && m_inputArea != nullptr && m_inputArea->focused()) {
     m_cursorBlinkTimer.start(kCursorBlinkResumeDelay, [this] { startCursorBlink(); });
   } else {
     m_cursorBlinkTimer.stop();
   }
 }
 
+void Input::setCaretShown(bool shown) {
+  if (shown == m_caretShown) {
+    return;
+  }
+  m_caretShown = shown;
+  if (shown) {
+    revealCursor();
+    return;
+  }
+  stopCursorBlink();
+  updateCursorVisibility();
+  markPaintDirty();
+}
+
 void Input::startCursorBlink() {
+  if (!m_caretShown) {
+    return;
+  }
   m_cursorBlinkTimer.startRepeating(std::chrono::milliseconds(static_cast<int>(Tokens::motionCaretBlinkMs)), [this] {
     if (m_inputArea == nullptr || !m_inputArea->focused()) {
       stopCursorBlink();

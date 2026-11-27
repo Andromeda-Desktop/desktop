@@ -87,6 +87,8 @@ public:
   void setCapsule(bool capsule);
   [[nodiscard]] bool enabled() const noexcept { return m_enabled; }
   [[nodiscard]] bool passwordRevealed() const noexcept { return m_passwordRevealed; }
+  /// False: no caret and no blink timer, while focus and typing still work (a field kept as a hidden input sink).
+  void setCaretShown(bool shown);
   void selectAll();
   // Byte offsets into value(), clamped; the caret ends at `end`.
   void selectRange(std::size_t start, std::size_t end);
@@ -269,6 +271,7 @@ private:
   // Sticky caret column for Up/Down runs; negative = unset.
   float m_goalCaretX = -1.0F;
   bool m_cursorBlinkVisible = true;
+  bool m_caretShown = true;
   Timer m_cursorBlinkTimer;
 
   std::function<void(const std::string&)> m_onChange;
