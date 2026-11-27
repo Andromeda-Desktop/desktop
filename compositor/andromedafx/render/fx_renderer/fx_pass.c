@@ -83,6 +83,20 @@ bool fx_render_pass_init_offscreen_buffers(struct wlr_render_pass* render_pass, 
   return true;
 }
 
+// The glass body matrix of vibrancy {saturation gain, dim} (fx_render_texture_options.vibrancy); {0, 0} = identity.
+static void set_vibrancy(GLint location, const float vibrancy[2]) {
+  const float s = 1.0f + vibrancy[0];
+  const float k = 1.0f - vibrancy[1];
+  const float luma[3] = {0.2126f, 0.7152f, 0.0722f};
+  float m[9];
+  for (int col = 0; col < 3; ++col) {
+    for (int row = 0; row < 3; ++row) {
+      m[col * 3 + row] = k * ((1.0f - s) * luma[col] + (row == col ? s : 0.0f));
+    }
+  }
+  glUniformMatrix3fv(location, 1, GL_FALSE, m);
+}
+
 // Returns the DRM format that offscreen effect buffers should use for the
 // current pass.
 // Merged glass (fx_liquid_merge): the shapes, radii and blend reach; the band follows the smallest shape.
@@ -2343,6 +2357,7 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
       shader->tint_mix, fx_options->tint_mix[0], fx_options->tint_mix[1], fx_options->tint_mix[2],
       fx_options->tint_mix[3]
   );
+  set_vibrancy(shader->vibrancy, fx_options->vibrancy);
   // Unit 3: units 0 to 2 hold the source, the colour LUT and the lens.
   const bool source = fx_options->source_texture != NULL && fx_options->source_mix > 0.0f;
   glUniform1i(shader->source_tex, 3);
@@ -2378,7 +2393,6 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     uniform_corner_radii_set(&shader->effects.clip_radius, &clipped_region_corners);
     glUniform1f(shader->effects.liquid, fx_options->liquid);
     glUniform1f(shader->effects.rim, fx_options->rim);
-    glUniform2f(shader->effects.vibrancy, fx_options->vibrancy[0], fx_options->vibrancy[1]);
     const bool liquid_shape = !wlr_box_empty(&fx_options->liquid_box);
     const struct wlr_box liquid_box = liquid_shape ? fx_options->liquid_box : *clip_box;
     const float* lfrac = liquid_shape ? fx_options->liquid_frac : (const float[4]){0.0f, 0.0f, 0.0f, 0.0f};
@@ -3472,7 +3486,7 @@ static void render_blur_composite(
   if (glass) {
     glUniform1f(shader->glass.liquid, fx_options->liquid);
     glUniform1f(shader->glass.rim, fx_options->rim);
-    glUniform2f(shader->glass.vibrancy, fx_options->vibrancy[0], fx_options->vibrancy[1]);
+    set_vibrancy(shader->glass.vibrancy, fx_options->vibrancy);
     const bool liquid_shape = !wlr_box_empty(&fx_options->liquid_box);
     const struct wlr_box liquid_box = liquid_shape ? fx_options->liquid_box : *clip_box;
     const float* lfrac = liquid_shape ? fx_options->liquid_frac : (const float[4]){0.0f, 0.0f, 0.0f, 0.0f};

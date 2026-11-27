@@ -118,7 +118,7 @@ float corner_alpha(
 // the meaning of each uniform; v_texcoord addresses the full-size texture, as the tex draw's would.
 uniform float liquid;
 uniform float rim;
-uniform vec2 vibrancy;
+uniform mat3 vibrancy;
 uniform float lens;
 uniform sampler2D lens_tex;
 uniform vec4 tint_mix;
@@ -149,7 +149,6 @@ float lens_shift(float t);
 float lens_magnify();
 vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend);
 float lens_cover(float t, float lens);
-vec3 glass_vibrancy(vec4 c, vec2 v);
 float glass_shade(float on, float d, float scale, vec2 normal);
 float glass_specular(float shine, float d, float band, float scale, vec2 normal, float near);
 float pointer_near(vec2 p, vec3 light);
@@ -277,7 +276,7 @@ void main() {
   if (lens_weight > 0.0) {
     color = mix(color, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
-  color.rgb = glass_vibrancy(color, vibrancy);
+  color.rgb = max(vibrancy * color.rgb, 0.0);
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
   color.rgb *= 1.0 - shade;
   // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.

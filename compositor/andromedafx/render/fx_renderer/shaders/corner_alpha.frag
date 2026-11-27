@@ -81,12 +81,6 @@ float lens_shift(float t) {
 
 // How much of the sharp lens image covers the blur at band position t (lens = the Lens strength): only the outer
 // part of the bezel, so labels inside the glass keep the blur behind them.
-// Premultiplied c seen through a glass body: saturated by 1 + v.x and darkened by 1 - v.y; v = 0 returns c.rgb.
-vec3 glass_vibrancy(vec4 c, vec2 v) {
-  float luma = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-  return clamp(mix(vec3(luma), c.rgb, 1.0 + v.x) * (1.0 - v.y), 0.0, c.a);
-}
-
 float lens_cover(float t, float lens) { return min(1.6 * lens, 1.0) * smoothstep(0.45, 1.0, t); }
 
 // Whole-surface magnification of small glass at full lens (main() cannot see the token defines, appended after it).

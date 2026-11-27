@@ -33,6 +33,8 @@ uniform int target_tf;
 uniform bool map_hdr_to_sdr;
 // The colour mixed toward the tint colour (rgb) by a: glass density over its backdrop, or a fill folded into a buffer.
 uniform vec4 tint_mix;
+// Glass body (saturation and dim) applied to the colour before the tint; identity = none.
+uniform mat3 vibrancy;
 // Share of source_tex (a blur's sharp source, same size and orientation) under the texture, 0 = off.
 uniform sampler2D source_tex;
 uniform float source_mix;
@@ -63,8 +65,6 @@ uniform float clip_radius_bottom_right;
 uniform float liquid;
 // Specular rim alone (0 = off) for frosted shapes: the rim draws at max(liquid, rim), refraction only with liquid.
 uniform float rim;
-// Glass body: {saturation gain, dim} of the backdrop before the tint; 0 = none.
-uniform vec2 vibrancy;
 // Lens (0 = off): the sharp backdrop, displaced by the glass thickness, shows through the rim band over the blur.
 uniform float lens;
 uniform sampler2D lens_tex;
@@ -216,7 +216,6 @@ float lens_shift(float t);
 float lens_magnify();
 vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend);
 float lens_cover(float t, float lens);
-vec3 glass_vibrancy(vec4 c, vec2 v);
 float glass_shade(float on, float d, float scale, vec2 normal);
 float glass_specular(float shine, float d, float band, float scale, vec2 normal, float near);
 float pointer_near(vec2 p, vec3 light);
@@ -311,7 +310,7 @@ void main() {
     base = mix(base, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
   vec4 color = convert_color(base);
-  color.rgb = glass_vibrancy(color, vibrancy);
+  color.rgb = max(vibrancy * color.rgb, 0.0);
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
   color.rgb *= 1.0 - shade;
   // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
@@ -322,6 +321,7 @@ void main() {
     base = mix(base, texture2D(source_tex, uv), source_mix);
   }
   vec4 color = convert_color(base);
+  color.rgb = max(vibrancy * color.rgb, 0.0);
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
 #endif
 #if EFFECTS

@@ -161,6 +161,7 @@ struct tex_shader {
   GLint target_tf;
   GLint map_hdr_to_sdr;
   GLint tint_mix;
+  GLint vibrancy;
   GLint source_tex;
   GLint source_mix;
   GLint pos_attrib;
@@ -179,7 +180,6 @@ struct tex_shader {
     struct shader_corner_radii clip_radius;
     GLint liquid;
     GLint rim;
-    GLint vibrancy;
     GLint lens;
     GLint lens_tex;
     GLint liquid_texel;
