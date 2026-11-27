@@ -35,6 +35,7 @@ tools/macos/bundle-libdesk.sh "$app" "$ghostty_lib" "$macos/andromeda-terminal" 
 mkdir -p "$res/assets" "$res/terminfo"
 rsync -a --exclude '*-wallpaper.png' shell/assets/ "$res/assets/"
 cp -r libdesk-term/data/shell-integration "$res/"
+cp -r apps/terminal/themes "$res/"
 tic -x -o "$res/terminfo" apps/terminal/data/andromeda.terminfo
 # macOS ncurses looks entries up under the hex name of their first letter.
 # tic on a Mac writes them so already.

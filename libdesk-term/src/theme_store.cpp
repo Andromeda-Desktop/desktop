@@ -1,6 +1,7 @@
 #include "theme_store.h"
 
 #include "core/log.h"
+#include "core/sys/sys.h"
 
 #include <gio/gio.h>
 
@@ -169,12 +170,19 @@ namespace term {
     return result;
   }
 
-  // The user's packages, then the valid packages the system ships (<XDG_DATA_DIRS>/andromeda/terminal/themes) under an
-  // id the user has not taken: a user copy of a shipped theme replaces it.
+  // The user's packages, then the valid packages the system ships (<XDG_DATA_DIRS>/andromeda/terminal/themes, or
+  // Resources/themes in a macOS bundle) under an id the user has not taken: a user copy of a shipped theme replaces it.
   std::vector<ThemeEntry> ThemeStore::scan(const std::vector<ThemeEntry>& previous) const {
     std::vector<ThemeEntry> entries = scanThemes(m_dir, previous);
+    std::vector<std::filesystem::path> shippedDirs;
     for (const gchar* const* dir = g_get_system_data_dirs(); *dir != nullptr; ++dir) {
-      for (ThemeEntry& shipped : scanThemes(std::filesystem::path(*dir) / "andromeda" / "terminal" / "themes", previous)) {
+      shippedDirs.push_back(std::filesystem::path(*dir) / "andromeda" / "terminal" / "themes");
+    }
+    if (const std::filesystem::path exe = sys::executablePath(); !exe.empty()) {
+      shippedDirs.push_back(exe.parent_path().parent_path() / "Resources" / "themes");
+    }
+    for (const std::filesystem::path& dir : shippedDirs) {
+      for (ThemeEntry& shipped : scanThemes(dir, previous)) {
         if (std::holds_alternative<ThemeEntry::Valid>(shipped.state) &&
             std::ranges::none_of(entries, [&](const ThemeEntry& e) { return e.id == shipped.id; })) {
           entries.push_back(std::move(shipped));
