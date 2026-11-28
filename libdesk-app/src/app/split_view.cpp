@@ -43,6 +43,7 @@ void SplitView::reset() {
   m_slot = nullptr;
   m_built.clear();
   m_cards.clear();
+  m_single = nullptr;
   m_dividers.clear();
   cancelPaneDrag();
   m_drag = std::monostate{};
@@ -76,6 +77,7 @@ void SplitView::fill(Renderer& renderer, Node* slot, float width, float height, 
   m_dropReason = nullptr;
   m_ringPane = 0;
   m_built.clear();
+  m_single = nullptr;
   if (panes.empty()) {
     return;
   }
@@ -86,6 +88,7 @@ void SplitView::fill(Renderer& renderer, Node* slot, float width, float height, 
   } else {
     m_built = {focused};
     auto content = m_callbacks.content(renderer, focused, width, height);
+    m_single = content.get();
     const auto old = std::ranges::find(from, focused, &std::pair<std::uint64_t, PaneRect>::first);
     if (from.size() > 1 && old != from.end()) {
       revealFrom(renderer, std::move(content), old->second, from);
@@ -618,6 +621,26 @@ bool SplitView::rebuildContent(std::uint64_t id) {
     card.cell->layout(renderer);
   });
   return true;
+}
+
+void SplitView::dropContent(std::uint64_t id) {
+  const auto it = std::ranges::find(m_cards, id, &Card::id);
+  if (it == m_cards.end() && !(m_cards.empty() && m_built.size() == 1 && m_built.front() == id)) {
+    return;
+  }
+  m_window.updateInPlace([this, it](Renderer&) {
+    if (it != m_cards.end()) {
+      while (!it->holder->children().empty()) {
+        (void)it->holder->removeChild(it->holder->children().back().get());
+      }
+    } else if (m_single != nullptr) {
+      // During the reveal the content sits in its clip, the reveal's animation owner; a pending reveal never starts.
+      Node* top = m_single->parent() == m_slot ? m_single : m_single->parent();
+      ++m_fills;
+      m_single = nullptr;
+      (void)m_slot->removeChild(top);
+    }
+  });
 }
 
 std::optional<SplitView::PaneRect> SplitView::rect(std::uint64_t id) const {

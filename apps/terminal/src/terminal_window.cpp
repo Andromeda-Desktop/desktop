@@ -657,7 +657,8 @@ namespace term {
                                                              .secret = m_secretSessions.contains(id),
                                                              .remote = m_remoteSessions.contains(id)});
     m_views.erase(it);
-    // Its nodes stay in this scene until the next build; the new window's build gives it new ones.
+    // Its nodes leave this scene now: the new window may free the view before this window builds again.
+    m_split.dropContent(id);
     moved->view->sceneDestroyed();
     return moved;
   }

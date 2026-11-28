@@ -94,6 +94,8 @@ public:
   bool rebuildContent(std::uint64_t id);
   // The next fill fades a plate out where `id`'s card was.
   void noteClosing(std::uint64_t id);
+  // `id`'s content leaves the slot now (its item moved to another owner, which may free it before the next fill).
+  void dropContent(std::uint64_t id);
 
   // Where `dragged` would join at the scene point: a half of a card, or of the single item `shown`.
   [[nodiscard]] std::optional<ui::SplitDrop> dropAt(std::uint64_t shown, float sceneX, float sceneY) const;
@@ -173,6 +175,7 @@ private:
   float m_height = 0.0F;
   std::vector<std::uint64_t> m_built; // the items in the slot, in layout order
   std::vector<Card> m_cards;          // empty while one item shows
+  Node* m_single = nullptr;           // the content of the item that shows alone
   ui::SplitTrees m_trees;
   std::vector<Divider> m_dividers;
   struct DividerDrag {
