@@ -106,7 +106,7 @@ private:
   std::string m_accent;
   AccentOrigin m_accentOrigin = AccentOrigin::Saved;
   std::string m_wallpaperAccent;
-  std::unordered_map<std::string, std::string> m_styleLayer; // accent and blur recipe in the "style" layer now
+  std::unordered_map<std::string, std::string> m_styleLayer; // accent, blur recipe and window corner in the "style" layer now
   bool m_droppedShellSaves = false;
   std::unordered_map<std::string, std::string> m_sent; // last value set per key, until the compositor has it
   ChangeCallback m_onChange;

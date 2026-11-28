@@ -116,6 +116,8 @@ Set `prefer_no_csd = false` to let newly connected applications draw their own d
 
 Borders render outside window content and are included in layout spacing. `corner_radius = 0` keeps every contour square. A [window rule](window-rules.md#decoration) can override `border_width`, `outer_border_width`, and `corner_radius` for the windows it matches.
 
+With the Andromeda shell, `corner_radius` follows the desktop theme value `corner.window` (0 to 32) and `[appearance.blur] saturation` follows `glass.saturation_dark` or `glass.saturation_light` (0.5 to 2.0). Set them in `theme-overrides.toml` or in Settings. When it starts, the shell moves a value set here to `theme-overrides.toml`, unless that file already sets the key. Then remove the line here: the theme value applies over it.
+
 ### Title bar
 
 Enable a simple server-side title bar on decorated windows in every layout:

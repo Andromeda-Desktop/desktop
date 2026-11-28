@@ -49,10 +49,10 @@ namespace settings {
       return s;
     }
 
-    [[nodiscard]] SliderSetting themeSlider(std::string_view themeKey, float value) {
+    [[nodiscard]] SliderSetting themeSlider(std::string_view themeKey, float value, float step, bool integer) {
       // The vocabulary is compiled in; the registry check names a row whose key it lacks.
       const auto& key = noctalia::theme::shippedVocabulary().keys.find(themeKey)->second;
-      return SliderSetting{value, key.min, key.max, 1.0F, true};
+      return SliderSetting{value, key.min, key.max, step, integer};
     }
 
 

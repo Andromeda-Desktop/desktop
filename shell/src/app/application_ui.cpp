@@ -1567,6 +1567,11 @@ void Application::initWidgetControllersAndCallbacks() {
         [&compositor](std::string_view key) { return compositor.value(key); }, compositor.lastFailure(),
         [this](const std::string& key, const std::string& value) { m_liveAppearance.set(key, value); }
     );
+    m_configService.moveLegacyCompositorThemeKeys(
+        [&compositor](std::string_view key) { return compositor.value(key); },
+        [&compositor](std::string_view key) { return compositor.customized(key); },
+        [this](const std::string& key, const std::string& value) { m_liveAppearance.set(key, value); }
+    );
   });
   m_liveAppearance.initialize(m_wayland, [this](const LiveAppearance& appearance) {
     kLog.info(

@@ -1,7 +1,9 @@
 // theme.desktop_theme through the shell's path: ConfigService loads the id, DesktopTheme writes the token slots, the
 // config defaults follow the new tokens, ThemeService takes the theme's scheme pin; overrides apply without a theme.
-// The Settings font and dock rows write theme-overrides.toml through ConfigService; the old keys move there once.
+// The Settings font and dock rows write theme-overrides.toml through ConfigService; the old shell keys and the
+// compositor's window corner and blur saturation move there.
 
+#include "config/config_migrations.h"
 #include "config/config_service.h"
 #include "core/deferred_call.h"
 #include "core/files/directory_watcher.h"
@@ -12,14 +14,18 @@
 #include "tests/test_check.h"
 #include "theme/desktop_theme.h"
 #include "theme/theme_service.h"
+#include "theme/theme_store.h"
 #include "ui/palette.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -174,6 +180,93 @@ int main() {
     TEST_CHECK(!migrating.hasOverride({"dock", "icon_size"}) && !migrating.hasOverride({"dock", "radius"}));
   }
   TEST_CHECK(landed(shellOverrides) && landed(overrides));
+
+  // The compositor's window corner and blur saturation move to theme-overrides.toml on the first batch: a value its
+  // settings file holds is cleared there, a config file value stays. Values and ranges come from the shipped data.
+  struct CompositorValue {
+    std::string text;
+    bool customized = true;
+  };
+  std::map<std::string, CompositorValue> compositor;
+  std::vector<std::string> sent;
+  const auto value = [&](std::string_view key) {
+    const auto it = compositor.find(std::string(key));
+    return it == compositor.end() ? std::string() : it->second.text;
+  };
+  const auto customized = [&](std::string_view key) {
+    const auto it = compositor.find(std::string(key));
+    return it != compositor.end() && it->second.customized;
+  };
+  const auto set = [&](const std::string& key, const std::string& text) { sent.push_back(key + "=" + text); };
+  const auto builtIn = [](std::string_view token) {
+    const auto& slots = Tokens::slots();
+    return std::ranges::find(slots, token, &Tokens::Slot::path)->number;
+  };
+  const auto& vocabulary = noctalia::theme::shippedVocabulary();
+  const double cornerMax = vocabulary.keys.find("corner.window")->second.max;
+  const double saturationMax = vocabulary.keys.find("glass.saturation_light")->second.max;
+  const double darkBuiltIn = builtIn("blur.saturation");
+  const double lightBuiltIn = builtIn("blur_light.saturation");
+  const std::string themeRoot(ConfigService::kThemeOverridesRoot);
+  const auto migrate = [&] {
+    ConfigService migrating;
+    migrating.setTokenSource([&](const Config& c, const std::optional<std::string>& text) {
+      return desktopTheme.sync(c.theme.desktopTheme, text);
+    });
+    sent.clear();
+    migrating.moveLegacyCompositorThemeKeys(value, customized, set);
+    return migrating.hasOverride({themeRoot, "corner.window"});
+  };
+  const std::vector<std::string> bothCleared{"appearance.corner_radius=", "appearance.blur.saturation="};
+
+  // A number is clamped to the key's range; the old saturation goes to each scheme whose key is unset.
+  const double chosen = (darkBuiltIn + lightBuiltIn) / 2.0;
+  write(overrides, std::format("[values]\n\"glass.saturation_light\" = {}\n", saturationMax));
+  compositor = {
+      {"appearance.corner_radius", {std::format("{}", cornerMax + 8.0)}},
+      {"appearance.blur.saturation", {std::format("{}", chosen)}},
+  };
+  TEST_CHECK(migrate());
+  TEST_CHECK(Tokens::componentWindowRadius == static_cast<float>(cornerMax));
+  TEST_CHECK(near(Tokens::blurSaturation, static_cast<float>(chosen)));
+  TEST_CHECK(near(Tokens::blurLightSaturation, static_cast<float>(saturationMax)));
+  TEST_CHECK(sent == bothCleared);
+  TEST_CHECK(landed(overrides));
+
+  // A value that equals one scheme's built-in skips only that scheme; a radius an earlier Desktop Layout saved is only
+  // cleared.
+  std::filesystem::remove(overrides);
+  compositor = {
+      {"appearance.corner_radius", {std::format("{}", noctalia::config::kWindowCornerShellWritten.front())}},
+      {"appearance.blur.saturation", {std::format("{}", lightBuiltIn)}},
+  };
+  TEST_CHECK(!migrate());
+  TEST_CHECK(near(Tokens::blurSaturation, static_cast<float>(lightBuiltIn)));
+  TEST_CHECK(read(overrides).find("glass.saturation_light") == std::string::npos);
+  TEST_CHECK(sent == bothCleared);
+  TEST_CHECK(landed(overrides));
+
+  // A config file value moves too, but only the settings file can be cleared.
+  std::filesystem::remove(overrides);
+  compositor = {{"appearance.corner_radius", {std::format("{}", cornerMax - 1.0), false}}};
+  TEST_CHECK(migrate());
+  TEST_CHECK(Tokens::componentWindowRadius == static_cast<float>(cornerMax - 1.0));
+  TEST_CHECK(sent.empty());
+  TEST_CHECK(landed(overrides));
+
+  // Only the first batch moves: later ones show the shell's layer values. A refused write keeps the compositor's.
+  write(overrides, "[values\n");
+  sent.clear();
+  compositor = {{"appearance.corner_radius", {std::format("{}", cornerMax - 2.0)}}};
+  {
+    ConfigService migrating;
+    migrating.moveLegacyCompositorThemeKeys(value, customized, set);
+    TEST_CHECK(sent.empty());
+    std::filesystem::remove(overrides);
+    migrating.moveLegacyCompositorThemeKeys(value, customized, set);
+    TEST_CHECK(sent.empty());
+    TEST_CHECK(!migrating.hasOverride({themeRoot, "corner.window"}));
+  }
 
 #ifdef TOKENS_RUNTIME
   // Dev builds: the dev token file is the base layer; the theme's derived tokens evaluate over it.

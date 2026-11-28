@@ -7,6 +7,7 @@
 #include "core/files/resource_paths.h"
 #include "core/input/key_chord.h"
 #include "core/log.h"
+#include "design_tokens.h"
 #include "scripting/plugin_id.h"
 #include "shell/settings/widget_settings_registry.h"
 #include "theme/theme_store.h"
@@ -2103,6 +2104,76 @@ void ConfigService::moveLegacyThemeKeys() {
   }
   if (!clears.empty() && !mutateOverrides(sets, clears, nullptr)) {
     kLog.warn("kept the old theme keys in {}: {}", m_overridesPath, m_lastMutationError);
+  }
+}
+
+void ConfigService::moveLegacyCompositorThemeKeys(
+    const std::function<std::string(std::string_view key)>& value,
+    const std::function<bool(std::string_view key)>& customized,
+    const std::function<void(const std::string& key, const std::string& value)>& set
+) {
+  if (m_compositorThemeKeyMove == CompositorThemeKeyMove::Done) {
+    return;
+  }
+  m_compositorThemeKeyMove = CompositorThemeKeyMove::Done;
+  const auto& vocabulary = noctalia::theme::shippedVocabulary();
+  // True when `number` is a built-in or current value of the key's tokens: the compositor's default, or a value an
+  // earlier shell saved as if the user had chosen it.
+  const auto tokenValue = [](const noctalia::theme::VocabularyKey& key, double number) {
+    return std::ranges::any_of(key.tokens, [&](const std::string& token) {
+      const auto& slots = Tokens::slots();
+      const auto slot = std::ranges::find(slots, std::string_view(token), &Tokens::Slot::path);
+      return slot != slots.end() && slot->kind == 'f'
+          && (std::abs(slot->number - number) < 1.0e-4
+              || std::abs(static_cast<double>(*static_cast<const float*>(slot->ptr)) - number) < 1.0e-4);
+    });
+  };
+  std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> sets;
+  std::vector<std::string> cleared;
+  std::vector<std::string> configLines;
+  for (const auto& legacy : noctalia::config::kLegacyCompositorThemeKeys) {
+    const bool saved = customized(legacy.compositorKey);
+    if (saved) {
+      cleared.emplace_back(legacy.compositorKey);
+    }
+    const std::string text = value(legacy.compositorKey);
+    double number = 0.0;
+    const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), number);
+    if (ec != std::errc{} || end != text.data() + text.size() || !std::isfinite(number)
+        || (saved && std::ranges::contains(legacy.shellWritten, number))) {
+      continue;
+    }
+    bool moved = false;
+    for (const std::string_view themeKey : legacy.themeKeys) {
+      std::vector<std::string> themePath{std::string(kThemeOverridesRoot), std::string(themeKey)};
+      const auto it = vocabulary.keys.find(themeKey);
+      if (it == vocabulary.keys.end() || hasOverride(themePath) || tokenValue(it->second, number)) {
+        continue;
+      }
+      const double clamped = std::clamp(number, it->second.min, it->second.max);
+      if (clamped != number) {
+        kLog.info("{} {} is outside the range of \"{}\"; moved as {}", legacy.compositorKey, number, themeKey, clamped);
+      }
+      if (it->second.type == noctalia::theme::VocabularyType::Length) {
+        sets.emplace_back(std::move(themePath), static_cast<std::int64_t>(std::lround(clamped)));
+      } else {
+        sets.emplace_back(std::move(themePath), clamped);
+      }
+      moved = true;
+    }
+    if (moved && !saved) {
+      configLines.emplace_back(legacy.compositorKey);
+    }
+  }
+  if (!sets.empty() && !mutateOverrides(sets, {}, nullptr)) {
+    kLog.warn("kept the compositor's window corner and glass saturation values: {}", m_lastMutationError);
+    return;
+  }
+  for (const std::string& key : configLines) {
+    kLog.warn("moved {} from the compositor config to theme-overrides.toml; remove it there, the theme value applies", key);
+  }
+  for (const std::string& key : cleared) {
+    set(key, "");
   }
 }
 

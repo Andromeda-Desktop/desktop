@@ -59,6 +59,25 @@ namespace noctalia::config {
       LegacyThemeKey{.section = "dock", .key = "icon_size", .themeKey = "dock.icon"},
       LegacyThemeKey{.section = "dock", .key = "radius", .themeKey = "dock.corner"},
   };
+  // Compositor settings whose value lives in theme-overrides.toml [values]. The old value applied in both schemes, so
+  // it moves to each of `themeKeys`; a saved value in `shellWritten` came from an earlier shell and is only cleared.
+  struct LegacyCompositorThemeKey {
+    std::string_view compositorKey;
+    std::span<const std::string_view> themeKeys;
+    std::span<const double> shellWritten;
+  };
+  inline constexpr std::array<std::string_view, 1> kWindowCornerThemeKeys{"corner.window"};
+  // Earlier builds saved radius 8 for the Windows Desktop Layout.
+  inline constexpr std::array kWindowCornerShellWritten{8.0};
+  inline constexpr std::array<std::string_view, 2> kBlurSaturationThemeKeys{"glass.saturation_dark", "glass.saturation_light"};
+  inline constexpr std::array kLegacyCompositorThemeKeys{
+      LegacyCompositorThemeKey{
+          .compositorKey = "appearance.corner_radius",
+          .themeKeys = kWindowCornerThemeKeys,
+          .shellWritten = kWindowCornerShellWritten,
+      },
+      LegacyCompositorThemeKey{.compositorKey = "appearance.blur.saturation", .themeKeys = kBlurSaturationThemeKeys},
+  };
   // Removes each kLegacyThemeKeys entry from `root`; returns the ones it held.
   std::vector<LegacyThemeKey> eraseLegacyThemeKeys(toml::table& root);
 

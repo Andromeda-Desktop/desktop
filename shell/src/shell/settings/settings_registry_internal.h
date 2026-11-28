@@ -61,8 +61,8 @@ namespace settings {
     });
 
     [[nodiscard]] SliderSetting barCornerSlider(std::int32_t value);
-    // An integer slider over a theme vocabulary number key's range, showing `value` (the key's token).
-    [[nodiscard]] SliderSetting themeSlider(std::string_view themeKey, float value);
+    // A slider over a theme vocabulary number key's range, showing `value` (the key's token).
+    [[nodiscard]] SliderSetting themeSlider(std::string_view themeKey, float value, float step = 1.0F, bool integer = true);
     [[nodiscard]] std::string deadZoneDefault(noctalia::bar::Gesture gesture);
     [[nodiscard]] SliderSetting barReservedSlider(double value, double maxValue, double step, bool integer);
     SelectSetting asSegmented(SelectSetting setting);

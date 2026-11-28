@@ -224,6 +224,16 @@ public:
   // the key: an empty font becomes "system", a number is clamped to the vocabulary range. One commit, so a second
   // call finds nothing to move.
   void moveLegacyThemeKeys();
+  // Moves each kLegacyCompositorThemeKeys value that the compositor's settings or config file sets to
+  // theme-overrides.toml, unless that file already sets the key, and clears the settings file's value through `set`
+  // (key, ""). Call it on every compositor settings batch; only the first one counts, before a layer of the shell
+  // masks the values. A theme key whose built-in or current token value equals the value is skipped. A refused write
+  // keeps the compositor values.
+  void moveLegacyCompositorThemeKeys(
+      const std::function<std::string(std::string_view key)>& value,
+      const std::function<bool(std::string_view key)>& customized,
+      const std::function<void(const std::string& key, const std::string& value)>& set
+  );
   bool clearOverrides(const std::vector<std::vector<std::string>>& paths, bool* changed);
   bool renameOverrideTable(const std::vector<std::string>& oldPath, const std::vector<std::string>& newPath);
 
@@ -350,6 +360,8 @@ private:
   enum class LegacyAnimationMove : std::uint8_t { NotStarted, Waiting, Finished };
   LegacyAnimationMove m_legacyAnimationMove = LegacyAnimationMove::NotStarted;
   std::vector<std::pair<std::string, std::string>> m_legacyAnimationSent;
+  enum class CompositorThemeKeyMove : std::uint8_t { Pending, Done };
+  CompositorThemeKeyMove m_compositorThemeKeyMove = CompositorThemeKeyMove::Pending;
 
   ConfigProblem m_overridesParseError;
   ConfigProblem m_pendingError;             // parse error from initial load, notified once the manager is wired up

@@ -397,7 +397,6 @@ namespace desktop_layout {
   Snapshot snapshot(const Config& cfg, const SettingsControl* compositor) {
     Snapshot now{.bars = cfg.bars, .dock = cfg.dock.enabled};
     if (compositor != nullptr && compositor->ready()) {
-      now.cornerRadius = compositor->value("appearance.corner_radius");
       for (const auto& [key, setting] : compositor->settings()) {
         if (key.starts_with("workspace.") && key.ends_with(".layout.mode") && !compositor->value(key).empty()) {
           now.workspaceModes.push_back(key);
@@ -506,10 +505,6 @@ namespace desktop_layout {
     }
     if (!hasDesktopIcons(preset)) {
       out.push_back(Path{"desktop_icons", "start_corner"});
-    }
-    // Earlier builds wrote radius 8 for Windows; window corners follow radius set B in every preset.
-    if (now.cornerRadius == "8") {
-      out.push_back(settings::compositorSettingPath("appearance.corner_radius"));
     }
     return out;
   }

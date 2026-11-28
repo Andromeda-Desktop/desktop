@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <array>
 #include <format>
 
@@ -157,6 +158,12 @@ void LiveAppearanceSync::sendLayers() {
     m_layerLanguage = m_language;
     m_control->setInLayer("style", "appearance.language", m_language);
   }
+  // The theme's window corner (corner.window); a value the user saved is never masked.
+  setStyleLayer(
+      "appearance.corner_radius", m_control->customized("appearance.corner_radius")
+          ? std::string{}
+          : std::format("{}", std::lround(Tokens::componentWindowRadius))
+  );
   // Blur recipe per scheme (glass tokens): the user's scheme's in the "style" layer, a Focus scheme's in its layer.
   const auto recipe = [](std::string_view scheme) {
     const bool light = scheme == "light";

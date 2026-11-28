@@ -1,5 +1,7 @@
 #include "shell/settings/settings_registry_internal.h"
 #include "config/app_icon_settings.h"
+#include "config/config_service.h"
+#include "design_tokens.h"
 
 #include "config/config_types.h"
 #include "config/schema/config_schema.h"
@@ -113,7 +115,20 @@ namespace settings {
 
       using enum SettingsSection;
       stepper(WindowStyle, "window-borders", "appearance.border_width", 0, 100, 1, "px", "window border width outline");
-      stepper(WindowStyle, "window-borders", "appearance.corner_radius", 0, 100, 1, "px", "window rounded corners");
+      // Window corner and glass saturation are theme values: their rows write theme-overrides.toml.
+      const auto themeRow = [&](SettingsSection section, std::string_view group, std::string_view compositorKey,
+                                std::string_view themeKey, SliderSetting slider, std::string tags, bool advanced) {
+        const std::string labelKey = compositorLabelKey(compositorKey);
+        entries.push_back(makeEntry(
+            section, std::string(group), tr(labelKey + ".label"), tr(labelKey + ".description"),
+            {std::string(ConfigService::kThemeOverridesRoot), std::string(themeKey)}, std::move(slider),
+            std::move(tags), advanced
+        ));
+      };
+      themeRow(
+          WindowStyle, "window-borders", "appearance.corner_radius", "corner.window",
+          themeSlider("corner.window", Tokens::componentWindowRadius), "window rounded corners", false
+      );
       stepper(
           WindowStyle, "window-borders", "appearance.outer_border_width", 0, 100, 1, "px", "window outer border", true
       );
@@ -137,8 +152,16 @@ namespace settings {
             WindowStyle, "window-blur", "appearance.blur.brightness", 0.0, 2.0, 0.05, false, "blur brightness", true
         );
         slider(WindowStyle, "window-blur", "appearance.blur.contrast", 0.0, 2.0, 0.05, false, "blur contrast", true);
-        slider(
-            WindowStyle, "window-blur", "appearance.blur.saturation", 0.0, 2.0, 0.05, false, "blur saturation", true
+        // The row edits the shown scheme's key.
+        const bool light = compositor.value("appearance.scheme") == "light";
+        themeRow(
+            WindowStyle, "window-blur", "appearance.blur.saturation",
+            light ? "glass.saturation_light" : "glass.saturation_dark",
+            themeSlider(
+                light ? "glass.saturation_light" : "glass.saturation_dark",
+                light ? Tokens::blurLightSaturation : Tokens::blurSaturation, 0.05F, false
+            ),
+            "blur saturation", true
         );
       }
       toggle(WindowStyle, "window-decorations", "appearance.prefer_no_csd", "client side decorations title bar csd");

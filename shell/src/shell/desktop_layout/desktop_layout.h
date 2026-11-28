@@ -32,7 +32,6 @@ namespace desktop_layout {
   // What a pick needs to know about the current parts, taken when the picker is built.
   struct Snapshot {
     std::vector<BarConfig> bars;
-    std::string cornerRadius;            // compositor appearance.corner_radius as set now
     std::vector<std::string> workspaceModes; // compositor "workspace.<N>.layout.mode" keys that hold a value
     bool dock = false;
   };

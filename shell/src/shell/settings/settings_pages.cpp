@@ -170,7 +170,7 @@ namespace settings {
         "andromeda.appearance.glass_style", "andromeda.appearance.liquid_tint", "andromeda.appearance.liquid",
         "andromeda.appearance.liquid_blur", "andromeda.appearance.glass", "andromeda.appearance.frost",
         "andromeda.appearance.edge_reflection", "shell.settings_window_translucent", 
-        "andromeda.appearance.corner_radius", "andromeda.appearance.border_width", "andromeda.appearance.shadow.enabled",
+        "theme-overrides.corner.window", "andromeda.appearance.border_width", "andromeda.appearance.shadow.enabled",
         "andromeda.appearance.blur.enabled", "andromeda.appearance.reduce_motion",
         "dock.reserve_space", "dock.show_trash", "dock.launcher_position",
         "dock.compositor_blur", "bar.*.reserve_space", "bar.*.background_opacity", "bar.*.compositor_blur",
