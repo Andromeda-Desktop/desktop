@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/color_scheme.h"
 #include "protocols/glass_material.h"
 
 #include <array>
@@ -29,6 +30,8 @@ public:
   // org.andromeda.appearance ui-scale and text-scale from the shell; 1 until it publishes them.
   [[nodiscard]] float uiScale() const noexcept { return static_cast<float>(m_uiScale); }
   [[nodiscard]] float textScale() const noexcept { return static_cast<float>(m_textScale); }
+  // Light or Dark wins over the desktop's color-scheme until System.
+  void setScheme(ColorScheme scheme);
   Appearance(const Appearance&) = delete;
   Appearance& operator=(const Appearance&) = delete;
 
@@ -56,7 +59,8 @@ private:
   std::unique_ptr<sdbus::IProxy> m_portal;
   std::unique_ptr<sdbus::IProxy> m_backend;
   std::unique_ptr<sdbus::IProxy> m_power;
-  bool m_light = false;
+  bool m_light = false; // the desktop color-scheme
+  ColorScheme m_scheme = ColorScheme::System;
   bool m_hasAccent = false;
   bool m_reducedMotion = false;
   bool m_highContrast = false;

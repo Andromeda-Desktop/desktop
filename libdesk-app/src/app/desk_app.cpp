@@ -624,3 +624,8 @@ void DeskApp::routeKey(const KeyboardEvent& event) {
     after->syncMenuBar();
   }
 }
+
+void DeskApp::setColorScheme(ColorScheme scheme) {
+  m_services->setColorScheme(scheme);
+  for (const auto& w : m_windows) w->requestRebuild();
+}

@@ -253,6 +253,11 @@ bool Appearance::take(const std::string& ns, const std::string& key, const sdbus
   return true;
 }
 
+void Appearance::setScheme(ColorScheme scheme) {
+  m_scheme = scheme;
+  apply();
+}
+
 void Appearance::apply() {
   const auto paletteFor = [this](bool light) {
     Palette p = tokenPalette(light);
@@ -267,17 +272,18 @@ void Appearance::apply() {
     }
     return p;
   };
+  const bool light = m_scheme == ColorScheme::System ? m_light : m_scheme == ColorScheme::Light;
   setDarkPalette(paletteFor(false));
   setLightPalette(paletteFor(true));
-  setResolvedThemeLight(m_light);
-  setPalette(paletteFor(m_light));
+  setResolvedThemeLight(light);
+  setPalette(paletteFor(light));
   MotionService::instance().setReduced(m_reducedMotion);
   Style::setGlass(m_glass, m_compositorBlur);
   Style::setCornerRadiusScale(static_cast<float>(m_cornerRadiusScale));
   i18n::Service::instance().setLanguage(m_language);
-  kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
+  kLog.debug("scheme {}{}", light ? "light" : "dark", m_hasAccent ? " accent" : "");
   const Applied now{
-      m_light,   m_hasAccent, m_reducedMotion, m_highContrast, m_pureBlack, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
+      light,     m_hasAccent, m_reducedMotion, m_highContrast, m_pureBlack, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
       m_uiScale, m_textScale, m_cornerRadiusScale, m_glass, m_compositorBlur, m_language
   };
   if (now == m_applied) {

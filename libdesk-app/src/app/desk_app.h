@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/color_scheme.h"
 #include "app/app_clipboard.h"
 #include "app/app_lifecycle.h"
 #include "app/app_loop.h"
@@ -56,6 +57,8 @@ public:
   void quit(int code = 0);
   // Quits once no window is open and no lease is held; a window open ignores it.
   void quitWhenIdle() { onLifecycle(LifecycleEvent::Expired); }
+  // Light or Dark for this app's windows only; System follows the desktop. Not stored: the app keeps its choice.
+  void setColorScheme(ColorScheme scheme);
 
   // Work that outlives the windows (a file copy): while one is held, a hidden or windowless app does not quit on
   // expiry, but waits for the last one to end. Safe to destroy after the app.

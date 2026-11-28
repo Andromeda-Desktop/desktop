@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/color_scheme.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -34,6 +35,7 @@ public:
   [[nodiscard]] virtual float uiScale() const = 0;
   [[nodiscard]] virtual float textScale() const = 0;
   [[nodiscard]] virtual bool holdMotion() const = 0;
+  virtual void setColorScheme(ColorScheme scheme) = 0;
   // Null when the platform has no session bus or it is not reachable.
   [[nodiscard]] virtual SessionBus* bus() = 0;
   // Shows the files (absolute paths), selected, in the desktop's file manager.

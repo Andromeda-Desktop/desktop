@@ -1,4 +1,5 @@
 #include "app/app_services.h"
+#include "ui/palette.h"
 
 void showInFinder(const std::vector<std::string>& paths); // show_in_finder_macos.mm
 
@@ -14,6 +15,11 @@ namespace {
     [[nodiscard]] float uiScale() const override { return 1.0F; }
     [[nodiscard]] float textScale() const override { return 1.0F; }
     [[nodiscard]] bool holdMotion() const override { return false; }
+    void setColorScheme(ColorScheme scheme) override {
+      const bool light = scheme == ColorScheme::Light;
+      setResolvedThemeLight(light);
+      setPalette(tokenPalette(light));
+    }
     [[nodiscard]] SessionBus* bus() override { return nullptr; }
     void showInFolder(const std::vector<std::string>& paths) override { showInFinder(paths); }
   };

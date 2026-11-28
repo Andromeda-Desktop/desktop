@@ -73,6 +73,9 @@ namespace {
     [[nodiscard]] float uiScale() const override { return m_appearance->uiScale(); }
     [[nodiscard]] float textScale() const override { return m_appearance->textScale(); }
     [[nodiscard]] bool holdMotion() const override { return m_appearance->holdMotion(); }
+    void setColorScheme(ColorScheme scheme) override {
+      if (m_appearance != nullptr) m_appearance->setScheme(scheme);
+    }
     [[nodiscard]] SessionBus* bus() override { return m_bus.get(); }
 
     void showInFolder(const std::vector<std::string>& paths) override {
