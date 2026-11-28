@@ -86,7 +86,7 @@ namespace glass {
   struct Settings {
     Style style = Style::Tinted;
     // Frosted Tint (appearance.glass): 0 Clear, kTintedLevel Tinted, 1 Frosted.
-    float tint = 1.0F;
+    float tint = 0.35F;
     // Frosted Blur (appearance.frost): 0 the lightest blur, kTintedLevel Tinted, 1 full size.
     float frost = 1.0F;
     // Specular edge of every style and its pointer light (appearance.edge_reflection).
@@ -104,10 +104,12 @@ namespace glass {
     bool operator==(const Settings&) const = default;
   };
 
-  // App windows take Frosted when the style is Clear: Clear glass is for shell surfaces only.
+  // App windows take Frosted when the style is Clear: Clear glass is for shell surfaces only. Clear shows only its own
+  // Blur slider, so that slider sets the window blur.
   [[nodiscard]] constexpr Settings windowSettings(Settings settings) noexcept {
     if (settings.style == Style::Clear) {
       settings.style = Style::Frosted;
+      settings.frost = settings.liquidBlur;
     }
     return settings;
   }

@@ -31,4 +31,16 @@ ANDROMEDA_TEST(densityKeepsSliderOrderAndLegibilityFloor) {
   }
 }
 
+// Under Clear an app window blurs by the Clear Blur slider, the only one Clear shows; the hidden Frosted Blur is ignored.
+ANDROMEDA_TEST(clearWindowBlurFollowsClearSlider) {
+  for (const float hidden : {0.0F, 1.0F}) {
+    glass::Settings sharp{.style = glass::Style::Clear, .frost = hidden, .liquidBlur = 0.0F};
+    glass::Settings soft{.style = glass::Style::Clear, .frost = hidden, .liquidBlur = 1.0F};
+    const float sharpBlur = glass::material(glass::Kind::Sheet, glass::windowSettings(sharp), false).blurStrength;
+    const float softBlur = glass::material(glass::Kind::Sheet, glass::windowSettings(soft), false).blurStrength;
+    CHECK(sharpBlur < 0.5F);
+    CHECK(softBlur > sharpBlur);
+  }
+}
+
 int main() { return RUN_TESTS(); }
