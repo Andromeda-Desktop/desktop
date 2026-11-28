@@ -155,8 +155,8 @@ public:
   virtual void setOpaque(bool opaque) = 0;
   virtual void clearBlurRegion() = 0;
   // The compositor draws each card as one glass shape (blur, rim, tint, density) where it can; otherwise it blurs the
-  // rounded rects. Cards from an earlier call that this one omits disappear. Returns true when the compositor draws the
-  // material tint, so the client paints no fill.
+  // rounded rects. With reduce transparency a shape gets no material. Cards from an earlier call that this one omits
+  // disappear. Returns true when the compositor draws the material tint, so the client paints no fill.
   virtual bool setGlassCards(std::span<const GlassCard> cards);
   bool setGlassCard(const GlassCard& card) { return setGlassCards({&card, 1}); }
   virtual void clearGlassCard() { clearBlurRegion(); }

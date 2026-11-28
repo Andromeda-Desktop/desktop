@@ -489,7 +489,7 @@ bool WaylandSurface::setGlassCards(std::span<const GlassCard> cards) {
       shape.set(DskSurfaceClient::Property::Corners, {c.tl, c.tr, c.br, c.bl});
       shape.set(DskSurfaceClient::Property::Join, {0.0, 0.0, corners.flareAcross ? 1.0 : 0.0, 0.0});
     }
-    setGlassMaterial(shape, *m_dsk, &card.material);
+    setGlassMaterial(shape, *m_dsk, Style::reduceTransparency() ? nullptr : &card.material);
     if (m_dsk->hasTintProperty()) {
       shape.set(
           DskSurfaceClient::Property::Tint,

@@ -164,25 +164,6 @@ namespace {
     return InputRect{surfaceX + insetX, surfaceY + insetY, static_cast<int>(panelWidth), static_cast<int>(panelHeight)};
   }
 
-  InputRect boundsForPanelTrace(const std::vector<InputRect>& rects) {
-    if (rects.empty()) {
-      return {};
-    }
-
-    int minX = rects.front().x;
-    int minY = rects.front().y;
-    int maxX = rects.front().x + rects.front().width;
-    int maxY = rects.front().y + rects.front().height;
-    for (const auto& rect : rects) {
-      minX = std::min(minX, rect.x);
-      minY = std::min(minY, rect.y);
-      maxX = std::max(maxX, rect.x + rect.width);
-      maxY = std::max(maxY, rect.y + rect.height);
-    }
-
-    return InputRect{minX, minY, maxX - minX, maxY - minY};
-  }
-
   // Resolves the bar a panel should attach to / position relative to.
   // `shell.panel_anchor_bar` wins when set; otherwise `barName` is the opening
   // source bar. A named bar that does not exist fails loudly (nullopt).
@@ -1394,6 +1375,8 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     auto layerSurfaceUnique = std::make_unique<LayerSurface>(m_platform->wayland(), std::move(attachedConfig));
     m_layerSurface = layerSurfaceUnique.get();
     m_surface = std::move(layerSurfaceUnique);
+    m_bodyGlass = BodyGlass::None;
+    m_bodyGlassInput.reset();
     m_surface->setAccessibleTitle(panelAccessibleTitle(m_activePanelId));
     configureSurfaceCallbacks(*m_surface);
     logFirstFrame(*m_surface);
@@ -1416,7 +1399,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
       m_surface->setInputRegion(
           {InputRect{m_panelInsetX, m_panelInsetY, static_cast<int>(panelWidth), static_cast<int>(panelHeight)}}
       );
-      m_surface->setBlurRegion({});
+      setBodyGlass(BodyGlass::None);
       publishAttachedPanelGeometry(m_attachedRevealProgress);
       m_surface->requestRedraw();
       if (hasFocusGrab && wantsOutsideDismiss) {
@@ -1474,6 +1457,8 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
   auto layerSurface = std::make_unique<LayerSurface>(m_platform->wayland(), std::move(surfaceConfig));
   m_layerSurface = layerSurface.get();
   m_surface = std::move(layerSurface);
+  m_bodyGlass = BodyGlass::None;
+  m_bodyGlassInput.reset();
   m_surface->setAccessibleTitle(panelAccessibleTitle(m_activePanelId));
   m_panelInsetX = detachedShadowBleed.left;
   m_panelInsetY = detachedShadowBleed.up;
@@ -1521,7 +1506,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
   m_surface->setInputRegion(
       {InputRect{m_panelInsetX, m_panelInsetY, static_cast<int>(panelWidth), static_cast<int>(panelHeight)}}
   );
-  m_surface->setBlurRegion({});
+  setBodyGlass(BodyGlass::None);
   // Activate outside-click dismissal (focus grab or click shield).
   if (hasFocusGrab && wantsOutsideDismiss) {
     activateFocusGrab();
@@ -2529,7 +2514,7 @@ void PanelManager::applyAttachedReveal(float progress) {
   m_attachedRevealProgress = std::clamp(progress, 0.0F, 1.0F);
   if (!m_attachedToBar || m_attachedRevealClipNode == nullptr || m_sceneRoot == nullptr) {
     if (m_attachedToBar && m_surface != nullptr) {
-      m_surface->clearBlurRegion();
+      setBodyGlass(BodyGlass::None);
     }
     return;
   }
@@ -2591,7 +2576,7 @@ void PanelManager::applyDetachedReveal(float progress) {
   m_detachedRevealProgress = std::clamp(progress, 0.0F, 1.0F);
   if (m_attachedToBar || m_sceneRoot == nullptr) {
     if (!m_attachedToBar && m_surface != nullptr) {
-      m_surface->clearBlurRegion();
+      setBodyGlass(BodyGlass::None);
     }
     return;
   }
@@ -2740,6 +2725,7 @@ void PanelManager::syncGlassPieces(bool material) {
       );
     }
     sendSheetStroke();
+    reapplyBodyGlass();
     if (m_sheetElevated && m_morphSettled && !m_morphClipRunning && !m_cardClipRunning && !m_lifecycle.closing()) {
       restSheetClip();
     }
@@ -2845,18 +2831,21 @@ void PanelManager::bindBackdrop() {
   if (m_dsk == nullptr) {
     return;
   }
-  m_dsk->setOnDensity([this](float density) {
-    m_densityTarget = density;
-    // The first measurement lands 1-2 frames after the sheet maps, inside the open motion: apply it at once.
-    const bool first = !m_densityMeasured;
-    m_densityMeasured = true;
-    updateGlassDensity(first);
-  });
+  m_dsk->setOnDensity([this](float density) { onGlassDensity(density); });
+  m_dsk->setOnHasClip([this] { reapplyBodyGlass(); });
   // One glass system: every sheet, detached or bar-attached, carries the slider's material.
   if (m_dsk->hasLiquidProperty()) {
     sendIslandGlass(*m_dsk, *m_dsk, true);
   }
   sendSheetTint();
+}
+
+void PanelManager::onGlassDensity(float density) {
+  m_densityTarget = density;
+  // The first measurement lands 1-2 frames after the sheet maps, inside the open motion: apply it at once.
+  const bool first = !m_densityMeasured;
+  m_densityMeasured = true;
+  updateGlassDensity(first);
 }
 
 bool PanelManager::compositorTint() const {
@@ -2873,6 +2862,7 @@ float PanelManager::sheetTintAlpha() const {
 }
 
 void PanelManager::sendSheetTint(bool animate) {
+  sendBodyCard();
   if (m_dsk == nullptr || !m_dsk->hasTintProperty()) {
     return;
   }
@@ -3789,6 +3779,7 @@ void PanelManager::applyPanelCompositorBlur(
   if (m_surface == nullptr || m_activePanel == nullptr) {
     return;
   }
+  m_bodyGlassInput = {bodyX, bodyY, bodyW, bodyH, clipX, clipY, clipW, clipH};
 
   if (blurTraceEnabled()) {
     kLog.debug(
@@ -3804,7 +3795,17 @@ void PanelManager::applyPanelCompositorBlur(
     if (blurTraceEnabled()) {
       kLog.debug("blur-trace panel-blur-clear reason=empty-input");
     }
-    m_surface->clearBlurRegion();
+    setBodyGlass(BodyGlass::None);
+    return;
+  }
+  if (piecesActive()) {
+    setBodyGlass(BodyGlass::None);
+    return;
+  }
+  // While the compositor clips the sheet (morph, rest, collapse), the clip shape is the glass.
+  if (!m_attachedToBar && m_dsk != nullptr && m_dsk->hasGlassProperty() && m_dsk->hasClip()
+      && m_detachedRevealProgress >= 1.0F) {
+    setBodyGlass(BodyGlass::Clip);
     return;
   }
 
@@ -3813,47 +3814,74 @@ void PanelManager::applyPanelCompositorBlur(
   const RectInsets logicalInset =
       m_attachedToBar ? attached_panel::logicalInset(m_attachedBarPosition, radius) : RectInsets{};
   const Radii radii = Radii{radius, radius, radius, radius};
-  auto strips = Surface::tessellateShape(bodyX, bodyY, bodyW, bodyH, corners, logicalInset, radii);
-  if (strips.empty()) {
-    if (blurTraceEnabled()) {
-      kLog.debug("blur-trace panel-blur-clear reason=empty-shape");
-    }
-    m_surface->clearBlurRegion();
-    return;
-  }
-
-  const int clipRight = clipX + clipW;
-  const int clipBottom = clipY + clipH;
-  std::vector<InputRect> clipped;
-  clipped.reserve(strips.size());
-  for (const auto& s : strips) {
-    const int sxLeft = std::max(s.x, clipX);
-    const int sxRight = std::min(s.x + s.width, clipRight);
-    const int syTop = std::max(s.y, clipY);
-    const int syBottom = std::min(s.y + s.height, clipBottom);
-    if (sxRight > sxLeft && syBottom > syTop) {
-      clipped.push_back({sxLeft, syTop, sxRight - sxLeft, syBottom - syTop});
-    }
-  }
-
-  if (clipped.empty()) {
+  // The body inside its flares, cut to the reveal clip; a corner the clip cuts off loses its radius or flare.
+  const float left = static_cast<float>(bodyX) + logicalInset.left;
+  const float top = static_cast<float>(bodyY) + logicalInset.top;
+  const float right = static_cast<float>(bodyX + bodyW) - logicalInset.right;
+  const float bottom = static_cast<float>(bodyY + bodyH) - logicalInset.bottom;
+  const float x0 = std::max(left, static_cast<float>(clipX));
+  const float y0 = std::max(top, static_cast<float>(clipY));
+  const float x1 = std::min(right, static_cast<float>(clipX + clipW));
+  const float y1 = std::min(bottom, static_cast<float>(clipY + clipH));
+  if (x1 <= x0 || y1 <= y0) {
     if (blurTraceEnabled()) {
       kLog.debug("blur-trace panel-blur-clear reason=empty-clipped");
     }
-    m_surface->clearBlurRegion();
+    setBodyGlass(BodyGlass::None);
     return;
   }
+  const bool cutL = x0 > left;
+  const bool cutT = y0 > top;
+  const bool cutR = x1 < right;
+  const bool cutB = y1 < bottom;
+  GlassCorners glass = glassCorners(corners, radii, std::min(x1 - x0, y1 - y0) * 0.5F, false);
+  glass.radii.tl = cutL || cutT ? 0.0F : glass.radii.tl;
+  glass.radii.tr = cutR || cutT ? 0.0F : glass.radii.tr;
+  glass.radii.br = cutR || cutB ? 0.0F : glass.radii.br;
+  glass.radii.bl = cutL || cutB ? 0.0F : glass.radii.bl;
+  m_bodyCard = {.rect = {x0, y0, x1 - x0, y1 - y0}, .radius = glass};
+  setBodyGlass(BodyGlass::Card);
+  sendBodyCard();
+}
 
-  if (blurTraceEnabled()) {
-    const auto bounds = boundsForPanelTrace(clipped);
-    kLog.debug(
-        "blur-trace panel-blur-set mode={} progress={:.3F} rects={} bounds={}:{}+{}x{}",
-        m_attachedToBar ? "attached" : "detached",
-        m_attachedToBar ? m_attachedRevealProgress : m_detachedRevealProgress, clipped.size(), bounds.x, bounds.y,
-        bounds.width, bounds.height
-    );
+void PanelManager::reapplyBodyGlass() {
+  if (m_bodyGlassInput) {
+    const auto& [bx, by, bw, bh, cx, cy, cw, ch] = *m_bodyGlassInput;
+    applyPanelCompositorBlur(bx, by, bw, bh, cx, cy, cw, ch);
   }
-  m_surface->setBlurRegion(clipped);
+}
+
+void PanelManager::setBodyGlass(BodyGlass next) {
+  if (m_surface == nullptr || next == m_bodyGlass) {
+    return;
+  }
+  switch (m_bodyGlass) {
+  case BodyGlass::None:
+    break;
+  case BodyGlass::Card:
+    m_surface->clearGlassCard();
+    break;
+  case BodyGlass::Clip:
+    m_surface->dsk()->set(DskSurfaceClient::Property::Glass, {0.0, 0.0, 0.0, 0.0});
+    break;
+  }
+  if (next == BodyGlass::Clip) {
+    m_surface->dsk()->set(DskSurfaceClient::Property::Glass, {1.0, 0.0, 0.0, 0.0});
+  }
+  m_bodyGlass = next;
+}
+
+void PanelManager::sendBodyCard() {
+  if (m_surface == nullptr || m_bodyGlass != BodyGlass::Card) {
+    return;
+  }
+  // The sheet's material and tint, as bindBackdrop and sendSheetTint send them to a surface glass.
+  GlassCard card = m_bodyCard;
+  card.material = Style::islandGlass();
+  card.material.tint = compositorTint() ? sheetTintAlpha() : 0.0F;
+  card.node = m_sceneRoot.get();
+  card.onDensity = [this](float density) { onGlassDensity(density); };
+  m_surface->setGlassCards({&card, 1});
 }
 
 void PanelManager::applyAttachedDecorationStyle() {

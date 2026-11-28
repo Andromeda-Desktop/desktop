@@ -2,6 +2,7 @@
 #include "core/latest_request.h"
 #include "config/config_types.h"
 #include "design_tokens.h"
+#include "platform/surface.h"
 #include "core/timer_manager.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_dispatcher.h"
@@ -351,8 +352,16 @@ private:
   // using the cached attached background opacity and bar position. Geometry/positions are not touched.
   // Safe to call any time after buildScene has run.
   void applyAttachedDecorationStyle();
-  // Submit a wl_region matching the panel body after applying the current reveal clip.
+  // The body glass: the detached sheet's dsk clip while the compositor clips it at rest (v24), else a card of the body
+  // cut to the reveal clip; none beside glass pieces.
   void applyPanelCompositorBlur(int bodyX, int bodyY, int bodyW, int bodyH, int clipX, int clipY, int clipW, int clipH);
+  enum class BodyGlass : std::uint8_t { None, Card, Clip };
+  // The one place m_bodyGlass changes: leaving a mode clears what it sent.
+  void setBodyGlass(BodyGlass next);
+  void sendBodyCard();
+  // applyPanelCompositorBlur again with its last input.
+  void reapplyBodyGlass();
+  void onGlassDensity(float density);
   // Positions the background, shadows, and content node around the current card and sets
   // the content size the panel lays out at.
   void placePanelChrome();
@@ -401,6 +410,10 @@ private:
   std::vector<DskSurfaceClient::Value> m_pieceClips;
   std::vector<float> m_pieceOpacity;
   bool m_piecesShown = false;
+  BodyGlass m_bodyGlass = BodyGlass::None; // of m_surface
+  GlassCard m_bodyCard{};                  // Card: rect and corners, surface-local
+  // The last body and clip rects applyPanelCompositorBlur took: body x, y, w, h, clip x, y, w, h.
+  std::optional<std::array<int, 8>> m_bodyGlassInput;
   wl_surface* m_morphSource = nullptr;
   std::array<float, 4> m_morphSourceRect{};
   std::optional<std::array<float, 4>> m_growSourceOutput;
