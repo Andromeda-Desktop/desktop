@@ -19,6 +19,7 @@ namespace {
   constexpr std::uint32_t kSizeQuant = 64;
   constexpr std::uint32_t kScaleQuant = 64;
   constexpr float kAxisAlignedEpsilon = 0.0001F;
+  constexpr std::size_t kMaxMetrics = 1024;
 
   inline std::uint32_t quantizeSize(float v) {
     return static_cast<std::uint32_t>(std::max(0.0F, v) * static_cast<float>(kSizeQuant) + 0.5F);
@@ -124,6 +125,7 @@ void CairoGlyphRenderer::abandonGlyphTextures() noexcept { m_cache.clear(nullptr
 
 void CairoGlyphRenderer::cleanup() {
   m_cache.clear();
+  m_metrics.clear();
 
   if (m_fontOptions != nullptr) {
     cairo_font_options_destroy(m_fontOptions);
@@ -151,6 +153,10 @@ CairoGlyphRenderer::measureGlyph(float contentScale, char32_t codepoint, float f
     return {};
   }
 
+  const CacheKey key{.codepoint = codepoint, .sizeQ = quantizeSize(fontSize), .scaleQ = quantizeScale(contentScale)};
+  if (const auto it = m_metrics.find(key); it != m_metrics.end()) {
+    return it->second;
+  }
   const float rasterSize = std::max(1.0F, fontSize * contentScale);
   const float invScale = 1.0F / contentScale;
 
@@ -176,6 +182,10 @@ CairoGlyphRenderer::measureGlyph(float contentScale, char32_t codepoint, float f
   cairo_scaled_font_glyph_extents(scaledFont, &glyph, 1, &extents);
   const TextMetrics out = metrics_from_extents(extents, invScale);
   cairo_scaled_font_destroy(scaledFont);
+  if (m_metrics.size() >= kMaxMetrics) {
+    m_metrics.clear();
+  }
+  m_metrics.emplace(key, out);
   return out;
 }
 

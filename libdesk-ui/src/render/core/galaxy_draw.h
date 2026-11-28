@@ -8,7 +8,7 @@
 #include <optional>
 
 // One draw of a galaxy over the node rect. The backend renders the points into a cache keyed by `key` and redraws
-// the points only when points, camera, dim, moving or the rect's pixel size change; life, the sky, the scrim and the
+// the points only when points, camera, dim or the rect's pixel size change; life, the sky, the scrim and the
 // rings only re-run the composite pass.
 struct GalaxyDraw {
   const void* key = nullptr;  // GalaxyNode::cacheOwner(); one cache per owner

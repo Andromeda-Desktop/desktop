@@ -15,8 +15,6 @@ namespace {
   constexpr GLenum kRgba16f = 0x881A;      // GL_RGBA16F (ES 3)
   constexpr GLenum kHalfFloat = 0x140B;    // GL_HALF_FLOAT (ES 3)
   constexpr GLenum kHalfFloatOes = 0x8D61; // GL_HALF_FLOAT_OES (OES_texture_half_float)
-  // While the camera moves, the layers render at this share of the resolution (a quarter of the fill); the still after
-  // it renders in full.
   // RGBA8 fallback: light is stored at this share so the core can add up past 1 before it clips.
   constexpr float kLdrGain = 0.25F;
   constexpr std::size_t kMaxLayers = 2;

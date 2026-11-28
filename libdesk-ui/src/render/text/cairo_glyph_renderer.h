@@ -99,4 +99,6 @@ private:
   TextureManager* m_textureManager = nullptr;
 
   BoundedCache<CacheKey, CacheEntry, CacheKeyHash> m_cache;
+  // Metrics depend only on the face: they outlive the textures. Key blurPx is always 0.
+  std::unordered_map<CacheKey, TextMetrics, CacheKeyHash> m_metrics;
 };
