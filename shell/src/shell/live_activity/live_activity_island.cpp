@@ -2401,18 +2401,25 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
   const auto iw = std::max(1, static_cast<int>(cur.w * k));
   const auto ih = std::max(1, static_cast<int>(cur.h * k));
   // dsk shapes carry the glass. A dsk without shapes blurs its surface clip, so the region stays the whole surface
-  // during a morph.
-  std::vector<InputRect> blur = shown <= 0.01F || inst.cardShape != nullptr ? std::vector<InputRect>{}
-      : inst.dsk != nullptr
-          ? std::vector<InputRect>{InputRect{0, 0, static_cast<int>(maxW * k), static_cast<int>(maxH * k)}}
-          : Surface::tessellateRoundedRect(ix, iy, iw, ih, cur.radius * k);
-  if (blur != inst.sentBlur) {
-    if (blur.empty()) {
-      inst.surface->clearBlurRegion();
+  // during a morph. Without dsk the card owner sends the pill.
+  if (inst.dsk == nullptr) {
+    if (shown <= 0.01F) {
+      inst.surface->clearGlassCard();
     } else {
-      inst.surface->setBlurRegion(blur);
+      inst.surface->setGlassCard(GlassCard{.rect = GlassRect::from({ix, iy, iw, ih}), .radius = cur.radius * k});
     }
-    inst.sentBlur = std::move(blur);
+  } else {
+    std::vector<InputRect> blur = shown <= 0.01F || inst.cardShape != nullptr
+        ? std::vector<InputRect>{}
+        : std::vector<InputRect>{InputRect{0, 0, static_cast<int>(maxW * k), static_cast<int>(maxH * k)}};
+    if (blur != inst.sentBlur) {
+      if (blur.empty()) {
+        inst.surface->clearBlurRegion();
+      } else {
+        inst.surface->setBlurRegion(blur);
+      }
+      inst.sentBlur = std::move(blur);
+    }
   }
   // A morph on the compositor clip takes input at its target box, so the region changes once per morph.
   const Rect hit = mirrored(inst) ? inst.to : cur;

@@ -44,6 +44,8 @@ struct BarConcaveShape {
   Radii radii;
   RectInsets logicalInset{};
   float innerBulge = 0.0F; // px the surface/box grow on the inner edge
+  // The concave flares run across their edge (inner-edge mode): GlassCard::flareAcross.
+  bool flareAcross = false;
 };
 
 [[nodiscard]] inline BarConcaveShape barConcaveShape(const BarConfig& cfg) {
@@ -89,6 +91,7 @@ struct BarConcaveShape {
       bulge = std::max(bulge, cappedRadius(cfg.radiusBottomRight));
     }
     g.innerBulge = bulge;
+    g.flareAcross = true;
 
     const std::string_view pos = cfg.position;
     if (pos == "bottom") {

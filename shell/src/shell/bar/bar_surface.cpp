@@ -1315,7 +1315,7 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
       inst->surface->requestRedraw();
     }
   });
-  instance.glassConn = bindIslandTone(instance.sceneRoot);
+  instance.glassConn = bindIslandTone(instance.sceneRoot, [this, inst = &instance] { applyBarCompositorBlur(*inst); });
   applyBackgroundPalette(instance);
   if (instance.contentClip != nullptr) {
     instance.contentClip->setPosition(barAreaX, barAreaY);
@@ -1354,7 +1354,6 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
 
   // A rebuilt scene may sit on a new surface, so always send the region once.
   instance.clickThroughInputRegion.reset();
-  instance.islandBlurStrips.clear();
   syncBarAutoHideInputRegion(instance);
   syncBarSurfaceChrome(instance);  syncSheetTracker(instance);
 }

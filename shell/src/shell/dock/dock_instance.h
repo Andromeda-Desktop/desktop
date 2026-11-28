@@ -131,7 +131,6 @@ namespace shell::dock {
     [[nodiscard]] std::size_t separatorCount() const { return (snapshot.hasSeparator() ? 1U : 0U) + trashCells(); }
     // Auto-hide: tracks visibility [0,1] driven by hover.
     float hideOpacity = 1.0F;
-    std::optional<std::vector<InputRect>> sentBlur; // last blur region sent; empty vector = cleared
     // smart_auto_hide: active workspace empty (or a Niri overview open) — keep the dock visible.
     bool smartAutoHidePinnedVisible = false;
     // Aside: the Andromeda overview is open, the dock slides away on the auto-hide path and takes no input.

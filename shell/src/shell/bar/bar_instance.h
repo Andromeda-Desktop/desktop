@@ -93,7 +93,6 @@ struct BarInstance {
   // Bare bar (dsk v21 backdrop probe): ink from the luminance under the bar; the scrim follows it.
   BarInk ink = BarInk::Light;
   Box* scrim = nullptr;
-  std::vector<InputRect> islandBlurStrips; // last blur region sent (islands or bar body); empty = none sent
   // dsk v10: one glass shape per island; the compositor draws its blur, rim and tint, so no blur region is sent.
   std::vector<std::unique_ptr<DskShapeClient>> islandShapes;
   std::vector<DskSurfaceClient::Value> islandShapeClips; // last clip sent per shape

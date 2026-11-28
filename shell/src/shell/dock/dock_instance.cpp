@@ -148,19 +148,6 @@ namespace shell::dock {
     );
   }
 
-  // The hide spring calls this every frame; send only a changed region.
-  void sendDockBlur(DockInstance& instance, std::vector<InputRect> region) {
-    if (instance.sentBlur == region) {
-      return;
-    }
-    if (region.empty()) {
-      instance.surface->clearBlurRegion();
-    } else {
-      instance.surface->setBlurRegion(region);
-    }
-    instance.sentBlur = std::move(region);
-  }
-
   // The hide spring calls this every frame; send only a changed clip. An empty clip hides the shape.
   void setDockShapeClip(DockInstance& instance, const DockConfig& cfg, const DskSurfaceClient::Value& clip) {
     if (instance.shapeClip == clip) {
@@ -244,7 +231,7 @@ namespace shell::dock {
       if (instance.shape != nullptr) {
         setDockShapeClip(instance, cfg, {});
       } else {
-        sendDockBlur(instance, {});
+        instance.surface->clearGlassCard();
       }
       return;
     }
@@ -269,11 +256,11 @@ namespace shell::dock {
       setDockShapeClip(instance, cfg, {x, y, w, h});
       return;
     }
-    const int px = static_cast<int>(std::lround(x));
-    const int py = static_cast<int>(std::lround(y));
-    const int pw = static_cast<int>(std::lround(w));
-    const int ph = static_cast<int>(std::lround(h));
-    sendDockBlur(instance, Surface::tessellateShape(px, py, pw, ph, concave.corners, concave.logicalInset, concave.radii));
+    // Without dsk shapes: the card owner sends the region.
+    instance.surface->setGlassCard(GlassCard{
+        .rect = {static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h)},
+        .radius = glassCorners(concave.corners, concave.radii, static_cast<float>(std::min(w, h)) * 0.5F, false),
+    });
   }
 
 

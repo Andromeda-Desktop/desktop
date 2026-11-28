@@ -318,6 +318,18 @@ void Bar::createInstance(const WaylandOutput& output, std::size_t barIndex, cons
   }
 }
 
+namespace {
+
+  std::function<void(float)> barDensitySink(BarInstance& instance) {
+    return [inst = &instance](float density) {
+      if (inst->sceneRoot != nullptr) {
+        inst->sceneRoot->setInkLift(std::round(density * 32.0F) / 32.0F);
+      }
+    };
+  }
+
+} // namespace
+
 bool Bar::syncIslandLiquid(BarInstance& instance) {
   dsk_surface_manager_v1* manager = m_platform != nullptr ? m_platform->wayland().dskSurfaceManager() : nullptr;
   const bool want = instance.barConfig.islands && !Style::reduceTransparency();
@@ -325,11 +337,7 @@ bool Bar::syncIslandLiquid(BarInstance& instance) {
   if (instance.dsk == nullptr && (want || bare) && manager != nullptr && instance.surface != nullptr
       && instance.surface->wlSurface() != nullptr) {
     instance.dsk = instance.surface->dsk();
-    instance.dsk->setOnDensity([inst = &instance](float density) {
-      if (inst->sceneRoot != nullptr) {
-        inst->sceneRoot->setInkLift(std::round(density * 32.0F) / 32.0F);
-      }
-    });
+    instance.dsk->setOnDensity(barDensitySink(instance));
     instance.dsk->setOnLuminance([inst = &instance](float luminance) {
       const BarInk ink =
           nextBarInk(inst->ink, luminance, Tokens::componentBarScrimInkFlip, glass::kAdaptDeadband);
@@ -392,13 +400,13 @@ void Bar::syncContentRegion(BarInstance& instance) const {
 }
 
 bool Bar::syncIslandShapes(BarInstance& instance, bool material) const {
-  if (instance.dsk == nullptr || !instance.dsk->hasShapes() || !instance.barConfig.compositorBlur) {
+  if (instance.dsk == nullptr || !instance.dsk->hasShapes() || !instance.barConfig.compositorBlur
+      || !instance.barConfig.islands) {
     syncContentRegion(instance);
     return false;
   }
-  if (!instance.islandBlurStrips.empty() && instance.surface != nullptr) {
-    instance.surface->clearBlurRegion();
-    instance.islandBlurStrips.clear();
+  if (instance.surface != nullptr) {
+    instance.surface->clearGlassCard();
   }
   const bool shown = barContentVisuallyShown(instance);
   while (instance.islandShapes.size() < instance.islands.size()) {
@@ -628,8 +636,7 @@ void Bar::applyBarCompositorBlur(BarInstance& instance) const {
     return;
   }
   if (!instance.barConfig.compositorBlur || !barContentVisuallyShown(instance)) {
-    instance.surface->clearBlurRegion();
-    instance.islandBlurStrips.clear();
+    instance.surface->clearGlassCard();
     return;
   }
 
@@ -639,8 +646,19 @@ void Bar::applyBarCompositorBlur(BarInstance& instance) const {
   if (instance.barConfig.islands && syncIslandShapes(instance, false)) {
     return;
   }
+  // The bar paints its own fill: the glass takes no tint.
+  const glass::Material material = Style::islandGlassUntinted();
+  const auto card = [&](GlassRect rect, GlassRadius radius) {
+    return GlassCard{
+        .rect = rect,
+        .radius = radius,
+        .material = material,
+        .node = instance.sceneRoot.get(),
+        .onDensity = barDensitySink(instance),
+    };
+  };
+  std::vector<GlassCard> cards;
   if (instance.barConfig.islands) {
-    std::vector<InputRect> strips;
     for (const Box* island : instance.islands) {
       // A side island that stepped aside for the overview shrinks to nothing.
       if (island == nullptr || !island->visible() || island->width() < 1.0F || island->height() < 1.0F) {
@@ -649,46 +667,25 @@ void Bar::applyBarCompositorBlur(BarInstance& instance) const {
       float x = 0.0F;
       float y = 0.0F;
       Node::absolutePosition(island, x, y);
-      // The exact pill: the compositor takes the liquid rim's shape from this region and masks the blur's staircase
-      // with its own anti-aliased corners, so an inset would move the rim 1 px inside the edge.
-      const auto rects = Surface::tessellateRoundedRect(
-          static_cast<int>(std::lround(x)), static_cast<int>(std::lround(y)),
-          static_cast<int>(std::lround(island->width())), static_cast<int>(std::lround(island->height())),
-          std::min(island->width(), island->height()) * 0.5F
-      );
-      strips.insert(strips.end(), rects.begin(), rects.end());
+      cards.push_back(card({x, y, island->width(), island->height()}, std::min(island->width(), island->height()) * 0.5F));
     }
-    if (strips == instance.islandBlurStrips) {
-      return;
-    }
-    instance.surface->setBlurRegion(strips);
-    instance.islandBlurStrips = std::move(strips);
-    return;
+  } else {
+    float absX = 0.0F;
+    float absY = 0.0F;
+    Node::absolutePosition(instance.bg, absX, absY);
+    const auto concave = barConcaveShape(instance.barConfig);
+    // The bg node holds the flares; the card rect is the body inside them.
+    const RectInsets& inset = concave.logicalInset;
+    const GlassRect body{
+        absX + inset.left, absY + inset.top,
+        std::max(0.0F, instance.bg->width() - inset.left - inset.right),
+        std::max(0.0F, instance.bg->height() - inset.top - inset.bottom),
+    };
+    cards.push_back(card(
+        body, glassCorners(concave.corners, concave.radii, std::min(body.width, body.height) * 0.5F, concave.flareAcross)
+    ));
   }
-  float absX = 0.0F;
-  float absY = 0.0F;
-  Node::absolutePosition(instance.bg, absX, absY);
-  const int px = static_cast<int>(std::lround(absX));
-  const int py = static_cast<int>(std::lround(absY));
-  const int pw = static_cast<int>(std::lround(std::max(0.0F, instance.bg->width())));
-  const int ph = static_cast<int>(std::lround(std::max(0.0F, instance.bg->height())));
-  const auto concave = barConcaveShape(instance.barConfig);
-  // The bg node is the visual rect; tessellateShape expects the body rect and
-  // expands it outward by logicalInset itself. With all-convex corners and no
-  // inset it takes its own fast path down to a plain rounded rect.
-  const int insetL = static_cast<int>(std::lround(concave.logicalInset.left));
-  const int insetT = static_cast<int>(std::lround(concave.logicalInset.top));
-  const int insetR = static_cast<int>(std::lround(concave.logicalInset.right));
-  const int insetB = static_cast<int>(std::lround(concave.logicalInset.bottom));
-  auto blurStrips = Surface::tessellateShape(
-      px + insetL, py + insetT, pw - insetL - insetR, ph - insetT - insetB, concave.corners, concave.logicalInset,
-      concave.radii
-  );
-  if (blurStrips == instance.islandBlurStrips) {
-    return;
-  }
-  instance.surface->setBlurRegion(blurStrips);
-  instance.islandBlurStrips = std::move(blurStrips);
+  instance.surface->setGlassCards(cards);
 }
 
 void Bar::startHideFadeOut(BarInstance& instance, bool immediate) {
