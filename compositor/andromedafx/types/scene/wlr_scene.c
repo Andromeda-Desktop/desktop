@@ -175,18 +175,28 @@ bool wlr_scene_node_add_update_listener(struct wlr_scene_node* node, struct wl_l
 }
 
 static void blur_sources_note(struct wlr_scene* scene, struct wlr_scene_node* changed);
+static void blur_sources_note_damage(struct wlr_scene* scene, struct wlr_scene_node* leaf, const pixman_region32_t* damage);
 
-static void scene_node_note_update(struct wlr_scene_node* node) {
+static void scene_node_notify_observers(struct wlr_scene_node* node) {
   struct wlr_scene_node* changed = node;
-  struct wlr_scene* scene = scene_node_get_root(node);
-  scene->update_serial++;
+  scene_node_get_root(node)->update_serial++;
   for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
     struct scene_node_update_observer* observer = scene_node_update_observer_get(node);
     if (observer != NULL) {
       wl_signal_emit_mutable(&observer->update, changed);
     }
   }
-  blur_sources_note(scene, changed);
+}
+
+static void scene_node_note_update(struct wlr_scene_node* node) {
+  scene_node_notify_observers(node);
+  blur_sources_note(scene_node_get_root(node), node);
+}
+
+// New content inside a leaf whose layout box did not change: `damage` (layout coordinates) is all a blur samples anew.
+static void scene_node_note_damage(struct wlr_scene_node* node, const pixman_region32_t* damage) {
+  scene_node_notify_observers(node);
+  blur_sources_note_damage(scene_node_get_root(node), node, damage);
 }
 
 // Rendered frames a cache's pending region waits without growing before it re-renders whole (~0.5 s at 60 Hz). A video
@@ -291,6 +301,24 @@ static void blur_sources_note(struct wlr_scene* scene, struct wlr_scene_node* ch
     return;
   }
   blur_sources_note_leaves(scene, changed);
+}
+
+static void blur_sources_note_damage(struct wlr_scene* scene, struct wlr_scene_node* leaf, const pixman_region32_t* damage) {
+  if (wl_list_empty(&scene->blur_sources) || !blur_sources_contain(scene, leaf)) {
+    return;
+  }
+  // A leaf not seen yet has no box on record: note it whole once.
+  if (wlr_addon_find(&leaf->addons, scene, &blur_source_leaf_impl) == NULL) {
+    blur_sources_note_leaves(scene, leaf);
+    return;
+  }
+  int count = 0;
+  const pixman_box32_t* rects = pixman_region32_rectangles(damage, &count);
+  for (int i = 0; i < count; i++) {
+    const struct wlr_box box = {
+        .x = rects[i].x1, .y = rects[i].y1, .width = rects[i].x2 - rects[i].x1, .height = rects[i].y2 - rects[i].y1};
+    blur_sources_mark(scene, leaf, &box);
+  }
 }
 
 static void optimized_blur_source_destroy(struct optimized_blur_source* source) {
@@ -3453,7 +3481,14 @@ void wlr_scene_buffer_set_buffer_with_options(
   // Background content can be covered by a window while its cached blur is
   // still visible through that window. Track damage before visibility culling.
   if (!pixman_region32_empty(&trans_damage)) {
-    scene_node_note_update(&scene_buffer->node);
+    pixman_region32_t layout_damage;
+    pixman_region32_init(&layout_damage);
+    wlr_region_scale_xy(&layout_damage, &trans_damage, scale_x, scale_y);
+    // Linear filtering bleeds a scaled buffer's change into the next pixel.
+    wlr_region_expand(&layout_damage, &layout_damage, 1);
+    pixman_region32_translate(&layout_damage, lx, ly);
+    scene_node_note_damage(&scene_buffer->node, &layout_damage);
+    pixman_region32_fini(&layout_damage);
   }
 
   struct wlr_scene* scene = scene_node_get_root(&scene_buffer->node);
