@@ -422,10 +422,16 @@ bool WaylandSurface::setGlassCards(std::span<const GlassCard> cards) {
   DskSurfaceClient* client = dsk();
   const bool rotated = std::ranges::any_of(cards, [](const GlassCard& card) { return card.rotation != 0.0F; });
   if (client == nullptr || !client->hasShapes() || (rotated && !client->hasRotationProperty())) {
-    clearGlassCard();
+    if (m_cardMode == CardMode::Shapes) {
+      hideCardShapes();
+    }
+    m_cardMode = CardMode::Region;
     return Surface::setGlassCards(cards);
   }
-  clearBlurRegion();
+  if (m_cardMode == CardMode::Region) {
+    clearBlurRegion();
+  }
+  m_cardMode = CardMode::Shapes;
   while (m_cardShapes.size() < cards.size()) {
     m_cardShapes.push_back(std::make_unique<DskShapeClient>(*client));
   }
@@ -462,10 +468,20 @@ bool WaylandSurface::setGlassCards(std::span<const GlassCard> cards) {
 }
 
 void WaylandSurface::clearGlassCard() {
-  if (m_cardShapes.empty()) {
+  switch (m_cardMode) {
+  case CardMode::None:
+    break;
+  case CardMode::Shapes:
+    hideCardShapes();
+    break;
+  case CardMode::Region:
     clearBlurRegion();
-    return;
+    break;
   }
+  m_cardMode = CardMode::None;
+}
+
+void WaylandSurface::hideCardShapes() {
   for (const auto& shape : m_cardShapes) {
     shape->set(DskSurfaceClient::Property::Clip, {});
   }
@@ -489,6 +505,7 @@ void WaylandSurface::destroySurface() {
   cancelFrameCallback();
   releaseRenderState();
   m_cardShapes.clear();
+  m_cardMode = CardMode::None;
   m_dsk.reset();
 
   if (m_backgroundEffect != nullptr) {

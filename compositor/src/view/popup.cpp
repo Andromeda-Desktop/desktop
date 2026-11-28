@@ -59,12 +59,19 @@ namespace andromeda {
     const SurfaceMotion& shape = *state->shapes.front();
     m_glass = readDskGlass(*state, shape);
     const auto& clip = shape.value(SurfaceMotion::Property::Clip);
-    const wlr_box box{
-        static_cast<int>(std::lround(clip[0])), static_cast<int>(std::lround(clip[1])),
-        static_cast<int>(std::lround(clip[2])), static_cast<int>(std::lround(clip[3]))
-    };
+    const double rotation = shape.value(SurfaceMotion::Property::Rotation)[0];
+    const wlr_fbox exact{clip[0], clip[1], clip[2], clip[3]};
+    // A rotated shape's box bounds it; the shader draws its outline.
+    const wlr_box box = rotation != 0.0 ? SurfaceBlur::rotatedBounds(exact, rotation)
+                                        : wlr_box{static_cast<int>(std::lround(clip[0])), static_cast<int>(std::lround(clip[1])),
+                                                  static_cast<int>(std::lround(clip[2])), static_cast<int>(std::lround(clip[3]))};
+    m_blur.setExactShape(
+        rotation != 0.0 ? std::optional<wlr_fbox>{exact} : std::nullopt,
+        static_cast<float>(shape.value(SurfaceMotion::Property::Radius)[0]), static_cast<float>(rotation)
+    );
     // One px of slack so the blur's antialiased corner sits under the client's.
-    const int radius = static_cast<int>(std::ceil(shape.value(SurfaceMotion::Property::Radius)[0])) + 1;
+    const int radius =
+        rotation != 0.0 ? 0 : static_cast<int>(std::ceil(shape.value(SurfaceMotion::Property::Radius)[0])) + 1;
     m_blur.setLiquid(m_glass.liquid);
     m_blur.setClarity(m_glass.clarity);
     m_blur.setRim(m_glass.rim);

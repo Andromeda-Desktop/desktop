@@ -1142,13 +1142,7 @@ namespace andromeda {
           rounded.exactRadius = shape->value(SurfaceMotion::Property::Radius)[0];
           if (rotation != 0.0) {
             rounded.rotation = rotation;
-            const double cx = c[0] + c[2] * 0.5;
-            const double cy = c[1] + c[3] * 0.5;
-            const double hw = (std::abs(std::cos(rotation)) * c[2] + std::abs(std::sin(rotation)) * c[3]) * 0.5;
-            const double hh = (std::abs(std::sin(rotation)) * c[2] + std::abs(std::cos(rotation)) * c[3]) * 0.5;
-            const int x1 = static_cast<int>(std::floor(cx - hw));
-            const int y1 = static_cast<int>(std::floor(cy - hh));
-            rounded.box = wlr_box{x1, y1, static_cast<int>(std::ceil(cx + hw)) - x1, static_cast<int>(std::ceil(cy + hh)) - y1};
+            rounded.box = SurfaceBlur::rotatedBounds(*rounded.exact, rotation);
           }
         }
         shapes.push_back(rounded);
@@ -1179,23 +1173,15 @@ namespace andromeda {
           const double sy = box.height > 0 ? static_cast<double>(nodeBox.height) / box.height : motionScale;
           exact = wlr_fbox{nodeBox.x + shape.exact->x * sx, nodeBox.y + shape.exact->y * sy, shape.exact->width * sx,
                            shape.exact->height * sy};
-          const double c = std::abs(std::cos(shape.rotation));
-          const double s = std::abs(std::sin(shape.rotation));
-          const double cx = exact->x + exact->width * 0.5;
-          const double cy = exact->y + exact->height * 0.5;
-          const double hw = (c * exact->width + s * exact->height) * 0.5;
-          const double hh = (s * exact->width + c * exact->height) * 0.5;
-          const int x1 = static_cast<int>(std::floor(cx - hw));
-          const int y1 = static_cast<int>(std::floor(cy - hh));
-          shapeClip = wlr_box{x1, y1, static_cast<int>(std::ceil(cx + hw)) - x1, static_cast<int>(std::ceil(cy + hh)) - y1};
+          shapeClip = SurfaceBlur::rotatedBounds(*exact, shape.rotation);
         }
         wlr_box cut = shapeClip;
         // The surface clip still cuts every shape (a slide under a fixed clip).
         if (dskClip && !wlr_box_intersection(&cut, &shapeClip, &*dskClip)) {
           cut = wlr_box{dskClip->x, dskClip->y, 0, 0};
         }
-        // A cut shape is no longer the exact one.
-        shape.exact = exact.has_value() && wlr_box_equal(&cut, &shapeClip) ? exact : std::nullopt;
+        // A cut shape is no longer the exact one, except a rotated one: its outline masks it and the cut box clips it.
+        shape.exact = exact.has_value() && (shape.rotation != 0.0 || wlr_box_equal(&cut, &shapeClip)) ? exact : std::nullopt;
         shapeClips.push_back(cut);
       }
       const auto same = [this](std::size_t a, std::size_t b) {

@@ -3247,8 +3247,6 @@ static bool test_glass_split(struct fixture* fixture) {
   return ok;
 }
 
-// Shaped glass at every corner radius up to the one that fills its quad, where the quad's plain part shrinks to
-// nothing: each draws once, as it does whole.
 // A 40 x 20 glass shape rotated 45 degrees clockwise about the centre of a 48 x 48 quad: its outline, not the quad or
 // the unrotated box, is the coverage.
 static bool test_glass_rotated(struct fixture* fixture) {
@@ -3315,6 +3313,8 @@ static bool test_glass_rotated(struct fixture* fixture) {
   return ok;
 }
 
+// Shaped glass at every corner radius up to the one that fills its quad, where the quad's plain part shrinks to
+// nothing: each draws once, as it does whole.
 static bool test_glass_split_full_corners(struct fixture* fixture) {
   static uint8_t whole[GLASS_SIZE * GLASS_SIZE][4], split[GLASS_SIZE * GLASS_SIZE][4];
   bool ok = true;

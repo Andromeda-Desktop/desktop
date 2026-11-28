@@ -81,6 +81,8 @@ namespace andromeda {
     // The shape at sub-pixel precision (layout coords) when its clip box is that shape rounded outward; nullopt =
     // the clip box and corners. `rotation`: radians clockwise about the box centre; the clip box bounds the rotated shape.
     void setExactShape(const std::optional<wlr_fbox>& box, float radius, float rotation = 0.0F);
+    // The whole pixels that hold `box` turned by `rotation` radians about its centre.
+    static wlr_box rotatedBounds(const wlr_fbox& box, double rotation);
     // Shown px per surface px (a surface scale motion): the rim and band shrink with the surface's own border.
     void setContentScale(float scale);
     // Mixes the backdrop toward rgb by amount, 0 to 1 (glass density).

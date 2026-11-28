@@ -77,6 +77,7 @@ protected:
   wl_surface* m_surface = nullptr;
 
 private:
+  void hideCardShapes();
   void initializeSurfaceScaleProtocol();
   void traceBlurRegion(std::string_view event, const std::vector<InputRect>& rects) const;
 
@@ -86,6 +87,9 @@ private:
   // The one dsk_surface_v1 of m_surface (a second is a protocol error): glass card, secure flag and presence share it.
   std::unique_ptr<DskSurfaceClient> m_dsk;
   std::vector<std::unique_ptr<DskShapeClient>> m_cardShapes;
+  // Where the glass cards live: dsk shapes, or a blur region on a compositor without them (or without rotation).
+  enum class CardMode : std::uint8_t { None, Shapes, Region };
+  CardMode m_cardMode = CardMode::None;
   ext_background_effect_surface_v1* m_backgroundEffect = nullptr;
   wp_viewport* m_viewport = nullptr;
   wp_fractional_scale_v1* m_fractionalScale = nullptr;

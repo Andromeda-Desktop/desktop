@@ -84,6 +84,18 @@ namespace andromeda {
     m_exactRotation = box.has_value() ? rotation : 0.0F;
   }
 
+  wlr_box SurfaceBlur::rotatedBounds(const wlr_fbox& box, double rotation) {
+    const double c = std::abs(std::cos(rotation));
+    const double s = std::abs(std::sin(rotation));
+    const double cx = box.x + box.width * 0.5;
+    const double cy = box.y + box.height * 0.5;
+    const double hw = (c * box.width + s * box.height) * 0.5;
+    const double hh = (s * box.width + c * box.height) * 0.5;
+    const int x1 = static_cast<int>(std::floor(cx - hw));
+    const int y1 = static_cast<int>(std::floor(cy - hh));
+    return wlr_box{x1, y1, static_cast<int>(std::ceil(cx + hw)) - x1, static_cast<int>(std::ceil(cy + hh)) - y1};
+  }
+
   void SurfaceBlur::setMerge(const std::vector<MergedShape>& shapes, int reach) {
     m_merge = shapes;
     m_mergeReach = reach;
