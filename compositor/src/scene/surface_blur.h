@@ -21,6 +21,24 @@ struct wlr_surface;
 
 namespace andromeda {
 
+  // How the flare of a negative corner grows its box, as corner_alpha.frag draws it: the two negative corners of a left
+  // or right side flare along that side (vertically), any other negative corner along its top or bottom edge;
+  // `across` turns each one. `partner` is the corner on the same left or right side.
+  [[nodiscard]] constexpr bool flareGrowsHorizontally(int partner, bool across) noexcept {
+    return (partner < 0) == across;
+  }
+
+  // The growth of a box by the flares of its corners (tl, tr, br, bl; negative = flare), in px.
+  struct FlareInsets {
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
+
+    bool operator==(const FlareInsets&) const = default;
+  };
+  [[nodiscard]] FlareInsets flareInsets(int tl, int tr, int br, int bl, bool across) noexcept;
+
   struct SurfaceBlurOptions {
     float ignoreAlpha = 0.0F;
     std::optional<bool> enabled;

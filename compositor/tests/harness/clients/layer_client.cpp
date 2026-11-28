@@ -1042,7 +1042,11 @@ int main(int argc, char** argv) {
       anchors |= ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
       zwlr_layer_surface_v1_set_exclusive_zone(state.layerSurface, -1);
     } else {
-      zwlr_layer_surface_v1_set_exclusive_zone(state.layerSurface, exclusiveHeight);
+      // LAYER_EXCLUSIVE overrides the reserved zone (-1: a full-width strip that reserves nothing).
+      const char* exclusive = std::getenv("LAYER_EXCLUSIVE");
+      zwlr_layer_surface_v1_set_exclusive_zone(
+          state.layerSurface, exclusive != nullptr ? std::atoi(exclusive) : exclusiveHeight
+      );
     }
   }
   zwlr_layer_surface_v1_set_anchor(state.layerSurface, anchors);

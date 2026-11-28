@@ -9,7 +9,54 @@
 
 namespace andromeda {
 
+  FlareInsets flareInsets(int tl, int tr, int br, int bl, bool across) noexcept {
+    FlareInsets g;
+    const auto grow = [across](int radius, int partner, int& horizontal, int& vertical) {
+      if (radius < 0) {
+        int& side = flareGrowsHorizontally(partner, across) ? horizontal : vertical;
+        side = std::max(side, -radius);
+      }
+    };
+    grow(tl, bl, g.left, g.top);
+    grow(tr, br, g.right, g.top);
+    grow(br, tr, g.right, g.bottom);
+    grow(bl, tl, g.left, g.bottom);
+    return g;
+  }
+
   namespace {
+    // The area a flared node box of `width` x `height` draws, node-local: its body and one square per flare. The box
+    // holds each flare in a band along a whole edge; the rest of that band is empty. False without flares.
+    bool flareArea(fx_corner_radii c, bool across, int width, int height, pixman_region32_t* area) {
+      const int tl = c.top_left;
+      const int tr = c.top_right;
+      const int br = c.bottom_right;
+      const int bl = c.bottom_left;
+      const FlareInsets g = flareInsets(tl, tr, br, bl, across);
+      if (g == FlareInsets{}) {
+        return false;
+      }
+      const int x0 = g.left;
+      const int y0 = g.top;
+      const int x1 = width - g.right;
+      const int y1 = height - g.bottom;
+      pixman_region32_init_rect(area, x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0));
+      // A flare square beside corner (cx, cy) of the body: across its side (horizontal) or past its edge (vertical).
+      const auto square = [&](int radius, int partner, int hx, int hy, int vx, int vy) {
+        if (radius >= 0) {
+          return;
+        }
+        const int r = -radius;
+        const bool horizontal = flareGrowsHorizontally(partner, across);
+        pixman_region32_union_rect(area, area, horizontal ? hx : vx, horizontal ? hy : vy, r, r);
+      };
+      square(tl, bl, x0 + tl, y0, x0, y0 + tl);
+      square(tr, br, x1, y0, x1 + tr, y0 + tr);
+      square(br, tr, x1, y1 + br, x1 + br, y1);
+      square(bl, tl, x0 + bl, y1 + bl, x0, y1);
+      return true;
+    }
+
     wlr_scene_buffer* findSurfaceBuffer(wlr_scene_node& root, wlr_surface* surface) {
       struct Lookup {
         wlr_surface* surface;
@@ -249,7 +296,19 @@ namespace andromeda {
       }
       pixman_region32_fini(&region);
     }
-    wlr_scene_node_set_clip_region(&m_node->node, shape != nullptr || clipRegion != nullptr ? &clip : nullptr);
+    pixman_region32_t flared;
+    const bool flares = flareArea(corners, m_flareAcross, drawBox.width, drawBox.height, &flared);
+    if (flares) {
+      if (shape != nullptr || clipRegion != nullptr) {
+        pixman_region32_intersect(&clip, &clip, &flared);
+      } else {
+        pixman_region32_copy(&clip, &flared);
+      }
+      pixman_region32_fini(&flared);
+    }
+    wlr_scene_node_set_clip_region(
+        &m_node->node, shape != nullptr || clipRegion != nullptr || flares ? &clip : nullptr
+    );
     pixman_region32_fini(&clip);
   }
 

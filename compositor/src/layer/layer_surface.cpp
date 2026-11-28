@@ -97,27 +97,11 @@ namespace andromeda {
       bool flareAcross = false;
     };
 
-    // Grows `box` (the clip) by the flares of `corners`, as corner_alpha.frag draws them: the two negative corners of
-    // a left or right side flare along that side, any other negative corner along its top or bottom edge; `across`
-    // turns each one.
+    // Grows `box` (the clip) by the flares of `corners` (flareInsets).
     wlr_box flaredBox(wlr_box box, const std::array<int, 4>& corners, bool across) {
       const auto [tl, tr, br, bl] = corners;
-      int left = 0;
-      int top = 0;
-      int right = 0;
-      int bottom = 0;
-      const auto grow = [&](int radius, int sidePartner, int& horizontal, int& vertical) {
-        if (radius >= 0) {
-          return;
-        }
-        int& side = (sidePartner < 0) == across ? horizontal : vertical;
-        side = std::max(side, -radius);
-      };
-      grow(tl, bl, left, top);
-      grow(tr, br, right, top);
-      grow(br, tr, right, bottom);
-      grow(bl, tl, left, bottom);
-      return wlr_box{box.x - left, box.y - top, box.width + left + right, box.height + top + bottom};
+      const FlareInsets g = flareInsets(tl, tr, br, bl, across);
+      return wlr_box{box.x - g.left, box.y - g.top, box.width + g.left + g.right, box.height + g.top + g.bottom};
     }
 
     // One rounded rectangle sent as a pixel staircase (one band per row inside the curve, e.g.
