@@ -31,6 +31,11 @@ public:
   [[nodiscard]] float fontSize() const noexcept;
 
 private:
+  // A measure input changed: the own cache and the node measure results of this pass are stale.
+  void dropMeasureCache() noexcept {
+    m_measureCached = false;
+    dropMeasures();
+  }
   void doLayout(Renderer& renderer) override;
   LayoutSize doMeasure(Renderer& renderer, const LayoutConstraints& constraints) override;
   void doArrange(Renderer& renderer, const LayoutRect& rect) override;

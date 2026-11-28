@@ -3,6 +3,7 @@
 #include "render/core/damage_region.h"
 #include "render/core/render_styles.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -208,8 +209,15 @@ public:
   [[nodiscard]] SelectPopupContext* popupContext() const noexcept { return m_popupContext; }
   void setInvalidationCallback(std::function<void(NodeInvalidation)> callback);
   void layout(Renderer& renderer);
+  // Within one layout pass (the outermost layout, measure or arrange call), a repeated measure with the same
+  // constraints returns the earlier result, until markLayoutDirty or a size change on the node or a descendant.
   [[nodiscard]] LayoutSize measure(Renderer& renderer, const LayoutConstraints& constraints);
   void arrange(Renderer& renderer, const LayoutRect& rect);
+  // Tests compare layouts with and without the measure results of a pass.
+  static void setMeasureReuse(bool enabled) noexcept;
+  // Drops the measure results of this node and its ancestors. Call it when a measure input changes without
+  // markLayoutDirty or a size change, also an input outside the subtree (a parent's direction).
+  void dropMeasures() noexcept;
   void invalidateGpuResources(Renderer& renderer, std::uint64_t generation);
   // Rebinds retained Renderer pointers across the whole subtree to a stable
   // view, unconditionally (visibility- and override-proof, unlike layout).
@@ -321,6 +329,18 @@ private:
   HitTestOutset m_hitTestOutset{};
   bool m_sizeAssignedByLayout = false;
   bool m_arranging = false;
+  struct MeasureResult {
+    std::uint64_t pass = 0;
+    LayoutConstraints constraints;
+    bool arranging = false;
+    bool assignedBefore = false;
+    // doMeasure can clear m_sizeAssignedByLayout (Flex::measureByLayout); a reuse applies the same result.
+    bool assignedAfter = false;
+    LayoutSize size;
+  };
+  std::array<std::optional<MeasureResult>, 2> m_measured{};
+  std::uint8_t m_measuredNext = 0;
+  std::uint32_t m_measureDrops = 0;
   std::uint64_t m_gpuResourceGeneration = 0;
   std::int32_t m_zIndex = 0;
   void* m_userData = nullptr;

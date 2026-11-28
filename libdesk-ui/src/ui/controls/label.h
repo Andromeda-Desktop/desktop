@@ -100,6 +100,11 @@ public:
   void measure(Renderer& renderer);
 
 private:
+  // A measure input changed: the own cache and the node measure results of this pass are stale.
+  void dropMeasureCache() noexcept {
+    m_measureCached = false;
+    dropMeasures();
+  }
   // Labels opt out of hit-testing by default; a tooltip needs hits to reach the label.
   void onTooltipChanged() override { syncHoverInteraction(); }
   void doLayout(Renderer& renderer) override;

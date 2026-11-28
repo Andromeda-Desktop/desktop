@@ -1350,6 +1350,7 @@ if build_tests
     'keyboard_layout_label',
     'lane_selection_token',
     'launcher_category_state',
+    'layout_measure_reuse',
     'location_service',
     'live_motion',
     'pam_authenticator',

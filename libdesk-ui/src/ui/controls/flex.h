@@ -137,6 +137,7 @@ public:
   struct ChildLayout;
 
 private:
+  void setExplicitSize(bool width, bool height);
   void ensureBackground();
   void applyPalette();
   void applyElevation();

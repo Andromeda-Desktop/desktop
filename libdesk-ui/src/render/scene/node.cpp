@@ -124,19 +124,71 @@ Node::~Node() {
   }
 }
 
+namespace {
+  // Layout runs on the UI thread only. A pass is the outermost layout, measure or arrange call.
+  thread_local int g_layoutDepth = 0;
+  thread_local std::uint64_t g_layoutPass = 0;
+  thread_local bool g_measureReuse = true;
+
+  class LayoutPassScope {
+  public:
+    LayoutPassScope() noexcept {
+      if (g_layoutDepth++ == 0) {
+        ++g_layoutPass;
+      }
+    }
+    ~LayoutPassScope() { --g_layoutDepth; }
+    LayoutPassScope(const LayoutPassScope&) = delete;
+    LayoutPassScope& operator=(const LayoutPassScope&) = delete;
+  };
+
+  bool sameConstraints(const LayoutConstraints& a, const LayoutConstraints& b) noexcept {
+    return a.minWidth == b.minWidth && a.minHeight == b.minHeight && a.hasMaxWidth == b.hasMaxWidth
+        && a.hasMaxHeight == b.hasMaxHeight && (!a.hasMaxWidth || a.maxWidth == b.maxWidth)
+        && (!a.hasMaxHeight || a.maxHeight == b.maxHeight);
+  }
+} // namespace
+
+void Node::setMeasureReuse(bool enabled) noexcept { g_measureReuse = enabled; }
+
 void Node::layout(Renderer& renderer) {
   uiAssertNotRendering("Node::layout");
+  const LayoutPassScope pass;
   m_localLayoutDirty = false;
   doLayout(renderer);
 }
 
 LayoutSize Node::measure(Renderer& renderer, const LayoutConstraints& constraints) {
   uiAssertNotRendering("Node::measure");
-  return doMeasure(renderer, constraints);
+  const LayoutPassScope pass;
+  if (g_measureReuse) {
+    for (const std::optional<MeasureResult>& r : m_measured) {
+      if (r && r->pass == g_layoutPass && r->arranging == m_arranging && r->assignedBefore == m_sizeAssignedByLayout
+          && sameConstraints(r->constraints, constraints)) {
+        m_sizeAssignedByLayout = r->assignedAfter;
+        return r->size;
+      }
+    }
+  }
+  const bool assignedBefore = m_sizeAssignedByLayout;
+  const std::uint32_t drops = m_measureDrops;
+  const LayoutSize size = doMeasure(renderer, constraints);
+  // A drop during doMeasure means an input changed under it: the result may already be stale.
+  if (drops == m_measureDrops) {
+    m_measured[m_measuredNext] = MeasureResult{.pass = g_layoutPass,
+                                               .constraints = constraints,
+                                               .arranging = m_arranging,
+                                               .assignedBefore = assignedBefore,
+                                               .assignedAfter = m_sizeAssignedByLayout,
+                                               .size = size};
+    m_measuredNext = static_cast<std::uint8_t>((m_measuredNext + 1) % m_measured.size());
+  }
+  return size;
 }
 
 void Node::arrange(Renderer& renderer, const LayoutRect& rect) {
   uiAssertNotRendering("Node::arrange");
+  const LayoutPassScope pass;
   m_arranging = true;
   m_sizeAssignedByLayout = true;
   // The parent's layout sized this node: a pending local layout would redo it at the node's own size.
@@ -269,6 +321,7 @@ void Node::setFrameSize(float width, float height) {
   m_width = width;
   m_height = height;
   bumpAccessibleGeneration();
+  dropMeasures();
   markPaintDirty();
 }
 
@@ -429,6 +482,8 @@ void Node::setInvalidationCallback(std::function<void(NodeInvalidation)> callbac
 
 void Node::attachChild(Node* child) {
   child->m_parent = this;
+  // A measure can read the parent (Separator follows the parent's direction).
+  child->dropMeasures();
   // A local layout marked while the subtree was detached must still reach the root's local pass.
   if (child->m_localLayoutInSubtree) {
     for (Node* node = this; node != nullptr && !node->m_localLayoutInSubtree; node = node->m_parent) {
@@ -661,7 +716,15 @@ DamageRegion Node::takePendingDamage() {
   return damage;
 }
 
+void Node::dropMeasures() noexcept {
+  for (Node* node = this; node != nullptr; node = node->m_parent) {
+    node->m_measured = {};
+    ++node->m_measureDrops;
+  }
+}
+
 void Node::markLayoutDirty() {
+  dropMeasures();
   propagateLayoutDirty();
   propagatePaintDirty();
 }

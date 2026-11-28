@@ -23,7 +23,7 @@ bool Glyph::setGlyph(std::string_view name) {
   if (cp == 0 || cp == m_glyphNode->codepoint())
     return false;
   m_glyphNode->setCodepoint(cp);
-  m_measureCached = false;
+  dropMeasureCache();
   return true;
 }
 
@@ -31,7 +31,7 @@ bool Glyph::setCodepoint(char32_t codepoint) {
   if (codepoint == m_glyphNode->codepoint())
     return false;
   m_glyphNode->setCodepoint(codepoint);
-  m_measureCached = false;
+  dropMeasureCache();
   return true;
 }
 
@@ -41,7 +41,7 @@ void Glyph::setGlyphSize(float size) {
   }
   m_logicalFontSize = size;
   m_glyphNode->setFontSize(size);
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Glyph::setColor(const ColorSpec& color) {

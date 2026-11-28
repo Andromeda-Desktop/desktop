@@ -89,7 +89,7 @@ bool Label::setText(std::string_view text) {
   }
   m_plainText = std::string(text);
   m_textNode->setText(m_plainText);
-  m_measureCached = false;
+  dropMeasureCache();
   return true;
 }
 
@@ -98,7 +98,7 @@ void Label::setFontSize(float size) {
     return;
   }
   m_textNode->setFontSize(size);
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setFontFamily(std::string family) {
@@ -106,7 +106,7 @@ void Label::setFontFamily(std::string family) {
     return;
   }
   m_textNode->setFontFamily(std::move(family));
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setFontFeatures(std::string features) {
@@ -114,27 +114,27 @@ void Label::setFontFeatures(std::string features) {
     return;
   }
   m_textNode->setFontFeatures(std::move(features));
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setTracking(std::optional<float> em) {
   m_textNode->setTracking(em);
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setGradient(std::uint32_t from, std::uint32_t to) {
   m_textNode->setGradient(from, to);
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setVariations(std::string variations) {
   m_textNode->setVariations(std::move(variations));
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setStroke(float em) {
   m_textNode->setStroke(em);
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setColor(const ColorSpec& color) {
@@ -156,7 +156,8 @@ void Label::setMinWidth(float minWidth) {
     return;
   }
   m_minWidth = minWidth;
-  m_measureCached = false;
+  dropMeasureCache();
+  markLayoutDirty();
 }
 
 void Label::setMaxWidth(float maxWidth) {
@@ -167,7 +168,8 @@ void Label::setMaxWidth(float maxWidth) {
   if (!m_autoScroll) {
     m_textNode->setMaxWidth(maxWidth);
   }
-  m_measureCached = false;
+  dropMeasureCache();
+  markLayoutDirty();
 }
 
 void Label::setMaxLines(int maxLines) {
@@ -178,7 +180,7 @@ void Label::setMaxLines(int maxLines) {
   if (!m_autoScroll) {
     m_textNode->setMaxLines(maxLines);
   }
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setFontWeight(FontWeight fontWeight) {
@@ -186,7 +188,7 @@ void Label::setFontWeight(FontWeight fontWeight) {
     return;
   }
   m_textNode->setFontWeight(fontWeight);
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 const std::string& Label::text() const noexcept { return m_plainText; }
@@ -206,7 +208,7 @@ void Label::setTextAlign(TextAlign align) {
     return;
   }
   m_textNode->setTextAlign(align);
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 TextEllipsize Label::ellipsize() const noexcept { return m_textNode->ellipsize(); }
@@ -216,7 +218,7 @@ void Label::setEllipsize(TextEllipsize ellipsize) {
     return;
   }
   m_textNode->setEllipsize(ellipsize);
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setUseMarkup(bool markup) {
@@ -224,7 +226,7 @@ void Label::setUseMarkup(bool markup) {
     return;
   }
   m_textNode->setUseMarkup(markup);
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setBaselineMode(LabelBaselineMode mode) {
@@ -232,7 +234,7 @@ void Label::setBaselineMode(LabelBaselineMode mode) {
     return;
   }
   m_baselineMode = mode;
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setLineHeight(float lineHeight) {
@@ -240,7 +242,7 @@ void Label::setLineHeight(float lineHeight) {
     return;
   }
   m_lineHeight = lineHeight;
-  m_measureCached = false;
+  dropMeasureCache();
 }
 
 void Label::setShadow(const ColorSpec& color, float offsetX, float offsetY) {
@@ -267,7 +269,7 @@ void Label::setAutoScroll(bool enabled) {
   stopScrollAnimations();
   m_scrollOffset = 0.0F;
   syncTextNodeConstraints();
-  m_measureCached = false;
+  dropMeasureCache();
   syncHoverInteraction();
 }
 

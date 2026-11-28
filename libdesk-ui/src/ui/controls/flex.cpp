@@ -119,10 +119,18 @@ Flex::Flex() {
   m_paletteConn = paletteChanged().connect([this] { applyPalette(); });
 }
 
+void Flex::setExplicitSize(bool width, bool height) {
+  if (m_explicitWidth == width && m_explicitHeight == height) {
+    return;
+  }
+  m_explicitWidth = width;
+  m_explicitHeight = height;
+  dropMeasures();
+}
+
 void Flex::setSize(float width, float height) {
   if (!m_sizingFromLayout && !arrangingByLayout()) {
-    m_explicitWidth = width > 0.0F;
-    m_explicitHeight = height > 0.0F;
+    setExplicitSize(width > 0.0F, height > 0.0F);
   }
   Node::setSize(width, height);
   if (m_background != nullptr) {
@@ -138,8 +146,7 @@ void Flex::setSize(float width, float height) {
 
 void Flex::setFrameSize(float width, float height) {
   if (!m_sizingFromLayout && !arrangingByLayout()) {
-    m_explicitWidth = width > 0.0F;
-    m_explicitHeight = height > 0.0F;
+    setExplicitSize(width > 0.0F, height > 0.0F);
   }
   Node::setFrameSize(width, height);
   if (m_background != nullptr) {
@@ -167,6 +174,10 @@ void Flex::setDirection(FlexDirection direction) {
     return;
   }
   m_direction = direction;
+  // A child measure can read the direction (Separator).
+  for (const auto& child : children()) {
+    child->dropMeasures();
+  }
   markLayoutDirty();
 }
 
