@@ -143,6 +143,7 @@ private:
   void ensureBadge();
 
   Glyph* m_glyph = nullptr;
+  std::optional<float> m_glyphSize; // applied when a glyph appears; a size alone adds no glyph
   std::optional<ColorSpec> m_glyphColor;
   bool m_glyphTrailing = false;
   Label* m_label = nullptr;

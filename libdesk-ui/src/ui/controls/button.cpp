@@ -313,8 +313,10 @@ void Button::setFontSize(float size) {
 }
 
 void Button::setGlyphSize(float size) {
-  ensureGlyph();
-  m_glyph->setGlyphSize(size);
+  m_glyphSize = size;
+  if (m_glyph != nullptr) {
+    m_glyph->setGlyphSize(size);
+  }
 }
 
 void Button::setGlyphColor(ColorSpec color) {
@@ -666,6 +668,9 @@ void Button::ensureGlyph() {
   } else {
     auto glyph = std::make_unique<Glyph>();
     m_glyph = static_cast<Glyph*>(addChild(std::move(glyph)));
+  }
+  if (m_glyphSize) {
+    m_glyph->setGlyphSize(*m_glyphSize);
   }
   if (m_label != nullptr) {
     setDirection(FlexDirection::Horizontal);
