@@ -172,6 +172,11 @@ void Segmented::setSurfaceRole(ColorRole role) {
   applyOuterStyle();
 }
 
+void Segmented::setSurfaceStroke(ColorRole role) {
+  m_surfaceStroke = role;
+  applyOuterStyle();
+}
+
 void Segmented::setThumbRoles(ColorRole fill, ColorRole label) {
   if (m_thumbFill == fill && m_thumbLabel == label) {
     return;
@@ -286,7 +291,11 @@ void Segmented::refreshVariants() {
 void Segmented::applyOuterStyle() {
   Flex::setPadding(m_outerPadding);
   setFill(colorSpecFromRole(m_surfaceRole, m_surfaceOpacity));
-  clearBorder();
+  if (m_surfaceStroke.has_value()) {
+    setBorder(colorSpecFromRole(*m_surfaceStroke), Style::borderWidth);
+  } else {
+    clearBorder();
+  }
   setRadius(Tokens::componentSegmentedHeight * 0.5F * m_scale);
 }
 
