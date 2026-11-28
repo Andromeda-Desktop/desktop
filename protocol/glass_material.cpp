@@ -22,6 +22,8 @@ namespace glass {
 
   const float kLegibleInk2[2] = {0.80F, 0.86F};
   const float kLegibleInk3[2] = {0.62F, 0.60F};
+  const float kGlassInk1 = 1.0F;
+  const float kGlassInk2 = 0.75F;
   const float kVibrancy[2] = {1.0F, 0.0F};
   const float kMergeReach = 24.0F;
   const float kPointerLightReach = 128.0F;

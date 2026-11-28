@@ -546,13 +546,13 @@ void Node::setInkLift(std::optional<float> lift) {
   markPaintDirty();
 }
 
-float Node::inkLift() const noexcept {
+std::optional<float> Node::inkLift() const noexcept {
   for (const Node* node = this; node != nullptr; node = node->m_parent) {
     if (node->m_inkLift.has_value()) {
-      return *node->m_inkLift;
+      return node->m_inkLift;
     }
   }
-  return 0.0F;
+  return std::nullopt;
 }
 
 void Node::notifyInkLift() {

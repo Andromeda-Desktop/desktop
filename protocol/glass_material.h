@@ -37,6 +37,9 @@ namespace glass {
   // {light glass (dark ink), dark glass (light ink)}. Secondary ink rises to these with the surface's density.
   extern const float kLegibleInk2[2];
   extern const float kLegibleInk3[2];
+  // Least ink alpha label_1 and label_2 take on any glass surface: the tokens' alpha lets the backdrop through.
+  extern const float kGlassInk1;
+  extern const float kGlassInk2;
 
   // The palette a kind's glass and content take. Dark: dark glass with white content in both schemes.
   enum class Tone : std::uint8_t { Scheme, Dark };

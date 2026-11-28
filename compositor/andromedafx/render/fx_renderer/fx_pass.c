@@ -2104,13 +2104,9 @@ render_texture_glass_split(struct fx_gles_render_pass* pass, const struct fx_ren
   const bool liquid_shape = !wlr_box_empty(&fx_options->liquid_box);
   const struct wlr_box* shape = liquid_shape ? &fx_options->liquid_box : clip_box;
   const float short_side = fminf((float)shape->width, (float)shape->height);
-  // liquid_band (corner_alpha.frag); a shape no wider than two bands is lens across its whole surface.
+  // liquid_band (corner_alpha.frag).
   const float scale = fx_options->liquid_scale > 0.0f ? fx_options->liquid_scale : 1.0f;
-  const float band =
-      fminf(short_side * (fx_options->liquid > 0.0f ? 0.5f : 0.25f), (16.0f + 48.0f * fx_options->liquid) * scale);
-  if (band >= 0.5f * short_side - 0.5f) {
-    return false;
-  }
+  const float band = fminf(short_side * 0.25f, (16.0f + 48.0f * fx_options->liquid) * scale);
   // rounded_rect_distance_at is exact inside the box inset by its corner extent: minus the distance to the nearest
   // edge, so a fragment inset by the band as well skips the band branch.
   const float shape_radius = fmaxf(liquid_shape ? fx_options->liquid_radius : corner_radius, 0.0f);

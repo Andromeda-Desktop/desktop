@@ -57,11 +57,10 @@ float rounded_rect_distance(
   return rounded_rect_distance_at(gl_FragCoord.xy, size, position, radius_tl, radius_tr, radius_bl, radius_br);
 }
 
-// Glass rim band in render px. Frosted (liquid 0): a 16 px specular rim, at most a quarter of the short side. Liquid:
-// a lens bezel of 16 to 64 logical px; a shape narrower than two bezels is lens across its whole width.
+// Glass rim band in render px, at most a quarter of the short side, so every shape keeps a flat interior. Frosted
+// (liquid 0): a 16 px specular rim. Liquid: a lens bezel of 16 to 64 logical px.
 float liquid_band(vec2 size, float liquid, float scale) {
-  float share = liquid > 0.0 ? 0.5 : 0.25;
-  return min(min(size.x, size.y) * share, (16.0 + 48.0 * liquid) * scale);
+  return min(min(size.x, size.y) * 0.25, (16.0 + 48.0 * liquid) * scale);
 }
 
 // Sag of a circular convex bezel: 0 at the band's inner end (t = 0), 1 at the edge, steepest at the edge, so the
@@ -82,9 +81,6 @@ float lens_shift(float t) {
 // How much of the sharp lens image covers the blur at band position t (lens = the Lens strength): only the outer
 // part of the bezel, so labels inside the glass keep the blur behind them.
 float lens_cover(float t, float lens) { return min(1.6 * lens, 1.0) * smoothstep(0.45, 1.0, t); }
-
-// Whole-surface magnification of small glass at full lens (main() cannot see the token defines, appended after it).
-float lens_magnify() { return TOKEN_LENS_MAGNIFY; }
 
 // The sharp backdrop seen through the lens at uv, which sits `bend` (uv units) inward of the unbent point: red bends
 // TOKEN_LENS_DISPERSION less and blue more, the colour fringe of real glass.

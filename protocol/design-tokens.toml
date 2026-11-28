@@ -254,8 +254,6 @@ rim_shade = 0.2
 rim_pointer_boost = 0.9
 # Colour fringe: red bends this fraction of the lens shift less, blue more (Apple's lens shows yellow/magenta edges).
 dispersion = 0.04
-# A glass shape narrower than two bezels magnifies its whole surface toward its centre by this fraction.
-magnify = 0.06
 
 # Light-scheme recipe; the shell applies it to the compositor while the shell mode is light.
 [blur_light]

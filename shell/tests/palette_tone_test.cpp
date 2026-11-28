@@ -22,9 +22,9 @@ namespace {
     }
   }
 
-  std::unique_ptr<Box> labelBox() {
+  std::unique_ptr<Box> labelBox(ColorRole role = ColorRole::Label1) {
     auto box = std::make_unique<Box>();
-    box->setFill(colorSpecFromRole(ColorRole::Label1));
+    box->setFill(colorSpecFromRole(role));
     return box;
   }
 
@@ -61,6 +61,17 @@ int main() {
   auto back = schemeRoot.removeChild(landed);
   attached = static_cast<Box*>(darkRoot.addChild(std::move(back)));
   expect(attached->style().fill == dark.label1, "a box moved back under the Dark root resolves the dark label_1");
+
+  Node glassRoot;
+  Box* ink1 = static_cast<Box*>(glassRoot.addChild(labelBox()));
+  Box* ink2 = static_cast<Box*>(glassRoot.addChild(labelBox(ColorRole::Label2)));
+  const Color tokenInk2 = ink2->style().fill;
+  glassRoot.setInkLift(0.0F);
+  expect(ink1->style().fill.a == 1.0F, "label_1 on glass is opaque");
+  expect(ink1->style().fill.r == light.label1.r, "label_1 on glass keeps its colour");
+  expect(ink2->style().fill.a > tokenInk2.a, "label_2 on glass is denser than its token");
+  glassRoot.setInkLift(std::nullopt);
+  expect(ink1->style().fill == light.label1, "a root that leaves glass returns label_1 to its token");
 
   // Model: random fades, reversals, snaps and ticks. Invariants in every reachable state: the fill lies between the
   // dark and light label_1; a fade or a reversal never jumps the fill; a settled subtree has its tone's exact colour.

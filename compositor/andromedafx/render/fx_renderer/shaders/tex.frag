@@ -213,7 +213,6 @@ vec2 rounded_rect_normal_at(
 vec2 body_normal_at(vec2 point, vec2 size, vec2 position, float tl, float tr, float bl, float br);
 float liquid_band(vec2 size, float liquid, float scale);
 float lens_shift(float t);
-float lens_magnify();
 vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend);
 float lens_cover(float t, float lens);
 float glass_shade(float on, float d, float scale, vec2 normal);
@@ -277,9 +276,7 @@ void main() {
     vec2 p = gl_FragCoord.xy;
     float d = liquid_distance(p);
     // Past the rim band there is no refraction and no rim: skip the four extra distance evaluations.
-    // A shape narrower than two bands is lens across its whole surface: no flat interior to skip.
-    bool whole = band >= 0.5 * min(liquid_size.x, liquid_size.y) - 0.5;
-    if (d > -band || whole) {
+    if (d > -band) {
       vec2 normal = liquid_normal(p);
       float t = clamp(1.0 + d / band, 0.0, 1.0);
       // Refraction through the bezel: the backdrop is sampled from further inside.
@@ -288,10 +285,6 @@ void main() {
       // The sharp layer takes the blur's bend, so the two meet without a step; lens_bend sets the colour fringe.
       lens_uv = uv;
       lens_bend = normal * (shift * lens) * liquid_texel;
-      if (whole) {
-        // Small glass magnifies its whole surface toward the centre, the rim bending hardest.
-        lens_uv -= (p - (liquid_position + 0.5 * liquid_size)) * (lens_magnify() * lens) * liquid_texel;
-      }
       lens_weight = lens_cover(t, lens);
       // Specular: a reflection, not an outline: a bright line on the outermost pixels over a soft inner glow
       // (glass_specular), lit from the key lights and the pointer; the coverage mask cuts it outside.

@@ -191,9 +191,10 @@ public:
   // The running fade of the node that decides paletteTone(); nullopt when settled.
   [[nodiscard]] std::optional<PaletteToneFade> paletteToneFade() const noexcept;
   // 0..1, how far label_2 and label_3 rise to the legible ink over dense glass (glass::kLegibleInk2/3); nullopt
-  // inherits the parent's lift, a root without one has 0. A change re-resolves the subtree's colours.
+  // inherits the parent's lift. A subtree with a lift is on glass; with none inkLift() is nullopt. A change re-resolves
+  // the subtree's colours.
   void setInkLift(std::optional<float> lift);
-  [[nodiscard]] float inkLift() const noexcept;
+  [[nodiscard]] std::optional<float> inkLift() const noexcept;
   [[nodiscard]] bool excludeSubtreeFromTabOrder() const noexcept { return m_excludeSubtreeFromTabOrder; }
 
   virtual Node* addChild(std::unique_ptr<Node> child);
