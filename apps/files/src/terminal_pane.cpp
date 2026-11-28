@@ -159,8 +159,7 @@ void TerminalPane::requestFrame() {
   }
   // Set on each request: the window may have a new surface since the last one.
   surface->setFrameTickCallback([this](float) {
-    if (Surface* s = m_window.surface(); s != nullptr) {
-      m_loop.renderContext().makeCurrent(s->renderTarget());
+    if (m_window.surface() != nullptr) {
       for (Split& split : m_splits) {
         split.view->frame();
       }

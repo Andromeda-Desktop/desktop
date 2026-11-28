@@ -3068,7 +3068,6 @@ namespace term {
     if (surface != m_tickSurface) {
       m_tickSurface = surface;
       surface->setFrameTickCallback([this](float) {
-        m_loop.renderContext().makeCurrent(m_window.surface()->renderTarget());
         // Hidden sessions run frame() too: it reports their exit; without a grid it draws nothing.
         for (std::size_t i = 0; i < m_views.size(); ++i) {
           m_views[i].view->frame();

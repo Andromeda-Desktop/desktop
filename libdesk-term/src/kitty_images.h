@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <ghostty/vt.h>
 #include <unordered_map>
 #include <vector>
@@ -31,9 +32,10 @@ namespace term {
     KittyImages& operator=(const KittyImages&) = delete;
 
     // After each render state update; scale is device px per logical px (the cell size the terminal got is in device
-    // px). False when placements wait for GL (textures null): the caller asks for another frame.
-    bool sync(GhosttyRenderState state, PtySession& session, TextureManager* textures, float cellWidth,
-              float cellHeight, float scale);
+    // px). textures is asked only when an image shows or a texture is held. False when placements wait for GL
+    // (textures returns null): the caller asks for another frame.
+    bool sync(GhosttyRenderState state, PtySession& session, const std::function<TextureManager*()>& textures,
+              float cellWidth, float cellHeight, float scale);
 
   private:
     struct Texture {

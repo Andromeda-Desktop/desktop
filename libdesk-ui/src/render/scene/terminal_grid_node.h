@@ -95,6 +95,11 @@ public:
 
   // Uploads new glyphs to the atlas texture. Call with the render context current, before the frame renders.
   void commit(TextureManager& textures);
+  // True when commit has GPU work: new glyphs, a rebuilt atlas, or no texture yet.
+  [[nodiscard]] bool commitPending() const noexcept {
+    return m_atlas.generation() != m_builtGeneration || !m_texture.valid() || m_texture.height != m_atlas.height()
+           || m_atlas.dirtyTop() < m_atlas.dirtyBottom();
+  }
 
   [[nodiscard]] std::uint32_t background() const noexcept { return m_background; }
   // The background fill's alpha: below 1 the window's glass shows through the default-background cells.

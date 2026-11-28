@@ -107,8 +107,9 @@ namespace term {
     m_cache.clear();
   }
 
-  bool KittyImages::sync(GhosttyRenderState state, PtySession& session, TextureManager* textures, float cellWidth,
-                         float cellHeight, float scale) {
+  bool KittyImages::sync(GhosttyRenderState state, PtySession& session,
+                         const std::function<TextureManager*()>& texturesFn, float cellWidth, float cellHeight,
+                         float scale) {
     struct Raw {
       std::uint32_t image;
       std::uint64_t generation;
@@ -148,10 +149,15 @@ namespace term {
         });
       }
     }
-    if (textures == nullptr) {
-      return raw.empty();
+    // With no image and no texture the steps below touch no texture: they skip the GL context.
+    TextureManager* textures = nullptr;
+    if (!raw.empty() || !m_cache.empty()) {
+      textures = texturesFn ? texturesFn() : nullptr;
+      if (textures == nullptr) {
+        return raw.empty();
+      }
+      m_textures = textures;
     }
-    m_textures = textures;
 
     // A texture lives while a visible placement shows its image; one that scrolls back in uploads again.
     std::erase_if(m_cache, [&](auto& entry) {

@@ -383,8 +383,9 @@ bool GlesRenderBackend::makeCurrentNoSurface() {
 
   // Texture work requested while rendering can use the context's current draw
   // surface. Rebinding it surfacelessly here would detach that surface before
-  // the frame's trailing eglSwapBuffers.
-  if (eglGetCurrentDisplay() == m_display && eglGetCurrentContext() == m_context) {
+  // the frame's trailing eglSwapBuffers. A context belongs to one display, so the
+  // context alone proves the display; each eglGetCurrent* is a getpid syscall in libglvnd.
+  if (eglGetCurrentContext() == m_context) {
     return true;
   }
 
@@ -407,8 +408,7 @@ bool GlesRenderBackend::makeCurrent(RenderTarget& target) {
     return false;
   }
   auto& surface = glesSurfaceTarget(target);
-  if (eglGetCurrentDisplay() == m_display
-      && eglGetCurrentContext() == m_context
+  if (eglGetCurrentContext() == m_context
       && eglGetCurrentSurface(EGL_DRAW) == surface.eglSurface()
       && eglGetCurrentSurface(EGL_READ) == surface.eglSurface()) {
     return true;
@@ -669,7 +669,7 @@ void GlesRenderBackend::invalidateGpuResources() {
   if (m_display == EGL_NO_DISPLAY || m_context == EGL_NO_CONTEXT) {
     return;
   }
-  if ((eglGetCurrentDisplay() != m_display || eglGetCurrentContext() != m_context) && !makeCurrentNoSurface()) {
+  if (eglGetCurrentContext() != m_context && !makeCurrentNoSurface()) {
     kLog.warn("skipping GPU resource invalidation: could not make context current");
     return;
   }

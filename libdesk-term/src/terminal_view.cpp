@@ -801,7 +801,7 @@ namespace term {
     } else if (m_findRing != nullptr) {
       m_findRing->setVisible(false);
     }
-    if (!m_images->sync(m_state, m_session, m_host.textures ? m_host.textures() : nullptr, m_grid->cellWidth(),
+    if (!m_images->sync(m_state, m_session, m_host.textures, m_grid->cellWidth(),
                         m_grid->cellHeight(), m_deviceScale)) {
       scheduleRedraw(Redraw::Dirty);
     }
@@ -1118,6 +1118,9 @@ namespace term {
   }
 
   void TerminalView::commitAtlas() {
+    if (!m_grid->commitPending()) {
+      return;
+    }
     if (TextureManager* textures = m_host.textures ? m_host.textures() : nullptr) {
       m_grid->commit(*textures);
     } else if (m_host.requestFrame) {
