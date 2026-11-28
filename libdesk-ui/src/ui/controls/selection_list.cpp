@@ -129,7 +129,7 @@ void SelectionList::insertAnimated(std::unique_ptr<Flex> row, std::size_t index,
       Tokens::motionContentGate,
       [animations, added, this] {
         animations->animateSpring(0.0F, 1.0F, Style::spring(Tokens::springFade),
-                                  [added](float v) { added->setOpacity(v); }, {}, this);
+                                  [added](float v) { added->setOpacity(v); }, {}, added);
       },
       [this, added, restMin] {
         if (m_inserting == added) {
@@ -141,7 +141,7 @@ void SelectionList::insertAnimated(std::unique_ptr<Flex> row, std::size_t index,
         added->setOpacity(1.0F);
         markLayoutDirty();
       },
-      this, 0.0F, Unit::Px);
+      added, 0.0F, Unit::Px);
 }
 
 void SelectionList::removeAnimated(Flex* row, std::function<void()> beforeFree) {
@@ -163,6 +163,7 @@ void SelectionList::removeAnimated(Flex* row, std::function<void()> beforeFree) 
     free();
     return;
   }
+  animations->cancelForOwner(row); // its opening, if it is still opening
   row->setClipChildren(true);
   const float from = row->height();
   row->setMinHeight(0.0F);
