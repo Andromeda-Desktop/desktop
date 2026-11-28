@@ -57,7 +57,10 @@ pub async fn run(conn: Connection, watches: &'static [Watch]) -> io::Result<()> 
     loop {
         let wait = changed.map(|at| (at + SETTLE).saturating_duration_since(Instant::now()));
         let ready = match wait {
-            Some(left) => tokio::time::timeout(left, fd.readable()).await.ok(),
+            Some(left) => tokio::select! {
+                ready = fd.readable() => Some(ready),
+                () = tokio::time::sleep(left) => None,
+            },
             None => Some(fd.readable().await),
         };
         let Some(ready) = ready else {

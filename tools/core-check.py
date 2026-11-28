@@ -101,11 +101,12 @@ RULES = {
     "log-owner": ("one logger: protocol/log.{h,cpp}; binaries supply only log_platform hooks (the compositor also its "
                   "wlr bridge)", CPP_DIRS, CPP, r"\bvoid\s+logMessage\s*\(\s*LogLevel[^;]*\)\s*\{", ()),
     "raw-inotify": ("file watching goes through libdesk-ui DirectoryWatcher / FileWatcher; binaries without "
-                    "libdesk-ui own one watcher each (compositor config + socket, indexer, agentd)",
+                    "libdesk-ui own one watcher each (compositor config + socket, indexer, agentd, update)",
                     CPP_DIRS, CPP + (".rs",), r"\binotify_(init1?|add_watch|rm_watch)\b|\binotify::|fs::inotify",
                     ("libdesk-ui/src/core/files/directory_watcher.cpp", "compositor/src/config/config_watcher.cpp",
                      "compositor/src/server/socket_recovery.cpp",
-                     "indexer/src/live_index.cpp", "system/crates/andromeda-agentd/src/provider.rs")),
+                     "indexer/src/live_index.cpp", "system/crates/andromeda-agentd/src/provider.rs",
+                     "system/crates/andromeda-update/src/db_watch.rs")),
     "notify-client": ("apps send notifications through AppNotifier (libdesk-app), system crates through "
                       "andromeda_rt::notify; the shell serves them", CPP_DIRS, CPP + (".rs",),
                       r"callMethod(Async)?\(\"(Notify|CloseNotification)\"\)|\"(Notify|CloseNotification)\",",
