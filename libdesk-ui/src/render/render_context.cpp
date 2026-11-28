@@ -1266,7 +1266,6 @@ void RenderContext::drawNodeSelf(
         .life = galaxy->life(),
         .scrim = galaxy->scrim(),
         .rings = galaxy->rings(),
-        .moving = galaxy->moving(),
         .surfaceWidth = sw,
         .surfaceHeight = sh,
         .quadWidth = node->width(),

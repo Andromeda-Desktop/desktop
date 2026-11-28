@@ -19,7 +19,6 @@ struct GalaxyDraw {
   GalaxyLife life;
   GalaxyScrim scrim;
   GalaxyRings rings;
-  bool moving = false;  // the camera changes each frame (drag, zoom, morph); the still after it redraws in full
   float surfaceWidth = 0.0F;
   float surfaceHeight = 0.0F;
   float quadWidth = 0.0F;

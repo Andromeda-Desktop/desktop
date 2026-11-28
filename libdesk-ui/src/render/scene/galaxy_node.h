@@ -9,7 +9,7 @@
 #include <optional>
 
 // The phone's galaxy over the node rect (Link). The backend caches the rendered points: a change of points, camera,
-// dim, moving or size re-renders them; life, the sky, the scrim and the rings only re-composite.
+// dim or size re-renders them; life, the sky, the scrim and the rings only re-composite.
 class GalaxyNode final : public Node {
 public:
   GalaxyNode() : Node(NodeType::Galaxy) {}
@@ -26,8 +26,6 @@ public:
   void setLife(const GalaxyLife& life) { assign(m_life, life); }
   void setScrim(const GalaxyScrim& scrim) { assign(m_scrim, scrim); }
   void setRings(const GalaxyRings& rings) { assign(m_rings, rings); }
-  // True while a drag, zoom or morph changes the camera each frame; false again redraws the points in full.
-  void setMoving(bool moving) { assign(m_moving, moving); }
   // The render cache belongs to this owner, so a node rebuilt for the same view keeps the rendered points. The owner
   // outlives every node it is set on; nullptr = the node itself.
   void setCacheOwner(const void* owner) { m_cacheOwner = owner; }
@@ -40,7 +38,6 @@ public:
   [[nodiscard]] const GalaxyLife& life() const noexcept { return m_life; }
   [[nodiscard]] const GalaxyScrim& scrim() const noexcept { return m_scrim; }
   [[nodiscard]] const GalaxyRings& rings() const noexcept { return m_rings; }
-  [[nodiscard]] bool moving() const noexcept { return m_moving; }
 
   // Where a galaxy point shows in node coordinates now (with the life turn); empty behind the eye.
   [[nodiscard]] std::optional<std::array<float, 2>> project(const std::array<float, 3>& point) const {
@@ -62,6 +59,5 @@ private:
   GalaxyLife m_life;
   GalaxyScrim m_scrim;
   GalaxyRings m_rings;
-  bool m_moving = false;
   const void* m_cacheOwner = nullptr;
 };
