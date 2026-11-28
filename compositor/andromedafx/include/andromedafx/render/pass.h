@@ -179,6 +179,8 @@ struct fx_render_texture_options {
   float liquid_radius;
   // Radians clockwise of the liquid shape about its centre; liquid_box bounds the rotated shape.
   float liquid_rotation;
+  // The two negative corners of one edge flare across that edge, not along it (corner_alpha.frag flare_across).
+  bool flare_across;
   // Render px per logical px for the rim band; 0 = 1.
   float liquid_scale;
   // Pointer key light: x, y in liquid_box coords, reach in render px (0: the fixed top-left light).
@@ -259,6 +261,7 @@ struct fx_render_blur_pass_options {
   float liquid_frac[4]; // see fx_render_texture_options.liquid_frac
   float liquid_radius;
   float liquid_rotation; // see fx_render_texture_options.liquid_rotation
+  bool flare_across;     // see fx_render_texture_options.flare_across
   float liquid_scale;
   float light[3]; // see fx_render_texture_options.light
   struct fx_liquid_merge merge; // see fx_render_texture_options.merge

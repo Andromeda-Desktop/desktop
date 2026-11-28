@@ -356,6 +356,7 @@ if build_tests
     'glass-split-full-corners',
     'glass-rotated',
     'glass-rotated-probe',
+    'glass-flare-across',
     'glass-turned-output-probe',
   ]
     test('effects-' + case_name, andromedafx_effects_test, args: case_name, suite: 'andromedafx')

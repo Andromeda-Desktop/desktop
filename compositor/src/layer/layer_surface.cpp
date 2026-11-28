@@ -90,7 +90,35 @@ namespace andromeda {
       double exactRadius = 0.0;
       // Radians clockwise about the centre of `exact`, which stays unrotated; `box` holds the rotated bounds.
       double rotation = 0.0;
+      // dsk corners: top-left, top-right, bottom-right, bottom-left px; negative = a flare outside the clip, which `box`
+      // includes. Replaces radius, joinEdge and flare.
+      std::optional<std::array<int, 4>> corners{};
+      // The flares of `corners` run across their edge (join c).
+      bool flareAcross = false;
     };
+
+    // Grows `box` (the clip) by the flares of `corners`, as corner_alpha.frag draws them: the two negative corners of
+    // a left or right side flare along that side, any other negative corner along its top or bottom edge; `across`
+    // turns each one.
+    wlr_box flaredBox(wlr_box box, const std::array<int, 4>& corners, bool across) {
+      const auto [tl, tr, br, bl] = corners;
+      int left = 0;
+      int top = 0;
+      int right = 0;
+      int bottom = 0;
+      const auto grow = [&](int radius, int sidePartner, int& horizontal, int& vertical) {
+        if (radius >= 0) {
+          return;
+        }
+        int& side = (sidePartner < 0) == across ? horizontal : vertical;
+        side = std::max(side, -radius);
+      };
+      grow(tl, bl, left, top);
+      grow(tr, br, right, top);
+      grow(br, tr, right, bottom);
+      grow(bl, tl, left, bottom);
+      return wlr_box{box.x - left, box.y - top, box.width + left + right, box.height + top + bottom};
+    }
 
     // One rounded rectangle sent as a pixel staircase (one band per row inside the curve, e.g.
     // Surface::tessellateRoundedRect; rects in band order) -> its box and corner radius; or such a rectangle whose top
@@ -163,13 +191,13 @@ namespace andromeda {
       merges.assign(shapes.size(), {});
       mergedAway.assign(shapes.size(), false);
       for (std::size_t lead = 0; lead < shapes.size(); ++lead) {
-        if (mergedAway[lead] || shapes[lead].flare > 0) {
+        if (mergedAway[lead] || shapes[lead].flare > 0 || shapes[lead].corners) {
           continue;
         }
         std::vector<std::size_t> group{lead};
         for (std::size_t next = 0; next < group.size() && group.size() < 4; ++next) {
           for (std::size_t other = lead + 1; other < shapes.size() && group.size() < 4; ++other) {
-            if (!mergedAway[other] && shapes[other].flare == 0 && std::ranges::find(group, other) == group.end()
+            if (!mergedAway[other] && shapes[other].flare == 0 && !shapes[other].corners && std::ranges::find(group, other) == group.end()
                 && same(lead, other) && boxGap(clips[group[next]], clips[other]) < reach) {
               group.push_back(other);
               mergedAway[other] = true;
@@ -191,6 +219,14 @@ namespace andromeda {
       // A rotated shape's clip box bounds it; the shader rounds the exact shape.
       if (shape.rotation != 0.0) {
         return corner_radii_all(0);
+      }
+      if (shape.corners) {
+        const auto corner = [scale, slack](int r) {
+          const int scaled = static_cast<int>(std::lround(std::abs(r) * scale));
+          return static_cast<int16_t>(std::min(r < 0 ? -scaled : scaled + slack, static_cast<int>(CORNER_RADIUS_MAX)));
+        };
+        const auto [tl, tr, br, bl] = *shape.corners;
+        return fx_corner_radii{corner(tl), corner(tr), corner(br), corner(bl)};
       }
       const int radius = static_cast<int>(std::lround(shape.radius * scale)) + slack;
       return shape.flare > 0
@@ -1145,7 +1181,22 @@ namespace andromeda {
             rounded.box.height += 2 * flare;
           }
         }
-        if (rounded.flare == 0) {
+        const auto& corners = shape->value(SurfaceMotion::Property::Corners);
+        if (rotation == 0.0 && std::ranges::any_of(corners, [](double r) { return std::lround(r) != 0; })) {
+          rounded.corners = std::array<int, 4>{};
+          std::ranges::transform(corners, rounded.corners->begin(), [](double r) {
+            return static_cast<int>(std::lround(r));
+          });
+          rounded.flareAcross = join[2] >= 0.5;
+          rounded.joinEdge = 0;
+          rounded.flare = 0;
+          rounded.box = flaredBox(
+              wlr_box{static_cast<int>(std::lround(c[0])), static_cast<int>(std::lround(c[1])),
+                      static_cast<int>(std::lround(c[2])), static_cast<int>(std::lround(c[3]))},
+              *rounded.corners, rounded.flareAcross
+          );
+        }
+        if (rounded.flare == 0 && !rounded.corners) {
           rounded.exact = wlr_fbox{c[0], c[1], c[2], c[3]};
           rounded.exactRadius = shape->value(SurfaceMotion::Property::Radius)[0];
           if (rotation != 0.0) {
@@ -1309,6 +1360,7 @@ namespace andromeda {
     m_blur.setAlpha(m_glassAlpha * m_blurOpacity);
     m_blur.setMerge(merges.empty() ? std::vector<SurfaceBlur::MergedShape>{} : merges.front(), mergeReach);
     m_blur.setContentScale(static_cast<float>(motionScale));
+    m_blur.setFlareAcross(firstShapeBlur == 1 && !shapes.empty() && shapes.front().flareAcross);
     m_blur.setExactShape(
         firstShapeBlur == 1 && !shapes.empty() && clip ? shapes.front().exact : std::nullopt,
         static_cast<float>(!shapes.empty() ? shapes.front().exactRadius * motionScale : 0.0),
@@ -1376,6 +1428,7 @@ namespace andromeda {
       m_shapeBlurOpacity[i] = own ? m_shapeMaterials[shape].opacity : 1.0F;
       blur.setAlpha(m_glassAlpha * m_shapeBlurOpacity[i]);
       blur.setContentScale(static_cast<float>(motionScale));
+      blur.setFlareAcross(shapes[shape].flareAcross);
       blur.setExactShape(
           shapes[shape].exact, static_cast<float>(shapes[shape].exactRadius * motionScale),
           static_cast<float>(shapes[shape].rotation)

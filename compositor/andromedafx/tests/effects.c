@@ -3313,6 +3313,80 @@ static bool test_glass_rotated(struct fixture* fixture) {
   return ok;
 }
 
+// Glass whose two bottom corners flare (a full-length top bar's inner corners): along the bottom edge the body fills
+// the box's height; across it, the body ends a flare above the box bottom and each flare hugs a side below it.
+static bool flare_case(
+    struct fixture* fixture, struct fx_corner_fradii corners, bool across, uint8_t out[GLASS_SIZE * GLASS_SIZE][4]
+) {
+  static uint8_t pixels[GLASS_SIZE * GLASS_SIZE][4];
+  for (int i = 0; i < GLASS_SIZE * GLASS_SIZE; i++) {
+    pixels[i][0] = 200, pixels[i][1] = 120, pixels[i][2] = 40, pixels[i][3] = 255;
+  }
+  const uint32_t stride = GLASS_SIZE * 4;
+  struct wlr_texture* source =
+      wlr_texture_from_pixels(fixture->renderer, DRM_FORMAT_ABGR8888, stride, GLASS_SIZE, GLASS_SIZE, pixels);
+  struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_ARGB8888, GLASS_SIZE, GLASS_SIZE);
+  struct wlr_render_pass* pass =
+      source != NULL && target != NULL ? wlr_renderer_begin_buffer_pass(fixture->renderer, target, NULL) : NULL;
+  bool ok = check(pass != NULL, "flared glass texture, target and pass");
+  if (ok) {
+    const struct wlr_box box = {.width = GLASS_SIZE, .height = GLASS_SIZE};
+    struct fx_render_texture_options options = {
+        .base =
+            {
+                .texture = source,
+                .src_box = {.width = GLASS_SIZE, .height = GLASS_SIZE},
+                .dst_box = box,
+                .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+            },
+        .clip_box = &box,
+        .corners = corners,
+        .rim = 0.3f,
+        .flare_across = across,
+        .liquid_scale = 1.0f,
+    };
+    fx_render_pass_add_texture(fx_get_render_pass(pass), &options);
+    ok &= check(wlr_render_pass_submit(pass), "submit");
+    ok &= check(read_buffer(fixture, target, DRM_FORMAT_ABGR8888, stride, out), "read the flared glass");
+  }
+  if (target != NULL) {
+    wlr_buffer_drop(target);
+  }
+  if (source != NULL) {
+    wlr_texture_destroy(source);
+  }
+  return ok;
+}
+
+static bool test_glass_flare_across(struct fixture* fixture) {
+  static uint8_t along[GLASS_SIZE * GLASS_SIZE][4], across[GLASS_SIZE * GLASS_SIZE][4], lone[GLASS_SIZE * GLASS_SIZE][4];
+  const struct fx_corner_fradii bottom_pair = {.bottom_right = -12.0f, .bottom_left = -12.0f};
+  // One end of a screen-edge bar whose other end has radius 0: it flares along the top edge, as a pair does.
+  const struct fx_corner_fradii top_right = {.top_right = -12.0f};
+  bool ok = flare_case(fixture, bottom_pair, false, along) && flare_case(fixture, bottom_pair, true, across)
+      && flare_case(fixture, top_right, false, lone);
+  if (!ok) {
+    return false;
+  }
+  // The bottom middle, 2 px above the box bottom: body along, below the body across.
+  const int bottom = (GLASS_SIZE - 3) * GLASS_SIZE + GLASS_SIZE / 2;
+  // Beside the left side, 2 px below the across body (box bottom - 12): inside the flare across.
+  const int fillet = (GLASS_SIZE - 10) * GLASS_SIZE + 0;
+  // Deep in the left flare's corner, 1 px from the box bottom and 11 px in: outside the concave flare across.
+  const int hollow = (GLASS_SIZE - 1) * GLASS_SIZE + 11;
+  ok &= check(along[bottom][3] == 255, "flares along the edge leave the body full height");
+  ok &= check(across[bottom][3] == 0, "flares across the edge end the body a flare above the box bottom");
+  ok &= check(across[fillet][3] == 255 && across[hollow][3] == 0, "a flare across hugs its side below the body");
+  // The top middle: inside a body that spans the box's height.
+  ok &= check(lone[GLASS_SIZE + GLASS_SIZE / 2][3] == 255, "a lone top corner flares along the top edge");
+  if (!ok) {
+    fprintf(stderr, "  alpha along bottom %u; across bottom %u fillet %u hollow %u; lone top %u\n", along[bottom][3],
+            across[bottom][3], across[fillet][3], across[hollow][3], lone[GLASS_SIZE + GLASS_SIZE / 2][3]);
+  }
+  return ok;
+}
+
 // A rotated shape's backdrop probe reads the backdrop under the shape: a white centre under a thin card turned 45
 // degrees reads white, though black fills most of the card's upright bounds.
 static bool test_glass_rotated_probe(struct fixture* fixture) {
@@ -3926,6 +4000,8 @@ int main(int argc, char* argv[]) {
     ok = test_glass_split(&fixture);
   } else if (strcmp(argv[1], "glass-rotated") == 0) {
     ok = test_glass_rotated(&fixture);
+  } else if (strcmp(argv[1], "glass-flare-across") == 0) {
+    ok = test_glass_flare_across(&fixture);
   } else if (strcmp(argv[1], "glass-rotated-probe") == 0) {
     ok = test_glass_rotated_probe(&fixture);
   } else if (strcmp(argv[1], "glass-turned-output-probe") == 0) {

@@ -377,6 +377,7 @@ struct fx_renderer {
     struct blur2_composite_shader blur2_with_effects_composite_corners;
     // CORNER_FLARES variants, for glass with negative corner radii (joined shapes).
     struct tex_shader tex_effects_flares_rgba;
+    struct tex_shader tex_effects_flares_rgbx;
     struct blur2_composite_shader blur2_composite_flares;
     struct blur2_composite_shader blur2_with_effects_composite_flares;
     struct blur2_composite_shader blur2_glass_composite;

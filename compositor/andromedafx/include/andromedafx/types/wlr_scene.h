@@ -276,6 +276,8 @@ struct wlr_scene_blur {
   int width, height;
 
   struct fx_corner_radii corners;
+  // The negative corner pair of one edge flares across that edge (wlr_scene_blur_set_flare_across).
+  bool flare_across;
   struct clipped_region clipped_region;
 
   float strength;
@@ -1030,6 +1032,10 @@ void wlr_scene_blur_set_corner_radius(struct wlr_scene_blur* blur, int corner_ra
  * Change the corners of an existing blur node.
  */
 void wlr_scene_blur_set_corner_radii(struct wlr_scene_blur* blur, struct fx_corner_radii);
+
+// True: the two negative (flared) corners of one edge flare across that edge, outward along the two sides; false
+// (default): along it.
+void wlr_scene_blur_set_flare_across(struct wlr_scene_blur* blur, bool across);
 
 /**
  * Make the blur node only blur the bottom layer of the scene

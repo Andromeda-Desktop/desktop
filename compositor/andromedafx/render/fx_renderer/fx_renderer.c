@@ -114,6 +114,7 @@ static inline void free_shaders(struct fx_renderer* renderer) {
   glDeleteProgram(renderer->shaders.blur2_with_effects_composite.blur.base.program);
   glDeleteProgram(renderer->shaders.blur2_with_effects_composite_corners.blur.base.program);
   glDeleteProgram(renderer->shaders.tex_effects_flares_rgba.program);
+  glDeleteProgram(renderer->shaders.tex_effects_flares_rgbx.program);
   glDeleteProgram(renderer->shaders.blur2_composite_flares.blur.base.program);
   glDeleteProgram(renderer->shaders.blur2_with_effects_composite_flares.blur.base.program);
   glDeleteProgram(renderer->shaders.blur2_glass_composite.blur.base.program);
@@ -683,6 +684,7 @@ static bool link_shaders(struct fx_renderer* renderer) {
   renderer->shaders.blur2_with_effects_composite_corners.variant = (struct blur2_composite_variant){true, true, false, false};
   // Joined glass shapes (negative corner radii) only: the flare code slows every other glass draw.
   renderer->shaders.tex_effects_flares_rgba.variant = (struct tex_shader_variant){SHADER_SOURCE_TEXTURE_RGBA, true, false, true};
+  renderer->shaders.tex_effects_flares_rgbx.variant = (struct tex_shader_variant){SHADER_SOURCE_TEXTURE_RGBX, true, false, true};
   renderer->shaders.blur2_composite_flares.variant = (struct blur2_composite_variant){false, true, true, false};
   renderer->shaders.blur2_with_effects_composite_flares.variant = (struct blur2_composite_variant){true, true, true, false};
   // Glass nodes: the composite applies the glass block, in place of a full-resolution level plus a tex draw.

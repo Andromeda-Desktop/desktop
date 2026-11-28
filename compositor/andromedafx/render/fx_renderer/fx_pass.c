@@ -2207,9 +2207,13 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   default:
     abort();
   }
-  // Glass of a joined shape: blur textures are RGBA with no sample box.
-  if (shader == &renderer->shaders.tex_effects_rgba && corners_flared(&fx_options->corners)) {
-    shader = &renderer->shaders.tex_effects_flares_rgba;
+  // Glass of a joined shape: a blur texture has no sample box; the strength and optimized blur buffers are RGBX.
+  if (corners_flared(&fx_options->corners)) {
+    if (shader == &renderer->shaders.tex_effects_rgba) {
+      shader = &renderer->shaders.tex_effects_flares_rgba;
+    } else if (shader == &renderer->shaders.tex_effects_rgbx) {
+      shader = &renderer->shaders.tex_effects_flares_rgbx;
+    }
   }
   if (!ensure_tex_program(shader)) {
     return;
@@ -2388,6 +2392,9 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
                 clip_box->height + (exact ? frac[3] : 0.0f));
     glUniform2f(shader->effects.position, clip_box->x + (exact ? frac[0] : 0.0f), clip_box->y + (exact ? frac[1] : 0.0f));
     uniform_corner_radii_set(&shader->effects.radius, &corners);
+    if (shader->effects.flare_across >= 0) {
+      glUniform1i(shader->effects.flare_across, fx_options->flare_across);
+    }
 
     glUniform2f(shader->effects.clip_size, clipped_region_box.width, clipped_region_box.height);
     glUniform2f(shader->effects.clip_position, clipped_region_box.x, clipped_region_box.y);
@@ -3481,6 +3488,9 @@ static void render_blur_composite(
                 clip_box->height + (exact ? frac[3] : 0.0f));
     glUniform2f(shader->corners.position, clip_box->x + (exact ? frac[0] : 0.0f), clip_box->y + (exact ? frac[1] : 0.0f));
     uniform_corner_radii_set(&shader->corners.radius, exact ? &exact_corners : &tex_options->corners);
+    if (shader->corners.flare_across >= 0) {
+      glUniform1i(shader->corners.flare_across, fx_options->flare_across);
+    }
 
     glUniform2f(shader->corners.clip_size, clipped_region_box.width, clipped_region_box.height);
     glUniform2f(shader->corners.clip_position, clipped_region_box.x, clipped_region_box.y);
@@ -3811,6 +3821,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     memcpy(tex_options->liquid_frac, fx_options->liquid_frac, sizeof(tex_options->liquid_frac));
     tex_options->liquid_radius = fx_options->liquid_radius;
     tex_options->liquid_rotation = fx_options->liquid_rotation;
+    tex_options->flare_across = fx_options->flare_across;
     tex_options->liquid_scale = fx_options->liquid_scale;
     tex_options->merge = fx_options->merge;
     memcpy(tex_options->light, fx_options->light, sizeof(tex_options->light));

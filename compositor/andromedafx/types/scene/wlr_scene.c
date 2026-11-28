@@ -2925,6 +2925,14 @@ void wlr_scene_blur_set_corner_radii(struct wlr_scene_blur* blur, struct fx_corn
   scene_node_update(&blur->node, NULL);
 }
 
+void wlr_scene_blur_set_flare_across(struct wlr_scene_blur* blur, bool across) {
+  if (blur->flare_across == across) {
+    return;
+  }
+  blur->flare_across = across;
+  scene_node_update(&blur->node, NULL);
+}
+
 void wlr_scene_blur_set_should_only_blur_bottom_layer(struct wlr_scene_blur* blur, bool should_only_blur_bottom_layer) {
   if (blur->should_only_blur_bottom_layer == should_only_blur_bottom_layer) {
     return;
@@ -4914,6 +4922,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                 : node_box_to_render(x, y, blur->liquid_box, data),
         .liquid_radius = blur->liquid_radius * data->scale,
         .liquid_rotation = blur->liquid_exact.width > 0.0 ? rotation_to_render(blur->liquid_rotation, data) : 0.0f,
+        .flare_across = blur->flare_across,
         .liquid_scale = data->scale * blur->content_scale,
     };
     if (blur->liquid_exact.width > 0.0 && !wlr_box_empty(&blur_options.liquid_box)) {

@@ -140,6 +140,9 @@ float glass_specular(float shine, float d, float band, float scale, vec2 normal,
 }
 
 #ifdef CORNER_FLARES
+// True: the two negative corners of one edge flare across that edge (outward along the two sides), not along it.
+uniform bool flare_across;
+
 // Coverage of the concave flare of the corner at `corner` (sign = outward direction from the box centre), radius
 // f > 0, along x (`along_x`) or y; -1 when rel is outside that flare's band.
 float flare_coverage(vec2 rel, vec2 corner, vec2 outward, float f, bool along_x) {
@@ -152,22 +155,23 @@ float flare_coverage(vec2 rel, vec2 corner, vec2 outward, float f, bool along_x)
 }
 
 // A negative radius is a concave flare of that size outside the box (only in CORNER_FLARES programs: the extra code
-// costs every glass pixel on Gen9 even when no radius is negative): the two negative corners of one edge flare
-// along that edge (a panel joined to a bar).
+// costs every glass pixel on Gen9 even when no radius is negative). Flares run along their edge: the two negative
+// corners of a side (left or right) flare along that side, any other negative corner along its top or bottom edge.
+// flare_across turns each one across its edge (a full-length bar's inner corners).
 float flare_alpha(vec2 rel, vec2 size, float tl, float tr, float bl, float br) {
   float c = -1.0;
-  if (tl < 0.0) c = max(c, flare_coverage(rel, vec2(0.0), vec2(-1.0, -1.0), -tl, tr < 0.0));
-  if (tr < 0.0) c = max(c, flare_coverage(rel, vec2(size.x, 0.0), vec2(1.0, -1.0), -tr, tl < 0.0));
-  if (bl < 0.0) c = max(c, flare_coverage(rel, vec2(0.0, size.y), vec2(-1.0, 1.0), -bl, br < 0.0));
-  if (br < 0.0) c = max(c, flare_coverage(rel, size, vec2(1.0, 1.0), -br, bl < 0.0));
+  if (tl < 0.0) c = max(c, flare_coverage(rel, vec2(0.0), vec2(-1.0, -1.0), -tl, (bl < 0.0) == flare_across));
+  if (tr < 0.0) c = max(c, flare_coverage(rel, vec2(size.x, 0.0), vec2(1.0, -1.0), -tr, (br < 0.0) == flare_across));
+  if (bl < 0.0) c = max(c, flare_coverage(rel, vec2(0.0, size.y), vec2(-1.0, 1.0), -bl, (tl < 0.0) == flare_across));
+  if (br < 0.0) c = max(c, flare_coverage(rel, size, vec2(1.0, 1.0), -br, (tr < 0.0) == flare_across));
   return c;
 }
 
-// A box with flares (negative radii) includes them: the body is the box less the flares on the two sides of the
-// joined edge.
+// A box with flares (negative radii) includes them: the body is the box less the flares.
 void flare_body(inout vec2 size, inout vec2 position, float tl, float tr, float bl, float br) {
   vec4 f = max(-vec4(tl, tr, bl, br), 0.0);
-  if ((tl < 0.0 && tr < 0.0) || (bl < 0.0 && br < 0.0)) {
+  bool side_pair = (tl < 0.0 && bl < 0.0) || (tr < 0.0 && br < 0.0);
+  if (side_pair == flare_across) {
     vec2 cut = vec2(max(f.x, f.z), max(f.y, f.w));
     position.x += cut.x;
     size.x -= cut.x + cut.y;

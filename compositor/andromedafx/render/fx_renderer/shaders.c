@@ -454,6 +454,7 @@ bool link_tex_program(
   shader->effects.radius.top_right = glGetUniformLocation(prog, "radius_top_right");
   shader->effects.radius.bottom_left = glGetUniformLocation(prog, "radius_bottom_left");
   shader->effects.radius.bottom_right = glGetUniformLocation(prog, "radius_bottom_right");
+  shader->effects.flare_across = glGetUniformLocation(prog, "flare_across");
 
   shader->effects.clip_size = glGetUniformLocation(prog, "clip_size");
   shader->effects.clip_position = glGetUniformLocation(prog, "clip_position");
@@ -606,6 +607,7 @@ bool link_blur2_composite_program(
   shader->corners.radius.top_right = glGetUniformLocation(prog, "radius_top_right");
   shader->corners.radius.bottom_left = glGetUniformLocation(prog, "radius_bottom_left");
   shader->corners.radius.bottom_right = glGetUniformLocation(prog, "radius_bottom_right");
+  shader->corners.flare_across = glGetUniformLocation(prog, "flare_across");
 
   shader->corners.clip_size = glGetUniformLocation(prog, "clip_size");
   shader->corners.clip_position = glGetUniformLocation(prog, "clip_position");

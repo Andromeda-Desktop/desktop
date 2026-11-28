@@ -174,6 +174,7 @@ namespace andromeda {
     if (!fx_corner_radii_eq(m_node->corners, corners)) {
       wlr_scene_blur_set_corner_radii(m_node, corners);
     }
+    wlr_scene_blur_set_flare_across(m_node, m_flareAcross);
     if (m_node->alpha != m_alpha) {
       wlr_scene_blur_set_alpha(m_node, m_alpha);
     }
@@ -370,6 +371,7 @@ namespace andromeda {
     }
     wlr_scene_node_lower_to_bottom(&copy->node);
     wlr_scene_blur_set_corner_radii(copy, m_node->corners);
+    wlr_scene_blur_set_flare_across(copy, m_node->flare_across);
     wlr_scene_blur_set_alpha(copy, m_node->alpha);
     wlr_scene_blur_set_should_only_blur_bottom_layer(copy, m_node->should_only_blur_bottom_layer);
     wlr_scene_blur_set_adaptive(copy, m_node->adaptive);

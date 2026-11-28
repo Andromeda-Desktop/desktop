@@ -14,7 +14,7 @@ namespace andromeda {
   public:
     // Values match dsk_surface_v1.property.
     enum class Property : uint8_t {
-      Translate, Scale, Opacity, Clip, Radius, Elevation, Liquid, Stroke, Tint, Join, Fill, FillDense, Blur, Solo, Rotation
+      Translate, Scale, Opacity, Clip, Radius, Elevation, Liquid, Stroke, Tint, Join, Fill, FillDense, Blur, Solo, Rotation, Corners
     };
     // Values match dsk_surface_v1.curve.
     enum class Curve : uint8_t {
@@ -29,7 +29,7 @@ namespace andromeda {
       uint32_t periodMs = 1000;
       uint32_t seed = 0;
     };
-    static constexpr std::size_t kPropertyCount = 15;
+    static constexpr std::size_t kPropertyCount = 16;
 
     using Value = std::array<double, 4>;
 

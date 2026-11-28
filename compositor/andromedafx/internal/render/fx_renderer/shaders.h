@@ -174,6 +174,7 @@ struct tex_shader {
     GLint size;
     GLint position;
     struct shader_corner_radii radius;
+    GLint flare_across; // -1 outside the CORNER_FLARES programs
 
     GLint clip_size;
     GLint clip_position;
@@ -281,6 +282,7 @@ struct blur2_composite_shader {
     GLint size;
     GLint position;
     struct shader_corner_radii radius;
+    GLint flare_across; // -1 outside the CORNER_FLARES programs
 
     GLint clip_size;
     GLint clip_position;
