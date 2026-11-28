@@ -43,6 +43,18 @@ void SettingsWindow::setCompositorSetting(const std::string& key, const std::str
   }
 }
 
+void SettingsWindow::setCompositorSettings(const std::vector<std::pair<std::string, std::string>>& writes) {
+  if (m_compositorSettings == nullptr || writes.empty()) {
+    return;
+  }
+  m_shownCompositorFailure.clear();
+  m_compositorSettings->commitBatch([&] {
+    for (const auto& [key, value] : writes) {
+      m_compositorSettings->set(key, value);
+    }
+  });
+}
+
 void SettingsWindow::addInputContent(
     float scale, const std::function<settings::SettingsContentContext()>& contentContext
 ) {

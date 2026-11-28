@@ -300,6 +300,8 @@ private:
   // Binds the compositor's settings manager for as long as Settings is open; a no-op when it is not advertised.
   void ensureCompositorSettings();
   void setCompositorSetting(const std::string& key, const std::string& value);
+  // One compositor change: one reload, one batch for subscribers.
+  void setCompositorSettings(const std::vector<std::pair<std::string, std::string>>& writes);
   void addDateTimeContent(float scale);
   void onDateTimeChanged();
   void addLanguageContent(float scale);

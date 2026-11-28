@@ -200,9 +200,7 @@ void SettingsWindow::setSettingOverrides(
     registryPatched = changed && !needsSceneRebuild && tryPatchSettingsRegistryOverrides(patchOverrides);
     resetPathsChanged = previousResetPaths != currentPageResetPaths();
   }
-  for (const auto& [key, value] : compositorWrites) {
-    setCompositorSetting(key, value);
-  }
+  setCompositorSettings(compositorWrites);
   if (overrides.empty()) {
     DeferredCall::callLaterIfAlive(m_aliveGuard, [this] { markSettingsWriteSuccess(!m_statusMessage.empty()); });
     return;
@@ -300,9 +298,7 @@ void SettingsWindow::mutateSettingOverrides(
     markSettingsWriteError(settingsMutationError(*m_config, i18n::tr("settings.errors.batch-write")));
     return;
   }
-  for (const auto& [key, value] : compositorWrites) {
-    setCompositorSetting(key, value);
-  }
+  setCompositorSettings(compositorWrites);
   const bool resetPathsChanged = previousResetPaths != currentPageResetPaths();
   DeferredCall::callLaterIfAlive(m_aliveGuard, [this, changed, needsSceneRebuild, resetPathsChanged] {
     finishSettingsWrite(changed, needsSceneRebuild, resetPathsChanged, false);
