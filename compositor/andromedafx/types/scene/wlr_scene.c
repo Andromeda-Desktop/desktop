@@ -4886,6 +4886,22 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
       }
       blur_options.backdrop_probe = blur->backdrop_probe;
       blur_options.probe_only = blur->probe_only;
+      // A window can reach past the output or lie partly under another: the probe reads only the part shown here.
+      const struct wlr_box glass_box = wlr_box_empty(&blur_options.liquid_box) ? dst_box : blur_options.liquid_box;
+      pixman_region32_t shown;
+      pixman_region32_init(&shown);
+      pixman_region32_copy(&shown, &node->visible);
+      pixman_region32_translate(&shown, -data->logical.x, -data->logical.y);
+      logical_to_buffer_coords(&shown, data, false);
+      pixman_region32_intersect_rect(&shown, &shown, glass_box.x, glass_box.y, glass_box.width, glass_box.height);
+      pixman_region32_intersect_rect(&shown, &shown, 0, 0, data->trans_width, data->trans_height);
+      const pixman_box32_t* extents = pixman_region32_extents(&shown);
+      blur_options.probe_box = (struct wlr_box){
+          extents->x1, extents->y1, extents->x2 - extents->x1, extents->y2 - extents->y1,
+      };
+      pixman_region32_subtract(&shown, &shown, &data->damage);
+      blur_options.probe_redrawn = !pixman_region32_not_empty(&shown);
+      pixman_region32_fini(&shown);
     }
     fx_render_pass_add_blur(fx_pass, &blur_options);
     break;

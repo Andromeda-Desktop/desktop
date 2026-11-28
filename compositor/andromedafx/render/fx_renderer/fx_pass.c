@@ -3555,17 +3555,14 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   // Glass fuses through the glass composite variants, except on a frame its backdrop probe reads the full-resolution
   // level.
   const bool glass = fx_options->liquid > 0.0f || fx_options->rim > 0.0f || fx_options->tint_mix[3] > 0.0f;
+  const struct wlr_box lens_box = tex_options->clip_box == NULL ? (struct wlr_box){0}
+      : wlr_box_empty(&fx_options->liquid_box)                 ? *tex_options->clip_box
+                                                               : fx_options->liquid_box;
   // The probe reads the full-resolution level, which is fresh only inside this frame's damage: a partial redraw (a
-  // caret blink) that does not hold the whole probe box captures nothing and keeps the fused path.
-  const struct wlr_box probe_box = tex_options->clip_box == NULL ? (struct wlr_box){0}
-      : wlr_box_empty(&fx_options->liquid_box)                  ? *tex_options->clip_box
-                                                                : fx_options->liquid_box;
-  const pixman_box32_t probe_extents = {
-      probe_box.x, probe_box.y, probe_box.x + probe_box.width, probe_box.y + probe_box.height
-  };
+  // caret blink) that does not hold the whole shown glass captures nothing and keeps the fused path.
+  const struct wlr_box probe_box = fx_options->probe_box;
   const bool probe_redrawn = fx_options->backdrop_probe != NULL && pass->group_depth == 0 && !wlr_box_empty(&probe_box)
-      && (tex_options->base.clip == NULL
-          || pixman_region32_contains_rectangle(tex_options->base.clip, &probe_extents) == PIXMAN_REGION_IN);
+      && fx_options->probe_redrawn;
   const bool probe_due = probe_redrawn && fx_backdrop_probe_due(fx_options->backdrop_probe);
   // A probe-only node widens no damage, so a partial redraw over it marks the probe stale; the next poll redraws it whole.
   if ((probe_redrawn && !probe_due)
@@ -3741,16 +3738,16 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   if (sharp_glass && fx_options->lens > 0.0f) {
     lens = wlr_texture;
   } else if (lens_enabled && glass && fx_options->lens > 0.0f && sharp != NULL
-             && (sharp == fbos->optimized_no_blur_buffer || shared) && !wlr_box_empty(&probe_box)) {
+             && (sharp == fbos->optimized_no_blur_buffer || shared) && !wlr_box_empty(&lens_box)) {
     // The cached or shared backdrop is not the pass target, so the lens samples it in place.
     lens = fx_texture_from_buffer(&renderer->wlr_renderer, sharp->buffer);
-  } else if (lens_enabled && glass && fx_options->lens > 0.0f && sharp != NULL && !wlr_box_empty(&probe_box)) {
+  } else if (lens_enabled && glass && fx_options->lens > 0.0f && sharp != NULL && !wlr_box_empty(&lens_box)) {
     struct fx_framebuffer* copy = ensure_offscreen_buffer(pass, &target_buffers(pass)->lens_source, true);
     if (copy != NULL) {
       pixman_region32_t region;
-      pixman_region32_init_rect(&region, probe_box.x, probe_box.y, probe_box.width, probe_box.height);
+      pixman_region32_init_rect(&region, lens_box.x, lens_box.y, lens_box.width, lens_box.height);
       frame_stats.lens++;
-      frame_stats.lens_px += (uint64_t)probe_box.width * (uint64_t)probe_box.height;
+      frame_stats.lens_px += (uint64_t)lens_box.width * (uint64_t)lens_box.height;
       if (fx_render_pass_read_to_buffer(pass, &region, copy, sharp)) {
         lens = fx_texture_from_buffer(&renderer->wlr_renderer, copy->buffer);
       }

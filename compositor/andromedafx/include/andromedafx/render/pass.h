@@ -261,6 +261,10 @@ struct fx_render_blur_pass_options {
   struct fx_liquid_merge merge; // see fx_render_texture_options.merge
   struct fx_backdrop_probe* backdrop_probe; // optional: sampled from the blurred region, see backdrop_probe.h
   bool probe_only; // samples backdrop_probe and draws nothing
+  // The part of the glass this output shows (buffer coords), which backdrop_probe averages; probe_redrawn: this frame's
+  // damage covers all of it, so the blurred level is fresh there.
+  struct wlr_box probe_box;
+  bool probe_redrawn;
   // An optimized blur under alpha 1 draws opaque: its sharp source mixed with the blur by alpha.
   bool fade_from_source;
 };
