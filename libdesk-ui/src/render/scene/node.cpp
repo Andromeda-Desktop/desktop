@@ -717,6 +717,10 @@ DamageRegion Node::takePendingDamage() {
 }
 
 void Node::dropMeasures() noexcept {
+  // Outside a pass every stored result belongs to an earlier pass, so none can be reused.
+  if (g_layoutDepth == 0) {
+    return;
+  }
   for (Node* node = this; node != nullptr; node = node->m_parent) {
     node->m_measured = {};
     ++node->m_measureDrops;
