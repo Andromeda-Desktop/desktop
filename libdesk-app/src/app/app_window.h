@@ -74,7 +74,8 @@ public:
     bool header = true; // false: a chromeless window (picture in picture); the content is the whole window
     bool moreMenu = false; // a More (…) circle before the window buttons: the commands by group (File, Edit, View, Go)
     bool sidebarToggle = false; // contentCard: a sidebar button before the caption title; it runs view.toggle-sidebar
-    // The content builder lays out for the width and height it gets: a resize rebuilds the scene, not only its layout.
+    // The content builder lays out for the width and height it gets: a size change rebuilds the scene, once an
+    // interactive resize ends.
     bool contentFollowsSize = false;
   };
 

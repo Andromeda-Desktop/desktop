@@ -1349,7 +1349,8 @@ void AppWindow::prepareFrame(bool needsLayout) {
   // Crossing the compact width swaps the sidebar between its full list and the icon rail, in place: a full rebuild
   // would tear down the whole file grid (thousands of nodes, 50-80 ms).
   const bool compact = width - 2.0F * static_cast<float>(m_surface->margin()) < kCompactWidth * m_uiScale;
-  if (m_config.contentFollowsSize && m_builtSize != std::pair{width, height}) {
+  // During an interactive resize the scene only relayouts; the size it ends at rebuilds once.
+  if (m_config.contentFollowsSize && !m_surface->state().resizing && m_builtSize != std::pair{width, height}) {
     m_rebuild = true;
   }
   if (m_root == nullptr || (m_rebuild && !m_buttonDown)) {

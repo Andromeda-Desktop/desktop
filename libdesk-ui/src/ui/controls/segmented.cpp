@@ -292,7 +292,7 @@ void Segmented::applyOuterStyle() {
   Flex::setPadding(m_outerPadding);
   setFill(colorSpecFromRole(m_surfaceRole, m_surfaceOpacity));
   if (m_surfaceStroke.has_value()) {
-    setBorder(colorSpecFromRole(*m_surfaceStroke), Style::borderWidth);
+    setBorder(colorSpecFromRole(*m_surfaceStroke), std::max(1.0F, Style::borderWidth * m_scale));
   } else {
     clearBorder();
   }

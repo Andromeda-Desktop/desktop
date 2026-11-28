@@ -874,6 +874,7 @@ name = 48.0            # Home phone name, weight 600 (the one off-scale size)
 name_line = 52.0
 live_width = 336.0     # Home: running cards column
 live_share = 0.42      # ... at most this share of the sky width
+live_art = 36.0        # Home: the player card's art tile (r8)
 callbar = 560.0        # call bar width, at most 70 % of the column
 callbar_top = 14.0     # call bar top on the Home sky
 callbar_band_top = 64.0  # call bar top on a page band, Mirror and Pair

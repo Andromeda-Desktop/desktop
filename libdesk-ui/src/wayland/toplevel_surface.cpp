@@ -315,6 +315,9 @@ void ToplevelSurface::handleToplevelConfigure(
       case XDG_TOPLEVEL_STATE_SUSPENDED:
         next.suspended = true;
         break;
+      case XDG_TOPLEVEL_STATE_RESIZING:
+        next.resizing = true;
+        break;
       default:
         break;
       }

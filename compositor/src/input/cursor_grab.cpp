@@ -138,6 +138,7 @@ namespace andromeda {
           .session = std::move(session),
       };
       m_grabButton = button;
+      view->setResizingState(true);
       updateInteractiveCursor(view);
       return true;
     }
@@ -165,6 +166,7 @@ namespace andromeda {
         .edges = edges,
     };
     m_grabButton = button;
+    view->setResizingState(true);
     view->beginFloatingResize(edges);
     updateInteractiveCursor(view);
     return true;
@@ -187,6 +189,9 @@ namespace andromeda {
     const bool restoreResizePresentation = std::holds_alternative<FloatingResizeGrab>(m_grab);
     if (std::holds_alternative<FloatingResizeGrab>(m_grab) && view != nullptr) {
       view->finishFloatingResize();
+    }
+    if ((std::holds_alternative<FloatingResizeGrab>(m_grab) || tiledResize != nullptr) && view != nullptr) {
+      view->setResizingState(false);
     }
     m_toplevelDrag = false;
     m_grab = PassthroughGrab{};

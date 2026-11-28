@@ -31,6 +31,7 @@ struct ToplevelState {
   bool activated = false;
   bool tiled = false; // any tiled edge
   bool suspended = false; // xdg suspended: minimized, on another workspace, locked or every output off
+  bool resizing = false;  // an interactive resize runs
   bool operator==(const ToplevelState&) const = default;
 };
 

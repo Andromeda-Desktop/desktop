@@ -321,7 +321,8 @@ void Flex::applyElevation() {
   if (m_elevation == nullptr || m_background == nullptr || m_shadows[0] == nullptr || m_shadows[1] == nullptr) {
     return;
   }
-  const bool light = isResolvedLightTheme();
+  const PaletteTone tone = paletteTone();
+  const bool light = tone == PaletteTone::Light || (tone == PaletteTone::Scheme && isResolvedLightTheme());
   const Tokens::Elevation& e = *m_elevation;
   const std::array<std::array<float, 3>, 2> layers{{
       {e.contactY, e.contactBlur, light ? e.contactLight : e.contactDark},
@@ -472,6 +473,7 @@ void Flex::ensureBackground() {
       }
   );
   m_background = static_cast<RectNode*>(addChild(std::move(rect)));
+  m_background->setParticipatesInLayout(false);
   m_background->setZIndex(-1);
   m_background->setParticipatesInLayout(false);
   m_background->setFrameSize(width(), height());

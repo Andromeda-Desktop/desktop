@@ -426,6 +426,13 @@ namespace andromeda {
     wlr_xwayland_surface_set_maximized(m_xsurface, m_xState.maximized, m_xState.maximized);
   }
 
+  void View::setResizingState(bool resizing) {
+    if (m_toplevel != nullptr) {
+      wlr_xdg_toplevel_set_resizing(m_toplevel, resizing);
+      transitionConfigure(ConfigureEvent::Scheduled);
+    }
+  }
+
   void View::setTiledState(uint32_t edges) {
     if (m_toplevel != nullptr) {
       wlr_xdg_toplevel_set_tiled(m_toplevel, edges);

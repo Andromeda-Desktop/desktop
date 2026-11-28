@@ -603,6 +603,8 @@ namespace andromeda {
     // Resend the current role state, answering a client request the compositor declined.
     void reassertRoleState();
     void setTiledState(uint32_t edges);
+    // xdg resizing: an interactive resize runs (set by the cursor's resize grabs).
+    void setResizingState(bool resizing);
     [[nodiscard]] bool shellParentRequested() const;
     // A window without a parent or dialog-like X11 window type opens tiled unless it has a fixed size and does not
     // request fullscreen.
