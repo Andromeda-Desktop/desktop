@@ -105,7 +105,8 @@ jobs:
             [[ $(basename "$package") =~ ^andromeda-(files|player|viewer|terminal|libdesk)-git- ]] || cp "$package" core/
           done
           # Link releases on its own tags; the repository carries its latest release.
-          gh release download -R Andromeda-Desktop/link -p 'andromeda-link-[0-9]*-x86_64.pkg.tar.zst' -D core \
+          gh release download -R Andromeda-Desktop/link -p 'andromeda-link-[0-9]*-x86_64.pkg.tar.zst' \
+            -p 'andromeda-link-window-[0-9]*-x86_64.pkg.tar.zst' -D core \
             || echo "::warning::no Link release: this release ships without Link"
           tools/repo-publish.sh arch repo core
           # upload-artifact rejects ':' in a path: the epoch in the file name becomes '.', as release assets name it.
