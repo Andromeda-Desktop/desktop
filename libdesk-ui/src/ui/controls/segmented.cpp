@@ -172,6 +172,15 @@ void Segmented::setSurfaceRole(ColorRole role) {
   applyOuterStyle();
 }
 
+void Segmented::setThumbRoles(ColorRole fill, ColorRole label) {
+  if (m_thumbFill == fill && m_thumbLabel == label) {
+    return;
+  }
+  m_thumbFill = fill;
+  m_thumbLabel = label;
+  refreshVariants();
+}
+
 void Segmented::setEnabled(bool enabled) {
   if (m_enabled == enabled) {
     return;
@@ -259,14 +268,15 @@ void Segmented::refreshVariants() {
     const Button::ButtonStateColors none{
         .bg = clearColorSpec(), .border = clearColorSpec(), .label = colorSpecFromRole(ColorRole::Label2)
     };
-    const Button::ButtonStateColors lens{
-        .bg = colorSpecFromRole(ColorRole::Lens), .border = colorSpecFromRole(ColorRole::LensEdge),
-        .label = colorSpecFromRole(ColorRole::Label1)
+    const bool lensThumb = m_thumbFill == ColorRole::Lens;
+    const Button::ButtonStateColors thumb{
+        .bg = colorSpecFromRole(m_thumbFill), .border = lensThumb ? colorSpecFromRole(ColorRole::LensEdge) : clearColorSpec(),
+        .label = colorSpecFromRole(m_thumbLabel)
     };
-    const auto& state = on ? lens : none;
+    const auto& state = on ? thumb : none;
     m_buttons[i]->setVariant(ButtonVariant::Ghost);
     m_buttons[i]->setCustomPalette(Button::ButtonPalette{
-        .borderWidth = on ? 0.5F * m_scale : 0.0F, .normal = state, .hover = state, .pressed = state,
+        .borderWidth = on && lensThumb ? 0.5F * m_scale : 0.0F, .normal = state, .hover = state, .pressed = state,
         .disabled = state
     });
     m_buttons[i]->setRadii(Radii{r, r, r, r});

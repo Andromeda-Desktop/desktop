@@ -41,6 +41,8 @@ public:
   void setEnabled(bool enabled);
   void setSurfaceOpacity(float opacity);
   void setSurfaceRole(ColorRole role);
+  // The selected segment's fill and label (default lens and label_1, with the lens edge).
+  void setThumbRoles(ColorRole fill, ColorRole label);
   [[nodiscard]] bool enabled() const noexcept { return m_enabled; }
 
   // When true, each segment gets flexGrow 1 so the group fills the available width (e.g. full bar).
@@ -72,5 +74,7 @@ private:
   float m_outerPadding = 2.0F;
   float m_surfaceOpacity = 1.0F;
   ColorRole m_surfaceRole = ColorRole::Fill1;
+  ColorRole m_thumbFill = ColorRole::Lens;
+  ColorRole m_thumbLabel = ColorRole::Label1;
   bool m_enabled = true;
 };
