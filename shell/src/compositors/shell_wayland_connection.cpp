@@ -29,7 +29,7 @@ namespace {
   constexpr std::uint32_t kExtSessionLockManagerVersion = 1;
   constexpr std::uint32_t kVirtualKeyboardManagerVersion = 1;
   constexpr std::uint32_t kGammaControlManagerVersion = 1;
-  constexpr std::uint32_t kDesktopShellVersion = 6;
+  constexpr std::uint32_t kDesktopShellVersion = 7;
   constexpr std::uint32_t kScreencopyManagerVersion = 3;
   constexpr std::uint32_t kImageCopyCaptureManagerVersion = 1;
   constexpr std::uint32_t kOutputImageCaptureSourceManagerVersion = 1;
@@ -72,6 +72,10 @@ namespace {
     static_cast<ShellWaylandConnection*>(data)->onShellRestarted();
   }
 
+  void shellFrameFrozen(void* data, dsk_shell_v1* /*shell*/, std::uint32_t serial) {
+    static_cast<ShellWaylandConnection*>(data)->onShellFrameFrozen(serial);
+  }
+
   constexpr dsk_shell_v1_listener kShellListener = {
       .action = shellAction,
       .lock_keys = shellLockKeys,
@@ -80,6 +84,7 @@ namespace {
       .relock = shellRelock,
       .recovered = shellRecovered,
       .restarted = shellRestarted,
+      .frame_frozen = shellFrameFrozen,
   };
 
   template <typename T> T* bindAs(wl_registry* registry, std::uint32_t name, const wl_interface& iface, std::uint32_t version) {
@@ -333,6 +338,30 @@ void ShellWaylandConnection::setRestartedCallback(std::function<void()> callback
   m_restartedCallback = std::move(callback);
   if (m_restartedCallback && std::exchange(m_restartedPending, false)) {
     m_restartedCallback();
+  }
+}
+
+bool ShellWaylandConnection::freezeFrame(std::uint32_t serial) {
+  if (m_desktopShell == nullptr || dsk_shell_v1_get_version(m_desktopShell) < DSK_SHELL_V1_FREEZE_FRAME_SINCE_VERSION) {
+    return false;
+  }
+  dsk_shell_v1_freeze_frame(m_desktopShell, serial);
+  return true;
+}
+
+void ShellWaylandConnection::thawFrame(std::uint32_t serial) {
+  if (m_desktopShell != nullptr && dsk_shell_v1_get_version(m_desktopShell) >= DSK_SHELL_V1_THAW_FRAME_SINCE_VERSION) {
+    dsk_shell_v1_thaw_frame(m_desktopShell, serial);
+  }
+}
+
+void ShellWaylandConnection::setFrameFrozenCallback(std::function<void(std::uint32_t serial)> callback) {
+  m_frameFrozenCallback = std::move(callback);
+}
+
+void ShellWaylandConnection::onShellFrameFrozen(std::uint32_t serial) {
+  if (m_frameFrozenCallback) {
+    m_frameFrozenCallback(serial);
   }
 }
 

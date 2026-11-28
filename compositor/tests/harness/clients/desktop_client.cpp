@@ -23,6 +23,7 @@
 //                                            send requests: "insert TEXT" (a backslash and n sends a newline), "key KEYSYM STATE" (decimal), "activity PID
 //                                            FLAGS", and "mark LABEL" prints "mark LABEL" after the compositor handled
 //                                            every earlier request. DESKTOP_CLIENT_SHELL_VERSION=2 binds version 2.
+//                                            With version 7: "freeze SERIAL" (prints "frozen SERIAL"), "thaw SERIAL".
 //                                            With version 6: "sleep-ready". With version 5: "shortcuts-open APP", "shortcut-add ID DESCRIPTION TRIGGER"
 //                                            ("-" for no trigger), "shortcuts-bind" and "shortcuts-close" drive one global
 //                                            shortcuts session, which prints "shortcut ID TRIGGER CONFLICT", "shortcuts-done",
@@ -181,6 +182,11 @@ namespace {
       .deactivated = onShortcutDeactivated,
   };
 
+  void onShellFrameFrozen(void*, dsk_shell_v1*, uint32_t serial) {
+    std::println("frozen {}", serial);
+    std::fflush(stdout);
+  }
+
   const dsk_shell_v1_listener kShell = {
       .action = onShellAction,
       .lock_keys = onShellLockKeys,
@@ -189,6 +195,7 @@ namespace {
       .relock = onShellRelock,
       .recovered = onShellRecovered,
       .restarted = onShellRestarted,
+      .frame_frozen = onShellFrameFrozen,
   };
 
   uint32_t gSettingsVersion = 2;
@@ -338,6 +345,10 @@ int main(int argc, char** argv) {
           dsk_global_shortcuts_session_v1_add_shortcut(
               shortcuts, id, description, std::string_view(trigger) == "-" ? "" : trigger
           );
+        } else if (text.starts_with("freeze ")) {
+          dsk_shell_v1_freeze_frame(state.shell, static_cast<uint32_t>(std::stoul(std::string(text.substr(7)))));
+        } else if (text.starts_with("thaw ")) {
+          dsk_shell_v1_thaw_frame(state.shell, static_cast<uint32_t>(std::stoul(std::string(text.substr(5)))));
         } else if (text == "sleep-ready") {
           dsk_shell_v1_sleep_ready(state.shell);
         } else if (text == "shortcuts-bind" && shortcuts != nullptr) {

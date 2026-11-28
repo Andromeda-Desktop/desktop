@@ -320,6 +320,38 @@ namespace andromeda {
     return std::unique_ptr<HeldFrame>(new HeldFrame(node, buffer->width, buffer->height));
   }
 
+  std::unique_ptr<HeldFrame>
+  HeldFrame::copy(wlr_output* output, wlr_renderer* renderer, wlr_buffer* frame, wlr_scene_tree* parent) {
+    if (output->allocator == nullptr || output->swapchain == nullptr) {
+      return nullptr;
+    }
+    wlr_buffer* copy = wlr_allocator_create_buffer(output->allocator, frame->width, frame->height, &output->swapchain->format);
+    if (copy == nullptr) {
+      return nullptr;
+    }
+    wlr_texture* texture = wlr_texture_from_buffer(renderer, frame);
+    wlr_render_pass* pass = texture != nullptr ? wlr_renderer_begin_buffer_pass(renderer, copy, nullptr) : nullptr;
+    bool ok = pass != nullptr;
+    if (ok) {
+      wlr_render_texture_options image{};
+      image.texture = texture;
+      image.dst_box = {.x = 0, .y = 0, .width = frame->width, .height = frame->height};
+      image.blend_mode = WLR_RENDER_BLEND_MODE_NONE;
+      wlr_render_pass_add_texture(pass, &image);
+      ok = wlr_render_pass_submit(pass);
+    }
+    if (texture != nullptr) {
+      wlr_texture_destroy(texture);
+    }
+    wlr_scene_buffer* node = ok ? wlr_scene_buffer_create(parent, copy) : nullptr;
+    wlr_buffer_drop(copy);
+    if (node == nullptr) {
+      return nullptr;
+    }
+    wlr_scene_buffer_set_transform(node, output->transform);
+    return std::unique_ptr<HeldFrame>(new HeldFrame(node, frame->width, frame->height));
+  }
+
   bool HeldFrame::loginHandoff() {
     const char* value = std::getenv("ANDROMEDA_LOGIN_HANDOFF");
     if (value == nullptr) {

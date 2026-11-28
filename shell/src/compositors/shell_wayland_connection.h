@@ -64,6 +64,11 @@ public:
   bool sendAppActivity(std::uint32_t pid, std::uint32_t flags);
   // dsk_shell_v1 version 6: the compositor's sleep hold may end without a lock.
   bool sendSleepReady();
+  // dsk_shell_v1 version 7: freezeFrame returns false on an older compositor (no frame_frozen comes).
+  bool freezeFrame(std::uint32_t serial);
+  void thawFrame(std::uint32_t serial);
+  void setFrameFrozenCallback(std::function<void(std::uint32_t serial)> callback);
+  void onShellFrameFrozen(std::uint32_t serial);
   bool insertText(const std::string& text);
   bool sendKey(std::uint32_t keysym, bool pressed);
   void onShellTextInputState(const TextInputState& state);
@@ -164,6 +169,7 @@ private:
   std::function<void(const TextInputState&)> m_textInputStateCallback;
   std::function<void()> m_relockCallback;
   std::function<void()> m_recoveredCallback;
+  std::function<void(std::uint32_t serial)> m_frameFrozenCallback;
   std::function<void()> m_restartedCallback;
   bool m_relockPending = false;
   bool m_restartedPending = false;

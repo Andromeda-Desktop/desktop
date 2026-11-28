@@ -157,6 +157,11 @@ namespace andromeda {
     [[nodiscard]] bool configuredWorkPending() const;
     // Part of the desktop and powered: a target for windows, focus, and rules.
     [[nodiscard]] bool onDesktop() const;
+    // Theme switch (dsk_shell_v1 freeze_frame / thaw_frame): what the output does with the snapshot for `serial`.
+    void onThemeFreeze(uint32_t serial);
+    void onThemeThaw(uint32_t serial);
+    // True while this output owes the shell its frame copy.
+    [[nodiscard]] bool themeCapturing() const noexcept;
     // A mirroring output leaves the desktop and follows `source`'s power, showing its frames letterboxed.
     [[nodiscard]] Output* mirrorSource() const { return m_mirrorSource; }
     // `applyState` false leaves the backend alone, for callers that already committed the output's power state.
@@ -520,6 +525,14 @@ namespace andromeda {
     std::vector<ForeignPlane> m_foreignPlanes; // until the first present
     bool m_awaitingFirstFrame = false;
     wl_event_source* m_heldFrameTimer = nullptr;
+    // Theme cross (dsk_shell_v1 freeze_frame): Capturing copies the next presented frame, Held shows it until
+    // thaw_frame or 1 s, Fading crosses it out. m_themeFrame exists exactly in Held and Fading.
+    enum class ThemeCross : uint8_t { Idle, Capturing, Held, Fading };
+    ThemeCross m_themeCross = ThemeCross::Idle;
+    std::unique_ptr<HeldFrame> m_themeFrame;
+    uint32_t m_themeSerial = 0;
+    wl_event_source* m_themeTimer = nullptr;
+    std::chrono::steady_clock::time_point m_themeLastStep;
     HeldFramePhase m_heldFramePhase = HeldFramePhase::Gone;
     std::chrono::steady_clock::time_point m_heldFrameLastStep{};
     void advanceHeldFrame(HeldFrameEvent event);
@@ -529,6 +542,10 @@ namespace andromeda {
     [[nodiscard]] bool heldFrameFits(const wlr_output_state* staged) const;
     void placeHeldFrame(const wlr_output_state* staged);
     void stepHeldFrame();
+    void setThemeCross(ThemeCross next);
+    void captureThemeFrame(wlr_buffer* frame);
+    void stepThemeFrame();
+    static int onThemeTimer(void* data);
     static int onHeldFrameTimer(void* data);
     DirectScanoutTracker m_directScanout;
     uint64_t m_lastEffectFrameMsec = 0;

@@ -279,7 +279,7 @@
     </event>
   </interface>
 
-  <interface name="dsk_shell_v1" version="6">
+  <interface name="dsk_shell_v1" version="7">
     <description summary="compositor-to-shell events">
       Bound by the desktop shell. Keybinds that drive the shell arrive as
       action events on the connection the shell already holds, so no process
@@ -365,6 +365,27 @@
       </description>
     </request>
 
+    <request name="freeze_frame" since="7">
+      <description summary="hold the current frame over every output">
+        Sent before a theme switch. Each enabled output copies the next frame
+        it presents and shows that copy above everything, so the switch
+        appears as one cross-fade. Answered by frame_frozen with the same
+        serial once every output holds its copy. The client must not draw the
+        switched look before frame_frozen. A freeze while a frame is held
+        takes the new serial and keeps the held frame. The compositor fades
+        the frame out on thaw_frame with this serial, or after 1 s.
+      </description>
+      <arg name="serial" type="uint" summary="the client's id for this switch"/>
+    </request>
+
+    <request name="thaw_frame" since="7">
+      <description summary="fade the held frame out">
+        The switched look is drawn and committed. Every output fades its held
+        frame out. A serial other than the last freeze_frame is ignored.
+      </description>
+      <arg name="serial" type="uint"/>
+    </request>
+
     <event name="action">
       <description summary="run a shell command">
         A command line in the shell's own command language, as typed after
@@ -429,6 +450,16 @@
         The previous compositor of this session stopped without a clean exit. Sent once, to the first shell that
         binds after the restart.
       </description>
+    </event>
+
+    <event name="frame_frozen" since="7">
+      <description summary="every output holds its frame">
+        Answers freeze_frame. The client may now draw the switched look.
+        Also sent when an output could not copy its frame or presented none
+        within 200 ms: that output then
+        switches without a fade.
+      </description>
+      <arg name="serial" type="uint"/>
     </event>
   </interface>
 

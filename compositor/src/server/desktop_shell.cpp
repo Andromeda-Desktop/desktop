@@ -4,6 +4,7 @@
 #include "desktop-unstable-v1-protocol.h"
 #include "input/keyboard.h"
 #include "input/text_input.h"
+#include "output/output.h"
 #include "server/global_shortcut_service.h"
 #include "server/server.h"
 
@@ -20,7 +21,7 @@ namespace andromeda {
   namespace {
 
     constexpr Logger kLog("desktop-shell");
-    constexpr uint32_t kVersion = 6;
+    constexpr uint32_t kVersion = 7;
     constexpr size_t kMaxAppActivity = 256;
 
     DesktopShell* shellFrom(wl_resource* resource) {
@@ -69,6 +70,9 @@ namespace andromeda {
   void DesktopShell::handleResourceDestroyed(wl_resource* resource) {
     if (DesktopShell* self = shellFrom(resource)) {
       std::erase(self->m_resources, resource);
+      if (self->m_freezeOwner == resource) {
+        self->m_freezeOwner = nullptr;
+      }
       if (std::erase_if(self->m_appActivity, [resource](const auto& entry) { return entry.second.owner == resource; })
           != 0) {
         self->m_server.scheduleQos();
@@ -312,7 +316,38 @@ namespace andromeda {
       .key = DesktopShell::handleKey,
       .get_global_shortcuts_session = DesktopShell::handleGetGlobalShortcutsSession,
       .sleep_ready = DesktopShell::handleSleepReady,
+      .freeze_frame = DesktopShell::handleFreezeFrame,
+      .thaw_frame = DesktopShell::handleThawFrame,
   };
+
+  void DesktopShell::handleFreezeFrame(wl_client* /*client*/, wl_resource* resource, uint32_t serial) {
+    DesktopShell* self = shellFrom(resource);
+    if (self == nullptr) {
+      return;
+    }
+    self->m_freezeOwner = resource;
+    self->m_freezeSerial = serial;
+    for (const auto& output : self->m_server.outputs()) {
+      output->onThemeFreeze(serial);
+    }
+    self->outputFrozen();
+  }
+
+  void DesktopShell::handleThawFrame(wl_client* /*client*/, wl_resource* resource, uint32_t serial) {
+    if (DesktopShell* self = shellFrom(resource); self != nullptr) {
+      for (const auto& output : self->m_server.outputs()) {
+        output->onThemeThaw(serial);
+      }
+    }
+  }
+
+  void DesktopShell::outputFrozen() {
+    if (m_freezeOwner == nullptr
+        || std::ranges::any_of(m_server.outputs(), [](const auto& output) { return output->themeCapturing(); })) {
+      return;
+    }
+    dsk_shell_v1_send_frame_frozen(std::exchange(m_freezeOwner, nullptr), m_freezeSerial);
+  }
 
   void DesktopShell::handleSleepReady(wl_client* /*client*/, wl_resource* resource) {
     if (DesktopShell* self = shellFrom(resource); self != nullptr) {

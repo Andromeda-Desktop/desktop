@@ -51,6 +51,8 @@ namespace andromeda {
     // Every pid with flags, as (pid, app_activity_flag bits).
     [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> appActivities() const;
     [[nodiscard]] bool boundBy(const wl_client* client) const;
+    // An output left theme capture; sends frame_frozen once no output captures.
+    void outputFrozen();
     // The pid of every client bound to dsk_shell_v1 (the shell, the lock screen).
     [[nodiscard]] std::vector<pid_t> clientPids() const;
 
@@ -65,6 +67,8 @@ namespace andromeda {
     static void handleKey(wl_client* client, wl_resource* resource, uint32_t keysym, uint32_t state);
     static void handleGetGlobalShortcutsSession(wl_client* client, wl_resource* resource, uint32_t id, const char* appId);
     static void handleSleepReady(wl_client* client, wl_resource* resource);
+    static void handleFreezeFrame(wl_client* client, wl_resource* resource, uint32_t serial);
+    static void handleThawFrame(wl_client* client, wl_resource* resource, uint32_t serial);
     static void handleResourceDestroyed(wl_resource* resource);
 
     void sendLockKeys(wl_resource* resource) const;
@@ -78,6 +82,9 @@ namespace andromeda {
     bool m_scrollLock = false;
     bool m_relocked = false;
     bool m_restartPending = false;
+    // The shell that sent the freeze_frame not yet answered; nullptr when none waits.
+    wl_resource* m_freezeOwner = nullptr;
+    uint32_t m_freezeSerial = 0;
     struct TextInputState {
       bool enabled = false;
       uint32_t purpose = 0;

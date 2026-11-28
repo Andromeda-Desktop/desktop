@@ -3,6 +3,7 @@
 
 #include "config/config.h"
 #include "protocols/async_file_writer.h"
+#include "server/desktop_shell.h"
 #include "config/resolve.h"
 #include "core/log.h"
 #include "core/scanout_keeper.h"
@@ -1935,6 +1936,13 @@ namespace andromeda {
   }
 
   Output::~Output() {
+    if (m_themeTimer != nullptr) {
+      wl_event_source_remove(m_themeTimer);
+    }
+    if (m_themeCross == ThemeCross::Capturing && m_server->desktopShell() != nullptr) {
+      m_themeCross = ThemeCross::Idle;
+      m_server->desktopShell()->outputFrozen();
+    }
     fx_renderer_cancel_kick(m_server->renderer(), onConfiguredRenderReady, this);
     if (m_frameState == FrameState::WaitingContext) {
       fx_renderer_cancel_kick(m_server->renderer(), onRendererHome, this);
@@ -2258,6 +2266,102 @@ namespace andromeda {
       wlr_output_schedule_frame(m_output);
     } else if (m_heldFramePhase == HeldFramePhase::Gone) {
       m_heldFrame.reset();
+    }
+  }
+
+  void Output::setThemeCross(ThemeCross next) {
+    using enum ThemeCross;
+    const ThemeCross from = m_themeCross;
+    const bool valid = (from == Idle && next == Capturing) || (from == Capturing && (next == Held || next == Idle))
+        || (from == Held && (next == Fading || next == Capturing)) || (from == Fading && (next == Idle || next == Capturing));
+    if (!valid) {
+      kLog.error("output '{}': theme cross {} -> {} rejected", m_output->name, static_cast<int>(from), static_cast<int>(next));
+      return;
+    }
+    m_themeCross = next;
+    if (next == Idle || next == Capturing) {
+      m_themeFrame.reset();
+    }
+    if (m_themeTimer == nullptr) {
+      m_themeTimer = wl_event_loop_add_timer(wl_display_get_event_loop(m_server->display()), onThemeTimer, this);
+    }
+    // Capturing waits at most 200 ms for a commit (an output that stops presenting must not block the shell).
+    wl_event_source_timer_update(m_themeTimer, next == Held ? 1000 : next == Capturing ? 200 : 0);
+    if (next == Fading) {
+      m_themeFrame->release(config().appearance.reduceMotion);
+      m_themeLastStep = std::chrono::steady_clock::now();
+    }
+    if (next != Idle) {
+      wlr_output_schedule_frame(m_output);
+    }
+    if (from == Capturing && m_server->desktopShell() != nullptr) {
+      m_server->desktopShell()->outputFrozen();
+    }
+  }
+
+  bool Output::themeCapturing() const noexcept { return m_themeCross == ThemeCross::Capturing; }
+
+  void Output::onThemeFreeze(uint32_t serial) {
+    if (!m_output->enabled) {
+      return;
+    }
+    m_themeSerial = serial;
+    // A held frame still shows the look before the first switch, so a newer switch keeps it.
+    if (m_themeCross == ThemeCross::Held) {
+      wl_event_source_timer_update(m_themeTimer, 1000);
+      return;
+    }
+    if (m_themeCross != ThemeCross::Capturing) {
+      setThemeCross(ThemeCross::Capturing);
+    }
+  }
+
+  void Output::onThemeThaw(uint32_t serial) {
+    if (m_themeCross == ThemeCross::Held && serial == m_themeSerial) {
+      setThemeCross(ThemeCross::Fading);
+    }
+  }
+
+  void Output::captureThemeFrame(wlr_buffer* frame) {
+    if (m_themeCross != ThemeCross::Capturing) {
+      return;
+    }
+    m_themeFrame = HeldFrame::copy(m_output, m_server->renderer(), frame, m_server->heldFrameTree());
+    if (m_themeFrame == nullptr) {
+      kLog.warn("output '{}': theme frame copy failed; switching without a fade", m_output->name);
+      setThemeCross(ThemeCross::Idle);
+      return;
+    }
+    int width = 0;
+    int height = 0;
+    wlr_output_effective_resolution(m_output, &width, &height);
+    m_themeFrame->setBox(m_sceneOutput->x, m_sceneOutput->y, width, height);
+    wlr_scene_node_raise_to_top(&m_server->heldFrameTree()->node);
+    setThemeCross(ThemeCross::Held);
+  }
+
+  int Output::onThemeTimer(void* data) {
+    auto* self = static_cast<Output*>(data);
+    if (self->m_themeCross == ThemeCross::Held) {
+      self->setThemeCross(ThemeCross::Fading);
+    } else if (self->m_themeCross == ThemeCross::Capturing) {
+      kLog.warn("output '{}': no frame within 200 ms of a theme freeze; switching without a fade", self->m_output->name);
+      self->setThemeCross(ThemeCross::Idle);
+    }
+    return 0;
+  }
+
+  void Output::stepThemeFrame() {
+    if (m_themeCross != ThemeCross::Fading) {
+      return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const double seconds = std::chrono::duration<double>(now - m_themeLastStep).count();
+    m_themeLastStep = now;
+    if (m_themeFrame->step(seconds)) {
+      wlr_output_schedule_frame(m_output);
+    } else {
+      setThemeCross(ThemeCross::Idle);
     }
   }
 
@@ -2879,6 +2983,7 @@ namespace andromeda {
     advanceHeldFrame(HeldFrameEvent::GreeterShown);
     const OutputFrameScope frameScope(*m_server);
     stepHeldFrame();
+    stepThemeFrame();
     // A disarm is a timerfd_settime syscall: only when armed.
     if (m_frameRetryArmed) {
       wl_event_source_timer_update(m_frameRetryTimer, 0);
@@ -3333,6 +3438,7 @@ namespace andromeda {
           if (m_mirrorTargets > 0) {
             keepFrameForMirrors(state.buffer, zoom);
           }
+          captureThemeFrame(state.buffer);
           m_lastCommitTearing = commitTearing;
           m_trackingPresentation = true;
           m_trackedPresentationCommitSeq = m_output->commit_seq;

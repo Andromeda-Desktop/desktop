@@ -6,7 +6,9 @@
 #include <memory>
 #include <vector>
 
+struct wlr_buffer;
 struct wlr_output;
+struct wlr_renderer;
 struct wlr_scene_buffer;
 struct wlr_scene_tree;
 
@@ -35,6 +37,8 @@ namespace andromeda {
     // True when the greeter started this session moments ago (ANDROMEDA_LOGIN_HANDOFF = its epoch seconds, at most
     // 15 s old): a TTY start, a restart or a crash recovery never holds the console's frame.
     static bool loginHandoff();
+    // A copy of `frame` (a committed output buffer) on the renderer; empty when the copy fails.
+    static std::unique_ptr<HeldFrame> copy(wlr_output* output, wlr_renderer* renderer, wlr_buffer* frame, wlr_scene_tree* parent);
     [[nodiscard]] int bufferWidth() const noexcept { return m_bufferWidth; }
     [[nodiscard]] int bufferHeight() const noexcept { return m_bufferHeight; }
     ~HeldFrame();
