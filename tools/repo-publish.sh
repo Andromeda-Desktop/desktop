@@ -108,7 +108,10 @@ unlock() {
 }
 acquire() {
   local tree held born
-  tree=$(gh api "repos/$repo/git/commits/${GITHUB_SHA:?}" -q .tree.sha)
+  # A one-file tree: a copy of the run's tree carries workflow files, and once main's differ the workflow token may
+  # not create a ref to it (HTTP 403).
+  tree=$(gh api "repos/$repo/git/trees" -f 'tree[][path]=lock' -f 'tree[][mode]=100644' -f 'tree[][type]=blob' \
+    -f "tree[][content]=run ${GITHUB_RUN_ID:-local}" -q .sha)
   lock_sha=$(gh api "repos/$repo/git/commits" -f message="repo-publish lock, run ${GITHUB_RUN_ID:-local}" -f tree="$tree" -q .sha)
   # 45 min of waits: longer than the 30 min after which a lock is stale (a cancelled run never unlocks), so a waiter
   # takes a dead lock instead of giving up just before it may.
