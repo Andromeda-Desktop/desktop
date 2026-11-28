@@ -14,6 +14,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <utility>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -73,9 +74,12 @@ public:
     bool header = true; // false: a chromeless window (picture in picture); the content is the whole window
     bool moreMenu = false; // a More (…) circle before the window buttons: the commands by group (File, Edit, View, Go)
     bool sidebarToggle = false; // contentCard: a sidebar button before the caption title; it runs view.toggle-sidebar
+    // The content builder lays out for the width and height it gets: a resize rebuilds the scene, not only its layout.
+    bool contentFollowsSize = false;
   };
 
-  // Builds the content under the header; called on open, on requestRebuild() and when the scale changes.
+  // Builds the content under the header; called on open, on requestRebuild(), when the scale changes and, with
+  // Config::contentFollowsSize, when the window size changes.
   using ContentBuilder = std::function<std::unique_ptr<Node>(Renderer& renderer, float width, float height)>;
   // The full-height sidebar left of the header and content (rulebook §9.12, Settings-style opaque sidebar).
   using SidebarBuilder = std::function<std::unique_ptr<Node>(Renderer& renderer, float width, float height)>;
@@ -436,6 +440,7 @@ private:
   AnimationManager m_animations;
   InputDispatcher m_input;
   bool m_rebuild = true;
+  std::pair<float, float> m_builtSize{}; // window size of the last buildScene
   bool m_buttonDown = false;
   int m_buttonsHeld = 0;
   bool m_pointerInside = false;
