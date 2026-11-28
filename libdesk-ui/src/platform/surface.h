@@ -11,6 +11,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -122,9 +123,11 @@ public:
   // Declares the whole surface opaque, or not, from its next commit, so the compositor can skip what lies beneath it.
   virtual void setOpaque(bool opaque) = 0;
   virtual void clearBlurRegion() = 0;
-  // The compositor draws `card` as one glass shape (blur, rim, tint, density) where it can; otherwise it blurs the
-  // rounded rect. Returns true when the compositor draws the material tint, so the client paints no fill.
-  virtual bool setGlassCard(const GlassCard& card);
+  // The compositor draws each card as one glass shape (blur, rim, tint, density) where it can; otherwise it blurs the
+  // rounded rects. Cards from an earlier call that this one omits disappear. Returns true when the compositor draws the
+  // material tint, so the client paints no fill.
+  virtual bool setGlassCards(std::span<const GlassCard> cards);
+  bool setGlassCard(const GlassCard& card) { return setGlassCards({&card, 1}); }
   virtual void clearGlassCard() { clearBlurRegion(); }
   // Renders at this fraction of the output resolution, for a backdrop that is soft anyway. Needs viewport scaling;
   // without it the surface renders at full resolution.

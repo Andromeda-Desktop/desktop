@@ -418,36 +418,52 @@ DskSurfaceClient* WaylandSurface::dsk() {
   return m_dsk.get();
 }
 
-bool WaylandSurface::setGlassCard(const GlassCard& card) {
-  if (DskSurfaceClient* client = m_cardShape == nullptr ? dsk() : nullptr; client != nullptr && client->hasShapes()) {
-    m_cardShape = std::make_unique<DskShapeClient>(*client);
-  }
-  if (m_cardShape == nullptr) {
-    return Surface::setGlassCard(card);
+bool WaylandSurface::setGlassCards(std::span<const GlassCard> cards) {
+  DskSurfaceClient* client = dsk();
+  if (client == nullptr || !client->hasShapes()) {
+    return Surface::setGlassCards(cards);
   }
   clearBlurRegion();
-  const auto w = static_cast<double>(card.rect.width);
-  const auto h = static_cast<double>(card.rect.height);
-  m_cardShape->set(DskSurfaceClient::Property::Clip, {static_cast<double>(card.rect.x), static_cast<double>(card.rect.y), w, h});
-  m_cardShape->set(DskSurfaceClient::Property::Radius, {std::min({static_cast<double>(card.radius), w * 0.5, h * 0.5}), 0.0, 0.0, 0.0});
-  setGlassMaterial(*m_cardShape, *m_dsk, &card.material);
-  const bool compositorTint = m_dsk->hasTintProperty() && Style::compositorDrawsTint();
-  if (m_dsk->hasTintProperty()) {
-    m_cardShape->set(
-        DskSurfaceClient::Property::Tint,
-        glassTintValue(materialRole(), compositorTint ? card.material.tint : 0.0F, card.node)
-    );
+  while (m_cardShapes.size() < cards.size()) {
+    m_cardShapes.push_back(std::make_unique<DskShapeClient>(*client));
   }
-  m_dsk->setOnDensity(card.onDensity);
+  const bool compositorTint = m_dsk->hasTintProperty() && Style::compositorDrawsTint();
+  std::function<void(float)> onDensity;
+  for (std::size_t i = 0; i < m_cardShapes.size(); ++i) {
+    DskShapeClient& shape = *m_cardShapes[i];
+    if (i >= cards.size()) {
+      shape.set(DskSurfaceClient::Property::Clip, {});
+      continue;
+    }
+    const GlassCard& card = cards[i];
+    const auto w = static_cast<double>(card.rect.width);
+    const auto h = static_cast<double>(card.rect.height);
+    shape.set(DskSurfaceClient::Property::Clip, {static_cast<double>(card.rect.x), static_cast<double>(card.rect.y), w, h});
+    shape.set(DskSurfaceClient::Property::Radius, {std::min({static_cast<double>(card.radius), w * 0.5, h * 0.5}), 0.0, 0.0, 0.0});
+    setGlassMaterial(shape, *m_dsk, &card.material);
+    if (m_dsk->hasTintProperty()) {
+      shape.set(
+          DskSurfaceClient::Property::Tint,
+          glassTintValue(materialRole(), compositorTint ? card.material.tint : 0.0F, card.node)
+      );
+    }
+    if (!onDensity && card.onDensity) {
+      onDensity = card.onDensity;
+    }
+  }
+  // The compositor measures one density per surface.
+  m_dsk->setOnDensity(std::move(onDensity));
   return compositorTint;
 }
 
 void WaylandSurface::clearGlassCard() {
-  if (m_cardShape == nullptr) {
+  if (m_cardShapes.empty()) {
     clearBlurRegion();
     return;
   }
-  m_cardShape->set(DskSurfaceClient::Property::Clip, {});
+  for (const auto& shape : m_cardShapes) {
+    shape->set(DskSurfaceClient::Property::Clip, {});
+  }
 }
 
 FrameStatsSink* WaylandSurface::frameStats(bool create) {
@@ -467,7 +483,7 @@ void WaylandSurface::destroySurface() {
   m_frameStats.reset();
   cancelFrameCallback();
   releaseRenderState();
-  m_cardShape.reset();
+  m_cardShapes.clear();
   m_dsk.reset();
 
   if (m_backgroundEffect != nullptr) {

@@ -35,7 +35,7 @@ public:
   void setBlurRegion(const std::vector<InputRect>& rects) override;
   void setOpaque(bool opaque) override;
   void clearBlurRegion() override;
-  bool setGlassCard(const GlassCard& card) override;
+  bool setGlassCards(std::span<const GlassCard> cards) override;
   void clearGlassCard() override;
 
   [[nodiscard]] wl_surface* wlSurface() const noexcept { return m_surface; }
@@ -85,7 +85,7 @@ private:
   std::unique_ptr<FrameStats> m_frameStats;
   // The one dsk_surface_v1 of m_surface (a second is a protocol error): glass card, secure flag and presence share it.
   std::unique_ptr<DskSurfaceClient> m_dsk;
-  std::unique_ptr<DskShapeClient> m_cardShape;
+  std::vector<std::unique_ptr<DskShapeClient>> m_cardShapes;
   ext_background_effect_surface_v1* m_backgroundEffect = nullptr;
   wp_viewport* m_viewport = nullptr;
   wp_fractional_scale_v1* m_fractionalScale = nullptr;

@@ -182,11 +182,7 @@ void ToastOverlay::prepareFrame() {
         .height = height,
     }));
     row->setPadding(0.0F, Tokens::spaceP16 * s, 0.0F, Tokens::spaceP12 * s);
-    m_glassConn = bindIslandTone(m_root, [this, row] {
-      if (m_root != nullptr) {
-        row->setFill(colorSpecFromRole(materialRole(), Style::islandGlass().tint));
-      }
-    });
+    m_glassConn = bindIslandTone(m_root, [this] { m_surface->requestLayout(); });
     row->addChild(ui::glyph({
         .out = &m_glyph,
         .glyph = std::string("check"),
@@ -212,10 +208,14 @@ void ToastOverlay::prepareFrame() {
   row->layout(renderer);
   const float x = std::round((width - row->width()) * 0.5F);
   row->setPosition(x, 0.0F);
-  const auto radius = height * 0.5F;
-  m_surface->setBlurRegion(Surface::tessellateRoundedRect(
-      static_cast<int>(x), 0, static_cast<int>(std::ceil(row->width())), static_cast<int>(height), radius
-  ));
+  const glass::Material material = Style::islandGlass();
+  const bool compositorTint = m_surface->setGlassCard(GlassCard{
+      .rect = {static_cast<int>(x), 0, static_cast<int>(std::ceil(row->width())), static_cast<int>(height)},
+      .radius = height * 0.5F,
+      .material = material,
+      .node = row,
+  });
+  row->setFill(compositorTint ? clearColorSpec() : colorSpecFromRole(materialRole(), material.tint));
   m_glass.apply(*m_surface, GlassSurface::Kind::Shape);
   if (first) {
     m_glass.set(Property::Scale, scalar(kScaleFrom));

@@ -1833,7 +1833,13 @@ void WindowSwitcher::positionPanel(Instance& instance, float screenW, float scre
     );
   }
 
-  std::vector<InputRect> blurRects;
+  // The panel, the tiles and the count pill paint their own tint; the cards carry blur, rim and lens.
+  glass::Material material = Style::islandGlass();
+  material.tint = 0.0F;
+  std::vector<GlassCard> cards;
+  const auto card = [&cards, &material](const InputRect& rect, float radius) {
+    cards.push_back(GlassCard{.rect = rect, .radius = radius, .material = material});
+  };
   if (layout.boxed && instance.panelBackground != nullptr) {
     float left = 0.0F;
     float top = 0.0F;
@@ -1844,12 +1850,9 @@ void WindowSwitcher::positionPanel(Instance& instance, float screenW, float scre
     const int blurY = static_cast<int>(std::floor(top));
     const int blurW = std::max(1, static_cast<int>(std::ceil(right) - std::floor(left)));
     const int blurH = std::max(1, static_cast<int>(std::ceil(bottom) - std::floor(top)));
-    auto strips =
-        Surface::tessellateRoundedRect(blurX, blurY, blurW, blurH, Style::scaledRadiusXl(instance.uiLayoutScale));
-    blurRects.insert(blurRects.end(), strips.begin(), strips.end());
+    card({blurX, blurY, blurW, blurH}, Style::scaledRadiusXl(instance.uiLayoutScale));
   }
-  // The compositor draws the blur region as separate rounded shapes; overlapping parts merge into one shape it cannot
-  // read, and it then covers the whole region with one sheet. A part that touches a part of a tile in front drops out.
+  // A part that touches a part of a tile in front drops out: its glass would show through the front tile's.
   struct BlurPart {
     int x0, y0, x1, y1;
     std::int32_t z;
@@ -1881,10 +1884,7 @@ void WindowSwitcher::positionPanel(Instance& instance, float screenW, float scre
     if (covered) {
       continue;
     }
-    auto strips = Surface::tessellateRoundedRect(
-        part.x0, part.y0, part.x1 - part.x0, part.y1 - part.y0, Style::scaledRadiusXl(instance.uiLayoutScale)
-    );
-    blurRects.insert(blurRects.end(), strips.begin(), strips.end());
+    card({part.x0, part.y0, part.x1 - part.x0, part.y1 - part.y0}, Style::scaledRadiusXl(instance.uiLayoutScale));
   }
   if (instance.countBackground != nullptr) {
     float left = 0.0F;
@@ -1896,11 +1896,9 @@ void WindowSwitcher::positionPanel(Instance& instance, float screenW, float scre
     const int blurY = static_cast<int>(std::floor(top));
     const int blurW = std::max(1, static_cast<int>(std::ceil(right) - std::floor(left)));
     const int blurH = std::max(1, static_cast<int>(std::ceil(bottom) - std::floor(top)));
-    auto strips =
-        Surface::tessellateRoundedRect(blurX, blurY, blurW, blurH, Style::scaledRadiusMd(instance.uiLayoutScale));
-    blurRects.insert(blurRects.end(), strips.begin(), strips.end());
+    card({blurX, blurY, blurW, blurH}, Style::scaledRadiusMd(instance.uiLayoutScale));
   }
-  instance.surface->setBlurRegion(blurRects);
+  instance.surface->setGlassCards(cards);
   instance.glass.apply(*instance.surface, GlassSurface::Kind::Shape);
 }
 

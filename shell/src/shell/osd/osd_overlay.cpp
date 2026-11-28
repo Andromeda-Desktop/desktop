@@ -737,7 +737,7 @@ void OsdOverlay::buildScene(Instance& inst, std::uint32_t width, std::uint32_t h
   const float gap = innerGap(s);
 
   inst.sceneRoot = ui::node({});
-  inst.glassConn = bindIslandTone(inst.sceneRoot);
+  inst.glassConn = bindIslandTone(inst.sceneRoot, [this, &inst] { updateBlurRegion(inst); });
   inst.sceneRoot->setSize(w, h);
   inst.sceneRoot->setOpacity(1.0F);
   inst.surface->setSceneRoot(inst.sceneRoot.get());
@@ -852,7 +852,7 @@ void OsdOverlay::updateInstanceContent(Instance& inst) {
   // Card frame size is animated during reveal; measure layout against intrinsic size.
   const float cw = cardWidth(s, m_lastOrientation);
   const float ch = cardHeight(s, m_lastOrientation, m_lastShowProgress);
-  inst.background->setFill(colorSpecFromRole(materialRole(), osdBackgroundOpacity(m_config)));
+  inst.background->setFill(inst.compositorTint ? clearColorSpec() : colorSpecFromRole(materialRole(), osdBackgroundOpacity(m_config)));
   inst.background->setBorder(osdBorderColor(m_config), osdBorderWidth(m_config, s));
 
   const ColorRole glyphRole = m_content.overLimit ? ColorRole::Danger
@@ -904,7 +904,7 @@ void OsdOverlay::updateBlurRegion(Instance& inst) const {
     return;
   }
   if (!inst.reveal.visible()) {
-    inst.surface->clearBlurRegion();
+    inst.surface->clearGlassCard();
     return;
   }
 
@@ -913,7 +913,11 @@ void OsdOverlay::updateBlurRegion(Instance& inst) const {
   const int rw = std::max(1, static_cast<int>(std::ceil(inst.background->width())));
   const int rh = std::max(1, static_cast<int>(std::ceil(inst.background->height())));
   const float radius = osdCardRadius(inst.background->width(), inst.background->height(), inst.uiLayoutScale);
-  inst.surface->setBlurRegion(Surface::tessellateRoundedRect(rx, ry, rw, rh, radius));
+  glass::Material material = Style::islandGlass();
+  material.tint = osdBackgroundOpacity(m_config);
+  inst.compositorTint = inst.surface->setGlassCard(GlassCard{
+      .rect = {rx, ry, rw, rh}, .radius = radius, .material = material, .node = inst.background});
+  inst.background->setFill(inst.compositorTint ? clearColorSpec() : colorSpecFromRole(materialRole(), material.tint));
   inst.glass.apply(*inst.surface, GlassSurface::Kind::Shape);
 }
 

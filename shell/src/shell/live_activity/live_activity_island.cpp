@@ -2400,8 +2400,9 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
   const auto iy = static_cast<int>(cur.y * k);
   const auto iw = std::max(1, static_cast<int>(cur.w * k));
   const auto ih = std::max(1, static_cast<int>(cur.h * k));
-  // With the compositor its clip and radius are the blur shape, so the region stays the whole surface during a morph.
-  std::vector<InputRect> blur = shown <= 0.01F ? std::vector<InputRect>{}
+  // dsk shapes carry the glass. A dsk without shapes blurs its surface clip, so the region stays the whole surface
+  // during a morph.
+  std::vector<InputRect> blur = shown <= 0.01F || inst.cardShape != nullptr ? std::vector<InputRect>{}
       : inst.dsk != nullptr
           ? std::vector<InputRect>{InputRect{0, 0, static_cast<int>(maxW * k), static_cast<int>(maxH * k)}}
           : Surface::tessellateRoundedRect(ix, iy, iw, ih, cur.radius * k);

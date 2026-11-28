@@ -105,6 +105,8 @@ private:
     AnimationManager animations;
     std::unique_ptr<Node> sceneRoot;
     Signal<>::ScopedConnection glassConn;
+    // The compositor draws the card tint, so the background paints no fill.
+    bool compositorTint = false;
     wl_surface* wlSurface = nullptr;
 
     Node* card = nullptr;
