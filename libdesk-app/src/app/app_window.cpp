@@ -37,6 +37,7 @@
 #include "ui/controls/label.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 #include "core/input/cursor_shape.h"
 
@@ -1088,17 +1089,7 @@ namespace {
     if (path.empty()) {
       return;
     }
-    std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    const std::filesystem::path partial = path.string() + ".part";
-    {
-      std::ofstream out(partial, std::ios::trunc);
-      out << std::format("{:.6f}\n", tint);
-      if (!out) {
-        return;
-      }
-    }
-    std::filesystem::rename(partial, path, ec);
+    andromeda::writeFileAsync(path, std::format("{:.6f}\n", tint));
   }
 } // namespace
 
@@ -1509,7 +1500,7 @@ std::unique_ptr<Node> AppWindow::buildUpdateButton(bool folded) {
       .customPalette = colors,
       .tooltip = i18n::tr("desk.window.update-ready", "version", *m_updateVersion),
       .paddingH = folded ? 0.0F : Tokens::spaceP8 * s,
-      .radius = Tokens::radiusR8 * s,
+      .radius = Style::scaledRadius(Tokens::radiusR8, s),
       .width = folded ? std::optional(side) : std::nullopt,
       .onClick = [this] { m_onUpdateRestart(); },
   });
