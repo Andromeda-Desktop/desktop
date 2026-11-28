@@ -15,6 +15,9 @@ namespace {
   constexpr GLenum kRgba16f = 0x881A;      // GL_RGBA16F (ES 3)
   constexpr GLenum kHalfFloat = 0x140B;    // GL_HALF_FLOAT (ES 3)
   constexpr GLenum kHalfFloatOes = 0x8D61; // GL_HALF_FLOAT_OES (OES_texture_half_float)
+  // While the camera moves, the layers render at this share of the resolution (a quarter of the fill); the still after
+  // it renders in full.
+  constexpr float movingResolution(bool moving) { return moving ? 0.5F : 1.0F; }
   // RGBA8 fallback: light is stored at this share so the core can add up past 1 before it clips.
   constexpr float kLdrGain = 0.25F;
   constexpr std::size_t kMaxLayers = 2;
@@ -344,7 +347,7 @@ void GalaxyProgram::renderLayers(Layers& layers, const GalaxyDraw& d) {
   const auto h = static_cast<float>(layers.height);
   const GalaxyMat4 m = galaxyViewProjection(d.camera, w, h);
   const float k = h / std::tan(kFov / 2.0F) / 2.0F;
-  const float dpr = std::min(d.scale, 2.0F);
+  const float dpr = std::min(d.scale, 2.0F) * movingResolution(d.moving);
 
   // While the camera moves, every second point at twice the alpha: the same light on average, half the fill.
   const int step = d.moving ? 2 : 1;
@@ -416,8 +419,9 @@ void GalaxyProgram::draw(const GalaxyDraw& d) {
       || !ensurePrograms()) {
     return;
   }
-  const int width = std::max(1, static_cast<int>(std::lround(d.quadWidth * d.scale)));
-  const int height = std::max(1, static_cast<int>(std::lround(d.quadHeight * d.scale)));
+  const float resolution = d.scale * movingResolution(d.moving);
+  const int width = std::max(1, static_cast<int>(std::lround(d.quadWidth * resolution)));
+  const int height = std::max(1, static_cast<int>(std::lround(d.quadHeight * resolution)));
   ensureBuffers(*d.points);
   Layers* layers = layersFor(d.key, width, height);
   if (layers == nullptr) {
