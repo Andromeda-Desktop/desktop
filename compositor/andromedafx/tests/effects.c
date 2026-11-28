@@ -2424,7 +2424,7 @@ static bool backdrop_probe_sample(
     glBindTexture(texture->target, texture->tex);
     glTexParameteri(texture->target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     fx_backdrop_probe_capture(
-        probe, texture->tex, texture->target, 8, 8, &(struct wlr_box){.x = 2, .y = 2, .width = 4, .height = 4}, false
+        probe, texture->tex, texture->target, 8, 8, &(struct wlr_box){.x = 2, .y = 2, .width = 4, .height = 4}, false, NULL
     );
     ok &= check(fx_backdrop_probe_pending(probe), "capture leaves a sample in flight");
     ok &= check(wlr_render_pass_submit(pass), "submit");

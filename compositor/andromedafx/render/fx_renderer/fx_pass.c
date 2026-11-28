@@ -3561,12 +3561,23 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   // The probe reads the full-resolution level, which is fresh only inside this frame's damage: a partial redraw (a
   // caret blink) that does not hold the whole shown glass captures nothing and keeps the fused path.
   const struct wlr_box probe_box = fx_options->probe_box;
+  // Glass over the cache reads the same backdrop until the cache re-renders, the glass moves or its blur changes: a
+  // redraw for the window's own content then needs no capture and leaves the probe fresh.
+  const struct fx_backdrop_probe_source cache_source = {
+      .cache = use_optimized,
+      .cache_generation = fbos->optimized_blur_generation,
+      .box = probe_box,
+      .strength = fx_options->blur_strength,
+      .linear = pass->has_color_transform,
+  };
+  const bool probe_unchanged = fx_backdrop_probe_sampled(fx_options->backdrop_probe, &cache_source);
   const bool probe_redrawn = fx_options->backdrop_probe != NULL && pass->group_depth == 0 && !wlr_box_empty(&probe_box)
-      && fx_options->probe_redrawn;
+      && fx_options->probe_redrawn && !probe_unchanged;
   const bool probe_due = probe_redrawn && fx_backdrop_probe_due(fx_options->backdrop_probe);
   // A probe-only node widens no damage, so a partial redraw over it marks the probe stale; the next poll redraws it whole.
   if ((probe_redrawn && !probe_due)
-      || (fx_options->probe_only && !probe_redrawn && fx_options->backdrop_probe != NULL && !wlr_box_empty(&probe_box))) {
+      || (fx_options->probe_only && !probe_redrawn && !probe_unchanged && fx_options->backdrop_probe != NULL
+          && !wlr_box_empty(&probe_box))) {
     fx_backdrop_probe_mark_stale(fx_options->backdrop_probe);
   }
   // A probe-only node draws nothing: it blurs only on the frames its probe samples.
@@ -3699,7 +3710,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   } else if (probe_due && !fuse) {
     fx_backdrop_probe_capture(
         fx_options->backdrop_probe, blur_texture->tex, blur_texture->target, buffer->buffer->width,
-        buffer->buffer->height, &probe_box, pass->has_color_transform
+        buffer->buffer->height, &probe_box, pass->has_color_transform, use_optimized ? &cache_source : NULL
     );
     fx_framebuffer_bind(pass->buffer);
   }

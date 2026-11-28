@@ -6,6 +6,7 @@
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <wlr/util/box.h>
 
 struct fx_renderer;
@@ -15,10 +16,22 @@ bool fx_backdrop_probe_due(const struct fx_backdrop_probe* probe);
 // A pass redrew the whole probe box but did not capture: the sample is out of date until the next capture.
 void fx_backdrop_probe_mark_stale(struct fx_backdrop_probe* probe);
 
-/** Queues the probe and flushes it alone: no other probe may be queued. */
+// The source of a capture that read the optimized blur cache. cache false: a live backdrop, never equal to another.
+struct fx_backdrop_probe_source {
+  bool cache;
+  uint64_t cache_generation;
+  struct wlr_box box;
+  float strength;
+  bool linear;
+};
+
+// The last completed capture read `source`: the backdrop is unchanged since, so a redraw needs no new capture.
+bool fx_backdrop_probe_sampled(const struct fx_backdrop_probe* probe, const struct fx_backdrop_probe_source* source);
+
+/** Queues the probe and flushes it alone: no other probe may be queued. source: NULL for a live backdrop. */
 void fx_backdrop_probe_capture(
     struct fx_backdrop_probe* probe, GLuint texture, GLenum target, int texture_width, int texture_height,
-    const struct wlr_box* box, bool linear
+    const struct wlr_box* box, bool linear, const struct fx_backdrop_probe_source* source
 );
 
 /**

@@ -48,6 +48,8 @@ struct fx_backdrop_probe {
   bool captured;          // the first capture runs at once: a new sheet stays hidden until its first sample
   int64_t last_capture_ns; // CLOCK_MONOTONIC
   bool stale; // a pass redrew the backdrop after the last capture, inside kProbeIntervalNs or while one was in flight
+  struct fx_backdrop_probe_source queued_source;  // PROBE_QUEUED
+  struct fx_backdrop_probe_source sampled_source; // of the last capture drawn
 };
 
 static int64_t monotonic_ns(void) {
@@ -237,6 +239,13 @@ bool fx_backdrop_probe_pending(const struct fx_backdrop_probe* probe) {
   return probe != NULL && probe->renderer != NULL && probe->state != PROBE_IDLE;
 }
 
+bool fx_backdrop_probe_sampled(const struct fx_backdrop_probe* probe, const struct fx_backdrop_probe_source* source) {
+  const struct fx_backdrop_probe_source* last = probe != NULL ? &probe->sampled_source : NULL;
+  return last != NULL && probe->captured && source->cache && last->cache
+      && last->cache_generation == source->cache_generation && wlr_box_equal(&last->box, &source->box)
+      && last->strength == source->strength && last->linear == source->linear;
+}
+
 bool fx_backdrop_probe_queue(struct fx_backdrop_probe* probe, const struct wlr_box* box, bool linear) {
   // The caller skips a capture while one is in flight; a node redrawn every frame would otherwise never finish one.
   if (probe == NULL || probe->renderer == NULL || probe->state != PROBE_IDLE || box->width <= 0 || box->height <= 0
@@ -244,6 +253,7 @@ bool fx_backdrop_probe_queue(struct fx_backdrop_probe* probe, const struct wlr_b
     return false;
   }
   probe->state = PROBE_QUEUED;
+  probe->queued_source = (struct fx_backdrop_probe_source){0};
   probe->box = *box;
   probe->linear = linear;
   batch.queued[batch.count++] = probe;
@@ -307,6 +317,7 @@ void fx_backdrop_probes_flush(
     probe->captured = true;
     probe->last_capture_ns = now;
     probe->stale = false;
+    probe->sampled_source = probe->queued_source;
   }
   glDisableVertexAttribArray(probe_shader.pos);
   // The pass submit fences this copy with the draws, so poll maps the buffer only once the GPU finished it.
@@ -329,7 +340,7 @@ void fx_backdrop_probes_flush(
 
 void fx_backdrop_probe_capture(
     struct fx_backdrop_probe* probe, GLuint texture, GLenum target, int texture_width, int texture_height,
-    const struct wlr_box* box, bool linear
+    const struct wlr_box* box, bool linear, const struct fx_backdrop_probe_source* source
 ) {
   if (probe == NULL || probe->renderer == NULL) {
     return;
@@ -337,6 +348,9 @@ void fx_backdrop_probe_capture(
   // Probes left queued by a pass that never ended its shared run sampled another source: they capture later.
   fx_backdrop_probes_flush(probe->renderer, 0, 0, 0, 0);
   if (fx_backdrop_probe_queue(probe, box, linear)) {
+    if (source != NULL) {
+      probe->queued_source = *source;
+    }
     fx_backdrop_probes_flush(probe->renderer, texture, target, texture_width, texture_height);
   }
 }
