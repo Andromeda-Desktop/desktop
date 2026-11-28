@@ -353,11 +353,16 @@ namespace {
     const char* script = "import socket, sys\nc = socket.socket(socket.AF_UNIX)\nc.connect('\\0' + sys.argv[1])\nc.recv(1)\n";
     const char* argv[] = {"unshare", "--map-auto", "--map-root-user", "setpriv", "--reuid=1", "--regid=1",
                           "--clear-groups", "python3", "-I", "-c", script, name.c_str(), nullptr};
+    // Its own process group: when unshare(2) fails, unshare's uid-map helper stays blocked, holding our stdout.
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
     pid_t child = 0;
-    CHECK(posix_spawnp(&child, "unshare", nullptr, nullptr, const_cast<char**>(argv), environ) == 0);
+    CHECK(posix_spawnp(&child, "unshare", nullptr, &attr, const_cast<char**>(argv), environ) == 0);
+    posix_spawnattr_destroy(&attr);
     pollfd waiting{.fd = listener.get(), .events = POLLIN, .revents = 0};
     if (poll(&waiting, 1, 5000) != 1) {
-      kill(child, SIGKILL);
+      kill(-child, SIGKILL);
       waitpid(child, nullptr, 0);
       std::fprintf(stderr, "refuseAPeerOfAnotherUid skipped: no subordinate uid peer\n");
       return;
