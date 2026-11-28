@@ -548,19 +548,41 @@ bool Surface::regionIntersectsBounds(const std::vector<InputRect>& rects, std::u
   });
 }
 
-bool Surface::setGlassCards(std::span<const GlassCard> cards) {
+GlassCorners glassCorners(const CornerShapes& shapes, const Radii& radii, float maxRadius, bool flareAcross) {
+  const auto corner = [maxRadius](CornerShape shape, float radius) {
+    const float r = std::clamp(radius, 0.0F, std::max(0.0F, maxRadius));
+    return shape == CornerShape::Concave ? -r : r;
+  };
+  return GlassCorners{
+      .radii = Radii{corner(shapes.tl, radii.tl), corner(shapes.tr, radii.tr), corner(shapes.br, radii.br), corner(shapes.bl, radii.bl)},
+      .flareAcross = flareAcross,
+  };
+}
+
+std::vector<InputRect> Surface::glassRegion(std::span<const GlassCard> cards) {
   std::vector<InputRect> rects;
   for (const GlassCard& card : cards) {
     const GlassRect& r = card.rect;
-    const auto strips = card.rotation != 0.0F
-        ? tessellateRotatedRoundedRect(r.x + r.width * 0.5F, r.y + r.height * 0.5F, r.width, r.height, card.radius, card.rotation)
-        : tessellateRoundedRect(
-              static_cast<int>(std::lround(r.x)), static_cast<int>(std::lround(r.y)), static_cast<int>(std::lround(r.width)),
-              static_cast<int>(std::lround(r.height)), card.radius
-          );
+    const int x = static_cast<int>(std::lround(r.x));
+    const int y = static_cast<int>(std::lround(r.y));
+    const int w = static_cast<int>(std::lround(r.width));
+    const int h = static_cast<int>(std::lround(r.height));
+    const float* radius = std::get_if<float>(&card.radius);
+    std::vector<InputRect> strips;
+    if (radius == nullptr) {
+      strips = tessellateCorners(x, y, w, h, std::get<GlassCorners>(card.radius));
+    } else if (card.rotation != 0.0F) {
+      strips = tessellateRotatedRoundedRect(r.x + r.width * 0.5F, r.y + r.height * 0.5F, r.width, r.height, *radius, card.rotation);
+    } else {
+      strips = tessellateRoundedRect(x, y, w, h, *radius);
+    }
     rects.insert(rects.end(), strips.begin(), strips.end());
   }
-  setBlurRegion(rects);
+  return rects;
+}
+
+bool Surface::setGlassCards(std::span<const GlassCard> cards) {
+  setBlurRegion(glassRegion(cards));
   return false;
 }
 
@@ -639,6 +661,29 @@ std::vector<InputRect> Surface::tessellateRoundedRect(
   }
 
   return out;
+}
+
+std::vector<InputRect> Surface::tessellateCorners(int x, int y, int w, int h, const GlassCorners& glass) {
+  // Same flare axis rule as the compositor's flaredBox (layer_surface.cpp).
+  const Radii& corners = glass.radii;
+  const bool flareAcross = glass.flareAcross;
+  RectInsets inset;
+  const auto grow = [&](float radius, float sidePartner, float& horizontal, float& vertical) {
+    if (radius >= 0.0F) {
+      return;
+    }
+    float& side = (sidePartner < 0.0F) == flareAcross ? horizontal : vertical;
+    side = std::max(side, -radius);
+  };
+  grow(corners.tl, corners.bl, inset.left, inset.top);
+  grow(corners.tr, corners.br, inset.right, inset.top);
+  grow(corners.br, corners.tr, inset.right, inset.bottom);
+  grow(corners.bl, corners.tl, inset.left, inset.bottom);
+  const auto shapeOf = [](float r) { return r < 0.0F ? CornerShape::Concave : CornerShape::Convex; };
+  return tessellateShape(
+      x, y, w, h, CornerShapes{shapeOf(corners.tl), shapeOf(corners.tr), shapeOf(corners.br), shapeOf(corners.bl)}, inset,
+      Radii{std::abs(corners.tl), std::abs(corners.tr), std::abs(corners.br), std::abs(corners.bl)}
+  );
 }
 
 std::vector<InputRect> Surface::tessellateShape(

@@ -30,7 +30,7 @@ class DskSurfaceClient {
 public:
   // Values match the protocol enums.
   enum class Property : uint32_t {
-    Translate, Scale, Opacity, Clip, Radius, Elevation, Liquid, Stroke, Tint, Join, Fill, FillDense, Blur, Solo, Rotation
+    Translate, Scale, Opacity, Clip, Radius, Elevation, Liquid, Stroke, Tint, Join, Fill, FillDense, Blur, Solo, Rotation, Corners
   };
   enum class Curve : uint32_t { None, SpringStandard, SpringSnappy, SpringBouncy, EaseFast, EaseNormal, EaseSlow, SpringOpen, SpringClose, SpringIslandExpand, SpringIslandCollapse, SpringPage, SpringPress, SpringRelease, SpringEffects, SpringEffectsFast };
   // A compositor that binds protocol version < 3 knows only the first seven curves: use the closest one.
@@ -68,6 +68,8 @@ public:
   [[nodiscard]] bool hasSoloProperty() const;
   // Version 22: a dsk_shape_v1 turns about its clip centre.
   [[nodiscard]] bool hasRotationProperty() const;
+  // Version 23: a dsk_shape_v1 takes per-corner radii and concave flares (corners), and join c (flares across).
+  [[nodiscard]] bool hasCornersProperty() const;
   // Protocol version 7: the compositor draws a 1 px hairline (rgba) inside the clip shape while a clip is set.
   [[nodiscard]] bool hasStrokeProperty() const;
   // Protocol version 9: liquid [2] = lens, and the tint property (the compositor adapts its density).

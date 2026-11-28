@@ -14,6 +14,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 class AnimationManager;
@@ -44,11 +45,26 @@ struct GlassRect {
   bool operator==(const GlassRect&) const = default;
 };
 
+// Per-corner glass radii, px; a negative one is a concave flare of that size outside the card rect. The two flares of a
+// left or right side run along that side, any other along its top or bottom edge; `flareAcross` turns each one.
+struct GlassCorners {
+  Radii radii;
+  bool flareAcross = false;
+
+  bool operator==(const GlassCorners&) const = default;
+};
+
+// GlassCorners of a shape drawn with CornerShapes: a concave corner becomes a flare. Each radius stops at `maxRadius`.
+[[nodiscard]] GlassCorners glassCorners(const CornerShapes& shapes, const Radii& radii, float maxRadius, bool flareAcross);
+
+// One radius at every corner, or GlassCorners. A rotated card takes one radius.
+using GlassRadius = std::variant<float, GlassCorners>;
+
 // A rounded glass card in surface-local logical px. `node` picks the palette tone of the tint; `onDensity` gets the
 // backdrop density (0..1) the compositor measures under the card.
 struct GlassCard {
   GlassRect rect;
-  float radius = 0.0F;
+  GlassRadius radius = 0.0F;
   // Radians clockwise about the centre of `rect`, which stays unrotated.
   float rotation = 0.0F;
   glass::Material material;
@@ -175,6 +191,10 @@ public:
       int x, int y, int w, int h, const CornerShapes& corners, const RectInsets& logicalInset, const Radii& radii,
       int stripPx = 1
   );
+  // The glass of GlassCorners on the clip (x, y, w, h), its flares included, as the compositor draws it.
+  static std::vector<InputRect> tessellateCorners(int x, int y, int w, int h, const GlassCorners& corners);
+  // The blur region of `cards`: the fallback of setGlassCards on a compositor without dsk shapes.
+  static std::vector<InputRect> glassRegion(std::span<const GlassCard> cards);
   // Tessellates a rounded rectangle rotated by `rotationRad` around its center
   // (`centerX`, `centerY`) into axis-aligned horizontal strips. When `rotationRad`
   // is zero this reduces to a plain tessellateRoundedRect call.

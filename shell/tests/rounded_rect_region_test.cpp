@@ -1,5 +1,6 @@
 // A rounded rect's region (the bar islands' blur and input region, docs/architecture-v2.md §7) covers every pixel
-// fully inside the shape and no pixel fully outside it, for random sizes and per-corner radii.
+// fully inside the shape and no pixel fully outside it, for random sizes and per-corner radii. A card's flare fallback
+// grows on the compositor's flare axis.
 #include "tests/test_check.h"
 #include "wayland/surface.h"
 
@@ -81,9 +82,40 @@ namespace {
     }
   }
 
+  // A GlassCard with concave corners falls back to a region holding its flares on the axis the compositor draws
+  // them (dsk_shape_v1 corners): it grows past the clip only on the flared sides, by less than the flare.
+  struct Grow {
+    bool left, top, right, bottom;
+  };
+  void checkFlares(const Radii& radii, bool across, Grow grow) {
+    constexpr int kX = 10, kY = 20, kW = 100, kH = 30, kFlare = 8;
+    const auto rects = Surface::tessellateCorners(kX, kY, kW, kH, GlassCorners{radii, across});
+    TEST_CHECK(!rects.empty());
+    int left = kX, top = kY, right = kX + kW, bottom = kY + kH;
+    for (const InputRect& r : rects) {
+      left = std::min(left, r.x);
+      top = std::min(top, r.y);
+      right = std::max(right, r.x + r.width);
+      bottom = std::max(bottom, r.y + r.height);
+    }
+    TEST_CHECK((left < kX) == grow.left && left >= kX - kFlare);
+    TEST_CHECK((top < kY) == grow.top && top >= kY - kFlare);
+    TEST_CHECK((right > kX + kW) == grow.right && right <= kX + kW + kFlare);
+    TEST_CHECK((bottom > kY + kH) == grow.bottom && bottom <= kY + kH + kFlare);
+  }
+
 } // namespace
 
 int main() {
+  // A top bar's screen-edge pair flares along the top edge, out to the left and right.
+  checkFlares(Radii{-8.0F, -8.0F, 6.0F, 6.0F}, false, Grow{true, false, true, false});
+  // A full-width top bar's inner pair flares across its edge, down along the screen sides.
+  checkFlares(Radii{0.0F, 0.0F, -8.0F, -8.0F}, true, Grow{false, false, false, true});
+  // A left side pair flares along that side, up and down.
+  checkFlares(Radii{-8.0F, 6.0F, 6.0F, -8.0F}, false, Grow{false, true, false, true});
+  // across turns it: out to the left.
+  checkFlares(Radii{-8.0F, 6.0F, 6.0F, -8.0F}, true, Grow{true, false, false, false});
+
   std::mt19937 rng(0x5eedU);
   std::uniform_int_distribution<int> size(1, 90);
   std::uniform_int_distribution<int> origin(-20, 20);

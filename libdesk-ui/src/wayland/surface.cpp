@@ -13,10 +13,20 @@
 #include "wayland/wayland_egl_window.h"
 
 #include <algorithm>
+#include <array>
+#include <optional>
+#include <variant>
 #include <format>
 #include <limits>
 #include <string>
 #include <unordered_map>
+
+struct WaylandSurface::CardShape {
+  std::unique_ptr<DskShapeClient> client;
+  std::array<std::optional<DskSurfaceClient::Value>, 16> sent{};
+
+  void set(DskSurfaceClient::Property property, const DskSurfaceClient::Value& value);
+};
 
 namespace {
 
@@ -418,27 +428,45 @@ DskSurfaceClient* WaylandSurface::dsk() {
   return m_dsk.get();
 }
 
+void WaylandSurface::CardShape::set(DskSurfaceClient::Property property, const DskSurfaceClient::Value& value) {
+  std::optional<DskSurfaceClient::Value>& last = sent[static_cast<std::size_t>(property)];
+  if (last == value) {
+    return;
+  }
+  client->set(property, value);
+  last = value;
+}
+
 bool WaylandSurface::setGlassCards(std::span<const GlassCard> cards) {
   DskSurfaceClient* client = dsk();
   const bool rotated = std::ranges::any_of(cards, [](const GlassCard& card) { return card.rotation != 0.0F; });
-  if (client == nullptr || !client->hasShapes() || (rotated && !client->hasRotationProperty())) {
+  const bool cornered = std::ranges::any_of(cards, [](const GlassCard& card) {
+    return std::holds_alternative<GlassCorners>(card.radius);
+  });
+  if (client == nullptr || !client->hasShapes() || (rotated && !client->hasRotationProperty())
+      || (cornered && !client->hasCornersProperty())) {
     if (m_cardMode == CardMode::Shapes) {
       hideCardShapes();
     }
+    std::vector<InputRect> region = glassRegion(cards);
+    if (m_cardMode != CardMode::Region || region != m_cardRegion) {
+      setBlurRegion(region);
+      m_cardRegion = std::move(region);
+    }
     m_cardMode = CardMode::Region;
-    return Surface::setGlassCards(cards);
+    return false;
   }
   if (m_cardMode == CardMode::Region) {
     clearBlurRegion();
   }
   m_cardMode = CardMode::Shapes;
   while (m_cardShapes.size() < cards.size()) {
-    m_cardShapes.push_back(std::make_unique<DskShapeClient>(*client));
+    m_cardShapes.push_back(CardShape{.client = std::make_unique<DskShapeClient>(*client)});
   }
   const bool compositorTint = m_dsk->hasTintProperty() && Style::compositorDrawsTint();
   std::function<void(float)> onDensity;
   for (std::size_t i = 0; i < m_cardShapes.size(); ++i) {
-    DskShapeClient& shape = *m_cardShapes[i];
+    CardShape& shape = m_cardShapes[i];
     if (i >= cards.size()) {
       shape.set(DskSurfaceClient::Property::Clip, {});
       continue;
@@ -447,9 +475,19 @@ bool WaylandSurface::setGlassCards(std::span<const GlassCard> cards) {
     const double w = card.rect.width;
     const double h = card.rect.height;
     shape.set(DskSurfaceClient::Property::Clip, {card.rect.x, card.rect.y, w, h});
-    shape.set(DskSurfaceClient::Property::Radius, {std::min({static_cast<double>(card.radius), w * 0.5, h * 0.5}), 0.0, 0.0, 0.0});
+    const float* radius = std::get_if<float>(&card.radius);
+    shape.set(
+        DskSurfaceClient::Property::Radius,
+        {radius != nullptr ? std::min({static_cast<double>(*radius), w * 0.5, h * 0.5}) : 0.0, 0.0, 0.0, 0.0}
+    );
     if (m_dsk->hasRotationProperty()) {
       shape.set(DskSurfaceClient::Property::Rotation, {static_cast<double>(card.rotation), 0.0, 0.0, 0.0});
+    }
+    if (m_dsk->hasCornersProperty()) {
+      const GlassCorners corners = radius != nullptr ? GlassCorners{} : std::get<GlassCorners>(card.radius);
+      const Radii& c = corners.radii;
+      shape.set(DskSurfaceClient::Property::Corners, {c.tl, c.tr, c.br, c.bl});
+      shape.set(DskSurfaceClient::Property::Join, {0.0, 0.0, corners.flareAcross ? 1.0 : 0.0, 0.0});
     }
     setGlassMaterial(shape, *m_dsk, &card.material);
     if (m_dsk->hasTintProperty()) {
@@ -482,8 +520,8 @@ void WaylandSurface::clearGlassCard() {
 }
 
 void WaylandSurface::hideCardShapes() {
-  for (const auto& shape : m_cardShapes) {
-    shape->set(DskSurfaceClient::Property::Clip, {});
+  for (CardShape& shape : m_cardShapes) {
+    shape.set(DskSurfaceClient::Property::Clip, {});
   }
 }
 
