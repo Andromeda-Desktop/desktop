@@ -722,6 +722,8 @@ namespace andromeda {
     void refreshConfigChrome();
     void updateBlur();
     void updateBlur(int contentWidth, int contentHeight);
+    // Backdrop probe for the window glass density (ViewDecoration::pollDensity). Returns the recheck delay in ms.
+    int pollBackdrop();
     [[nodiscard]] SurfaceBlurOptions blurOptions() const { return m_decoration.blurOptions(); }
     [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const { return m_decoration.popupBlurOptions(); }
     // The ext-background-effect blur region a client set on `surface` (one of its popups), or null.

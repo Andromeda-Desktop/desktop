@@ -15,6 +15,7 @@
 // Each prints child-hidden, child-detached, child-shown, popup-mapped, child-moved, popup-child-mapped or
 // child-destroyed once applied.
 // SECURE=child|parent makes that surface secure (dsk_surface_v1.set_secure) from its first commit.
+// DSK_DENSITY gives the parent a dsk_surface_v1 (version 16) and prints each density event as "dsk-density <value>".
 // Usage: subsurface-client [title [width height [animate]]]. The dimensions are a fallback: a configure adopts it.
 
 #include "dsk-surface-v1-client-protocol.h"
@@ -332,12 +333,27 @@ namespace {
           static_cast<xdg_wm_base*>(wl_registry_bind(registry, name, &xdg_wm_base_interface, std::min(version, 1U)));
       xdg_wm_base_add_listener(state.wmBase, &kWmBaseListener, &state);
     } else if (std::strcmp(interface, dsk_surface_manager_v1_interface.name) == 0 && version >= 14) {
-      state.dskManager =
-          static_cast<dsk_surface_manager_v1*>(wl_registry_bind(registry, name, &dsk_surface_manager_v1_interface, 14));
+      const uint32_t bound = std::getenv("DSK_DENSITY") != nullptr ? std::min(version, 16U) : 14U;
+      state.dskManager = static_cast<dsk_surface_manager_v1*>(
+          wl_registry_bind(registry, name, &dsk_surface_manager_v1_interface, bound)
+      );
     }
   }
 
   void registryGlobalRemove(void*, wl_registry*, uint32_t) {}
+
+  const dsk_surface_v1_listener kDskSurfaceListener = {
+      .started = [](void*, dsk_surface_v1*, uint32_t, uint32_t) {},
+      .done = [](void*, dsk_surface_v1*, uint32_t, uint32_t) {},
+      .clip_mapped = [](void*, dsk_surface_v1*, wl_fixed_t, wl_fixed_t, wl_fixed_t, wl_fixed_t) {},
+      .backdrop = [](void*, dsk_surface_v1*, uint32_t) {},
+      .density = [](void*, dsk_surface_v1*, wl_fixed_t density) {
+        std::println("dsk-density {:.2f}", wl_fixed_to_double(density));
+        std::fflush(stdout);
+      },
+      .presence = [](void*, dsk_surface_v1*, uint32_t) {},
+      .backdrop_luminance = [](void*, dsk_surface_v1*, wl_fixed_t) {},
+  };
 
   constexpr wl_registry_listener kRegistryListener = {
       .global = registryGlobal,
@@ -409,6 +425,14 @@ int main(int argc, char** argv) {
     }
     wl_surface* target = std::strcmp(secure, "child") == 0 ? state.child : state.surface;
     dsk_surface_v1_set_secure(dsk_surface_manager_v1_get_surface(state.dskManager, target), 1);
+  }
+  if (std::getenv("DSK_DENSITY") != nullptr) {
+    if (state.dskManager == nullptr) {
+      std::println(stderr, "subsurface-client: DSK_DENSITY needs dsk_surface_manager_v1");
+      return EXIT_FAILURE;
+    }
+    dsk_surface_v1* dsk = dsk_surface_manager_v1_get_surface(state.dskManager, state.surface);
+    dsk_surface_v1_add_listener(dsk, &kDskSurfaceListener, &state);
   }
 
   if (state.fixedSize) {

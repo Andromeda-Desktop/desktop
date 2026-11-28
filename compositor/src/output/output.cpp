@@ -2304,6 +2304,11 @@ namespace andromeda {
       soonest(flyout->pollBackdrop());
     }
     soonest(Popup::pollBackdrops(this));
+    for (const auto& view : m_server->views()) {
+      if (view->currentOutput() == this) {
+        soonest(view->pollBackdrop());
+      }
+    }
     if (recheckMs > 0 && m_backdropTimer != nullptr) {
       wl_event_source_timer_update(m_backdropTimer, recheckMs);
     }

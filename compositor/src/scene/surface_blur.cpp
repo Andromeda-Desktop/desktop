@@ -60,8 +60,15 @@ namespace andromeda {
         && config().appearance.scheme == ColorScheme::Light;
   }
 
-  glass::Material configWindowGlass() {
-    return glass::material(glass::Kind::Sheet, glass::windowSettings(configGlassSettings()), false);
+  glass::Material configWindowGlass() { return configWindowGlass(false); }
+
+  glass::Material configWindowGlass(bool light) {
+    return glass::material(glass::Kind::Sheet, glass::windowSettings(configGlassSettings()), light);
+  }
+
+  bool configWindowGlassLight() {
+    return glass::tone(glass::Kind::Sheet, glass::windowSettings(configGlassSettings()).style) == glass::Tone::Scheme
+        && config().appearance.scheme == ColorScheme::Light;
   }
 
   bool surfaceTransparent(wlr_surface* surface, const wlr_box& surfaceBox) {

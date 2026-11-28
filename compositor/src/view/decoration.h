@@ -4,6 +4,7 @@
 
 #include "config/config.h"
 #include "scene/border_rect.h"
+#include "scene/dsk_glass.h"
 #include "scene/surface_blur.h"
 #include "scene/surface_shadow.h"
 
@@ -68,6 +69,11 @@ namespace andromeda {
         const pixman_region32_t* clientRegion = nullptr
     );
     void hideBlur();
+    // Glass density for a window whose client draws its own tint and takes the density event (it has a dsk surface):
+    // the backdrop is probed only while on.
+    void setDensityProbe(bool on);
+    // Sends `surface` a new density target when a backdrop sample moves it. Returns the recheck delay in ms, 0 idle.
+    int pollDensity(wlr_surface* surface, const DskSurfaceManager& dsk);
     void setBlurLive(bool live) { m_blur.setLive(live); }
 
     // Shadow
@@ -107,6 +113,8 @@ namespace andromeda {
     int m_borderPadding = 0;
     std::optional<bool> m_ruleShadow;
     SurfaceBlur m_blur;
+    GlassDensity m_density;
+    bool m_densityProbe = false;
     SurfaceBlurOptions m_blurOptions;
     std::optional<bool> m_ruleBlur;
     SurfaceBlurOptions m_popupBlurOptions;

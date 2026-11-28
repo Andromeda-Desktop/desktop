@@ -40,6 +40,9 @@ namespace andromeda {
   [[nodiscard]] bool configGlassLight(glass::Kind kind);
   // The material of app windows and their overview cards (glass::windowSettings).
   [[nodiscard]] glass::Material configWindowGlass();
+  // `light`: the light curve, for window glass that takes the light scheme (configWindowGlassLight).
+  [[nodiscard]] glass::Material configWindowGlass(bool light);
+  [[nodiscard]] bool configWindowGlassLight();
 
   // True when the surface's opaque region does not cover surfaceBox, given in surface-local coordinates.
   [[nodiscard]] bool surfaceTransparent(wlr_surface* surface, const wlr_box& surfaceBox);

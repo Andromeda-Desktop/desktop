@@ -217,7 +217,52 @@ namespace andromeda {
     );
   }
 
-  void ViewDecoration::hideBlur() { m_blur.hide(); }
+  void ViewDecoration::hideBlur() {
+    m_blur.hide();
+    setDensityProbe(false);
+  }
+
+  namespace {
+    // Window glass as GlassDensity reads it: the client draws a tint of the glass tone at the Sheet alpha.
+    DskGlass windowDensityGlass() {
+      const bool light = configWindowGlassLight();
+      const glass::Material material = configWindowGlass(light);
+      const float tone = light ? 1.0F : 0.0F;
+      return {
+          .liquid = material.level, .rim = material.rim, .lens = material.lens, .dense = material.dense,
+          .clarity = material.clarity, .tint = {tone, tone, tone, material.tint},
+      };
+    }
+  } // namespace
+
+  void ViewDecoration::setDensityProbe(bool on) {
+    if (on == m_densityProbe) {
+      return;
+    }
+    m_densityProbe = on;
+    m_blur.setBackdropSampling(on);
+    if (!on) {
+      m_density.reset();
+    }
+  }
+
+  int ViewDecoration::pollDensity(wlr_surface* surface, const DskSurfaceManager& dsk) {
+    if (!m_densityProbe) {
+      return 0;
+    }
+    fx_backdrop_luminance sample{};
+    const DskGlass glass = windowDensityGlass();
+    if (m_blur.pollBackdrop(&sample)) {
+      m_density.sample(glass, sample.darkest, sample.brightest);
+    } else {
+      m_density.retint(glass);
+    }
+    if (m_density.measured()) {
+      dsk.sendDensity(surface, m_density.target());
+    }
+    constexpr int kBackdropRecheckMs = 16;
+    return m_blur.backdropPending() ? kBackdropRecheckMs : 0;
+  }
 
   // Shadow
   void ViewDecoration::createShadow(wlr_scene_tree* frame) {

@@ -335,6 +335,14 @@ namespace andromeda {
         surfaceRegion != nullptr ? &region : nullptr
     );
     pixman_region32_fini(&region);
+    // Only a client with a dsk surface draws its tint from the density; other windows keep theirs.
+    const DskSurfaceManager* dsk = m_server->dskSurfaces();
+    m_decoration.setDensityProbe(dsk != nullptr && rootSurface() != nullptr && dsk->state(rootSurface()) != nullptr);
+  }
+
+  int View::pollBackdrop() {
+    const DskSurfaceManager* dsk = m_server->dskSurfaces();
+    return dsk != nullptr && rootSurface() != nullptr ? m_decoration.pollDensity(rootSurface(), *dsk) : 0;
   }
 
   void View::updateShadow() {
