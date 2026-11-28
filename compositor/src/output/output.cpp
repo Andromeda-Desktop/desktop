@@ -2273,7 +2273,7 @@ namespace andromeda {
     using enum ThemeCross;
     const ThemeCross from = m_themeCross;
     const bool valid = (from == Idle && next == Capturing) || (from == Capturing && (next == Held || next == Idle))
-        || (from == Held && (next == Fading || next == Capturing)) || (from == Fading && (next == Idle || next == Capturing));
+        || (from == Held && next == Fading) || (from == Fading && (next == Idle || next == Held));
     if (!valid) {
       kLog.error("output '{}': theme cross {} -> {} rejected", m_output->name, static_cast<int>(from), static_cast<int>(next));
       return;
@@ -2302,11 +2302,18 @@ namespace andromeda {
   bool Output::themeCapturing() const noexcept { return m_themeCross == ThemeCross::Capturing; }
 
   void Output::onThemeFreeze(uint32_t serial) {
-    if (!m_output->enabled) {
+    // A mirror shows its source's committed frame, held frame included. An HDR frame is PQ-encoded, and the scene
+    // would encode its copy a second time.
+    if (!m_output->enabled || m_mirrorSource != nullptr || hdrActive()) {
       return;
     }
     m_themeSerial = serial;
-    // A held frame still shows the look before the first switch, so a newer switch keeps it.
+    // A held or fading frame still shows the look before the first switch, so a newer switch keeps it.
+    if (m_themeCross == ThemeCross::Fading) {
+      m_themeFrame->restore();
+      setThemeCross(ThemeCross::Held);
+      return;
+    }
     if (m_themeCross == ThemeCross::Held) {
       wl_event_source_timer_update(m_themeTimer, 1000);
       return;

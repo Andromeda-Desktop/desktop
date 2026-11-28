@@ -32,7 +32,6 @@ namespace noctalia::theme {
 
     constexpr auto kLog = Logger("theme");
 
-    // One 60 Hz frame: a faster tick repaints every surface more often than the screen can show it.
     // The shell's surfaces redraw within two frames of a palette change; apps take the portal table at the same time.
     constexpr std::chrono::milliseconds kThawDelay{100};
     // frame_frozen comes within 200 ms of freeze_frame (dsk_shell_v1); a lost connection never answers.
@@ -238,30 +237,22 @@ namespace noctalia::theme {
     resolved->palette = paletteFor(resolved->shellMode == "light");
     const ::Palette dark = resolved->shellMode == "light" ? paletteFor(false) : resolved->palette;
     const ::Palette light = resolved->shellMode == "light" ? resolved->palette : paletteFor(true);
-    // Surfaces of the other tone (Clear glass, a dark island in light mode) read these, not the active palette.
-    const bool tonesChanged =
-        !(paletteForTone(PaletteTone::Dark) == dark) || !(paletteForTone(PaletteTone::Light) == light);
-    setDarkPalette(dark);
-    setLightPalette(light);
     const ::Palette appPalette = resolved->mode == resolved->shellMode ? resolved->palette : paletteFor(resolved->mode == "light");
-    m_toolkitColors = {.accent = appPalette.accent, .accentText = appPalette.accentText, .onAccent = appPalette.onAccent};
-
     queueResolvedCallback(resolved->generated, resolved->mode);
-    m_isLightMode = resolved->mode == "light";
-    m_isShellLightMode = resolved->shellMode == "light";
-    if (tonesChanged && m_switchState == SwitchState::Idle && palette == resolved->palette) {
-      paletteChanged().emit();
-      if (m_changeCallback) {
-        m_changeCallback();
-      }
-    }
-
+    const Look look{
+        .palette = resolved->palette,
+        .dark = dark,
+        .light = light,
+        .toolkit = {.accent = appPalette.accent, .accentText = appPalette.accentText, .onAccent = appPalette.onAccent},
+        .appLight = resolved->mode == "light",
+        .shellLight = resolved->shellMode == "light",
+    };
     if (animate) {
-      switchTo(resolved->palette);
+      switchTo(look);
     } else {
       setSwitchState(SwitchState::Idle);
-      if (lookChanges(resolved->palette)) {
-        applyPalette(resolved->palette);
+      if (lookChanges(look)) {
+        applyLook(look);
       } else {
         flushResolvedCallback(/*defer=*/false);
       }
@@ -310,7 +301,7 @@ namespace noctalia::theme {
     }
   }
 
-  void ThemeService::switchTo(const Palette& target) {
+  void ThemeService::switchTo(const Look& target) {
     m_switchTarget = target;
     if (m_switchState == SwitchState::Freezing) {
       return;
@@ -324,26 +315,38 @@ namespace noctalia::theme {
       setSwitchState(SwitchState::Freezing);
       return;
     }
-    applyPalette(target);
+    applyLook(target);
   }
 
-  bool ThemeService::lookChanges(const Palette& target) const {
-    return !(palette == target) || !m_appliedShellLight.has_value() || *m_appliedShellLight != m_isShellLightMode;
+  bool ThemeService::lookChanges(const Look& target) const {
+    return !m_shown.has_value() || !(palette == target.palette) || !(paletteForTone(PaletteTone::Dark) == target.dark)
+        || !(paletteForTone(PaletteTone::Light) == target.light) || m_shown->shellLight != target.shellLight
+        || m_shown->appLight != target.appLight || !(m_shown->toolkit == target.toolkit);
   }
 
   void ThemeService::onFrameFrozen(std::uint32_t serial) {
     if (m_switchState != SwitchState::Freezing || serial != m_switchSerial) {
       return;
     }
-    applyPalette(m_switchTarget);
+    applyLook(m_switchTarget);
     setSwitchState(SwitchState::Applied);
   }
 
-  void ThemeService::applyPalette(const Palette& target) {
+  void ThemeService::applyLook(const Look& target) {
+    // Surfaces of the other tone (Clear glass, a dark island in light mode) read these, not the active palette.
+    setDarkPalette(target.dark);
+    setLightPalette(target.light);
+    m_toolkitColors = target.toolkit;
+    m_isLightMode = target.appLight;
+    m_isShellLightMode = target.shellLight;
+    m_shown = target;
     setResolvedThemeLight(m_isShellLightMode);
-    m_appliedShellLight = m_isShellLightMode;
     notifyShellAppIconColorizationChanged();
-    setPalette(target);
+    if (palette == target.palette) {
+      paletteChanged().emit(); // setPalette skips an equal palette; the tone palettes may still have changed
+    } else {
+      setPalette(target.palette);
+    }
     if (m_changeCallback) {
       m_changeCallback();
     }

@@ -50,6 +50,8 @@ namespace andromeda {
     // Starts the cross: opacity 1 -> 0 on `close`; reduced motion fades on `fade_out`.
     void release(bool reducedMotion);
     [[nodiscard]] bool released() const noexcept { return m_released; }
+    // Stops the cross and shows the frame fully again.
+    void restore();
     // Advances the cross; returns false once it settled (the caller then destroys the frame).
     bool step(double seconds);
 

@@ -364,7 +364,15 @@ namespace andromeda {
   }
 
   HeldFrame::HeldFrame(wlr_scene_buffer* node, int bufferWidth, int bufferHeight)
-      : m_node(node), m_bufferWidth(bufferWidth), m_bufferHeight(bufferHeight) {}
+      : m_node(node), m_bufferWidth(bufferWidth), m_bufferHeight(bufferHeight) {
+    // A picture of the screen: pointer hit tests pass through it to the surfaces below.
+    m_node->point_accepts_input = [](wlr_scene_buffer*, double*, double*) { return false; };
+  }
+
+  void HeldFrame::restore() {
+    m_released = false;
+    apply();
+  }
 
   HeldFrame::~HeldFrame() { wlr_scene_node_destroy(&m_node->node); }
 

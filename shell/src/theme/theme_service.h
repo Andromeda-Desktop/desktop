@@ -61,6 +61,7 @@ namespace noctalia::theme {
       ::Color accent;
       ::Color accentText;
       ::Color onAccent;
+      bool operator==(const ToolkitColors&) const = default;
     };
     [[nodiscard]] const ToolkitColors& toolkitColors() const noexcept { return m_toolkitColors; }
 
@@ -88,9 +89,18 @@ namespace noctalia::theme {
     // Idle: no switch. Freezing: waits for frame_frozen of m_switchSerial. Applied: the look changed; thaw follows.
     enum class SwitchState : std::uint8_t { Idle, Freezing, Applied };
     void setSwitchState(SwitchState next);
-    void switchTo(const Palette& target);
-    void applyPalette(const Palette& target);
-    [[nodiscard]] bool lookChanges(const Palette& target) const;
+    // Everything a switch shows at once, after frame_frozen.
+    struct Look {
+      Palette palette;
+      Palette dark;
+      Palette light;
+      ToolkitColors toolkit;
+      bool appLight = false;
+      bool shellLight = false;
+    };
+    void switchTo(const Look& target);
+    void applyLook(const Look& target);
+    [[nodiscard]] bool lookChanges(const Look& target) const;
     void rescheduleAutoTimer();
     [[nodiscard]] bool hasAutoMode() const noexcept;
 
@@ -111,10 +121,10 @@ namespace noctalia::theme {
     ThawFrame m_thawFrame;
     SwitchState m_switchState = SwitchState::Idle;
     std::uint32_t m_switchSerial = 0;
-    Palette m_switchTarget{};
+    Look m_switchTarget{};
+    // The look on screen; empty before the first apply.
+    std::optional<Look> m_shown;
     Timer m_switchTimer;
-    // The shell light mode the shown palette was applied with; empty before the first apply.
-    std::optional<bool> m_appliedShellLight;
     bool m_isShellLightMode = false;
     std::string m_modeOverride;
     bool m_isLightMode = false;

@@ -12,6 +12,7 @@
 #include "net/http_client.h"
 #include "tests/test_check.h"
 #include "theme/desktop_theme.h"
+#include "render/scene/node.h"
 #include "theme/theme_service.h"
 #include "ui/palette.h"
 
@@ -35,6 +36,9 @@ namespace {
     std::optional<std::uint32_t> waiting; // a freeze sent and not yet answered or timed out
     std::chrono::steady_clock::time_point sentAt;
     std::vector<std::uint32_t> answered; // serials frame_frozen reached, or that timed out
+    ::Palette frozenDark{};
+    ::Palette frozenLight{};
+    bool frozenLightMode = false;
     bool delivering = false;
     bool ticking = false;
     int violations = 0;
@@ -80,6 +84,9 @@ namespace {
             ++compositor.violations;
           }
           compositor.waiting = serial;
+          compositor.frozenDark = paletteForTone(PaletteTone::Dark);
+          compositor.frozenLight = paletteForTone(PaletteTone::Light);
+          compositor.frozenLightMode = theme.isLightMode();
           compositor.sentAt = std::chrono::steady_clock::now();
           return true;
         },
@@ -131,6 +138,12 @@ namespace {
       }
       if (compositor.waiting.has_value()) {
         sent = *compositor.waiting;
+        if (!(paletteForTone(PaletteTone::Dark) == compositor.frozenDark)
+            || !(paletteForTone(PaletteTone::Light) == compositor.frozenLight)
+            || theme.isLightMode() != compositor.frozenLightMode) {
+          std::println("seed {}: I1 a tone palette or the light mode changed while freeze {} waits", seed, sent);
+          ++compositor.violations;
+        }
       }
     }
 
