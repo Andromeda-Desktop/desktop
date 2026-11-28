@@ -86,7 +86,7 @@ namespace noctalia::theme {
     void resolveAndSet(bool animate);
     void queueResolvedCallback(const GeneratedPalette& generated, std::string_view mode);
     void flushResolvedCallback(bool defer);
-    // Idle: no switch. Freezing: waits for frame_frozen of m_switchSerial. Applied: the look changed; thaw follows.
+    // Idle: no switch. Freezing: waits for frame_frozen of m_switchTicket. Applied: the look changed; thaw follows.
     enum class SwitchState : std::uint8_t { Idle, Freezing, Applied };
     void setSwitchState(SwitchState next);
     // Everything a switch shows at once, after frame_frozen.
@@ -120,7 +120,9 @@ namespace noctalia::theme {
     FreezeFrame m_freezeFrame;
     ThawFrame m_thawFrame;
     SwitchState m_switchState = SwitchState::Idle;
-    std::uint32_t m_switchSerial = 0;
+    LatestRequest m_switchRequest;
+    // The ticket of the last freeze sent; its id is the dsk_shell_v1 serial.
+    LatestRequest::Ticket m_switchTicket;
     Look m_switchTarget{};
     // The look on screen; empty before the first apply.
     std::optional<Look> m_shown;

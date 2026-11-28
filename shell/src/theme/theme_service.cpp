@@ -288,13 +288,14 @@ namespace noctalia::theme {
     m_switchState = next;
     if (next == SwitchState::Freezing) {
       m_switchTimer.start(kFreezeTimeout, [this] {
-        kLog.warn("theme: no frame_frozen {} within {} ms; switching without a fade", m_switchSerial, kFreezeTimeout.count());
-        onFrameFrozen(m_switchSerial);
+        const auto serial = static_cast<std::uint32_t>(m_switchTicket.id);
+        kLog.warn("theme: no frame_frozen {} within {} ms; switching without a fade", serial, kFreezeTimeout.count());
+        onFrameFrozen(serial);
       });
     } else if (next == SwitchState::Applied) {
       m_switchTimer.start(kThawDelay, [this] {
         if (m_thawFrame) {
-          m_thawFrame(m_switchSerial);
+          m_thawFrame(static_cast<std::uint32_t>(m_switchTicket.id));
         }
         setSwitchState(SwitchState::Idle);
       });
@@ -310,8 +311,9 @@ namespace noctalia::theme {
       flushResolvedCallback(/*defer=*/false);
       return;
     }
-    if (m_freezeFrame && m_freezeFrame(m_switchSerial + 1)) {
-      ++m_switchSerial;
+    const LatestRequest::Ticket ticket = m_switchRequest.begin();
+    if (m_freezeFrame && m_freezeFrame(static_cast<std::uint32_t>(ticket.id))) {
+      m_switchTicket = ticket;
       setSwitchState(SwitchState::Freezing);
       return;
     }
@@ -325,7 +327,7 @@ namespace noctalia::theme {
   }
 
   void ThemeService::onFrameFrozen(std::uint32_t serial) {
-    if (m_switchState != SwitchState::Freezing || serial != m_switchSerial) {
+    if (m_switchState != SwitchState::Freezing || !m_switchRequest.current(LatestRequest::Ticket{serial})) {
       return;
     }
     applyLook(m_switchTarget);
