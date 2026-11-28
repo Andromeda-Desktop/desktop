@@ -42,6 +42,9 @@ namespace noctalia::theme {
     std::vector<std::string> roles;                          // colour roles per scheme
   };
 
+  // 2-40 characters of a-z, 0-9 and '-': safe as one path component.
+  [[nodiscard]] bool isThemeId(std::string_view id);
+
   [[nodiscard]] std::expected<ThemeVocabulary, ThemeIssue> parseThemeVocabulary(std::string_view tomlText);
 
   struct ThemeSpring {
@@ -82,5 +85,9 @@ namespace noctalia::theme {
   // Fails only when the manifest itself is unusable (syntax, format, id, extends); a bad value is an issue.
   [[nodiscard]] std::expected<ThemePackage, ThemeIssue>
   parseThemePackage(std::string_view tomlText, std::string_view folderName, const ThemeVocabulary& vocabulary);
+
+  // The user's theme-overrides.toml: [values] and [values.dark|light] only. Fails only on a TOML syntax error.
+  [[nodiscard]] std::expected<ThemePackage, ThemeIssue> parseThemeOverrides(std::string_view tomlText,
+                                                                            const ThemeVocabulary& vocabulary);
 
 } // namespace noctalia::theme

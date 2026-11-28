@@ -16,13 +16,6 @@ namespace noctalia::theme {
 
     int lineOf(const toml::node& node) { return static_cast<int>(node.source().begin.line); }
 
-    bool validId(std::string_view id) {
-      if (id.size() < 2 || id.size() > 40) {
-        return false;
-      }
-      return std::ranges::all_of(id, [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'; });
-    }
-
     std::string joinKey(std::string_view prefix, std::string_view key) {
       return prefix.empty() ? std::string(key) : std::format("{}.{}", prefix, key);
     }
@@ -176,7 +169,42 @@ namespace noctalia::theme {
       const ThemeVocabulary& m_vocabulary;
     };
 
+    void readValues(const toml::table& root, const std::vector<std::string>& schemes, const ThemeVocabulary& vocabulary,
+                    ValueReader& reader) {
+      const auto* values = root["values"].as_table();
+      if (values == nullptr) {
+        return;
+      }
+      for (const auto& [key, node] : *values) {
+        const std::string name(key.str());
+        if (name != "dark" && name != "light") {
+          reader.readVocabularyKey(node, name, *values);
+          continue;
+        }
+        const auto* roles = node.as_table();
+        if (roles == nullptr || !std::ranges::contains(schemes, name)) {
+          reader.issue(joinKey("values", name), std::format("ignored: schemes does not list {}", name), lineOf(node));
+          continue;
+        }
+        for (const auto& [role, value] : *roles) {
+          const std::string path = std::format("scheme.{}.{}", name, role.str());
+          if (std::ranges::contains(vocabulary.roles, role.str())) {
+            reader.readColor(value, path);
+          } else {
+            reader.issue(path, "not a colour role, ignored", lineOf(value));
+          }
+        }
+      }
+    }
+
   } // namespace
+
+  bool isThemeId(std::string_view id) {
+    if (id.size() < 2 || id.size() > 40) {
+      return false;
+    }
+    return std::ranges::all_of(id, [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'; });
+  }
 
   std::expected<ThemeVocabulary, ThemeIssue> parseThemeVocabulary(std::string_view tomlText) {
     ThemeIssue error;
@@ -272,7 +300,7 @@ namespace noctalia::theme {
     m.format = static_cast<int>(*format);
 
     m.id = (*meta)["id"].value_or(std::string{});
-    if (!validId(m.id)) {
+    if (!isThemeId(m.id)) {
       return fail("id", "id must be 2-40 characters of a-z, 0-9 and -");
     }
     if (m.id != folderName) {
@@ -287,7 +315,7 @@ namespace noctalia::theme {
     if (m.extends == m.id) {
       return fail("extends", "a theme cannot extend itself");
     }
-    if (!m.extends.empty() && !validId(m.extends)) {
+    if (!m.extends.empty() && !isThemeId(m.extends)) {
       return fail("extends", "extends must name a theme id");
     }
 
@@ -317,28 +345,7 @@ namespace noctalia::theme {
       }
     }
 
-    if (const auto* values = root["values"].as_table()) {
-      for (const auto& [key, node] : *values) {
-        const std::string name(key.str());
-        if (name != "dark" && name != "light") {
-          reader.readVocabularyKey(node, name, *values);
-          continue;
-        }
-        const auto* roles = node.as_table();
-        if (roles == nullptr || !std::ranges::contains(m.schemes, name)) {
-          reader.issue(joinKey("values", name), std::format("ignored: schemes does not list {}", name), lineOf(node));
-          continue;
-        }
-        for (const auto& [role, value] : *roles) {
-          const std::string path = std::format("scheme.{}.{}", name, role.str());
-          if (std::ranges::contains(vocabulary.roles, role.str())) {
-            reader.readColor(value, path);
-          } else {
-            reader.issue(path, "not a colour role, ignored", lineOf(value));
-          }
-        }
-      }
-    }
+    readValues(root, m.schemes, vocabulary, reader);
     for (const auto table : kEngineTables) {
       if (const auto* node = root.get(table)) {
         reader.readFlat(*node, std::string(table));
@@ -349,6 +356,24 @@ namespace noctalia::theme {
       const std::string_view name = key.str();
       if (name != "theme" && name != "contracts" && name != "values" && !std::ranges::contains(kEngineTables, name)) {
         reader.issue(std::string(name), "unknown table, ignored", lineOf(node));
+      }
+    }
+    return out;
+  }
+
+  std::expected<ThemePackage, ThemeIssue> parseThemeOverrides(std::string_view tomlText, const ThemeVocabulary& vocabulary) {
+    ThemeIssue error;
+    const auto parsed = parseToml(tomlText, error);
+    if (!parsed) {
+      return std::unexpected(error);
+    }
+    ThemePackage out;
+    out.manifest.schemes = {"dark", "light"};
+    ValueReader reader(out, vocabulary);
+    readValues(*parsed, out.manifest.schemes, vocabulary, reader);
+    for (const auto& [key, node] : *parsed) {
+      if (key.str() != "values") {
+        reader.issue(std::string(key.str()), "unknown table, ignored", lineOf(node));
       }
     }
     return out;
