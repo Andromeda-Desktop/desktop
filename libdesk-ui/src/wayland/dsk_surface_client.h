@@ -30,7 +30,7 @@ class DskSurfaceClient {
 public:
   // Values match the protocol enums.
   enum class Property : uint32_t {
-    Translate, Scale, Opacity, Clip, Radius, Elevation, Liquid, Stroke, Tint, Join, Fill, FillDense, Blur, Solo, Rotation, Corners
+    Translate, Scale, Opacity, Clip, Radius, Elevation, Liquid, Stroke, Tint, Join, Fill, FillDense, Blur, Solo, Rotation, Corners, Glass
   };
   enum class Curve : uint32_t { None, SpringStandard, SpringSnappy, SpringBouncy, EaseFast, EaseNormal, EaseSlow, SpringOpen, SpringClose, SpringIslandExpand, SpringIslandCollapse, SpringPage, SpringPress, SpringRelease, SpringEffects, SpringEffectsFast };
   // A compositor that binds protocol version < 3 knows only the first seven curves: use the closest one.
@@ -70,6 +70,8 @@ public:
   [[nodiscard]] bool hasRotationProperty() const;
   // Version 23: a dsk_shape_v1 takes per-corner radii and concave flares (corners), and join c (flares across).
   [[nodiscard]] bool hasCornersProperty() const;
+  // v24: Property::Glass turns the surface glass on in its clip with no blur region.
+  [[nodiscard]] bool hasGlassProperty() const;
   // Protocol version 7: the compositor draws a 1 px hairline (rgba) inside the clip shape while a clip is set.
   [[nodiscard]] bool hasStrokeProperty() const;
   // Protocol version 9: liquid [2] = lens, and the tint property (the compositor adapts its density).
@@ -106,6 +108,10 @@ public:
   [[nodiscard]] const std::optional<Value>& mappedClip() const noexcept { return m_mappedClip; }
   // Runs when the compositor reports the clip of the last setClipFrom.
   void setOnClipMapped(std::function<void(const Value&)> callback) { m_onClipMapped = std::move(callback); }
+  // True while the last clip sent (set, animate target, setClipFrom or a tracker binding) is not empty.
+  [[nodiscard]] bool hasClip() const noexcept { return m_hasClip; }
+  // Runs when hasClip() changes.
+  void setOnHasClip(std::function<void()> callback) { m_onHasClip = std::move(callback); }
   // dsk_surface_v1.density (v16): how much the compositor thickens this surface's tint, 0 to 1.
   void setOnDensity(std::function<void(float density)> callback) { m_onDensity = std::move(callback); }
   // dsk_surface_v1.presence (v20) of a toplevel's root surface: the protocol value, which matches SurfacePresence.
@@ -124,11 +130,15 @@ private:
   static void handleDensity(void* data, dsk_surface_v1* surface, int32_t density);
   static void handlePresence(void* data, dsk_surface_v1* surface, uint32_t presence);
   static void handleBackdropLuminance(void* data, dsk_surface_v1* surface, int32_t luminance);
+  friend class DskTrackerClient;
+  void noteClip(bool set);
 
   dsk_surface_v1* m_surface = nullptr;
   uint32_t m_nextSerial = 1;
   std::optional<Value> m_mappedClip;
   std::function<void(const Value&)> m_onClipMapped;
+  bool m_hasClip = false;
+  std::function<void()> m_onHasClip;
   float m_density = 0.0F;
   bool m_backdropProbe = false; // last set_backdrop_probe sent
   std::function<void(float)> m_onDensity;
@@ -196,7 +206,7 @@ public:
   void setRange(double minimum, double maximum);
   void addSnap(double position);
   // Maps position p0..p1 to v0..v1 on one component (0..3) of a property of `target`.
-  void bind(const DskSurfaceClient& target, DskSurfaceClient::Property property, uint32_t component, double p0,
+  void bind(DskSurfaceClient& target, DskSurfaceClient::Property property, uint32_t component, double p0,
             double p1, double v0, double v1);
   void moveTo(double position, DskSurfaceClient::Curve curve);
   void watch(bool enabled);

@@ -17,7 +17,7 @@
     Only unsandboxed clients see this global.
   </description>
 
-  <interface name="dsk_surface_manager_v1" version="23">
+  <interface name="dsk_surface_manager_v1" version="24">
     <request name="destroy" type="destructor"/>
 
     <request name="get_surface">
@@ -44,7 +44,7 @@
     </enum>
   </interface>
 
-  <interface name="dsk_surface_v1" version="23">
+  <interface name="dsk_surface_v1" version="24">
     <description summary="shape, elevation and animations of one surface">
       All requests are double-buffered and apply on the next wl_surface.commit,
       so new pixels and the motion that shows them start in the same frame.
@@ -84,6 +84,7 @@
       <entry name="solo" value="13" since="18" summary="a = 1: this dsk_shape_v1 never joins a neighbour shape into one liquid outline; 0 (default) it joins within merge reach"/>
       <entry name="rotation" value="14" since="22" summary="a = rotation, radians clockwise about the clip center, of a dsk_shape_v1 glass shape (blur, rim, tint); a rotated shape draws no elevation shadow and no fill, never joins a neighbour and takes no join flares; the surface itself ignores it"/>
       <entry name="corners" value="15" since="23" summary="a, b, c, d = top-left, top-right, bottom-right, bottom-left radius, px, of the glass (blur, rim, tint) of a dsk_shape_v1; when any is not 0 it replaces radius and join a, b there (elevation, fill and stroke keep radius). A negative radius is a concave flare of that size outside the clip: the two of a left or right side flare along that side, any other along its top or bottom edge (join c turns them across). Ignored on a rotated shape"/>
+      <entry name="glass" value="16" since="24" summary="a = 1: the surface glass (blur, rim, tint) fills the clip shape, clip and radius, with no blur region; 0 (default): only a blur region turns the surface glass on. The surface draws no glass while no clip is set. Ignored on a dsk_shape_v1"/>
     </enum>
 
     <enum name="curve">

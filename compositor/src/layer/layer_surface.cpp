@@ -1130,7 +1130,9 @@ namespace andromeda {
     }
     // A client blur region is the exact shape, so the alpha test of blur_ignore_alpha must not cut it: a clear liquid
     // tint (alpha 0.34) would lose its whole blur.
-    if (region != nullptr && m_rule.blur.value_or(true)) {
+    // dsk glass (v24): the clip shape is the surface glass, with no client region.
+    const bool clipGlass = dskClip && state->motion.value(SurfaceMotion::Property::Glass)[0] >= 0.5;
+    if ((region != nullptr || clipGlass) && m_rule.blur.value_or(true)) {
       options.ignoreAlpha = 0.0F;
     }
     std::vector<RoundedShape> shapes;
@@ -1214,7 +1216,7 @@ namespace andromeda {
     }
     // Client glass (dsk shapes or a blur region) can sit over windows, so it blurs the live content behind it, not the
     // cached wallpaper blur, unless a layer rule sets blur_optimized.
-    if (!shapes.empty() || (region != nullptr && m_rule.blur.value_or(true))) {
+    if (!shapes.empty() || ((region != nullptr || clipGlass) && m_rule.blur.value_or(true))) {
       options.optimized = m_rule.optimized.value_or(false);
     }
     if (!shapes.empty()) {
@@ -1276,7 +1278,8 @@ namespace andromeda {
       m_blur.setRim(m_glass.rim);
       m_blur.setLens(m_glass.lens);
       m_blur.setBackdropSampling(m_glass.liquid > 0.0F || m_glass.rim > 0.0F || (m_glass.tint[3] > 0.0F && m_glass.tint[3] < 1.0F));
-    } else if (region != nullptr && m_rule.blur.value_or(true) && dskClip && dskClipRounded && pixman_region32_not_empty(region)) {
+    } else if (m_rule.blur.value_or(true) && dskClip
+               && (clipGlass || (region != nullptr && dskClipRounded && pixman_region32_not_empty(region)))) {
       // The clip and its corner radius are the exact shape; a client region is a pixel staircase that shows past the
       // anti-aliased corner.
       region = nullptr;

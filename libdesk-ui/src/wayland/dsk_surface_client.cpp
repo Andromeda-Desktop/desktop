@@ -35,7 +35,19 @@ void DskSurfaceClient::setElevation(Elevation level) {
   dsk_surface_v1_set_elevation(m_surface, static_cast<uint32_t>(level));
 }
 
+void DskSurfaceClient::noteClip(bool set) {
+  if (set != m_hasClip) {
+    m_hasClip = set;
+    if (m_onHasClip) {
+      m_onHasClip();
+    }
+  }
+}
+
 void DskSurfaceClient::set(Property property, const Value& value) {
+  if (property == Property::Clip) {
+    noteClip(value[2] > 0.0 && value[3] > 0.0);
+  }
   dsk_surface_v1_set(
       m_surface, static_cast<uint32_t>(property), fixed(value[0]), fixed(value[1]), fixed(value[2]), fixed(value[3])
   );
@@ -163,6 +175,7 @@ bool DskSurfaceClient::setClipFrom(wl_surface* source, const Value& rect) {
     return false;
   }
   dsk_surface_v1_set_clip_from(m_surface, source, fixed(rect[0]), fixed(rect[1]), fixed(rect[2]), fixed(rect[3]));
+  noteClip(true);
   return true;
 }
 
@@ -197,6 +210,7 @@ bool DskSurfaceClient::hasSoloProperty() const { return dsk_surface_v1_get_versi
 bool DskSurfaceClient::hasRotationProperty() const { return dsk_surface_v1_get_version(m_surface) >= 22; }
 
 bool DskSurfaceClient::hasCornersProperty() const { return dsk_surface_v1_get_version(m_surface) >= 23; }
+bool DskSurfaceClient::hasGlassProperty() const { return dsk_surface_v1_get_version(m_surface) >= 24; }
 
 bool DskSurfaceClient::hasStrokeProperty() const { return dsk_surface_v1_get_version(m_surface) >= 7; }
 
@@ -226,6 +240,9 @@ void DskSurfaceClient::animate(
   }
   if (onStarted) {
     m_started.emplace(serial, std::move(onStarted));
+  }
+  if (property == Property::Clip) {
+    noteClip(to[2] > 0.0 && to[3] > 0.0);
   }
   dsk_surface_v1_animate(
       m_surface, serial, static_cast<uint32_t>(property),
@@ -377,9 +394,12 @@ void DskTrackerClient::setRange(double minimum, double maximum) {
 void DskTrackerClient::addSnap(double position) { dsk_tracker_v1_add_snap(m_tracker, fixed(position)); }
 
 void DskTrackerClient::bind(
-    const DskSurfaceClient& target, DskSurfaceClient::Property property, uint32_t component, double p0, double p1,
+    DskSurfaceClient& target, DskSurfaceClient::Property property, uint32_t component, double p0, double p1,
     double v0, double v1
 ) {
+  if (property == DskSurfaceClient::Property::Clip) {
+    target.noteClip(true);
+  }
   dsk_tracker_v1_bind(
       m_tracker, target.resource(), static_cast<uint32_t>(property), component, fixed(p0), fixed(p1), fixed(v0),
       fixed(v1)
