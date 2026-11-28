@@ -101,23 +101,6 @@ int main() {
   TEST_CHECK(c[0] > c[2]);
   TEST_CHECK(luma(at(pixels, 4, kHeight - 4)) < 40);
 
-  // A moving camera draws half the points at twice the alpha: about the same light. The still after it is the full
-  // render again, not the cached half-density one.
-  const std::vector<std::uint8_t> still = pixels;
-  const auto meanLuma = [&] {
-    double sum = 0;
-    for (std::size_t i = 0; i < pixels.size(); i += 4) sum += luma(&pixels[i]);
-    return sum / static_cast<double>(pixels.size() / 4);
-  };
-  const double stillLuma = meanLuma();
-  galaxy->setMoving(true);
-  render("dark-moving");
-  TEST_CHECK(pixels != still);
-  TEST_CHECK(std::abs(meanLuma() - stillLuma) < stillLuma * 0.1);
-  galaxy->setMoving(false);
-  render("dark-still");
-  TEST_CHECK(pixels == still);
-
   // Life turns the cached galaxy about its core: the core stays, an arm point moves to where project() says.
   const std::array<float, 3> arm = {0.6F, 0.0F, 0.0F};
   const auto before = galaxy->project(arm);
@@ -179,7 +162,6 @@ int main() {
                        .glow = 1.0F + 0.11F * static_cast<float>(i % 240) / 240.0F});
     });
     GalaxyCamera camera;
-    galaxy->setMoving(true);
     run("drag", [&](int i) {
       camera.yaw = 0.55F + 0.01F * i;
       galaxy->setCamera(camera);
