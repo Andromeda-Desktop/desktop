@@ -124,6 +124,9 @@ uniform mat2 u_inverse;
 uniform vec3 u_bottom, u_top;
 uniform vec3 u_scrim_color;
 uniform vec4 u_scrim;  // alpha at x 0, alpha at mid, mid x, end x (logical px)
+uniform vec4 u_ring;        // centre x, centre y (logical px), phase, y/x ratio
+uniform vec3 u_ring_size;   // start x radius, end x radius, stroke width (logical px)
+uniform vec4 u_ring_color;  // rgb, alpha at the start (0 = no rings)
 varying vec2 v_texcoord;
 const vec3 LUM = vec3(0.3, 0.59, 0.11);
 void main() {
@@ -161,7 +164,19 @@ void main() {
   }
   float a = px.x < u_scrim.z ? mix(u_scrim.x, u_scrim.y, px.x / u_scrim.z)
                              : u_scrim.y * (1.0 - clamp((px.x - u_scrim.z) / (u_scrim.w - u_scrim.z), 0.0, 1.0));
-  gl_FragColor = vec4(mix(pow(c, vec3(0.9)), u_scrim_color, a), 1.0) * u_opacity;
+  vec3 o = mix(pow(c, vec3(0.9)), u_scrim_color, a);
+  if (u_ring_color.a > 0.0) {
+    vec2 q = vec2(px.x - u_ring.x, (px.y - u_ring.y) / u_ring.w);
+    float lq = max(length(q), 1e-3);
+    // |grad| of length(q) in px turns the radial gap into a distance across the stroke.
+    float gl = max(length(vec2(q.x, q.y / u_ring.w)) / lq, 1e-3);
+    for (int k = 0; k < 3; k++) {
+      float u = fract(u_ring.z + float(k) / 3.0);
+      float d = abs(lq - mix(u_ring_size.x, u_ring_size.y, u)) / gl;
+      o = mix(o, u_ring_color.rgb, clamp(u_ring_size.z * 0.5 + 0.5 - d, 0.0, 1.0) * (1.0 - u) * u_ring_color.a);
+    }
+  }
+  gl_FragColor = vec4(o, 1.0) * u_opacity;
 }
 )";
 
@@ -226,6 +241,9 @@ bool GalaxyProgram::ensurePrograms() {
   m_cu.quadPx = glGetUniformLocation(id, "u_quad_px");
   m_cu.scrimColor = glGetUniformLocation(id, "u_scrim_color");
   m_cu.scrim = glGetUniformLocation(id, "u_scrim");
+  m_cu.ring = glGetUniformLocation(id, "u_ring");
+  m_cu.ringSize = glGetUniformLocation(id, "u_ring_size");
+  m_cu.ringColor = glGetUniformLocation(id, "u_ring_color");
   return true;
 }
 
@@ -459,6 +477,10 @@ void GalaxyProgram::draw(const GalaxyDraw& d) {
   const float midX = std::max(scrim.midX, 1.0F);
   glUniform3f(m_cu.scrimColor, scrim.color[0], scrim.color[1], scrim.color[2]);
   glUniform4f(m_cu.scrim, scrim.edge * strength, scrim.mid * strength, midX, std::max(scrim.endX, midX + 1.0F));
+  const GalaxyRings& rings = d.rings;
+  glUniform4f(m_cu.ring, rings.centre[0], rings.centre[1], rings.phase, std::max(rings.ratio, 0.01F));
+  glUniform3f(m_cu.ringSize, rings.start, rings.end, rings.width);
+  glUniform4f(m_cu.ringColor, rings.color[0], rings.color[1], rings.color[2], std::clamp(rings.alpha, 0.0F, 1.0F));
   glUniform1f(m_cu.light, d.lightSky ? 1.0F : 0.0F);
   if (d.lightSky) {
     glUniform3f(m_cu.bottom, d.lightSky->bottom[0], d.lightSky->bottom[1], d.lightSky->bottom[2]);

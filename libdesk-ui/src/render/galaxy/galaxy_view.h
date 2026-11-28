@@ -35,6 +35,21 @@ struct GalaxyScrim {
   bool operator==(const GalaxyScrim&) const = default;
 };
 
+// Rings that leave the core (a call): 3 ellipses at `centre` (logical px of the node), each grows its x radius from
+// `start` to `end` over one cycle while it fades from `alpha` to 0; `phase` (0..1) is where the first ring is in its
+// cycle, the others follow a third apart. y radius = x radius x `ratio`. alpha 0 draws none.
+struct GalaxyRings {
+  std::array<float, 2> centre{};
+  std::array<float, 3> color{1.0F, 1.0F, 1.0F};
+  float phase = 0.0F;
+  float start = 0.0F;
+  float end = 1.0F;
+  float ratio = 1.0F;
+  float width = 1.0F;
+  float alpha = 0.0F;
+  bool operator==(const GalaxyRings&) const = default;
+};
+
 // While something runs on the phone the galaxy turns about its core and the core breathes. Both act on the cached
 // image: angle rotates the disc in its own plane (an affine map of the image), glow scales the galaxy's light.
 struct GalaxyLife {
