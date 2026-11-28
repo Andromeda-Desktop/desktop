@@ -209,15 +209,17 @@ namespace noctalia::theme {
                                                         const BuiltInNumber& builtIn) {
     std::vector<ThemePackage> packages;
     ResolvedTheme out;
-    auto leaf = lookup(id);
-    if (!leaf) {
-      leaf.error().source = std::string(id);
-      return std::unexpected(std::move(leaf.error()));
+    if (!id.empty()) {
+      auto leaf = lookup(id);
+      if (!leaf) {
+        leaf.error().source = std::string(id);
+        return std::unexpected(std::move(leaf.error()));
+      }
+      out.schemes = leaf->manifest.schemes;
+      packages.push_back(std::move(*leaf));
+      out.chain.emplace_back(id);
     }
-    out.schemes = leaf->manifest.schemes;
-    packages.push_back(std::move(*leaf));
-    out.chain.emplace_back(id);
-    for (std::string parent = packages.back().manifest.extends; !parent.empty();
+    for (std::string parent = packages.empty() ? std::string() : packages.back().manifest.extends; !parent.empty();
          parent = packages.back().manifest.extends) {
       const auto stop = [&](std::string message) {
         out.issues.push_back({.key = "theme.extends", .message = std::move(message), .source = out.chain.back()});

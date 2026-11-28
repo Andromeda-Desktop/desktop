@@ -1,26 +1,16 @@
 #include "theme/dev_tokens.h"
 
-#include "core/log.h"
-#include "design_tokens.h"
-#include "theme/builtin_palettes.h"
-#include "ui/token_slots.h"
+#include "protocols/toml.h"
 
 #include <cstdint>
 #include <cstdlib>
-#include <map>
 #include <optional>
 #include <string_view>
-#include "protocols/toml.h"
-#include <variant>
 
 #ifdef TOKENS_RUNTIME
 namespace noctalia::theme::dev_tokens {
 
   namespace {
-
-    constexpr Logger kLog("dev-tokens");
-
-    using Value = std::variant<double, std::int64_t, bool, std::string>;
 
     const Value* find(const std::map<std::string, Value>& raw, const std::string& path) {
       const auto it = raw.find(path);
@@ -103,26 +93,36 @@ namespace noctalia::theme::dev_tokens {
 
   } // namespace
 
-  // Runs on the main loop, which is the only thread that reads Tokens:: except the template worker; that worker
-  // reads schemeLightEntries/schemeDarkEntries only after a theme change this reload triggers, not concurrently.
-  bool applyFile(const std::filesystem::path& path, std::string& error) {
+  std::expected<File, std::string> readFile(const std::filesystem::path& path) {
     toml::table root;
     try {
       root = toml::parse_file(path.string());
     } catch (const toml::parse_error& e) {
-      error = std::string(e.description());
-      return false;
+      return std::unexpected(std::string(e.description()));
     }
-    std::map<std::string, Value> raw;
-    flatten(root, "", raw);
+    File file;
+    flatten(root, "", file.raw);
+    return file;
+  }
 
+  std::expected<desk::tokens::SlotValues, std::string> resolve(const File& file,
+                                                               const desk::tokens::SlotValues& top) {
+    std::map<std::string, Value> raw = file.raw;
+    for (const auto& [key, value] : top) {
+      if (const auto* d = std::get_if<double>(&value)) {
+        raw[key] = *d;
+      } else if (const auto* b = std::get_if<bool>(&value)) {
+        raw[key] = *b;
+      } else {
+        raw[key] = std::get<std::string>(value);
+      }
+    }
     desk::tokens::SlotValues values;
     for (const auto& [key, value] : raw) {
       if (const auto* s = std::get_if<std::string>(&value); s != nullptr && s->starts_with("=")) {
         const auto n = evaluate(raw, *s, 0);
         if (!n) {
-          error = key + ": bad or circular expression";
-          return false;
+          return std::unexpected(key + ": bad or circular expression");
         }
         values[key] = *n;
       } else if (const auto* i = std::get_if<std::int64_t>(&value)) {
@@ -135,51 +135,12 @@ namespace noctalia::theme::dev_tokens {
         values[key] = std::get<std::string>(value);
       }
     }
-    if (auto applied = desk::tokens::applySlotValues(values); !applied) {
-      error = applied.error();
-      return false;
-    }
-    refreshBuiltinPalettes();
-    return true;
+    return values;
   }
 
   std::filesystem::path envPath() {
     const char* v = std::getenv("ANDROMEDA_DEV_TOKENS");
     return v != nullptr ? std::filesystem::path(v) : std::filesystem::path();
-  }
-
-  bool applyFromEnv() {
-    const auto path = envPath();
-    if (path.empty()) {
-      return false;
-    }
-    std::string error;
-    if (applyFile(path, error)) {
-      kLog.info("loaded design tokens from {}", path.string());
-    } else {
-      kLog.warn("{}: {}; using built-in tokens", path.string(), error);
-    }
-    return true;
-  }
-
-  void watchEnv(FileWatcher& watcher, std::function<void()> onApplied) {
-    auto path = envPath();
-    if (path.empty()) {
-      return;
-    }
-    watcher.watch(
-        path,
-        [path, onApplied = std::move(onApplied)] {
-          std::string error;
-          if (applyFile(path, error)) {
-            kLog.info("reloaded design tokens from {}", path.string());
-            onApplied();
-          } else {
-            kLog.warn("{}: {}; keeping the last good tokens", path.string(), error);
-          }
-        },
-        FileWatcher::WatchTrigger::WriteCompleted
-    );
   }
 
 } // namespace noctalia::theme::dev_tokens
@@ -188,14 +149,15 @@ namespace noctalia::theme::dev_tokens {
 
 namespace noctalia::theme::dev_tokens {
 
-  bool applyFile(const std::filesystem::path&, std::string& error) {
-    error = "built without dev_tokens";
-    return false;
+  std::expected<File, std::string> readFile(const std::filesystem::path&) {
+    return std::unexpected(std::string("built without dev_tokens"));
+  }
+
+  std::expected<desk::tokens::SlotValues, std::string> resolve(const File&, const desk::tokens::SlotValues& top) {
+    return top;
   }
 
   std::filesystem::path envPath() { return {}; }
-  bool applyFromEnv() { return false; }
-  void watchEnv(FileWatcher&, std::function<void()>) {}
 
 } // namespace noctalia::theme::dev_tokens
 

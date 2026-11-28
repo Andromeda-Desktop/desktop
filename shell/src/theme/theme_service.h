@@ -20,6 +20,8 @@ class IpcService;
 
 namespace noctalia::theme {
 
+  class DesktopTheme;
+
   class ThemeService {
   public:
     using ChangeCallback = std::function<void()>;
@@ -27,7 +29,7 @@ namespace noctalia::theme {
     // scheme run in. Shell-facing consumers read resolvedShellMode()/isLightMode().
     using ResolvedCallback = std::function<void(const GeneratedPalette&, std::string_view)>;
 
-    ThemeService(ConfigService& config, HttpClient& httpClient);
+    ThemeService(ConfigService& config, HttpClient& httpClient, const DesktopTheme& desktopTheme);
     ~ThemeService();
 
     ThemeService(const ThemeService&) = delete;
@@ -53,7 +55,8 @@ namespace noctalia::theme {
 
     // The compositor's live appearance: accent "#rrggbb" (empty keeps the token accent) and increased contrast.
     void setLiveAppearance(std::string accent, bool increaseContrast);
-    // A Focus scheme ("light" | "dark") over both resolved modes, never saved; empty: the configured modes.
+    // A Focus scheme ("light" | "dark") over both resolved modes, never saved; empty: the configured modes. A desktop
+    // theme with one scheme wins over both.
     void setModeOverride(std::string mode);
 
     // Accent colors for GTK/Qt/KDE files in the resolved app mode: the target palette, not a mid-fade value.
@@ -86,6 +89,7 @@ namespace noctalia::theme {
 
     ConfigService& m_config;
     HttpClient& m_httpClient;
+    const DesktopTheme& m_desktopTheme;
 
 
     ChangeCallback m_changeCallback;

@@ -24,14 +24,14 @@ namespace noctalia::theme {
 
   struct ResolvedTheme {
     std::vector<std::string> chain;           // the theme first, then each ancestor
-    std::vector<std::string> schemes;         // the theme's own
+    std::vector<std::string> schemes;         // the theme's own; empty without a theme (built-in: both)
     std::map<std::string, ThemeValue> values; // concrete values only: references are resolved, none remain
     std::map<std::string, std::string> origin; // key -> theme id or "overrides" that set the value (asset paths)
     std::vector<ThemeIssue> issues;           // each layer's report and each fallback of the resolution
   };
 
   // Fails only when `id` itself cannot load; the caller keeps its last good table. `overrides` (the user's
-  // theme-overrides.toml) sits above the theme.
+  // theme-overrides.toml) sits above the theme. An empty `id` resolves `overrides` over the built-in tokens.
   [[nodiscard]] std::expected<ResolvedTheme, ThemeIssue>
   resolveTheme(std::string_view id, const ThemeLookup& lookup, const ThemePackage* overrides,
                const ThemeVocabulary& vocabulary, const BuiltInNumber& builtIn);

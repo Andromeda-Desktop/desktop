@@ -46,6 +46,7 @@ tokens = ["component.window.card_radius"]
   struct World {
     std::map<std::string, FileState> themes;
     FileState overrides = FileState::Absent;
+    bool writeFails = false; // the slot write rejects every table
 
     std::string themeText(const std::string& id) const {
       const FileState state = themes.at(id);
@@ -99,23 +100,25 @@ tokens = ["component.window.card_radius"]
         vocabulary, builtIn, [&](const ResolvedTheme& table, std::uint64_t generation) {
           expect(generation == lastGeneration + 1, "each apply is the next generation");
           expect(applies == 0 || !same(table, applied), "an apply always changes the table");
+          if (disk.writeFails) {
+            return std::expected<void, std::string>(std::unexpected("write failed"));
+          }
           lastGeneration = generation;
           applied = table;
           ++applies;
+          return std::expected<void, std::string>();
         });
 
     // Oracle: the overrides the controller last read, and the table that must show.
     std::optional<ThemePackage> goodOverrides;
     ResolvedTheme expected;
     const auto oracleRefresh = [&] {
-      if (controller.selected().empty()) {
-        expected = {};
-        return;
-      }
       const ThemeLookup lookup = [&](std::string_view id) { return disk.load(id, vocabulary); };
       if (auto t = resolveTheme(controller.selected(), lookup, goodOverrides ? &*goodOverrides : nullptr, vocabulary,
                                 builtIn)) {
-        expected = std::move(*t);
+        if (!disk.writeFails || same(*t, expected)) {
+          expected = std::move(*t);
+        }
       }
     };
 
@@ -129,6 +132,11 @@ tokens = ["component.window.card_radius"]
         g_trace += std::format(" select({})", id);
         controller.select(id);
         oracleRefresh();
+      } else if (roll < 45) {
+        disk.writeFails = !disk.writeFails;
+        // A write fails on the values; the fix that ends it is a file edit, which the watch reports.
+        themeEventPending = themeEventPending || !disk.writeFails;
+        g_trace += std::format(" writeFails={}", disk.writeFails);
       } else if (roll < 50) {
         auto it = disk.themes.begin();
         std::advance(it, pick(rng) % static_cast<int>(disk.themes.size()));
@@ -159,13 +167,14 @@ tokens = ["component.window.card_radius"]
       expect(controller.shownId() == (applied.chain.empty() ? "" : applied.chain[0]), "shownId names the applied table");
       const bool selectedLoads = !controller.selected().empty() && disk.load(controller.selected(), vocabulary);
       if (!themeEventPending && !overridesEventPending && !controller.selected().empty()) {
-        expect(!selectedLoads || controller.shownId() == controller.selected(),
-               "settled: the selected theme shows when it loads (else the last good table stays)");
-        expect(selectedLoads == controller.errors().empty() || disk.overrides == FileState::Broken,
+        expect(disk.writeFails || !selectedLoads || controller.shownId() == controller.selected(),
+               "settled: a failed write keeps the last good table only while writes fail");
+        expect(selectedLoads == controller.errors().empty() || disk.overrides == FileState::Broken || disk.writeFails,
                "settled: an error is reported exactly when the selected theme does not load");
       }
       if (controller.selected().empty()) {
-        expect(applied.chain.empty(), "no selection shows the built-in tokens");
+        expect(applied.chain.empty() || disk.writeFails || themeEventPending,
+               "no selection shows no theme, unless writes fail");
       }
     }
   }

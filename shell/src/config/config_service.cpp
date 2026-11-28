@@ -1536,7 +1536,23 @@ void ConfigService::deepMerge(toml::table& base, const toml::table& overlay) {
   }
 }
 
+void ConfigService::setTokenSource(std::function<bool(const Config&)> source) {
+  m_tokenSource = std::move(source);
+  if (m_tokenSource(m_config)) {
+    loadConfigFiles();
+    m_lastChange = ConfigChangeSet{};
+  }
+}
+
 void ConfigService::loadAll() {
+  loadConfigFiles();
+  if (m_tokenSource && m_tokenSource(m_config)) {
+    loadConfigFiles();
+    m_lastChange = ConfigChangeSet{};
+  }
+}
+
+void ConfigService::loadConfigFiles() {
   noctalia::profiling::ScopedTimer parseTimer(kLog, "reload: parse (loadAll)");
   m_effectiveOverrideCache.clear();
 

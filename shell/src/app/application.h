@@ -93,6 +93,7 @@
 #include "system/lock_keys_service.h"
 #include "system/screen_time_service.h"
 #include "system/weather_service.h"
+#include "theme/desktop_theme.h"
 #include "theme/live_appearance_sync.h"
 #include "theme/theme_service.h"
 #include "time/time_service.h"
@@ -340,11 +341,12 @@ private:
   VirtualKeyboardService m_virtualKeyboardService;
   DirectoryWatcher m_dirWatcher;
   FileWatcher m_fileWatcher{m_dirWatcher};
+  noctalia::theme::DesktopTheme m_desktopTheme{m_fileWatcher};
   ConfigService m_configService{&m_dirWatcher};
   HttpClient m_httpClient;
   // The desktop interface font family; the shell draws with it while shell.font_family is empty.
   std::optional<std::string> m_systemFontFamily;
-  noctalia::theme::ThemeService m_themeService{m_configService, m_httpClient};
+  noctalia::theme::ThemeService m_themeService{m_configService, m_httpClient, m_desktopTheme};
   LiveAppearanceSync m_liveAppearance;
   // The From Wallpaper accent of m_wallpaperAccentPath, picked on the SharedWorker; empty until then.
   std::string m_wallpaperAccentPath;

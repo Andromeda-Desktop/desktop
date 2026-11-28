@@ -9,6 +9,7 @@
 #include "net/http_client.h"
 #include "system/day_night_schedule.h"
 #include "theme/builtin_palettes.h"
+#include "theme/desktop_theme.h"
 #include "theme/fixed_palette.h"
 #include "theme/palette_transform.h"
 #include "theme/shell_palette.h"
@@ -34,7 +35,7 @@ namespace noctalia::theme {
     // One 60 Hz frame: a faster tick repaints every surface more often than the screen can show it.
     constexpr std::chrono::milliseconds kTransitionTick{16};
 
-    struct ResolvedTheme {
+    struct ResolvedPalette {
       GeneratedPalette generated;
       Palette palette;
       // Resolved [theme].mode (apps) and the mode Noctalia itself runs in.
@@ -42,7 +43,7 @@ namespace noctalia::theme {
       std::string shellMode;
     };
 
-    ResolvedTheme resolveTokens(std::string_view mode, std::string_view shellMode) {
+    ResolvedPalette resolveTokens(std::string_view mode, std::string_view shellMode) {
       return {
           .generated = expandBuiltinPalette(andromedaPalette()),
           .palette = tokenPalette(shellMode == "light"),
@@ -53,8 +54,8 @@ namespace noctalia::theme {
 
   } // namespace
 
-  ThemeService::ThemeService(ConfigService& config, HttpClient& httpClient)
-      : m_config(config), m_httpClient(httpClient) {}
+  ThemeService::ThemeService(ConfigService& config, HttpClient& httpClient, const DesktopTheme& desktopTheme)
+      : m_config(config), m_httpClient(httpClient), m_desktopTheme(desktopTheme) {}
 
   ThemeService::~ThemeService() = default;
 
@@ -202,10 +203,17 @@ namespace noctalia::theme {
       }
       return *scheduleNight ? "dark" : "light";
     };
-    const std::string mode = m_modeOverride.empty() ? modeName(cfg.mode) : m_modeOverride;
-    const std::string shellMode = m_modeOverride.empty() ? modeName(shellThemeMode(cfg)) : m_modeOverride;
+    const auto pinned = m_desktopTheme.pinnedScheme();
+    const auto resolveMode = [&](ThemeMode themeMode) {
+      if (pinned) {
+        return std::string(*pinned);
+      }
+      return m_modeOverride.empty() ? modeName(themeMode) : m_modeOverride;
+    };
+    const std::string mode = resolveMode(cfg.mode);
+    const std::string shellMode = resolveMode(shellThemeMode(cfg));
 
-    std::optional<ResolvedTheme> resolved = resolveTokens(mode, shellMode);
+    std::optional<ResolvedPalette> resolved = resolveTokens(mode, shellMode);
     if (cfg.pureBlackDark) {
       applyPureBlackDark(resolved->generated);
     }

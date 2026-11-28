@@ -8,7 +8,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <variant>
 #include <vector>
 
 // Owner of the shown desktop theme: the selected id, the last good resolved table and its generation. A theme or an
@@ -21,31 +20,27 @@ namespace noctalia::theme {
       std::function<std::expected<ThemePackage, ThemeIssue>(std::string_view id)> loadTheme;
       std::function<std::expected<std::optional<ThemePackage>, ThemeIssue>()> loadOverrides;
     };
-    // Called once per new generation with the table to show; an empty table means the built-in tokens.
-    using Apply = std::function<void(const ResolvedTheme& table, std::uint64_t generation)>;
+    // Shows `table` as `generation`; a table without a chain is the overrides over the built-in tokens. Returns the
+    // reason when nothing changed; the controller then keeps its last good table and generation.
+    using Apply = std::function<std::expected<void, std::string>(const ResolvedTheme& table, std::uint64_t generation)>;
 
     ThemeController(Disk disk, ThemeVocabulary vocabulary, BuiltInNumber builtIn, Apply apply);
 
-    // The config's theme id; empty selects the built-in tokens.
+    // The config's theme id; empty selects the built-in tokens (with the overrides over them).
     void select(std::string_view id);
     void themeFilesChanged();
     void overridesChanged();
 
     [[nodiscard]] const std::string& selected() const noexcept { return m_selected; }
-    // Id of the shown theme; empty while the built-in tokens show.
+    // Id of the shown theme; empty while no theme shows (the overrides over the built-in tokens).
     [[nodiscard]] std::string_view shownId() const noexcept;
     [[nodiscard]] std::uint64_t generation() const noexcept { return m_generation; }
     // Ids whose theme.toml the caller watches: the shown chain, and the selected id while it fails to load.
     [[nodiscard]] std::vector<std::string> watchedIds() const;
-    // Why the selected theme or the overrides file is not shown as is; empty when both loaded.
+    // Why the selected theme or the overrides file is not shown as is; empty when both loaded and showed.
     [[nodiscard]] std::vector<ThemeIssue> errors() const;
 
   private:
-    struct BuiltIn {};
-    struct Shown {
-      ResolvedTheme table;
-    };
-
     void refresh();
     void show(ResolvedTheme table);
 
@@ -54,10 +49,11 @@ namespace noctalia::theme {
     BuiltInNumber m_builtIn;
     Apply m_apply;
     std::string m_selected;
-    std::variant<BuiltIn, Shown> m_shown;
+    ResolvedTheme m_shown; // no chain: the overrides over the built-in tokens
     std::optional<ThemePackage> m_overrides; // last good copy of theme-overrides.toml
     std::optional<ThemeIssue> m_themeError;
     std::optional<ThemeIssue> m_overridesError;
+    std::optional<ThemeIssue> m_applyError;
     std::uint64_t m_generation = 0;
   };
 

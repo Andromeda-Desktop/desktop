@@ -12,6 +12,7 @@
 #include "compositors/keyboard_layout_poll_source.h"
 #include "compositors/shell_wayland_connection.h"
 #include "core/files/directory_watcher.h"
+#include "core/files/file_watcher.h"
 #include "config/config_service.h"
 #include "core/deferred_call.h"
 #include "core/input/keybind_matcher.h"
@@ -49,6 +50,7 @@
 #include "system/lock_keys_service.h"
 #include "system/system_font.h"
 #include "system/weather_service.h"
+#include "theme/desktop_theme.h"
 #include "theme/live_appearance_sync.h"
 #include "theme/theme_service.h"
 #include "shell/auth/auth_status_source.h"
@@ -84,6 +86,10 @@ namespace {
       initLogLevelFromEnvironment();
       kLog.info("lock process starting");
 
+      m_config.setTokenSource([this](const Config& config) {
+        return m_desktopTheme.select(config.theme.desktopTheme);
+      });
+      m_desktopTheme.setChangeCallback([this] { m_config.reloadAllSections(); });
       applyStyle();
       i18n::Service::instance().init(m_config.config().shell.lang);
       m_theme.apply();
@@ -520,9 +526,11 @@ namespace {
     ShellWaylandConnection m_wayland;
     CompositorPlatform m_platform{m_wayland, CompositorPlatform::Role::Lock};
     DirectoryWatcher m_dirWatcher;
+    FileWatcher m_files{m_dirWatcher};
+    noctalia::theme::DesktopTheme m_desktopTheme{m_files};
     ConfigService m_config{&m_dirWatcher};
     HttpClient m_http;
-    noctalia::theme::ThemeService m_theme{m_config, m_http};
+    noctalia::theme::ThemeService m_theme{m_config, m_http, m_desktopTheme};
     LiveAppearanceSync m_liveAppearance;
     WeatherService m_weather{m_config, m_http};
     LockKeysService m_lockKeys{m_wayland};

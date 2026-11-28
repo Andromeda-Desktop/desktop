@@ -439,8 +439,8 @@ void LockCards::layoutMediaCard(Renderer& renderer, Card& card, const AuthRect& 
     button.bg->setPosition(button.rect.x, button.rect.y);
     button.bg->setSize(control, control);
     // The lock is always dark; play/pause is the inverted "on" button: a dark-scheme label fill, a light-scheme glyph.
-    static const Color onFill = tokenPalette(false).label1;
-    static const Color onGlyph = tokenPalette(true).label1;
+    const Color onFill = tokenPalette(false).label1;
+    const Color onGlyph = tokenPalette(true).label1;
     button.bg->setStyle(RoundedRectStyle{.fill = onFill, .radius = control * 0.5F});
     button.glyph->setGlyph(media.playing ? "media-pause" : "media-play");
     button.glyph->setGlyphSize(16.0F * s);

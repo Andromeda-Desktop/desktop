@@ -4,8 +4,11 @@
 
 #include "config/config_service.h"
 #include "core/deferred_call.h"
+#include "core/files/directory_watcher.h"
+#include "core/files/file_watcher.h"
 #include "net/http_client.h"
 #include "tests/test_check.h"
+#include "theme/desktop_theme.h"
 #include "theme/theme_service.h"
 
 #include <cstdlib>
@@ -30,9 +33,12 @@ namespace {
       out << themeToml;
     }
 
+    DirectoryWatcher dirs;
+    FileWatcher files(dirs);
+    noctalia::theme::DesktopTheme desktopTheme(files);
     ConfigService config;
     HttpClient http;
-    noctalia::theme::ThemeService theme(config, http);
+    noctalia::theme::ThemeService theme(config, http, desktopTheme);
 
     Resolution result;
     theme.setResolvedCallback([&result](const noctalia::theme::GeneratedPalette&, std::string_view mode) {

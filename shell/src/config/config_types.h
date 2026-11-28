@@ -1781,6 +1781,7 @@ struct ThemeConfig {
   bool syncColorScheme = true;
   bool toolkitThemes = true; // GTK, Qt, KDE and fcitx5 colors from the design tokens (toolkit_theme_files)
   AccentSource accentSource = AccentSource::Color;
+  std::string desktopTheme; // desktop theme folder id; empty: the built-in tokens
 
   bool operator==(const ThemeConfig&) const = default;
 };

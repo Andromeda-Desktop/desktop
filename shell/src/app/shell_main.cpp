@@ -17,7 +17,6 @@
 #include "ipc/cli.h"
 #include "launcher/dmenu_cli.h"
 #include "scripting/plugin_lint.h"
-#include "theme/dev_tokens.h"
 
 #include <librsvg/rsvg.h>
 
@@ -256,7 +255,6 @@ namespace {
     capRsvgThreadPool();
     raiseMainThreadPriority();
     try {
-      noctalia::theme::dev_tokens::applyFromEnv();
       Application app;
       app.run([] { completeDaemonStartup(0); });
       if (Application::s_displayLost) {

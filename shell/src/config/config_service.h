@@ -102,8 +102,11 @@ public:
   void notifySaveFailed(const std::filesystem::path& path);
   void addSaveFailedCallback(std::weak_ptr<const void> owner, std::function<void()> callback);
   void forceReload();
-  // forceReload() with every section marked changed, for edits that no config diff shows (dev token reload).
+  // forceReload() with every section marked changed, for edits that no config diff shows (token values changed).
   void reloadAllSections();
+  // Called with each loaded config; returns true when it changed the token values. Config defaults read tokens, so
+  // a true return builds the config again and marks every section changed. Runs at once on the loaded config.
+  void setTokenSource(std::function<bool(const Config&)> source);
 
   void registerIpc(IpcService& ipc);
 
@@ -224,6 +227,7 @@ public:
 
 private:
   void loadAll();
+  void loadConfigFiles();
   void applyPendingWatchReload();
   [[nodiscard]] static Config makeDefaultConfig();
   static void
@@ -367,4 +371,5 @@ private:
     std::string label;
   };
   std::vector<ReloadSubscriber> m_reloadCallbacks;
+  std::function<bool(const Config&)> m_tokenSource;
 };

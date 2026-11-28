@@ -2110,6 +2110,7 @@ namespace noctalia::config::schema {
             }
         ),
         enumField(&ThemeConfig::accentSource, "accent_source", kAccentSources),
+        field(&ThemeConfig::desktopTheme, "desktop_theme"),
     };
     return s;
   }

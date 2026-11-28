@@ -7,8 +7,6 @@ namespace noctalia::theme {
 
   namespace {
 
-    const ResolvedTheme kBuiltIn;
-
     bool sameTable(const ResolvedTheme& a, const ResolvedTheme& b) {
       return a.chain == b.chain && a.schemes == b.schemes && a.values == b.values && a.origin == b.origin;
     }
@@ -39,15 +37,11 @@ namespace noctalia::theme {
   }
 
   std::string_view ThemeController::shownId() const noexcept {
-    const auto* shown = std::get_if<Shown>(&m_shown);
-    return shown == nullptr ? std::string_view{} : std::string_view(shown->table.chain.front());
+    return m_shown.chain.empty() ? std::string_view{} : std::string_view(m_shown.chain.front());
   }
 
   std::vector<std::string> ThemeController::watchedIds() const {
-    std::vector<std::string> ids;
-    if (const auto* shown = std::get_if<Shown>(&m_shown)) {
-      ids = shown->table.chain;
-    }
+    std::vector<std::string> ids = m_shown.chain;
     if (!m_selected.empty() && !std::ranges::contains(ids, m_selected)) {
       ids.push_back(m_selected);
     }
@@ -56,7 +50,7 @@ namespace noctalia::theme {
 
   std::vector<ThemeIssue> ThemeController::errors() const {
     std::vector<ThemeIssue> out;
-    for (const auto* error : {&m_themeError, &m_overridesError}) {
+    for (const auto* error : {&m_themeError, &m_overridesError, &m_applyError}) {
       if (error->has_value()) {
         out.push_back(**error);
       }
@@ -65,11 +59,6 @@ namespace noctalia::theme {
   }
 
   void ThemeController::refresh() {
-    if (m_selected.empty()) {
-      m_themeError.reset();
-      show(ResolvedTheme{});
-      return;
-    }
     const ThemeLookup lookup = [this](std::string_view id) { return m_disk.loadTheme(id); };
     auto resolved = resolveTheme(m_selected, lookup, m_overrides ? &*m_overrides : nullptr, m_vocabulary, m_builtIn);
     if (!resolved) {
@@ -81,18 +70,18 @@ namespace noctalia::theme {
   }
 
   void ThemeController::show(ResolvedTheme table) {
-    const auto* shown = std::get_if<Shown>(&m_shown);
-    if (sameTable(shown == nullptr ? kBuiltIn : shown->table, table)) {
+    if (sameTable(m_shown, table)) {
+      m_applyError.reset();
       return;
     }
-    if (table.chain.empty()) {
-      m_shown = BuiltIn{};
-    } else {
-      m_shown = Shown{.table = std::move(table)};
+    if (auto applied = m_apply(table, m_generation + 1); !applied) {
+      m_applyError = ThemeIssue{.key = "theme", .message = std::move(applied.error()),
+                                .source = table.chain.empty() ? std::string("overrides") : table.chain.front()};
+      return;
     }
+    m_applyError.reset();
+    m_shown = std::move(table);
     ++m_generation;
-    const auto* now = std::get_if<Shown>(&m_shown);
-    m_apply(now == nullptr ? kBuiltIn : now->table, m_generation);
   }
 
 } // namespace noctalia::theme
