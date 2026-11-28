@@ -122,6 +122,8 @@ uniform float u_opacity, u_glow, u_gain, u_light, u_ink, u_aurora;
 uniform vec2 u_quad_px, u_centre;
 uniform mat2 u_inverse;
 uniform vec3 u_bottom, u_top;
+uniform vec3 u_scrim_color;
+uniform vec4 u_scrim;  // alpha at x 0, alpha at mid, mid x, end x (logical px)
 varying vec2 v_texcoord;
 const vec3 LUM = vec3(0.3, 0.59, 0.11);
 void main() {
@@ -157,7 +159,9 @@ void main() {
     }
     c = day;
   }
-  gl_FragColor = vec4(pow(c, vec3(0.9)), 1.0) * u_opacity;
+  float a = px.x < u_scrim.z ? mix(u_scrim.x, u_scrim.y, px.x / u_scrim.z)
+                             : u_scrim.y * (1.0 - clamp((px.x - u_scrim.z) / (u_scrim.w - u_scrim.z), 0.0, 1.0));
+  gl_FragColor = vec4(mix(pow(c, vec3(0.9)), u_scrim_color, a), 1.0) * u_opacity;
 }
 )";
 
@@ -220,6 +224,8 @@ bool GalaxyProgram::ensurePrograms() {
   m_cu.ink = glGetUniformLocation(id, "u_ink");
   m_cu.aurora = glGetUniformLocation(id, "u_aurora");
   m_cu.quadPx = glGetUniformLocation(id, "u_quad_px");
+  m_cu.scrimColor = glGetUniformLocation(id, "u_scrim_color");
+  m_cu.scrim = glGetUniformLocation(id, "u_scrim");
   return true;
 }
 
@@ -448,6 +454,11 @@ void GalaxyProgram::draw(const GalaxyDraw& d) {
   glUniform1f(m_cu.gain, 1.0F / m_gain);
   glUniform2f(m_cu.centre, spin.centre[0], spin.centre[1]);
   glUniformMatrix2fv(m_cu.inverse, 1, GL_FALSE, inverse.data());
+  const GalaxyScrim& scrim = d.scrim;
+  const float strength = std::clamp(scrim.strength, 0.0F, 1.0F);
+  const float midX = std::max(scrim.midX, 1.0F);
+  glUniform3f(m_cu.scrimColor, scrim.color[0], scrim.color[1], scrim.color[2]);
+  glUniform4f(m_cu.scrim, scrim.edge * strength, scrim.mid * strength, midX, std::max(scrim.endX, midX + 1.0F));
   glUniform1f(m_cu.light, d.lightSky ? 1.0F : 0.0F);
   if (d.lightSky) {
     glUniform3f(m_cu.bottom, d.lightSky->bottom[0], d.lightSky->bottom[1], d.lightSky->bottom[2]);

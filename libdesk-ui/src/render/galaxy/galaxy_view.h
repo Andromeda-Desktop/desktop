@@ -23,6 +23,18 @@ struct GalaxyLightSky {
   bool operator==(const GalaxyLightSky&) const = default;
 };
 
+// A darkening from the left edge that keeps text over the sky readable: `color` at alpha `edge` at x 0, `mid` at
+// `midX`, clear from `endX` (logical px of the node). Alphas scale by `strength`; 0 draws none.
+struct GalaxyScrim {
+  std::array<float, 3> color{0.0F, 0.0F, 0.0F};
+  float edge = 0.0F;
+  float mid = 0.0F;
+  float midX = 1.0F;
+  float endX = 2.0F;
+  float strength = 0.0F;
+  bool operator==(const GalaxyScrim&) const = default;
+};
+
 // While something runs on the phone the galaxy turns about its core and the core breathes. Both act on the cached
 // image: angle rotates the disc in its own plane (an affine map of the image), glow scales the galaxy's light.
 struct GalaxyLife {

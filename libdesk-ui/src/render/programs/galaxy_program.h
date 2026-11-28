@@ -78,7 +78,8 @@ private:
   } m_fu;
   struct {
     GLint position = -1, surfaceSize = -1, quadSize = -1, transform = -1, bg = -1, galaxy = -1, opacity = -1, glow = -1,
-          gain = -1, centre = -1, inverse = -1, light = -1, bottom = -1, top = -1, ink = -1, aurora = -1, quadPx = -1;
+          gain = -1, centre = -1, inverse = -1, light = -1, bottom = -1, top = -1, ink = -1, aurora = -1, quadPx = -1,
+          scrimColor = -1, scrim = -1;
   } m_cu;
 
   Buffers m_buffers;
