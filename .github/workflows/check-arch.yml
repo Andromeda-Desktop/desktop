@@ -30,7 +30,8 @@ jobs:
       - name: Build dependencies
         run: |
           source pkg/PKGBUILD
-          pacman -S --noconfirm --needed "${makedepends[@]}" python-gobject python-dbus
+          # clang: `just build` builds link too, whose PipeWire bindings (bindgen) need clang's headers.
+          pacman -S --noconfirm --needed "${makedepends[@]}" python-gobject python-dbus clang
           echo "CCACHE_DIR=$PWD/.ccache" >> "$GITHUB_ENV"
           # No limit while building: a trim mid-build would drop entries this build has not reached yet.
           mkdir -p .ccache && echo 'max_size = 0' > .ccache/ccache.conf
