@@ -41,8 +41,10 @@ private:
   };
   struct Layers {
     const void* key = nullptr;
-    int width = 0;
+    int width = 0;  // the drawn size, at most the textures' size
     int height = 0;
+    int texWidth = 0;
+    int texHeight = 0;
     GLuint fbo[2] = {0, 0};  // 0 the far sky, 1 the galaxy (alpha = dust coverage)
     GLuint tex[2] = {0, 0};
     std::uint64_t pointsId = 0;
@@ -78,7 +80,7 @@ private:
   } m_fu;
   struct {
     GLint position = -1, surfaceSize = -1, quadSize = -1, transform = -1, bg = -1, galaxy = -1, opacity = -1, glow = -1,
-          gain = -1, centre = -1, inverse = -1, light = -1, bottom = -1, top = -1, ink = -1, aurora = -1, quadPx = -1,
+          gain = -1, centre = -1, inverse = -1, light = -1, bottom = -1, top = -1, ink = -1, aurora = -1, quadPx = -1, uvScale = -1,
           scrimColor = -1, scrim = -1, ring = -1, ringSize = -1, ringColor = -1;
   } m_cu;
 

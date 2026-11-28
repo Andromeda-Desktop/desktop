@@ -120,6 +120,7 @@ uniform sampler2D u_bg;
 uniform sampler2D u_galaxy;
 uniform float u_opacity, u_glow, u_gain, u_light, u_ink, u_aurora;
 uniform vec2 u_quad_px, u_centre;
+uniform vec2 u_uv_scale;  // drawn size / texture size
 uniform mat2 u_inverse;
 uniform vec3 u_bottom, u_top;
 uniform vec3 u_scrim_color;
@@ -133,9 +134,9 @@ void main() {
   vec2 t = vec2(v_texcoord.x, 1.0 - v_texcoord.y);
   vec2 px = v_texcoord * u_quad_px;
   vec2 src = (u_centre + u_inverse * (px - u_centre)) / u_quad_px;
-  vec4 g = texture2D(u_galaxy, vec2(src.x, 1.0 - src.y));
+  vec4 g = texture2D(u_galaxy, vec2(src.x, 1.0 - src.y) * u_uv_scale);
   if (src.x < 0.0 || src.x > 1.0 || src.y < 0.0 || src.y > 1.0) g = vec4(0.0);
-  vec3 bg = texture2D(u_bg, t).rgb;
+  vec3 bg = texture2D(u_bg, t * u_uv_scale).rgb;
   vec3 h = (bg * (1.0 - g.a) + g.rgb * u_glow) * u_gain;
   vec3 c;
   if (u_light < 0.5) {
@@ -239,6 +240,7 @@ bool GalaxyProgram::ensurePrograms() {
   m_cu.ink = glGetUniformLocation(id, "u_ink");
   m_cu.aurora = glGetUniformLocation(id, "u_aurora");
   m_cu.quadPx = glGetUniformLocation(id, "u_quad_px");
+  m_cu.uvScale = glGetUniformLocation(id, "u_uv_scale");
   m_cu.scrimColor = glGetUniformLocation(id, "u_scrim_color");
   m_cu.scrim = glGetUniformLocation(id, "u_scrim");
   m_cu.ring = glGetUniformLocation(id, "u_ring");
@@ -288,7 +290,7 @@ bool GalaxyProgram::createLayers(Layers& layers) {
     for (int i = 0; i < 2; ++i) {
       glGenTextures(1, &layers.tex[i]);
       glBindTexture(GL_TEXTURE_2D, layers.tex[i]);
-      glTexImage2D(GL_TEXTURE_2D, 0, internal, layers.width, layers.height, 0, GL_RGBA, type, nullptr);
+      glTexImage2D(GL_TEXTURE_2D, 0, internal, layers.texWidth, layers.texHeight, 0, GL_RGBA, type, nullptr);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -311,11 +313,20 @@ bool GalaxyProgram::createLayers(Layers& layers) {
 }
 
 GalaxyProgram::Layers* GalaxyProgram::layersFor(const void* key, int width, int height) {
+  // A morph or drag changes the size every frame: the textures only grow, and a smaller size draws into their corner.
   auto it = std::ranges::find(m_layers, key, &Layers::key);
-  if (it != m_layers.end() && (it->width != width || it->height != height)) {
+  int texWidth = width;
+  int texHeight = height;
+  if (it != m_layers.end() && (width > it->texWidth || height > it->texHeight)) {
+    texWidth = std::max(width, it->texWidth);
+    texHeight = std::max(height, it->texHeight);
     releaseLayers(*it);
     m_layers.erase(it);
     it = m_layers.end();
+  } else if (it != m_layers.end() && (it->width != width || it->height != height)) {
+    it->width = width;
+    it->height = height;
+    it->pointsId = 0;
   }
   if (it == m_layers.end()) {
     if (m_layers.size() >= kMaxLayers) {
@@ -323,7 +334,7 @@ GalaxyProgram::Layers* GalaxyProgram::layersFor(const void* key, int width, int 
       releaseLayers(*oldest);
       m_layers.erase(oldest);
     }
-    Layers fresh{.key = key, .width = width, .height = height};
+    Layers fresh{.key = key, .width = width, .height = height, .texWidth = texWidth, .texHeight = texHeight};
     if (!createLayers(fresh)) {
       return nullptr;
     }
@@ -466,6 +477,8 @@ void GalaxyProgram::draw(const GalaxyDraw& d) {
   glUniform2f(m_cu.surfaceSize, d.surfaceWidth, d.surfaceHeight);
   glUniform2f(m_cu.quadSize, d.quadWidth, d.quadHeight);
   glUniform2f(m_cu.quadPx, d.quadWidth, d.quadHeight);
+  glUniform2f(m_cu.uvScale, static_cast<float>(layers->width) / static_cast<float>(layers->texWidth),
+              static_cast<float>(layers->height) / static_cast<float>(layers->texHeight));
   glUniformMatrix3fv(m_cu.transform, 1, GL_FALSE, d.transform.m.data());
   glUniform1f(m_cu.opacity, std::clamp(d.opacity, 0.0F, 1.0F));
   glUniform1f(m_cu.glow, d.life.glow);
