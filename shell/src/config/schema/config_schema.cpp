@@ -4319,12 +4319,6 @@ namespace noctalia::config::schema {
             RowSpec{.section = "dock", .group = "position-spacing", .tags = "monitor"}
         ),
         field(
-            &DockConfig::iconSize, "icon_size", kDockIconSizeRange,
-            RowSpec{
-                .kind = RowSpec::Kind::Slider, .section = "dock", .group = "layout", .tags = "apps", .integer = true
-            }
-        ),
-        field(
             &DockConfig::mainAxisPadding, "main_axis_padding", kDockPaddingRange,
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
@@ -4374,34 +4368,6 @@ namespace noctalia::config::schema {
                 .group = "dock-surface",
                 .tags = "outline stroke",
                 .advanced = true,
-            }
-        ),
-        custom<DockConfig>(
-            "radius",
-            [](const toml::table& tbl, DockConfig& out, std::string_view parentPath, Diagnostics& diag) {
-              if (auto v = tbl["radius"].value<std::int64_t>()) {
-                const auto radius = static_cast<std::int32_t>(applyRange<std::int64_t>(*v, kDockRadiusRange));
-                out.radius = radius;
-                out.radiusTopLeft = radius;
-                out.radiusTopRight = radius;
-                out.radiusBottomLeft = radius;
-                out.radiusBottomRight = radius;
-              } else {
-                warnWrongType(tbl, "radius", parentPath, diag, "an integer");
-              }
-            },
-            [](toml::table& tbl, const DockConfig& in) {
-              tbl.insert_or_assign("radius", static_cast<std::int64_t>(in.radius));
-            },
-            RowSpec{
-                .kind = RowSpec::Kind::Slider,
-                .section = "dock",
-                .group = "corners",
-                .label = "dock.corner-radius",
-                .title = "shared.corner-radius",
-                .tags = "rounded",
-                .integer = true,
-                .range = {kDockRadiusRange.min, kDockRadiusRange.max, kDockRadiusRange.step},
             }
         ),
         field(

@@ -351,7 +351,7 @@ void Application::run(const std::function<void()>& startupReadyCallback) {
     return m_desktopTheme.sync(config.theme.desktopTheme, overridesText);
   });
   m_desktopTheme.setChangeCallback([this] { m_configService.reloadAllSections(); });
-  m_configService.moveLegacyFontFamily();
+  m_configService.moveLegacyThemeKeys();
   // Claim the tray watcher name first. The tray UI itself is wired up later.
   // Item callbacks run from deferred work on the main loop, after the shell
   // is initialized.

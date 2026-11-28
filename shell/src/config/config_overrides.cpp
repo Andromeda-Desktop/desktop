@@ -2072,19 +2072,37 @@ void ConfigService::moveLegacyAnimationSettings(
   (void)clearOverride({"shell", "animation"});
 }
 
-void ConfigService::moveLegacyFontFamily() {
-  const toml::node* legacy = findOverrideNode(m_overridesTable, {"shell", "font_family"});
-  if (legacy == nullptr) {
-    return;
-  }
+void ConfigService::moveLegacyThemeKeys() {
+  const auto& vocabulary = noctalia::theme::shippedVocabulary();
   std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> sets;
-  const std::vector<std::string> fontPath{std::string(kThemeOverridesRoot), "font.ui"};
-  if (const auto family = legacy->value<std::string>(); family && !hasOverride(fontPath)) {
-    const std::string trimmed = StringUtils::trim(*family);
-    sets.emplace_back(fontPath, trimmed.empty() ? std::string("system") : trimmed);
+  std::vector<std::vector<std::string>> clears;
+  for (const auto& legacy : noctalia::config::kLegacyThemeKeys) {
+    std::vector<std::string> oldPath{std::string(legacy.section), std::string(legacy.key)};
+    const toml::node* node = findOverrideNode(m_overridesTable, oldPath);
+    const auto key = vocabulary.keys.find(legacy.themeKey);
+    if (node == nullptr || key == vocabulary.keys.end()) {
+      continue;
+    }
+    clears.push_back(std::move(oldPath));
+    std::vector<std::string> themePath{std::string(kThemeOverridesRoot), std::string(legacy.themeKey)};
+    if (hasOverride(themePath)) {
+      continue;
+    }
+    // A value of the wrong type for the theme key is only cleared, so it cannot block the other keys.
+    using noctalia::theme::VocabularyType;
+    const auto text = node->value_exact<std::string>();
+    const auto number = node->value<double>();
+    if (key->second.type == VocabularyType::Font && text) {
+      const std::string trimmed = StringUtils::trim(*text);
+      sets.emplace_back(std::move(themePath), trimmed.empty() ? std::string("system") : trimmed);
+    } else if ((key->second.type == VocabularyType::Length || key->second.type == VocabularyType::Number) && !text
+               && number && std::isfinite(*number)) {
+      const double value = std::clamp(*number, key->second.min, key->second.max);
+      sets.emplace_back(std::move(themePath), static_cast<std::int64_t>(std::lround(value)));
+    }
   }
-  if (!mutateOverrides(sets, {{"shell", "font_family"}}, nullptr)) {
-    kLog.warn("kept [shell] font_family: {}", m_lastMutationError);
+  if (!clears.empty() && !mutateOverrides(sets, clears, nullptr)) {
+    kLog.warn("kept the old theme keys in {}: {}", m_overridesPath, m_lastMutationError);
   }
 }
 

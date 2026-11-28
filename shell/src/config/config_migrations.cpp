@@ -17,8 +17,8 @@ namespace noctalia::config {
     // Fingerprint id for the [shell.animation] reminder; no stored-file migration carries this number.
     constexpr int kShellAnimationIssueVersion = 18;
     constexpr int kTaskbarCombineMigrationVersion = 19;
-    // Fingerprint id for the [shell] font_family reminder; no stored-file migration carries this number.
-    constexpr int kShellFontFamilyIssueVersion = 20;
+    // Fingerprint id for the kLegacyThemeKeys reminders; no stored-file migration carries this number.
+    constexpr int kLegacyThemeKeyIssueVersion = 20;
 
     // lockscreen.style (ryoku | classic) became lockscreen.theme (ryoku | andromeda). keepRyokuWhenUnset writes ryoku
     // when neither key is set, for installs from before the theme key.
@@ -183,11 +183,12 @@ namespace noctalia::config {
           .message = "shell.animation is ignored; set enabled and speed in the compositor's [animation] section",
       });
     }
-    if (eraseLegacyShellFontFamily(root)) {
+    for (const LegacyThemeKey& legacy : eraseLegacyThemeKeys(root)) {
       issues.push_back({
-          .migrationVersion = kShellFontFamilyIssueVersion,
-          .path = "shell.font_family",
-          .message = "shell.font_family is ignored; set \"font.ui\" in theme-overrides.toml [values] (Settings, Font)",
+          .migrationVersion = kLegacyThemeKeyIssueVersion,
+          .path = std::format("{}.{}", legacy.section, legacy.key),
+          .message = std::format("{}.{} is ignored; set \"{}\" in theme-overrides.toml [values] (or in Settings)",
+                                 legacy.section, legacy.key, legacy.themeKey),
       });
     }
   }
@@ -212,9 +213,14 @@ namespace noctalia::config {
     return shell != nullptr && shell->erase("animation") > 0;
   }
 
-  bool eraseLegacyShellFontFamily(toml::table& root) {
-    auto* shell = root["shell"].as_table();
-    return shell != nullptr && shell->erase("font_family") > 0;
+  std::vector<LegacyThemeKey> eraseLegacyThemeKeys(toml::table& root) {
+    std::vector<LegacyThemeKey> erased;
+    for (const LegacyThemeKey& legacy : kLegacyThemeKeys) {
+      if (auto* section = root[legacy.section].as_table(); section != nullptr && section->erase(legacy.key) > 0) {
+        erased.push_back(legacy);
+      }
+    }
+    return erased;
   }
 
   std::string legacyConfigIssueFingerprint(const LegacyConfigIssues& issues) {

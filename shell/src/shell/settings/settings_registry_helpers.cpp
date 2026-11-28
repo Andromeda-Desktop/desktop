@@ -18,6 +18,7 @@
 #include "shell/settings/font_weight_catalog.h"
 #include "shell/wallpaper/wallpaper_paths.h"
 #include "system/sysmon_threshold_profile.h"
+#include "theme/theme_store.h"
 #include "ui/app_icon_colorization.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"
@@ -46,6 +47,12 @@ namespace settings {
     [[nodiscard]] SliderSetting barCornerSlider(std::int32_t value) {
       SliderSetting s{value, 0.0F, kBarCornerRadiusMax, 1.0F, true};
       return s;
+    }
+
+    [[nodiscard]] SliderSetting themeSlider(std::string_view themeKey, float value) {
+      // The vocabulary is compiled in; the registry check names a row whose key it lacks.
+      const auto& key = noctalia::theme::shippedVocabulary().keys.find(themeKey)->second;
+      return SliderSetting{value, key.min, key.max, 1.0F, true};
     }
 
 

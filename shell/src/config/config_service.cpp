@@ -1679,11 +1679,11 @@ void ConfigService::loadConfigFiles() {
 
   // Apply the app-writable overrides overlay last; sidecar wins. Compatibility
   // normalization must see the final effective values to preserve overlay intent.
-  // [shell.animation] and [shell] font_family in the overrides file wait for moveLegacyAnimationSettings() and
-  // moveLegacyFontFamily(), so they raise no reminder; the persisted sidecar keeps them until then.
+  // [shell.animation] and kLegacyThemeKeys in the overrides file wait for moveLegacyAnimationSettings() and
+  // moveLegacyThemeKeys(), so they raise no reminder; the persisted sidecar keeps them until then.
   toml::table overlay = effectiveOverrides;
   noctalia::config::eraseLegacyShellAnimation(overlay);
-  noctalia::config::eraseLegacyShellFontFamily(overlay);
+  (void)noctalia::config::eraseLegacyThemeKeys(overlay);
   deepMerge(merged, overlay);
   merged.erase(noctalia::config::kConfigVersionKey);
   noctalia::config::LegacyConfigIssues legacyIssues;

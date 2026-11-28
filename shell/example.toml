@@ -10,7 +10,6 @@ high_contrast         = false
 
 [shell]
 corner_radius_scale   = 1.0          # 0 = square, 1 = default, 2 = extra rounded
-font_family           = "sans-serif"
 time_format           = "{:%H:%M}"  # default shell UI time format
 date_format           = "%A, %x"    # default shell UI date format
 offline_mode          = false        # block all outgoing HTTP when true
@@ -412,17 +411,13 @@ end    = ["media", "tray", "notifications", "clipboard", "network", "bluetooth",
 [dock]
 enabled             = false         # set true to activate
 position            = "bottom"      # top | bottom | left | right
-icon_size           = 54
+# icon size and corner radius: "dock.icon" and "dock.corner" in theme-overrides.toml [values]
 main_axis_padding   = 10
 cross_axis_padding  = 10
 item_spacing        = 10
 background_opacity  = 0.88
 compositor_blur     = true
-radius              = 30
-radius_top_left     = 30
-radius_top_right    = 30
-radius_bottom_left  = 30
-radius_bottom_right = 30
+# radius_top_left   = 30           # per-corner overrides of dock.corner
 concave_edge_corners = false
 margin_ends         = 0
 margin_edge         = 8

@@ -1,6 +1,6 @@
 // theme.desktop_theme through the shell's path: ConfigService loads the id, DesktopTheme writes the token slots, the
 // config defaults follow the new tokens, ThemeService takes the theme's scheme pin; overrides apply without a theme.
-// The Settings font row writes theme-overrides.toml through ConfigService; [shell] font_family moves there once.
+// The Settings font and dock rows write theme-overrides.toml through ConfigService; the old keys move there once.
 
 #include "config/config_service.h"
 #include "core/deferred_call.h"
@@ -135,34 +135,43 @@ int main() {
   TEST_CHECK(read(overrides) == "[values\n");
 
   // [shell] font_family moves once; a font.ui that theme-overrides.toml already holds wins.
-  write(shellOverrides, "[shell]\nfont_family = \"Old\"\n");
+  write(shellOverrides, "[shell]\nfont_family = \"Old\"\n[dock]\nicon_size = \"big\"\n");
   write(overrides, "[values]\n\"font.ui\" = \"Kept\"\n");
   {
     ConfigService migrating;
     migrating.setTokenSource([&](const Config& c, const std::optional<std::string>& text) {
-    return desktopTheme.sync(c.theme.desktopTheme, text);
-  });
+      return desktopTheme.sync(c.theme.desktopTheme, text);
+    });
     TEST_CHECK(Tokens::fontFamily == "Kept");
-    migrating.moveLegacyFontFamily();
+    migrating.moveLegacyThemeKeys();
     TEST_CHECK(Tokens::fontFamily == "Kept");
     TEST_CHECK(!migrating.hasOverride({"shell", "font_family"}));
+    // A value of the wrong type is dropped and blocks no other key.
+    TEST_CHECK(!migrating.hasOverride({"dock", "icon_size"}));
+    TEST_CHECK(!migrating.hasOverride({std::string(ConfigService::kThemeOverridesRoot), "dock.icon"}));
   }
   TEST_CHECK(landed(shellOverrides));
   TEST_CHECK(read(shellOverrides).find("font_family") == std::string::npos);
   TEST_CHECK(read(overrides).find("Kept") != std::string::npos);
 
-  // No font.ui yet: the legacy value moves; an empty one ("the system font") becomes "system".
-  write(shellOverrides, "[shell]\nfont_family = \"\"\n");
+  // No theme keys yet: the legacy values move; an empty font ("the system font") becomes "system", a number outside
+  // the vocabulary range (dock.icon: 24..80) is clamped.
+  write(shellOverrides, "[shell]\nfont_family = \"\"\n[dock]\nicon_size = 100\nradius = 10\n");
   std::filesystem::remove(overrides);
   {
     ConfigService migrating;
     migrating.setTokenSource([&](const Config& c, const std::optional<std::string>& text) {
-    return desktopTheme.sync(c.theme.desktopTheme, text);
-  });
-    migrating.moveLegacyFontFamily();
+      return desktopTheme.sync(c.theme.desktopTheme, text);
+    });
+    migrating.moveLegacyThemeKeys();
     TEST_CHECK(Tokens::fontFamily == "system");
     TEST_CHECK(migrating.hasOverride(fontPath));
     TEST_CHECK(!migrating.hasOverride({"shell", "font_family"}));
+    TEST_CHECK(Tokens::componentDockIcon == 80.0F);
+    TEST_CHECK(migrating.config().dock.iconSize == 80);
+    TEST_CHECK(Tokens::componentDockRadius == 10.0F);
+    TEST_CHECK(migrating.config().dock.radiusTopLeft == 10); // the corners follow dock.corner
+    TEST_CHECK(!migrating.hasOverride({"dock", "icon_size"}) && !migrating.hasOverride({"dock", "radius"}));
   }
   TEST_CHECK(landed(shellOverrides) && landed(overrides));
 

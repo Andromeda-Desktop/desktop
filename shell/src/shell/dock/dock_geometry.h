@@ -41,6 +41,9 @@ namespace shell::dock {
   [[nodiscard]] std::uint32_t positionToAnchor(DockEdge edge);
   [[nodiscard]] bool isVerticalEdge(DockEdge edge);
   void shiftAlongEdge(DockEdge edge, float& x, float& y, float amount);
+  // The built-in component.dock.icon: the icon size the dock's glyph, lens and badge tokens are drawn at. A theme's or
+  // the user's dock.icon writes the live token, so ratios divide by this, never by the live token.
+  [[nodiscard]] float designIconSize();
   // Main-axis cell of a launcher or trash glyph: the glyph's own size, so its gaps equal the gaps between app icons.
   [[nodiscard]] std::int32_t dockGlyphCellSize(const DockConfig& cfg);
   // itemCount counts every cell; glyphCells of them are dockGlyphCellSize long instead of an icon cell.

@@ -404,13 +404,32 @@ namespace settings {
       appendRow(entries, dockRows, "launcher_custom_image_colorize");
       entries.back().visibleWhen = dockLauncherEnabled;
       appendRow(entries, dockRows, "position");
-      appendRow(entries, dockRows, "icon_size");
+      // Global rows write the theme value; a monitor override keeps its own icon_size and radius.
+      namespace schema = noctalia::config::schema;
+      const auto themeOrMonitor = [&](std::string_view themeKey, std::string monitorKey) {
+        return monitorTable ? path(std::move(monitorKey))
+                            : std::vector<std::string>{std::string(ConfigService::kThemeOverridesRoot),
+                                                       std::string(themeKey)};
+      };
+      entries.push_back(makeEntry(
+          SettingsSection::Dock, "layout", tr("settings.schema.dock.icon-size.label"),
+          tr("settings.schema.dock.icon-size.description"), themeOrMonitor("dock.icon", "icon_size"),
+          monitorTable ? SliderSetting{dock.iconSize, *schema::kDockIconSizeRange.min, *schema::kDockIconSizeRange.max, 1, true}
+                       : themeSlider("dock.icon", Tokens::componentDockIcon),
+          "apps"
+      ));
       appendRow(entries, dockRows, "main_axis_padding");
       appendRow(entries, dockRows, "cross_axis_padding");
       appendRow(entries, dockRows, "item_spacing");
       appendRow(entries, dockRows, "margin_ends");
       appendRow(entries, dockRows, "margin_edge");
-      appendRow(entries, dockRows, "radius");
+      entries.push_back(makeEntry(
+          SettingsSection::Dock, "corners", tr("settings.schema.shared.corner-radius.label"),
+          tr("settings.schema.dock.corner-radius.description"), themeOrMonitor("dock.corner", "radius"),
+          monitorTable ? SliderSetting{dock.radius, *schema::kDockRadiusRange.min, *schema::kDockRadiusRange.max, 1, true}
+                       : themeSlider("dock.corner", Tokens::componentDockRadius),
+          "rounded"
+      ));
       appendRow(entries, dockRows, "radius_top_left");
       appendRow(entries, dockRows, "radius_top_right");
       appendRow(entries, dockRows, "radius_bottom_left");

@@ -220,9 +220,10 @@ public:
   // before the shell's own layer reaches the compositor, a shell key that no config file sets takes the compositor's
   // value, clamped to the shell range.
   void seedScalesFromCompositor(const std::function<std::string(std::string_view key)>& value);
-  // Moves [shell] font_family from the overrides file to "font.ui" in theme-overrides.toml ("" becomes "system"),
-  // unless that file already sets it; one commit, so a second call finds nothing to move.
-  void moveLegacyFontFamily();
+  // Moves each kLegacyThemeKeys value from the overrides file to theme-overrides.toml, unless that file already sets
+  // the key: an empty font becomes "system", a number is clamped to the vocabulary range. One commit, so a second
+  // call finds nothing to move.
+  void moveLegacyThemeKeys();
   bool clearOverrides(const std::vector<std::vector<std::string>>& paths, bool* changed);
   bool renameOverrideTable(const std::vector<std::string>& oldPath, const std::vector<std::string>& newPath);
 

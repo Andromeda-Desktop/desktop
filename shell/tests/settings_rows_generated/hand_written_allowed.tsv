@@ -100,3 +100,7 @@ windows	hot_corners.top_left.action	per-corner rows; command visibility depends 
 windows	hot_corners.top_left.command	per-corner rows; command visibility depends on the action
 windows	hot_corners.top_right.action	per-corner rows; command visibility depends on the action
 windows	hot_corners.top_right.command	per-corner rows; command visibility depends on the action
+dock	theme-overrides.dock.icon	theme value: slider over the vocabulary range of dock.icon
+dock	theme-overrides.dock.corner	theme value: slider over the vocabulary range of dock.corner
+dock:monitor:laptop	dock.monitor.laptop.icon_size	monitor override of the theme dock.icon; no global schema row
+dock:monitor:laptop	dock.monitor.laptop.radius	monitor override of the theme dock.corner; no global schema row

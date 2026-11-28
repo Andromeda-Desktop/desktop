@@ -51,7 +51,7 @@ int main() {
   expectKnown({"theme", "mode"});
   expectKnown({"wallpaper", "automation", "interval_seconds"});
   expectKnown({"wallpaper", "fill_color"});
-  expectKnown({"dock", "icon_size"});
+  expectUnknown({"dock", "icon_size"}); // the theme value dock.icon in theme-overrides.toml
   expectKnown({"dock", "radius_top_left"});
   expectKnown({"dock", "monitor", "DP-1", "icon_size"});
   expectKnown({"dock", "monitor", "DP-1", "pinned"});

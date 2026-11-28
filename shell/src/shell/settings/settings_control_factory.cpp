@@ -1122,7 +1122,7 @@ namespace {
       ends = {i18n::tr("settings.sliders.small"), i18n::tr("settings.sliders.large")};
     } else if (glassDetent) {
       ends = {i18n::tr("settings.sliders.clear"), i18n::tr("settings.sliders.frosted")};
-    } else if (joined == "dock.icon_size") {
+    } else if (joined == "theme-overrides.dock.icon") {
       ends = {i18n::tr("settings.sliders.small"), i18n::tr("settings.sliders.large")};
     }
     const bool labelled = !ends.first.empty();

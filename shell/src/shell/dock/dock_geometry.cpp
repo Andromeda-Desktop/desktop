@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 
 namespace shell::dock {
   namespace {
@@ -18,7 +19,7 @@ namespace shell::dock {
     constexpr std::int32_t kScreenEdgeOverlapPx = 1;
     constexpr float kAutoHideSlideExtraPx = 16.0F;
     // Keep in sync with dock_items instance-count badge geometry.
-    TOKENS_LIVE(kBadgeSizeRatio, Tokens::componentBadgeHeight / Tokens::componentDockIcon);
+    TOKENS_LIVE(kBadgeSizeRatio, Tokens::componentBadgeHeight / designIconSize());
     constexpr float kBadgeMinSize = 16.0F;
     // Badge hangs past its icon corner by this fraction of its diameter.
     TOKENS_LIVE(kBadgeCornerOverhang, Tokens::componentBadgeOverhang / Tokens::componentBadgeHeight);
@@ -155,9 +156,16 @@ namespace shell::dock {
     }
   }
 
+  float designIconSize() {
+    static const auto size = static_cast<float>(
+        std::ranges::find(Tokens::slots(), std::string_view("component.dock.icon"), &Tokens::Slot::path)->number
+    );
+    return size;
+  }
+
   std::int32_t dockGlyphCellSize(const DockConfig& cfg) {
     return static_cast<std::int32_t>(
-        std::lround(static_cast<float>(cfg.iconSize) * Tokens::componentDockGlyph / Tokens::componentDockIcon)
+        std::lround(static_cast<float>(cfg.iconSize) * Tokens::componentDockGlyph / designIconSize())
     );
   }
 

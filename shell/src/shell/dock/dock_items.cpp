@@ -36,7 +36,7 @@
 namespace {
 
   // Badge geometry (component.badge at component.dock.icon), scaled with the icon size.
-  TOKENS_LIVE(kBadgeSizeRatio, Tokens::componentBadgeHeight / Tokens::componentDockIcon);
+  TOKENS_LIVE(kBadgeSizeRatio, Tokens::componentBadgeHeight / shell::dock::designIconSize());
   constexpr float kBadgeMinSize = 16.0F;
   TOKENS_LIVE(kBadgeFontRatio, Tokens::typeCaption.size / Tokens::componentBadgeHeight);
   TOKENS_LIVE(kBadgeCornerInsetX, 1.0F - Tokens::componentBadgeOverhang / Tokens::componentBadgeHeight);
@@ -443,7 +443,7 @@ namespace shell::dock {
   void syncDockLens(shell::dock::DockInstance& instance, const shell::dock::DockSnapshot& snapshot) {
     const auto& cfg = instance.config;
     const auto iSize = static_cast<float>(cfg.iconSize);
-    const float k = iSize / Tokens::componentDockIcon;
+    const float k = iSize / shell::dock::designIconSize();
     const float inset = Tokens::componentDockLensInset * k;
     const bool vert = shell::dock::isVerticalEdge(cfg.position);
     const std::size_t count = std::min(instance.items.size(), snapshot.items.size());
@@ -704,7 +704,7 @@ namespace shell::dock {
         : instance.slideRoot != nullptr            ? instance.slideRoot
                                                    : static_cast<Node*>(instance.panel);
     instance.row = static_cast<Flex*>(rowParent->addChild(std::move(freshRow)));
-        instance.lens.attach(*instance.row, &instance.animations, vert, iSize / Tokens::componentDockIcon);
+        instance.lens.attach(*instance.row, &instance.animations, vert, iSize / shell::dock::designIconSize());
     const auto& itemModels = snapshot.items;
 
     if (launcherPosition == DockLauncherPosition::Start) {
@@ -1640,7 +1640,7 @@ namespace shell::dock {
       const InputArea* area = lensItem.area;
       if (area != nullptr && lensItem.visualScale > 0.0F) {
         const TooltipAnchorInsets in = scaledIconTooltipAnchor(area, edge, kCellPad, kCellPad, iSize, lensItem.visualScale);
-        const float k = iSize / Tokens::componentDockIcon;
+        const float k = iSize / shell::dock::designIconSize();
         const float drawn = vertical ? area->height() - in.top - in.bottom : area->width() - in.left - in.right;
         const float grow = drawn / iSize;
         const float inset = Tokens::componentDockLensInset * k * grow;

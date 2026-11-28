@@ -13,7 +13,6 @@ enabled             = true       # set false to disable
 position            = "bottom"   # top | bottom | left | right
 active_monitor_only = false      # when true, only show apps/windows from the active monitor
 
-icon_size           = 54
 main_axis_padding   = 10          # inner padding along the icon row (main axis)
 cross_axis_padding  = 10          # inner padding perpendicular to the icon row
 item_spacing        = 10         # gap between items in pixels
@@ -22,11 +21,7 @@ compositor_blur     = true       # publish a compositor blur region for the dock
 border              = "outline_variant"  # color role or #RRGGBB for the dock outline
 border_width        = 0.0        # inside outline width in pixels; 0 disables it
 shadow              = true       # cast the global [shell.shadow]
-radius              = 30
-radius_top_left     = 30         # optional per-corner overrides
-radius_top_right    = 30
-radius_bottom_left  = 30
-radius_bottom_right = 30
+# radius_top_left   = 30         # optional per-corner overrides of the theme's dock.corner (0 to 80)
 concave_edge_corners = false     # carve the screen-edge corners inward; requires margin_edge = 0
 margin_ends         = 0          # inset from each end of the dock along its main axis
 margin_edge         = 12         # distance from the nearest screen edge (positive values float the dock)
@@ -55,7 +50,7 @@ launcher_custom_image_colorize = false # tint the custom image with the icon col
 pinned = ["firefox", "code", "kitty"]
 ```
 
-`radius` sets all four corners at once. Any `radius_*` key overrides just that corner.
+The icon size and the corner radius are theme values: `"dock.icon"` (24 to 80) and `"dock.corner"` (0 to 40) in `~/.config/andromeda/theme-overrides.toml` `[values]` (Settings, Dock). The old `icon_size` and `radius` keys in `[dock]` are ignored; values set in Settings move there once. Any `radius_*` key overrides just that corner. Per-monitor overrides keep `icon_size` (16 to 128) and `radius` (0 to 80).
 
 `concave_edge_corners = true` inverts the two corners on the side that touches the screen edge, so the dock flares outward and blends into it. The corner radii still control the curve size. Only applies when the dock actually touches the edge (`margin_edge = 0`).
 

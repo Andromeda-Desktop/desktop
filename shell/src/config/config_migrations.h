@@ -3,6 +3,7 @@
 #include "config/schema/diagnostics.h"
 #include "protocols/toml.h"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -47,8 +48,19 @@ namespace noctalia::config {
   [[nodiscard]] std::vector<std::pair<std::string, std::string>> legacyShellAnimationSettings(const toml::table& root);
   // Removes [shell.animation]; true when `root` had it.
   bool eraseLegacyShellAnimation(toml::table& root);
-  // [shell] font_family became "font.ui" in theme-overrides.toml. Removes it; true when `root` had it.
-  bool eraseLegacyShellFontFamily(toml::table& root);
+  // Config keys whose value lives in theme-overrides.toml [values] `themeKey`.
+  struct LegacyThemeKey {
+    std::string_view section;
+    std::string_view key;
+    std::string_view themeKey;
+  };
+  inline constexpr std::array kLegacyThemeKeys{
+      LegacyThemeKey{.section = "shell", .key = "font_family", .themeKey = "font.ui"},
+      LegacyThemeKey{.section = "dock", .key = "icon_size", .themeKey = "dock.icon"},
+      LegacyThemeKey{.section = "dock", .key = "radius", .themeKey = "dock.corner"},
+  };
+  // Removes each kLegacyThemeKeys entry from `root`; returns the ones it held.
+  std::vector<LegacyThemeKey> eraseLegacyThemeKeys(toml::table& root);
 
   [[nodiscard]] std::string legacyConfigIssueFingerprint(const LegacyConfigIssues& issues);
   [[nodiscard]] bool
