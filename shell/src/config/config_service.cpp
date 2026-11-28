@@ -690,6 +690,18 @@ ConfigService::~ConfigService() {
   for (const auto& [dir, id] : m_includeDirWatches) {
     m_dirs->unwatch(id);
   }
+  // Mutations queued behind an unsettled hand edit still reach the file: on top of it as it is now, with nobody left
+  // to notify.
+  if (!m_deferredMutations.empty()) {
+    m_dirs = nullptr;
+    m_reloadCallbacks.clear();
+    m_wallpaperChangeCallback = {};
+    m_tokenSource = {};
+    loadOverridesFromFile();
+    for (const auto& mutation : std::exchange(m_deferredMutations, {})) {
+      mutation();
+    }
+  }
 }
 
 // ── Public interface ─────────────────────────────────────────────────────────
@@ -1041,6 +1053,22 @@ DirectoryWatcher::WatchId ConfigService::watchDirectory(const std::filesystem::p
   }, DirectoryWatcher::Follow::Path);
 }
 
+bool ConfigService::overridesUnsettled() const {
+  return m_dirs != nullptr
+      && !m_overridesPath.empty()
+      && readTextFile(m_overridesPath) != m_appliedOverridesContent.value_or("");
+}
+
+bool ConfigService::deferWhileOverridesUnsettled(std::function<void()> mutation) {
+  if (!overridesUnsettled()) {
+    return false;
+  }
+  m_deferredMutations.push_back(std::move(mutation));
+  m_pendingWatchReload = WatchReload::Overrides;
+  m_watchReloadTimer.start(kWatchReloadDebounce, [this] { applyPendingWatchReload(); });
+  return true;
+}
+
 void ConfigService::onWatchedChange(WatchReload reload) {
   if (reload == WatchReload::Overrides && m_appliedOverridesContent
       && readTextFile(m_overridesPath) == *m_appliedOverridesContent) {
@@ -1082,6 +1110,9 @@ void ConfigService::applyPendingWatchReload() {
     m_wallpaperChangeCallback();
   }
   fireReloadCallbacks();
+  for (const auto& mutation : std::exchange(m_deferredMutations, {})) {
+    mutation();
+  }
 }
 
 BarConfig ConfigService::resolveForOutput(const BarConfig& base, const WaylandOutput& output, float uiScale) {
@@ -2086,6 +2117,9 @@ void ConfigService::registerIpc(IpcService& ipc) {
   });
 
   ipc.bind(noctalia::cli::msg::configSet, [this](const std::string& args) -> std::string {
+    if (overridesUnsettled()) {
+      return "error: overrides.toml is being saved; try again\n";
+    }
     const auto parsed = splitConfigSetArgs(args);
     if (!parsed) {
       return "error: expected arguments: <path> <value>\n";
@@ -2147,6 +2181,9 @@ void ConfigService::registerIpc(IpcService& ipc) {
   });
 
   ipc.bind(noctalia::cli::msg::configUnset, [this](const std::string& args) -> std::string {
+    if (overridesUnsettled()) {
+      return "error: overrides.toml is being saved; try again\n";
+    }
     auto tokens = StringUtils::splitShellWords(args);
     if (!tokens || tokens->size() != 1) {
       return "error: expected exactly one argument: <path>\n";

@@ -12,7 +12,8 @@
 #include <vector>
 
 // Owner of the shown desktop theme: the selected id, the last good resolved table and its generation. A theme or an
-// overrides file that fails to load never replaces what is shown (theme-engine STORES.md, invariants I1 and I5).
+// overrides file that fails to load never replaces what is shown; it keeps its last good copy, and the other file's
+// edits still show over it (theme-engine STORES.md, invariants I1 and I5).
 namespace noctalia::theme {
 
   class ThemeController {
@@ -60,6 +61,7 @@ namespace noctalia::theme {
     ResolvedTheme m_shown; // no chain: the overrides over the built-in tokens
     std::map<std::string, ThemeValue> m_themeAccents; // the shown theme's scheme.<scheme>.accent, without the user's
     std::optional<ThemePackage> m_overrides; // last good copy of theme-overrides.toml
+    std::map<std::string, ThemePackage, std::less<>> m_lastGood; // last good package of each id in the shown chain
     bool m_userAccent = false;
     std::optional<ThemeIssue> m_themeError;
     std::optional<ThemeIssue> m_overridesError;

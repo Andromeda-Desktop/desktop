@@ -2,6 +2,7 @@
 // edits and overrides edits, each watch notification delivered late or never, against an oracle of the same disk.
 #include "theme/theme_controller.h"
 
+#include <algorithm>
 #include <array>
 #include <format>
 #include <map>
@@ -112,28 +113,45 @@ tokens = ["component.window.card_radius"]
           return std::expected<void, std::string>();
         });
 
-    // Oracle: the overrides the controller last read, the accent source, and the table that must show.
+    // Oracle: the overrides the controller last read, the accent source, the table that must show, and the last good
+    // package of each id in that table's chain.
     std::optional<ThemePackage> goodOverrides;
     bool userAccent = false;
     ResolvedTheme expected;
     std::optional<Color> expectedThemeAccent; // the theme's dark accent under the shown table
+    std::map<std::string, ThemePackage, std::less<>> lastGood;
     const auto oracleRefresh = [&] {
-      const ThemeLookup lookup = [&](std::string_view id) { return disk.load(id, vocabulary); };
+      const ThemeLookup lookup = [&](std::string_view id) -> std::expected<ThemePackage, ThemeIssue> {
+        auto loaded = disk.load(id, vocabulary);
+        if (loaded) {
+          lastGood.insert_or_assign(std::string(id), *loaded);
+          return loaded;
+        }
+        if (const auto kept = lastGood.find(id); kept != lastGood.end()) {
+          return kept->second;
+        }
+        return loaded;
+      };
       std::optional<ThemePackage> themeOnly = goodOverrides;
       if (themeOnly) {
         themeOnly->values.erase("scheme.dark.accent");
       }
       const ThemePackage* overrides = userAccent ? (goodOverrides ? &*goodOverrides : nullptr)
                                                  : (themeOnly ? &*themeOnly : nullptr);
-      if (auto t = resolveTheme(controller.selected(), lookup, overrides, vocabulary, builtIn)) {
-        if (!disk.writeFails || same(*t, expected)) {
-          expected = std::move(*t);
-          const auto chain = resolveTheme(controller.selected(), lookup, themeOnly ? &*themeOnly : nullptr,
-                                          vocabulary, builtIn);
-          const auto it = chain->values.find("scheme.dark.accent");
-          expectedThemeAccent = it == chain->values.end() ? std::nullopt : std::optional(std::get<Color>(it->second));
-        }
+      // A selected theme that never loaded leaves the shown theme, under the newest overrides.
+      std::string id = controller.selected();
+      auto t = resolveTheme(id, lookup, overrides, vocabulary, builtIn);
+      if (!t) {
+        id = expected.chain.empty() ? "" : expected.chain[0];
+        t = resolveTheme(id, lookup, overrides, vocabulary, builtIn);
       }
+      if (!disk.writeFails || same(*t, expected)) {
+        expected = std::move(*t);
+        const auto chain = resolveTheme(id, lookup, themeOnly ? &*themeOnly : nullptr, vocabulary, builtIn);
+        const auto it = chain->values.find("scheme.dark.accent");
+        expectedThemeAccent = it == chain->values.end() ? std::nullopt : std::optional(std::get<Color>(it->second));
+      }
+      std::erase_if(lastGood, [&](const auto& entry) { return !std::ranges::contains(expected.chain, entry.first); });
     };
 
     bool themeEventPending = false;
@@ -210,8 +228,11 @@ tokens = ["component.window.card_radius"]
       if (!themeEventPending && !overridesEventPending && !controller.selected().empty()) {
         expect(disk.writeFails || !selectedLoads || controller.shownId() == controller.selected(),
                "settled: a failed write keeps the last good table only while writes fail");
-        expect(selectedLoads == controller.errors().empty() || disk.overrides == FileState::Broken || disk.writeFails,
-               "settled: an error is reported exactly when the selected theme does not load");
+        const bool chainLoads = std::ranges::all_of(
+            applied.chain, [&](const std::string& id) { return disk.load(id, vocabulary).has_value(); });
+        expect((selectedLoads && chainLoads) == controller.errors().empty() || disk.overrides == FileState::Broken
+                   || disk.writeFails,
+               "settled: an error is reported exactly when the selected theme or a shown last good copy does not load");
       }
       if (controller.selected().empty()) {
         expect(applied.chain.empty() || disk.writeFails || themeEventPending,

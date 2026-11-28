@@ -386,6 +386,12 @@ private:
   using WatchMatch = std::function<WatchReload(std::string_view name)>;
   DirectoryWatcher::WatchId watchDirectory(const std::filesystem::path& dir, WatchMatch match);
   void onWatchedChange(WatchReload reload);
+  // overrides.toml holds a hand edit (or a save in progress) that the debounced watch reload has not applied.
+  [[nodiscard]] bool overridesUnsettled() const;
+  // Every public overrides.toml mutation calls it first. While the file is unsettled it queues `mutation`, which
+  // then runs after the watch reload, on top of the settled file (theme-engine STORES.md I2), and returns true.
+  bool deferWhileOverridesUnsettled(std::function<void()> mutation);
+  std::vector<std::function<void()>> m_deferredMutations;
   // The config dir and the overrides dir.
   std::vector<DirectoryWatcher::WatchId> m_watches;
   // The overrides file: a symlink to it moves its writes to the target's directory. Loaded *.toml files are

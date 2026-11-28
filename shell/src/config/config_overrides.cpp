@@ -770,6 +770,11 @@ ConfigChangeSet computeConfigChangeSet(const Config& prev, const Config& next) {
 }
 
 void ConfigService::setPluginEnabled(std::string_view pluginId, bool enabled) {
+  if (deferWhileOverridesUnsettled([this, pluginId = std::string(pluginId), enabled] {
+        setPluginEnabled(pluginId, enabled);
+      })) {
+    return;
+  }
   if (!scripting::isValidPluginId(pluginId)) {
     return;
   }
@@ -809,6 +814,9 @@ void ConfigService::setPluginEnabled(std::string_view pluginId, bool enabled) {
 }
 
 void ConfigService::addPluginSource(const PluginSourceConfig& source) {
+  if (deferWhileOverridesUnsettled([this, source] { addPluginSource(source); })) {
+    return;
+  }
   if (m_overridesPath.empty() || !isValidPluginSourceName(source.name)) {
     return;
   }
@@ -867,6 +875,9 @@ void ConfigService::addPluginSource(const PluginSourceConfig& source) {
 }
 
 void ConfigService::removePluginSource(std::string_view name) {
+  if (deferWhileOverridesUnsettled([this, name = std::string(name)] { removePluginSource(name); })) {
+    return;
+  }
   if (m_overridesPath.empty()) {
     return;
   }
@@ -902,6 +913,9 @@ void ConfigService::removePluginSource(std::string_view name) {
 }
 
 void ConfigService::setThemeMode(ThemeMode mode) {
+  if (deferWhileOverridesUnsettled([this, mode] { setThemeMode(mode); })) {
+    return;
+  }
   if (m_overridesPath.empty()) {
     return;
   }
@@ -923,6 +937,9 @@ void ConfigService::setThemeMode(ThemeMode mode) {
 
 
 void ConfigService::setDockEnabled(bool enabled) {
+  if (deferWhileOverridesUnsettled([this, enabled] { setDockEnabled(enabled); })) {
+    return;
+  }
   if (m_overridesPath.empty()) {
     return;
   }
@@ -945,6 +962,9 @@ void ConfigService::setDockEnabled(bool enabled) {
 }
 
 void ConfigService::setPluginsAutoUpdate(PluginAutoUpdateMode mode) {
+  if (deferWhileOverridesUnsettled([this, mode] { setPluginsAutoUpdate(mode); })) {
+    return;
+  }
   if (m_overridesPath.empty()) {
     return;
   }
@@ -994,6 +1014,9 @@ namespace {
 } // namespace
 
 bool ConfigService::setDesktopWidgetsState(const DesktopWidgetsConfig& desktopWidgets) {
+  if (deferWhileOverridesUnsettled([this, desktopWidgets] { setDesktopWidgetsState(desktopWidgets); })) {
+    return true;
+  }
   if (m_overridesPath.empty()) {
     return false;
   }
@@ -1011,6 +1034,9 @@ bool ConfigService::setDesktopWidgetsState(const DesktopWidgetsConfig& desktopWi
 }
 
 bool ConfigService::setLockscreenWidgetsState(const LockscreenWidgetsConfig& lockscreenWidgets) {
+  if (deferWhileOverridesUnsettled([this, lockscreenWidgets] { setLockscreenWidgetsState(lockscreenWidgets); })) {
+    return true;
+  }
   if (m_overridesPath.empty()) {
     return false;
   }
@@ -1411,6 +1437,9 @@ bool ConfigService::isOverrideOnlyDockMonitorOverride(std::string_view tableName
 }
 
 bool ConfigService::createBarOverride(std::string_view name) {
+  if (deferWhileOverridesUnsettled([this, name = std::string(name)] { createBarOverride(name); })) {
+    return true;
+  }
   if (m_overridesPath.empty() || name.empty()) {
     return false;
   }
@@ -1459,6 +1488,9 @@ bool ConfigService::createBarOverride(std::string_view name) {
 }
 
 bool ConfigService::moveBarOverride(std::string_view name, int direction) {
+  if (deferWhileOverridesUnsettled([this, name = std::string(name), direction] { moveBarOverride(name, direction); })) {
+    return true;
+  }
   if (!canMoveBarOverride(name, direction)) {
     return false;
   }
@@ -1489,6 +1521,11 @@ bool ConfigService::moveBarOverride(std::string_view name, int direction) {
 }
 
 bool ConfigService::renameBarOverride(std::string_view oldName, std::string_view newName) {
+  if (deferWhileOverridesUnsettled([this, oldName = std::string(oldName), newName = std::string(newName)] {
+        renameBarOverride(oldName, newName);
+      })) {
+    return true;
+  }
   if (oldName.empty() || newName.empty() || oldName == newName || !isOverrideOnlyBar(oldName)) {
     return false;
   }
@@ -1522,6 +1559,9 @@ bool ConfigService::renameBarOverride(std::string_view oldName, std::string_view
 }
 
 bool ConfigService::deleteBarOverride(std::string_view name) {
+  if (deferWhileOverridesUnsettled([this, name = std::string(name)] { deleteBarOverride(name); })) {
+    return true;
+  }
   if (!canDeleteBarOverride(name)) {
     return false;
   }
@@ -1540,6 +1580,11 @@ bool ConfigService::deleteBarOverride(std::string_view name) {
 }
 
 bool ConfigService::createMonitorOverride(std::string_view barName, std::string_view match) {
+  if (deferWhileOverridesUnsettled([this, barName = std::string(barName), match = std::string(match)] {
+        createMonitorOverride(barName, match);
+      })) {
+    return true;
+  }
   if (m_overridesPath.empty() || barName.empty() || match.empty()) {
     return false;
   }
@@ -1584,6 +1629,12 @@ bool ConfigService::createMonitorOverride(std::string_view barName, std::string_
 bool ConfigService::renameMonitorOverride(
     std::string_view barName, std::string_view oldMatch, std::string_view newMatch
 ) {
+  if (deferWhileOverridesUnsettled([this, barName = std::string(barName), oldMatch = std::string(oldMatch),
+                                    newMatch = std::string(newMatch)] {
+        renameMonitorOverride(barName, oldMatch, newMatch);
+      })) {
+    return true;
+  }
   if (barName.empty()
       || oldMatch.empty()
       || newMatch.empty()
@@ -1611,6 +1662,11 @@ bool ConfigService::renameMonitorOverride(
 }
 
 bool ConfigService::deleteMonitorOverride(std::string_view barName, std::string_view match) {
+  if (deferWhileOverridesUnsettled([this, barName = std::string(barName), match = std::string(match)] {
+        deleteMonitorOverride(barName, match);
+      })) {
+    return true;
+  }
   if (!isOverrideOnlyMonitorOverride(barName, match)) {
     return false;
   }
@@ -1618,6 +1674,9 @@ bool ConfigService::deleteMonitorOverride(std::string_view barName, std::string_
 }
 
 bool ConfigService::createDockMonitorOverride(std::string_view match) {
+  if (deferWhileOverridesUnsettled([this, match = std::string(match)] { createDockMonitorOverride(match); })) {
+    return true;
+  }
   if (m_overridesPath.empty() || match.empty()) {
     return false;
   }
@@ -1649,6 +1708,11 @@ bool ConfigService::createDockMonitorOverride(std::string_view match) {
 }
 
 bool ConfigService::renameDockMonitorOverride(std::string_view oldTableName, std::string_view newMatch) {
+  if (deferWhileOverridesUnsettled([this, oldTableName = std::string(oldTableName), newMatch = std::string(newMatch)] {
+        renameDockMonitorOverride(oldTableName, newMatch);
+      })) {
+    return true;
+  }
   if (oldTableName.empty()
       || newMatch.empty()
       || oldTableName == newMatch
@@ -1668,6 +1732,11 @@ bool ConfigService::renameDockMonitorOverride(std::string_view oldTableName, std
 }
 
 bool ConfigService::deleteDockMonitorOverride(std::string_view tableName) {
+  if (deferWhileOverridesUnsettled([this, tableName = std::string(tableName)] {
+        deleteDockMonitorOverride(tableName);
+      })) {
+    return true;
+  }
   if (!isOverrideOnlyDockMonitorOverride(tableName)) {
     return false;
   }
@@ -1675,6 +1744,9 @@ bool ConfigService::deleteDockMonitorOverride(std::string_view tableName) {
 }
 
 bool ConfigService::deleteCalendarAccountOverride(std::string_view id) {
+  if (deferWhileOverridesUnsettled([this, id = std::string(id)] { deleteCalendarAccountOverride(id); })) {
+    return true;
+  }
   if (!isOverrideOnlyCalendarAccount(id)) {
     return false;
   }
@@ -1805,6 +1877,13 @@ bool ConfigService::mutateOverrides(
     if (changed != nullptr) {
       *changed = themeChanged || ownChanged;
     }
+    return true;
+  }
+
+  if (deferWhileOverridesUnsettled([this, overrides, clearPaths,
+                                    kept = stash != nullptr ? std::optional(*stash) : std::nullopt] {
+        mutateOverrides(overrides, clearPaths, nullptr, kept ? &*kept : nullptr);
+      })) {
     return true;
   }
 
@@ -2246,6 +2325,9 @@ bool ConfigService::resetBarLaneOverride(const std::vector<std::string>& lanePat
   if (changed != nullptr) {
     *changed = false;
   }
+  if (deferWhileOverridesUnsettled([this, lanePath] { resetBarLaneOverride(lanePath, nullptr); })) {
+    return true;
+  }
   if (m_overridesPath.empty() || !isBarLanePath(lanePath)) {
     return false;
   }
@@ -2318,6 +2400,9 @@ bool ConfigService::resetBarLaneOverride(const std::vector<std::string>& lanePat
 bool ConfigService::renameOverrideTable(
     const std::vector<std::string>& oldPath, const std::vector<std::string>& newPath
 ) {
+  if (deferWhileOverridesUnsettled([this, oldPath, newPath] { renameOverrideTable(oldPath, newPath); })) {
+    return true;
+  }
   if (m_overridesPath.empty() || oldPath.empty() || newPath.empty() || oldPath == newPath) {
     return false;
   }
@@ -2454,6 +2539,9 @@ void ConfigService::setWallpaperChangeCallback(ChangeCallback callback) {
 }
 
 void ConfigService::setWallpaperPath(const std::optional<std::string>& connectorName, const std::string& path) {
+  if (deferWhileOverridesUnsettled([this, connectorName, path] { setWallpaperPath(connectorName, path); })) {
+    return;
+  }
   if (m_overridesPath.empty()) {
     return;
   }
@@ -2603,6 +2691,9 @@ const WallpaperFavorite* ConfigService::wallpaperFavorite(std::string_view path)
 }
 
 void ConfigService::addWallpaperFavorite(std::string path, const std::optional<WallpaperFavorite>& preset) {
+  if (deferWhileOverridesUnsettled([this, path, preset] { addWallpaperFavorite(path, preset); })) {
+    return;
+  }
   if (m_overridesPath.empty()) {
     return;
   }
@@ -2624,6 +2715,9 @@ void ConfigService::addWallpaperFavorite(std::string path, const std::optional<W
   }}
 
 void ConfigService::removeWallpaperFavorite(std::string_view path) {
+  if (deferWhileOverridesUnsettled([this, path = std::string(path)] { removeWallpaperFavorite(path); })) {
+    return;
+  }
   if (m_overridesPath.empty()) {
     return;
   }
@@ -2642,6 +2736,11 @@ void ConfigService::removeWallpaperFavorite(std::string_view path) {
   }}
 
 void ConfigService::setWallpaperFavoriteThemeMode(std::string_view path, ThemeMode themeMode) {
+  if (deferWhileOverridesUnsettled([this, path = std::string(path), themeMode] {
+        setWallpaperFavoriteThemeMode(path, themeMode);
+      })) {
+    return;
+  }
   if (m_overridesPath.empty()) {
     return;
   }
@@ -2672,6 +2771,13 @@ void ConfigService::applyWallpaperSelection(
     const std::optional<std::string>& connectorName, const std::string& path, const WallpaperFavorite* applyTheme,
     const std::vector<std::string>& allConnectors
 ) {
+  if (deferWhileOverridesUnsettled([this, connectorName, path,
+                                    favorite = applyTheme != nullptr ? std::optional(*applyTheme) : std::nullopt,
+                                    allConnectors] {
+        applyWallpaperSelection(connectorName, path, favorite ? &*favorite : nullptr, allConnectors);
+      })) {
+    return;
+  }
   if (m_overridesPath.empty()) {
     return;
   }

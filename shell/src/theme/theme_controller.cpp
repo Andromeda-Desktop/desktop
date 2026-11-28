@@ -99,7 +99,23 @@ namespace noctalia::theme {
   // Resolves without the overrides' accent roles, so the theme's accent stays known, then lays them on top with the
   // custom source. No other key references a colour role, so the result equals a resolve with them.
   void ThemeController::refresh() {
-    const ThemeLookup lookup = [this](std::string_view id) { return m_disk.loadTheme(id); };
+    m_themeError.reset();
+    const ThemeLookup lookup = [this](std::string_view id) -> std::expected<ThemePackage, ThemeIssue> {
+      auto loaded = m_disk.loadTheme(id);
+      if (loaded) {
+        m_lastGood.insert_or_assign(std::string(id), *loaded);
+        return loaded;
+      }
+      const auto kept = m_lastGood.find(id);
+      if (kept == m_lastGood.end()) {
+        return loaded;
+      }
+      if (!m_themeError) {
+        m_themeError = std::move(loaded.error());
+        m_themeError->source = std::string(id);
+      }
+      return kept->second;
+    };
     std::optional<ThemePackage> overrides = m_overrides;
     std::map<std::string, ThemeValue> userRoles;
     if (overrides) {
@@ -111,27 +127,31 @@ namespace noctalia::theme {
         it = next;
       }
     }
-    auto resolved = resolveTheme(m_selected, lookup, overrides ? &*overrides : nullptr, m_vocabulary, m_builtIn);
+    const ThemePackage* const layer = overrides ? &*overrides : nullptr;
+    auto resolved = resolveTheme(m_selected, lookup, layer, m_vocabulary, m_builtIn);
     if (!resolved) {
+      // The selected theme never loaded: the shown theme stays, under the newest overrides. Its chain is in
+      // m_lastGood, so this resolve does not fail.
       m_themeError = std::move(resolved.error());
-      return;
+      resolved = resolveTheme(shownId(), lookup, layer, m_vocabulary, m_builtIn);
     }
-    m_themeError.reset();
+    ResolvedTheme& table = resolved.value();
     std::map<std::string, ThemeValue> themeAccents;
     for (const std::string_view scheme : {"dark", "light"}) {
-      if (const auto it = resolved->values.find(accentKey(scheme)); it != resolved->values.end()) {
+      if (const auto it = table.values.find(accentKey(scheme)); it != table.values.end()) {
         themeAccents.insert(*it);
       }
     }
     if (m_userAccent) {
       for (const auto& [key, value] : userRoles) {
         if (std::holds_alternative<Color>(value)) {
-          resolved->values.insert_or_assign(key, value);
-          resolved->origin.insert_or_assign(key, "overrides");
+          table.values.insert_or_assign(key, value);
+          table.origin.insert_or_assign(key, "overrides");
         }
       }
     }
-    show(std::move(*resolved), std::move(themeAccents));
+    show(std::move(table), std::move(themeAccents));
+    std::erase_if(m_lastGood, [this](const auto& entry) { return !std::ranges::contains(m_shown.chain, entry.first); });
   }
 
   void ThemeController::show(ResolvedTheme table, std::map<std::string, ThemeValue> themeAccents) {

@@ -1207,6 +1207,7 @@ if build_tests
   _cpp_test_names = [
     'async_file_writer',
     'desktop_theme',
+    'theme_switch_model',
     'theme_package',
     'theme_resolve',
     'theme_store',
