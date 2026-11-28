@@ -1,9 +1,11 @@
 #pragma once
 
 #include "ui/controls/flex.h"
+#include "ui/palette.h"
 #include "ui/signal.h"
 
 #include <functional>
+#include <optional>
 #include <string>
 
 enum class ToggleSize : std::uint8_t {
@@ -16,6 +18,13 @@ class InputArea;
 
 class Toggle : public Flex {
 public:
+  struct Colors {
+    ColorRole trackOff;
+    ColorRole trackOn;
+    ColorRole thumbOff;
+    ColorRole thumbOn;
+  };
+
   Toggle();
 
   void setChecked(bool checked);
@@ -23,6 +32,8 @@ public:
   void setEnabled(bool enabled);
   void setToggleSize(ToggleSize size);
   void setScale(float scale);
+  // Replaces the fill2/accent track and on_accent knob; the checked border takes trackOn.
+  void setColors(const Colors& colors);
   void setOnChange(std::function<void(bool)> callback);
   void setTabFocusKey(std::string key);
   [[nodiscard]] bool hovered() const noexcept;
@@ -61,5 +72,6 @@ private:
   float m_thumbSize = 0.0F;
   float m_scale = 1.0F;
   float m_animationProgress = 0.0F;
+  std::optional<Colors> m_colors;
   Signal<>::ScopedConnection m_paletteConn;
 };

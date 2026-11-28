@@ -136,6 +136,12 @@ void Toggle::setScale(float scale) {
   markLayoutDirty();
 }
 
+void Toggle::setColors(const Colors& colors) {
+  m_colors = colors;
+  applyAnimatedState(m_animationProgress);
+  markPaintDirty();
+}
+
 void Toggle::setOnChange(std::function<void(bool)> callback) { m_onChange = std::move(callback); }
 
 void Toggle::setTabFocusKey(std::string key) {
@@ -233,8 +239,10 @@ void Toggle::updatePressWiden() {
 void Toggle::applyAnimatedState(float t) {
   m_animationProgress = t;
   const float mixT = std::clamp(m_colorProgress, 0.0F, 1.0F);
-  const Color trackColor = lerpColor(colorForRole(ColorRole::Fill2, this), colorForRole(ColorRole::Accent, this), mixT);
-  const Color thumbColor = lerpColor(colorForRole(ColorRole::OnAccent, this), colorForRole(ColorRole::OnAccent, this), mixT);
+  const Colors colors = m_colors.value_or(Colors{.trackOff = ColorRole::Fill2, .trackOn = ColorRole::Accent,
+                                                 .thumbOff = ColorRole::OnAccent, .thumbOn = ColorRole::OnAccent});
+  const Color trackColor = lerpColor(colorForRole(colors.trackOff, this), colorForRole(colors.trackOn, this), mixT);
+  const Color thumbColor = lerpColor(colorForRole(colors.thumbOff, this), colorForRole(colors.thumbOn, this), mixT);
   const float along = Style::rtl() ? 1.0F - t : t;
   const float extra = Tokens::componentTogglePressWiden * m_scale * m_widen;
   const float thumbX = m_inset + m_travel * along - extra * along;
@@ -247,7 +255,7 @@ void Toggle::applyAnimatedState(float t) {
     } else if (hovered()) {
       borderColor = colorSpecFromRole(ColorRole::Fill3);
     } else if (m_checked) {
-      borderColor = colorSpecFromRole(ColorRole::Accent);
+      borderColor = colorSpecFromRole(colors.trackOn);
     }
   }
 
