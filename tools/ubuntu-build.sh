@@ -53,7 +53,9 @@ run() {
 run compositor "meson setup --prefix=/usr -Dtests=disabled --force-fallback-for=wlroots-0.20,libliftoff -Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=static -Dlibliftoff:werror=false /tmp/b compositor && ninja -C /tmp/b"
 run shell "meson setup --prefix=/usr /tmp/b shell && ninja -C /tmp/b"
 run portal "meson setup --prefix=/usr /tmp/b portal && ninja -C /tmp/b"
-for app in files viewer player; do
+# Files and Terminal link libdesk-term's libghostty-vt prefix; Ubuntu has no zig 0.17, the script fetches the pinned one.
+run libghostty tools/build-libghostty.sh
+for app in files viewer player terminal; do
   run "app-$app" "meson setup --prefix=/usr /tmp/b apps/$app && ninja -C /tmp/b"
 done
 for proj in andromeda-preview indexer; do
