@@ -96,12 +96,15 @@ namespace popup_chrome {
     surface.setInputRegion({geometry.inputRect()});
   }
 
-  void setCardBlurRegion(Surface& surface, const Geometry& geometry, float contentScale) {
-    surface.setBlurRegion(Surface::tessellateRoundedRect(
-        static_cast<int>(std::lround(geometry.contentX())), static_cast<int>(std::lround(geometry.contentY())),
-        static_cast<int>(std::lround(geometry.contentWidth)), static_cast<int>(std::lround(geometry.contentHeight)),
-        Style::scaledMenuRadius(contentScale)
-    ));
+  void setAppCardGlass(Surface& surface, const Geometry& geometry, float contentScale) {
+    surface.setGlassCard(GlassCard{
+        .rect = GlassRect::from(
+            {static_cast<int>(std::lround(geometry.contentX())), static_cast<int>(std::lround(geometry.contentY())),
+             static_cast<int>(std::lround(geometry.contentWidth)), static_cast<int>(std::lround(geometry.contentHeight))}
+        ),
+        .radius = Style::scaledMenuRadius(contentScale),
+        .material = kBlurOnlyMaterial,
+    });
   }
 
   std::function<void(float)> inkLiftOnDensity(Node& root) {

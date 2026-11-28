@@ -200,7 +200,7 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
     if (self->m_surface != nullptr && self->m_shellLayer) {
       popup_chrome::setCardGlass(*self->m_surface, chrome, contentScale, *card, *self->m_sceneRoot);
     } else if (self->m_surface != nullptr) {
-      popup_chrome::setCardBlurRegion(*self->m_surface, chrome, contentScale);
+      popup_chrome::setAppCardGlass(*self->m_surface, chrome, contentScale);
     }
 
     auto scrollView = std::make_unique<ScrollView>();

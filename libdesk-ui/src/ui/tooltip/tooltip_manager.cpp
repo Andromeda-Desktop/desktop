@@ -764,7 +764,9 @@ void TooltipManager::buildScene(const TooltipContent& content, float w, float h,
       card->setFill(clearColorSpec());
     }
   } else {
-    m_surface->setBlurRegion(Surface::tessellateRoundedRect(rect.x, rect.y, rect.width, rect.height, radius));
+    m_surface->setGlassCard(
+        GlassCard{.rect = GlassRect::from(rect), .radius = radius, .material = popup_chrome::kBlurOnlyMaterial}
+    );
   }
 
   const float maxContentWidth = kMaxContentWidth * scale;

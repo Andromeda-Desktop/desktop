@@ -1,5 +1,6 @@
 #pragma once
 
+#include "protocols/glass_material.h"
 #include "ui/shadow_style.h"
 #include "ui/surface_shadow.h"
 
@@ -56,8 +57,10 @@ namespace popup_chrome {
 
   void applyToConfig(PopupSurfaceConfig& config, const Geometry& geometry, Attachment attachment) noexcept;
   void setContentInputRegion(Surface& surface, const Geometry& geometry);
-  // The compositor blurs behind the card only (its rounded shape), so the glass tint lets the window text read through.
-  void setCardBlurRegion(Surface& surface, const Geometry& geometry, float contentScale);
+  // Glass under a card that paints its own fill: the backdrop blur alone, no tint, rim or lens.
+  inline constexpr glass::Material kBlurOnlyMaterial{.tint = 0.0F};
+  // An app popup's card as one compositor shape with kBlurOnlyMaterial, so the window text reads through its fill.
+  void setAppCardGlass(Surface& surface, const Geometry& geometry, float contentScale);
   // A shell popup's card as one compositor glass shape (popover glass, density lifts the ink of `root`). When the
   // compositor draws the tint, `card` drops its own fill. `root` must outlive the surface or be passed again.
   void setCardGlass(Surface& surface, const Geometry& geometry, float contentScale, Box& card, Node& root);
