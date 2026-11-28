@@ -350,8 +350,10 @@ namespace term {
     Label* m_findCount = nullptr;
     std::array<Button*, 2> m_findSteps{}; // prev, next
     std::vector<Session> m_views;
-    // Closed sessions whose nodes are still in the scene: freed after the next build replaced them.
-    std::vector<Session> m_retired;
+    // Closed sessions whose nodes are still in the scene, with their retire number: a fill frees only the ones retired
+    // before it; one retired later keeps its nodes in the scene until the next fill.
+    std::vector<std::pair<std::uint64_t, Session>> m_retired;
+    std::uint64_t m_retireSeq = 0;
     // Session ids are unique in the app: notice keys use them, and a moved session keeps its id.
     static inline std::uint64_t s_nextId = 1;
     void registerDropTarget();

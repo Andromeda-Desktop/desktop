@@ -84,8 +84,10 @@ private:
   AppWindow& m_window;
   Host m_host;
   std::vector<Split> m_splits;
-  // Ended splits whose nodes are still in the scene: their input callbacks reach the views until the next build.
-  std::vector<std::unique_ptr<term::TerminalView>> m_retired;
+  // Ended splits whose nodes are still in the scene, with their retire number: a build frees only the ones retired
+  // before it; their input callbacks reach the views until then.
+  std::vector<std::pair<std::uint64_t, std::unique_ptr<term::TerminalView>>> m_retired;
+  std::uint64_t m_retireSeq = 0;
   std::size_t m_active = 0;
   std::uint64_t m_lastId = 0;
   float m_height;

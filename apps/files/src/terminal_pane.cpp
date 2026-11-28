@@ -119,7 +119,7 @@ void TerminalPane::removeSplit(std::uint64_t id) {
   }
   const auto index = static_cast<std::size_t>(it - m_splits.begin());
   if (m_built) {
-    m_retired.push_back(std::move(it->view)); // its nodes stay in the scene until the next build
+    m_retired.emplace_back(m_retireSeq++, std::move(it->view)); // its nodes stay in the scene until the next build
   }
   m_splits.erase(it);
   if (m_splits.empty()) {
@@ -192,9 +192,9 @@ std::unique_ptr<Node> TerminalPane::build(Renderer& renderer, float scale, float
   }
   if (!m_retired.empty()) {
     // After this build is in the scene: the old scene's focus loss still calls into the retired views.
-    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive), before = m_retireSeq] {
       if (!alive.expired()) {
-        m_retired.clear();
+        std::erase_if(m_retired, [before](const auto& retired) { return retired.first < before; });
       }
     });
   }

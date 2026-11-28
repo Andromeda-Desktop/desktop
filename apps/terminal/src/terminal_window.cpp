@@ -984,7 +984,7 @@ namespace term {
       if (const auto it = std::ranges::find(m_views, close->id, &Session::id); it != m_views.end()) {
         m_split.noteClosing(close->id);
         if (std::ranges::contains(m_builtPanes, close->id)) {
-          m_retired.push_back(std::move(*it));
+          m_retired.emplace_back(m_retireSeq++, std::move(*it));
         }
         m_views.erase(it);
       }
@@ -1092,11 +1092,11 @@ namespace term {
       m_split.fitCaptions(renderer);
     }
     // After this build is in the scene: the dispatcher focuses only attached areas.
-    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive), before = m_retireSeq] {
       if (alive.expired()) {
         return;
       }
-      m_retired.clear();
+      std::erase_if(m_retired, [before](const auto& retired) { return retired.first < before; });
       focusGrid();
     });
   }
