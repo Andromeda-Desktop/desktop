@@ -69,6 +69,9 @@ public:
   void setBorder(const Color& color, float width);
   void clearBorder();
   void setSoftness(float softness);
+  // Draws the level's key and contact shadows under the background, with its radius; nullptr removes them.
+  // The level's values are read at each size or palette change.
+  void setElevation(const Tokens::Elevation* level, float scale);
 
   // Default app card chrome: filled surface variant with a soft outline.
   // Section card background. The outline follows the [shell].card_borders
@@ -136,10 +139,14 @@ public:
 private:
   void ensureBackground();
   void applyPalette();
+  void applyElevation();
   LayoutSize runLayout(Renderer& renderer, const LayoutConstraints& constraints, bool arrangeChildren);
 
   RectNode* m_background = nullptr;
   Node* m_cover = nullptr;
+  const Tokens::Elevation* m_elevation = nullptr;
+  float m_elevationScale = 1.0F;
+  std::array<RectNode*, 2> m_shadows{};
   ColorSpec m_fill = clearColorSpec();
   std::optional<std::pair<GradientDirection, std::array<GradientStop, 4>>> m_fillGradient;
   ColorSpec m_border = clearColorSpec();

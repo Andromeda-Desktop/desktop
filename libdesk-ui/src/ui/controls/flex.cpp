@@ -133,6 +133,7 @@ void Flex::setSize(float width, float height) {
     m_cover->setPosition(0.0F, 0.0F);
     m_cover->setSize(width, height);
   }
+  applyElevation();
 }
 
 void Flex::setFrameSize(float width, float height) {
@@ -149,6 +150,7 @@ void Flex::setFrameSize(float width, float height) {
     m_cover->setPosition(0.0F, 0.0F);
     m_cover->setSize(width, height);
   }
+  applyElevation();
 }
 
 void Flex::setCover(std::unique_ptr<Node> cover) {
@@ -245,6 +247,7 @@ void Flex::setRadius(float radius) {
   auto style = m_background->style();
   style.radius = radius;
   m_background->setStyle(style);
+  applyElevation();
 }
 
 float Flex::radius() const noexcept { return m_background != nullptr ? m_background->style().radius.tl : 0.0F; }
@@ -254,6 +257,7 @@ void Flex::setRadii(const Radii& radii) {
   auto style = m_background->style();
   style.radius = radii;
   m_background->setStyle(style);
+  applyElevation();
 }
 
 void Flex::setBorder(const ColorSpec& color, float width) {
@@ -291,6 +295,50 @@ void Flex::applyPalette() {
     style.gradientStops = m_fillGradient->second;
   }
   m_background->setStyle(style);
+  applyElevation();
+}
+
+void Flex::setElevation(const Tokens::Elevation* level, float scale) {
+  m_elevation = level;
+  m_elevationScale = scale;
+  if (m_elevation == nullptr) {
+    for (RectNode* shadow : m_shadows) {
+      if (shadow != nullptr) removeChild(shadow);
+    }
+    return;
+  }
+  ensureBackground();
+  for (RectNode*& shadow : m_shadows) {
+    if (shadow != nullptr) continue;
+    shadow = static_cast<RectNode*>(addChild(std::make_unique<RectNode>()));
+    shadow->setParticipatesInLayout(false);
+    shadow->setZIndex(-2);
+  }
+  applyElevation();
+}
+
+void Flex::applyElevation() {
+  if (m_elevation == nullptr || m_background == nullptr || m_shadows[0] == nullptr || m_shadows[1] == nullptr) {
+    return;
+  }
+  const bool light = isResolvedLightTheme();
+  const Tokens::Elevation& e = *m_elevation;
+  const std::array<std::array<float, 3>, 2> layers{{
+      {e.contactY, e.contactBlur, light ? e.contactLight : e.contactDark},
+      {e.keyY, e.keyBlur, light ? e.keyLight : e.keyDark},
+  }};
+  const RoundedRectStyle& shape = m_background->style();
+  for (std::size_t i = 0; i < m_shadows.size(); ++i) {
+    const auto [y, blur, alpha] = layers[i];
+    RoundedRectStyle style{.corners = shape.corners, .logicalInset = shape.logicalInset, .radius = shape.radius};
+    style.fill = colorForRole(ColorRole::Shadow, this);
+    style.fill.a = alpha;
+    setDropShadow(style, blur * m_elevationScale, y * m_elevationScale);
+    m_shadows[i]->setPosition(0.0F, y * m_elevationScale);
+    m_shadows[i]->setFrameSize(width(), height());
+    m_shadows[i]->setVisible(alpha > 0.0F && blur > 0.0F);
+    m_shadows[i]->setStyle(style);
+  }
 }
 
 void Flex::setFillGradient(GradientDirection direction, const std::array<GradientStop, 4>& stops) {
@@ -401,6 +449,9 @@ std::unique_ptr<Node> Flex::removeChild(Node* child) {
   m_gapExcludedChildren.erase(child);
   if (child == m_background) {
     m_background = nullptr;
+  }
+  for (RectNode*& shadow : m_shadows) {
+    if (child == shadow) shadow = nullptr;
   }
   return Node::removeChild(child);
 }
