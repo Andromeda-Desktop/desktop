@@ -137,8 +137,8 @@ namespace settings {
     return FrameColors{
         .tileFill = clearColorSpec(),
         .tileGlyph = colorSpecFromRole(ColorRole::Label2),
-        // Scheme token `card` (white in light, #28282c in dark): grouped cards read white on the window plane.
-        .cardFill = fixedColorSpec(rgbaHex(isResolvedLightTheme() ? Tokens::schemeLight.card : Tokens::schemeDark.card)),
+        // The resolved scheme's card (white in light): grouped cards read white on the window plane.
+        .cardFill = fixedColorSpec(colorForRole(ColorRole::Card, isResolvedLightTheme() ? PaletteTone::Light : PaletteTone::Dark)),
         .cardBorder = colorSpecFromRole(ColorRole::Stroke),
         .avatarFill = colorSpecFromRole(ColorRole::Accent),
         .avatarInitial = colorSpecFromRole(ColorRole::OnAccent),

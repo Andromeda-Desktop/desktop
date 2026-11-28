@@ -416,7 +416,7 @@ std::unique_ptr<Flex> ActivityWindow::buildProblemCard(float scale) {
       .paddingV = Style::spaceMd * scale,
       .paddingH = Style::spaceLg * scale,
       .fill = m_glass ? colorSpecFromRole(ColorRole::SolidThin, 0.5F)
-                      : fixedColorSpec(rgbaHex(isResolvedLightTheme() ? Tokens::schemeLight.card : Tokens::schemeDark.card)),
+                      : fixedColorSpec(colorForRole(ColorRole::Card, isResolvedLightTheme() ? PaletteTone::Light : PaletteTone::Dark)),
       .radius = Style::scaledRadius(Tokens::radiusR8, scale),
       .border = colorSpecFromRole(m_glass ? ColorRole::LensEdge : ColorRole::Stroke),
       .borderWidth = 0.5F * scale,

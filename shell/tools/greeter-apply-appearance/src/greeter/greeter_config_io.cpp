@@ -76,6 +76,7 @@ namespace {
         || key == "scheme_selector_position"
         || key == "theme_mode"
         || key == "corner_radius_scale"
+        || key == "pure_black"
         || key == "font_family"
         || key == "palette"
         || key == "wallpaper"
@@ -258,6 +259,8 @@ namespace {
             } else {
               kLog.warn("{}: invalid appearance.corner_radius_scale value", path.string());
             }
+          } else if (entryView == "pure_black") {
+            config.appearance.pureBlack = entryNode.value<bool>();
           } else if (entryView == "font_family") {
             config.appearance.fontFamily = stringValue(entryNode);
           } else if (entryView == "palette") {
@@ -448,6 +451,9 @@ namespace {
     );
     if (appearance.cornerRadiusScale.has_value()) {
       table.insert_or_assign("corner_radius_scale", static_cast<double>(*appearance.cornerRadiusScale));
+    }
+    if (appearance.pureBlack.has_value()) {
+      table.insert_or_assign("pure_black", *appearance.pureBlack);
     }
     insertString(
         table, "font_family", appearance.fontFamily,

@@ -283,6 +283,7 @@ namespace {
     WallpaperConfig wallpaper;
     LockscreenConfig lockscreen;
     Palette palette;
+    bool pureBlack = false;
     std::uint32_t clockInkFrom = 0;
     std::uint32_t clockInkTo = 0;
     bool hasPlatform = false;
@@ -674,6 +675,7 @@ namespace {
     appearance.insert_or_assign("scheme", "Synced");
     appearance.insert_or_assign("theme_mode", config.themeMode);
     appearance.insert_or_assign("corner_radius_scale", static_cast<double>(config.shell.cornerRadiusScale));
+    appearance.insert_or_assign("pure_black", config.pureBlack);
     if (!config.shell.fontFamily.empty()) {
       appearance.insert_or_assign("font_family", config.shell.fontFamily);
     }
@@ -1142,6 +1144,7 @@ namespace {
         .wallpaper = c.wallpaper,
         .lockscreen = c.lockscreen,
         .palette = ::palette,
+        .pureBlack = c.theme.pureBlackDark,
         .clockInkFrom = g_clockInkFrom,
         .clockInkTo = g_clockInkTo,
         .hasPlatform = platform != nullptr,

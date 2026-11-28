@@ -2,11 +2,14 @@
 #include "app/appearance.h"
 #include "dbus/portal/settings_portal.h"
 #include "dbus/session_bus.h"
+#include "protocols/pure_black.h"
+#include "render/scene/node.h"
 #include "i18n/i18n_service.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <print>
 #include <thread>
@@ -30,6 +33,19 @@ namespace {
   void expectCorner(SessionBus& shell, SessionBus& app, float want, const char* what) {
     if (!pumpUntil(shell, app, [want] { return Style::cornerRadiusScale() == want; })) {
       std::println(stderr, "appearance_portal_test: {}: corner scale {}, want {}", what, Style::cornerRadiusScale(), want);
+      ++g_failures;
+    }
+  }
+
+  // Rulebook §4.3: the dark view sits on black, the dark card keeps its L* distance from view, light never changes.
+  void expectPureBlack(const char* what) {
+    const Palette dark = tokenPalette(false);
+    const auto lstar = [](const Color& c) { return pure_black::lightness(c.r, c.g, c.b); };
+    const double cardLstar = lstar(dark.card) - lstar(dark.view);
+    const Palette& live = paletteForTone(PaletteTone::Dark);
+    if (!(live.view == rgba(0.0F, 0.0F, 0.0F, dark.view.a)) || std::abs(lstar(live.card) - cardLstar) > 0.5
+        || !(paletteForTone(PaletteTone::Light).view == tokenPalette(true).view)) {
+      std::println(stderr, "appearance_portal_test: {} did not apply", what);
       ++g_failures;
     }
   }
@@ -75,6 +91,7 @@ int main() {
   const int beforeBatch = changes;
   portal->setScales(1.0, 1.0, 0.75);
   portal->setHighContrast(true);
+  portal->setPureBlack(true);
   portal->setLanguage("fr");
   portal->publish();
   if (!pumpUntil(shellBus, appBus, [] { return i18n::Service::instance().requestedLanguage() == "fr"; })) {
@@ -96,6 +113,7 @@ int main() {
     std::println(stderr, "appearance_portal_test: the batch's corner scale or high contrast did not apply");
     ++g_failures;
   }
+  expectPureBlack("the batch's pure black");
 
   // A restarted shell counts its generations from 1 again and has set only the scheme so far: the app takes the new
   // scheme and keeps the values the new shell has not set yet.
@@ -112,5 +130,6 @@ int main() {
     std::println(stderr, "appearance_portal_test: the restarted shell reset values it has not set");
     ++g_failures;
   }
+  expectPureBlack("pure black after a shell restart");
   return g_failures == 0 ? 0 : 1;
 }

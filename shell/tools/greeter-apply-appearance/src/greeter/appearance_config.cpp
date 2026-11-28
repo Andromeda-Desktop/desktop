@@ -121,6 +121,9 @@ namespace {
     // The sync carries the shell's token colors under the greeter's legacy 16-key names; the two roles it does not
     // export (fill_1, solid_thin) come from the token scheme of the same mode.
     result.palette = tokenPalette(result.themeMode == "light");
+    if (result.themeMode != "light" && appearance.pureBlack.value_or(false)) {
+      applyPureBlack(result.palette);
+    }
     const std::array<std::pair<std::string_view, Color*>, 10> keys = {{
         {"primary", &result.palette.accent},
         {"on_primary", &result.palette.onAccent},

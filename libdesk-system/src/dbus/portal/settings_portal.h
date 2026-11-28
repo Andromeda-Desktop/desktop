@@ -29,6 +29,8 @@ public:
 
   // org.freedesktop.appearance color-scheme.
   void setDark(bool dark);
+  // org.andromeda.appearance pure-black (1 = on): dark palettes put view on black (rulebook §4.3).
+  void setPureBlack(bool pureBlack);
   // org.freedesktop.appearance accent-color (sRGB 0..1), contrast (high = 1), reduced-motion (reduce = 1).
   void setAccent(double r, double g, double b);
   void setHighContrast(bool high);
@@ -57,6 +59,7 @@ public:
     std::array<double, 3> accent{-1.0, -1.0, -1.0};
     std::uint32_t contrast = 0;
     std::uint32_t reducedMotion = 0;
+    std::uint32_t pureBlack = 0;
     double uiScale = 1.0;
     double textScale = 1.0;
     double cornerRadiusScale = 1.0;

@@ -5,6 +5,7 @@
 #include "render/scene/node.h"
 #include "design_tokens.h"
 #include "protocols/glass_material.h"
+#include "protocols/pure_black.h"
 #include "util/string_utils.h"
 
 #include <algorithm>
@@ -377,6 +378,14 @@ Palette lerpPalette(const Palette& a, const Palette& b, float t) {
 void applyHighContrast(Palette& p) noexcept {
   p.label2 = p.label1;
   p.stroke.a = 1.0F;
+}
+
+void applyPureBlack(Palette& p) noexcept {
+  const double shift = pure_black::lightness(p.view.r, p.view.g, p.view.b);
+  for (Color* plane : {&p.view, &p.solidThin, &p.solidRegular, &p.tintRegular, &p.tintThick, &p.popover, &p.card}) {
+    const auto [r, g, b] = pure_black::lowered(plane->r, plane->g, plane->b, shift);
+    *plane = Color{static_cast<float>(r), static_cast<float>(g), static_cast<float>(b), plane->a};
+  }
 }
 
 Palette tokenPalette(bool light) noexcept {

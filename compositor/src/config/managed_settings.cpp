@@ -411,6 +411,7 @@ namespace andromeda {
         Spec{"appearance.liquid_blur", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.liquidBlur); }},
         Spec{"appearance.reduce_transparency", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.reduceTransparency); }},
         Spec{"appearance.increase_contrast", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.increaseContrast); }},
+        Spec{"appearance.pure_black", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.pureBlack); }},
         Spec{"appearance.reduce_motion", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.reduceMotion); }},
         Spec{"appearance.blur.enabled", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.blur.enabled); }},
         Spec{"appearance.blur.optimized", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.blur.optimized); }},

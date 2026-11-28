@@ -1364,7 +1364,12 @@ void SettingsWindow::onKeyboardEvent(const KeyboardEvent& event) {
   }
 }
 
-void SettingsWindow::onThemeChanged() { requestRedraw(); }
+void SettingsWindow::onThemeChanged() {
+  if (isOpen() && !(settings::frameColors().cardFill == m_builtCardFill)) {
+    requestContentRebuild();
+  }
+  requestRedraw();
+}
 
 void SettingsWindow::requestRedraw() {
   if (isOpen()) {

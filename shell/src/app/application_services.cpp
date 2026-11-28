@@ -597,7 +597,10 @@ void Application::syncPolkitAgent() {
 void Application::syncToolkitTheme() {
   if (m_configService.config().theme.toolkitThemes) {
     const auto& toolkit = m_themeService.toolkitColors();
-    toolkit_theme::write(m_themeService.resolvedMode(), toolkit.accent, toolkit.accentText, toolkit.onAccent);
+    toolkit_theme::write(
+        m_themeService.resolvedMode(), toolkit.accent, toolkit.accentText, toolkit.onAccent,
+        m_configService.config().theme.pureBlackDark
+    );
   } else {
     toolkit_theme::remove();
   }
@@ -946,13 +949,15 @@ void Application::initStyleThemeAndWayland() {
         m_themeService.resolvedShellMode(),
         shellThemeMode(m_configService.config().theme) == ThemeMode::Auto ? LiveAppearanceSync::SchemeOrigin::Derived
                                                                            : LiveAppearanceSync::SchemeOrigin::Chosen,
-        primary != shellTokens.end() ? formatRgbHex(rgbHex(primary->second)) : ""
+        primary != shellTokens.end() ? formatRgbHex(rgbHex(primary->second)) : "",
+        m_configService.config().theme.pureBlackDark
     );
     if (m_configService.config().theme.syncColorScheme) {
       syncGSettingsColorScheme(m_bus.get(), resolvedMode);
     }
     if (m_settingsPortal != nullptr) {
       m_settingsPortal->setDark(resolvedMode != "light");
+      m_settingsPortal->setPureBlack(m_configService.config().theme.pureBlackDark);
       const Color accent = m_themeService.toolkitColors().accent;
       m_settingsPortal->setAccent(accent.r, accent.g, accent.b);
       m_settingsPortal->publish();
@@ -989,6 +994,7 @@ void Application::initStyleThemeAndWayland() {
   m_themeService.apply();
   if (m_settingsPortal != nullptr) {
     m_settingsPortal->setDark(!m_themeService.isLightMode());
+    m_settingsPortal->setPureBlack(m_configService.config().theme.pureBlackDark);
     const Color accent = m_themeService.toolkitColors().accent;
     m_settingsPortal->setAccent(accent.r, accent.g, accent.b);
     const auto publishAppSettings = [this] {
@@ -1002,8 +1008,9 @@ void Application::initStyleThemeAndWayland() {
   }
   syncToolkitTheme();
   m_configService.addReloadCallback(
-      [this, last = m_configService.config().theme.toolkitThemes] mutable {
-        if (std::exchange(last, m_configService.config().theme.toolkitThemes) != last) {
+      [this, last = std::pair{m_configService.config().theme.toolkitThemes, m_configService.config().theme.pureBlackDark}] mutable {
+        const auto& theme = m_configService.config().theme;
+        if (std::exchange(last, std::pair{theme.toolkitThemes, theme.pureBlackDark}) != last) {
           syncToolkitTheme();
         }
       },

@@ -57,8 +57,9 @@ public:
   enum class AccentOrigin : std::uint8_t { Saved, Wallpaper };
 
   // Sets each key the compositor holds with a different value; before the first batch arrives, it waits for it. The
-  // palette accent fills the saved appearance.accent only while it is unset and the accent origin is Saved.
-  void publish(std::string_view scheme, SchemeOrigin origin, std::string_view paletteAccent);
+  // palette accent fills the saved appearance.accent only while it is unset and the accent origin is Saved. Pure black
+  // (rulebook §4.3) goes to the "style" layer in the same commit, so compositor chrome and glass follow the theme.
+  void publish(std::string_view scheme, SchemeOrigin origin, std::string_view paletteAccent, bool pureBlack);
   // Saved: the user's saved appearance.accent shows. Wallpaper: the wallpaper accent ("#rrggbb", empty until known)
   // masks it from the "style" layer.
   void setAccentOrigin(AccentOrigin origin, std::string_view wallpaperAccent);
@@ -98,6 +99,8 @@ private:
   std::string m_layerCornerScale; // the corner scale in the compositor's "style" layer now
   std::string m_uiScale;
   std::string m_layerUiScale; // the ui scale in the compositor's "style" layer now
+  std::string m_pureBlack;
+  std::string m_layerPureBlack; // pure black in the compositor's "style" layer now
   std::string m_language;
   std::string m_layerLanguage; // the language in the compositor's "style" layer now
   std::string m_accent;

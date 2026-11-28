@@ -109,7 +109,7 @@ void Appearance::readKeys(bool backend) {
       {kAndromeda, "ui-scale"},     {kAndromeda, "text-scale"},     {kAndromeda, "corner-radius-scale"}, {kAndromeda, "glass"},
       {kAndromeda, "frost"},        {kAndromeda, "liquid"},       {kAndromeda, "reduce-transparency"}, {kAndromeda, "compositor-blur"},
       {kAndromeda, "glass-style"},  {kAndromeda, "edge-reflection"}, {kAndromeda, "liquid-tint"},     {kAndromeda, "liquid-blur"},
-      {kAndromeda, "language"},
+      {kAndromeda, "language"},     {kAndromeda, "pure-black"},
   };
   for (const auto& [ns, key] : keys) {
     proxy->callMethodAsync("Read")
@@ -183,7 +183,8 @@ bool Appearance::take(const std::string& ns, const std::string& key, const sdbus
     return true;
   }
   if (ns == kAndromeda
-      && (key == "reduce-transparency" || key == "compositor-blur" || key == "glass-style" || key == "edge-reflection")) {
+      && (key == "reduce-transparency" || key == "compositor-blur" || key == "glass-style" || key == "edge-reflection"
+          || key == "pure-black")) {
     if (!value.containsValueOfType<std::uint32_t>()) {
       return false;
     }
@@ -196,6 +197,8 @@ bool Appearance::take(const std::string& ns, const std::string& key, const sdbus
       m_glass.edgeReflection = on;
     } else if (key == "reduce-transparency") {
       m_glass.reduceTransparency = on;
+    } else if (key == "pure-black") {
+      m_pureBlack = on;
     } else {
       m_compositorBlur = on;
     }
@@ -256,6 +259,9 @@ void Appearance::apply() {
     if (m_hasAccent) {
       p.accent = rgba(static_cast<float>(m_accent[0]), static_cast<float>(m_accent[1]), static_cast<float>(m_accent[2]), 1.0F);
     }
+    if (!light && m_pureBlack) {
+      applyPureBlack(p);
+    }
     if (m_highContrast) {
       applyHighContrast(p);
     }
@@ -271,7 +277,7 @@ void Appearance::apply() {
   i18n::Service::instance().setLanguage(m_language);
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
   const Applied now{
-      m_light,   m_hasAccent, m_reducedMotion, m_highContrast, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
+      m_light,   m_hasAccent, m_reducedMotion, m_highContrast, m_pureBlack, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
       m_uiScale, m_textScale, m_cornerRadiusScale, m_glass, m_compositorBlur, m_language
   };
   if (now == m_applied) {

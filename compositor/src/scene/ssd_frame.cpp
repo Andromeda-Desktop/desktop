@@ -82,7 +82,8 @@ namespace andromeda {
       const auto& colors = config().colors.titleBar;
       const auto& s = scheme();
       return {
-          colors.background.value_or(rgba(s.header)), colors.backgroundUnfocused.value_or(rgba(s.header)),
+          colors.background.value_or(rgba(schemePlane(s.header, lightScheme()))),
+          colors.backgroundUnfocused.value_or(rgba(schemePlane(s.header, lightScheme()))),
           colors.text.value_or(rgba(s.label1)), colors.textUnfocused.value_or(rgba(s.label3))
       };
     }

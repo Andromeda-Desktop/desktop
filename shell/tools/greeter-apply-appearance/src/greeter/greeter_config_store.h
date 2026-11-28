@@ -27,6 +27,8 @@ namespace greeter::config {
   struct GreeterTomlAppearance {
     std::optional<std::string> themeMode;
     std::optional<float> cornerRadiusScale;
+    // Rulebook §4.3: a dark palette puts view on black.
+    std::optional<bool> pureBlack;
     std::optional<std::string> fontFamily;
     // Hex strings keyed like appearance.json ("primary", "on_primary", …).
     std::unordered_map<std::string, std::string> palette;

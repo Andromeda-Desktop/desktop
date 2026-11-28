@@ -876,6 +876,8 @@ namespace andromeda {
       double liquid = 0.5;
       bool reduceTransparency = false;
       bool increaseContrast = false;
+      // Rulebook §4.3: dark planes and tints keep their L* distance from view, and view sits on black.
+      bool pureBlack = false;
       bool reduceMotion = false;
 
       [[nodiscard]] int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
@@ -1413,6 +1415,9 @@ namespace andromeda {
   }
 
   [[nodiscard]] const Config& config();
+  // A plane or tint token (0xRRGGBBAA) of the light or dark scheme, with pure black applied to dark (rulebook §4.3).
+  // Main thread only.
+  [[nodiscard]] std::uint32_t schemePlane(std::uint32_t token, bool light);
   void loadConfig(const char* explicitPath);
   [[nodiscard]] ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
   [[nodiscard]] ConfigReloadResult reloadConfig();

@@ -237,6 +237,9 @@ void setPalette(const Palette& p);
 [[nodiscard]] Palette tokenPalette(bool light) noexcept;
 // Increase contrast: secondary text reads as primary text and strokes are opaque.
 void applyHighContrast(Palette& p) noexcept;
+// Pure black (rulebook §4.3), dark palettes only: every opaque plane and glass tint keeps its L* distance from view,
+// and view sits on black.
+void applyPureBlack(Palette& p) noexcept;
 
 // Snapshot accessor safe to call from non-main threads (e.g. plugin script workers).
 [[nodiscard]] Color colorForRoleSnapshot(ColorRole role);

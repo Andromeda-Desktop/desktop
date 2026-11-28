@@ -484,6 +484,8 @@ private:
   ScrollViewState m_contentScrollState;
   std::vector<settings::SettingEntry> m_settingsRegistry;
   bool m_rebuildRequested = false;
+  // The grouped card fill the content was built with: frameColors() holds a fixed colour of the resolved scheme.
+  ColorSpec m_builtCardFill;
   bool m_contentRebuildRequested = false;
   bool m_settingsRegistryRefreshRequested = false;
   bool m_filterRowRefreshRequested = false;

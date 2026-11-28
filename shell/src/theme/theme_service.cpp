@@ -4,6 +4,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/scoped_timer.h"
+#include "render/scene/node.h"
 #include "ipc/ipc_service.h"
 #include "net/http_client.h"
 #include "system/day_night_schedule.h"
@@ -214,18 +215,32 @@ namespace noctalia::theme {
     }
     const auto paletteFor = [&](bool light) {
       ::Palette p = tokenPalette(light);
+      if (!light && cfg.pureBlackDark) {
+        applyPureBlack(p);
+      }
       applyLivePalette(p, m_liveAccent, highContrast);
       return p;
     };
     resolved->palette = paletteFor(resolved->shellMode == "light");
-    setDarkPalette(resolved->shellMode == "light" ? paletteFor(false) : resolved->palette);
-    setLightPalette(resolved->shellMode == "light" ? resolved->palette : paletteFor(true));
+    const ::Palette dark = resolved->shellMode == "light" ? paletteFor(false) : resolved->palette;
+    const ::Palette light = resolved->shellMode == "light" ? resolved->palette : paletteFor(true);
+    // Surfaces of the other tone (Clear glass, a dark island in light mode) read these, not the active palette.
+    const bool tonesChanged =
+        !(paletteForTone(PaletteTone::Dark) == dark) || !(paletteForTone(PaletteTone::Light) == light);
+    setDarkPalette(dark);
+    setLightPalette(light);
     const ::Palette appPalette = resolved->mode == resolved->shellMode ? resolved->palette : paletteFor(resolved->mode == "light");
     m_toolkitColors = {.accent = appPalette.accent, .accentText = appPalette.accentText, .onAccent = appPalette.onAccent};
 
     queueResolvedCallback(resolved->generated, resolved->mode);
     m_isLightMode = resolved->mode == "light";
     m_isShellLightMode = resolved->shellMode == "light";
+    if (tonesChanged && m_transitionAnimId == 0 && palette == resolved->palette) {
+      paletteChanged().emit();
+      if (m_changeCallback) {
+        m_changeCallback();
+      }
+    }
 
     if (animate) {
       setResolvedThemeLight(m_isShellLightMode);

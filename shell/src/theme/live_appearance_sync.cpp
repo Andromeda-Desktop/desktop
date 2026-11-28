@@ -88,12 +88,15 @@ void LiveAppearanceSync::initialize(ShellWaylandConnection& wayland, ChangeCallb
   m_control = std::make_unique<SettingsControl>(wayland.registry(), name, version, [this]() { onSettingsChanged(); });
 }
 
-void LiveAppearanceSync::publish(std::string_view scheme, SchemeOrigin origin, std::string_view paletteAccent) {
+void LiveAppearanceSync::publish(
+    std::string_view scheme, SchemeOrigin origin, std::string_view paletteAccent, bool pureBlack
+) {
   if (m_focusScheme.empty()) {
     m_scheme = std::string(scheme);
     m_schemeOrigin = origin;
   }
   m_accent = normalizeColor(paletteAccent);
+  m_pureBlack = pureBlack ? "true" : "false";
   flush();
 }
 
@@ -145,6 +148,10 @@ void LiveAppearanceSync::sendLayers() {
   if (!m_uiScale.empty() && m_uiScale != m_layerUiScale) {
     m_layerUiScale = m_uiScale;
     m_control->setInLayer("style", "appearance.ui_scale", m_uiScale);
+  }
+  if (!m_pureBlack.empty() && m_pureBlack != m_layerPureBlack) {
+    m_layerPureBlack = m_pureBlack;
+    m_control->setInLayer("style", "appearance.pure_black", m_pureBlack);
   }
   if (!m_language.empty() && m_language != m_layerLanguage) {
     m_layerLanguage = m_language;

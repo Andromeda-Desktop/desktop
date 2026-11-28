@@ -181,7 +181,7 @@ namespace andromeda {
       }
     }
 
-    // Equal but for the fields a theme sets: scheme, accent, glass, blur recipe, shadow shape, corners, edges. Every
+    // Equal but for the fields a theme sets: scheme, pure black, accent, glass, blur recipe, shadow shape, corners, edges. Every
     // other field (ui scale, language, title and tab bars, blur on or off) changes what an open overview laid out.
     bool sameAppearanceLayout(const Config::Appearance& before, const Config::Appearance& after) {
       Config::Appearance look = before;
@@ -196,6 +196,7 @@ namespace andromeda {
       look.liquid = after.liquid;
       look.reduceTransparency = after.reduceTransparency;
       look.increaseContrast = after.increaseContrast;
+      look.pureBlack = after.pureBlack;
       look.windowEdge = after.windowEdge;
       look.cornerRadius = after.cornerRadius;
       look.cornerScale = after.cornerScale;

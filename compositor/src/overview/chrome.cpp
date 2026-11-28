@@ -363,7 +363,7 @@ namespace andromeda::ov {
     // Glass pieces are tint-only over the overview's cached wallpaper blur: no per-frame blur (overview handoff perf).
     // The bar islands' glass and ink: Clear glass is dark in both schemes.
     const bool light = configGlassLight(glass::Kind::Shape);
-    const std::uint32_t tint = (light ? Tokens::schemeLight : Tokens::schemeDark).tintThick;
+    const std::uint32_t tint = schemePlane((light ? Tokens::schemeLight : Tokens::schemeDark).tintThick, light);
     const auto channel = [tint](int shift) { return static_cast<float>((tint >> shift) & 0xFFU) / 255.0F; };
     const std::array<float, 4> thick{channel(24), channel(16), channel(8), configGlass(glass::Kind::Shape).tint};
     // Ink and fills follow the scheme, as the glass tint does: colors.* hold one scheme's values.
@@ -374,8 +374,8 @@ namespace andromeda::ov {
           static_cast<float>((c >> 8) & 0xFFU) / 255.0F, static_cast<float>(c & 0xFFU) / 255.0F
       };
     };
-    const std::array<float, 4> thin = rgba(scheme.tintThin);
-    const std::array<float, 4> solid = rgba(scheme.solidRegular);
+    const std::array<float, 4> thin = rgba(schemePlane(scheme.tintThin, light));
+    const std::array<float, 4> solid = rgba(schemePlane(scheme.solidRegular, light));
     const std::array<float, 4> l1 = rgba(scheme.label1);
     const std::array<float, 4> l2 = rgba(scheme.label2);
     const std::array<float, 4> l3 = rgba(scheme.label3);

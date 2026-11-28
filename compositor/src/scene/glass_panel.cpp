@@ -102,7 +102,7 @@ namespace andromeda {
     m_blur.setAlpha(opacity);
     m_blur.setBackdropSampling(!m_useScrim);
     // Glass draws its tint inside the blur, raised by the backdrop density; a scrim is a flat rect over a plain blur.
-    const auto tint = rgba(shape ? scheme.tintRegular : scheme.tintThick, 1.0F);
+    const auto tint = rgba(schemePlane(shape ? scheme.tintRegular : scheme.tintThick, light), 1.0F);
     m_blur.setTintMix({tint[0], tint[1], tint[2]}, m_useScrim ? 0.0F : glass::denser(material.tint, m_density, material.dense));
     m_blur.update(m_tree, nullptr, box, box, corners, nullptr, {.enabled = true, .optimized = m_bottomOnly, .always = true});
 

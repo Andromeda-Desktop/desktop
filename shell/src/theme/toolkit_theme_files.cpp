@@ -3,10 +3,12 @@
 #include "config/atomic_file.h"
 #include "core/log.h"
 #include "protocols/async_file_writer.h"
+#include "protocols/pure_black.h"
 #include "protocols/xdg_dirs.h"
 #include "ui/style.h"
 #include "util/file_utils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -118,9 +120,17 @@ namespace toolkit_theme {
       writeIfChanged(path, out);
     }
 
+    // A plane colour (0xRRGGBBAA) of the scheme files and the colour pure black puts in its place.
+    struct PlaneSwap {
+      std::uint32_t from = 0;
+      std::uint32_t to = 0;
+    };
+
+    std::string hex(std::uint32_t rgba) { return std::format("#{:06x}", rgba >> 8U); }
+
     void writeGtk(
         GtkToolkit toolkit, std::string_view scheme, const std::string& accent, const std::string& accentText,
-        const std::string& onAccent
+        const std::string& onAccent, const std::vector<PlaneSwap>& planes
     ) {
       const bool gtk4 = toolkit == GtkToolkit::Gtk4;
       const auto base = findData(std::format("andromeda/gtk/andromeda-gtk{}-{}.css", gtk4 ? 4 : 3, scheme));
@@ -137,6 +147,27 @@ namespace toolkit_theme {
       if (gtk4) {
         css += std::format(":root {{\n  --accent-color: {2};\n  --accent-bg-color: {0};\n  --accent-fg-color: {1};\n}}\n",
                            accent, onAccent, accentText);
+      }
+      // Each colour definition of the base that holds a plane colour gets the pure black one.
+      if (!planes.empty()) {
+        std::string defines;
+        std::string vars;
+        std::stringstream lines(readFile(*base).value_or(""));
+        for (std::string line; std::getline(lines, line);) {
+          for (const PlaneSwap& plane : planes) {
+            const std::string from = hex(plane.from) + ";";
+            if (!line.ends_with(from)) {
+              continue;
+            }
+            const std::string name = line.substr(0, line.size() - from.size());
+            (line.starts_with("@define-color ") ? defines : vars) += name + hex(plane.to) + ";\n";
+            break;
+          }
+        }
+        css += defines;
+        if (gtk4 && !vars.empty()) {
+          css += ":root {\n" + vars + "}\n";
+        }
       }
       writeIfChanged(dir / "andromeda.css", css);
       // GTK reads only gtk.css: import ours once, first, so the user's own rules still win.
@@ -170,7 +201,7 @@ namespace toolkit_theme {
     }
   }
 
-  bool write(std::string_view scheme, const Color& accent, const Color& accentText, const Color& onAccent) {
+  bool write(std::string_view scheme, const Color& accent, const Color& accentText, const Color& onAccent, bool pureBlack) {
     const std::string accentHex = formatRgbHex(accent);
     const std::string onAccentHex = formatRgbHex(onAccent);
     if (!findData(std::format("andromeda/gtk/andromeda-gtk4-{}.css", scheme))) {
@@ -179,10 +210,18 @@ namespace toolkit_theme {
     }
     // accent is a fill; accent_text is for text and symbols. Both come from the shell's resolved palette.
     const auto& tokens = scheme == "light" ? Tokens::schemeLight : Tokens::schemeDark;
+    std::vector<PlaneSwap> planes;
+    if (scheme != "light" && pureBlack) {
+      const double shift = pure_black::tokenLightness(tokens.view);
+      for (const std::uint32_t plane : {tokens.view, tokens.window, tokens.sidebar, tokens.header, tokens.card, tokens.popover,
+                                        tokens.solidThin, tokens.solidRegular, tokens.solidThick}) {
+        planes.push_back({.from = plane, .to = pure_black::loweredToken(plane, shift)});
+      }
+    }
     const Color& accentTextColor = accentText;
     const std::string accentTextHex = formatRgbHex(accentText);
-    writeGtk(GtkToolkit::Gtk3, scheme, accentHex, accentTextHex, onAccentHex);
-    writeGtk(GtkToolkit::Gtk4, scheme, accentHex, accentTextHex, onAccentHex);
+    writeGtk(GtkToolkit::Gtk3, scheme, accentHex, accentTextHex, onAccentHex, planes);
+    writeGtk(GtkToolkit::Gtk4, scheme, accentHex, accentTextHex, onAccentHex, planes);
 
     // qt6ct has no import: copy the scheme palette with the token accent replaced by the live one.
     if (const auto base = findData(std::format("qt6ct/colors/andromeda-qt-{}.conf", scheme))) {
@@ -201,6 +240,18 @@ namespace toolkit_theme {
            at = palette.find(tokenAccent, at + liveAccent.size())) {
         palette.replace(at, tokenAccent.size(), liveAccent);
       }
+      // One pass per distinct colour: card, popover and solid_thick share a value.
+      std::string lowered;
+      for (std::size_t at = 0; at < palette.size();) {
+        const auto plane = std::ranges::find_if(planes, [&](const PlaneSwap& p) { return palette.compare(at, 9, argb(p.from)) == 0; });
+        if (plane != planes.end()) {
+          lowered += argb(plane->to);
+          at += 9;
+        } else {
+          lowered += palette[at++];
+        }
+      }
+      palette = std::move(lowered);
       const std::filesystem::path colors = FileUtils::expandXdgBaseDir("$XDG_CONFIG_HOME/qt6ct/colors/andromeda.conf");
       writeIfChanged(colors, palette);
       setIniKeys(
@@ -244,6 +295,9 @@ namespace toolkit_theme {
             value = liveRgb;
           } else if (value == tokenTextRgb) {
             value = liveTextRgb;
+          } else if (const auto plane = std::ranges::find_if(planes, [&](const PlaneSwap& p) { return rgbOf(p.from) == value; });
+                     plane != planes.end()) {
+            value = rgbOf(plane->to);
           }
           keys.emplace_back(line.substr(0, eq), value);
         }

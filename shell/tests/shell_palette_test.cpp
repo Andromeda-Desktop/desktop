@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <sstream>
 #include <print>
@@ -148,7 +149,10 @@ namespace {
     fs::create_directories(root / "config");
     for (const char* name : {"andromeda-gtk3-dark.css", "andromeda-gtk4-dark.css", "andromeda-gtk3-light.css",
                              "andromeda-gtk4-light.css"}) {
-      std::ofstream(root / "data/andromeda/gtk" / name) << "/* base */\n";
+      const auto& scheme = std::string_view(name).ends_with("light.css") ? Tokens::schemeLight : Tokens::schemeDark;
+      const std::string view = std::format("#{:06x}", scheme.view >> 8U);
+      std::ofstream(root / "data/andromeda/gtk" / name)
+          << "/* base */\n@define-color view_bg_color " << view << ";\n:root {\n  --view-bg-color: " << view << ";\n}\n";
     }
     setenv("XDG_DATA_HOME", (root / "data").c_str(), 1);
     setenv("XDG_DATA_DIRS", (root / "none").c_str(), 1);
@@ -156,7 +160,7 @@ namespace {
     for (const bool light : {false, true}) {
       const ::Palette out =
           noctalia::theme::recolorShellPalette(tokenPalette(light), generatedFor("#b9cf83", "#8a9a3c"), light);
-      ok = expect(toolkit_theme::write(light ? "light" : "dark", out.accent, out.accentText, out.onAccent), "writer ran")
+      ok = expect(toolkit_theme::write(light ? "light" : "dark", out.accent, out.accentText, out.onAccent, true), "writer ran")
           && ok;
       for (const char* dir : {"gtk-3.0", "gtk-4.0"}) {
         ok = expect(waitFileWritten(root / "config" / dir / "andromeda.css"), "toolkit css written") && ok;
@@ -166,6 +170,13 @@ namespace {
         const std::string expected = "@define-color accent_color " + formatRgbHex(out.accentText) + ";";
         ok = expect(text.str().find(expected) != std::string::npos, std::string(dir) + " accent_text equals the shell's")
             && ok;
+        // Rulebook §4.3: pure black puts the dark view on black; light never changes.
+        const bool black = text.str().find("@define-color view_bg_color #000000;") != std::string::npos;
+        ok = expect(black != light, std::string(dir) + " pure black view only in dark") && ok;
+        if (std::string_view(dir) == "gtk-4.0") {
+          ok = expect((text.str().find("--view-bg-color: #000000;") != std::string::npos) != light,
+                      "gtk-4.0 pure black view variable only in dark") && ok;
+        }
       }
       ok = expect(contrastRatio(toInt(out.accentText), toInt(out.solidRegular)) >= 4.5, "shell accent_text clamped") && ok;
     }

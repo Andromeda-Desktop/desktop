@@ -12,7 +12,8 @@
 namespace toolkit_theme {
 
   // scheme: "light" or "dark". Returns false when the generated files are not installed.
-  bool write(std::string_view scheme, const Color& accent, const Color& accentText, const Color& onAccent);
+  // pureBlack: a dark scheme's plane colours follow rulebook §4.3.
+  bool write(std::string_view scheme, const Color& accent, const Color& accentText, const Color& onAccent, bool pureBlack);
   // Removes the gtk.css imports write() added; the user's own lines and the other toolkits' settings stay.
   void remove();
 

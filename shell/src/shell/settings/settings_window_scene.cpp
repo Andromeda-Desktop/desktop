@@ -1014,6 +1014,7 @@ void SettingsWindow::rebuildSettingsContent() {
   }
   logSettingsProfile("rebuildContent clear", phaseProfileWatch);
   phaseProfileWatch.reset();
+  m_builtCardFill = settings::frameColors().cardFill;
 
   const float scale = uiScale();
   const Config fallbackCfg{};

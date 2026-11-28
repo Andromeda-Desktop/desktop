@@ -60,6 +60,7 @@ private:
   bool m_hasAccent = false;
   bool m_reducedMotion = false;
   bool m_highContrast = false;
+  bool m_pureBlack = false;
   bool m_powerSaver = false;
   double m_accent[3] = {0.0, 0.0, 0.0};
   double m_uiScale = 1.0;
@@ -74,6 +75,7 @@ private:
     bool hasAccent = false;
     bool reducedMotion = false;
     bool highContrast = false;
+    bool pureBlack = false;
     bool powerSaver = false;
     std::array<double, 3> accent{};
     double uiScale = 1.0;

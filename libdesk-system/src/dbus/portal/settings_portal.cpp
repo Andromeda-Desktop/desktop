@@ -39,6 +39,7 @@ namespace {
       {kAppearance, "accent-color", [](const Values& v) -> Value { return v.accent; }},
       {kAppearance, "contrast", [](const Values& v) -> Value { return v.contrast; }},
       {kAppearance, "reduced-motion", [](const Values& v) -> Value { return v.reducedMotion; }},
+      {kAndromeda, "pure-black", [](const Values& v) -> Value { return v.pureBlack; }},
       {kAndromeda, "ui-scale", [](const Values& v) -> Value { return v.uiScale; }},
       {kAndromeda, "text-scale", [](const Values& v) -> Value { return v.textScale; }},
       {kAndromeda, "corner-radius-scale", [](const Values& v) -> Value { return v.cornerRadiusScale; }},
@@ -152,6 +153,11 @@ void SettingsPortal::stage(std::string_view key) {
 void SettingsPortal::setDark(bool dark) {
   m_staged.colorScheme = dark ? 1 : 2;
   stage("color-scheme");
+}
+
+void SettingsPortal::setPureBlack(bool pureBlack) {
+  m_staged.pureBlack = pureBlack ? 1 : 0;
+  stage("pure-black");
 }
 
 void SettingsPortal::setAccent(double r, double g, double b) {

@@ -208,6 +208,7 @@ namespace andromeda {
           real("liquid_blur", 0.0, 1.0, &A::liquidBlur),
           boolean("reduce_transparency", &A::reduceTransparency),
           boolean("increase_contrast", &A::increaseContrast),
+          boolean("pure_black", &A::pureBlack),
           boolean("reduce_motion", &A::reduceMotion),
           registry::table("blur", &A::blur, blur),
           registry::table("shadow", &A::shadow, shadow),

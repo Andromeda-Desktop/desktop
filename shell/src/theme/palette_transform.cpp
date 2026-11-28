@@ -1,6 +1,7 @@
 #include "theme/palette_transform.h"
 
 #include "cpp/cam/hct.h"
+#include "protocols/pure_black.h"
 
 #include <algorithm>
 #include <array>
@@ -32,11 +33,9 @@ namespace noctalia::theme {
         "terminal_cursor_text",
     }};
 
-    [[nodiscard]] std::uint32_t lowerTone(std::uint32_t argb, double shift) {
-      mcu::Hct hct(argb);
-      hct.set_tone(std::max(0.0, hct.get_tone() - shift));
-      return hct.ToInt();
-    }
+    // Tokens are 0xAARRGGBB; pure_black works on 0xRRGGBBAA.
+    [[nodiscard]] std::uint32_t toRgba(std::uint32_t argb) { return (argb << 8U) | (argb >> 24U); }
+    [[nodiscard]] std::uint32_t toArgb(std::uint32_t rgba) { return (rgba >> 8U) | (rgba << 24U); }
 
   } // namespace
 
@@ -45,15 +44,14 @@ namespace noctalia::theme {
     if (base == darkTokens.end()) {
       return;
     }
-    // Shifting by the base tone puts `surface` on tone 0 and drops everything above it
-    // by the same amount; tokens already below the base clamp to black.
-    const double shift = mcu::Hct(base->second).get_tone();
+    // Rulebook §4.3 with `surface` as the base: it goes to black and every ramp token keeps its L* distance.
+    const double shift = pure_black::tokenLightness(toRgba(base->second));
     if (shift <= 0.0) {
       return;
     }
     for (const std::string_view key : kSurfaceRamp) {
       if (const auto it = darkTokens.find(std::string(key)); it != darkTokens.end()) {
-        it->second = lowerTone(it->second, shift);
+        it->second = toArgb(pure_black::loweredToken(toRgba(it->second), shift));
       }
     }
   }

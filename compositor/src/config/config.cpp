@@ -11,8 +11,10 @@
 #include "config/overrides.h"
 #include "config/section.h"
 #include "config/store.h"
+#include "protocols/pure_black.h"
 
 #include <algorithm>
+#include <array>
 #include <exception>
 #include <format>
 #include <fstream>
@@ -251,6 +253,33 @@ namespace andromeda {
   const Config::Input::Device* Config::Input::findDevice(std::string_view name) const {
     const auto found = std::ranges::find_if(devices, [name](const Device& device) { return device.name == name; });
     return found == devices.end() ? nullptr : &*found;
+  }
+
+  std::uint32_t schemePlane(std::uint32_t token, bool light) {
+    if (light || !config().appearance.pureBlack) {
+      return token;
+    }
+    // Callers run per frame: each lowered token is kept until view (a themable slot) changes.
+    struct Lowered {
+      std::uint32_t token = 0;
+      std::uint32_t value = 0;
+    };
+    static std::uint32_t s_view = 0;
+    static std::array<Lowered, 16> s_lowered{};
+    static std::size_t s_count = 0;
+    const std::uint32_t view = Tokens::schemeDark.view;
+    if (view != s_view || s_count == s_lowered.size()) {
+      s_view = view;
+      s_count = 0;
+    }
+    for (std::size_t i = 0; i < s_count; ++i) {
+      if (s_lowered[i].token == token) {
+        return s_lowered[i].value;
+      }
+    }
+    const std::uint32_t value = pure_black::loweredToken(token, pure_black::tokenLightness(view));
+    s_lowered[s_count++] = {.token = token, .value = value};
+    return value;
   }
 
 } // namespace andromeda
