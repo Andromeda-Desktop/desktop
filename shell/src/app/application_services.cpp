@@ -1370,11 +1370,13 @@ void Application::initAuxServicesAndHooks() {
     m_activityWindow.onThemeChanged();
     m_wallpaperWindow.onThemeChanged();
     m_greeterSync.scheduleAuto();
-    // Re-rasterizing icons on every fade frame would stall the fade: restyle them once it ends.
-    if (!m_themeService.transitioning()) {
-      updateIconColorScheme();
-    }
+    updateIconColorScheme();
   });
+  m_themeService.setFrameFreeze(
+      [this](std::uint32_t serial) { return m_wayland.freezeFrame(serial); },
+      [this](std::uint32_t serial) { m_wayland.thawFrame(serial); }
+  );
+  m_wayland.setFrameFrozenCallback([this](std::uint32_t serial) { m_themeService.onFrameFrozen(serial); });
 
   if (const auto distro = DistroDetector::detect(); distro.has_value()) {
     const auto& label = !distro->prettyName.empty() ? distro->prettyName

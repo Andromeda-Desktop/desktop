@@ -33,7 +33,10 @@ namespace noctalia::theme {
     constexpr auto kLog = Logger("theme");
 
     // One 60 Hz frame: a faster tick repaints every surface more often than the screen can show it.
-    constexpr std::chrono::milliseconds kTransitionTick{16};
+    // The shell's surfaces redraw within two frames of a palette change; apps take the portal table at the same time.
+    constexpr std::chrono::milliseconds kThawDelay{100};
+    // frame_frozen comes within 200 ms of freeze_frame (dsk_shell_v1); a lost connection never answers.
+    constexpr std::chrono::milliseconds kFreezeTimeout{400};
 
     struct ResolvedPalette {
       GeneratedPalette generated;
@@ -246,7 +249,7 @@ namespace noctalia::theme {
     queueResolvedCallback(resolved->generated, resolved->mode);
     m_isLightMode = resolved->mode == "light";
     m_isShellLightMode = resolved->shellMode == "light";
-    if (tonesChanged && m_transitionAnimId == 0 && palette == resolved->palette) {
+    if (tonesChanged && m_switchState == SwitchState::Idle && palette == resolved->palette) {
       paletteChanged().emit();
       if (m_changeCallback) {
         m_changeCallback();
@@ -254,27 +257,14 @@ namespace noctalia::theme {
     }
 
     if (animate) {
-      setResolvedThemeLight(m_isShellLightMode);
-      notifyShellAppIconColorizationChanged();
-      startTransition(resolved->palette);
+      switchTo(resolved->palette);
     } else {
-      if (m_transitionAnimId == 0 && palette == resolved->palette) {
+      setSwitchState(SwitchState::Idle);
+      if (lookChanges(resolved->palette)) {
+        applyPalette(resolved->palette);
+      } else {
         flushResolvedCallback(/*defer=*/false);
-        rescheduleAutoTimer();
-        return;
       }
-      if (m_transitionAnimId != 0) {
-        m_animations.cancel(m_transitionAnimId);
-        m_transitionAnimId = 0;
-      }
-      m_transitionTimer.stop();
-      setResolvedThemeLight(m_isShellLightMode);
-      notifyShellAppIconColorizationChanged();
-      setPalette(resolved->palette);
-      if (m_changeCallback) {
-        m_changeCallback();
-      }
-      flushResolvedCallback(/*defer=*/false);
     }
     rescheduleAutoTimer();
   }
@@ -297,61 +287,67 @@ namespace noctalia::theme {
     return theme.mode == ThemeMode::Auto || shellThemeMode(theme) == ThemeMode::Auto;
   }
 
-  void ThemeService::startTransition(const Palette& target) {
-    if (m_transitionAnimId == 0 && palette == target) {
+  void ThemeService::setFrameFreeze(FreezeFrame freeze, ThawFrame thaw) {
+    m_freezeFrame = std::move(freeze);
+    m_thawFrame = std::move(thaw);
+  }
+
+  void ThemeService::setSwitchState(SwitchState next) {
+    m_switchTimer.stop();
+    m_switchState = next;
+    if (next == SwitchState::Freezing) {
+      m_switchTimer.start(kFreezeTimeout, [this] {
+        kLog.warn("theme: no frame_frozen {} within {} ms; switching without a fade", m_switchSerial, kFreezeTimeout.count());
+        onFrameFrozen(m_switchSerial);
+      });
+    } else if (next == SwitchState::Applied) {
+      m_switchTimer.start(kThawDelay, [this] {
+        if (m_thawFrame) {
+          m_thawFrame(m_switchSerial);
+        }
+        setSwitchState(SwitchState::Idle);
+      });
+    }
+  }
+
+  void ThemeService::switchTo(const Palette& target) {
+    m_switchTarget = target;
+    if (m_switchState == SwitchState::Freezing) {
+      return;
+    }
+    if (!lookChanges(target)) {
       flushResolvedCallback(/*defer=*/false);
       return;
     }
-    if (m_transitionAnimId != 0 && m_targetPalette == target) {
-      flushResolvedCallback(/*defer=*/true);
+    if (m_freezeFrame && m_freezeFrame(m_switchSerial + 1)) {
+      ++m_switchSerial;
+      setSwitchState(SwitchState::Freezing);
       return;
     }
-    // Capture the currently-displayed palette (possibly mid-fade) so a new
-    // transition starts from wherever the previous one had reached.
-    if (m_transitionAnimId != 0) {
-      m_animations.cancel(m_transitionAnimId);
-      m_transitionAnimId = 0;
-    }
-    m_fromPalette = palette;
-    m_targetPalette = target;
-    m_transitionResolvedCallbackFlushed = false;
-    m_transitionAnimId = m_animations.animateSpring(
-        0.0F, 1.0F, Style::spring(Tokens::springFade),
-        [this](float t) {
-          setPalette(lerpPalette(m_fromPalette, m_targetPalette, t));
-          if (m_changeCallback) {
-            m_changeCallback();
-          }
-          if (!m_transitionResolvedCallbackFlushed) {
-            m_transitionResolvedCallbackFlushed = true;
-            flushResolvedCallback(/*defer=*/true);
-          }
-        },
-        [this] { finishTransition(/*deferResolvedCallback=*/false); }
-    );
-    if (m_transitionAnimId == 0) {
-      m_transitionTimer.stop();
-      return;
-    }
-    m_transitionTimer.startRepeating(kTransitionTick, [this] { tickTransition(); });
+    applyPalette(target);
   }
 
-  void ThemeService::finishTransition(bool deferResolvedCallback) {
-    m_transitionAnimId = 0;
-    m_transitionTimer.stop();
-    setPalette(m_targetPalette);
+  bool ThemeService::lookChanges(const Palette& target) const {
+    return !(palette == target) || !m_appliedShellLight.has_value() || *m_appliedShellLight != m_isShellLightMode;
+  }
+
+  void ThemeService::onFrameFrozen(std::uint32_t serial) {
+    if (m_switchState != SwitchState::Freezing || serial != m_switchSerial) {
+      return;
+    }
+    applyPalette(m_switchTarget);
+    setSwitchState(SwitchState::Applied);
+  }
+
+  void ThemeService::applyPalette(const Palette& target) {
+    setResolvedThemeLight(m_isShellLightMode);
+    m_appliedShellLight = m_isShellLightMode;
+    notifyShellAppIconColorizationChanged();
+    setPalette(target);
     if (m_changeCallback) {
       m_changeCallback();
     }
-    flushResolvedCallback(deferResolvedCallback);
-  }
-
-  void ThemeService::tickTransition() {
-    if (!m_animations.hasActive()) {
-      m_transitionTimer.stop();
-      return;
-    }
-    m_animations.tick(static_cast<float>(kTransitionTick.count()));
+    flushResolvedCallback(/*defer=*/false);
   }
 
   void ThemeService::registerIpc(IpcService& ipc) {

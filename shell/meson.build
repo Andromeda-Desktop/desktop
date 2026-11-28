@@ -1431,6 +1431,7 @@ if build_tests
     'system_monitor_service',
     'systemd_unit_name',
     'taskbar_widget',
+    'theme_freeze_switch',
     'theme_shell_mode',
     'time_format',
     'time_locale',

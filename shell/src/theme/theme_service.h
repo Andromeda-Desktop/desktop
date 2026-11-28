@@ -3,7 +3,6 @@
 #include "core/latest_request.h"
 #include "config/config_types.h"
 #include "core/timer_manager.h"
-#include "render/animation/animation_manager.h"
 #include "theme/palette.h"
 #include "ui/palette.h"
 
@@ -47,8 +46,6 @@ namespace noctalia::theme {
     [[nodiscard]] ThemeMode configuredMode() const noexcept;
     // Noctalia's own resolved mode ([theme].shell_mode, or [theme].mode when it follows).
     [[nodiscard]] bool isLightMode() const noexcept;
-    // A palette fade runs: the palette changes on every frame until it ends.
-    [[nodiscard]] bool transitioning() const noexcept { return m_transitionAnimId != 0; }
     [[nodiscard]] std::string_view resolvedShellMode() const noexcept;
     // The resolved [theme].mode, which drives apps.
     [[nodiscard]] std::string_view resolvedMode() const noexcept;
@@ -72,6 +69,13 @@ namespace noctalia::theme {
 
     void registerIpc(IpcService& ipc);
 
+    // A look change goes through the compositor's frame freeze (dsk_shell_v1 freeze_frame): freeze returns false when
+    // the compositor cannot freeze, and the look then changes at once. onFrameFrozen takes frame_frozen.
+    using FreezeFrame = std::function<bool(std::uint32_t serial)>;
+    using ThawFrame = std::function<void(std::uint32_t serial)>;
+    void setFrameFreeze(FreezeFrame freeze, ThawFrame thaw);
+    void onFrameFrozen(std::uint32_t serial);
+
 
   private:
     ToolkitColors m_toolkitColors{};
@@ -81,9 +85,12 @@ namespace noctalia::theme {
     void resolveAndSet(bool animate);
     void queueResolvedCallback(const GeneratedPalette& generated, std::string_view mode);
     void flushResolvedCallback(bool defer);
-    void startTransition(const Palette& target);
-    void finishTransition(bool deferResolvedCallback);
-    void tickTransition();
+    // Idle: no switch. Freezing: waits for frame_frozen of m_switchSerial. Applied: the look changed; thaw follows.
+    enum class SwitchState : std::uint8_t { Idle, Freezing, Applied };
+    void setSwitchState(SwitchState next);
+    void switchTo(const Palette& target);
+    void applyPalette(const Palette& target);
+    [[nodiscard]] bool lookChanges(const Palette& target) const;
     void rescheduleAutoTimer();
     [[nodiscard]] bool hasAutoMode() const noexcept;
 
@@ -100,12 +107,14 @@ namespace noctalia::theme {
     std::string m_pendingResolvedMode;
     RequestEpoch m_resolvedFlush;
 
-    AnimationManager m_animations;
-    Timer m_transitionTimer;
-    Palette m_fromPalette{};
-    Palette m_targetPalette{};
-    AnimationManager::Id m_transitionAnimId = 0;
-    bool m_transitionResolvedCallbackFlushed = false;
+    FreezeFrame m_freezeFrame;
+    ThawFrame m_thawFrame;
+    SwitchState m_switchState = SwitchState::Idle;
+    std::uint32_t m_switchSerial = 0;
+    Palette m_switchTarget{};
+    Timer m_switchTimer;
+    // The shell light mode the shown palette was applied with; empty before the first apply.
+    std::optional<bool> m_appliedShellLight;
     bool m_isShellLightMode = false;
     std::string m_modeOverride;
     bool m_isLightMode = false;
