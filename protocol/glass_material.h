@@ -33,6 +33,9 @@ namespace glass {
     bool operator==(const Material&) const = default;
   };
 
+  // Glass under a surface that paints its own fill: the backdrop blur alone, no tint, rim or lens.
+  inline constexpr Material kBlurOnly{.tint = 0.0F};
+
   // Ink alpha label_2 and label_3 (dim by design) reach at full density:
   // {light glass (dark ink), dark glass (light ink)}. Secondary ink rises to these with the surface's density.
   extern const float kLegibleInk2[2];

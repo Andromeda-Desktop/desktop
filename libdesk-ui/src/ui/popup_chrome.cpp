@@ -103,7 +103,7 @@ namespace popup_chrome {
              static_cast<int>(std::lround(geometry.contentWidth)), static_cast<int>(std::lround(geometry.contentHeight))}
         ),
         .radius = Style::scaledMenuRadius(contentScale),
-        .material = kBlurOnlyMaterial,
+        .material = glass::kBlurOnly,
     });
   }
 

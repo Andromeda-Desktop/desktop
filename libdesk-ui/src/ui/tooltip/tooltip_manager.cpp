@@ -765,7 +765,7 @@ void TooltipManager::buildScene(const TooltipContent& content, float w, float h,
     }
   } else {
     m_surface->setGlassCard(
-        GlassCard{.rect = GlassRect::from(rect), .radius = radius, .material = popup_chrome::kBlurOnlyMaterial}
+        GlassCard{.rect = GlassRect::from(rect), .radius = radius, .material = glass::kBlurOnly}
     );
   }
 

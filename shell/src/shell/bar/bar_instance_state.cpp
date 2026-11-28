@@ -646,8 +646,9 @@ void Bar::applyBarCompositorBlur(BarInstance& instance) const {
   if (instance.barConfig.islands && syncIslandShapes(instance, false)) {
     return;
   }
-  // The bar paints its own fill: the glass takes no tint.
-  const glass::Material material = Style::islandGlassUntinted();
+  // The bar paints its own fill: the glass takes no tint. A full-width bar is plain blur; its rim and lens would cost a
+  // backdrop copy every frame under video.
+  const glass::Material material = instance.barConfig.islands ? Style::islandGlassUntinted() : glass::kBlurOnly;
   const auto card = [&](GlassRect rect, GlassRadius radius) {
     return GlassCard{
         .rect = rect,
