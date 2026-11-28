@@ -144,6 +144,8 @@ namespace Style {
   [[nodiscard]] glass::Material glassMaterial(glass::Kind kind, PaletteTone tone) noexcept;
   // The one island glass of every shell surface: Kind::Shape in the island tone.
   [[nodiscard]] glass::Material islandGlass() noexcept;
+  // Island glass under a surface that paints its own fill: blur, rim and lens, tint 0.
+  [[nodiscard]] glass::Material islandGlassUntinted() noexcept;
   // Shell popover glass (glass::popover) in the island tone.
   [[nodiscard]] glass::Material popoverMaterial() noexcept;
   // Tint alpha for a configured `opacity` relative to glass::referenceOpacity (1 = solid).

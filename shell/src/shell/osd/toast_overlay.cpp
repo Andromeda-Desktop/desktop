@@ -210,7 +210,7 @@ void ToastOverlay::prepareFrame() {
   row->setPosition(x, 0.0F);
   const glass::Material material = Style::islandGlass();
   const bool compositorTint = m_surface->setGlassCard(GlassCard{
-      .rect = {static_cast<int>(x), 0, static_cast<int>(std::ceil(row->width())), static_cast<int>(height)},
+      .rect = GlassRect::from({static_cast<int>(x), 0, static_cast<int>(std::ceil(row->width())), static_cast<int>(height)}),
       .radius = height * 0.5F,
       .material = material,
       .node = row,

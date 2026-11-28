@@ -444,9 +444,9 @@ bool WaylandSurface::setGlassCards(std::span<const GlassCard> cards) {
       continue;
     }
     const GlassCard& card = cards[i];
-    const auto w = static_cast<double>(card.rect.width);
-    const auto h = static_cast<double>(card.rect.height);
-    shape.set(DskSurfaceClient::Property::Clip, {static_cast<double>(card.rect.x), static_cast<double>(card.rect.y), w, h});
+    const double w = card.rect.width;
+    const double h = card.rect.height;
+    shape.set(DskSurfaceClient::Property::Clip, {card.rect.x, card.rect.y, w, h});
     shape.set(DskSurfaceClient::Property::Radius, {std::min({static_cast<double>(card.radius), w * 0.5, h * 0.5}), 0.0, 0.0, 0.0});
     if (m_dsk->hasRotationProperty()) {
       shape.set(DskSurfaceClient::Property::Rotation, {static_cast<double>(card.rotation), 0.0, 0.0, 0.0});

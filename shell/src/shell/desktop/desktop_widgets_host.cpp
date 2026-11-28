@@ -577,17 +577,13 @@ void DesktopWidgetsHost::prepareFrame(DesktopWidgetInstance& instance, bool need
   }
 
   if (instance.widget->hasVisibleBackground()) {
-    // The widget paints its own background colour; the card carries blur, rim and lens.
-    glass::Material material = Style::islandGlass();
-    material.tint = 0.0F;
-    const int w = static_cast<int>(std::lround(instance.intrinsicWidth));
-    const int h = static_cast<int>(std::lround(instance.intrinsicHeight));
     instance.surface->setGlassCard(GlassCard{
-        .rect = {static_cast<int>(std::lround(geometry.contentOffsetX - instance.intrinsicWidth * 0.5F)),
-                 static_cast<int>(std::lround(geometry.contentOffsetY - instance.intrinsicHeight * 0.5F)), w, h},
+        .rect = {geometry.contentOffsetX - instance.intrinsicWidth * 0.5F,
+                 geometry.contentOffsetY - instance.intrinsicHeight * 0.5F, instance.intrinsicWidth,
+                 instance.intrinsicHeight},
         .radius = instance.widget->backgroundRadius(),
         .rotation = instance.state.rotationRad,
-        .material = material,
+        .material = Style::islandGlassUntinted(),
     });
     instance.glass.apply(*instance.surface, GlassSurface::Kind::Shape);
   } else {

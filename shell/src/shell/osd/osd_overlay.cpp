@@ -916,7 +916,7 @@ void OsdOverlay::updateBlurRegion(Instance& inst) const {
   glass::Material material = Style::islandGlass();
   material.tint = osdBackgroundOpacity(m_config);
   inst.compositorTint = inst.surface->setGlassCard(GlassCard{
-      .rect = {rx, ry, rw, rh}, .radius = radius, .material = material, .node = inst.background});
+      .rect = GlassRect::from({rx, ry, rw, rh}), .radius = radius, .material = material, .node = inst.background});
   inst.background->setFill(inst.compositorTint ? clearColorSpec() : colorSpecFromRole(materialRole(), material.tint));
   inst.glass.apply(*inst.surface, GlassSurface::Kind::Shape);
 }

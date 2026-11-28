@@ -31,10 +31,23 @@ struct InputRect {
   bool operator==(const InputRect&) const = default;
 };
 
+// Surface-local logical px; fractional, so a rotated card turns about its exact centre.
+struct GlassRect {
+  float x = 0.0F;
+  float y = 0.0F;
+  float width = 0.0F;
+  float height = 0.0F;
+
+  static GlassRect from(const InputRect& r) {
+    return {static_cast<float>(r.x), static_cast<float>(r.y), static_cast<float>(r.width), static_cast<float>(r.height)};
+  }
+  bool operator==(const GlassRect&) const = default;
+};
+
 // A rounded glass card in surface-local logical px. `node` picks the palette tone of the tint; `onDensity` gets the
 // backdrop density (0..1) the compositor measures under the card.
 struct GlassCard {
-  InputRect rect;
+  GlassRect rect;
   float radius = 0.0F;
   // Radians clockwise about the centre of `rect`, which stays unrotated.
   float rotation = 0.0F;

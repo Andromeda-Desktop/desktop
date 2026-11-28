@@ -755,7 +755,7 @@ void TooltipManager::buildScene(const TooltipContent& content, float w, float h,
   const InputRect rect{0, 0, static_cast<int>(std::lround(w)), static_cast<int>(std::lround(h))};
   if (shellLayer) {
     if (m_surface->setGlassCard(GlassCard{
-            .rect = rect,
+            .rect = GlassRect::from(rect),
             .radius = radius,
             .material = Style::popoverMaterial(),
             .node = m_sceneRoot.get(),

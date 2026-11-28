@@ -102,6 +102,11 @@ namespace Style {
   }
 
   glass::Material islandGlass() noexcept { return glassMaterial(glass::Kind::Shape); }
+  glass::Material islandGlassUntinted() noexcept {
+    glass::Material material = islandGlass();
+    material.tint = 0.0F;
+    return material;
+  }
 
   glass::Material popoverMaterial() noexcept {
     return glass::popover(g_glass, lightTone(glassTone(glass::Kind::Shape)));

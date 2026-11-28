@@ -110,9 +110,10 @@ namespace popup_chrome {
 
   void setCardGlass(Surface& surface, const Geometry& geometry, float contentScale, Box& card, Node& root) {
     const bool compositorTint = surface.setGlassCard(GlassCard{
-        .rect = {static_cast<int>(std::lround(geometry.contentX())), static_cast<int>(std::lround(geometry.contentY())),
-                 static_cast<int>(std::lround(geometry.contentWidth)),
-                 static_cast<int>(std::lround(geometry.contentHeight))},
+        .rect = GlassRect::from(
+            {static_cast<int>(std::lround(geometry.contentX())), static_cast<int>(std::lround(geometry.contentY())),
+             static_cast<int>(std::lround(geometry.contentWidth)), static_cast<int>(std::lround(geometry.contentHeight))}
+        ),
         .radius = Style::scaledMenuRadius(contentScale),
         .material = Style::popoverMaterial(),
         .node = &root,

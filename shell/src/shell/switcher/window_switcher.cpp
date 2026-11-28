@@ -1834,11 +1834,10 @@ void WindowSwitcher::positionPanel(Instance& instance, float screenW, float scre
   }
 
   // The panel, the tiles and the count pill paint their own tint; the cards carry blur, rim and lens.
-  glass::Material material = Style::islandGlass();
-  material.tint = 0.0F;
+  const glass::Material material = Style::islandGlassUntinted();
   std::vector<GlassCard> cards;
   const auto card = [&cards, &material](const InputRect& rect, float radius) {
-    cards.push_back(GlassCard{.rect = rect, .radius = radius, .material = material});
+    cards.push_back(GlassCard{.rect = GlassRect::from(rect), .radius = radius, .material = material});
   };
   if (layout.boxed && instance.panelBackground != nullptr) {
     float left = 0.0F;
