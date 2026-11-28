@@ -5,7 +5,8 @@ namespace glass {
   namespace {
   // Over a low-contrast backdrop each style's glass moves at least this fraction of its gap to opaque, in its own
   // colour, by Style: {light glass, dark glass}. A light step only: each style keeps its slider's look over any backdrop.
-  constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.15F, 0.25F}, {0.25F, 0.25F}, {0.3F, 0.45F}};
+  // Clear is always dark glass; its full step keeps white ink at 3:1 over white, cyan and yellow backdrops.
+  constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.15F, 0.25F}, {0.25F, 0.45F}, {0.3F, 0.45F}};
   // Clarity 0 blurs at full size, 1 not at all: Frosted stops at 0.7 (a 30 % blur); Liquid spans 0.85 (Soft) to 0.45
   // (Strong): every Liquid surface keeps a real blur, like Apple's Regular glass.
   constexpr float kLiquidClarity[2] = {0.85F, 0.45F};
