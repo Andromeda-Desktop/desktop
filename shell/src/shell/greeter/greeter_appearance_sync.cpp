@@ -1,4 +1,5 @@
 #include "protocols/xdg_dirs.h"
+#include "system/system_font.h"
 #include "time/time_format.h"
 #include "shell/greeter/greeter_appearance_sync.h"
 
@@ -676,8 +677,8 @@ namespace {
     appearance.insert_or_assign("theme_mode", config.themeMode);
     appearance.insert_or_assign("corner_radius_scale", static_cast<double>(config.shell.cornerRadiusScale));
     appearance.insert_or_assign("pure_black", config.pureBlack);
-    if (!config.shell.fontFamily.empty()) {
-      appearance.insert_or_assign("font_family", config.shell.fontFamily);
+    if (const std::string_view family = system_font::themeFamily(); !family.empty()) {
+      appearance.insert_or_assign("font_family", std::string(family));
     }
 
     // Keys follow the greeter's own 16-color palette schema, filled from the shell's token roles.

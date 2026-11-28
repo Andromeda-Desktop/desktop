@@ -23,6 +23,7 @@
 #include "shell/bar/widgets/spacer_widget.h"
 #include "shell/bar/widgets/tray_widget.h"
 #include "shell/panel/panel_manager.h"
+#include "system/system_font.h"
 #include "wayland/dsk_surface_client.h"
 #include "ui/surface_shadow.h"
 #include "shell/tooltip/tooltip_manager.h"
@@ -256,7 +257,7 @@ void Bar::populateWidgets(BarInstance& instance) {
   const auto labelFontWeight = static_cast<FontWeight>(instance.barConfig.fontWeight);
   const std::string barFontFamily = (instance.barConfig.fontFamily && !instance.barConfig.fontFamily->empty())
       ? *instance.barConfig.fontFamily
-      : m_config->config().shell.fontFamily;
+      : std::string(system_font::themeFamily());
   // Creates one widget for `name`. When `groupSpec` is set the widget is a member of a capsule group and
   // takes the group's capsule style + foreground; otherwise it resolves its own per-widget/bar capsule.
   auto createWidget = [&](const std::string& name, const WidgetBarCapsuleSpec* groupSpec,

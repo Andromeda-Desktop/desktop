@@ -1,6 +1,6 @@
 # page	path (or title:<key> for rows without a path)	reason the row stays hand-written
 appearance	shell.app_icon_color	unset shows the effective tint, which the schema write() cannot give
-appearance	shell.font_family	font picker: search list when fonts are known, else text; placeholder is the inherited font
+appearance	theme-overrides.font.ui	font picker: search list when fonts are known, else text; placeholder is the inherited font
 appearance	title:settings.schema.appearance.palette-inspector.label	button, no config key
 bar:default	bar.default.auto_hide	one select writes auto_hide and smart_auto_hide
 bar:default	bar.default.dead_zone.actions.back	gesture action control

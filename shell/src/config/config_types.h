@@ -101,7 +101,7 @@ struct BarMonitorOverride {
   std::optional<bool> contactShadow;              // dark gradient between attached panel and bar
   std::optional<std::int32_t> panelOverlap;       // logical px the attached panel overlaps the bar edge (seam tuning)
   std::optional<float> capsuleThickness;          // capsule cross-size as a fraction of bar thickness
-  std::optional<std::string> fontFamily;          // unset = inherit shell.font_family
+  std::optional<std::string> fontFamily;          // unset = inherit the shell font (font.ui)
   std::optional<float> scale;
   std::optional<float> fontScale;
   std::optional<std::vector<std::string>> startWidgets;
@@ -188,7 +188,7 @@ struct BarConfig {
   float scale = 1.0F;             // content scale multiplier for glyphs and text
   float fontScale = 1.0F;         // font scale multiplier, independent of content scale
   int fontWeight = 500;           // primary label weight for bar widgets
-  // Typeface for this bar's widgets; unset inherits shell.font_family. Per-widget `font_family` overrides.
+  // Typeface for this bar's widgets; unset inherits the shell font (font.ui). Per-widget `font_family` overrides.
   std::optional<std::string> fontFamily;
   // The design reference's islands (docs/design-system.md "Bar islands"); the center is the live activity's place.
   std::vector<std::string> startWidgets = {"active_window", "workspaces"};
@@ -1342,7 +1342,6 @@ struct ShellConfig {
   bool popupShadows = true;
   bool cardBorders = true;
   bool showCloseButtons = true;
-  std::string fontFamily = "Inter";
   std::string lang; // empty = auto-detect from $LC_ALL/$LC_MESSAGES/$LANG
   std::string timeFormat = "{:%H:%M}";
   std::string dateFormat = "%A, %x";

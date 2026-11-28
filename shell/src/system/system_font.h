@@ -19,6 +19,9 @@ namespace system_font {
   // Files whose change can change readFamily().
   std::vector<std::filesystem::path> watchFiles();
 
+  // The desktop theme's font.ui (token font.family); empty when it is "system", the desktop's font.
+  std::string_view themeFamily();
+
   // The family the shell draws with: `configured`, else `system`, else Inter (the design-token face).
   std::string resolveFamily(std::string_view configured, const std::optional<std::string>& system);
 

@@ -83,7 +83,7 @@ namespace settings {
 
     [[nodiscard]] std::unique_ptr<Input> makeText(
         const std::string& value, const std::string& placeholder, const std::vector<std::string>& path,
-        float width = 0.0F
+        float width = 0.0F, const std::string& emptyValue = {}
     );
 
     [[nodiscard]] std::unique_ptr<Node> makePathBrowse(const TextSetting& setting, std::vector<std::string> path);

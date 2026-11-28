@@ -344,7 +344,7 @@ private:
   noctalia::theme::DesktopTheme m_desktopTheme{m_fileWatcher};
   ConfigService m_configService{&m_dirWatcher};
   HttpClient m_httpClient;
-  // The desktop interface font family; the shell draws with it while shell.font_family is empty.
+  // The desktop interface font family; the shell draws with it while font.ui is "system".
   std::optional<std::string> m_systemFontFamily;
   noctalia::theme::ThemeService m_themeService{m_configService, m_httpClient, m_desktopTheme};
   LiveAppearanceSync m_liveAppearance;

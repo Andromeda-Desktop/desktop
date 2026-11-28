@@ -126,7 +126,7 @@ namespace settings {
     // Rows a typical user changes and that have a visual control. Bar rows are keyed `bar.*.<key>`.
     constexpr auto kMainRows = std::to_array<std::string_view>({
         "shell.automount_drives", "theme.mode", "shell.desktop_layout", "andromeda.appearance.accent", "andromeda.appearance.reduce_transparency", "accessibility.text_scale", "accessibility.ui_scale",
-        "shell.font_family",
+        "theme-overrides.font.ui",
         "wallpaper.enabled", "wallpaper.fill_mode", "wallpaper.directory",
         "wallpaper.automation.enabled", "wallpaper.automation.interval_seconds",
         "brightness.sync_all_monitors", "brightness.automatic", "brightness.scheduled",
@@ -199,7 +199,7 @@ namespace settings {
         {"andromeda.appearance.accent", "~colour"},
         {"accessibility.text_scale", "~text"},
         {"accessibility.ui_scale", "~text"},
-        {"shell.font_family", "~text"},
+        {"theme-overrides.font.ui", "~text"},
         {"dock.icon_size", "~dock"},
         {"dock.magnification", "~dock"},
         {"dock.position", "~dock"},

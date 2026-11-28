@@ -347,10 +347,11 @@ void Application::run(const std::function<void()>& startupReadyCallback) {
   andromeda::crash::install("andromeda-shell", noctalia::build_info::displayVersion());
   initLogLevelFromEnvironment();
   kLog.info("noctalia {}", noctalia::build_info::displayVersion());
-  m_configService.setTokenSource([this](const Config& config) {
-    return m_desktopTheme.select(config.theme.desktopTheme);
+  m_configService.setTokenSource([this](const Config& config, const std::optional<std::string>& overridesText) {
+    return m_desktopTheme.sync(config.theme.desktopTheme, overridesText);
   });
   m_desktopTheme.setChangeCallback([this] { m_configService.reloadAllSections(); });
+  m_configService.moveLegacyFontFamily();
   // Claim the tray watcher name first. The tray UI itself is wired up later.
   // Item callbacks run from deferred work on the main loop, after the shell
   // is initialized.

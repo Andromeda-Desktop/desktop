@@ -1,6 +1,7 @@
 #include "shell/settings/settings_registry_internal.h"
 #include "shell/desktop_layout/desktop_layout.h"
 #include "config/app_icon_settings.h"
+#include "config/config_service.h"
 
 #include "config/config_types.h"
 #include "config/schema/config_schema.h"
@@ -19,6 +20,7 @@
 #include "shell/settings/font_weight_catalog.h"
 #include "shell/wallpaper/wallpaper_paths.h"
 #include "system/sysmon_threshold_profile.h"
+#include "system/system_font.h"
 #include "theme/builtin_palettes.h"
 #include "ui/app_icon_colorization.h"
 #include "util/file_utils.h"
@@ -98,22 +100,24 @@ namespace settings {
     {
       const std::string systemFontLabel = tr("settings.schema.appearance.font-family.system");
       SettingControl fontFamilyControl =
-          TextSetting{.value = cfg.shell.fontFamily, .placeholder = systemFontLabel, .browseFileExtensions = {}};
+          TextSetting{.value = std::string(system_font::themeFamily()), .placeholder = systemFontLabel,
+                      .browseFileExtensions = {}, .emptyValue = "system"};
       if (!env.fontFamilies.empty()) {
-        std::vector<SelectOption> fontOptions{SelectOption{.value = "", .label = systemFontLabel}};
+        // "system" is the theme font value for the desktop interface font (system_font::themeFamily).
+        std::vector<SelectOption> fontOptions{SelectOption{.value = "system", .label = systemFontLabel}};
         fontOptions.insert(fontOptions.end(), env.fontFamilies.begin(), env.fontFamilies.end());
         fontFamilyControl = SearchPickerSetting{
             .options = std::move(fontOptions),
-            .selectedValue = cfg.shell.fontFamily,
+            .selectedValue = std::string(Tokens::fontFamily),
             .placeholder = systemFontLabel,
             .emptyText = tr("ui.controls.search-picker.empty"),
             .preferredHeight = 280.0F,
-            .emptyPick = EmptyPick::StoreEmpty,
         };
       }
       entries.push_back(makeEntry(
           SettingsSection::TextScale, "text", tr("settings.schema.appearance.font-family.label"),
-          tr("settings.schema.appearance.font-family.description"), {"shell", "font_family"},
+          tr("settings.schema.appearance.font-family.description"),
+          {std::string(ConfigService::kThemeOverridesRoot), "font.ui"},
           std::move(fontFamilyControl), "typeface"
       ));
     }

@@ -219,8 +219,10 @@ namespace settings {
     };
 
     const auto makeText = [&](const std::string& value, const std::string& placeholder,
-                              const std::vector<std::string>& path,
-                              float width = 0.0F) { return factory.makeText(value, placeholder, path, width); };
+                              const std::vector<std::string>& path, float width = 0.0F,
+                              const std::string& emptyValue = {}) {
+      return factory.makeText(value, placeholder, path, width, emptyValue);
+    };
 
     const auto makeTextWithPathBrowse = [&](const TextSetting& setting, const std::vector<std::string>& path) {
       return factory.makePathBrowse(setting, path);
@@ -860,7 +862,7 @@ namespace settings {
               if (control.browseMode != TextSettingBrowseMode::None) {
                 return makeTextWithPathBrowse(control, entry.path);
               }
-              return makeText(control.value, control.placeholder, entry.path, control.width);
+              return makeText(control.value, control.placeholder, entry.path, control.width, control.emptyValue);
             } else if constexpr (std::is_same_v<T, OptionalNumberSetting>) {
               return makeOptionalNumber(control, entry.path);
             } else if constexpr (std::is_same_v<T, OptionalStepperSetting>) {

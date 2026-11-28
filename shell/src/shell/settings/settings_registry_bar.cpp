@@ -18,6 +18,7 @@
 #include "shell/settings/font_weight_catalog.h"
 #include "shell/wallpaper/wallpaper_paths.h"
 #include "system/sysmon_threshold_profile.h"
+#include "system/system_font.h"
 #include "theme/builtin_palettes.h"
 #include "ui/app_icon_colorization.h"
 #include "util/file_utils.h"
@@ -143,16 +144,16 @@ namespace settings {
         appendRow(entries, barRows, key);
       }
       const std::string barResolvedFontFamily =
-          bar.fontFamily && !bar.fontFamily->empty() ? *bar.fontFamily : cfg.shell.fontFamily;
+          bar.fontFamily && !bar.fontFamily->empty() ? *bar.fontFamily : std::string(system_font::themeFamily());
       {
         SettingControl fontFamilyControl = TextSetting{
-            .value = bar.fontFamily.value_or(""), .placeholder = cfg.shell.fontFamily, .browseFileExtensions = {}
+            .value = bar.fontFamily.value_or(""), .placeholder = std::string(system_font::themeFamily()), .browseFileExtensions = {}
         };
         if (!env.fontFamilies.empty()) {
           fontFamilyControl = SearchPickerSetting{
               .options = env.fontFamilies,
               .selectedValue = bar.fontFamily.value_or(""),
-              .placeholder = cfg.shell.fontFamily,
+              .placeholder = std::string(system_font::themeFamily()),
               .emptyText = tr("ui.controls.search-picker.empty"),
               .preferredHeight = 280.0F,
           };
@@ -307,7 +308,7 @@ namespace settings {
           appendRow(entries, ovrRows, key);
         }
         {
-          const std::string monitorInheritedFontFamily = bar.fontFamily.value_or(cfg.shell.fontFamily);
+          const std::string monitorInheritedFontFamily = bar.fontFamily.value_or(std::string(system_font::themeFamily()));
           SettingControl fontFamilyControl = TextSetting{
               .value = ovr.fontFamily.value_or(""),
               .placeholder = monitorInheritedFontFamily,

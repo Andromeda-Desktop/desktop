@@ -19,10 +19,16 @@
 
 namespace {
 
+  bool isFontPath(const std::vector<std::string>& path) {
+    return path.size() == 2 && path[0] == ConfigService::kThemeOverridesRoot && path[1] == "font.ui";
+  }
+
   bool settingPathNeedsSceneRebuild(const std::vector<std::string>& path) {
+    if (isFontPath(path)) {
+      return true;
+    }
     if (path.size() == 2 && path[0] == "shell") {
       return path[1] == "corner_radius_scale"
-          || path[1] == "font_family"
           || path[1] == "lang"
           || path[1] == "show_close_buttons"
           || path[1] == "settings_window_translucent";
@@ -129,7 +135,7 @@ void SettingsWindow::setSettingOverride(std::vector<std::string> path, ConfigOve
   if (commitCompositorSetting(path, settings::compositorSettingText(value))) {
     return;
   }
-  if (path.size() == 2 && path[0] == "shell" && path[1] == "font_family") {
+  if (isFontPath(path)) {
     text::invalidateFontWeightCatalogCache();
   }
   const bool isAvatarPath = path.size() == 2 && path[0] == "shell" && path[1] == "avatar_path";

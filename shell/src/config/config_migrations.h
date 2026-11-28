@@ -47,6 +47,8 @@ namespace noctalia::config {
   [[nodiscard]] std::vector<std::pair<std::string, std::string>> legacyShellAnimationSettings(const toml::table& root);
   // Removes [shell.animation]; true when `root` had it.
   bool eraseLegacyShellAnimation(toml::table& root);
+  // [shell] font_family became "font.ui" in theme-overrides.toml. Removes it; true when `root` had it.
+  bool eraseLegacyShellFontFamily(toml::table& root);
 
   [[nodiscard]] std::string legacyConfigIssueFingerprint(const LegacyConfigIssues& issues);
   [[nodiscard]] bool

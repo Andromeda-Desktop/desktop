@@ -17,6 +17,8 @@ namespace noctalia::config {
     // Fingerprint id for the [shell.animation] reminder; no stored-file migration carries this number.
     constexpr int kShellAnimationIssueVersion = 18;
     constexpr int kTaskbarCombineMigrationVersion = 19;
+    // Fingerprint id for the [shell] font_family reminder; no stored-file migration carries this number.
+    constexpr int kShellFontFamilyIssueVersion = 20;
 
     // lockscreen.style (ryoku | classic) became lockscreen.theme (ryoku | andromeda). keepRyokuWhenUnset writes ryoku
     // when neither key is set, for installs from before the theme key.
@@ -181,6 +183,13 @@ namespace noctalia::config {
           .message = "shell.animation is ignored; set enabled and speed in the compositor's [animation] section",
       });
     }
+    if (eraseLegacyShellFontFamily(root)) {
+      issues.push_back({
+          .migrationVersion = kShellFontFamilyIssueVersion,
+          .path = "shell.font_family",
+          .message = "shell.font_family is ignored; set \"font.ui\" in theme-overrides.toml [values] (Settings, Font)",
+      });
+    }
   }
 
   std::vector<std::pair<std::string, std::string>> legacyShellAnimationSettings(const toml::table& root) {
@@ -201,6 +210,11 @@ namespace noctalia::config {
   bool eraseLegacyShellAnimation(toml::table& root) {
     auto* shell = root["shell"].as_table();
     return shell != nullptr && shell->erase("animation") > 0;
+  }
+
+  bool eraseLegacyShellFontFamily(toml::table& root) {
+    auto* shell = root["shell"].as_table();
+    return shell != nullptr && shell->erase("font_family") > 0;
   }
 
   std::string legacyConfigIssueFingerprint(const LegacyConfigIssues& issues) {

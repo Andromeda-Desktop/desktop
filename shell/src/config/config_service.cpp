@@ -63,6 +63,34 @@ namespace {
     std::string_view value;
   };
 
+  using OverrideSets = std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>>;
+
+  // The leaves of a config-set delta under theme-overrides; false on a value no theme key takes (an array).
+  bool collectThemeOverrideSets(const toml::table& table, std::vector<std::string>& path, OverrideSets& out) {
+    for (const auto& [key, node] : table) {
+      path.emplace_back(key.str());
+      bool ok = true;
+      if (const auto* sub = node.as_table()) {
+        ok = collectThemeOverrideSets(*sub, path, out);
+      } else if (const auto text = node.value_exact<std::string>()) {
+        out.emplace_back(path, *text);
+      } else if (const auto integer = node.value_exact<std::int64_t>()) {
+        out.emplace_back(path, *integer);
+      } else if (const auto number = node.value_exact<double>()) {
+        out.emplace_back(path, *number);
+      } else if (const auto flag = node.value_exact<bool>()) {
+        out.emplace_back(path, *flag);
+      } else {
+        ok = false;
+      }
+      path.pop_back();
+      if (!ok) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   // Splits config-set's "<path> <value>" without unquoting either half: both are TOML, so a quoted
   // key such as plugin_settings."author/plugin" must reach the parser with its quotes. The path
   // ends at the first whitespace outside a TOML string.
@@ -1536,9 +1564,9 @@ void ConfigService::deepMerge(toml::table& base, const toml::table& overlay) {
   }
 }
 
-void ConfigService::setTokenSource(std::function<bool(const Config&)> source) {
+void ConfigService::setTokenSource(TokenSource source) {
   m_tokenSource = std::move(source);
-  if (m_tokenSource(m_config)) {
+  if (m_tokenSource(m_config, m_themeOverridesText)) {
     loadConfigFiles();
     m_lastChange = ConfigChangeSet{};
   }
@@ -1546,7 +1574,7 @@ void ConfigService::setTokenSource(std::function<bool(const Config&)> source) {
 
 void ConfigService::loadAll() {
   loadConfigFiles();
-  if (m_tokenSource && m_tokenSource(m_config)) {
+  if (m_tokenSource && m_tokenSource(m_config, m_themeOverridesText)) {
     loadConfigFiles();
     m_lastChange = ConfigChangeSet{};
   }
@@ -1555,6 +1583,7 @@ void ConfigService::loadAll() {
 void ConfigService::loadConfigFiles() {
   noctalia::profiling::ScopedTimer parseTimer(kLog, "reload: parse (loadAll)");
   m_effectiveOverrideCache.clear();
+  loadThemeOverridesTable();
 
   Config nextConfig;
   noctalia::config::seedBuiltinWidgets(nextConfig);
@@ -1650,10 +1679,11 @@ void ConfigService::loadConfigFiles() {
 
   // Apply the app-writable overrides overlay last; sidecar wins. Compatibility
   // normalization must see the final effective values to preserve overlay intent.
-  // [shell.animation] in the overrides file waits for moveLegacyAnimationSettings(), so it raises no reminder; the
-  // persisted sidecar keeps it until then.
+  // [shell.animation] and [shell] font_family in the overrides file wait for moveLegacyAnimationSettings() and
+  // moveLegacyFontFamily(), so they raise no reminder; the persisted sidecar keeps them until then.
   toml::table overlay = effectiveOverrides;
   noctalia::config::eraseLegacyShellAnimation(overlay);
+  noctalia::config::eraseLegacyShellFontFamily(overlay);
   deepMerge(merged, overlay);
   merged.erase(noctalia::config::kConfigVersionKey);
   noctalia::config::LegacyConfigIssues legacyIssues;
@@ -2069,6 +2099,19 @@ void ConfigService::registerIpc(IpcService& ipc) {
     } catch (const toml::parse_error& e) {
       return std::format("error: invalid TOML value: {}: {}\n", deltaString, e.description());
     }
+    if (const auto* themeDelta = delta.get_as<toml::table>(kThemeOverridesRoot)) {
+      std::vector<std::string> path{std::string(kThemeOverridesRoot)};
+      OverrideSets sets;
+      if (!collectThemeOverrideSets(*themeDelta, path, sets)) {
+        return std::format("error: no theme key takes this value: {}\n", deltaString);
+      }
+      if (!mutateOverrides(sets, {}, nullptr)) {
+        return std::format(
+            "error: {}\n", m_lastMutationError.empty() ? "failed to write theme overrides" : m_lastMutationError
+        );
+      }
+      return "ok\n";
+    }
     deepMerge(candidateOverrides, delta);
 
     if (candidateOverrides == m_overridesTable) {
@@ -2107,6 +2150,30 @@ void ConfigService::registerIpc(IpcService& ipc) {
     auto tokens = StringUtils::splitShellWords(args);
     if (!tokens || tokens->size() != 1) {
       return "error: expected exactly one argument: <path>\n";
+    }
+    if ((*tokens)[0].starts_with(std::string(kThemeOverridesRoot) + ".")) {
+      // TOML key syntax, so a dotted theme key ("font.ui") stays one part.
+      toml::table probe;
+      try {
+        probe = toml::parse((*tokens)[0] + " = 0");
+      } catch (const toml::parse_error&) {
+        return std::format("error: invalid path: {}\n", (*tokens)[0]);
+      }
+      std::vector<std::string> path;
+      for (const toml::table* table = &probe; table != nullptr && table->size() == 1;) {
+        const auto& [key, node] = *table->begin();
+        path.emplace_back(key.str());
+        table = node.as_table();
+      }
+      if (!hasOverride(path)) {
+        return std::format("error: path not found: {}\n", (*tokens)[0]);
+      }
+      if (!mutateOverrides({}, {path}, nullptr)) {
+        return std::format(
+            "error: {}\n", m_lastMutationError.empty() ? "failed to write theme overrides" : m_lastMutationError
+        );
+      }
+      return "ok\n";
     }
     if (!m_configTable->at_path((*tokens)[0])) {
       return std::format("error: path not found: {}\n", (*tokens)[0]);

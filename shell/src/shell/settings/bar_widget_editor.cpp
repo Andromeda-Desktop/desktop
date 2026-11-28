@@ -16,6 +16,7 @@
 #include "shell/settings/path_browse.h"
 #include "shell/settings/settings_content.h"
 #include "shell/settings/widget_settings_registry.h"
+#include "system/system_font.h"
 #include "ui/builders.h"
 #include "ui/controls/collapsible.h"
 #include "ui/dialogs/file_dialog.h"
@@ -1174,7 +1175,7 @@ namespace settings {
           break;
         }
       }
-      return cfg.shell.fontFamily;
+      return std::string(system_font::themeFamily());
     }
 
     std::vector<std::string> settingValueAsStringList(const WidgetSettingValue& value) {
@@ -1419,7 +1420,7 @@ namespace settings {
 
       const auto widgetIt = ctx.config.widgets.find(widgetName);
       const WidgetConfig* widgetConfig = widgetIt != ctx.config.widgets.end() ? &widgetIt->second : nullptr;
-      auto specs = widgetSettingSpecs(widgetType, widgetConfig, ctx.config.shell.fontFamily);
+      auto specs = widgetSettingSpecs(widgetType, widgetConfig, std::string(system_font::themeFamily()));
       applyLaneBarInheritance(specs, ctx.config, lanePath);
       if (specs.empty()) {
         return;
@@ -1726,7 +1727,7 @@ namespace settings {
             SearchPickerSetting picker;
             picker.options = std::move(familyOptions);
             picker.selectedValue = selectedValue;
-            picker.placeholder = ctx.config.shell.fontFamily;
+            picker.placeholder = std::string(system_font::themeFamily());
             picker.emptyText = i18n::tr("ui.controls.search-picker.empty");
             ctx.makeRow(*panel, entry, ctx.makeSearchPicker(picker, entry.title, path));
             break;
@@ -2031,7 +2032,7 @@ namespace settings {
             const auto widgetIt = ctx.config.widgets.find(widgetName);
             const WidgetConfig* widgetCfg = widgetIt != ctx.config.widgets.end() ? &widgetIt->second : nullptr;
             const noctalia::bar::GestureMask reserved = noctalia::bar::reservedGesturesForType(widgetType);
-            auto specs = widgetSettingSpecs(widgetType, widgetCfg, ctx.config.shell.fontFamily);
+            auto specs = widgetSettingSpecs(widgetType, widgetCfg, std::string(system_font::themeFamily()));
             for (const auto& spec : specs) {
               if (spec.schema.key == "actions") {
                 for (const auto gesture : noctalia::bar::allGestures()) {

@@ -28,8 +28,10 @@ namespace noctalia::theme {
     DesktopTheme(const DesktopTheme&) = delete;
     DesktopTheme& operator=(const DesktopTheme&) = delete;
 
-    // Shows the theme `id` (empty: the built-in tokens). Returns true when the token values changed.
-    bool select(std::string_view id);
+    // Shows the theme `id` (empty: the built-in tokens) under theme-overrides.toml with the caller's current
+    // `overridesText` (a queued write first), so a write of that file applies before its watch fires. Returns true
+    // when the token values changed.
+    bool sync(std::string_view id, const std::optional<std::string>& overridesText);
 
     // Runs after an edit of a watched file (the shown theme chain, theme-overrides.toml, the dev token file) changed
     // the token values.
@@ -49,6 +51,7 @@ namespace noctalia::theme {
     void watchedChange(const std::function<void()>& step);
 
     ThemeVocabulary m_vocabulary;
+    std::optional<std::string> m_overridesText; // theme-overrides.toml as last loaded; nullopt: no file
     std::optional<dev_tokens::File> m_devFile; // last good: it parses and every expression resolves
     desk::tokens::SlotValues m_devBase;         // m_devFile resolved alone
     desk::tokens::SlotValues m_themeValues;

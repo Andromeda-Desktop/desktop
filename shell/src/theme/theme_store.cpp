@@ -1,5 +1,7 @@
 #include "theme/theme_store.h"
 
+#include "core/log.h"
+#include "protocols/async_file_writer.h"
 #include "protocols/xdg_dirs.h"
 
 #include <algorithm>
@@ -14,6 +16,19 @@ namespace noctalia::theme {
   namespace fs = std::filesystem;
 
   namespace {
+
+    constexpr Logger kLog("theme-store");
+
+#pragma GCC diagnostic push
+#if defined(__clang__)
+#pragma GCC diagnostic ignored "-Wc23-extensions"
+#else
+#pragma GCC diagnostic ignored "-Wc++26-extensions"
+#endif
+    constexpr char kVocabularyText[] = {
+#embed "../../protocols/theme-vocabulary.toml"
+        , '\0'};
+#pragma GCC diagnostic pop
 
     std::string fromEnv(const char* name) {
       const char* value = std::getenv(name);
@@ -33,6 +48,18 @@ namespace noctalia::theme {
     }
 
   } // namespace
+
+  const ThemeVocabulary& shippedVocabulary() {
+    static const ThemeVocabulary vocabulary = [] {
+      auto parsed = parseThemeVocabulary(kVocabularyText);
+      if (!parsed) {
+        kLog.error("theme vocabulary: {}: {}", parsed.error().key, parsed.error().message);
+        return ThemeVocabulary{};
+      }
+      return std::move(*parsed);
+    }();
+    return vocabulary;
+  }
 
   ThemeRoots defaultThemeRoots() {
     std::string data = fromEnv("ANDROMEDA_DATA_HOME");
@@ -115,15 +142,34 @@ namespace noctalia::theme {
     return std::unexpected(ThemeIssue{.key = "theme", .message = std::format("'{}' is not installed", id)});
   }
 
-  std::expected<std::optional<ThemePackage>, ThemeIssue> loadThemeOverrides(const fs::path& path,
-                                                                            const ThemeVocabulary& vocabulary) {
+  std::expected<std::optional<std::string>, ThemeIssue> readThemeOverridesText(const fs::path& path) {
+    if (auto pending = andromeda::pendingFileText(path)) {
+      return std::optional(std::move(*pending));
+    }
     std::error_code ec;
     if (!fs::exists(path, ec)) {
-      return std::optional<ThemePackage>{};
+      return std::optional<std::string>{};
     }
-    const auto text = readText(path);
+    auto text = readText(path);
     if (!text) {
       return std::unexpected(ThemeIssue{.key = "overrides", .message = "cannot read theme-overrides.toml"});
+    }
+    return text;
+  }
+
+  std::expected<std::optional<ThemePackage>, ThemeIssue> loadThemeOverrides(const fs::path& path,
+                                                                            const ThemeVocabulary& vocabulary) {
+    auto text = readThemeOverridesText(path);
+    if (!text) {
+      return std::unexpected(std::move(text.error()));
+    }
+    return parseThemeOverridesText(*text, vocabulary);
+  }
+
+  std::expected<std::optional<ThemePackage>, ThemeIssue> parseThemeOverridesText(const std::optional<std::string>& text,
+                                                                                 const ThemeVocabulary& vocabulary) {
+    if (!text) {
+      return std::optional<ThemePackage>{};
     }
     auto parsed = parseThemeOverrides(*text, vocabulary);
     if (!parsed) {

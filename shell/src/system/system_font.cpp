@@ -1,5 +1,7 @@
 #include "system/system_font.h"
 
+#include "design_tokens.h"
+
 #include "protocols/xdg_dirs.h"
 #include "system/dconf_read.h"
 #include "util/string_utils.h"
@@ -85,6 +87,11 @@ namespace system_font {
       candidates.push_back(*database);
     }
     return candidates;
+  }
+
+  std::string_view themeFamily() {
+    const std::string_view family = Tokens::fontFamily;
+    return family == "system" ? std::string_view{} : family;
   }
 
   std::string resolveFamily(std::string_view configured, const std::optional<std::string>& system) {

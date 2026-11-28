@@ -16,26 +16,6 @@ namespace noctalia::theme {
 
     constexpr Logger kLog("desktop-theme");
 
-#pragma GCC diagnostic push
-#if defined(__clang__)
-#pragma GCC diagnostic ignored "-Wc23-extensions"
-#else
-#pragma GCC diagnostic ignored "-Wc++26-extensions"
-#endif
-    constexpr char kVocabularyText[] = {
-#embed "../../protocols/theme-vocabulary.toml"
-        , '\0'};
-#pragma GCC diagnostic pop
-
-    ThemeVocabulary shippedVocabulary() {
-      auto parsed = parseThemeVocabulary(kVocabularyText);
-      if (!parsed) {
-        kLog.error("theme vocabulary: {}: {}", parsed.error().key, parsed.error().message);
-        return {};
-      }
-      return std::move(*parsed);
-    }
-
     // The base value of a number key: its first token in the dev token file, else its compiled value.
     std::optional<double> builtInNumber(const ThemeVocabulary& vocabulary, const desk::tokens::SlotValues& devBase,
                                         std::string_view key) {
@@ -85,7 +65,14 @@ namespace noctalia::theme {
       : m_vocabulary(shippedVocabulary()),
         m_controller(
             {.loadTheme = [this](std::string_view id) { return loadTheme(defaultThemeRoots(), id, m_vocabulary); },
-             .loadOverrides = [this] { return loadThemeOverrides(themeOverridesPath(), m_vocabulary); }},
+             .loadOverrides = [this]() -> std::expected<std::optional<ThemePackage>, ThemeIssue> {
+               auto text = readThemeOverridesText(themeOverridesPath());
+               if (!text) {
+                 return std::unexpected(std::move(text.error()));
+               }
+               m_overridesText = std::move(*text);
+               return parseThemeOverridesText(m_overridesText, m_vocabulary);
+             }},
             m_vocabulary, [this](std::string_view key) { return builtInNumber(m_vocabulary, m_devBase, key); },
             [this](const ResolvedTheme& table, std::uint64_t) { return show(table); }
         ),
@@ -140,12 +127,14 @@ namespace noctalia::theme {
 
   void DesktopTheme::setChangeCallback(std::function<void()> callback) { m_onChanged = std::move(callback); }
 
-  bool DesktopTheme::select(std::string_view id) {
-    if (id == m_controller.selected()) {
-      return false;
-    }
+  bool DesktopTheme::sync(std::string_view id, const std::optional<std::string>& overridesText) {
     const std::uint64_t written = m_written;
-    m_controller.select(id);
+    if (overridesText != m_overridesText) {
+      m_controller.overridesChanged();
+    }
+    if (id != m_controller.selected()) {
+      m_controller.select(id);
+    }
     logErrors();
     rewatchThemes();
     return m_written != written;

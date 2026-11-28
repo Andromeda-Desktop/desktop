@@ -2,6 +2,7 @@
 #include "shell/settings/settings_pages.h"
 #include "shell/settings/settings_registry_internal.h"
 #include "config/app_icon_settings.h"
+#include "config/config_service.h"
 
 #include "config/config_types.h"
 #include "config/schema/config_schema.h"
@@ -21,6 +22,7 @@
 #include "shell/wallpaper/wallpaper_paths.h"
 #include "system/sysmon_threshold_profile.h"
 #include "theme/builtin_palettes.h"
+#include "theme/theme_store.h"
 #include "ui/app_icon_colorization.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"
@@ -297,8 +299,20 @@ namespace settings {
       if (!verified) {
         verified = true;
         const Logger log("settings");
+        // A theme-overrides.toml path names a vocabulary key, or a scheme and a colour role.
+        const auto knownThemePath = [](const std::vector<std::string>& path) {
+          const auto& vocabulary = noctalia::theme::shippedVocabulary();
+          if (path.size() == 2) {
+            return vocabulary.keys.contains(path[1]);
+          }
+          return path.size() == 3 && (path[1] == "dark" || path[1] == "light")
+              && std::ranges::contains(vocabulary.roles, path[2]);
+        };
         const auto verify = [&](const std::vector<std::string>& path, std::string_view what) {
-          if (!path.empty() && !noctalia::config::schema::isKnownConfigPath(path)) {
+          const bool known = !path.empty() && path.front() == ConfigService::kThemeOverridesRoot
+              ? knownThemePath(path)
+              : noctalia::config::schema::isKnownConfigPath(path);
+          if (!path.empty() && !known) {
             std::string dotted;
             for (const auto& seg : path) {
               dotted += (dotted.empty() ? "" : ".") + seg;

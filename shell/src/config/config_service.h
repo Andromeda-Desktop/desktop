@@ -104,9 +104,11 @@ public:
   void forceReload();
   // forceReload() with every section marked changed, for edits that no config diff shows (token values changed).
   void reloadAllSections();
-  // Called with each loaded config; returns true when it changed the token values. Config defaults read tokens, so
-  // a true return builds the config again and marks every section changed. Runs at once on the loaded config.
-  void setTokenSource(std::function<bool(const Config&)> source);
+  // Called with each loaded config and the theme-overrides.toml text read in that load (nullopt: no file or not
+  // readable); returns true when it changed the token values. Config defaults read tokens, so a true return builds
+  // the config again and marks every section changed. Runs at once on the loaded config.
+  using TokenSource = std::function<bool(const Config&, const std::optional<std::string>& themeOverridesText)>;
+  void setTokenSource(TokenSource source);
 
   void registerIpc(IpcService& ipc);
 
@@ -186,6 +188,10 @@ public:
   bool renameDockMonitorOverride(std::string_view oldTableName, std::string_view newMatch);
   bool deleteDockMonitorOverride(std::string_view tableName);
   bool deleteCalendarAccountOverride(std::string_view id);
+  // A path that starts with kThemeOverridesRoot addresses [values] of theme-overrides.toml: {root, "font.ui"},
+  // {root, "dark", "accent"}. setOverride(s), validateOverride, mutateOverrides, clearOverride(s) and hasOverride
+  // take it.
+  static constexpr std::string_view kThemeOverridesRoot = "theme-overrides";
   bool setOverride(const std::vector<std::string>& path, ConfigOverrideValue value);
   bool setOverride(const std::vector<std::string>& path, ConfigOverrideValue value, bool* changed);
   [[nodiscard]] bool validateOverride(
@@ -214,6 +220,9 @@ public:
   // before the shell's own layer reaches the compositor, a shell key that no config file sets takes the compositor's
   // value, clamped to the shell range.
   void seedScalesFromCompositor(const std::function<std::string(std::string_view key)>& value);
+  // Moves [shell] font_family from the overrides file to "font.ui" in theme-overrides.toml ("" becomes "system"),
+  // unless that file already sets it; one commit, so a second call finds nothing to move.
+  void moveLegacyFontFamily();
   bool clearOverrides(const std::vector<std::vector<std::string>>& paths, bool* changed);
   bool renameOverrideTable(const std::vector<std::string>& oldPath, const std::vector<std::string>& newPath);
 
@@ -245,6 +254,20 @@ private:
   // config-file lane whose group token the override no longer defines. Rewrites the affected
   // arrays in `candidate` so every referenced group resolves again.
   void reconcileCapsuleGroupOverrides(toml::table& candidate) const;
+  struct ThemeOverridesEdit {
+    std::filesystem::path path;
+    std::string text;
+    bool changed = false;
+  };
+  // theme-overrides.toml after a mutation of kThemeOverridesRoot paths, read fresh. nullopt (m_lastMutationError
+  // set): the file does not parse, or the edit adds a value the theme loader ignores.
+  [[nodiscard]] std::optional<ThemeOverridesEdit> editThemeOverrides(
+      const std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>>& sets,
+      const std::vector<std::vector<std::string>>& clears
+  );
+  // Queues editThemeOverrides' changed text; does not reload. A failed write reports and reloads from disk.
+  void writeThemeOverrides(ThemeOverridesEdit edit);
+  void loadThemeOverridesTable();
   // Validates `next`, persists it, and reloads. `changed` reports whether anything moved.
   bool commitOverrideTable(toml::table next, bool* changed, const OverrideDiagnostics& known = {});
   void setupWatch();
@@ -301,6 +324,8 @@ private:
   // The marker on disk or queued for the background writer.
   [[nodiscard]] bool setupMarkerPresent() const;
   toml::table m_overridesTable;
+  std::optional<std::string> m_themeOverridesText; // theme-overrides.toml as of the last load
+  toml::table m_themeOverridesTable;               // its parse, for hasOverride
   toml::table m_persistedOverridesTable;
   std::unordered_set<std::string> m_configFileBarNames;
   std::unordered_map<std::string, std::unordered_set<std::string>> m_configFileMonitorOverrideNames;
@@ -371,5 +396,5 @@ private:
     std::string label;
   };
   std::vector<ReloadSubscriber> m_reloadCallbacks;
-  std::function<bool(const Config&)> m_tokenSource;
+  TokenSource m_tokenSource;
 };

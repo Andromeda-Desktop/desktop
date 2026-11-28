@@ -997,8 +997,7 @@ namespace {
         .radius = Style::scaledRadiusMd(scale),
         .onClick = [openPopup = ctx.openSearchPickerPopup, title = std::move(title), options = setting.options,
                     selectedValue = setting.selectedValue, placeholder = setting.placeholder,
-                    emptyText = setting.emptyText, path = std::move(path), onSelect = setting.onSelect,
-                    emptyPick = setting.emptyPick] {
+                    emptyText = setting.emptyText, path = std::move(path), onSelect = setting.onSelect] {
           if (openPopup) {
             openPopup(
                 SearchPickerOpenRequest{
@@ -1009,7 +1008,6 @@ namespace {
                     .emptyText = emptyText,
                     .settingPath = path,
                     .onSelect = onSelect,
-                    .emptyPick = emptyPick,
                 }
             );
           }
@@ -1424,7 +1422,8 @@ namespace {
   }
 
   std::unique_ptr<Input> SettingsControlFactory::makeText(
-      const std::string& value, const std::string& placeholder, const std::vector<std::string>& path, float width
+      const std::string& value, const std::string& placeholder, const std::vector<std::string>& path, float width,
+      const std::string& emptyValue
   ) {
     auto& ctx = m_ctx;
     const float scale = m_scale;
@@ -1442,20 +1441,21 @@ namespace {
         .submitOnFocusLoss = true,
     });
     auto submit = std::make_shared<std::function<void(const std::string&)>>(
-        [configService = ctx.configService, setOverride = ctx.setOverride, path, effectiveValue = value,
+        [configService = ctx.configService, setOverride = ctx.setOverride, path, effectiveValue = value, emptyValue,
          inputPtr](const std::string& text) {
-          if (configService != nullptr && !configService->validateOverride(path, ConfigOverrideValue{text})) {
+          const std::string stored = text.empty() ? emptyValue : text;
+          if (configService != nullptr && !configService->validateOverride(path, ConfigOverrideValue{stored})) {
             inputPtr->setInvalid(true);
             // Send the rejected mutation through the normal error-reporting path so the
             // editor sheet shows the shared schema diagnostic beside this control.
-            setOverride(path, text);
+            setOverride(path, stored);
             return;
           }
           inputPtr->setInvalid(false);
           if (text == effectiveValue) {
             return;
           }
-          setOverride(path, text);
+          setOverride(path, stored);
         }
     );
     // Typing saves after a pause, as other settings save on change: closing or locking never loses the text.

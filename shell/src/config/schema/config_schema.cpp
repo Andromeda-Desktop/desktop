@@ -3221,18 +3221,6 @@ namespace noctalia::config::schema {
                 .tags = "close button cross dismiss hide panel notification toast popup dialog sheet settings window",
             }
         ),
-        // font_family is trimmed; empty follows the desktop interface font (system_font::resolveFamily).
-        custom<ShellConfig>(
-            "font_family",
-            [](const toml::table& tbl, ShellConfig& out, std::string_view parentPath, Diagnostics& diag) {
-              if (auto v = tbl["font_family"].value<std::string>()) {
-                out.fontFamily = StringUtils::trim(*v);
-              } else {
-                warnWrongType(tbl, "font_family", parentPath, diag, "a string");
-              }
-            },
-            [](toml::table& tbl, const ShellConfig& in) { tbl.insert_or_assign("font_family", in.fontFamily); }
-        ),
         stringIfNonEmptyField(
             &ShellConfig::lang, "lang",
             RowSpec{

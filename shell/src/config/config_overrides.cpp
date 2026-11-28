@@ -9,6 +9,7 @@
 #include "core/log.h"
 #include "scripting/plugin_id.h"
 #include "shell/settings/widget_settings_registry.h"
+#include "theme/theme_store.h"
 #include "util/file_utils.h"
 #include "util/string_utils.h"
 
@@ -17,6 +18,7 @@
 #include <cmath>
 #include <exception>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <optional>
@@ -1050,10 +1052,18 @@ bool ConfigService::hasOverride(const std::vector<std::string>& path) const {
   if (path.empty()) {
     return false;
   }
+  if (path.front() == kThemeOverridesRoot) {
+    std::vector<std::string> inFile = path;
+    inFile.front() = "values";
+    return findOverrideNode(m_themeOverridesTable, inFile) != nullptr;
+  }
   return findOverrideNode(m_overridesTable, path) != nullptr;
 }
 
 bool ConfigService::hasEffectiveOverride(const std::vector<std::string>& path) const {
+  if (!path.empty() && path.front() == kThemeOverridesRoot) {
+    return hasOverride(path);
+  }
   if (path.empty() || findOverrideNode(m_overridesTable, path) == nullptr) {
     return false;
   }
@@ -1682,6 +1692,13 @@ bool ConfigService::validateOverride(
     }
     return false;
   }
+  if (path.front() == kThemeOverridesRoot) {
+    const bool valid = path.size() >= 2 && editThemeOverrides({{path, value}}, {}).has_value();
+    if (!valid && error != nullptr) {
+      *error = m_lastMutationError;
+    }
+    return valid;
+  }
 
   toml::table candidate = m_overridesTable;
   toml::table* table = &candidate;
@@ -1748,6 +1765,45 @@ bool ConfigService::mutateOverrides(
   }
   if (m_overridesPath.empty()) {
     return false;
+  }
+
+  const auto inThemeFile = [](const std::vector<std::string>& path) {
+    return !path.empty() && path.front() == kThemeOverridesRoot;
+  };
+  if (std::ranges::any_of(overrides, inThemeFile, &std::pair<std::vector<std::string>, ConfigOverrideValue>::first) ||
+      std::ranges::any_of(clearPaths, inThemeFile)) {
+    std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> ownSets;
+    std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> themeSets;
+    std::vector<std::vector<std::string>> ownClears;
+    std::vector<std::vector<std::string>> themeClears;
+    for (const auto& entry : overrides) {
+      (inThemeFile(entry.first) ? themeSets : ownSets).push_back(entry);
+    }
+    for (const auto& path : clearPaths) {
+      (inThemeFile(path) ? themeClears : ownClears).push_back(path);
+    }
+    // Both halves pass their checks before either file is written; the theme write then fails only on disk.
+    std::optional<ThemeOverridesEdit> themeEdit;
+    if (!themeSets.empty() || !themeClears.empty()) {
+      themeEdit = editThemeOverrides(themeSets, themeClears);
+      if (!themeEdit) {
+        return false;
+      }
+    }
+    bool ownChanged = false;
+    if (!mutateOverrides(ownSets, ownClears, &ownChanged, stash)) {
+      return false;
+    }
+    const bool themeChanged = themeEdit && themeEdit->changed;
+    if (themeChanged) {
+      writeThemeOverrides(std::move(*themeEdit));
+      loadAll();
+      fireReloadCallbacks();
+    }
+    if (changed != nullptr) {
+      *changed = themeChanged || ownChanged;
+    }
+    return true;
   }
 
   const auto erasePath = [this](toml::table& table, const std::vector<std::string>& path) {
@@ -1853,6 +1909,117 @@ bool ConfigService::commitOverrideTable(toml::table next, bool* changed, const O
   return true;
 }
 
+std::optional<ConfigService::ThemeOverridesEdit> ConfigService::editThemeOverrides(
+    const std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>>& sets,
+    const std::vector<std::vector<std::string>>& clears
+) {
+  const std::filesystem::path path = noctalia::theme::themeOverridesPath();
+  // Read again for each write: a hand edit since the last load is kept, and a file that does not parse is refused.
+  auto text = noctalia::theme::readThemeOverridesText(path);
+  if (!text) {
+    m_lastMutationError = std::format("{}: {}", path.string(), text.error().message);
+    return std::nullopt;
+  }
+  toml::table before;
+  if (*text) {
+    try {
+      before = toml::parse(**text, path.string());
+    } catch (const toml::parse_error& e) {
+      m_lastMutationError = std::format("{}: {}", path.string(), e.description());
+      return std::nullopt;
+    }
+  }
+
+  toml::table next = before;
+  for (const auto& clear : clears) {
+    if (clear.size() < 2) {
+      m_lastMutationError = "a theme-overrides path names a key";
+      return std::nullopt;
+    }
+    std::vector<std::string> inFile = clear;
+    inFile.front() = "values";
+    eraseOverridePath(next, inFile);
+  }
+  for (const auto& [setPath, value] : sets) {
+    if (setPath.size() < 2) {
+      m_lastMutationError = "a theme-overrides path names a key";
+      return std::nullopt;
+    }
+    toml::table* table = ensureTable(next, "values");
+    for (std::size_t i = 1; table != nullptr && i + 1 < setPath.size(); ++i) {
+      table = ensureTable(*table, setPath[i]);
+    }
+    if (table == nullptr) {
+      m_lastMutationError = std::format("{}: {} is not a table", path.string(), setPath[setPath.size() - 2]);
+      return std::nullopt;
+    }
+    insertOverrideValue(*table, setPath.back(), value);
+  }
+  if (next == before) {
+    m_lastMutationError.clear();
+    return ThemeOverridesEdit{.path = path};
+  }
+
+  std::ostringstream out;
+  out << toml::toml_formatter{next, toml::toml_formatter::default_flags & ~toml::format_flags::allow_literal_strings};
+  if (!out.good()) {
+    m_lastMutationError = std::format("{}: cannot format the new table", path.string());
+    return std::nullopt;
+  }
+  std::string nextText = out.str();
+
+  // Refuse a value the theme loader would ignore: the write may add no theme report issue.
+  const auto& vocabulary = noctalia::theme::shippedVocabulary();
+  const auto issueKey = [](const noctalia::theme::ThemeIssue& issue) { return issue.key + ": " + issue.message; };
+  std::set<std::string> known;
+  if (auto old = noctalia::theme::parseThemeOverridesText(*text, vocabulary); old && *old) {
+    for (const auto& issue : (*old)->issues) {
+      known.insert(issueKey(issue));
+    }
+  }
+  auto parsed = noctalia::theme::parseThemeOverridesText(nextText, vocabulary);
+  if (!parsed) {
+    m_lastMutationError = std::format("{}: {}", path.string(), parsed.error().message);
+    return std::nullopt;
+  }
+  for (const auto& issue : (*parsed)->issues) {
+    if (!known.contains(issueKey(issue))) {
+      m_lastMutationError = std::format("{}: {}", path.string(), issueKey(issue));
+      return std::nullopt;
+    }
+  }
+
+  m_lastMutationError.clear();
+  return ThemeOverridesEdit{.path = path, .text = std::move(nextText), .changed = true};
+}
+
+void ConfigService::writeThemeOverrides(ThemeOverridesEdit edit) {
+  writeTextFileAtomicAsync(
+      edit.path, std::move(edit.text), std::nullopt,
+      [this, alive = std::weak_ptr<int>(m_alive), path = edit.path](bool ok) {
+        if (!ok && !alive.expired()) {
+          notifySaveFailed(path);
+          reloadAllSections(); // the tokens follow the file on disk again
+        }
+      }
+  );
+}
+
+void ConfigService::loadThemeOverridesTable() {
+  m_themeOverridesTable = toml::table{};
+  const std::filesystem::path path = noctalia::theme::themeOverridesPath();
+  auto text = noctalia::theme::readThemeOverridesText(path);
+  m_themeOverridesText = text ? std::move(*text) : std::nullopt;
+  if (!m_themeOverridesText) {
+    return;
+  }
+  try {
+    m_themeOverridesTable = toml::parse(*m_themeOverridesText, path.string());
+  } catch (const toml::parse_error&) {
+    // DesktopTheme reports the error and keeps its last good copy.
+  }
+}
+
 bool ConfigService::clearOverride(const std::vector<std::string>& path) {
   bool changed = false;
   if (!clearOverrides({path}, &changed)) {
@@ -1903,6 +2070,22 @@ void ConfigService::moveLegacyAnimationSettings(
   }
   m_legacyAnimationMove = Move::Finished;
   (void)clearOverride({"shell", "animation"});
+}
+
+void ConfigService::moveLegacyFontFamily() {
+  const toml::node* legacy = findOverrideNode(m_overridesTable, {"shell", "font_family"});
+  if (legacy == nullptr) {
+    return;
+  }
+  std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> sets;
+  const std::vector<std::string> fontPath{std::string(kThemeOverridesRoot), "font.ui"};
+  if (const auto family = legacy->value<std::string>(); family && !hasOverride(fontPath)) {
+    const std::string trimmed = StringUtils::trim(*family);
+    sets.emplace_back(fontPath, trimmed.empty() ? std::string("system") : trimmed);
+  }
+  if (!mutateOverrides(sets, {{"shell", "font_family"}}, nullptr)) {
+    kLog.warn("kept [shell] font_family: {}", m_lastMutationError);
+  }
 }
 
 void ConfigService::seedScalesFromCompositor(const std::function<std::string(std::string_view key)>& value) {

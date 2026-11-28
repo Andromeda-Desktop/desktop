@@ -239,7 +239,7 @@ void Application::initUiRenderSurfacesAndSettings() {
   }
   m_systemFontFamily = system_font::readFamily();
   m_renderContext.setTextFontFamily(
-      system_font::resolveFamily(m_configService.config().shell.fontFamily, m_systemFontFamily)
+      system_font::resolveFamily(system_font::themeFamily(), m_systemFontFamily)
   );
   m_renderContext.setTextScale(m_configService.config().accessibility.textScale);
   Style::setRtl(i18n::Service::instance().rtl());
@@ -1418,7 +1418,7 @@ void Application::initWidgetControllersAndCallbacks() {
   m_poll.iconTheme.setChangeCallback([this] { onIconThemeChanged(); });
 
   const auto shellFontFamily = [this] {
-    return system_font::resolveFamily(m_configService.config().shell.fontFamily, m_systemFontFamily);
+    return system_font::resolveFamily(system_font::themeFamily(), m_systemFontFamily);
   };
   // Shared by the config reload and the system font watch, so both compare against the last applied values.
   auto syncShellFont = std::make_shared<std::function<void()>>(

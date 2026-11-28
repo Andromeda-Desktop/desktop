@@ -86,8 +86,8 @@ namespace {
       initLogLevelFromEnvironment();
       kLog.info("lock process starting");
 
-      m_config.setTokenSource([this](const Config& config) {
-        return m_desktopTheme.select(config.theme.desktopTheme);
+      m_config.setTokenSource([this](const Config& config, const std::optional<std::string>& overridesText) {
+        return m_desktopTheme.sync(config.theme.desktopTheme, overridesText);
       });
       m_desktopTheme.setChangeCallback([this] { m_config.reloadAllSections(); });
       applyStyle();
@@ -98,7 +98,7 @@ namespace {
         i18n::Service::instance().setLanguage(m_config.config().shell.lang);
         m_theme.onConfigReload();
         m_renderContext.setTextFontFamily(
-            system_font::resolveFamily(m_config.config().shell.fontFamily, system_font::readFamily())
+            system_font::resolveFamily(system_font::themeFamily(), system_font::readFamily())
         );
         m_renderContext.setTextScale(m_config.config().accessibility.textScale);
         if (m_logind != nullptr) {
@@ -126,7 +126,7 @@ namespace {
         m_renderContext.attachGl(m_glShared);
       });
       m_renderContext.setTextFontFamily(
-          system_font::resolveFamily(m_config.config().shell.fontFamily, system_font::readFamily())
+          system_font::resolveFamily(system_font::themeFamily(), system_font::readFamily())
       );
       m_renderContext.setTextScale(m_config.config().accessibility.textScale);
       Style::setRtl(i18n::Service::instance().rtl());
