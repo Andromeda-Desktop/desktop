@@ -216,9 +216,13 @@ float corner_alpha(
 #ifdef CORNER_FLARES
   if (min(min(radius_tl, radius_tr), min(radius_bl, radius_br)) < 0.0) {
     flare_body(size, position, radius_tl, radius_tr, radius_bl, radius_br);
-    float flare = flare_alpha(gl_FragCoord.xy - position, size, radius_tl, radius_tr, radius_bl, radius_br);
-    if (flare >= 0.0) {
-      return is_cutout ? 1.0 - flare : flare;
+    // Every flare lies outside the body box on one axis.
+    vec2 flare_rel = gl_FragCoord.xy - position;
+    if (any(lessThan(flare_rel, vec2(0.0))) || any(greaterThan(flare_rel, size))) {
+      float flare = flare_alpha(flare_rel, size, radius_tl, radius_tr, radius_bl, radius_br);
+      if (flare >= 0.0) {
+        return is_cutout ? 1.0 - flare : flare;
+      }
     }
     radius_tl = max(radius_tl, 0.0);
     radius_tr = max(radius_tr, 0.0);
