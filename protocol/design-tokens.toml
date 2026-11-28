@@ -851,7 +851,8 @@ video_shade = 0.72  # Photos: the plate under a video length (pages.html .pg .vi
 mms_image_w = 240.0  # Messages: an MMS image inside its bubble (cover)
 mms_image_h = 160.0
 file_symbol = 32.0   # Files: the symbol column of a row
-file_column = 112.0  # Files: the Size and Modified columns
+file_column = 112.0  # Files: the Size column
+file_modified = 144.0  # Files: the Modified column ("Yesterday 19:30"; mockup 140)
 mirror_radius = 32.0 # Mirror: the corners of the phone's screen until Link1 ScreenShape is read
 mirror_chrome = 112.0 # Mirror: stage height the stat line, the key bar and their gaps take from the video
 # v2 "Galaxy, fixed" (.agent/mockups/link-desk-v2/handoff.yaml)
