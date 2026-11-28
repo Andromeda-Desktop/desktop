@@ -1450,9 +1450,11 @@ namespace andromeda {
   void Server::clearLayerSurfaces() { m_layerSurfaces.clear(); }
 
   void Server::raiseStatusSurfaces() {
-    for (const auto& layer : m_layerSurfaces) {
-      if (layer->statusSurface()) {
-        layer->raise();
+    for (const auto rank : {LayerSurface::Stacking::Status, LayerSurface::Stacking::Cover}) {
+      for (const auto& layer : m_layerSurfaces) {
+        if (layer->stacking() == rank) {
+          layer->raise();
+        }
       }
     }
   }

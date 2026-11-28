@@ -807,15 +807,19 @@ namespace andromeda {
     return m_layerSurface != nullptr && fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface) == this;
   }
 
-  bool LayerSurface::statusSurface() const {
+  LayerSurface::Stacking LayerSurface::stacking() const {
     static constexpr std::array<std::string_view, 3> kStatus = {
         "noctalia-live-activity", "noctalia-osd", "noctalia-notification"};
     const char* ns = m_layerSurface != nullptr ? m_layerSurface->namespace_ : nullptr;
     if (ns == nullptr) {
-      return false;
+      return Stacking::Normal;
     }
     const std::string_view name(ns);
-    return name.starts_with("noctalia-bar-") || std::ranges::find(kStatus, name) != kStatus.end();
+    if (name == "noctalia-screenshot-region") {
+      return Stacking::Cover;
+    }
+    return name.starts_with("noctalia-bar-") || std::ranges::find(kStatus, name) != kStatus.end() ? Stacking::Status
+                                                                                                   : Stacking::Normal;
   }
 
   void LayerSurface::raise() {

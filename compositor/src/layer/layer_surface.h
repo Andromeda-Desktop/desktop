@@ -55,9 +55,12 @@ namespace andromeda {
     [[nodiscard]] bool exclusiveKeyboard() const;
     [[nodiscard]] bool acceptsKeyboard() const;
     [[nodiscard]] bool hasKeyboardFocus() const;
-    // The shell's status surfaces (bars, island, OSD, notification toasts) stay above the other surfaces of their layer,
-    // so a panel that opens later never covers a banner.
-    [[nodiscard]] bool statusSurface() const;
+    // Status surfaces (bars, island, OSD, notification toasts) stay above the other surfaces of their layer, so a panel
+    // that opens later never covers a banner. A cover (the screenshot freeze) stays above status surfaces: it shows a
+    // still of the whole screen.
+    enum class Stacking : std::uint8_t { Normal, Status, Cover };
+    [[nodiscard]] Stacking stacking() const;
+    [[nodiscard]] bool statusSurface() const { return stacking() == Stacking::Status; }
     // Raises this surface to the top of its layer.
     void raise();
     [[nodiscard]] SurfaceBlurOptions blurOptions() const;
