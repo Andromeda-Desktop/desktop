@@ -221,12 +221,15 @@ namespace noctalia::theme {
     if (highContrast) {
       applyHighContrast(resolved->generated);
     }
+    // The compositor's accent echoes the shell's style layer; only the wallpaper accent reaches the shell through it.
+    // A theme or custom accent is per scheme in the tokens, so the echo of the previous scheme never shows.
+    const std::string_view liveAccent = cfg.accentSource == AccentSource::Wallpaper ? m_liveAccent : std::string_view{};
     const auto paletteFor = [&](bool light) {
       ::Palette p = tokenPalette(light);
       if (!light && cfg.pureBlackDark) {
         applyPureBlack(p);
       }
-      applyLivePalette(p, m_liveAccent, highContrast);
+      applyLivePalette(p, liveAccent, highContrast);
       return p;
     };
     resolved->palette = paletteFor(resolved->shellMode == "light");
