@@ -107,8 +107,11 @@ namespace Style {
     return glass::popover(g_glass, lightTone(glassTone(glass::Kind::Shape)));
   }
 
-  float windowGlassTint() noexcept {
-    return glass::material(glass::Kind::Sheet, glass::windowSettings(g_glass), isLightPalette()).tint;
+  ColorSpec windowGlassFill(std::optional<float> alpha) noexcept {
+    const glass::Material material = glass::material(glass::Kind::Sheet, glass::windowSettings(g_glass), isLightPalette());
+    ColorSpec fill = colorSpecFromRole(panelMaterialRole(), alpha.value_or(material.tint));
+    fill.dense = material.dense;
+    return fill;
   }
 
   float glassTint(glass::Kind kind, float opacity) noexcept {

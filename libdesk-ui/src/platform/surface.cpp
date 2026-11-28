@@ -9,6 +9,7 @@
 #include "render/core/startup_metrics.h"
 #include "render/render_context.h"
 #include "render/scene/node.h"
+#include "ui/style.h"
 #include "util/sys_utils.h"
 
 #include <algorithm>
@@ -384,6 +385,35 @@ void Surface::setPresence(SurfacePresence presence) {
   }
 }
 
+void Surface::setGlassDensity(float density) {
+  const bool first = !m_glassDensity.has_value();
+  m_glassDensity = density;
+  applyGlassDensity(first);
+}
+
+void Surface::applyGlassDensity(bool instant) {
+  if (m_sceneRoot == nullptr || !m_glassDensity.has_value()) {
+    return;
+  }
+  // The setter holds only the root, the animation's owner: the root's destructor cancels it.
+  Node* root = m_sceneRoot;
+  // 1/32 steps: each step re-resolves every label and fill of the window.
+  const auto lift = [root](float v) { root->setInkLift(std::round(std::clamp(v, 0.0F, 1.0F) * 32.0F) / 32.0F); };
+  const float target = *m_glassDensity;
+  if (instant || m_animationManager == nullptr || !root->inkLift().has_value()) {
+    if (m_animationManager != nullptr) {
+      m_animationManager->cancel(m_glassLiftAnimation);
+    }
+    m_glassLiftAnimation = 0;
+    lift(target);
+    return;
+  }
+  // Rulebook 7.4: a material change cross-fades on the fade spring.
+  m_glassLiftAnimation = m_animationManager->drive(
+      m_glassLiftAnimation, *root->inkLift(), target, Style::spring(Tokens::springFade), lift, {}, root
+  );
+}
+
 void Surface::setSceneRoot(Node* root) {
   if (m_sceneRoot == root) {
     return;
@@ -395,6 +425,7 @@ void Surface::setSceneRoot(Node* root) {
   if (m_sceneRoot == nullptr) {
     return;
   }
+  applyGlassDensity(true);
   a11y::addRoot(m_sceneRoot, [this] {
     if (!m_accessibleTitle.empty()) {
       return m_accessibleTitle;

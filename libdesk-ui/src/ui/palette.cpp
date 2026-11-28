@@ -275,6 +275,12 @@ Color resolveColorSpec(const ColorSpec& color) noexcept {
 
 Color resolveColorSpec(const ColorSpec& color, const Node* node) noexcept {
   Color resolved = color.role.has_value() ? colorForRole(*color.role, node) : color.fixed;
+  float alpha = color.alpha;
+  if (color.dense > 0.0F && node != nullptr) {
+    if (const auto lift = node->inkLift(); lift.has_value()) {
+      alpha = glass::denser(alpha, *lift, color.dense);
+    }
+  }
   if (color.role.has_value() && node != nullptr) {
     if (const auto fade = node->paletteToneFade(); fade.has_value()) {
       resolved = lerpColor(roleIn(paletteForTone(fade->from), *color.role), resolved, fade->progress);
@@ -295,7 +301,7 @@ Color resolveColorSpec(const ColorSpec& color, const Node* node) noexcept {
       }
     }
   }
-  resolved.a *= color.alpha;
+  resolved.a *= alpha;
   return resolved;
 }
 

@@ -113,7 +113,9 @@ bool ToplevelSurface::initialize(wl_output* output, const ToplevelSurfaceConfig&
   }
 
   xdg_toplevel_add_listener(m_toplevel, &kToplevelListener, this);
-  (void)dsk();
+  if (DskSurfaceClient* client = dsk(); client != nullptr) {
+    client->setOnDensity([this](float density) { setGlassDensity(density); });
+  }
   // The window draws its own header, so the compositor must not add a title bar.
   if (auto* manager = m_connection.decorationManager(); manager != nullptr) {
     m_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(manager, m_toplevel);

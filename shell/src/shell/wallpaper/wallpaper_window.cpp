@@ -229,7 +229,7 @@ void WallpaperWindow::buildScene(float width, float height) {
         if (!glass) {
           box.setFill(colorSpecFromRole(ColorRole::SolidRegular));
         } else {
-          box.setFill(colorSpecFromRole(panelMaterialRole(), Style::windowGlassTint()));
+          box.setFill(Style::windowGlassFill());
         }
       },
   });

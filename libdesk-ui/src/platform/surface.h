@@ -177,6 +177,9 @@ public:
   void discardPendingFrameCallback();
   void setAnimationManager(AnimationManager* manager) noexcept { m_animationManager = manager; }
   void setSceneRoot(Node* root);
+  // The compositor's backdrop density (0..1) of this window's glass: the scene root's ink lift glides to it, and with it
+  // every dense fill (ColorSpec::dense) and the label ink. The first value applies at once.
+  void setGlassDensity(float density);
   void setRenderContext(RenderContext* ctx);
   void setWallpaperMask(std::optional<WallpaperMaskDrawParams> mask);
   [[nodiscard]] RenderContext* renderContext() const noexcept { return m_renderContext; }
@@ -197,6 +200,7 @@ public:
   [[nodiscard]] static SurfaceIdleProfileSnapshot takeIdleProfileSnapshot(bool reset);
 
 protected:
+  void applyGlassDensity(bool instant);
   // The platform layer reports the compositor's value; runs the callback only on a change.
   void setPresence(SurfacePresence presence);
   // Platform hooks.
@@ -264,6 +268,9 @@ private:
   RenderTarget m_renderTarget;
   AnimationManager* m_animationManager = nullptr;
   Node* m_sceneRoot = nullptr;
+  // Last setGlassDensity value; none before the first.
+  std::optional<float> m_glassDensity;
+  std::uint32_t m_glassLiftAnimation = 0;
   std::optional<WallpaperMaskDrawParams> m_wallpaperMask;
   std::string m_debugName;
   std::string m_accessibleTitle;

@@ -1217,7 +1217,9 @@ void AppWindow::applySceneFills() {
   const auto fill = [this](float alpha) {
     Color tint = m_scene->surface;
     tint.a = alpha;
-    return fixedColorSpec(tint);
+    ColorSpec spec = fixedColorSpec(tint);
+    spec.dense = Style::windowGlassFill().dense;
+    return spec;
   };
   // Content that backs its own text shows the scene at the light tint; otherwise the pane backs text like the sidebar.
   // A card lies on the frame, which keeps the sidebar tint all around it.
@@ -1233,7 +1235,8 @@ void AppWindow::applySceneFills() {
   }
   if (m_headerNode != nullptr) {
     // Over the light tint the header backs its own text up to the text tint.
-    m_headerNode->setFill(m_sceneContentBacked ? fill(sceneTextBacking()) : clearColorSpec());
+    // The band lies on the pane, which already thickens with the density.
+    m_headerNode->setFill(m_sceneContentBacked ? fixedColorSpec(withAlpha(m_scene->surface, sceneTextBacking())) : clearColorSpec());
   }
 }
 
@@ -1289,7 +1292,9 @@ ColorSpec AppWindow::sidebarGlass(const ColorSpec& glassFill) const {
   }
   Color glass = colorForRole(panelMaterialRole(), *tone);
   glass.a *= glassFill.alpha;
-  return fixedColorSpec(stacked(plane, glass));
+  ColorSpec spec = fixedColorSpec(stacked(plane, glass));
+  spec.dense = glassFill.dense;
+  return spec;
 }
 
 void AppWindow::invalidate() {
@@ -1867,14 +1872,16 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   // A scene shows through both panes, so a strip under the main corners would show as a darker band.
   const bool concave = !card && sidebarShown > 0.0F && !m_config.transparentContent && m_config.material == Material::Solid && !m_scene;
   const float edgeRadius = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
-  const ColorSpec glassFill = colorSpecFromRole(panelMaterialRole(), m_config.glassAlpha.value_or(Style::windowGlassTint()));
+  const ColorSpec glassFill = Style::windowGlassFill(m_config.glassAlpha);
   if (m_scene && m_sceneMeasured != m_scene) {
     measureScene();
   }
-  const auto sceneFill = [this](float alpha) {
+  const auto sceneFill = [this, &glassFill](float alpha) {
     Color tint = m_scene->surface;
     tint.a = alpha;
-    return fixedColorSpec(tint);
+    ColorSpec spec = fixedColorSpec(tint);
+    spec.dense = glassFill.dense;
+    return spec;
   };
   if (!m_scene && !m_config.transparentContent && !m_contentCards) {
     main->setFill(glassContent() ? glassFill : m_mainFill.value_or(colorSpecFromRole(ColorRole::SolidRegular)));

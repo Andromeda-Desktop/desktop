@@ -120,10 +120,12 @@ struct ColorSpec {
   std::optional<ColorRole> role;
   Color fixed = clearColor();
   float alpha = 1.0F;
+  // glass::Material::dense of a glass fill: under a node with an ink lift, alpha becomes glass::denser(alpha, lift, dense).
+  float dense = 0.0F;
 };
 
 constexpr bool operator==(const ColorSpec& a, const ColorSpec& b) noexcept {
-  return a.role == b.role && a.fixed == b.fixed && a.alpha == b.alpha;
+  return a.role == b.role && a.fixed == b.fixed && a.alpha == b.alpha && a.dense == b.dense;
 }
 
 [[nodiscard]] constexpr ColorSpec clearColorSpec() noexcept {

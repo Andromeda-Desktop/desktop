@@ -1589,7 +1589,7 @@ void SettingsWindow::applyBackgroundFill(Box& box) const {
     box.setFill(colorSpecFromRole(ColorRole::SolidRegular));
     return;
   }
-  box.setFill(colorSpecFromRole(panelMaterialRole(), Style::windowGlassTint()));
+  box.setFill(Style::windowGlassFill());
 }
 
 void SettingsWindow::onGlassChanged() {

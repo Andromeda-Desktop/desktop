@@ -9,6 +9,7 @@
 #include <optional>
 
 enum class PaletteTone : std::uint8_t;
+struct ColorSpec;
 
 namespace Style {
 
@@ -148,7 +149,9 @@ namespace Style {
   // Tint alpha for a configured `opacity` relative to glass::referenceOpacity (1 = solid).
   [[nodiscard]] float glassTint(glass::Kind kind, float opacity) noexcept;
   // The tint of a glass app window (scheme tone): the sheet tint.
-  [[nodiscard]] float windowGlassTint() noexcept;
+  // The fill of an app window's glass: the panel material at the window tint (or `alpha`), thickened by the window
+  // root's ink lift (Surface::setGlassDensity).
+  [[nodiscard]] ColorSpec windowGlassFill(std::optional<float> alpha = std::nullopt) noexcept;
   [[nodiscard]] bool reduceTransparency() noexcept;
 
   [[nodiscard]] bool closeButtonsEnabled() noexcept;

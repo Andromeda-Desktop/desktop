@@ -73,6 +73,22 @@ int main() {
   glassRoot.setInkLift(std::nullopt);
   expect(ink1->style().fill == light.label1, "a root that leaves glass returns label_1 to its token");
 
+  // A window glass fill thickens with its root's lift and keeps its alpha off glass.
+  ColorSpec windowFill = colorSpecFromRole(ColorRole::SolidRegular, 0.5F);
+  windowFill.dense = 0.6F;
+  Box* sheet = static_cast<Box*>(glassRoot.addChild(std::make_unique<Box>()));
+  sheet->setFill(windowFill);
+  const float baseAlpha = sheet->style().fill.a;
+  glassRoot.setInkLift(1.0F);
+  const float liftedAlpha = sheet->style().fill.a;
+  expect(std::abs(liftedAlpha - baseAlpha / 0.5F * glass::denser(0.5F, 1.0F, 0.6F)) < 1e-4F,
+         "a dense fill at full lift takes glass::denser of its alpha");
+  expect(liftedAlpha > baseAlpha, "a dense fill at full lift is denser than off glass");
+  glassRoot.setInkLift(0.0F);
+  expect(sheet->style().fill.a == baseAlpha, "a dense fill at zero lift keeps its alpha");
+  glassRoot.setInkLift(std::nullopt);
+  expect(sheet->style().fill.a == baseAlpha, "a dense fill off glass keeps its alpha");
+
   // Model: random fades, reversals, snaps and ticks. Invariants in every reachable state: the fill lies between the
   // dark and light label_1; a fade or a reversal never jumps the fill; a settled subtree has its tone's exact colour.
   setLightPalette(light);

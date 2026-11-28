@@ -476,7 +476,7 @@ void ActivityWindow::buildScene(Renderer& renderer, float width, float height) {
   m_glass = m_config != nullptr && m_config->config().shell.settingsWindowTranslucent && !Style::reduceTransparency();
   ColorSpec fill = colorSpecFromRole(ColorRole::SolidRegular);
   if (m_glass) {
-    fill = colorSpecFromRole(panelMaterialRole(), Style::windowGlassTint());
+    fill = Style::windowGlassFill();
   }
   auto body = ui::column({.align = FlexAlign::Stretch, .fill = fill, .width = width, .height = height});
   body->addChild(buildToolbar(scale));
