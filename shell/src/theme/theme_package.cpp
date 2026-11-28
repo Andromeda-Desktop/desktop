@@ -148,7 +148,7 @@ namespace noctalia::theme {
     private:
       void readNumber(const toml::node& node, const std::string& name, const VocabularyKey& key) {
         if (const auto text = node.value<std::string>(); text && text->starts_with('=')) {
-          m_out.values[name] = ThemeReference{.expression = text->substr(1)};
+          m_out.values[name] = ThemeReference{.expression = text->substr(1), .line = lineOf(node)};
           return;
         }
         const auto number = node.value<double>();
@@ -175,8 +175,6 @@ namespace noctalia::theme {
       ThemePackage& m_out;
       const ThemeVocabulary& m_vocabulary;
     };
-
-    constexpr std::array<std::string_view, 3> kEngineTables = {"motion", "backdrop", "assets"};
 
   } // namespace
 

@@ -914,6 +914,7 @@ _noctalia_source_paths = [
   'src/theme/toolkit_theme_files.cpp',
   'src/theme/live_appearance_sync.cpp',
   'src/theme/theme_package.cpp',
+  'src/theme/theme_resolve.cpp',
   'src/theme/theme_service.cpp',
   'src/cli/completions.cpp',
   'src/cli/parse.cpp',
@@ -1203,6 +1204,7 @@ if build_tests
   _cpp_test_names = [
     'async_file_writer',
     'theme_package',
+    'theme_resolve',
     'token_slots',
     'crash_records',
     'damage_region',

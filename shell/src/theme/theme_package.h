@@ -2,6 +2,7 @@
 
 #include "render/core/color.h"
 
+#include <array>
 #include <expected>
 #include <functional>
 #include <map>
@@ -14,11 +15,14 @@
 namespace noctalia::theme {
 
   inline constexpr int kThemeFormat = 1;
+  // Tables the engine reads by entry ("backdrop.desktop"); a layer that sets an entry replaces all of it.
+  inline constexpr std::array<std::string_view, 3> kEngineTables = {"motion", "backdrop", "assets"};
 
   struct ThemeIssue {
     std::string key;
     std::string message;
     int line = 0;
+    std::string source; // theme id or "overrides"; set by the resolver
   };
 
   enum class VocabularyType { Color, Length, Number, Font, Spring, Enum };
@@ -49,6 +53,7 @@ namespace noctalia::theme {
   // A "=..." expression over other vocabulary keys, resolved against the full value table.
   struct ThemeReference {
     std::string expression;
+    int line = 0;
     bool operator==(const ThemeReference&) const = default;
   };
 
