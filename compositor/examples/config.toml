@@ -424,18 +424,13 @@ default_pinned = true
 # ==============================================================================
 # Layer rules
 # https://docs.noctalia.dev/andromeda/layer-rules/
+# Shell glass blurs the live content behind it, windows included; blur_optimized
+# = true makes a layer use the cached wallpaper blur instead.
 [[layer_rule]]
 match.namespace = "^noctalia-(bar-[^\"]+|notification|dock|panel|attached-panel|osd|desktop-widget-[^\"]*)$"
 blur = true
 blur_ignore_alpha = 0.5
 blur_popups = true
-
-# Panels, the dock, notifications and OSDs open over windows, so they blur the
-# live content behind them. The bar and desktop widgets sit on the wallpaper and
-# keep the cached wallpaper blur.
-[[layer_rule]]
-match.namespace = "^noctalia-(notification|dock|panel|attached-panel|osd)$"
-blur_optimized = false
 
 # ==============================================================================
 # Overview
