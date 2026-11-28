@@ -13,11 +13,13 @@
 #include "shell/wallpaper/wallpaper_geometry.h"
 #include "time/time_format.h"
 #include "ui/builders.h"
+#include "ui/style.h"
 #include "wayland/layer_surface.h"
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_seat.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <string_view>
 
@@ -575,15 +577,21 @@ void DesktopWidgetsHost::prepareFrame(DesktopWidgetInstance& instance, bool need
   }
 
   if (instance.widget->hasVisibleBackground()) {
-    const float radius = instance.widget->backgroundRadius();
-    auto blurStrips = Surface::tessellateRotatedRoundedRect(
-        geometry.contentOffsetX, geometry.contentOffsetY, instance.intrinsicWidth, instance.intrinsicHeight, radius,
-        instance.state.rotationRad
-    );
-    instance.surface->setBlurRegion(blurStrips);
+    // The widget paints its own background colour; the card carries blur, rim and lens.
+    glass::Material material = Style::islandGlass();
+    material.tint = 0.0F;
+    const int w = static_cast<int>(std::lround(instance.intrinsicWidth));
+    const int h = static_cast<int>(std::lround(instance.intrinsicHeight));
+    instance.surface->setGlassCard(GlassCard{
+        .rect = {static_cast<int>(std::lround(geometry.contentOffsetX - instance.intrinsicWidth * 0.5F)),
+                 static_cast<int>(std::lround(geometry.contentOffsetY - instance.intrinsicHeight * 0.5F)), w, h},
+        .radius = instance.widget->backgroundRadius(),
+        .rotation = instance.state.rotationRad,
+        .material = material,
+    });
     instance.glass.apply(*instance.surface, GlassSurface::Kind::Shape);
   } else {
-    instance.surface->clearBlurRegion();
+    instance.surface->clearGlassCard();
   }
 }
 

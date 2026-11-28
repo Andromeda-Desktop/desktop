@@ -177,6 +177,8 @@ struct fx_render_texture_options {
   // Render px added to liquid_box x, y, width, height in the shader: a sub-pixel shape.
   float liquid_frac[4];
   float liquid_radius;
+  // Radians clockwise of the liquid shape about its centre; liquid_box bounds the rotated shape.
+  float liquid_rotation;
   // Render px per logical px for the rim band; 0 = 1.
   float liquid_scale;
   // Pointer key light: x, y in liquid_box coords, reach in render px (0: the fixed top-left light).
@@ -256,6 +258,7 @@ struct fx_render_blur_pass_options {
   struct wlr_box liquid_box;
   float liquid_frac[4]; // see fx_render_texture_options.liquid_frac
   float liquid_radius;
+  float liquid_rotation; // see fx_render_texture_options.liquid_rotation
   float liquid_scale;
   float light[3]; // see fx_render_texture_options.light
   struct fx_liquid_merge merge; // see fx_render_texture_options.merge

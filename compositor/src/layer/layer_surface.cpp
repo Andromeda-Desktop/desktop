@@ -88,6 +88,8 @@ namespace andromeda {
       // The client's shape at sub-pixel precision (surface-local), for a plain rounded shape; `box` holds it rounded.
       std::optional<wlr_fbox> exact{};
       double exactRadius = 0.0;
+      // Radians clockwise about the centre of `exact`, which stays unrotated; `box` holds the rotated bounds.
+      double rotation = 0.0;
     };
 
     // One rounded rectangle sent as a pixel staircase (one band per row inside the curve, e.g.
@@ -186,6 +188,10 @@ namespace andromeda {
     }
 
     fx_corner_radii shapeCorners(const RoundedShape& shape, double scale, int slack) {
+      // A rotated shape's clip box bounds it; the shader rounds the exact shape.
+      if (shape.rotation != 0.0) {
+        return corner_radii_all(0);
+      }
       const int radius = static_cast<int>(std::lround(shape.radius * scale)) + slack;
       return shape.flare > 0
           ? corner_radii_joined(radius, shape.joinEdge, static_cast<int>(std::lround(shape.flare * scale)))
@@ -623,7 +629,7 @@ namespace andromeda {
     for (const SurfaceMotion* shapeMotion : state->shapes) {
       const auto& c = shapeMotion->value(Property::Clip);
       const double shapeLevel = std::clamp(shapeMotion->value(Property::Elevation)[0], 0.0, 2.0);
-      if (c[2] <= 0.0 || c[3] <= 0.0 || shapeLevel < 0.005) {
+      if (c[2] <= 0.0 || c[3] <= 0.0 || shapeLevel < 0.005 || shapeMotion->value(Property::Rotation)[0] != 0.0) {
         continue;
       }
       if (m_shapeShadows.size() <= shadowCount) {
@@ -648,7 +654,7 @@ namespace andromeda {
     for (const SurfaceMotion* shapeMotion : state->shapes) {
       const auto& c = shapeMotion->value(Property::Clip);
       const auto& fill = shapeMotion->value(Property::Fill);
-      if (c[2] <= 0.0 || c[3] <= 0.0 || fill[3] <= 0.0) {
+      if (c[2] <= 0.0 || c[3] <= 0.0 || fill[3] <= 0.0 || shapeMotion->value(Property::Rotation)[0] != 0.0) {
         continue;
       }
       if (m_shapeFills.size() <= fillCount) {
@@ -1119,7 +1125,8 @@ namespace andromeda {
         const auto& join = shape->value(SurfaceMotion::Property::Join);
         const int edge = static_cast<int>(std::lround(join[0]));
         const int flare = static_cast<int>(std::lround(join[1]));
-        if (edge >= 1 && edge <= 4 && flare > 0) {
+        const double rotation = shape->value(SurfaceMotion::Property::Rotation)[0];
+        if (rotation == 0.0 && edge >= 1 && edge <= 4 && flare > 0) {
           rounded.joinEdge = edge;
           rounded.flare = flare;
           if (edge == 1 || edge == 3) {
@@ -1133,12 +1140,22 @@ namespace andromeda {
         if (rounded.flare == 0) {
           rounded.exact = wlr_fbox{c[0], c[1], c[2], c[3]};
           rounded.exactRadius = shape->value(SurfaceMotion::Property::Radius)[0];
+          if (rotation != 0.0) {
+            rounded.rotation = rotation;
+            const double cx = c[0] + c[2] * 0.5;
+            const double cy = c[1] + c[3] * 0.5;
+            const double hw = (std::abs(std::cos(rotation)) * c[2] + std::abs(std::sin(rotation)) * c[3]) * 0.5;
+            const double hh = (std::abs(std::sin(rotation)) * c[2] + std::abs(std::cos(rotation)) * c[3]) * 0.5;
+            const int x1 = static_cast<int>(std::floor(cx - hw));
+            const int y1 = static_cast<int>(std::floor(cy - hh));
+            rounded.box = wlr_box{x1, y1, static_cast<int>(std::ceil(cx + hw)) - x1, static_cast<int>(std::ceil(cy + hh)) - y1};
+          }
         }
         shapes.push_back(rounded);
         m_shapeMaterials.push_back(ShapeMaterial{
             .glass = readDskGlass(*state, *shape),
             .opacity = static_cast<float>(shapeOpacity(*state, *shape)),
-            .solo = shape->value(SurfaceMotion::Property::Solo)[0] >= 0.5,
+            .solo = rounded.rotation != 0.0 || shape->value(SurfaceMotion::Property::Solo)[0] >= 0.5,
         });
       }
     }
@@ -1162,10 +1179,15 @@ namespace andromeda {
           const double sy = box.height > 0 ? static_cast<double>(nodeBox.height) / box.height : motionScale;
           exact = wlr_fbox{nodeBox.x + shape.exact->x * sx, nodeBox.y + shape.exact->y * sy, shape.exact->width * sx,
                            shape.exact->height * sy};
-          const int x1 = static_cast<int>(std::floor(exact->x));
-          const int y1 = static_cast<int>(std::floor(exact->y));
-          shapeClip = wlr_box{x1, y1, static_cast<int>(std::ceil(exact->x + exact->width)) - x1,
-                              static_cast<int>(std::ceil(exact->y + exact->height)) - y1};
+          const double c = std::abs(std::cos(shape.rotation));
+          const double s = std::abs(std::sin(shape.rotation));
+          const double cx = exact->x + exact->width * 0.5;
+          const double cy = exact->y + exact->height * 0.5;
+          const double hw = (c * exact->width + s * exact->height) * 0.5;
+          const double hh = (s * exact->width + c * exact->height) * 0.5;
+          const int x1 = static_cast<int>(std::floor(cx - hw));
+          const int y1 = static_cast<int>(std::floor(cy - hh));
+          shapeClip = wlr_box{x1, y1, static_cast<int>(std::ceil(cx + hw)) - x1, static_cast<int>(std::ceil(cy + hh)) - y1};
         }
         wlr_box cut = shapeClip;
         // The surface clip still cuts every shape (a slide under a fixed clip).
@@ -1294,7 +1316,8 @@ namespace andromeda {
     m_blur.setContentScale(static_cast<float>(motionScale));
     m_blur.setExactShape(
         firstShapeBlur == 1 && !shapes.empty() && clip ? shapes.front().exact : std::nullopt,
-        static_cast<float>(!shapes.empty() ? shapes.front().exactRadius * motionScale : 0.0)
+        static_cast<float>(!shapes.empty() ? shapes.front().exactRadius * motionScale : 0.0),
+        static_cast<float>(!shapes.empty() ? shapes.front().rotation : 0.0)
     );
     // set_backdrop_probe (v21): a surface with no blur of its own still measures the backdrop under it, drawing
     // nothing; the probe reads the clip box, so the whole surface stands in for a missing clip.
@@ -1358,7 +1381,10 @@ namespace andromeda {
       m_shapeBlurOpacity[i] = own ? m_shapeMaterials[shape].opacity : 1.0F;
       blur.setAlpha(m_glassAlpha * m_shapeBlurOpacity[i]);
       blur.setContentScale(static_cast<float>(motionScale));
-      blur.setExactShape(shapes[shape].exact, static_cast<float>(shapes[shape].exactRadius * motionScale));
+      blur.setExactShape(
+          shapes[shape].exact, static_cast<float>(shapes[shape].exactRadius * motionScale),
+          static_cast<float>(shapes[shape].rotation)
+      );
       blur.update(
           m_scene->tree, m_layerSurface->surface, nodeBox, box,
           merged ? corner_radii_all(0) : shapeCorners(shapes[shape], motionScale, kBlurCornerSlack), &shapeClips[shape],

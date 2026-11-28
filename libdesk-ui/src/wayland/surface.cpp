@@ -420,7 +420,9 @@ DskSurfaceClient* WaylandSurface::dsk() {
 
 bool WaylandSurface::setGlassCards(std::span<const GlassCard> cards) {
   DskSurfaceClient* client = dsk();
-  if (client == nullptr || !client->hasShapes()) {
+  const bool rotated = std::ranges::any_of(cards, [](const GlassCard& card) { return card.rotation != 0.0F; });
+  if (client == nullptr || !client->hasShapes() || (rotated && !client->hasRotationProperty())) {
+    clearGlassCard();
     return Surface::setGlassCards(cards);
   }
   clearBlurRegion();
@@ -440,6 +442,9 @@ bool WaylandSurface::setGlassCards(std::span<const GlassCard> cards) {
     const auto h = static_cast<double>(card.rect.height);
     shape.set(DskSurfaceClient::Property::Clip, {static_cast<double>(card.rect.x), static_cast<double>(card.rect.y), w, h});
     shape.set(DskSurfaceClient::Property::Radius, {std::min({static_cast<double>(card.radius), w * 0.5, h * 0.5}), 0.0, 0.0, 0.0});
+    if (m_dsk->hasRotationProperty()) {
+      shape.set(DskSurfaceClient::Property::Rotation, {static_cast<double>(card.rotation), 0.0, 0.0, 0.0});
+    }
     setGlassMaterial(shape, *m_dsk, &card.material);
     if (m_dsk->hasTintProperty()) {
       shape.set(

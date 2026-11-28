@@ -2035,7 +2035,8 @@ render_texture_corner_split(struct fx_gles_render_pass* pass, const struct fx_re
       || clipped_fregion_is_valid(&fx_options->clipped_region)
       || fx_options->liquid > 0.0f
       || fx_options->rim > 0.0f
-      || fx_options->merge.count >= 2) {
+      || fx_options->merge.count >= 2
+      || fx_options->liquid_rotation != 0.0f) {
     return false;
   }
   const struct wlr_render_texture_options* options = &fx_options->base;
@@ -2091,7 +2092,9 @@ render_texture_glass_split(struct fx_gles_render_pass* pass, const struct fx_ren
       || (fx_options->liquid <= 0.0f && fx_options->rim <= 0.0f)
       || corners_flared(&fx_options->corners)
       || clipped_fregion_is_valid(&fx_options->clipped_region)
-      || fx_options->merge.count >= 2) {
+      || fx_options->merge.count >= 2
+      // The plain part of a rotated shape's bounds is not inside the shape.
+      || fx_options->liquid_rotation != 0.0f) {
     return false;
   }
   const struct wlr_render_texture_options* options = &fx_options->base;
@@ -2178,7 +2181,8 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   bool use_effects = !fx_corner_fradii_is_empty(&fx_options->corners)
       || clipped_fregion_is_valid(&fx_options->clipped_region)
       || fx_options->liquid > 0.0f
-      || fx_options->rim > 0.0f;
+      || fx_options->rim > 0.0f
+      || fx_options->liquid_rotation != 0.0f;
   // A non-empty sample box selects the clamp variant. Everything else runs
   // the same fetch as before the clamp existed, so a driver only ever sees
   // the extra uniform on fractionally cropped surfaces.
@@ -2373,8 +2377,9 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     struct fx_corner_fradii corners = fx_options->corners;
     // A sub-pixel shape that fills its quad: the quad's own edge and corners take the exact shape.
     const float* frac = fx_options->liquid_frac;
+    // A rotated shape's quad is its bounds; the shader cuts the outline.
     const bool exact = (frac[0] != 0.0f || frac[1] != 0.0f || frac[2] != 0.0f || frac[3] != 0.0f)
-        && wlr_box_equal(&fx_options->liquid_box, clip_box);
+        && fx_options->liquid_rotation == 0.0f && wlr_box_equal(&fx_options->liquid_box, clip_box);
     if (exact) {
       corners = (struct fx_corner_fradii){
           fx_options->liquid_radius, fx_options->liquid_radius, fx_options->liquid_radius, fx_options->liquid_radius};
@@ -2395,6 +2400,8 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     glUniform2f(shader->effects.liquid_size, liquid_box.width + lfrac[2], liquid_box.height + lfrac[3]);
     glUniform2f(shader->effects.liquid_position, liquid_box.x + lfrac[0], liquid_box.y + lfrac[1]);
     glUniform1f(shader->effects.liquid_radius, liquid_shape ? fx_options->liquid_radius : -1.0f);
+    const float effects_rotation = liquid_shape ? fx_options->liquid_rotation : 0.0f;
+    glUniform2f(shader->effects.liquid_rotation, cosf(effects_rotation), sinf(effects_rotation));
     glUniform1f(shader->effects.liquid_scale, fx_options->liquid_scale > 0.0f ? fx_options->liquid_scale : 1.0f);
     glUniform3fv(shader->effects.light, 1, fx_options->light);
     set_liquid_merge(shader->effects.liquid_count, shader->effects.liquid_shapes, shader->effects.liquid_radii,
@@ -3465,8 +3472,9 @@ static void render_blur_composite(
   if (corners) {
     // A sub-pixel shape that fills its quad: the quad's own edge and corners take the exact shape.
     const float* frac = fx_options->liquid_frac;
+    // A rotated shape's quad is its bounds; the shader cuts the outline.
     const bool exact = (frac[0] != 0.0f || frac[1] != 0.0f || frac[2] != 0.0f || frac[3] != 0.0f)
-        && wlr_box_equal(&fx_options->liquid_box, clip_box);
+        && fx_options->liquid_rotation == 0.0f && wlr_box_equal(&fx_options->liquid_box, clip_box);
     const float r = fx_options->liquid_radius;
     const struct fx_corner_fradii exact_corners = {r, r, r, r};
     glUniform2f(shader->corners.size, clip_box->width + (exact ? frac[2] : 0.0f),
@@ -3489,6 +3497,8 @@ static void render_blur_composite(
     glUniform2f(shader->glass.liquid_size, liquid_box.width + lfrac[2], liquid_box.height + lfrac[3]);
     glUniform2f(shader->glass.liquid_position, liquid_box.x + lfrac[0], liquid_box.y + lfrac[1]);
     glUniform1f(shader->glass.liquid_radius, liquid_shape ? fx_options->liquid_radius : -1.0f);
+    const float glass_rotation = liquid_shape ? fx_options->liquid_rotation : 0.0f;
+    glUniform2f(shader->glass.liquid_rotation, cosf(glass_rotation), sinf(glass_rotation));
     glUniform1f(shader->glass.liquid_scale, fx_options->liquid_scale > 0.0f ? fx_options->liquid_scale : 1.0f);
     glUniform3fv(shader->glass.light, 1, fx_options->light);
     set_liquid_merge(shader->glass.liquid_count, shader->glass.liquid_shapes, shader->glass.liquid_radii,
@@ -3554,7 +3564,9 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   // more than copy it.
   // Glass fuses through the glass composite variants, except on a frame its backdrop probe reads the full-resolution
   // level.
-  const bool glass = fx_options->liquid > 0.0f || fx_options->rim > 0.0f || fx_options->tint_mix[3] > 0.0f;
+  // A rotated shape's outline is its coverage, which only the glass composite draws.
+  const bool glass = fx_options->liquid > 0.0f || fx_options->rim > 0.0f || fx_options->tint_mix[3] > 0.0f
+      || fx_options->liquid_rotation != 0.0f;
   const struct wlr_box lens_box = tex_options->clip_box == NULL ? (struct wlr_box){0}
       : wlr_box_empty(&fx_options->liquid_box)                 ? *tex_options->clip_box
                                                                : fx_options->liquid_box;
@@ -3798,6 +3810,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     tex_options->liquid_box = fx_options->liquid_box;
     memcpy(tex_options->liquid_frac, fx_options->liquid_frac, sizeof(tex_options->liquid_frac));
     tex_options->liquid_radius = fx_options->liquid_radius;
+    tex_options->liquid_rotation = fx_options->liquid_rotation;
     tex_options->liquid_scale = fx_options->liquid_scale;
     tex_options->merge = fx_options->merge;
     memcpy(tex_options->light, fx_options->light, sizeof(tex_options->light));

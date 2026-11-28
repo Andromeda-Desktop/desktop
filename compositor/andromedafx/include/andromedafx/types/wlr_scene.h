@@ -289,6 +289,7 @@ struct wlr_scene_blur {
   struct wlr_box liquid_box; // node-local; empty = the node box and corners
   struct wlr_fbox liquid_exact; // node-local sub-pixel liquid_box; width 0 = liquid_box as is
   float liquid_radius;
+  float liquid_rotation; // radians clockwise about the centre of liquid_exact; liquid_box bounds the rotated shape
   float content_scale; // shown px per surface px (a surface scale motion); rim and band widths follow it
   struct wlr_scene_blur_merge liquid_merge;
 
@@ -1112,7 +1113,10 @@ void wlr_scene_blur_set_probe_only(struct wlr_scene_blur* blur, bool probe_only)
 void wlr_scene_blur_set_liquid_shape(struct wlr_scene_blur* blur, const struct wlr_box* box, int radius);
 
 // A sub-pixel liquid shape: the edge, rim and corners move by fractions of a pixel (a press scale).
-void wlr_scene_blur_set_liquid_shape_exact(struct wlr_scene_blur* blur, const struct wlr_fbox* box, float radius);
+// `rotation`: radians clockwise about the box centre.
+void wlr_scene_blur_set_liquid_shape_exact(
+    struct wlr_scene_blur* blur, const struct wlr_fbox* box, float radius, float rotation
+);
 // Shown px per surface px of the glass's surface, 1 = unscaled: the rim and band scale with the surface's own drawing.
 void wlr_scene_blur_set_content_scale(struct wlr_scene_blur* blur, float scale);
 // Draws up to 4 node-local shapes as one glass: their SDFs join by a smooth union within `reach` logical px, and the

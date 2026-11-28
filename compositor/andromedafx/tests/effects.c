@@ -3249,6 +3249,72 @@ static bool test_glass_split(struct fixture* fixture) {
 
 // Shaped glass at every corner radius up to the one that fills its quad, where the quad's plain part shrinks to
 // nothing: each draws once, as it does whole.
+// A 40 x 20 glass shape rotated 45 degrees clockwise about the centre of a 48 x 48 quad: its outline, not the quad or
+// the unrotated box, is the coverage.
+static bool test_glass_rotated(struct fixture* fixture) {
+  static uint8_t pixels[GLASS_SIZE * GLASS_SIZE][4], out[GLASS_SIZE * GLASS_SIZE][4];
+  for (int i = 0; i < GLASS_SIZE * GLASS_SIZE; i++) {
+    pixels[i][0] = 200, pixels[i][1] = 120, pixels[i][2] = 40, pixels[i][3] = 255;
+  }
+  const uint32_t stride = GLASS_SIZE * 4;
+  struct wlr_texture* source =
+      wlr_texture_from_pixels(fixture->renderer, DRM_FORMAT_ABGR8888, stride, GLASS_SIZE, GLASS_SIZE, pixels);
+  struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_ARGB8888, GLASS_SIZE, GLASS_SIZE);
+  struct wlr_render_pass* pass =
+      source != NULL && target != NULL ? wlr_renderer_begin_buffer_pass(fixture->renderer, target, NULL) : NULL;
+  bool ok = check(pass != NULL, "rotated glass texture, target and pass");
+  if (ok) {
+    const struct wlr_box box = {.width = GLASS_SIZE, .height = GLASS_SIZE};
+    struct fx_render_texture_options options = {
+        .base =
+            {
+                .texture = source,
+                .src_box = {.width = GLASS_SIZE, .height = GLASS_SIZE},
+                .dst_box = box,
+                .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+            },
+        .clip_box = &box,
+        .rim = 0.3f,
+        .liquid_box = box,
+        .liquid_frac = {4.0f, 14.0f, -8.0f, -28.0f},
+        .liquid_radius = 4,
+        .liquid_rotation = 0.785398163f,
+        .liquid_scale = 1.0f,
+    };
+    fx_render_pass_add_texture(fx_get_render_pass(pass), &options);
+    ok &= check(wlr_render_pass_submit(pass), "submit");
+    ok &= check(read_buffer(fixture, target, DRM_FORMAT_ABGR8888, stride, out), "read the rotated glass");
+  }
+  if (ok) {
+    const uint8_t centre = out[24 * GLASS_SIZE + 24][3];
+    // On the long axis, 16 px down-right of the centre: inside only when the shape turns clockwise.
+    const uint8_t along = out[35 * GLASS_SIZE + 35][3];
+    // On the long axis of the unrotated box, 18 px right of the centre: outside the rotated shape.
+    const uint8_t unrotated = out[24 * GLASS_SIZE + 42][3];
+    const uint8_t corner = out[1 * GLASS_SIZE + 1][3];
+    // Inside the plain interior of the bounds (a glass split draws it with no mask), outside the shape.
+    const uint8_t interior = out[34 * GLASS_SIZE + 14][3];
+    ok &= check(centre == 255 && along == 255, "the rotated shape covers its long axis");
+    ok &= check(
+        unrotated == 0 && corner == 0 && interior == 0, "the bounds and the unrotated box outside the shape stay clear"
+    );
+    if (!ok) {
+      fprintf(
+          stderr, "  alpha centre %u along %u unrotated %u corner %u interior %u\n", centre, along, unrotated, corner,
+          interior
+      );
+    }
+  }
+  if (target != NULL) {
+    wlr_buffer_drop(target);
+  }
+  if (source != NULL) {
+    wlr_texture_destroy(source);
+  }
+  return ok;
+}
+
 static bool test_glass_split_full_corners(struct fixture* fixture) {
   static uint8_t whole[GLASS_SIZE * GLASS_SIZE][4], split[GLASS_SIZE * GLASS_SIZE][4];
   bool ok = true;
@@ -3771,6 +3837,8 @@ int main(int argc, char* argv[]) {
     ok = test_corner_split(&fixture);
   } else if (strcmp(argv[1], "glass-split") == 0) {
     ok = test_glass_split(&fixture);
+  } else if (strcmp(argv[1], "glass-rotated") == 0) {
+    ok = test_glass_rotated(&fixture);
   } else if (strcmp(argv[1], "glass-split-full-corners") == 0) {
     ok = test_glass_split_full_corners(&fixture);
   } else if (strcmp(argv[1], "audio-spectrum") == 0) {

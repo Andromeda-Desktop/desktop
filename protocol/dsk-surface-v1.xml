@@ -17,7 +17,7 @@
     Only unsandboxed clients see this global.
   </description>
 
-  <interface name="dsk_surface_manager_v1" version="21">
+  <interface name="dsk_surface_manager_v1" version="22">
     <request name="destroy" type="destructor"/>
 
     <request name="get_surface">
@@ -44,7 +44,7 @@
     </enum>
   </interface>
 
-  <interface name="dsk_surface_v1" version="21">
+  <interface name="dsk_surface_v1" version="22">
     <description summary="shape, elevation and animations of one surface">
       All requests are double-buffered and apply on the next wl_surface.commit,
       so new pixels and the motion that shows them start in the same frame.
@@ -82,6 +82,7 @@
       <entry name="fill_dense" value="11" since="10" summary="a = fill alpha at full glass density; the fill alpha follows the density of the glass under it from the fill alpha to this one"/>
       <entry name="blur" value="12" since="15" summary="a = blur size 0..1 of the surface glass; without it the blur follows liquid a"/>
       <entry name="solo" value="13" since="18" summary="a = 1: this dsk_shape_v1 never joins a neighbour shape into one liquid outline; 0 (default) it joins within merge reach"/>
+      <entry name="rotation" value="14" since="22" summary="a = rotation, radians clockwise about the clip center, of a dsk_shape_v1 glass shape (blur, rim, tint); a rotated shape draws no elevation shadow and no fill, never joins a neighbour and takes no join flares; the surface itself ignores it"/>
     </enum>
 
     <enum name="curve">

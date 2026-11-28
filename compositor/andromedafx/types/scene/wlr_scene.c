@@ -2974,28 +2974,38 @@ void wlr_scene_blur_set_liquid_shape(struct wlr_scene_blur* blur, const struct w
   blur->liquid_box = next;
   blur->liquid_exact = (struct wlr_fbox){0};
   blur->liquid_radius = (float)radius;
+  blur->liquid_rotation = 0.0f;
   scene_node_update(&blur->node, NULL);
 }
 
-void wlr_scene_blur_set_liquid_shape_exact(struct wlr_scene_blur* blur, const struct wlr_fbox* box, float radius) {
+void wlr_scene_blur_set_liquid_shape_exact(
+    struct wlr_scene_blur* blur, const struct wlr_fbox* box, float radius, float rotation
+) {
   if (box == NULL || box->width <= 0.0 || box->height <= 0.0) {
     wlr_scene_blur_set_liquid_shape(blur, NULL, 0);
     return;
   }
-  if (wlr_fbox_equal(&blur->liquid_exact, box) && blur->liquid_radius == radius) {
+  if (wlr_fbox_equal(&blur->liquid_exact, box) && blur->liquid_radius == radius && blur->liquid_rotation == rotation) {
     return;
   }
-  // The whole pixels that hold the shape bound its damage and its draw.
-  const int x1 = (int)floor(box->x);
-  const int y1 = (int)floor(box->y);
+  // The whole pixels that hold the (rotated) shape bound its damage and its draw.
+  const double c = fabs(cos(rotation));
+  const double s = fabs(sin(rotation));
+  const double cx = box->x + box->width * 0.5;
+  const double cy = box->y + box->height * 0.5;
+  const double hw = (c * box->width + s * box->height) * 0.5;
+  const double hh = (s * box->width + c * box->height) * 0.5;
+  const int x1 = (int)floor(cx - hw);
+  const int y1 = (int)floor(cy - hh);
   blur->liquid_box = (struct wlr_box){
       .x = x1,
       .y = y1,
-      .width = (int)ceil(box->x + box->width) - x1,
-      .height = (int)ceil(box->y + box->height) - y1,
+      .width = (int)ceil(cx + hw) - x1,
+      .height = (int)ceil(cy + hh) - y1,
   };
   blur->liquid_exact = *box;
   blur->liquid_radius = radius;
+  blur->liquid_rotation = rotation;
   scene_node_update(&blur->node, NULL);
 }
 
@@ -4844,6 +4854,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                       .height = (int)lround(blur->liquid_box.height * data->scale),
                   },
         .liquid_radius = blur->liquid_radius * data->scale,
+        .liquid_rotation = blur->liquid_exact.width > 0.0 ? blur->liquid_rotation : 0.0f,
         .liquid_scale = data->scale * blur->content_scale,
     };
     if (blur->liquid_exact.width > 0.0 && !wlr_box_empty(&blur_options.liquid_box)) {

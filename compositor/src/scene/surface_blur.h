@@ -79,8 +79,8 @@ namespace andromeda {
     // Lens strength, 0 to 1 (dsk_surface_v1 liquid [2] since v9).
     void setLens(float lens);
     // The shape at sub-pixel precision (layout coords) when its clip box is that shape rounded outward; nullopt =
-    // the clip box and corners.
-    void setExactShape(const std::optional<wlr_fbox>& box, float radius);
+    // the clip box and corners. `rotation`: radians clockwise about the box centre; the clip box bounds the rotated shape.
+    void setExactShape(const std::optional<wlr_fbox>& box, float radius, float rotation = 0.0F);
     // Shown px per surface px (a surface scale motion): the rim and band shrink with the surface's own border.
     void setContentScale(float scale);
     // Mixes the backdrop toward rgb by amount, 0 to 1 (glass density).
@@ -141,6 +141,7 @@ namespace andromeda {
     int m_mergeReach = 0;
     std::optional<wlr_fbox> m_exact;
     float m_exactRadius = 0.0F;
+    float m_exactRotation = 0.0F;
     float m_contentScale = 1.0F;
   };
 

@@ -186,6 +186,7 @@ struct tex_shader {
     GLint liquid_size;
     GLint liquid_position;
     GLint liquid_radius;
+    GLint liquid_rotation;
     GLint liquid_scale;
     GLint light;
     GLint liquid_count;
@@ -298,6 +299,7 @@ struct blur2_composite_shader {
     GLint liquid_size;
     GLint liquid_position;
     GLint liquid_radius;
+    GLint liquid_rotation;
     GLint liquid_scale;
     GLint light;
     GLint liquid_count;

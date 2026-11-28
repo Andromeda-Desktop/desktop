@@ -125,6 +125,8 @@ uniform vec4 tint_mix;
 uniform vec2 liquid_texel;
 uniform vec2 liquid_size;
 uniform vec2 liquid_position;
+// cos, sin of the liquid shape's clockwise rotation about its centre; sin 0 = none.
+uniform vec2 liquid_rotation;
 uniform float liquid_radius;
 // Render px per logical px.
 uniform float liquid_scale;
@@ -192,6 +194,24 @@ vec2 liquid_normal(vec2 p) {
   }
   return body_normal_at(p, size, position, radius_top_left, radius_top_right, radius_bottom_left, radius_bottom_right);
 }
+
+// A point in the unrotated frame of the liquid shape.
+vec2 liquid_frame(vec2 p) {
+  if (liquid_rotation.y == 0.0) {
+    return p;
+  }
+  vec2 c = liquid_position + liquid_size * 0.5;
+  vec2 d = p - c;
+  return c + vec2(liquid_rotation.x * d.x + liquid_rotation.y * d.y, liquid_rotation.x * d.y - liquid_rotation.y * d.x);
+}
+
+// A direction in that frame, on screen.
+vec2 liquid_unframe(vec2 v) {
+  if (liquid_rotation.y == 0.0) {
+    return v;
+  }
+  return vec2(liquid_rotation.x * v.x - liquid_rotation.y * v.y, liquid_rotation.y * v.x + liquid_rotation.x * v.y);
+}
 #endif
 #endif
 #endif
@@ -210,9 +230,10 @@ void main() {
   if (shine > 0.0) {
     float band = liquid_band(liquid_size, liquid, liquid_scale);
     vec2 p = gl_FragCoord.xy;
-    float d = liquid_distance(p);
+    vec2 lp = liquid_frame(p);
+    float d = liquid_distance(lp);
     if (d > -band) {
-      vec2 normal = liquid_normal(p);
+      vec2 normal = liquid_unframe(liquid_normal(lp));
       float t = clamp(1.0 + d / band, 0.0, 1.0);
       float shift = lens_shift(t) * band;
       texcoord -= normal * (shift * liquid) * liquid_texel;
@@ -284,7 +305,9 @@ void main() {
       clip_radius_bottom_right
   );
 #if GLASS
-  quad_corner_alpha *= liquid_count >= 2 ? clamp(0.5 - liquid_distance(gl_FragCoord.xy), 0.0, 1.0) : 1.0;
+  quad_corner_alpha *= liquid_count >= 2 || liquid_rotation.y != 0.0
+      ? clamp(0.5 - liquid_distance(liquid_frame(gl_FragCoord.xy)), 0.0, 1.0)
+      : 1.0;
 #endif
   gl_FragColor = color * alpha * quad_corner_alpha * clip_corner_alpha;
 #else

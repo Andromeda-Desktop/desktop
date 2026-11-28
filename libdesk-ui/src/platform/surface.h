@@ -36,6 +36,8 @@ struct InputRect {
 struct GlassCard {
   InputRect rect;
   float radius = 0.0F;
+  // Radians clockwise about the centre of `rect`, which stays unrotated.
+  float rotation = 0.0F;
   glass::Material material;
   const Node* node = nullptr;
   std::function<void(float)> onDensity;

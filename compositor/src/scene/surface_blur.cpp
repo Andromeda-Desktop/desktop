@@ -78,9 +78,10 @@ namespace andromeda {
     return pixman_region32_contains_rectangle(&surface->opaque_region, &box) != PIXMAN_REGION_IN;
   }
 
-  void SurfaceBlur::setExactShape(const std::optional<wlr_fbox>& box, float radius) {
+  void SurfaceBlur::setExactShape(const std::optional<wlr_fbox>& box, float radius, float rotation) {
     m_exact = box;
     m_exactRadius = radius;
+    m_exactRotation = box.has_value() ? rotation : 0.0F;
   }
 
   void SurfaceBlur::setMerge(const std::vector<MergedShape>& shapes, int reach) {
@@ -204,7 +205,7 @@ namespace andromeda {
       wlr_scene_blur_set_liquid_shape(m_node, &shape, radius);
     } else if (m_exact.has_value() && m_merge.size() < 2) {
       const wlr_fbox shape{m_exact->x - drawBox.x, m_exact->y - drawBox.y, m_exact->width, m_exact->height};
-      wlr_scene_blur_set_liquid_shape_exact(m_node, &shape, m_exactRadius);
+      wlr_scene_blur_set_liquid_shape_exact(m_node, &shape, m_exactRadius, m_exactRotation);
     } else {
       wlr_scene_blur_set_liquid_shape(m_node, nullptr, 0);
     }
