@@ -24,8 +24,10 @@ mkdir -p "$H/.local/share"
 for dir in applications icons flatpak; do
   [[ -e ~/.local/share/$dir ]] && ln -s ~/.local/share/$dir "$H/.local/share/$dir"
 done
-# The user's compositor config without its autostart (the shell starts below).
+# The user's compositor config without its autostart (the shell starts below). The compositor reads settings.toml
+# beside its -c config, so the glass style and sliders need a copy there too.
 sed -e '/^autostart *=/d' ~/.config/andromeda/config.toml > "$RUNTIME/andromeda.toml"
+cp ~/.config/andromeda/settings.toml "$RUNTIME/" 2>/dev/null || true
 
 headless_compositor "$RUNTIME" 1 "$RUNTIME/andromeda.toml" -uDBUS_SESSION_BUS_ADDRESS WAYLAND_DISPLAY="$PARENT" \
   WLR_BACKENDS=wayland > "$RUNTIME/andromeda.log" 2>&1 &
