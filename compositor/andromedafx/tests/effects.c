@@ -3313,6 +3313,93 @@ static bool test_glass_rotated(struct fixture* fixture) {
   return ok;
 }
 
+// A rotated shape's backdrop probe reads the backdrop under the shape: a white centre under a thin card turned 45
+// degrees reads white, though black fills most of the card's upright bounds.
+static bool test_glass_rotated_probe(struct fixture* fixture) {
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+  const float black[4] = {0, 0, 0, 1}, white[4] = {1, 1, 1, 1};
+  wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, black);
+  struct wlr_scene_rect* centre = wlr_scene_rect_create(&scene->tree, 4, 4, white);
+  wlr_scene_node_set_position(&centre->node, TEST_WIDTH / 2 - 2, TEST_HEIGHT / 2 - 2);
+  struct wlr_scene_blur* blur = wlr_scene_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT);
+  wlr_scene_set_blur_data(scene, 3, 5, 0, 1, 1, 1);
+  // Clear glass: no blur pass, so the probe reads the sharp backdrop.
+  wlr_scene_blur_set_strength(blur, 0.02f);
+  wlr_scene_blur_set_rim(blur, 0.3f);
+  const struct wlr_fbox card = {.x = TEST_WIDTH / 2 - 7, .y = TEST_HEIGHT / 2 - 2, .width = 14, .height = 4};
+  wlr_scene_blur_set_liquid_shape_exact(blur, &card, 1.0f, 0.785398163f);
+  wlr_scene_blur_set_backdrop_sampling(blur, true);
+
+  // The first frame redraws the whole output, so the probe samples it.
+  struct wlr_output_state state;
+  struct wlr_buffer* rendered = fixture_render_scene(fixture, scene_output, &state);
+  bool ok = check(rendered != NULL, "scene renders");
+  if (rendered != NULL) {
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+  struct fx_backdrop_luminance luminance = {-1.0f, -1.0f, -1.0f};
+  bool sampled = false;
+  struct timespec start, now;
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  do {
+    sampled = wlr_scene_blur_poll_backdrop(blur, &luminance);
+    clock_gettime(CLOCK_MONOTONIC, &now);
+  } while (ok && !sampled && wlr_scene_blur_backdrop_pending(blur) && now.tv_sec - start.tv_sec < 5);
+  ok &= check(sampled, "the rotated glass takes a backdrop sample");
+  if (ok && luminance.mean < 0.9f) {
+    fprintf(stderr, "  rotated probe luminance mean %.3f darkest %.3f\n", luminance.mean, luminance.darkest);
+    ok = false;
+  }
+  wlr_scene_node_destroy(&scene->tree.node);
+  return ok;
+}
+
+// A liquid shape off the output centre measures the backdrop under it on a turned or flipped output too: its box
+// takes the output transform.
+static bool test_glass_turned_output_probe(struct fixture* fixture) {
+  static const enum wl_output_transform transforms[] = {
+      WL_OUTPUT_TRANSFORM_NORMAL, WL_OUTPUT_TRANSFORM_90, WL_OUTPUT_TRANSFORM_FLIPPED_270
+  };
+  const float black[4] = {0, 0, 0, 1}, white[4] = {1, 1, 1, 1};
+  const struct wlr_fbox card = {.x = 1, .y = 2, .width = 8, .height = 4};
+  bool ok = true;
+  for (size_t t = 0; ok && t < sizeof(transforms) / sizeof(transforms[0]); t++) {
+    struct wlr_scene* scene = wlr_scene_create();
+    struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+    wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, black);
+    struct wlr_scene_rect* under = wlr_scene_rect_create(&scene->tree, (int)card.width, (int)card.height, white);
+    wlr_scene_node_set_position(&under->node, (int)card.x, (int)card.y);
+    struct wlr_scene_blur* blur = wlr_scene_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT);
+    wlr_scene_set_blur_data(scene, 3, 5, 0, 1, 1, 1);
+    wlr_scene_blur_set_strength(blur, 0.02f);
+    wlr_scene_blur_set_rim(blur, 0.3f);
+    wlr_scene_blur_set_liquid_shape_exact(blur, &card, 1.0f, 0.0f);
+    wlr_scene_blur_set_backdrop_sampling(blur, true);
+    struct wlr_buffer* rendered = render_transformed(fixture, scene_output, 1.0f, transforms[t]);
+    ok &= check(rendered != NULL, "scene renders");
+    if (rendered != NULL) {
+      wlr_buffer_unlock(rendered);
+    }
+    struct fx_backdrop_luminance luminance = {-1.0f, -1.0f, -1.0f};
+    bool sampled = false;
+    struct timespec start, now;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    do {
+      sampled = wlr_scene_blur_poll_backdrop(blur, &luminance);
+      clock_gettime(CLOCK_MONOTONIC, &now);
+    } while (ok && !sampled && wlr_scene_blur_backdrop_pending(blur) && now.tv_sec - start.tv_sec < 5);
+    ok &= check(sampled, "the glass takes a backdrop sample");
+    if (ok && luminance.mean < 0.9f) {
+      fprintf(stderr, "  transform %d: probe luminance mean %.3f\n", transforms[t], luminance.mean);
+      ok = false;
+    }
+    wlr_scene_node_destroy(&scene->tree.node);
+  }
+  return ok;
+}
+
 // Shaped glass at every corner radius up to the one that fills its quad, where the quad's plain part shrinks to
 // nothing: each draws once, as it does whole.
 static bool test_glass_split_full_corners(struct fixture* fixture) {
@@ -3839,6 +3926,10 @@ int main(int argc, char* argv[]) {
     ok = test_glass_split(&fixture);
   } else if (strcmp(argv[1], "glass-rotated") == 0) {
     ok = test_glass_rotated(&fixture);
+  } else if (strcmp(argv[1], "glass-rotated-probe") == 0) {
+    ok = test_glass_rotated_probe(&fixture);
+  } else if (strcmp(argv[1], "glass-turned-output-probe") == 0) {
+    ok = test_glass_turned_output_probe(&fixture);
   } else if (strcmp(argv[1], "glass-split-full-corners") == 0) {
     ok = test_glass_split_full_corners(&fixture);
   } else if (strcmp(argv[1], "audio-spectrum") == 0) {

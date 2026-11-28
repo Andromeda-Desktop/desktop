@@ -1274,6 +1274,38 @@ static void transform_output_box(struct wlr_box* box, const struct render_data* 
   box->y += data->capture_y;
 }
 
+// A node-local box (logical px) of a node at output-local `x`, `y`, in render coords.
+static struct wlr_box node_box_to_render(int x, int y, struct wlr_box local, const struct render_data* data) {
+  struct wlr_box box = {
+      .x = (int)round(x * data->scale) + (int)lround(local.x * data->scale),
+      .y = (int)round(y * data->scale) + (int)lround(local.y * data->scale),
+      .width = (int)lround(local.width * data->scale),
+      .height = (int)lround(local.height * data->scale),
+  };
+  wlr_box_transform(&box, &box, wlr_output_transform_invert(data->transform), data->trans_width, data->trans_height);
+  box.x += data->capture_x;
+  box.y += data->capture_y;
+  return box;
+}
+
+static struct wlr_fbox node_fbox_to_render(int x, int y, struct wlr_fbox local, const struct render_data* data) {
+  struct wlr_fbox box = {
+      .x = round(x * data->scale) + local.x * data->scale,
+      .y = round(y * data->scale) + local.y * data->scale,
+      .width = local.width * data->scale,
+      .height = local.height * data->scale,
+  };
+  wlr_fbox_transform(&box, &box, wlr_output_transform_invert(data->transform), data->trans_width, data->trans_height);
+  box.x += data->capture_x;
+  box.y += data->capture_y;
+  return box;
+}
+
+// Radians clockwise in render coords of a layout turn: an output turn keeps its sense, a flip mirrors it.
+static float rotation_to_render(float rotation, const struct render_data* data) {
+  return (data->transform & WL_OUTPUT_TRANSFORM_FLIPPED) != 0 ? -rotation : rotation;
+}
+
 // `under`: buffer content damage of an entry the last overlay frame drew only inside its clip.
 static void scene_output_damage_from(
     struct wlr_scene_output* scene_output, const pixman_region32_t* damage, bool under
@@ -4190,6 +4222,38 @@ static void entry_render_region(
   }
 }
 
+// The largest upright box inside `box` turned by `rotation` radians about its centre.
+static struct wlr_box rotated_inner_box(struct wlr_fbox box, float rotation) {
+  const double s = fabs(sin(rotation));
+  const double c = fabs(cos(rotation));
+  const double w = box.width;
+  const double h = box.height;
+  const double longer = fmax(w, h);
+  const double shorter = fmin(w, h);
+  double inner_w = 0.0;
+  double inner_h = 0.0;
+  if (shorter <= 2.0 * s * c * longer || fabs(s - c) < 1e-9) {
+    // Two corners of the inner box touch the longer sides only.
+    const double half = 0.5 * shorter;
+    inner_w = w >= h ? half / s : half / c;
+    inner_h = w >= h ? half / c : half / s;
+  } else {
+    const double cos_2a = c * c - s * s;
+    inner_w = (w * c - h * s) / cos_2a;
+    inner_h = (h * c - w * s) / cos_2a;
+  }
+  const double cx = box.x + w * 0.5;
+  const double cy = box.y + h * 0.5;
+  const int x1 = (int)ceil(cx - inner_w * 0.5);
+  const int y1 = (int)ceil(cy - inner_h * 0.5);
+  return (struct wlr_box){
+      .x = x1,
+      .y = y1,
+      .width = (int)fmax(0.0, floor(cx + inner_w * 0.5) - x1),
+      .height = (int)fmax(0.0, floor(cy + inner_h * 0.5) - y1),
+  };
+}
+
 static void scene_entry_render(struct render_list_entry* entry, const struct render_data* data) {
   struct wlr_scene_node* node = entry->node;
   // Backdrop effects are not part of a window's shadow caster. Shadows are
@@ -4847,33 +4911,24 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .liquid_box =
             wlr_box_empty(&blur->liquid_box)
                 ? (struct wlr_box){0}
-                : (struct wlr_box){
-                      .x = dst_box.x + (int)lround(blur->liquid_box.x * data->scale),
-                      .y = dst_box.y + (int)lround(blur->liquid_box.y * data->scale),
-                      .width = (int)lround(blur->liquid_box.width * data->scale),
-                      .height = (int)lround(blur->liquid_box.height * data->scale),
-                  },
+                : node_box_to_render(x, y, blur->liquid_box, data),
         .liquid_radius = blur->liquid_radius * data->scale,
-        .liquid_rotation = blur->liquid_exact.width > 0.0 ? blur->liquid_rotation : 0.0f,
+        .liquid_rotation = blur->liquid_exact.width > 0.0 ? rotation_to_render(blur->liquid_rotation, data) : 0.0f,
         .liquid_scale = data->scale * blur->content_scale,
     };
     if (blur->liquid_exact.width > 0.0 && !wlr_box_empty(&blur_options.liquid_box)) {
       const struct wlr_box* box = &blur_options.liquid_box;
-      blur_options.liquid_frac[0] = (float)(dst_box.x + blur->liquid_exact.x * data->scale - box->x);
-      blur_options.liquid_frac[1] = (float)(dst_box.y + blur->liquid_exact.y * data->scale - box->y);
-      blur_options.liquid_frac[2] = (float)(blur->liquid_exact.width * data->scale - box->width);
-      blur_options.liquid_frac[3] = (float)(blur->liquid_exact.height * data->scale - box->height);
+      const struct wlr_fbox exact = node_fbox_to_render(x, y, blur->liquid_exact, data);
+      blur_options.liquid_frac[0] = (float)(exact.x - box->x);
+      blur_options.liquid_frac[1] = (float)(exact.y - box->y);
+      blur_options.liquid_frac[2] = (float)(exact.width - box->width);
+      blur_options.liquid_frac[3] = (float)(exact.height - box->height);
     }
     blur_options.merge.count = blur->liquid_merge.count;
     blur_options.merge.reach = (float)blur->liquid_merge.reach * data->scale;
     for (int i = 0; i < blur->liquid_merge.count; i++) {
       const struct wlr_box b = blur->liquid_merge.boxes[i];
-      blur_options.merge.boxes[i] = (struct wlr_box){
-          .x = dst_box.x + (int)lround(b.x * data->scale),
-          .y = dst_box.y + (int)lround(b.y * data->scale),
-          .width = (int)lround(b.width * data->scale),
-          .height = (int)lround(b.height * data->scale),
-      };
+      blur_options.merge.boxes[i] = node_box_to_render(x, y, b, data);
       blur_options.merge.radii[i] = (float)blur->liquid_merge.radii[i] * data->scale;
     }
     if (data->output->glass_light.reach > 0.0f) {
@@ -4898,7 +4953,11 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
       blur_options.backdrop_probe = blur->backdrop_probe;
       blur_options.probe_only = blur->probe_only;
       // A window can reach past the output or lie partly under another: the probe reads only the part shown here.
-      const struct wlr_box glass_box = wlr_box_empty(&blur_options.liquid_box) ? dst_box : blur_options.liquid_box;
+      // A rotated shape's bounds reach past it: its probe reads the largest upright box inside it.
+      const struct wlr_box glass_box = blur_options.liquid_rotation != 0.0f
+          ? rotated_inner_box(node_fbox_to_render(x, y, blur->liquid_exact, data), blur_options.liquid_rotation)
+          : wlr_box_empty(&blur_options.liquid_box) ? dst_box
+                                                     : blur_options.liquid_box;
       pixman_region32_t shown;
       pixman_region32_init(&shown);
       pixman_region32_copy(&shown, &node->visible);
@@ -5263,17 +5322,14 @@ static int begin_shared_blur_run(
     pixman_region32_union(&clip, &clip, &region);
     const struct wlr_scene_blur* blur = wlr_scene_blur_from_node(entries[k].node);
     if (blur->lens > 0.0f && blur_node_is_glass(blur) && pixman_region32_not_empty(&region)) {
-      struct wlr_box box = {.x = entries[k].x - data->logical.x, .y = entries[k].y - data->logical.y};
+      const int node_x = entries[k].x - data->logical.x;
+      const int node_y = entries[k].y - data->logical.y;
+      struct wlr_box box = {.x = node_x, .y = node_y};
       scene_node_get_size(entries[k].node, &box.width, &box.height);
       transform_output_box(&box, data);
       // The lens reads only its liquid box, as fx_render_pass_add_blur's own copy does.
       if (!wlr_box_empty(&blur->liquid_box)) {
-        box = (struct wlr_box){
-            .x = box.x + (int)lround(blur->liquid_box.x * data->scale),
-            .y = box.y + (int)lround(blur->liquid_box.y * data->scale),
-            .width = (int)lround(blur->liquid_box.width * data->scale),
-            .height = (int)lround(blur->liquid_box.height * data->scale),
-        };
+        box = node_box_to_render(node_x, node_y, blur->liquid_box, data);
       }
       pixman_region32_union_rect(&lens, &lens, box.x, box.y, box.width, box.height);
     }

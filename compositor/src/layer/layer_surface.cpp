@@ -1105,6 +1105,14 @@ namespace andromeda {
     const int mergeReach = static_cast<int>(std::lround(glass::kMergeReach * motionScale));
     // The first shape drawn by m_shapeBlurs: 1 when m_blur draws shapes[0], 0 when m_blur draws a region.
     std::size_t firstShapeBlur = 1;
+    // The backdrop area a blur samples, its weight in the surface density: a rotated shape's clip only bounds it.
+    const auto sampledArea = [](const RoundedShape* shape, const wlr_box& clip) {
+      const int area = clip.width * clip.height;
+      if (shape == nullptr || shape->rotation == 0.0 || !shape->exact) {
+        return area;
+      }
+      return std::min(area, static_cast<int>(std::lround(shape->exact->width * shape->exact->height)));
+    };
     pixman_region32_t rest;
     pixman_region32_init(&rest);
     // dsk_shape_v1 (v10): the client names its glass shapes, so its blur region is not used for glass.
@@ -1295,7 +1303,8 @@ namespace andromeda {
     }
     m_nodeArea.assign(m_shapeBlurs.size() + 1, 0);
     m_nodeLuminance.resize(m_nodeArea.size());
-    m_nodeArea[0] = clip ? clip->width * clip->height : nodeBox.width * nodeBox.height;
+    m_nodeArea[0] = clip ? sampledArea(firstShapeBlur == 1 && !shapes.empty() ? &shapes.front() : nullptr, *clip)
+                         : nodeBox.width * nodeBox.height;
     m_blurOpacity = firstShapeBlur == 1 && !m_shapeMaterials.empty() ? m_shapeMaterials.front().opacity : 1.0F;
     m_blur.setAlpha(m_glassAlpha * m_blurOpacity);
     m_blur.setMerge(merges.empty() ? std::vector<SurfaceBlur::MergedShape>{} : merges.front(), mergeReach);
@@ -1352,7 +1361,7 @@ namespace andromeda {
       const float tintAlpha = material != nullptr ? material->glass.tint[3] : m_glass.tint[3];
       const bool sampling = liquid > 0.0F || rim > 0.0F || (tintAlpha > 0.0F && tintAlpha < 1.0F);
       blur.setBackdropSampling(sampling);
-      m_nodeArea[i + 1] = sampling ? shapeClips[shape].width * shapeClips[shape].height : 0;
+      m_nodeArea[i + 1] = sampling ? sampledArea(&shapes[shape], shapeClips[shape]) : 0;
       if (!sampling) {
         m_nodeLuminance[i + 1].reset();
       }
