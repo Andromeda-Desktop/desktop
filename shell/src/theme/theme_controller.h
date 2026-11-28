@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,10 +27,12 @@ namespace noctalia::theme {
 
     ThemeController(Disk disk, ThemeVocabulary vocabulary, BuiltInNumber builtIn, Apply apply);
 
-    // The config's theme id; empty selects the built-in tokens (with the overrides over them).
-    void select(std::string_view id);
     void themeFilesChanged();
     void overridesChanged();
+    // The config's theme id (empty: the built-in tokens, with the overrides over them) and accent source in one
+    // resolve; `overridesEdited` rereads theme-overrides.toml first. The overrides' "accent" colour roles apply only
+    // with `userAccent` (theme.accent_source custom).
+    void update(std::string_view id, bool userAccent, bool overridesEdited);
 
     [[nodiscard]] const std::string& selected() const noexcept { return m_selected; }
     // Id of the shown theme; empty while no theme shows (the overrides over the built-in tokens).
@@ -37,12 +40,17 @@ namespace noctalia::theme {
     [[nodiscard]] std::uint64_t generation() const noexcept { return m_generation; }
     // Ids whose theme.toml the caller watches: the shown chain, and the selected id while it fails to load.
     [[nodiscard]] std::vector<std::string> watchedIds() const;
+    // The shown theme's accent for `scheme` ("dark" or "light") without the user's; nullopt: the built-in token.
+    [[nodiscard]] std::optional<Color> themeAccent(std::string_view scheme) const;
+    // theme-overrides.toml's accent for `scheme`, kept while another accent source shows.
+    [[nodiscard]] std::optional<Color> userAccent(std::string_view scheme) const;
     // Why the selected theme or the overrides file is not shown as is; empty when both loaded and showed.
     [[nodiscard]] std::vector<ThemeIssue> errors() const;
 
   private:
+    bool loadOverrides();
     void refresh();
-    void show(ResolvedTheme table);
+    void show(ResolvedTheme table, std::map<std::string, ThemeValue> themeAccents);
 
     Disk m_disk;
     ThemeVocabulary m_vocabulary;
@@ -50,7 +58,9 @@ namespace noctalia::theme {
     Apply m_apply;
     std::string m_selected;
     ResolvedTheme m_shown; // no chain: the overrides over the built-in tokens
+    std::map<std::string, ThemeValue> m_themeAccents; // the shown theme's scheme.<scheme>.accent, without the user's
     std::optional<ThemePackage> m_overrides; // last good copy of theme-overrides.toml
+    bool m_userAccent = false;
     std::optional<ThemeIssue> m_themeError;
     std::optional<ThemeIssue> m_overridesError;
     std::optional<ThemeIssue> m_applyError;

@@ -211,9 +211,25 @@ namespace {
     expect(!root["widget"]["other"]["combine_apps"], "a widget without the key gained one");
   }
 
+  void checkAccentSourceMigration() {
+    toml::table root = toml::parse("config_version = 19\n[theme]\naccent_source = \"color\"\n");
+    noctalia::config::schema::Diagnostics diag;
+    (void)noctalia::config::applyPendingConfigMigrations(root, 19, diag);
+    expect(root["theme"]["accent_source"].value<std::string>() == "theme", "accent_source color did not become theme");
+    toml::table wallpaper = toml::parse("config_version = 19\n[theme]\naccent_source = \"wallpaper\"\n");
+    (void)noctalia::config::applyPendingConfigMigrations(wallpaper, 19, diag);
+    expect(wallpaper["theme"]["accent_source"].value<std::string>() == "wallpaper", "accent_source wallpaper was rewritten");
+    toml::table handWritten = toml::parse("[theme]\naccent_source = \"color\"\n");
+    noctalia::config::LegacyConfigIssues issues;
+    noctalia::config::normalizeLegacyConfig(handWritten, issues);
+    expect(handWritten["theme"]["accent_source"].value<std::string>() == "theme", "config.toml color did not become theme");
+    expect(hasIssuePath(issues, "theme.accent_source"), "config.toml color gave no reminder");
+  }
+
 } // namespace
 
 int main() {
+  checkAccentSourceMigration();
   checkTaskbarCombineMigration();
   checkLockscreenThemeMigration();
   checkVersionGating();

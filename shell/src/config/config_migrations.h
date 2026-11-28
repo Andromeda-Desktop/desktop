@@ -78,6 +78,8 @@ namespace noctalia::config {
       },
       LegacyCompositorThemeKey{.compositorKey = "appearance.blur.saturation", .themeKeys = kBlurSaturationThemeKeys},
   };
+  // The compositor setting that held the user's accent; it moves to theme-overrides.toml [values.dark|light] accent.
+  inline constexpr std::string_view kLegacyCompositorAccentKey = "appearance.accent";
   // Removes each kLegacyThemeKeys entry from `root`; returns the ones it held.
   std::vector<LegacyThemeKey> eraseLegacyThemeKeys(toml::table& root);
 

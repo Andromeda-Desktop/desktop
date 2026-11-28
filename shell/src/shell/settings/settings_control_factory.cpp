@@ -664,7 +664,7 @@ namespace {
             .disabled = state
         };
       };
-      if (path == std::vector<std::string>{"andromeda", "appearance", "accent"}) {
+      if (path == std::vector<std::string>{"theme", "accent_source"}) {
         // Accent Color: one circle per option, the chosen one ringed; Custom opens the colour picker.
         auto strip = ui::row({.align = FlexAlign::Center, .gap = Style::focusRingGap * scale});
         const float circle = metrics::kSwatchSize * scale;
@@ -693,7 +693,7 @@ namespace {
           }
           const bool filled = !opt.preview.swatches.empty();
           const ColorSpec fill = filled ? opt.preview.swatches.front() : colorSpecFromRole(ColorRole::Fill2);
-          const char* glyph = filled ? nullptr : custom ? "plus" : "photo";
+          const char* glyph = filled ? nullptr : custom ? "plus" : opt.value == "theme" ? "palette" : "photo";
           strip->addChild(ui::button({
               .variant = ButtonVariant::Ghost,
               .customPalette = Button::ButtonPalette{

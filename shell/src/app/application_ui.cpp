@@ -320,6 +320,13 @@ void Application::initUiRenderSurfacesAndSettings() {
     refreshWallpaperAccent(true);
     return m_wallpaperAccent;
   });
+  m_settingsWindow.setAccentChoices([this](bool light) {
+    const auto custom = m_desktopTheme.userAccent(light);
+    return SettingsWindow::AccentChoices{
+        .theme = StringUtils::toLower(formatRgbHex(m_desktopTheme.themeAccent(light))),
+        .custom = custom ? StringUtils::toLower(formatRgbHex(*custom)) : std::string{},
+    };
+  });
 }
 
 void Application::initLockScreenAndSession() {
@@ -1570,7 +1577,8 @@ void Application::initWidgetControllersAndCallbacks() {
     m_configService.moveLegacyCompositorThemeKeys(
         [&compositor](std::string_view key) { return compositor.value(key); },
         [&compositor](std::string_view key) { return compositor.customized(key); },
-        [this](const std::string& key, const std::string& value) { m_liveAppearance.set(key, value); }
+        [this](const std::string& key, const std::string& value) { m_liveAppearance.set(key, value); },
+        m_liveAppearance.paletteAccent()
     );
   });
   m_liveAppearance.initialize(m_wayland, [this](const LiveAppearance& appearance) {

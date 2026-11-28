@@ -3211,8 +3211,9 @@
           "follow": "Follow"
         },
         "accent-source": {
-          "color": "Color",
-          "wallpaper": "Wallpaper"
+          "theme": "Theme",
+          "wallpaper": "Wallpaper",
+          "custom": "Custom"
         }
       },
       "theme-role": {
@@ -5518,6 +5519,7 @@
           "label": "Accent Color",
           "description": "Toggles, the focus ring and selected items in the shell and in apps",
           "swatches": {
+            "theme": "Theme",
             "indigo": "Indigo",
             "blue": "Blue",
             "teal": "Teal",

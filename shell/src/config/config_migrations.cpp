@@ -19,6 +19,7 @@ namespace noctalia::config {
     constexpr int kTaskbarCombineMigrationVersion = 19;
     // Fingerprint id for the kLegacyThemeKeys reminders; no stored-file migration carries this number.
     constexpr int kLegacyThemeKeyIssueVersion = 20;
+    constexpr int kAccentSourceMigrationVersion = 21;
 
     // lockscreen.style (ryoku | classic) became lockscreen.theme (ryoku | andromeda). keepRyokuWhenUnset writes ryoku
     // when neither key is set, for installs from before the theme key.
@@ -70,6 +71,24 @@ namespace noctalia::config {
       }
     }
 
+    // theme.accent_source "color" became "theme"; a colour the compositor saved moves to "custom" on its first
+    // settings batch (ConfigService::moveLegacyCompositorThemeKeys).
+    constexpr std::string_view kAccentSourceMessage = "accent_source color is now theme or custom";
+
+    template <typename OnChanged>
+    void migrateAccentSource(toml::table& root, OnChanged&& onChanged) {
+      auto* theme = root["theme"].as_table();
+      if (theme == nullptr || (*theme)["accent_source"].value<std::string>() != "color") {
+        return;
+      }
+      theme->insert_or_assign("accent_source", "theme");
+      onChanged();
+    }
+
+    void migrateAccentSourceSidecar(toml::table& root, schema::Diagnostics& diag) {
+      migrateAccentSource(root, [&diag] { diag.warn("theme.accent_source", std::string(kAccentSourceMessage)); });
+    }
+
     std::uint64_t stableIssueHash(int migrationVersion, std::string_view path) {
       constexpr std::uint64_t kOffset = 14695981039346656037ULL;
       constexpr std::uint64_t kPrime = 1099511628211ULL;
@@ -116,6 +135,11 @@ namespace noctalia::config {
             .toVersion = kTaskbarCombineMigrationVersion,
             .summary = "taskbar: combine_apps (true | false) is now always | when_full | never",
             .apply = migrateTaskbarCombine,
+        },
+        {
+            .toVersion = kAccentSourceMigrationVersion,
+            .summary = "theme: accent_source color is now theme or custom",
+            .apply = migrateAccentSourceSidecar,
         },
     };
     return migrations;
@@ -174,6 +198,13 @@ namespace noctalia::config {
           .migrationVersion = kLockscreenThemeMigrationVersion,
           .path = path,
           .message = "lockscreen style is deprecated; use theme = \"ryoku\" or \"andromeda\"",
+      });
+    });
+    migrateAccentSource(root, [&issues] {
+      issues.push_back({
+          .migrationVersion = kAccentSourceMigrationVersion,
+          .path = "theme.accent_source",
+          .message = std::string(kAccentSourceMessage),
       });
     });
     if (eraseLegacyShellAnimation(root)) {

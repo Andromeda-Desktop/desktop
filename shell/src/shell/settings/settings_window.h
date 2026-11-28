@@ -158,6 +158,12 @@ public:
   void setSyncGreeterAppearance(std::function<void()> callback) { m_syncGreeterAppearance = std::move(callback); }
   // The From Wallpaper accent ("#rrggbb"), or empty before it is picked.
   void setWallpaperAccent(std::function<std::string()> provider) { m_wallpaperAccent = std::move(provider); }
+  // The theme's and the custom accent ("#rrggbb", empty when unknown) for the scheme: light when true.
+  struct AccentChoices {
+    std::string theme;
+    std::string custom;
+  };
+  void setAccentChoices(std::function<AccentChoices(bool light)> provider) { m_accentChoices = std::move(provider); }
   void setResetLauncherUsage(std::function<void()> callback) { m_resetLauncherUsage = std::move(callback); }
   void setResetScreenTime(std::function<void()> callback) { m_resetScreenTime = std::move(callback); }
   void setResetEncryptedStorage(std::function<void()> callback) { m_resetEncryptedStorage = std::move(callback); }
@@ -688,6 +694,7 @@ private:
   std::function<void()> m_openWallpaperPanel;
   std::function<void()> m_syncGreeterAppearance;
   std::function<std::string()> m_wallpaperAccent;
+  std::function<AccentChoices(bool light)> m_accentChoices;
   std::function<void()> m_resetLauncherUsage;
   std::function<void()> m_resetScreenTime;
   std::function<std::optional<std::size_t>()> m_activityFlaggedCount;

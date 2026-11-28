@@ -1737,15 +1737,18 @@ constexpr EnumOption<ThemeMode> kThemeModes[] = {
     {ThemeMode::Auto, "auto", "common.states.auto"},
 };
 
-// Where the system accent comes from; the compositor's appearance.accent holds the resulting colour.
+// Where the system accent comes from: the desktop theme, the wallpaper, or theme-overrides.toml [values.dark|light]
+// accent. The shell sends the result to the compositor's "style" layer (appearance.accent).
 enum class AccentSource : std::uint8_t {
-  Color = 0,
+  Theme = 0,
   Wallpaper = 1,
+  Custom = 2,
 };
 
 constexpr EnumOption<AccentSource> kAccentSources[] = {
-    {AccentSource::Color, "color", "settings.options.theme.accent-source.color"},
+    {AccentSource::Theme, "theme", "settings.options.theme.accent-source.theme"},
     {AccentSource::Wallpaper, "wallpaper", "settings.options.theme.accent-source.wallpaper"},
+    {AccentSource::Custom, "custom", "settings.options.theme.accent-source.custom"},
 };
 
 // Noctalia's own light/dark mode. `follow` tracks [theme].mode, which always drives apps
@@ -1779,7 +1782,7 @@ struct ThemeConfig {
   bool pureBlackDark = false;
   bool syncColorScheme = true;
   bool toolkitThemes = true; // GTK, Qt, KDE and fcitx5 colors from the design tokens (toolkit_theme_files)
-  AccentSource accentSource = AccentSource::Color;
+  AccentSource accentSource = AccentSource::Theme;
   std::string desktopTheme; // desktop theme folder id; empty: the built-in tokens
 
   bool operator==(const ThemeConfig&) const = default;

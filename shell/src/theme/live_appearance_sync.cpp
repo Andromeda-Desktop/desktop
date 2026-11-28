@@ -214,12 +214,8 @@ void LiveAppearanceSync::sendLayers() {
       setStyleLayer(key, m_control->customized(key) ? std::string{} : value);
     }
   }
-  // The theme's accent fills in while the user saved none; a wallpaper accent replaces even a saved one.
-  if (m_accentOrigin == AccentOrigin::Wallpaper) {
-    setStyleLayer("appearance.accent", m_wallpaperAccent);
-  } else {
-    setStyleLayer("appearance.accent", m_control->customized("appearance.accent") ? std::string{} : m_accent);
-  }
+  // The shell owns the accent (theme.accent_source): its layer masks a value saved in the compositor.
+  setStyleLayer("appearance.accent", m_accentOrigin == AccentOrigin::Wallpaper ? m_wallpaperAccent : m_accent);
 }
 
 void LiveAppearanceSync::setStyleLayer(const std::string& key, const std::string& value) {
@@ -231,8 +227,8 @@ void LiveAppearanceSync::setStyleLayer(const std::string& key, const std::string
   m_control->setInLayer("style", key, value);
 }
 
-// Earlier shells saved the theme accent and the blur recipe as if the user had chosen them, so Settings marked those
-// rows changed and a reset was written back. Before the first flush no layer of ours masks the saved values: a saved
+// Earlier shells saved the blur recipe as if the user had chosen it, so Settings marked those rows changed and a reset
+// was written back. Before the first flush no layer of ours masks the saved values: a saved
 // value equal to the one the shell derives is ours, and dropping it changes nothing on screen.
 void LiveAppearanceSync::dropShellSaves(const std::array<std::pair<std::string, std::string>, 3>& recipe) {
   if (m_droppedShellSaves) {
@@ -244,15 +240,12 @@ void LiveAppearanceSync::dropShellSaves(const std::array<std::pair<std::string, 
   }
   const auto drop = [this](const std::string& key, const std::string& derived) {
     const std::string saved = m_control->value(key);
-    if (!derived.empty() && m_control->customized(key) && (saved == derived || normalizeColor(saved) == derived)) {
+    if (!derived.empty() && m_control->customized(key) && saved == derived) {
       m_control->set(key, "");
     }
   };
   for (const auto& [key, value] : recipe) {
     drop(key, value);
-  }
-  if (m_accentOrigin != AccentOrigin::Wallpaper) {
-    drop("appearance.accent", m_accent);
   }
 }
 

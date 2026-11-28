@@ -228,11 +228,12 @@ public:
   // theme-overrides.toml, unless that file already sets the key, and clears the settings file's value through `set`
   // (key, ""). Call it on every compositor settings batch; only the first one counts, before a layer of the shell
   // masks the values. A theme key whose built-in or current token value equals the value is skipped. A refused write
-  // keeps the compositor values.
+  // keeps the compositor values. The saved accent moves unless it equals a theme accent or `shellAccent`, the accent
+  // the shell publishes (an earlier shell saved it).
   void moveLegacyCompositorThemeKeys(
       const std::function<std::string(std::string_view key)>& value,
       const std::function<bool(std::string_view key)>& customized,
-      const std::function<void(const std::string& key, const std::string& value)>& set
+      const std::function<void(const std::string& key, const std::string& value)>& set, std::string_view shellAccent
   );
   bool clearOverrides(const std::vector<std::vector<std::string>>& paths, bool* changed);
   bool renameOverrideTable(const std::vector<std::string>& oldPath, const std::vector<std::string>& newPath);

@@ -359,6 +359,8 @@ namespace settings {
     std::string shellAvatarPath;
     std::vector<std::string> keyboardLayoutNames;
     std::string wallpaperAccent; // "#rrggbb" picked from the wallpaper; empty before the pick
+    std::string themeAccent;     // "#rrggbb" of the desktop theme in the shown scheme; empty when unknown
+    std::string customAccent;    // "#rrggbb" of theme-overrides.toml in the shown scheme; empty when unset
     SystemBus* systemBus = nullptr;
   };
 

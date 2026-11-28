@@ -290,4 +290,6 @@ reduce_motion = false
 | `increase_contrast`   | `false` | Higher-contrast colors in the shell and apps; borders at least 2 px.         |
 | `reduce_motion`       | `false` | Less motion: windows fade in and out; workspace, move, resize, overview and scratchpad animations stop; `dsk_surface_v1` moves jump. Fades stay. |
 
+With the Andromeda shell, `accent` follows the shell's accent source (`[theme] accent_source`): the desktop theme's accent, the wallpaper's, or the custom colour in `theme-overrides.toml` `[values.dark]` and `[values.light]` `accent`. Set it in Settings. When it starts, the shell moves an `accent` set here to `theme-overrides.toml` and selects the custom source. Exceptions: a value equal to a theme accent is only cleared; a file that already sets `accent` keeps its value; the wallpaper source stays. Then remove the line here: the shell's accent applies over it.
+
 These keys are managed settings: the shell, the greeter and our apps read and set them over the settings protocol, so a change applies at once without a config reload.

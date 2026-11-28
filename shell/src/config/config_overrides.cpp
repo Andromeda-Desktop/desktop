@@ -8,6 +8,7 @@
 #include "core/input/key_chord.h"
 #include "core/log.h"
 #include "design_tokens.h"
+#include "render/core/color.h"
 #include "scripting/plugin_id.h"
 #include "shell/settings/widget_settings_registry.h"
 #include "theme/theme_store.h"
@@ -2110,7 +2111,7 @@ void ConfigService::moveLegacyThemeKeys() {
 void ConfigService::moveLegacyCompositorThemeKeys(
     const std::function<std::string(std::string_view key)>& value,
     const std::function<bool(std::string_view key)>& customized,
-    const std::function<void(const std::string& key, const std::string& value)>& set
+    const std::function<void(const std::string& key, const std::string& value)>& set, std::string_view shellAccent
 ) {
   if (m_compositorThemeKeyMove == CompositorThemeKeyMove::Done) {
     return;
@@ -2165,8 +2166,41 @@ void ConfigService::moveLegacyCompositorThemeKeys(
       configLines.emplace_back(legacy.compositorKey);
     }
   }
+  // The accent applied in both schemes, so it moves to both, and the source becomes custom unless it is the
+  // wallpaper. A value equal to a theme accent or to the shell's published one came from an earlier shell: only
+  // cleared.
+  const std::string accentKey(noctalia::config::kLegacyCompositorAccentKey);
+  const bool accentSaved = customized(accentKey);
+  if (accentSaved) {
+    cleared.push_back(accentKey);
+  }
+  const auto shellWritten = [shellAccent](const Color& color) {
+    const std::string hex = formatRgbHex(color);
+    if (Color published; tryParseHexColor(shellAccent, published) && formatRgbHex(published) == hex) {
+      return true;
+    }
+    return std::ranges::any_of(Tokens::slots(), [&hex](const Tokens::Slot& slot) {
+      return (slot.path == "scheme.dark.accent" || slot.path == "scheme.light.accent")
+          && (formatRgbHex(rgbaHex(static_cast<std::uint32_t>(slot.number))) == hex
+              || formatRgbHex(rgbaHex(*static_cast<const std::uint32_t*>(slot.ptr))) == hex);
+    });
+  };
+  const std::vector<std::string> darkAccent{std::string(kThemeOverridesRoot), "dark", "accent"};
+  const std::vector<std::string> lightAccent{std::string(kThemeOverridesRoot), "light", "accent"};
+  if (Color accent; tryParseHexColor(value(accentKey), accent) && !shellWritten(accent) && !hasOverride(darkAccent)
+                    && !hasOverride(lightAccent)) {
+    const std::string hex = StringUtils::toLower(formatRgbHex(accent));
+    sets.emplace_back(darkAccent, hex);
+    sets.emplace_back(lightAccent, hex);
+    if (m_config.theme.accentSource != AccentSource::Wallpaper) {
+      sets.emplace_back(std::vector<std::string>{"theme", "accent_source"}, std::string("custom"));
+    }
+    if (!accentSaved) {
+      configLines.push_back(accentKey);
+    }
+  }
   if (!sets.empty() && !mutateOverrides(sets, {}, nullptr)) {
-    kLog.warn("kept the compositor's window corner and glass saturation values: {}", m_lastMutationError);
+    kLog.warn("kept the compositor's theme values: {}", m_lastMutationError);
     return;
   }
   for (const std::string& key : configLines) {

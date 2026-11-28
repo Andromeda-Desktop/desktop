@@ -87,7 +87,7 @@ namespace {
       kLog.info("lock process starting");
 
       m_config.setTokenSource([this](const Config& config, const std::optional<std::string>& overridesText) {
-        return m_desktopTheme.sync(config.theme.desktopTheme, overridesText);
+        return m_desktopTheme.sync(config.theme.desktopTheme, config.theme.accentSource == AccentSource::Custom, overridesText);
       });
       m_desktopTheme.setChangeCallback([this] { m_config.reloadAllSections(); });
       applyStyle();

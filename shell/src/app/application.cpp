@@ -348,7 +348,7 @@ void Application::run(const std::function<void()>& startupReadyCallback) {
   initLogLevelFromEnvironment();
   kLog.info("noctalia {}", noctalia::build_info::displayVersion());
   m_configService.setTokenSource([this](const Config& config, const std::optional<std::string>& overridesText) {
-    return m_desktopTheme.sync(config.theme.desktopTheme, overridesText);
+    return m_desktopTheme.sync(config.theme.desktopTheme, config.theme.accentSource == AccentSource::Custom, overridesText);
   });
   m_desktopTheme.setChangeCallback([this] { m_configService.reloadAllSections(); });
   m_configService.moveLegacyThemeKeys();

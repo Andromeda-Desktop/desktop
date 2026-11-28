@@ -41,8 +41,8 @@ struct LiveAppearance {
 void applyLiveMotion(const LiveAppearance& appearance);
 
 // Keeps a dsk_settings_manager_v1 binding for the whole session on andromeda: reads the live appearance keys and
-// writes the shell's scheme and accent. The user's choices go to the saved base keys; derived values (an auto scheme,
-// the wallpaper accent) go only to the runtime layer "style", so the compositor never saves them as the user's.
+// writes the shell's scheme and accent. The user's scheme goes to the saved base key; derived values (an auto scheme,
+// the accent) go only to the runtime layer "style", so the compositor never saves them as the user's.
 class LiveAppearanceSync {
 public:
   using ChangeCallback = std::function<void(const LiveAppearance&)>;
@@ -54,14 +54,14 @@ public:
   void initialize(ShellWaylandConnection& wayland, ChangeCallback onChange);
   // The shell's long-lived compositor settings connection; null before initialize().
   [[nodiscard]] SettingsControl* settingsControl() noexcept { return m_control.get(); }
-  enum class AccentOrigin : std::uint8_t { Saved, Wallpaper };
+  enum class AccentOrigin : std::uint8_t { Palette, Wallpaper };
 
   // Sets each key the compositor holds with a different value; before the first batch arrives, it waits for it. The
-  // palette accent fills the saved appearance.accent only while it is unset and the accent origin is Saved. Pure black
+  // palette accent (the theme's or the custom one) goes to the "style" layer while the accent origin is Palette. Pure black
   // (rulebook §4.3) goes to the "style" layer in the same commit, so compositor chrome and glass follow the theme.
   void publish(std::string_view scheme, SchemeOrigin origin, std::string_view paletteAccent, bool pureBlack);
-  // Saved: the user's saved appearance.accent shows. Wallpaper: the wallpaper accent ("#rrggbb", empty until known)
-  // masks it from the "style" layer.
+  // Palette: the palette accent shows. Wallpaper: the wallpaper accent ("#rrggbb", empty until known) shows. Either
+  // masks a value saved in the compositor's settings file.
   void setAccentOrigin(AccentOrigin origin, std::string_view wallpaperAccent);
   // A Focus scheme in the compositor's runtime layer "focus" (never saved there); empty clears the layer. While it is
   // on, publish() keeps the user's scheme and no scheme change counts as another client's choice.
@@ -79,6 +79,8 @@ public:
   void set(const std::string& key, const std::string& value);
 
   [[nodiscard]] const LiveAppearance& state() const noexcept { return m_state; }
+  // The palette accent publish() last took ("#rrggbb", high contrast included); empty before it runs.
+  [[nodiscard]] const std::string& paletteAccent() const noexcept { return m_accent; }
 
 private:
   void onSettingsChanged();
@@ -104,7 +106,7 @@ private:
   std::string m_language;
   std::string m_layerLanguage; // the language in the compositor's "style" layer now
   std::string m_accent;
-  AccentOrigin m_accentOrigin = AccentOrigin::Saved;
+  AccentOrigin m_accentOrigin = AccentOrigin::Palette;
   std::string m_wallpaperAccent;
   std::unordered_map<std::string, std::string> m_styleLayer; // accent, blur recipe and window corner in the "style" layer now
   bool m_droppedShellSaves = false;

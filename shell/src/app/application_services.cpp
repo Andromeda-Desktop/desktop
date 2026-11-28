@@ -723,7 +723,7 @@ void Application::refreshWallpaperAccent(bool forSettingsRow) {
   const bool fromWallpaper = m_configService.config().theme.accentSource == AccentSource::Wallpaper;
   if (!forSettingsRow) {
     m_liveAppearance.setAccentOrigin(
-        fromWallpaper ? LiveAppearanceSync::AccentOrigin::Wallpaper : LiveAppearanceSync::AccentOrigin::Saved,
+        fromWallpaper ? LiveAppearanceSync::AccentOrigin::Wallpaper : LiveAppearanceSync::AccentOrigin::Palette,
         m_wallpaperAccent
     );
   }

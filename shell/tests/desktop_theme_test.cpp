@@ -9,6 +9,7 @@
 #include "core/files/directory_watcher.h"
 #include "core/files/file_watcher.h"
 #include "design_tokens.h"
+#include "render/core/color.h"
 #include "net/http_client.h"
 #include "protocols/async_file_writer.h"
 #include "tests/test_check.h"
@@ -29,6 +30,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <unistd.h>
 #include <vector>
 
@@ -89,7 +91,7 @@ int main() {
   ConfigService config;
   TEST_CHECK(config.config().dock.iconSize == static_cast<int>(builtInIcon));
   config.setTokenSource([&](const Config& c, const std::optional<std::string>& text) {
-    return desktopTheme.sync(c.theme.desktopTheme, text);
+    return desktopTheme.sync(c.theme.desktopTheme, c.theme.accentSource == AccentSource::Custom, text);
   });
 
   TEST_CHECK(Tokens::componentDockIcon == 64.0F);
@@ -146,7 +148,7 @@ int main() {
   {
     ConfigService migrating;
     migrating.setTokenSource([&](const Config& c, const std::optional<std::string>& text) {
-      return desktopTheme.sync(c.theme.desktopTheme, text);
+      return desktopTheme.sync(c.theme.desktopTheme, c.theme.accentSource == AccentSource::Custom, text);
     });
     TEST_CHECK(Tokens::fontFamily == "Kept");
     migrating.moveLegacyThemeKeys();
@@ -167,7 +169,7 @@ int main() {
   {
     ConfigService migrating;
     migrating.setTokenSource([&](const Config& c, const std::optional<std::string>& text) {
-      return desktopTheme.sync(c.theme.desktopTheme, text);
+      return desktopTheme.sync(c.theme.desktopTheme, c.theme.accentSource == AccentSource::Custom, text);
     });
     migrating.moveLegacyThemeKeys();
     TEST_CHECK(Tokens::fontFamily == "system");
@@ -211,10 +213,10 @@ int main() {
   const auto migrate = [&] {
     ConfigService migrating;
     migrating.setTokenSource([&](const Config& c, const std::optional<std::string>& text) {
-      return desktopTheme.sync(c.theme.desktopTheme, text);
+      return desktopTheme.sync(c.theme.desktopTheme, c.theme.accentSource == AccentSource::Custom, text);
     });
     sent.clear();
-    migrating.moveLegacyCompositorThemeKeys(value, customized, set);
+    migrating.moveLegacyCompositorThemeKeys(value, customized, set, "#c0ffee");
     return migrating.hasOverride({themeRoot, "corner.window"});
   };
   const std::vector<std::string> bothCleared{"appearance.corner_radius=", "appearance.blur.saturation="};
@@ -254,16 +256,50 @@ int main() {
   TEST_CHECK(sent.empty());
   TEST_CHECK(landed(overrides));
 
+  // The accent moves to both schemes. The source becomes custom unless it is the wallpaper; the tokens show the moved
+  // accent only with the custom source. A value equal to a theme accent or to the published one (#c0ffee here, with
+  // high contrast) came from an earlier shell: only cleared.
+  const auto tokenRgb = [](std::uint32_t rgba) { return rgba >> 8U; };
+  const auto migrateAccent = [&](std::string_view source, const std::string& accent) {
+    ConfigService migrating;
+    migrating.setTokenSource([&](const Config& c, const std::optional<std::string>& text) {
+      return desktopTheme.sync(c.theme.desktopTheme, c.theme.accentSource == AccentSource::Custom, text);
+    });
+    TEST_CHECK(migrating.setOverride({"theme", "accent_source"}, std::string(source)));
+    compositor = {{"appearance.accent", {accent}}};
+    sent.clear();
+    migrating.moveLegacyCompositorThemeKeys(value, customized, set, "#c0ffee");
+    TEST_CHECK(sent == std::vector<std::string>{"appearance.accent="});
+    const std::pair after{migrating.config().theme.accentSource, tokenRgb(Tokens::schemeLight.accent)};
+    TEST_CHECK(migrating.clearOverrides({{"theme", "accent_source"}}, nullptr));
+    return after;
+  };
+  std::filesystem::remove(overrides);
+  TEST_CHECK((migrateAccent("theme", "#2B7D34FF") == std::pair{AccentSource::Custom, 0x2b7d34U}));
+  TEST_CHECK(read(overrides).find("[values.dark]\naccent = \"#2b7d34\"") != std::string::npos);
+  TEST_CHECK(read(overrides).find("[values.light]\naccent = \"#2b7d34\"") != std::string::npos);
+  std::filesystem::remove(overrides);
+  const std::uint32_t themeLightAccent = tokenRgb(Tokens::schemeLight.accent);
+  TEST_CHECK((migrateAccent("wallpaper", "#2b7d34") == std::pair{AccentSource::Wallpaper, themeLightAccent}));
+  TEST_CHECK(read(overrides).find("#2b7d34") != std::string::npos);
+  std::filesystem::remove(overrides);
+  TEST_CHECK((migrateAccent("theme", formatRgbHex(rgbaHex(Tokens::schemeDark.accent)))
+              == std::pair{AccentSource::Theme, themeLightAccent}));
+  TEST_CHECK(read(overrides).find("accent") == std::string::npos);
+  TEST_CHECK((migrateAccent("theme", "#C0FFEEFF") == std::pair{AccentSource::Theme, themeLightAccent}));
+  TEST_CHECK(read(overrides).find("accent") == std::string::npos);
+  TEST_CHECK(landed(overrides) && landed(shellOverrides));
+
   // Only the first batch moves: later ones show the shell's layer values. A refused write keeps the compositor's.
   write(overrides, "[values\n");
   sent.clear();
   compositor = {{"appearance.corner_radius", {std::format("{}", cornerMax - 2.0)}}};
   {
     ConfigService migrating;
-    migrating.moveLegacyCompositorThemeKeys(value, customized, set);
+    migrating.moveLegacyCompositorThemeKeys(value, customized, set, "#c0ffee");
     TEST_CHECK(sent.empty());
     std::filesystem::remove(overrides);
-    migrating.moveLegacyCompositorThemeKeys(value, customized, set);
+    migrating.moveLegacyCompositorThemeKeys(value, customized, set, "#c0ffee");
     TEST_CHECK(sent.empty());
     TEST_CHECK(!migrating.hasOverride({themeRoot, "corner.window"}));
   }
@@ -278,10 +314,10 @@ int main() {
     noctalia::theme::DesktopTheme dev(files);
     TEST_CHECK(Tokens::componentDockLensRadius == 14.0F);
     TEST_CHECK(Tokens::componentWindowRadius == 3.0F);
-    TEST_CHECK(dev.sync("deep", std::nullopt));
+    TEST_CHECK(dev.sync("deep", false, std::nullopt));
     TEST_CHECK(Tokens::componentDockLensRadius == 24.0F); // 30 from the theme - 6 from the dev file
     TEST_CHECK(Tokens::componentWindowRadius == 3.0F);
-    TEST_CHECK(!dev.sync("deep", std::nullopt));
+    TEST_CHECK(!dev.sync("deep", false, std::nullopt));
     ::unsetenv("ANDROMEDA_DEV_TOKENS");
   }
 #endif

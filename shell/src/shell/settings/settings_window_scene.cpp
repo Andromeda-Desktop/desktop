@@ -698,6 +698,12 @@ settings::RegistryEnvironment SettingsWindow::buildRegistryEnvironment() const {
   if (m_wallpaperAccent) {
     env.wallpaperAccent = m_wallpaperAccent();
   }
+  if (m_accentChoices) {
+    const bool light = env.compositorSettings != nullptr && env.compositorSettings->value("appearance.scheme") == "light";
+    auto [theme, custom] = m_accentChoices(light);
+    env.themeAccent = std::move(theme);
+    env.customAccent = std::move(custom);
+  }
   env.systemBus = m_systemBus;
   env.screencopySupported = m_wayland != nullptr && m_wayland->hasScreencopy();
   env.backgroundEffectBlurSupported = m_wayland != nullptr && m_wayland->hasBackgroundEffectBlur();

@@ -29,13 +29,18 @@ namespace noctalia::theme {
     DesktopTheme& operator=(const DesktopTheme&) = delete;
 
     // Shows the theme `id` (empty: the built-in tokens) under theme-overrides.toml with the caller's current
-    // `overridesText` (a queued write first), so a write of that file applies before its watch fires. Returns true
-    // when the token values changed.
-    bool sync(std::string_view id, const std::optional<std::string>& overridesText);
+    // `overridesText` (a queued write first), so a write of that file applies before its watch fires. The overrides'
+    // accent applies only with `userAccent` (theme.accent_source custom). Returns true when the token values changed.
+    bool sync(std::string_view id, bool userAccent, const std::optional<std::string>& overridesText);
 
     // Runs after an edit of a watched file (the shown theme chain, theme-overrides.toml, the dev token file) changed
     // the token values.
     void setChangeCallback(std::function<void()> callback);
+
+    // The shown theme's accent for the scheme, without the user's: what theme.accent_source theme shows.
+    [[nodiscard]] Color themeAccent(bool light) const;
+    // theme-overrides.toml's accent for the scheme: what theme.accent_source custom shows; nullopt when unset.
+    [[nodiscard]] std::optional<Color> userAccent(bool light) const;
 
     // The scheme the shown theme pins ("dark" or "light"); nullopt when it has both or the built-in tokens show.
     [[nodiscard]] std::optional<std::string_view> pinnedScheme() const noexcept;

@@ -127,17 +127,33 @@ namespace noctalia::theme {
 
   void DesktopTheme::setChangeCallback(std::function<void()> callback) { m_onChanged = std::move(callback); }
 
-  bool DesktopTheme::sync(std::string_view id, const std::optional<std::string>& overridesText) {
+  bool DesktopTheme::sync(std::string_view id, bool userAccent, const std::optional<std::string>& overridesText) {
     const std::uint64_t written = m_written;
-    if (overridesText != m_overridesText) {
-      m_controller.overridesChanged();
-    }
-    if (id != m_controller.selected()) {
-      m_controller.select(id);
-    }
+    m_controller.update(id, userAccent, overridesText != m_overridesText);
     logErrors();
     rewatchThemes();
     return m_written != written;
+  }
+
+  Color DesktopTheme::themeAccent(bool light) const {
+    const std::string_view scheme = light ? "light" : "dark";
+    if (const auto accent = m_controller.themeAccent(scheme)) {
+      return *accent;
+    }
+    const std::string key = std::format("scheme.{}.accent", scheme);
+    if (const auto dev = m_devBase.find(key); dev != m_devBase.end()) {
+      if (Color color; std::holds_alternative<std::string>(dev->second)
+                       && tryParseHexColor(std::get<std::string>(dev->second), color)) {
+        return color;
+      }
+    }
+    const auto& slots = Tokens::slots();
+    const auto slot = std::ranges::find(slots, std::string_view(key), &Tokens::Slot::path);
+    return slot == slots.end() ? Color{} : rgbaHex(static_cast<std::uint32_t>(slot->number));
+  }
+
+  std::optional<Color> DesktopTheme::userAccent(bool light) const {
+    return m_controller.userAccent(light ? "light" : "dark");
   }
 
   std::optional<std::string_view> DesktopTheme::pinnedScheme() const noexcept {

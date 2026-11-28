@@ -1,5 +1,5 @@
-// Model test for ThemeController (theme-engine STORES.md I1, I5): random selects, theme file edits and overrides
-// edits, each watch notification delivered late or never, against an oracle of the same disk.
+// Model test for ThemeController (theme-engine STORES.md I1, I5): random selects, accent source changes, theme file
+// edits and overrides edits, each watch notification delivered late or never, against an oracle of the same disk.
 #include "theme/theme_controller.h"
 
 #include <array>
@@ -55,8 +55,9 @@ tokens = ["component.window.card_radius"]
       }
       const std::string& parent = kParents.at(id);
       const int value = static_cast<int>(id.size()) * 3 + id.front() % 7 + (state == FileState::Good2 ? 20 : 0);
-      return std::format("[theme]\nformat = 1\nid = \"{}\"\nname = \"{}\"\n{}[values]\n\"corner.window\" = {}\n", id,
-                         id, parent.empty() ? "" : std::format("extends = \"{}\"\n", parent), value);
+      return std::format("[theme]\nformat = 1\nid = \"{}\"\nname = \"{}\"\n{}[values]\n\"corner.window\" = {}\n"
+                         "[values.dark]\naccent = \"#{:06x}\"\n",
+                         id, id, parent.empty() ? "" : std::format("extends = \"{}\"\n", parent), value, value * 4099);
     }
 
     std::expected<ThemePackage, ThemeIssue> load(std::string_view id, const ThemeVocabulary& vocabulary) const {
@@ -75,7 +76,9 @@ tokens = ["component.window.card_radius"]
         return std::unexpected(parseThemeOverrides("[values\n", vocabulary).error());
       default:
         return std::optional(*parseThemeOverrides(
-            std::format("[values]\n\"corner.card\" = {}\n", overrides == FileState::Good1 ? 5 : 7), vocabulary));
+            std::format("[values]\n\"corner.card\" = {}\n[values.dark]\naccent = \"{}\"\n",
+                        overrides == FileState::Good1 ? 5 : 7, overrides == FileState::Good1 ? "#1122aa" : "#3344bb"),
+            vocabulary));
       }
     }
   };
@@ -109,15 +112,26 @@ tokens = ["component.window.card_radius"]
           return std::expected<void, std::string>();
         });
 
-    // Oracle: the overrides the controller last read, and the table that must show.
+    // Oracle: the overrides the controller last read, the accent source, and the table that must show.
     std::optional<ThemePackage> goodOverrides;
+    bool userAccent = false;
     ResolvedTheme expected;
+    std::optional<Color> expectedThemeAccent; // the theme's dark accent under the shown table
     const auto oracleRefresh = [&] {
       const ThemeLookup lookup = [&](std::string_view id) { return disk.load(id, vocabulary); };
-      if (auto t = resolveTheme(controller.selected(), lookup, goodOverrides ? &*goodOverrides : nullptr, vocabulary,
-                                builtIn)) {
+      std::optional<ThemePackage> themeOnly = goodOverrides;
+      if (themeOnly) {
+        themeOnly->values.erase("scheme.dark.accent");
+      }
+      const ThemePackage* overrides = userAccent ? (goodOverrides ? &*goodOverrides : nullptr)
+                                                 : (themeOnly ? &*themeOnly : nullptr);
+      if (auto t = resolveTheme(controller.selected(), lookup, overrides, vocabulary, builtIn)) {
         if (!disk.writeFails || same(*t, expected)) {
           expected = std::move(*t);
+          const auto chain = resolveTheme(controller.selected(), lookup, themeOnly ? &*themeOnly : nullptr,
+                                          vocabulary, builtIn);
+          const auto it = chain->values.find("scheme.dark.accent");
+          expectedThemeAccent = it == chain->values.end() ? std::nullopt : std::optional(std::get<Color>(it->second));
         }
       }
     };
@@ -127,10 +141,28 @@ tokens = ["component.window.card_radius"]
     std::uniform_int_distribution<int> pick(0, 99);
     for (int step = 0; step < 40 && g_ok; ++step) {
       const int roll = pick(rng);
-      if (roll < 20) {
+      const std::uint64_t appliesBefore = applies;
+      if (roll < 15) {
         const std::string& id = kSelectable[static_cast<std::size_t>(pick(rng)) % kSelectable.size()];
         g_trace += std::format(" select({})", id);
-        controller.select(id);
+        // The config reload calls update() each time; only a changed id resolves again.
+        const bool changed = id != controller.selected();
+        controller.update(id, userAccent, false);
+        if (changed) {
+          oracleRefresh();
+        }
+      } else if (roll < 25) {
+        // The Settings accent row: the source and the overrides change in one config load.
+        userAccent = !userAccent;
+        const bool edited = overridesEventPending && pick(rng) < 50;
+        g_trace += std::format(" accent({}, edited={})", userAccent, edited);
+        controller.update(controller.selected(), userAccent, edited);
+        if (edited) {
+          overridesEventPending = false;
+          if (auto loaded = disk.loadOverrides(vocabulary)) {
+            goodOverrides = std::move(*loaded);
+          }
+        }
         oracleRefresh();
       } else if (roll < 45) {
         disk.writeFails = !disk.writeFails;
@@ -161,11 +193,20 @@ tokens = ["component.window.card_radius"]
           oracleRefresh();
         }
       }
+      expect(applies - appliesBefore <= 1, "one event applies at most one generation");
       expect(controller.generation() == applies, "the generation counts applies");
+      const bool selectedLoads = !controller.selected().empty() && disk.load(controller.selected(), vocabulary);
+      if (!disk.writeFails && !themeEventPending && (selectedLoads || controller.selected().empty())) {
+        const auto origin = applied.origin.find("scheme.dark.accent");
+        const bool fromOverrides = origin != applied.origin.end() && origin->second == "overrides";
+        expect(fromOverrides == (userAccent && goodOverrides && goodOverrides->values.contains("scheme.dark.accent")),
+               "the overrides accent shows exactly while the source is custom");
+        expect(controller.themeAccent("dark") == expectedThemeAccent,
+               "themeAccent is the theme's accent under the shown table, with either source");
+      }
       expect(same(applied, expected), std::format("shown {} != expected {}", applied.chain.empty() ? "builtin" : applied.chain[0],
                                                   expected.chain.empty() ? "builtin" : expected.chain[0]));
       expect(controller.shownId() == (applied.chain.empty() ? "" : applied.chain[0]), "shownId names the applied table");
-      const bool selectedLoads = !controller.selected().empty() && disk.load(controller.selected(), vocabulary);
       if (!themeEventPending && !overridesEventPending && !controller.selected().empty()) {
         expect(disk.writeFails || !selectedLoads || controller.shownId() == controller.selected(),
                "settled: a failed write keeps the last good table only while writes fail");
